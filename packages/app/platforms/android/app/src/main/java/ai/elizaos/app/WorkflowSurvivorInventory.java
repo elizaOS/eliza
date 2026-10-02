@@ -1,0 +1,139 @@
+package ai.elizaos.app;
+
+import android.net.Credentials;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
+import android.os.Process;
+import android.os.SystemClock;
+import android.system.Os;
+import android.system.OsConstants;
+import android.system.StructStat;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.*;
+import org.json.JSONObject;
+
+/** Read-only survivor classification. No signals, deletion, permission changes or PID-only exemptions. */
+final class WorkflowSurvivorInventory {
+ private static IOException refused(String message){return new IOException("IPC recovery required: "+message);}
+ private static void check(boolean value,String message)throws IOException {if(!value)throw refused(message);}
+ private static StructStat owned(File file,int kind,int mode)throws Exception {
+  StructStat s=Os.lstat(file.getPath());check(s.st_uid==Process.myUid()&&(s.st_mode&OsConstants.S_IFMT)==kind&&(s.st_mode&0777)==mode,"untrusted worker journal");
+  check(file.getCanonicalPath().equals(file.getPath()),"worker path alias");return s;
+ }
+ private static byte[] bounded(File file,int limit)throws Exception {
+  try(InputStream in=new FileInputStream(file)){ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buffer=new byte[1024];int n;
+   while((n=in.read(buffer))!=-1){check(n<=limit-out.size(),"worker metadata exceeds bound");out.write(buffer,0,n);}return out.toByteArray();}
+ }
+ private static String hash(File file)throws Exception { return hash(file,Long.MAX_VALUE); }
+ private static String hash(File file,long deadline)throws Exception {
+  MessageDigest digest=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(file)){byte[] buffer=new byte[65536];long size=0;int n;
+   while((n=in.read(buffer))!=-1){check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");size+=n;check(size<=128L*1024*1024,"worker executable/source exceeds bound");digest.update(buffer,0,n);}}
+  StringBuilder value=new StringBuilder();for(byte b:digest.digest())value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();
+ }
+ private static String hashText(String text)throws Exception {MessageDigest digest=MessageDigest.getInstance("SHA-256");StringBuilder value=new StringBuilder();for(byte b:digest.digest(text.getBytes(StandardCharsets.UTF_8)))value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();}
+ static final class Identity {
+  final int pid,uid;final String start,executable,device,inode,sha256;
+  Identity(int pid,int uid,String start,String executable,String device,String inode,String sha256){this.pid=pid;this.uid=uid;this.start=start;this.executable=executable;this.device=device;this.inode=inode;this.sha256=sha256;}
+  String key(){return pid+":"+uid+":"+start+":"+executable+":"+device+":"+inode+":"+sha256;}
+ }
+ static Identity processIdentity(int pid)throws Exception {return processIdentity(pid,Long.MAX_VALUE);}
+ private static Identity processIdentity(int pid,long deadline)throws Exception {
+  File proc=new File("/proc/"+pid);StructStat before=Os.stat(proc.getPath());String stat=new String(bounded(new File(proc,"stat"),16384),StandardCharsets.UTF_8);int end=stat.lastIndexOf(')');check(end>=0,"malformed worker process");String[] fields=stat.substring(end+2).trim().split("\\s+");check(fields.length>19&&fields[19].matches("[0-9]+"),"missing worker start time");
+  File link=new File(proc,"exe");String executable=Os.readlink(link.getPath());check(executable.startsWith("/")&&!executable.endsWith(" (deleted)"),"invalid worker executable");StructStat exe=Os.stat(link.getPath());String digest=hash(link,deadline);StructStat after=Os.stat(proc.getPath());check(before.st_uid==after.st_uid&&before.st_ino==after.st_ino,"worker process changed");return new Identity(pid,before.st_uid,fields[19],executable,String.valueOf(exe.st_dev),String.valueOf(exe.st_ino),digest);
+ }
+ private static Map<Integer,Identity> processes(long deadline)throws Exception {
+  File[] entries=new File("/proc").listFiles();check(entries!=null&&entries.length>=20,"incomplete process inventory");Map<Integer,Identity> result=new TreeMap<>();
+  for(File entry:entries){if(!entry.getName().matches("[0-9]+"))continue;StructStat stat;
+   try{stat=Os.stat(entry.getPath());}catch(android.system.ErrnoException missing){if(missing.errno==OsConstants.ENOENT)continue;throw missing;}
+   if(stat.st_uid!=Process.myUid())continue;int pid=Integer.parseInt(entry.getName());result.put(pid,processIdentity(pid,deadline));check(result.size()<=32,"too many same-UID processes");}
+  check(result.containsKey(Process.myPid()),"current process absent");return result;
+ }
+ private static File[] children(File directory,int[] budget)throws Exception {
+  StructStat stat=Os.lstat(directory.getPath());check(OsConstants.S_ISDIR(stat.st_mode)&&stat.st_uid==Process.myUid()&&(stat.st_mode&0022)==0&&directory.getCanonicalPath().equals(directory.getPath()),"untrusted workflow state directory");File[] entries=directory.listFiles();check(entries!=null,"workflow inventory unavailable");budget[0]+=entries.length;check(budget[0]<=4096,"workflow journal inventory exceeds bound");return entries;
+ }
+ private static boolean directory(File file)throws Exception {return OsConstants.S_ISDIR(Os.lstat(file.getPath()).st_mode);}
+ private static List<File> journals(File state)throws Exception {
+  List<File> result=new ArrayList<>();int[] budget={0};
+  for(File tenant:children(state,budget)) {
+   try{if(!directory(tenant))continue;}catch(Exception unproven){continue;}
+   File[] workflows;try{workflows=children(tenant,budget);}catch(Exception unproven){continue;}
+   for(File workflow:workflows) {
+    try{if(!directory(workflow))continue;}catch(Exception unproven){continue;}File owners=new File(workflow,".worker-owners");File[] candidates;
+    try{owned(owners,OsConstants.S_IFDIR,0700);candidates=children(owners,budget);}catch(Exception unproven){continue;}
+    for(File active:candidates) {
+     if(!active.getName().matches("[a-f0-9]{64}"))continue;
+     try{owned(active,OsConstants.S_IFDIR,0700);}catch(Exception unproven){continue;}
+     result.add(new File(active,"owner.json"));check(result.size()<=256,"too many active worker journals");
+    }
+   }
+  }
+  check(budget[0]<=4096,"workflow journal inventory exceeds bound");
+  return result;
+ }
+ static void verifyBinding(JSONObject owner,Identity observed,int peerUid,int peerPid,String expectedBun,String expectedLoader,String expectedLoaderHash)throws Exception {
+  check(owner.getInt("schemaVersion")==2,"incomplete native worker journal");JSONObject nativeIdentity=owner.getJSONObject("nativeIdentity");
+  check(owner.getInt("uid")==observed.uid&&owner.getInt("pid")==observed.pid&&peerUid==observed.uid&&peerPid==observed.pid,"worker peer identity differs");
+  check(nativeIdentity.getInt("pid")==observed.pid&&nativeIdentity.getInt("uid")==observed.uid&&nativeIdentity.getString("startTicks").equals(observed.start),"worker PID/start identity differs");
+  check(owner.getString("executable").equals(expectedBun)&&observed.executable.equals(expectedLoader)&&observed.sha256.equals(expectedLoaderHash),"worker deployment differs");
+  check(nativeIdentity.getString("executable").equals(observed.executable)&&nativeIdentity.getString("device").equals(observed.device)&&nativeIdentity.getString("inode").equals(observed.inode)&&nativeIdentity.getString("sha256").equals(observed.sha256),"worker executable identity differs");
+ }
+ static void verify(File journal,JSONObject owner,Identity observed,File home,String bun,String loader,String loaderHash,long deadline)throws Exception {
+  StructStat first=owned(journal,OsConstants.S_IFREG,0600);check(first.st_size<=16384,"worker journal too large");String journalHash=hash(journal,deadline);check(owner.toString().equals(new JSONObject(new String(bounded(journal,16384),StandardCharsets.UTF_8)).toString()),"worker journal changed before challenge");String generation=owner.getString("generation"),capability=owner.getString("capability"),run=owner.getString("runId"),version=owner.getString("versionId"),sourceHash=owner.getString("sourceSha256");check(generation.matches("[a-f0-9-]{36}")&&capability.matches("[a-f0-9]{64}")&&sourceHash.matches("[a-f0-9]{64}"),"invalid worker generation");check(journal.getParentFile().getName().equals(hashText(run)),"worker run scope differs");
+  File workflow=journal.getParentFile().getParentFile().getParentFile();File source=new File(owner.getString("sourcePath"));String safeVersion=version.replaceAll("[^a-zA-Z0-9_.-]+","-").replaceAll("^-+|-+$","");if(safeVersion.isEmpty())safeVersion="workflow";
+  check(source.getParentFile().equals(workflow)&&source.getName().matches(java.util.regex.Pattern.quote(safeVersion+"."+sourceHash)+"\\.tsx?"),"worker source scope differs");StructStat sourceStat=owned(source,OsConstants.S_IFREG,0600);check(hash(source,deadline).equals(sourceHash),"worker source hash differs");
+  File endpoint=new File(owner.getString("endpoint"));File socketRoot=endpoint.getParentFile();check(socketRoot.equals(new File(home,".eliza-worker-ipc"))||socketRoot.equals(new File(home,".ew")),"worker endpoint escaped application");owned(socketRoot,OsConstants.S_IFDIR,0700);check(endpoint.getName().matches("[a-f0-9]{20}\\.sock")&&endpoint.getPath().getBytes(StandardCharsets.UTF_8).length<=100,"invalid worker endpoint");StructStat endpointStat=owned(endpoint,OsConstants.S_IFSOCK,0600);
+  verifyBinding(owner,observed,observed.uid,observed.pid,bun,loader,loaderHash);
+  String challenge=UUID.randomUUID().toString();check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");
+  try(LocalSocket socket=new LocalSocket()){
+   // An absolute watchdog covers connect, writes and slow byte-by-byte replies.
+   java.util.concurrent.atomic.AtomicBoolean expired=new java.util.concurrent.atomic.AtomicBoolean();
+   Thread watchdog=new Thread(()->{try{Thread.sleep(1000);expired.set(true);socket.close();}catch(InterruptedException stopped){Thread.currentThread().interrupt();}catch(IOException ignored){}} ,"worker-lease-deadline");watchdog.setDaemon(true);watchdog.start();
+   try {socket.setSoTimeout(1000);socket.connect(new LocalSocketAddress(endpoint.getPath(),LocalSocketAddress.Namespace.FILESYSTEM));Credentials peer=socket.getPeerCredentials();verifyBinding(owner,observed,peer.getUid(),peer.getPid(),bun,loader,loaderHash);socket.getOutputStream().write((new JSONObject().put("capability",capability).put("challenge",challenge).toString()+"\n").getBytes(StandardCharsets.UTF_8));socket.getOutputStream().flush();ByteArrayOutputStream response=new ByteArrayOutputStream();int b;
+   while((b=socket.getInputStream().read())!=-1){check(response.size()<4096,"worker response exceeds bound");if(b=='\n')break;response.write(b);}check(b=='\n',"worker lease did not reply");JSONObject reply=new JSONObject(response.toString(StandardCharsets.UTF_8.name()));check(challenge.equals(reply.getString("challenge"))&&generation.equals(reply.getString("generation")),"worker lease challenge differs");check(!expired.get(),"worker lease deadline");
+   } finally {watchdog.interrupt();}
+  }
+  check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");StructStat last=owned(journal,OsConstants.S_IFREG,0600),nowSource=owned(source,OsConstants.S_IFREG,0600),nowEndpoint=owned(endpoint,OsConstants.S_IFSOCK,0600);check(first.st_dev==last.st_dev&&first.st_ino==last.st_ino&&journalHash.equals(hash(journal,deadline)),"worker journal changed");check(sourceStat.st_dev==nowSource.st_dev&&sourceStat.st_ino==nowSource.st_ino&&sourceHash.equals(hash(source,deadline)),"worker source changed");check(endpointStat.st_dev==nowEndpoint.st_dev&&endpointStat.st_ino==nowEndpoint.st_ino,"worker endpoint changed");check(observed.key().equals(processIdentity(observed.pid,deadline).key()),"worker process changed after challenge");
+ }
+ static void verifyInventory(Map<Integer,Identity> before,Map<Integer,Identity> after,Set<Integer> verified,int self)throws Exception {
+  check(before.containsKey(self)&&before.keySet().equals(after.keySet()),"same-UID process inventory changed");
+  for(int pid:before.keySet()){check(pid==self||verified.contains(pid),"unregistered same-UID process; preserve it");check(before.get(pid).key().equals(after.get(pid).key()),"same-UID process identity changed");}
+ }
+ /** Invalid/stale durable journals never excuse a process; they also must not veto another proven worker. */
+ private static JSONObject readableCandidate(File journal) {
+  try {
+   StructStat stat=owned(journal,OsConstants.S_IFREG,0600);
+   check(stat.st_size<=16384,"worker journal too large");
+   JSONObject owner=new JSONObject(new String(bounded(journal,16384),StandardCharsets.UTF_8));
+   if(owner.getInt("schemaVersion")!=2 || owner.getInt("pid")<=0)return null;
+   return owner;
+  } catch(Exception unproven) {return null;} // Preserve evidence; unmatched live processes still refuse below.
+ }
+ interface CandidateVerifier { void verify(JSONObject owner,Identity observed)throws Exception; }
+ /** Only positive authentication classifies a process; stale/malformed journals remain preserved. */
+ static Set<Integer> classifyCandidates(Map<Integer,Identity> observed,List<JSONObject> candidates,int self,CandidateVerifier verifier)throws Exception {
+  Set<Integer> verified=new HashSet<>();
+  for(JSONObject owner:candidates) {
+   int pid;
+   try{if(owner==null||owner.getInt("schemaVersion")!=2)continue;pid=owner.getInt("pid");if(pid<=0||pid==self||!observed.containsKey(pid))continue;}
+   catch(Exception unproven){continue;}
+   try{verifier.verify(owner,observed.get(pid));}catch(Exception unproven){continue;}
+   check(verified.add(pid),"ambiguous authenticated worker owner");
+  }
+  for(int pid:observed.keySet())check(pid==self||verified.contains(pid),"unregistered same-UID process; preserve it");
+  return verified;
+ }
+ static void requireClassified(File suppliedHome,File suppliedState,File suppliedBun,File suppliedLoader)throws Exception {
+  long deadline=SystemClock.elapsedRealtime()+10000;File home=suppliedHome.getCanonicalFile(),state=suppliedState.getCanonicalFile();owned(home,OsConstants.S_IFDIR,0700);check(state.equals(new File(home,".eliza/smthrs")),"unexpected workflow state scope");String bun=suppliedBun.getCanonicalPath(),loader=suppliedLoader.getCanonicalPath(),loaderHash=hash(new File(loader),deadline);Map<Integer,Identity> before=processes(deadline);Set<Integer> verified=new HashSet<>();
+  if(before.size()>1){
+   List<JSONObject> candidates=new ArrayList<>();Map<JSONObject,File> origins=new IdentityHashMap<>();
+   for(File journal:journals(state)){JSONObject owner=readableCandidate(journal);if(owner!=null){candidates.add(owner);origins.put(owner,journal);}}
+   verified=classifyCandidates(before,candidates,Process.myPid(),(owner,observed)->{
+    check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");
+    verify(origins.get(owner),owner,observed,home,bun,loader,loaderHash,deadline);
+   });
+  }
+  Map<Integer,Identity> after=processes(deadline);verifyInventory(before,after,verified,Process.myPid());check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");
+ }
+}

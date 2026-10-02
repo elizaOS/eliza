@@ -223,6 +223,7 @@ public class ElizaAgentService extends Service {
     private final Object processLock = new Object();
     private final Object notificationLock = new Object();
     private Process agentProcess;
+    private IpcStartupRecovery ipcRecovery;
     private Thread stdoutPump;
     private Thread stderrPump;
     private WatchdogThread watchdog;
@@ -322,6 +323,9 @@ public class ElizaAgentService extends Service {
         if (status == null) return false;
         return status.startsWith("agent exited:")
             || "fatal".equals(status)
+            || "ipc-recovery-required".equals(status)
+            || IpcStartupRecovery.RETENTION_LIMIT.equals(status)
+            || "runtime-identity-unavailable".equals(status)
             || status.endsWith("-failed")
             || status.startsWith("missing-");
     }
@@ -995,6 +999,15 @@ public class ElizaAgentService extends Service {
         if (activeInstance == this) {
             activeInstance = null;
         }
+        // The launch worker may hold processLock during extraction; do not block main/FGS teardown.
+        new Thread(() -> {
+            synchronized (processLock) {
+                if (ipcRecovery != null) {
+                    try { ipcRecovery.close(); } catch (IOException error) { Log.w(TAG, "IPC supervisor close failed", error); }
+                    ipcRecovery = null;
+                }
+            }
+        }, "ipc-supervisor-release").start();
         super.onDestroy();
     }
 
@@ -2097,6 +2110,36 @@ public class ElizaAgentService extends Service {
             // visible error (stdio is on /dev/null).
             ensureRuntimeLibraryLinks(abiDir);
 
+            final String canonicalRoot, canonicalAbiDir, canonicalNativeDir, canonicalLoader, canonicalBun;
+            try {
+                canonicalRoot = root.getCanonicalPath();
+                canonicalAbiDir = abiDir.getCanonicalPath();
+                canonicalNativeDir = nativeLibraryDir().getCanonicalPath();
+                canonicalLoader = loader.getCanonicalPath();
+                canonicalBun = bun.getCanonicalPath();
+            } catch (IOException identityError) {
+                Log.e(TAG, "Runtime deployment paths could not be resolved", identityError);
+                currentStatus = "runtime-identity-unavailable";
+                updateNotification();
+                return;
+            }
+
+            // Serialize recovery across native supervisors, preserving every unproven owner.
+            try {
+                if (ipcRecovery == null) ipcRecovery = IpcStartupRecovery.acquire(getFilesDir());
+                File workerExecutable = packagedLoaderName == null ? loader :
+                    new File(getApplicationInfo().nativeLibraryDir, packagedLoaderName.replace(".so", "_real.so"));
+                if (!workerExecutable.isFile()) workerExecutable = loader;
+                ipcRecovery.recover(bun, workerExecutable);
+            } catch (IOException recoveryError) {
+                currentStatus = recoveryError.getMessage() != null && recoveryError.getMessage().contains(IpcStartupRecovery.RETENTION_LIMIT)
+                        ? IpcStartupRecovery.RETENTION_LIMIT : "ipc-recovery-required";
+                Log.e(TAG, "Private IPC recovery refused", recoveryError);
+                appendDiagnosticEvent("ipc-recovery-required", java.util.Collections.singletonMap("reason", recoveryError.getMessage()));
+                updateNotification();
+                return;
+            }
+
             // Generate a fresh per-boot token for the WebView↔agent loopback.
             // Without this the loopback API would accept any local request
             // — including from other apps on the device — because the
@@ -2132,7 +2175,7 @@ public class ElizaAgentService extends Service {
             Map<String, String> agentEnv = new LinkedHashMap<>();
             agentEnv.put(
                 "LD_LIBRARY_PATH",
-                nativeLibraryDir().getCanonicalPath() + ":" + abiDir.getCanonicalPath()
+                canonicalNativeDir + ":" + canonicalAbiDir
             );
             // Native voice libs (Silero VAD + WeSpeaker/pyannote voice classifier)
             // ship as jniLibs and extract into nativeLibraryDir. The on-device bun
@@ -2168,12 +2211,12 @@ public class ElizaAgentService extends Service {
                 Log.i(TAG, "libelizainference.so present; exporting ELIZA_INFERENCE_LIBRARY="
                     + fusedInferenceLib.getAbsolutePath());
             }
-            agentEnv.put("AGENT_ROOT", root.getCanonicalPath());
-            agentEnv.put("RUNTIME_DIR", abiDir.getCanonicalPath());
-            agentEnv.put("DEVICE_DIR", abiDir.getCanonicalPath());
+            agentEnv.put("AGENT_ROOT", canonicalRoot);
+            agentEnv.put("RUNTIME_DIR", canonicalAbiDir);
+            agentEnv.put("DEVICE_DIR", canonicalAbiDir);
             agentEnv.put("LD_NAME", loaderName);
-            agentEnv.put("LD_PATH", loader.getCanonicalPath());
-            agentEnv.put("BUN_PATH", bun.getCanonicalPath());
+            agentEnv.put("LD_PATH", canonicalLoader);
+            agentEnv.put("BUN_PATH", canonicalBun);
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
