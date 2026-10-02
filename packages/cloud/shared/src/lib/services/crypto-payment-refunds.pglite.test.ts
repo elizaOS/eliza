@@ -163,6 +163,31 @@ describe("crypto and x402 refunds (#22968)", () => {
     expect(balance?.credit_balance).toBe("10.000000");
   });
 
+  test("a malformed or reused refund key is reported as a key problem, not an amount problem", async () => {
+    await expect(refund({ refundKey: "k" })).rejects.toMatchObject({
+      code: "CRYPTO_REFUND_INVALID_KEY",
+      message: "Refund key is invalid",
+    });
+    await expect(refund({ refundKey: "bad key with spaces" })).rejects.toMatchObject({
+      code: "CRYPTO_REFUND_INVALID_KEY",
+    });
+    expect(await query("SELECT id FROM credit_transactions")).toEqual([]);
+
+    await refund({ refundKey: "support-ticket-3", amountUsd: "2" });
+    await expect(refund({ refundKey: "support-ticket-3", amountUsd: "3" })).rejects.toMatchObject({
+      code: "CRYPTO_REFUND_KEY_AMOUNT_MISMATCH",
+      message: "Refund key was already used for a different amount",
+      context: { paymentId: WALLET_PAYMENT },
+    });
+    await expect(refund({ amountUsd: "0" })).rejects.toMatchObject({
+      code: "CRYPTO_REFUND_INVALID_AMOUNT",
+    });
+    const rows = await query<{ amount: string }>(
+      "SELECT amount::text AS amount FROM credit_transactions",
+    );
+    expect(rows).toEqual([{ amount: "2.000000" }]);
+  });
+
   test("x402 payment requests are refused: the record belongs to the payee, not the payer", async () => {
     // The seeded x402 row is owned by ORG, the organization that created the
     // payment request and was paid for it; the payer is an external wallet.
