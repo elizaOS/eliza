@@ -43,6 +43,79 @@ const sharedCalendarActions = [
 
 describe("contextual native discovery", () => {
   it.each([
+    ["workflow create", "OWNER", "automation", true],
+    [
+      "WORKFLOW action create smthrs workflow definition",
+      "OWNER",
+      "automation",
+      true,
+    ],
+    ["workflow create", "USER", "automation", false],
+    ["workflow create", "OWNER", "browser", false],
+    ["create a task", "OWNER", "automation", false],
+    ["create a trigger", "OWNER", "automation", false],
+  ] as const)(
+    "discovers an authorized operation umbrella for %s (%s/%s)",
+    async (query, role, context, expectsWorkflow) => {
+      const actions: Action[] = [
+        // Runtime catalog shape: the operation lives on an umbrella, while
+        // the neighboring TASKS/TRIGGER operations are promoted children.
+        {
+          name: "WORKFLOW",
+          contexts: ["general", "automation", "tasks", "agent_internal"],
+          contextGate: {
+            anyOf: ["general", "automation", "tasks", "agent_internal"],
+          },
+          roleGate: { minRole: "OWNER" },
+          similes: ["CREATE_WORKFLOW", "WORKFLOW_CREATE", "EDIT_WORKFLOW"],
+          description:
+            "Create, edit, inspect, activate, run, cancel, and delete native Smithers workflows.",
+        },
+        {
+          name: "TASKS_CREATE",
+          contexts: ["code", "automation", "agent_internal", "connectors"],
+          roleGate: { minRole: "USER" },
+          similes: ["TASKS", "CREATE"],
+          description: 'TASKS operation "create".',
+        },
+        {
+          name: "TRIGGER_CREATE",
+          contexts: ["automation", "tasks", "agent_internal"],
+          roleGate: { minRole: "ADMIN" },
+          similes: ["TRIGGER", "CREATE"],
+          description: 'TRIGGER operation "create".',
+        },
+        {
+          name: "UNRELATED",
+          contexts: ["automation", "tasks", "agent_internal"],
+          similes: ["CREATE"],
+          description: "Create a workflow in an unrelated system",
+        },
+      ];
+      const admitted = collectDiscoveryCatalogActions({
+        actions,
+        message,
+        selectedContexts: [context],
+        userRoles: [role],
+      });
+      const loaded: string[] = [];
+      const discovery = createPlannerToolDiscoveryAction(admitted, (selected) =>
+        loaded.push(...selected.map((action) => action.name)),
+      );
+      const result = await discovery.handler?.(runtime, message, undefined, {
+        parameters: { query, contexts: [context] },
+      });
+      expect(result?.success).toBe(true);
+      expect(loaded.includes("WORKFLOW")).toBe(expectsWorkflow);
+      expect(loaded).not.toContain("UNRELATED");
+      if (expectsWorkflow) {
+        expect(loaded).toEqual(["WORKFLOW"]);
+        expect(result?.data?.loadedTools).toEqual(["WORKFLOW"]);
+      }
+    },
+  );
+
+  it.each([
     ["message", ["MESSAGE"]],
     ["help with my messages", ["MESSAGE"]],
     ["Help with my messages.", ["MESSAGE"]],

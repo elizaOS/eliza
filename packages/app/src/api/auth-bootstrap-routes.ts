@@ -32,7 +32,7 @@ import {
 /** 12h sliding TTL for browser sessions per plan §1.3. */
 export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
-function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
+export function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
   // Stable per-cloud-user id so repeated exchanges by the same user reuse the
   // same identity row. SHA-256 of the cloud sub keeps it opaque while still
   // deterministic. We slice to 32 hex chars and shape as a uuid-ish string

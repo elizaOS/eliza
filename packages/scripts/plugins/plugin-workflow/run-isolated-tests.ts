@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Runs every workflow test file in its own Bun process, sequentially. The
+ * Runs every workflow test file in its own owning runner, sequentially. The
  * Smithers integration suites exercise child-process pipes heavily; a single
  * long-lived Bun test process can corrupt its Linux epoll/stdio state and then
  * fail unrelated files. Process isolation releases that state between files,
  * while merged JUnit output lets the repository prove real testcases ran.
+ * Hosted HTTP suites use their Vitest configs; other suites use Bun.
  */
 
 import { spawn } from "node:child_process";
@@ -64,14 +65,47 @@ export function parseWorkflowTestArgs(argv) {
   return { reporterOutfile };
 }
 
-function runOneTestFile(file, bunBinary, fragmentPath, onChild) {
+const vitestConfigs = new Map([
+  [
+    "__tests__/integration/hosted-digests-http.test.ts",
+    "vitest.hosted-digests.config.ts",
+  ],
+  [
+    "__tests__/integration/hosted-live-google-http.test.ts",
+    "vitest.hosted-live-google.config.ts",
+  ],
+]);
+
+export function workflowTestCommand(file, bunBinary, nodeBinary, fragmentPath) {
+  const config = vitestConfigs.get(file);
+  if (config) {
+    const args = [
+      path.resolve(pluginRoot, "../../packages/scripts/run-vitest.ts"),
+      "run",
+      "--config",
+      config,
+      file,
+    ];
+    if (fragmentPath)
+      args.push("--reporter=junit", `--outputFile=${fragmentPath}`);
+    return { binary: nodeBinary, args };
+  }
+  const args = ["test", "--isolate"];
+  if (fragmentPath)
+    args.push("--reporter=junit", `--reporter-outfile=${fragmentPath}`);
+  args.push(file);
+  return { binary: bunBinary, args };
+}
+
+function runOneTestFile(file, bunBinary, nodeBinary, fragmentPath, onChild) {
   return new Promise((resolve) => {
-    const args = ["test", "--isolate"];
-    if (fragmentPath) {
-      args.push("--reporter=junit", `--reporter-outfile=${fragmentPath}`);
-    }
-    args.push(file);
-    const child = spawn(bunBinary, args, {
+    const { binary, args } = workflowTestCommand(
+      file,
+      bunBinary,
+      nodeBinary,
+      fragmentPath,
+    );
+    const child = spawn(binary, args, {
       cwd: pluginRoot,
       env: process.env,
       stdio: "inherit",
@@ -101,8 +135,18 @@ function readJunitFragment(fragmentPath, file) {
   const root = xml.match(/<testsuites\b([^>]*)>/);
   if (!root) throw new Error(`JUnit fragment has no testsuites root: ${file}`);
   const counts = {};
-  for (const name of ["tests", "assertions", "failures", "skipped"]) {
+  for (const name of ["tests", "assertions", "failures", "skipped", "errors"]) {
     const raw = root[1].match(new RegExp(`\\b${name}="(\\d+)"`))?.[1];
+    if (raw === undefined && name === "assertions") continue;
+    // Vitest reports skipped counts on its child suites, not the root.
+    if (raw === undefined && name === "skipped") {
+      counts.skipped = [...xml.matchAll(/<skipped\b/g)].length;
+      continue;
+    }
+    if (raw === undefined && name === "errors") {
+      counts.errors = 0;
+      continue;
+    }
     if (raw === undefined) {
       throw new Error(`JUnit fragment has no ${name} count: ${file}`);
     }
@@ -117,22 +161,31 @@ function readJunitFragment(fragmentPath, file) {
 }
 
 export function mergeWorkflowJunit(fragments, destination) {
-  const totals = { tests: 0, assertions: 0, failures: 0, skipped: 0 };
+  const totals = {
+    tests: 0,
+    assertions: 0,
+    failures: 0,
+    skipped: 0,
+    errors: 0,
+  };
+  let hasAssertionCounts = true;
   const bodies = [];
   for (const { file, path: fragmentPath } of fragments) {
     const { body, counts } = readJunitFragment(fragmentPath, file);
-    for (const name of Object.keys(totals)) totals[name] += counts[name];
+    if (counts.assertions === undefined) hasAssertionCounts = false;
+    for (const name of Object.keys(totals)) totals[name] += counts[name] ?? 0;
     bodies.push(body);
   }
   mkdirSync(path.dirname(destination), { recursive: true });
   writeFileSync(
     destination,
-    `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites tests="${totals.tests}" assertions="${totals.assertions}" failures="${totals.failures}" skipped="${totals.skipped}">\n${bodies.join("\n")}\n</testsuites>\n`,
+    `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites tests="${totals.tests}" ${hasAssertionCounts ? `assertions="${totals.assertions}" ` : ""}errors="${totals.errors}" failures="${totals.failures}" skipped="${totals.skipped}">\n${bodies.join("\n")}\n</testsuites>\n`,
   );
 }
 
 export async function runWorkflowTestFiles({
   bunBinary = process.env.BUN_BIN?.trim() || "bun",
+  nodeBinary = process.execPath,
   files = discoverWorkflowTestFiles(),
   reporterOutfile,
 } = {}) {
@@ -172,6 +225,7 @@ export async function runWorkflowTestFiles({
       const exitCode = await runOneTestFile(
         fragment.file,
         bunBinary,
+        nodeBinary,
         fragment.path,
         setActiveChild,
       );

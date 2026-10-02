@@ -207,6 +207,20 @@ jobs:
         run: bun run build:views
       - name: Initialize pinned native sources for provenance tests
         run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
+      - name: Verify durable device-action HTTP lifecycle
+        if: ${{ matrix.shard == 1 }}
+        timeout-minutes: 10
+        run: |
+          mkdir -p test-results/device-actions
+          bun run --cwd plugins/plugin-assistant test:device-actions --reporter=default --reporter=junit --outputFile.junit="$GITHUB_WORKSPACE/test-results/device-actions/junit.xml"
+      - name: Preserve device-action flow evidence
+        if: ${{ always() && matrix.shard == 1 }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: device-action-http-lifecycle
+          path: test-results/device-actions/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Run plugin tests
         timeout-minutes: 85
         run: bun run test:plugins

@@ -201,7 +201,7 @@ function htmlToPlainText(value: string): string {
     .trim();
 }
 
-function normalizeManagedGmailBodyText(value: string): string {
+export function normalizeManagedGmailBodyText(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
     return "";
@@ -279,7 +279,7 @@ function classifyReplyNeed(args: {
   };
 }
 
-function normalizeGoogleGmailMessage(
+export function normalizeGoogleGmailMessage(
   message: GoogleGmailMetadataResponse,
   selfEmail: string | null,
 ): ManagedGoogleGmailMessage | null {

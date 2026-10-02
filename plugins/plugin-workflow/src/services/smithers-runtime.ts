@@ -81,7 +81,7 @@ interface WorkerErrorMessage {
 }
 
 interface WorkerAgentRequestMessage {
-  kind: 'agent-request';
+  kind: 'agent-request' | 'device-request';
   requestId: string;
   prompt: unknown;
   messages?: unknown;
@@ -104,6 +104,7 @@ export interface SmithersRunRequest {
   eventSequenceOffset?: number;
   signal?: AbortSignal;
   onEvent?: (event: WorkflowRunEvent) => void | Promise<void>;
+  device?: (request: { payload: unknown; signal: AbortSignal }) => Promise<unknown>;
   generate: (request: {
     prompt: unknown;
     messages?: unknown;
@@ -225,7 +226,6 @@ export function createSmithersWorkerScript(): string {
     import { readFileSync } from 'node:fs';
     import { pathToFileURL } from 'node:url';
     import { createRequire } from 'node:module';
-    import { pathToFileURL } from 'node:url';
     // Execute Smithers effects and schemas with the runtime Smithers pins.
     // Separately resolved Effect releases are not compatible across this boundary.
     const smithersRequire = createRequire(import.meta.resolve('smthrs'));
@@ -259,7 +259,7 @@ export function createSmithersWorkerScript(): string {
           const text = typeof response.value === 'string'
             ? response.value
             : JSON.stringify(response.value);
-          pending.resolve({ text });
+          pending.resolve(pending.raw ? response.value : { text });
         }
         else pending.reject(new Error(response.error?.message ?? 'elizaOS model request failed'));
       } catch (error) {
@@ -269,6 +269,10 @@ export function createSmithersWorkerScript(): string {
       }
     });
     globalThis.__elizaSmithers = {
+      device: (args) => new Promise((resolve,reject) => {
+        const requestId=String(++requestSequence);responses.set(requestId,{resolve,reject,raw:true});
+        emit({kind:'device-request',requestId,prompt:args});
+      }),
       agent: {
         id: 'elizaos-runtime',
         generate: (args = {}) => new Promise((resolve, reject) => {
@@ -593,18 +597,22 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     }
     if (message.kind === 'result') result = message.result;
     if (message.kind === 'error') workerError = message.error;
-    if (message.kind === 'agent-request') {
+    if (message.kind === 'agent-request' || message.kind === 'device-request') {
       try {
-        const generationOutcome = request
-          .generate({
-            prompt: message.prompt,
-            ...(message.messages !== undefined ? { messages: message.messages } : {}),
-            signal: protocolController.signal,
-          })
-          .then(
-            (value) => ({ kind: 'value' as const, value }),
-            (error) => ({ kind: 'error' as const, error })
-          );
+        const invocation =
+          message.kind === 'device-request'
+            ? request.device
+              ? request.device({ payload: message.prompt, signal: protocolController.signal })
+              : Promise.reject(new Error('Workflow device dispatcher unavailable'))
+            : request.generate({
+                prompt: message.prompt,
+                ...(message.messages !== undefined ? { messages: message.messages } : {}),
+                signal: protocolController.signal,
+              });
+        const generationOutcome = invocation.then(
+          (value) => ({ kind: 'value' as const, value }),
+          (error) => ({ kind: 'error' as const, error })
+        );
         const generation = await Promise.race([generationOutcome, protocolAbortOutcome]);
         if (generation.kind === 'aborted') return;
         if (generation.kind === 'error') throw generation.error;

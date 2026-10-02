@@ -1,3 +1,4 @@
+import { validateDevicePayload } from "../device-actions/contract.ts";
 /**
  * Persistent, subject-authorized approval state machine backed by the public
  * `approval_requests` table. Every decision and execution mutation uses an
@@ -92,6 +93,7 @@ const VALID_STATES: ReadonlySet<ApprovalRequestState> = new Set([
 ]);
 
 const VALID_ACTIONS: ReadonlySet<ApprovalAction> = new Set([
+  "device_action",
   "send_message",
   "send_email",
   "schedule_event",
@@ -502,6 +504,9 @@ function assertApprovalPayload(
   label: string,
 ): asserts record is ApprovalPayload {
   switch (action) {
+    case "device_action":
+      validateDevicePayload(record);
+      break;
     case "send_message":
       if (record.familyPacketId !== undefined)
         requireStringField(record, "familyPacketId", label);

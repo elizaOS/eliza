@@ -1,3 +1,4 @@
+import { handleCloudGoogleDelegationRoute } from "./cloud-google-delegation-routes";
 /**
  * app wrapper around `@elizaos/agent`'s dashboard HTTP API. Every request
  * first runs the compat pipeline — CORS for local renderers (Vite/WKWebView),
@@ -89,6 +90,7 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
+import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
 export {
   injectApiBaseIntoHtml,
@@ -625,6 +627,11 @@ async function handleCompatRouteInner(
 // dispatcher body.
 const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
   {
+    id: "cloud-google-delegation",
+    handler: ({ req, res, state }) =>
+      handleCloudGoogleDelegationRoute(req, res, state.current),
+  },
+  {
     // Runtime mode introspection: UI shells hit this on boot for the
     // useRuntimeMode() hook.
     id: "runtime-mode",
@@ -757,6 +764,11 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // (app must not statically import plugin packages). This replaces the
     // former inline hardwired block that enumerated the four plugin handlers
     // directly in the dispatcher body (#12089 item 5).
+    id: "standalone-whisper",
+    handler: ({ req, res, state }) =>
+      handleStandaloneWhisperRoute(req, res, state),
+  },
+  {
     id: "local-inference",
     handler: async ({ req, res, state }) => {
       const {
@@ -766,8 +778,17 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         handleLocalInferenceTtsRoute,
       } = await getLocalInferenceRoutes();
       if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
-      if (await handleLocalInferenceAsrRoute(req, res, state)) return true;
-      if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
+      // Voice routes share the app AuthStore/CSRF resolver. Configuration and
+      // sensitive model-management routes retain their existing token policy.
+      const voiceState = {
+        ...state,
+        authorizeRequest: (
+          request: Parameters<typeof ensureRouteAuthorized>[0],
+          response: http.ServerResponse,
+        ) => ensureRouteAuthorized(request, response, state),
+      };
+      if (await handleLocalInferenceAsrRoute(req, res, voiceState)) return true;
+      if (await handleLocalInferenceTtsRoute(req, res, voiceState)) return true;
       // WebView -> agent PCM transport for live on-device speaker diarization.
       return handleLiveDiarizationRoute(req, res, state);
     },

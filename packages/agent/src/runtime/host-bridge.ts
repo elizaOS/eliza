@@ -40,6 +40,12 @@ export type AccountPoolCredentialsOptions = {
 
 /** Authenticated HTTP caller data resolved by the embedding host. */
 export interface AgentHttpRequestAuthorization {
+  /** Cryptographically verified external owner, never copied from caller headers. */
+  externalIdentity?: {
+    issuer: string;
+    subject: string;
+    organizationId: string;
+  };
   ok: boolean;
   role: RoleGateRole;
   /** Present for a DB-backed browser or machine session. */

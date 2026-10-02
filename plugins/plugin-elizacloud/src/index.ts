@@ -1,3 +1,4 @@
+import { delegationRecords } from "./db/delegation-records";
 /**
  * Assembles the Node-hosted Eliza Cloud plugin surface: inference handlers,
  * account providers, services, lifecycle hooks, and its app-shell view manifest.
@@ -36,6 +37,7 @@ import {
   handleVideoGeneration,
 } from "./models";
 // Cloud services
+import { CloudGoogleDelegationService } from "./services/cloud-google-delegation";
 import { CloudAuthService } from "./services/cloud-auth";
 import { CloudBackupService } from "./services/cloud-backup";
 import { CloudBootstrapServiceImpl } from "./services/cloud-bootstrap";
@@ -183,6 +185,7 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
 }
 
 export const elizaOSCloudPlugin: Plugin = {
+  schema: { delegationRecords },
   name: "elizaOSCloud",
   // "elizaOSCloud" is a load-bearing runtime identity (model-provider name in
   // version-compat, inference timing, runtime model context) that cannot be
@@ -316,6 +319,7 @@ export const elizaOSCloudPlugin: Plugin = {
   //   6. CloudBackupService — needs auth for snapshot API calls
   services: [
     CloudAuthService,
+    CloudGoogleDelegationService,
     CloudBootstrapServiceImpl,
     CloudManagedGatewayRelayService,
     CloudModelRegistryService,

@@ -1703,9 +1703,19 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
 
   test("OPTIONS preflight → 204 + reflected CORS, no auth/DB/proxy work", async () => {
     authResult = "throw"; // even a total auth failure must not reach here
+    const deviceHeaders = [
+      "x-eliza-device-id",
+      "x-eliza-device-key",
+      "x-eliza-device-capabilities",
+      "x-eliza-phone-protocol",
+    ];
     const r = new Request(`https://${AGENT}.elizacloud.ai/api/status`, {
       method: "OPTIONS",
-      headers: { origin: ORIGIN },
+      headers: {
+        origin: ORIGIN,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": deviceHeaders.join(","),
+      },
     });
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(204);
@@ -1721,6 +1731,12 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-expose-headers")).toContain(
       "x-eliza-trace-id",
     );
+    const allowedHeaders = res.headers
+      .get("access-control-allow-headers")
+      ?.split(",");
+    for (const header of deviceHeaders)
+      expect(allowedHeaders).toContain(header);
+    expect(allowedHeaders).not.toContain("x-eliza-cloud-owner-proof");
     expect(res.headers.get("access-control-max-age")).toBe("600");
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge

@@ -14,6 +14,7 @@
  */
 import type http from "node:http";
 import { ensureRouteAuthorized, ensureRouteMinRole } from "./auth.ts";
+import { resolveCloudRuntimeOwner } from "./cloud-runtime-owner";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJsonError } from "./response";
 
@@ -120,6 +121,8 @@ const publicRegex = (
 });
 
 export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
+  sessionPrefix("cloud.delegation", "/api/workflow/hosted/cloud-delegation/"),
+  sessionPrefix("client-devices", "/api/client-devices"),
   publicExact("i18n.locale", "GET", "/api/i18n/locale"),
   publicExact("cloud.pair-popup", "GET", "/pair"),
   publicExact(
@@ -223,6 +226,14 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     "/api/tts/local-inference/status",
   ),
   sessionExact("tts.local-inference", "POST", "/api/tts/local-inference"),
+  sessionExact(
+    "asr.local-inference.status",
+    "GET",
+    "/api/asr/local-inference/status",
+  ),
+  sessionExact("asr.local-inference", "POST", "/api/asr/local-inference"),
+  sessionExact("asr.whisper.status", "GET", "/api/asr/whisper/status"),
+  sessionExact("asr.whisper", "POST", "/api/asr/whisper"),
   sessionPrefix("workbench", "/api/workbench"),
   sessionPrefix("plugins.management", "/api/plugins"),
   sessionPrefix("catalog", "/api/catalog"),
@@ -266,6 +277,8 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
 ] as const;
 
 const COMPAT_MANAGED_PREFIXES = [
+  "/api/workflow/hosted/cloud-delegation/",
+  "/api/client-devices",
   "/api/auth/",
   "/api/background/",
   "/api/catalog",
@@ -353,6 +366,18 @@ export async function enforceCompatRouteAuthPolicy(
   }
 
   if (policy.tier === "public") return "allowed";
+
+  // Gateway proof authenticates the individual Cloud owner, not a shared key.
+  // Invalid proof is terminal; the handler still verifies the persisted identity.
+  if (
+    policy.id === "cloud.delegation" &&
+    req.headers["x-eliza-cloud-owner-proof"]
+  ) {
+    const owner = await resolveCloudRuntimeOwner(req, state.current);
+    if (owner.ok) return "allowed";
+    sendJsonError(res, 401, "Unauthorized");
+    return "denied";
+  }
 
   const authorized =
     policy.tier === "OWNER"

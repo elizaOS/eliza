@@ -1,3 +1,4 @@
+import type { DeviceActionPayload } from "../device-actions/contract.ts";
 /**
  * Approval-queue transport types — the runtime contract for the
  * `approval_requests` table (owned by `@elizaos/plugin-sql`, public schema).
@@ -40,6 +41,7 @@ export interface ApprovalExecution {
 }
 
 export type ApprovalAction =
+  | "device_action"
   | "send_message"
   | "send_email"
   | "schedule_event"
@@ -106,6 +108,7 @@ type ApprovalCalendarSourceBinding = {
 };
 
 export type ApprovalPayload =
+  | DeviceActionPayload
   | {
       action: "send_message";
       /** Requires family draft authorization immediately before delivery. */

@@ -976,7 +976,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 			});
 			const before = JSON.stringify(raw);
-			const runtime = makeRuntime([raw]);
+			// An invalid source gets one repair attempt; reject again before fields run.
+			const runtime = makeRuntime(invalid ? [raw, raw] : [raw]);
 			if (transport !== "native")
 				vi.mocked(runtime.useModel).mockImplementationOnce(async () => {
 					const text = JSON.stringify(raw.toolCalls[0].arguments);
@@ -1019,7 +1020,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				]);
 				expect(dispatch).toHaveBeenCalledTimes(1);
 			}
-			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(runtime.useModel).toHaveBeenCalledTimes(invalid ? 2 : 1);
 			expect(JSON.stringify(raw)).toBe(before);
 			const params = useModelCalls(runtime)[0][1] as {
 				responseSkeleton: { spans: { key?: string; kind: string }[] };
