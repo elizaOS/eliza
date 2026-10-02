@@ -123,5 +123,18 @@ describe("scheduled workflow trigger dedup", () => {
 
     expect(next.status).toBe("success");
     expect(executions).toEqual(["2026-06-08T09:00:01.000Z"]);
+
+    const advancedTask = present(store.get(taskId), "task");
+    const staleSnapshot = structuredClone(advancedTask);
+    staleSnapshot.metadata = {
+      ...staleSnapshot.metadata,
+      idempotencyKey: `wf-report:${Math.floor(Date.parse("2026-06-08T09:00:00Z") / 60_000)}`,
+    };
+    vi.setSystemTime(new Date("2026-06-08T09:05:00Z"));
+    const stale = await executeTriggerTask(runtime, staleSnapshot, {
+      source: "scheduler",
+    });
+    expect(stale.status).toBe("skipped");
+    expect(store.get(taskId)?.metadata).toEqual(advancedTask.metadata);
   });
 });

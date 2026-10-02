@@ -1018,6 +1018,14 @@ async function advanceDedupedScheduledFire(
       executionId,
     };
   }
+  if (readTaskIdempotencyKey(currentTask) !== readTaskIdempotencyKey(task)) {
+    return {
+      status: "skipped",
+      taskDeleted: false,
+      trigger: taskToTriggerSummary(currentTask),
+      executionId,
+    };
+  }
   const nextMetadata = buildTriggerMetadata({
     existingMetadata: taskMetadata(currentTask),
     trigger: currentTrigger,
