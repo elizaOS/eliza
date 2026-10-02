@@ -508,7 +508,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     );
     const view = await service.propose(
       credentials,
-      { type: "open_view", view: "notes" },
+      { type: "open_view", view: "workflows" },
       "view-1",
       "Fixture",
     );
@@ -538,6 +538,33 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       ).status,
     ).toBe(409);
     const viewDigest = pending.find((item: any) => item.id === view.id).digest;
+    expect(
+      (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
+        .status,
+    ).toBe(409);
+    expect(
+      pending.find((item: any) => item.id === view.id).payload.operation,
+    ).toEqual({ type: "open_view", view: "workflows" });
+    expect(
+      (
+        await request(`/proposals/${view.id}/decision`, {
+          digest: viewDigest,
+          decision: "approve",
+        })
+      ).status,
+    ).toBe(200);
+    const viewClaim = await request(`/proposals/${view.id}/claim`, {
+      digest: viewDigest,
+    });
+    expect(viewClaim.status).toBe(200);
+    expect(viewClaim.body.proposal.state).toBe("executing");
+    const viewReceipt = await request(`/proposals/${view.id}/receipt`, {
+      digest: viewDigest,
+      attemptId: viewClaim.body.proposal.execution.attemptId,
+      receipt: { outcome: "applied", operationId: "fixture-open-workflows-1" },
+    });
+    expect(viewReceipt.status).toBe(200);
+    expect(viewReceipt.body.proposal.state).toBe("done");
     expect(
       (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
         .status,

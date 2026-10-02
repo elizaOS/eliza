@@ -42,6 +42,7 @@ export const DEVICE_VIEWS = [
   "maps",
   "inbox",
   "settings",
+  "workflows",
 ] as const;
 export type DeviceOperation =
   | MapsOperation

@@ -136,12 +136,15 @@ for (const workerDies of [false, true])
           path.join(stage, '../../__tests__/fixtures/workflow-survivor-parent.ts'),
           JSON.stringify(request),
         ],
-        { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] }
+        { env: {...process.env,ELIZA_LEASE_TEST_STARTUP_DIAGNOSTICS:'1'}, stdio: ['ignore', 'pipe', 'pipe'] }
       );
       const exited = once(parent, 'exit');
       let error = '';
-      // Drain both pipes; report only this private fixture's bounded stderr on failure.
-      parent.stdout.resume();
+      // Drain both pipes while retaining bounded fixture-only diagnostics.
+      let startup = '';
+      parent.stdout.on('data', (b) => {
+        if (startup.length < 4096) startup += String(b).slice(0, 4096 - startup.length);
+      });
       parent.stderr.on('data', (b) => {
         if (error.length < 16384) error += String(b).slice(0, 16384 - error.length);
       });
@@ -238,7 +241,7 @@ for (const workerDies of [false, true])
         expect(fs.readFileSync(effect, 'utf8')).toBe('effect\n');
       } catch (e) {
         throw new Error(
-          `${String(e)}\n${error}\nLEASE ${JSON.stringify(await inspectWorkerLease(lease))}\nFILES ${JSON.stringify(fs.readdirSync(root))}`
+          `${String(e)}\n${error}\nPARENT ${JSON.stringify({exitCode:parent.exitCode,signalCode:parent.signalCode})}\nSTARTUP ${startup}\nLEASE ${JSON.stringify(await inspectWorkerLease(lease))}\nFILES ${JSON.stringify(fs.readdirSync(root))}`
         );
       } finally {
         if (parent.exitCode === null && parent.signalCode === null) {

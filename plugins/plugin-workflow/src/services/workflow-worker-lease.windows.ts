@@ -232,9 +232,12 @@ export const windowsWorkflowBackend: WorkflowPlatformBackend = {
     } catch (e) {
       await h.finish('abandon').catch(() => {});
       throw Object.assign(
-        new Error('Windows worker admission unresolved; preserve reservation and do not replay', {
-          cause: e,
-        }),
+        new Error(
+          `Windows worker admission unresolved; preserve reservation and do not replay. ${windowsLeaseInspectionFailureReason(e)}`,
+          {
+            cause: e,
+          }
+        ),
         { code: 'WORKFLOW_WORKER_UNRESOLVED' }
       );
     }
