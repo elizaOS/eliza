@@ -659,6 +659,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   const timeoutMs = resolveSmithersTimeoutMs(request.timeoutMs);
   const worker = spawn(command.executable, command.args, {
     cwd: command.cwd,
+    // Windows workers must survive abrupt parent loss; retain the pipes below for RPC.
+    ...(process.platform === 'win32' ? { detached: true } : {}),
     env: {
       ...command.env,
       PATH: process.env.PATH,
