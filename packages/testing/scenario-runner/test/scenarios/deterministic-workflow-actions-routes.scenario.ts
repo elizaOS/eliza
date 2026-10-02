@@ -3,6 +3,7 @@
  * action routing, and the canonical HTTP read surfaces.
  */
 
+import { randomUUID } from "node:crypto";
 import { type IAgentRuntime } from "@elizaos/core";
 import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
@@ -237,11 +238,49 @@ async function workflowServices(runtime: RuntimeWithWorkflowScenario): Promise<{
   if (!service) throw new Error("WorkflowService was not registered");
   return { embedded, service };
 }
+async function removeReviewedWorkflow(
+  embedded: EmbeddedWorkflowService,
+  service: WorkflowService,
+  id: string,
+  ownerId: string,
+): Promise<void> {
+  const current = await service.getWorkflow(id, ownerId);
+  const mutationId = randomUUID();
+  const result = await service.changeLifecycle(
+    id,
+    mutationId,
+    current.versionId,
+    "remove",
+    ownerId,
+  );
+  if (!result.state.removed || result.state.cleanup !== "complete") {
+    throw new Error(`Workflow removal did not settle: ${id}`);
+  }
+  const readback = await service.lifecycleReceipt(id, mutationId, ownerId);
+  if (stableStringify(readback.receipt) !== stableStringify(result.receipt)) {
+    throw new Error(`Workflow removal receipt differs from readback: ${id}`);
+  }
+  const retained = await embedded.getWorkflow(id);
+  if (
+    retained.id !== id ||
+    retained.active ||
+    retained.source !== current.source
+  ) {
+    throw new Error(
+      `Workflow removal lost its definition or remained active: ${id}`,
+    );
+  }
+}
 async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithWorkflowScenario | undefined;
   if (!runtime) return "scenario runtime was not available";
   scenarioRuntime = runtime;
   if (!runtime.db) return "scenario runtime db was not available";
+  if (!ctx.primaryUserId) return "scenario primary user was not available";
+  const ownedDefinition = {
+    ...workflowDefinition,
+    metadata: { elizaOwnerEntityId: ctx.primaryUserId },
+  };
   try {
     await ensureWorkflowPlugin(runtime);
     const { embedded, service } = await workflowServices(runtime);
@@ -249,16 +288,16 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
       const id = `scenario-workflow-crud-stress-${index}`;
       const beforeCreate = await embedded.listWorkflows();
       if (beforeCreate.data.some((workflow) => workflow.id === id)) {
-        await embedded.deleteWorkflow(id);
+        throw new Error(`Workflow fixture already exists: ${id}`);
       }
       await embedded.createWorkflow({
-        ...workflowDefinition,
+        ...ownedDefinition,
         id,
         name: `Workflow CRUD stress ${index}`,
       });
       const updatedName = `Workflow CRUD stress ${index} updated`;
       await embedded.updateWorkflow(id, {
-        ...workflowDefinition,
+        ...ownedDefinition,
         id,
         name: updatedName,
       });
@@ -266,15 +305,9 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
       if (updated.name !== updatedName) {
         return `workflow CRUD stress read ${id} returned ${updated.name}`;
       }
-      await embedded.deleteWorkflow(id);
-      const afterDelete = await embedded.listWorkflows();
-      if (afterDelete.data.some((workflow) => workflow.id === id)) {
-        return `workflow CRUD stress delete retained ${id}`;
-      }
+      await removeReviewedWorkflow(embedded, service, id, ctx.primaryUserId);
     }
-    await embedded.deleteWorkflow(WORKFLOW_ID).catch(() => undefined);
-    await embedded.createWorkflow(workflowDefinition);
-    if (!ctx.primaryUserId) return "scenario primary user was not available";
+    await embedded.createWorkflow(ownedDefinition);
     const ownerTag = await embedded.getOrCreateTag(
       await getUserTagName(runtime, ctx.primaryUserId),
     );
@@ -391,7 +424,17 @@ async function finalWorkflowCheck(
   if (!workflow.tags?.some((tag) => tag.id === seededTagId)) {
     return `expected workflow tag ${seededTagId}, saw ${stableStringify(workflow.tags)}`;
   }
-  await embedded.deleteWorkflow(WORKFLOW_ID);
+  if (!ctx.primaryUserId) return "scenario primary user was not available";
+  await removeReviewedWorkflow(
+    embedded,
+    service,
+    WORKFLOW_ID,
+    ctx.primaryUserId,
+  );
+  const retained = await embedded.getExecution(seededExecutionId!);
+  const retainedFailure = expectSeededExecution(retained);
+  if (retainedFailure)
+    return `removed workflow lost execution evidence: ${retainedFailure}`;
   return undefined;
 }
 export default scenario({
@@ -431,7 +474,7 @@ export default scenario({
     },
     {
       type: "custom",
-      name: "stress 50 workflow CRUD cycles, then seed and execute one workflow",
+      name: "stress 50 workflow create/update/read/remove cycles, then seed and execute one workflow",
       apply: seedWorkflow,
     },
   ],
