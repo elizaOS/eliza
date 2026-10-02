@@ -40,8 +40,8 @@ test("produced resources compile and execute a real workflow outside the checkou
     };
     const source = `/** @jsxImportSource smthrs */
 import {createSmithers} from 'smthrs/create';import {z} from 'zod';
-const {Workflow,Task,smithers,outputs}=createSmithers({result:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
-export default smithers(()=><Workflow name="produced"><Task id="synthetic" output={outputs.result}>{()=>({value:56})}</Task></Workflow>);`;
+const {Workflow,Task,smithers,outputs}=createSmithers({output:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+export default smithers(()=><Workflow name="produced"><Task id="synthetic" output={outputs.output}>{()=>({value:56})}</Task></Workflow>);`;
     const workflow = {
       id: "synthetic",
       name: "Produced artifact",
@@ -54,7 +54,7 @@ export default smithers(()=><Workflow name="produced"><Task id="synthetic" outpu
       updatedAt: new Date().toISOString(),
       versionId: "v1",
     };
-    const script = `import {configureWorkflowProcessHost} from ${JSON.stringify(join(sourceRoot, "plugins/plugin-workflow/src/services/workflow-process-host.ts"))};import {checkWorkflowSource} from ${JSON.stringify(join(sourceRoot, "plugins/plugin-workflow/src/services/workflow-source-check.ts"))};import {runSmithersWorkflow} from ${JSON.stringify(join(sourceRoot, "plugins/plugin-workflow/src/services/smithers-runtime.ts"))};configureWorkflowProcessHost(${JSON.stringify(descriptor)});const source=${JSON.stringify(source)};if((await checkWorkflowSource(source)).length)throw Error('Valid source rejected');if(!(await checkWorkflowSource("import {CodexAgent} from 'smthrs';\\n"+source)).length)throw Error('Unavailable export accepted');const result=await runSmithersWorkflow({tenantId:'artifact-test',workflow:${JSON.stringify(workflow)},runId:'produced',mode:'manual',input:{},timeoutMs:20000,generate:async()=>{throw Error('Unexpected model call');}});if(result.status!=='finished')throw Error('Produced workflow failed: '+JSON.stringify(result));console.log('ARTIFACT_FLOW_PASS');`;
+    const script = `import {configureWorkflowProcessHost} from ${JSON.stringify(join(sourceRoot, "plugins/plugin-workflow/src/services/workflow-process-host.ts"))};import {checkWorkflowSource} from ${JSON.stringify(join(sourceRoot, "plugins/plugin-workflow/src/services/workflow-source-check.ts"))};import {runSmithersWorkflow} from ${JSON.stringify(join(sourceRoot, "plugins/plugin-workflow/src/services/smithers-runtime.ts"))};configureWorkflowProcessHost(${JSON.stringify(descriptor)});const source=${JSON.stringify(source)};if((await checkWorkflowSource(source)).length)throw Error('Valid source rejected');if(!(await checkWorkflowSource("import {CodexAgent} from 'smthrs';\\n"+source)).length)throw Error('Unavailable export accepted');const result=await runSmithersWorkflow({tenantId:'artifact-test',workflow:${JSON.stringify(workflow)},runId:'produced',mode:'manual',input:{},timeoutMs:20000,generate:async()=>{throw Error('Unexpected model call');}});if(result.status!=='finished')throw Error('Produced workflow failed: '+JSON.stringify(result));const replay=await runSmithersWorkflow({tenantId:'artifact-test',workflow:${JSON.stringify(workflow)},runId:'produced',mode:'manual',input:{},timeoutMs:20000,generate:async()=>{throw Error('Unexpected replay model call');}});if(JSON.stringify(replay.output)!==JSON.stringify(result.output)||!Array.isArray(replay.output)||replay.output[0]?.value!==56)throw Error('Canonical output lost on replay');console.log('ARTIFACT_FLOW_PASS');`;
     const result = spawnSync(
       process.execPath,
       ["--conditions=eliza-source", "--eval", script],

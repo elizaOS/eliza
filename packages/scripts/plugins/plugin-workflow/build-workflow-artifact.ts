@@ -68,6 +68,8 @@ export async function buildWorkflowArtifact(options: WorkflowArtifactOptions) {
       create: `export * from ${JSON.stringify(require.resolve("smthrs/create"))};`,
       store: `export * from ${JSON.stringify(require.resolve("smthrs/openSmithersStore"))};`,
       "jsx-runtime": `export * from ${JSON.stringify(require.resolve("smthrs/jsx-runtime"))};`,
+      "engine-output": `export {resolveSchema,__engineInternals} from ${JSON.stringify(require.resolve("@smthrs/engine/engine"))};`,
+      "output-snapshot": `export {loadRunOutputRowsEffect} from ${JSON.stringify(engine.resolve("@smthrs/db/snapshot"))};`,
       "cancel-subtree": `export * from ${JSON.stringify(require.resolve("@smthrs/engine/cancel-subtree"))};`,
       effect: `export * from ${JSON.stringify(smthrs.resolve("effect"))};`,
       zod: `export * from ${JSON.stringify(zodEntry)};`,
@@ -142,7 +144,11 @@ export async function buildWorkflowArtifact(options: WorkflowArtifactOptions) {
       "./jsx-runtime": "jsx-runtime.js",
       "./jsx-dev-runtime": "jsx-runtime.js",
     });
-    pkg("@smthrs/engine", { "./cancel-subtree": "cancel-subtree.js" });
+    pkg("@smthrs/engine", {
+      "./cancel-subtree": "cancel-subtree.js",
+      "./engine": "engine-output.js",
+    });
+    pkg("@smthrs/db", { "./snapshot": "output-snapshot.js" });
     pkg("effect", { ".": "effect.js" });
     pkg("zod", { ".": "zod.js" });
     pkg(

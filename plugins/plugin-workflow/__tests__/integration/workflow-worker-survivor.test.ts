@@ -42,9 +42,9 @@ for (const workerDies of [false, true])
       release = path.join(root, 'effect-release');
     const source = `/** @jsxImportSource smthrs */
 import {createSmithers} from 'smthrs/create';import {z} from 'zod';import * as fs from 'node:fs';
-const {Workflow,Task,smithers,outputs}=createSmithers({result:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
-const agent={id:'owned-local-fixture',generate:async()=>{fs.appendFileSync(${JSON.stringify(effect)},'effect\\n');fs.writeFileSync(${JSON.stringify(ready)},'ready');const deadline=Date.now()+15000;while(!fs.existsSync(${JSON.stringify(release)})){if(Date.now()>deadline)throw Error('owned effect release deadline');await new Promise(r=>setTimeout(r,10));}fs.writeFileSync(${JSON.stringify(path.join(root, 'effect-finished'))},'finished');return {text:'{"value":1}'};}};
-export default smithers(()=><Workflow name="survivor"><Task id="effect" output={outputs.result} agent={agent}>Perform the owned local fixture.</Task></Workflow>);`;
+const {Workflow,Task,smithers,outputs}=createSmithers({output:z.object({value:z.number(),valid:z.boolean(),detail:z.object({label:z.string()})})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+const agent={id:'owned-local-fixture',generate:async()=>{fs.appendFileSync(${JSON.stringify(effect)},'effect\\n');fs.writeFileSync(${JSON.stringify(ready)},'ready');const deadline=Date.now()+15000;while(!fs.existsSync(${JSON.stringify(release)})){if(Date.now()>deadline)throw Error('owned effect release deadline');await new Promise(r=>setTimeout(r,10));}fs.writeFileSync(${JSON.stringify(path.join(root, 'effect-finished'))},'finished');return {text:'{"value":1,"valid":true,"detail":{"label":"survived"}}'};}};
+export default smithers(()=><Workflow name="survivor"><Task id="effect" output={outputs.output} agent={agent}>Perform the owned local fixture.</Task></Workflow>);`;
     const workflow = {
       id: workflowId,
       name: 'Survivor',
@@ -219,8 +219,20 @@ export default smithers(()=><Workflow name="survivor"><Task id="effect" output={
         },
       });
       expect(replay.status).toBe('finished');
+      const expectedOutput = [
+        {
+          runId: request.runId,
+          nodeId: 'effect',
+          iteration: 0,
+          value: 1,
+          valid: true,
+          detail: { label: 'survived' },
+        },
+      ];
+      expect(replay.output).toEqual(expectedOutput);
       const projectedDone = await service.getExecution(request.runId);
       expect(projectedDone.finished).toBe(true);
+      expect(projectedDone.output).toEqual(expectedOutput);
       expect(projectedDone.reconciliation).toBeUndefined();
       expect((await service.getExecution(request.runId)).reconciliation).toBeUndefined();
       expect(fs.readFileSync(effect, 'utf8')).toBe('effect\n');
