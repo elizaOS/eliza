@@ -141,7 +141,7 @@
     "js-tiktoken": "^1.0.21",
     "ox": "1.8.1",
     "undici": "8.10.2",
-    "viem": "^2.48.8",
+    "viem": "^2.56.9",
     "ws": "8.21.3",
     "@elizaos/plugin-assistant": "workspace:*"
   },
