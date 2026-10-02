@@ -91,7 +91,7 @@
   "dependencies": {
     "smthrs": "0.35.0",
     "zod": "^4.6.5",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "@smthrs/engine": "0.35.0"
   }
 }
