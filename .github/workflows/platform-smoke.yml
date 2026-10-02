@@ -153,10 +153,10 @@ jobs:
 
       - name: Install dependencies with normal hooks
         run: bun install --frozen-lockfile
-      - name: Check embedded native helper and child prelude
-        run: |
-          bun plugins/plugin-workflow/scripts/build-windows-lease-resource.ts --check
-          bun plugins/plugin-workflow/scripts/build-worker-lease-prelude.ts --check
+      - name: Check embedded native helper
+        run: bun plugins/plugin-workflow/scripts/build-windows-lease-resource.ts --check
+      - name: Check child prelude
+        run: bun plugins/plugin-workflow/scripts/build-worker-lease-prelude.ts --check
       - name: Check owning source formatting
         working-directory: plugins/plugin-workflow
         run: bunx --no-install biome format src/services/workflow-worker-lease.windows.ts src/services/platform-backend-contract.ts src/services/windows-worker-lease-resource.ts src/services/workflow-worker-lease-prelude.ts
