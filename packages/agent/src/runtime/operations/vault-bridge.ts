@@ -8,6 +8,7 @@
 import { randomBytes } from "node:crypto";
 import {
   createManager,
+  removeEntryMeta,
   type SecretsManager,
   type Vault,
   VaultDecryptionError,
@@ -329,8 +330,26 @@ export async function removeResetCredentialsFromVault(
     keys.add(vaultKeyForProviderApiKey(provider.id));
     if (provider.envKey) keys.add(provider.envKey);
   }
+  const failedKeys: string[] = [];
+  let firstFailure: unknown;
   for (const key of keys) {
-    if (await vault.has(key)) await vault.remove(key);
+    try {
+      if (await vault.has(key)) await vault.remove(key);
+      for (const stored of await vault.list(key)) {
+        if (stored.startsWith(`${key}.profile.`)) await vault.remove(stored);
+      }
+      await removeEntryMeta(vault, key);
+    } catch (cause) {
+      failedKeys.push(key);
+      firstFailure ??= cause;
+    }
+  }
+  if (failedKeys.length > 0) {
+    throw new ElizaError("Failed to remove reset credentials from the vault", {
+      code: "VAULT_RESET_CREDENTIALS_FAILED",
+      context: { keys: failedKeys },
+      cause: firstFailure,
+    });
   }
 }
 

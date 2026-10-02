@@ -225,15 +225,7 @@ export async function handleAgentAdminRoutes(
       // ELIZAOS_CLOUD_API_KEY → vault-bootstrap rehydrates env on next start
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
-      try {
-        await removeResetCredentialsFromVault(
-          getAgentHostBridge().sharedVault(),
-        );
-      } catch (vaultErr) {
-        logWarn(
-          `[eliza-api] Reset: failed to wipe cloud vault entries: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
-        );
-      }
+      await removeResetCredentialsFromVault(getAgentHostBridge().sharedVault());
 
       state.agentState = "stopped";
       state.agentName = resolveDefaultAgentName(config);

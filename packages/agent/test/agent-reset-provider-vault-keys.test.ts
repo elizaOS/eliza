@@ -6,7 +6,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createTestVault, type TestVault } from "@elizaos/auth/vault";
+import {
+  createTestVault,
+  profileStorageKey,
+  setEntryMeta,
+  type TestVault,
+} from "@elizaos/auth/vault";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { handleAgentAdminRoutes } from "../src/api/agent-admin-routes.ts";
 import {
@@ -15,6 +20,7 @@ import {
 } from "../src/runtime/host-bridge.ts";
 import { persistProviderApiKey } from "../src/runtime/operations/vault-bridge.ts";
 import { hydrateSelectedProviderCredentialFromVault } from "../src/runtime/provider-vault-credential.ts";
+import { applyVaultProfilesForAgent } from "../src/runtime/vault-profile-resolver.ts";
 
 let stateDir: string;
 let testVault: TestVault;
@@ -37,33 +43,7 @@ afterEach(async () => {
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 
-it("removes stored provider API keys so boot cannot rehydrate them", async () => {
-  const vault = testVault.vault;
-  await persistProviderApiKey({
-    secrets: { vault } as never,
-    normalizedProvider: "anthropic",
-    apiKey: "sk-ant-OLD-OWNER-KEY",
-    caller: "test",
-  });
-  await vault.set("ANTHROPIC_API_KEY", "sk-ant-OLD-OWNER-KEY", {
-    sensitive: true,
-    caller: "test",
-  });
-  fs.writeFileSync(
-    process.env.ELIZA_CONFIG_PATH as string,
-    JSON.stringify({
-      meta: { firstRunComplete: true },
-      env: { ANTHROPIC_API_KEY: "vault://ANTHROPIC_API_KEY" },
-      serviceRouting: {
-        llmText: { backend: "anthropic", transport: "direct" },
-      },
-      agents: {
-        list: [{ id: "main", name: "Old" }],
-        defaults: { workspace: path.join(stateDir, "workspace") },
-      },
-    }),
-  );
-
+async function resetAgent(): Promise<number> {
   let status = 0;
   await handleAgentAdminRoutes({
     req: {},
@@ -92,6 +72,46 @@ it("removes stored provider API keys so boot cannot rehydrate them", async () =>
     removeStateDir: () => {},
     logWarn: () => {},
   } as never);
+  return status;
+}
+
+it("removes stored provider API keys so boot cannot rehydrate them", async () => {
+  const vault = testVault.vault;
+  await persistProviderApiKey({
+    secrets: { vault } as never,
+    normalizedProvider: "anthropic",
+    apiKey: "sk-ant-OLD-OWNER-KEY",
+    caller: "test",
+  });
+  await vault.set("ANTHROPIC_API_KEY", "sk-ant-OLD-OWNER-KEY", {
+    sensitive: true,
+    caller: "test",
+  });
+  await vault.set(
+    profileStorageKey("ANTHROPIC_API_KEY", "default"),
+    "sk-ant-OLD-OWNER-PROFILE",
+    { sensitive: true, caller: "test" },
+  );
+  await setEntryMeta(vault, "ANTHROPIC_API_KEY", {
+    profiles: [{ id: "default", label: "Default", createdAt: Date.now() }],
+    activeProfile: "default",
+  });
+  fs.writeFileSync(
+    process.env.ELIZA_CONFIG_PATH as string,
+    JSON.stringify({
+      meta: { firstRunComplete: true },
+      env: { ANTHROPIC_API_KEY: "vault://ANTHROPIC_API_KEY" },
+      serviceRouting: {
+        llmText: { backend: "anthropic", transport: "direct" },
+      },
+      agents: {
+        list: [{ id: "main", name: "Old" }],
+        defaults: { workspace: path.join(stateDir, "workspace") },
+      },
+    }),
+  );
+
+  const status = await resetAgent();
 
   expect(status).toBe(200);
   expect(await vault.has("providers.anthropic.api-key")).toBe(false);
@@ -105,4 +125,32 @@ it("removes stored provider API keys so boot cannot rehydrate them", async () =>
   });
   expect(hydration.status).toBe("missing");
   expect(overlay).toEqual({});
+  await applyVaultProfilesForAgent(vault, "agent-after-reset");
+  expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
+});
+
+it("reports a failed reset when a stored credential cannot be removed", async () => {
+  const vault = testVault.vault;
+  await vault.set("OPENAI_API_KEY", "sk-old", {
+    sensitive: true,
+    caller: "test",
+  });
+  setAgentHostBridge({
+    ...savedBridge,
+    sharedVault: () =>
+      ({
+        ...vault,
+        has: (key: string) => vault.has(key),
+        list: (prefix?: string) => vault.list(prefix),
+        get: (key: string) => vault.get(key),
+        set: vault.set.bind(vault),
+        remove: async (key: string) => {
+          if (key === "OPENAI_API_KEY") throw new Error("vault locked");
+          return vault.remove(key);
+        },
+      }) as typeof vault,
+  });
+
+  expect(await resetAgent()).toBe(500);
+  expect(await vault.has("OPENAI_API_KEY")).toBe(true);
 });
