@@ -3,7 +3,10 @@ import {createRequire} from 'node:module';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 const helper=join(import.meta.dir,'windows-lease');
-const script="Add-Type -TypeDefinition @'\n"+readFileSync(join(helper,'WindowsLeaseNative.cs'),'utf8')+"\n'@\n"+readFileSync(join(helper,'windows-worker-lease.ps1'),'utf8');
+// Resolve built-in cmdlets from the trusted PowerShell installation; restricted workers
+// must not depend on environment-driven module discovery before the admission deadline.
+const builtinImports="Import-Module ($PSHOME+'\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop\nImport-Module ($PSHOME+'\\Modules\\Microsoft.PowerShell.Management\\Microsoft.PowerShell.Management.psd1') -ErrorAction Stop\n";
+const script=builtinImports+"Add-Type -TypeDefinition @'\n"+readFileSync(join(helper,'WindowsLeaseNative.cs'),'utf8')+"\n'@\n"+readFileSync(join(helper,'windows-worker-lease.ps1'),'utf8');
 const raw='export const windowsWorkerLeaseScript = '+JSON.stringify(script)+';\n';
 const destination=join(import.meta.dir,'../src/services/windows-worker-lease-resource.ts');
 const formatted=spawnSync(process.execPath,[createRequire(import.meta.url).resolve('@biomejs/biome/bin/biome'),'format','--stdin-file-path',destination],{cwd:join(import.meta.dir,'..'),input:raw,encoding:'utf8',maxBuffer:8*1024*1024,timeout:30000});
