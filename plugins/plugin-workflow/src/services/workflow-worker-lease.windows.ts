@@ -8,6 +8,29 @@ import type {
 } from './platform-backend-contract';
 import { windowsWorkerLeaseScript } from './windows-worker-lease-resource';
 
+/** Export only fixed classifications; helper stderr can contain private paths or source. */
+export function classifyWindowsLeaseHelperError(stderr: string): string {
+  if (/error CS\d+|Cannot add type/i.test(stderr)) return 'WINDOWS_LEASE_COMPILE';
+  if (stderr.includes('Wrong state SID')) return 'WINDOWS_LEASE_STATE_OWNER';
+  if (stderr.includes('Untrusted existing state ACL')) return 'WINDOWS_LEASE_STATE_ACL';
+  if (
+    /Untrusted owner\/ACL|Unexpected ACL principal or rule|Current SID access absent/.test(stderr)
+  )
+    return 'WINDOWS_LEASE_PRIVATE_ACL';
+  if (
+    /Local drive path required|Canonical path required|Non-directory or reparse ancestor/.test(
+      stderr
+    )
+  )
+    return 'WINDOWS_LEASE_PATH';
+  if (/Pin directory ancestor|State ACL handle|Protect state DACL/.test(stderr))
+    return 'WINDOWS_LEASE_DIRECTORY';
+  if (/Helper source size|Helper source hash/.test(stderr)) return 'WINDOWS_LEASE_BOOTSTRAP';
+  if (stderr.includes('CREATE_NEW private file')) return 'WINDOWS_LEASE_RESERVATION';
+  if (/Worker identity|Process identity|Process times/.test(stderr)) return 'WINDOWS_LEASE_WORKER';
+  return 'WINDOWS_LEASE_HELPER_FAILED';
+}
+
 function launch(request: unknown) {
   if (process.platform !== 'win32') throw Error('Windows backend on non-Windows host');
   const root = process.env.SystemRoot;
@@ -38,12 +61,22 @@ function launch(request: unknown) {
   };
   child.on('error', fail);
   child.stdin.on('error', fail);
-  child.stderr.resume();
+  let diagnostic = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    // Continue draining after the bound; never publish the captured text.
+    if (diagnostic.length < 65536) diagnostic += chunk.slice(0, 65536 - diagnostic.length);
+  });
   const exited = new Promise<void>((resolve, reject) => {
     child.once('close', (code) => {
+      const closed = Object.assign(
+        Error(`Windows lease helper closed (${classifyWindowsLeaseHelperError(diagnostic)})`),
+        { code: classifyWindowsLeaseHelperError(diagnostic) }
+      );
+      diagnostic = '';
       if (code === 0) resolve();
-      else reject(Error(`Windows lease helper exited ${code}`));
-      fail(Error('Windows lease helper closed'));
+      else reject(closed);
+      fail(closed);
     });
   });
   void exited.catch(() => {});
