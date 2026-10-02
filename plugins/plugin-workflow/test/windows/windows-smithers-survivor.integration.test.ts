@@ -18,6 +18,10 @@ import {
 } from '../../src/services/smithers-runtime';
 import { inspectWorkerLease } from '../../src/services/workflow-worker-lease';
 import type { WorkflowDefinitionResponse, WorkflowExecution } from '../../src/types/index';
+import {
+  observeOwnedWindowsProcesses,
+  sameObservedProcess,
+} from './windows-owned-process-observer';
 
 const stage = import.meta.dir;
 
@@ -136,7 +140,10 @@ for (const workerDies of [false, true])
           path.join(stage, '../../__tests__/fixtures/workflow-survivor-parent.ts'),
           JSON.stringify(request),
         ],
-        { env: {...process.env,ELIZA_LEASE_TEST_STARTUP_DIAGNOSTICS:'1'}, stdio: ['ignore', 'pipe', 'pipe'] }
+        {
+          env: { ...process.env, ELIZA_LEASE_TEST_STARTUP_DIAGNOSTICS: '1' },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }
       );
       const exited = once(parent, 'exit');
       let error = '';
@@ -151,13 +158,65 @@ for (const workerDies of [false, true])
       try {
         await until(() => {
           if (parent.exitCode !== null || parent.signalCode !== null) {
-            throw Error(`Parent exited before owned effect: ${parent.exitCode}/${parent.signalCode}`);
+            throw Error(
+              `Parent exited before owned effect: ${parent.exitCode}/${parent.signalCode}`
+            );
           }
           return fs.existsSync(ready);
         }, 'owned effect startup');
+        const beforeKill = await inspectWorkerLease(lease);
+        expect(beforeKill.state).toBe('live');
+        if (beforeKill.state !== 'live') throw Error('Pre-kill lease was not authenticated');
+        const recordPath = path.join(
+          root,
+          '.windows-worker-' + createHash('sha256').update(request.runId).digest('hex') + '.json'
+        );
+        const record = JSON.parse(fs.readFileSync(recordPath, 'utf8'));
+        expect(record.generation).toBe(beforeKill.generation);
+        expect(record.workerPid).toBe(beforeKill.pid);
+        const beforeProcesses = observeOwnedWindowsProcesses(beforeKill.pid, record.pid);
+        expect(beforeProcesses.worker.present).toBe(true);
+        expect(beforeProcesses.helper.present).toBe(true);
+        const mode = process.env.ELIZA_SURVIVOR_SPAWN_PROBE_MODE;
+        if (mode !== 'attached' && mode !== 'detached')
+          throw Error('Invalid diagnostic spawn mode');
+        expect(error.includes('[survivor-spawn-probe:detached]')).toBe(mode === 'detached');
+        console.info(
+          JSON.stringify({
+            phase: 'before-parent-kill',
+            mode,
+            workerPresent: beforeProcesses.worker.present,
+            helperPresent: beforeProcesses.helper.present,
+            leaseState: beforeKill.state,
+          })
+        );
         parent.kill('SIGKILL');
         await exited;
-        expect((await inspectWorkerLease(lease)).state).toBe('live');
+        const afterProcesses = observeOwnedWindowsProcesses(beforeKill.pid, record.pid);
+        const afterKill = await inspectWorkerLease(lease);
+        console.info(
+          JSON.stringify({
+            phase: 'after-parent-kill',
+            mode,
+            workerPresent: afterProcesses.worker.present,
+            helperPresent: afterProcesses.helper.present,
+            workerSameGeneration: sameObservedProcess(
+              beforeProcesses.worker,
+              afterProcesses.worker
+            ),
+            helperSameGeneration: sameObservedProcess(
+              beforeProcesses.helper,
+              afterProcesses.helper
+            ),
+            leaseState:
+              afterKill.state === 'live'
+                ? 'live'
+                : afterKill.state === 'absent'
+                  ? 'absent'
+                  : 'unknown',
+          })
+        );
+        expect(afterKill.state).toBe('live');
         await expect(
           runSmithersWorkflow({
             ...request,
@@ -224,7 +283,8 @@ for (const workerDies of [false, true])
         );
         const projectionDeadline = Date.now() + 30000;
         while (!(await service.getExecution(request.runId)).finished) {
-          if (Date.now() > projectionDeadline) throw Error('Automatic canonical projection deadline');
+          if (Date.now() > projectionDeadline)
+            throw Error('Automatic canonical projection deadline');
           await Bun.sleep(10);
         }
         const replay = await runSmithersWorkflow({
@@ -241,7 +301,7 @@ for (const workerDies of [false, true])
         expect(fs.readFileSync(effect, 'utf8')).toBe('effect\n');
       } catch (e) {
         throw new Error(
-          `${String(e)}\n${error}\nPARENT ${JSON.stringify({exitCode:parent.exitCode,signalCode:parent.signalCode})}\nSTARTUP ${startup}\nLEASE ${JSON.stringify(await inspectWorkerLease(lease))}\nFILES ${JSON.stringify(fs.readdirSync(root))}`
+          `${String(e)}\n${error}\nPARENT ${JSON.stringify({ exitCode: parent.exitCode, signalCode: parent.signalCode })}\nSTARTUP ${startup}\nLEASE ${JSON.stringify(await inspectWorkerLease(lease))}\nFILES ${JSON.stringify(fs.readdirSync(root))}`
         );
       } finally {
         if (parent.exitCode === null && parent.signalCode === null) {
@@ -415,7 +475,9 @@ test('concurrent source publication preserves an existing importer inode and rej
     }
     await Promise.all(publications);
     expect(fs.statSync(target).ino).toBe(inode);
-    await expect(publishWorkflowSource(target, 'export default 2;')).rejects.toMatchObject({ code: 'WINDOWS_LEASE_SOURCE_MISMATCH' });
+    await expect(publishWorkflowSource(target, 'export default 2;')).rejects.toMatchObject({
+      code: 'WINDOWS_LEASE_SOURCE_MISMATCH',
+    });
     expect(fs.readFileSync(target, 'utf8')).toBe(source);
     expect(fs.readdirSync(root)).toEqual(['v1.ts']);
   } finally {
