@@ -40,6 +40,28 @@ try {
   try {
     $reply=[WindowsLeaseNative]::Probe($name,[uint32]$PID,$birth,$capability,$generation).GetAwaiter().GetResult()
     if($reply -ne $generation){throw 'Real named pipe challenge failed'}
+    # Delayed readers must receive the response before server disconnect. A
+    # missing acknowledgement must time out without retiring the generation.
+    foreach($acknowledge in @($true,$false)) {
+      $client=[IO.Pipes.NamedPipeClientStream]::new('.', $name, [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
+      try {
+        $client.Connect(1000)
+        $challenge=[Guid]::NewGuid().ToString('N')
+        $bytes=[Text.Encoding]::UTF8.GetBytes("${capability}:${challenge}`n")
+        $client.Write($bytes,0,$bytes.Length)
+        Start-Sleep -Milliseconds 250
+        $reader=[IO.StreamReader]::new($client)
+        $response=$reader.ReadLineAsync()
+        if(-not $response.Wait(2000) -or $response.GetAwaiter().GetResult() -ne "${generation}:${challenge}"){throw 'Delayed reader lost challenge response'}
+        if($acknowledge) {
+          $bytes=[Text.Encoding]::UTF8.GetBytes("ack:${challenge}`n")
+          $client.Write($bytes,0,$bytes.Length)
+        } else {Start-Sleep -Milliseconds 1400}
+      } finally {$client.Dispose()}
+      Start-Sleep -Milliseconds 150
+      $reply=[WindowsLeaseNative]::Probe($name,[uint32]$PID,$birth,$capability,$generation).GetAwaiter().GetResult()
+      if($reply -ne $generation){throw 'Acknowledgement handling retired original generation'}
+    }
     # Each rejected client must leave the original generation responsive.
     foreach($mode in @('eof','malformed','silent')) {
       $client=[IO.Pipes.NamedPipeClientStream]::new('.', $name, [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
