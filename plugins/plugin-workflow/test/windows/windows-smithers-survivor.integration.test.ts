@@ -21,10 +21,12 @@ import type { WorkflowDefinitionResponse, WorkflowExecution } from '../../src/ty
 
 const stage = import.meta.dir;
 
-async function until(check: () => boolean) {
-  const deadline = Date.now() + 12000;
-  while (!check()) {
-    if (Date.now() > deadline) throw Error('condition deadline');
+// Cold startup performs several bounded native-helper admissions plus module loading.
+// Keep the fixture budget above those production deadlines without relaxing ownership.
+async function until(check: () => boolean | Promise<boolean>, stage = 'condition') {
+  const deadline = Date.now() + 90000;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw Error(`${stage} deadline`);
     await Bun.sleep(10);
   }
 }
@@ -49,7 +51,7 @@ for (const workerDies of [false, true])
       const source = `/** @jsxImportSource smthrs */
   import {createSmithers} from 'smthrs/create';import {z} from 'zod';import * as fs from 'node:fs';
   const {Workflow,Task,smithers,outputs}=createSmithers({result:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
-  const agent={id:'owned-local-fixture',generate:async()=>{fs.appendFileSync(${JSON.stringify(effect)},'effect\\n');fs.writeFileSync(${JSON.stringify(ready)},'ready');const deadline=Date.now()+15000;while(!fs.existsSync(${JSON.stringify(release)})){if(Date.now()>deadline)throw Error('owned effect release deadline');await new Promise(r=>setTimeout(r,10));}fs.writeFileSync(${JSON.stringify(path.join(root, 'effect-finished'))},'finished');return {text:'{"value":1}'};}};
+  const agent={id:'owned-local-fixture',generate:async()=>{fs.appendFileSync(${JSON.stringify(effect)},'effect\\n');fs.writeFileSync(${JSON.stringify(ready)},'ready');const deadline=Date.now()+120000;while(!fs.existsSync(${JSON.stringify(release)})){if(Date.now()>deadline)throw Error('owned effect release deadline');await new Promise(r=>setTimeout(r,10));}fs.writeFileSync(${JSON.stringify(path.join(root, 'effect-finished'))},'finished');return {text:'{"value":1}'};}};
   export default smithers(()=><Workflow name="survivor"><Task id="effect" output={outputs.result} agent={agent}>Perform the owned local fixture.</Task></Workflow>);`;
       const workflow = {
         id: workflowId,
@@ -69,7 +71,7 @@ for (const workerDies of [false, true])
         runId: randomUUID(),
         mode: 'manual' as const,
         input: {},
-        timeoutMs: 20000,
+        timeoutMs: 120000,
       };
       const lease = {
         rootDir: fs.realpathSync(root),
@@ -138,9 +140,18 @@ for (const workerDies of [false, true])
       );
       const exited = once(parent, 'exit');
       let error = '';
-      parent.stderr.on('data', (b) => (error += b));
+      // Drain both pipes; report only this private fixture's bounded stderr on failure.
+      parent.stdout.resume();
+      parent.stderr.on('data', (b) => {
+        if (error.length < 16384) error += String(b).slice(0, 16384 - error.length);
+      });
       try {
-        await until(() => fs.existsSync(ready));
+        await until(() => {
+          if (parent.exitCode !== null || parent.signalCode !== null) {
+            throw Error(`Parent exited before owned effect: ${parent.exitCode}/${parent.signalCode}`);
+          }
+          return fs.existsSync(ready);
+        }, 'owned effect startup');
         parent.kill('SIGKILL');
         await exited;
         expect((await inspectWorkerLease(lease)).state).toBe('live');
@@ -203,17 +214,12 @@ for (const workerDies of [false, true])
           return;
         }
         fs.writeFileSync(release, 'finish');
+        // Authenticate Windows backend completion instead of observing a POSIX-only path.
         await until(
-          () =>
-            !fs.existsSync(
-              path.join(
-                root,
-                '.worker-owners',
-                createHash('sha256').update(request.runId).digest('hex')
-              )
-            )
+          async () => (await inspectWorkerLease(lease)).state === 'absent',
+          'canonical lease completion'
         );
-        const projectionDeadline = Date.now() + 10000;
+        const projectionDeadline = Date.now() + 30000;
         while (!(await service.getExecution(request.runId)).finished) {
           if (Date.now() > projectionDeadline) throw Error('Automatic canonical projection deadline');
           await Bun.sleep(10);
@@ -252,7 +258,7 @@ for (const workerDies of [false, true])
         else process.env.HOME = previousHome;
       }
     }
-  }, 25000);
+  }, 240000);
 
 for (const boundary of ['execution', 'version', 'concurrent'] as const) {
   test(`database admission ${boundary} is serialized and drained by stop`, async () => {
