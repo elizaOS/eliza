@@ -730,6 +730,9 @@ export async function executeTriggerTask(
     // emit a duplicate success notification, and could prematurely exhaust
     // maxRuns even though no second workflow execution was started.
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    if (options.source !== "event") {
+      return advanceDedupedScheduledFire(runtime, task, result.executionId);
+    }
     return {
       status: "skipped",
       taskDeleted: false,
@@ -944,18 +947,7 @@ export async function executeTriggerTask(
   // Refresh the idempotency key for the next fire so a re-run within the
   // same minute window collapses at dispatch. The schedule-arming layer
   // (`armSchedules`) seeds the initial key with the same formula.
-  if (
-    metadataToPersist.trigger?.kind === "workflow" &&
-    metadataToPersist.trigger.workflowId &&
-    typeof metadataToPersist.trigger.nextRunAtMs === "number"
-  ) {
-    const minuteBucket = Math.floor(
-      metadataToPersist.trigger.nextRunAtMs / 60_000,
-    );
-    metadataToPersist.idempotencyKey = `${metadataToPersist.trigger.workflowId}:${minuteBucket}`;
-  } else {
-    delete metadataToPersist.idempotencyKey;
-  }
+  refreshNextFireIdempotencyKey(metadataToPersist);
 
   await runtime.updateTask(task.id, {
     description:
@@ -995,6 +987,60 @@ export async function executeTriggerTask(
     updateInterval:
       typeof metadataToPersist.updateInterval === "number"
         ? metadataToPersist.updateInterval
+        : undefined,
+  };
+}
+
+function refreshNextFireIdempotencyKey(metadata: TriggerTaskMetadata): void {
+  if (
+    metadata.trigger?.kind === "workflow" &&
+    metadata.trigger.workflowId &&
+    typeof metadata.trigger.nextRunAtMs === "number"
+  ) {
+    const minuteBucket = Math.floor(metadata.trigger.nextRunAtMs / 60_000);
+    metadata.idempotencyKey = `${metadata.trigger.workflowId}:${minuteBucket}`;
+  } else {
+    delete metadata.idempotencyKey;
+  }
+}
+
+async function advanceDedupedScheduledFire(
+  runtime: IAgentRuntime,
+  task: Task,
+  executionId: string | undefined,
+): Promise<TriggerExecutionResult> {
+  const currentTask = task.id ? await runtime.getTask(task.id) : null;
+  const currentTrigger = currentTask ? readTriggerConfig(currentTask) : null;
+  if (!currentTask?.id || !currentTrigger) {
+    return {
+      status: "skipped",
+      taskDeleted: !currentTask,
+      executionId,
+    };
+  }
+  const nextMetadata = buildTriggerMetadata({
+    existingMetadata: taskMetadata(currentTask),
+    trigger: currentTrigger,
+    nowMs: Date.now(),
+  });
+  if (!nextMetadata) {
+    return {
+      status: "skipped",
+      taskDeleted: false,
+      trigger: taskToTriggerSummary(currentTask),
+      executionId,
+    };
+  }
+  refreshNextFireIdempotencyKey(nextMetadata);
+  await runtime.updateTask(currentTask.id, { metadata: nextMetadata });
+  return {
+    status: "skipped",
+    taskDeleted: false,
+    trigger: taskToTriggerSummary({ ...currentTask, metadata: nextMetadata }),
+    executionId,
+    updateInterval:
+      typeof nextMetadata.updateInterval === "number"
+        ? nextMetadata.updateInterval
         : undefined,
   };
 }
