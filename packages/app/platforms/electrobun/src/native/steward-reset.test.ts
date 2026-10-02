@@ -142,6 +142,23 @@ describe("resetSteward", () => {
 		expect(fs.existsSync(credentials)).toBe(true);
 	});
 
+	it(
+		"refuses deletion through a symlinked ancestor outside the state roots",
+		async () => {
+			const outside = path.join(root, "unrelated");
+			const credentials = seedStewardData(path.join(outside, "steward"));
+			const stateRoot = path.join(root, "state", "acme");
+			fs.mkdirSync(stateRoot, { recursive: true });
+			const alias = path.join(stateRoot, "alias");
+			fs.symlinkSync(outside, alias, "dir");
+			process.env.STEWARD_DATA_DIR = path.join(alias, "steward");
+
+			await expect(resetSteward()).rejects.toThrow(/outside|symlink/);
+			expect(fs.existsSync(credentials)).toBe(true);
+		},
+		RESET_TIMEOUT_MS,
+	);
+
 	it("refuses to delete the state root itself", async () => {
 		const stateRoot = path.join(root, "state", "acme");
 		const credentials = seedStewardData(stateRoot);
