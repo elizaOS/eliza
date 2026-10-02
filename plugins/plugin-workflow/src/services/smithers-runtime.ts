@@ -291,6 +291,9 @@ export function createSmithersWorkerScript(): string {
     const smithersRequire = createRequire(import.meta.resolve('smthrs'));
     const { Effect } = await import(pathToFileURL(smithersRequire.resolve('effect')).href);
     import { runWorkflow } from 'smthrs';
+    const engineRequire = createRequire(smithersRequire.resolve('@smthrs/engine/engine'));
+    const { resolveSchema, __engineInternals } = await import(pathToFileURL(smithersRequire.resolve('@smthrs/engine/engine')).href);
+    const { loadRunOutputRowsEffect } = await import(pathToFileURL(engineRequire.resolve('@smthrs/db/snapshot')).href);
     import { createInterface } from 'node:readline';
 
     const PREFIX = ${JSON.stringify(PROTOCOL_PREFIX)};
@@ -378,6 +381,12 @@ export function createSmithersWorkerScript(): string {
         rootDir: payload.rootDir,
         onProgress: (event) => emit({ kind: 'event', event }),
       }));
+      // Pinned Smithers terminal replay returns status without the durable output rows.
+      // Use the engine's own target selection and row decoding; never re-run task effects.
+      if(result.status === 'finished' && result.output === undefined) {
+        const table = __engineInternals.resolveWorkflowOutputTable(workflow, resolveSchema(workflow.db));
+        if(table) result.output = await Effect.runPromise(loadRunOutputRowsEffect(workflow.db, table, payload.runId));
+      }
       if(orphanedRpc)await workerLease.abandon();else await workerLease.finishCanonicalResult();
       await emitAndFlush({ kind: 'result', result });
       input.close();
