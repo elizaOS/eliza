@@ -3635,7 +3635,9 @@ async function runProvisionWorkspace(
   let repo = paramRepo ?? content.repo;
   if (!repo && content.text) {
     const urlMatch = content.text.match(
-      /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
+      // Deeper paths are kept for GitLab subgroups; normalizeRepositoryInput
+      // trims page routes back to the repository.
+      /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)(?:\/[\w.-]+){2,}/i,
     );
     if (urlMatch) {
       repo = urlMatch[0];
