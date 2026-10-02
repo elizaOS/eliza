@@ -21,28 +21,44 @@ export function unsupportedToolPolicyKeys(value: unknown): string[] {
   });
 }
 
+function assertPolicy(value: unknown): void {
+  if (unsupportedToolPolicyKeys(value).length > 0) {
+    throw new ElizaError(
+      "Configured tool-policy restrictions are not enforced by the runtime. Remove retired profile/allow/alsoAllow/deny settings and configure supported action authority instead.",
+      { code: "CONFIG_TOOL_POLICY_UNSUPPORTED" },
+    );
+  }
+  const fields = record(value);
+  if (!fields) return;
+  for (const override of Object.values(record(fields.byProvider) ?? {}))
+    assertPolicy(override);
+  assertPolicy(record(fields.sandbox)?.tools);
+  assertPolicy(record(fields.subagents)?.tools);
+}
+
+/** Character JSON and restored characters carry the historical settings shape. */
+export function assertNoRetiredCharacterToolRestrictions(
+  settings: unknown,
+): void {
+  const fields = record(settings);
+  if (!fields) return;
+  assertPolicy(fields.tools);
+  if (fields.toolProfile !== undefined)
+    assertPolicy({ profile: fields.toolProfile });
+}
+
 /** Guard actual disk load/write as well as the separate settings schema. */
 export function assertNoRetiredToolRestrictions(config: unknown): void {
-  function policy(value: unknown): void {
-    if (unsupportedToolPolicyKeys(value).length > 0) {
-      throw new ElizaError(
-        "Configured tool-policy restrictions are not enforced by the runtime. Remove retired profile/allow/alsoAllow/deny settings and configure supported action authority instead.",
-        { code: "CONFIG_TOOL_POLICY_UNSUPPORTED" },
-      );
-    }
-    const fields = record(value);
-    if (!fields) return;
-    for (const override of Object.values(record(fields.byProvider) ?? {}))
-      policy(override);
-    policy(record(fields.sandbox)?.tools);
-    policy(record(fields.subagents)?.tools);
-  }
   const root = record(config);
   if (!root) return;
-  policy(root.tools);
+  assertPolicy(root.tools);
   const agents = record(root.agents)?.list;
   if (Array.isArray(agents))
-    for (const agent of agents) policy(record(agent)?.tools);
+    for (const agent of agents) {
+      const entry = record(agent);
+      assertPolicy(entry?.tools);
+      assertNoRetiredCharacterToolRestrictions(entry?.settings);
+    }
   // Connector schemas nest policies in accounts, groups, guilds, channels and
   // sender maps. Restrict this traversal to connector config, not plugin data.
   function connector(value: unknown): void {
@@ -52,11 +68,11 @@ export function assertNoRetiredToolRestrictions(config: unknown): void {
     }
     const fields = record(value);
     if (!fields) return;
-    policy(fields.tools);
+    assertPolicy(fields.tools);
     for (const senderPolicy of Object.values(
       record(fields.toolsBySender) ?? {},
     ))
-      policy(senderPolicy);
+      assertPolicy(senderPolicy);
     for (const [key, nested] of Object.entries(fields)) {
       if (key !== "tools" && key !== "toolsBySender") connector(nested);
     }
