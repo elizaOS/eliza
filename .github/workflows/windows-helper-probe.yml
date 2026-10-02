@@ -28,8 +28,8 @@ jobs:
         run: |
           if ((git rev-parse HEAD) -ne $env:EXPECTED_SHA) { throw 'Source mismatch' }
           if ((bun --version) -ne '1.4.2') { throw 'Runtime mismatch' }
-      - name: Actual helper environment and stdin matrix
+      - name: Actual original and instrumented helper phases
         shell: powershell
         run: |
-          bun test plugins/plugin-workflow/test/windows/windows-helper-startup.integration.test.ts
+          bun test plugins/plugin-workflow/test/windows/windows-helper-phases.integration.test.ts
           if ($LASTEXITCODE -ne 0) { throw 'Windows helper startup probe failed' }
