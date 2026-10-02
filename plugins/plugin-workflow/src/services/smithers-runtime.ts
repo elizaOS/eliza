@@ -10,7 +10,7 @@
  */
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, symlink, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
@@ -21,6 +21,7 @@ import type {
   WorkflowExecutionStatus,
   WorkflowRunEvent,
 } from '../types/index';
+import { ensureWorkflowDependencyLink } from './workflow-dependency-link';
 
 const PROTOCOL_PREFIX = '__ELIZA_SMTHRS__';
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
@@ -29,15 +30,17 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 const MAX_PROTOCOL_LINE_BYTES = 1_048_576;
 const WORKER_TERMINATION_GRACE_MS = 1_000;
 const WORKER_STDIO_DRAIN_GRACE_MS = 1_000;
-const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+import {
+  defaultWorkflowBunExecutable,
+  workflowDependencyPackage,
+  workflowProcessCommand,
+} from './workflow-process-host';
 
 type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
 
 export function resolveSmithersBunExecutable(): string {
-  const configured = process.env.BUN_BIN?.trim();
-  if (configured) return configured;
-  if (process.versions.bun) return process.execPath;
-  return 'bun';
+  return defaultWorkflowBunExecutable();
 }
 
 function appendSmithersProtocolChunk(
@@ -184,16 +187,11 @@ async function linkWorkflowDependency(
   rootDir: string,
   packageName: 'smthrs' | 'zod'
 ): Promise<void> {
-  const packageDir = dirname(fileURLToPath(import.meta.resolve(`${packageName}/package.json`)));
+  const packageDir =
+    workflowDependencyPackage(packageName) ??
+    dirname(fileURLToPath(import.meta.resolve(`${packageName}/package.json`)));
   const linkPath = join(rootDir, 'node_modules', packageName);
-  await mkdir(dirname(linkPath), { recursive: true });
-  try {
-    await symlink(packageDir, linkPath, 'junction');
-  } catch (error) {
-    // error-policy:J4 an existing dependency link is the expected steady state;
-    // every other filesystem failure must stop workflow execution.
-    if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
-  }
+  ensureWorkflowDependencyLink(packageDir, linkPath);
 }
 
 export function validateSmithersSource(source: unknown): void {
@@ -362,6 +360,7 @@ export async function controlSmithersRun(
 ): Promise<{ status?: WorkflowExecutionStatus | null }> {
   const rootDir = resolveSmithersWorkflowDir(tenantId, workflowId);
   await mkdir(rootDir, { recursive: true });
+  const command = workflowProcessCommand('runtime', createSmithersControlScript());
   const payloadPath = join(rootDir, `.control-${randomUUID()}.json`);
   await writeFile(
     payloadPath,
@@ -371,9 +370,10 @@ export async function controlSmithersRun(
       mode: 0o600,
     }
   );
-  const child = spawn(resolveSmithersBunExecutable(), ['--eval', createSmithersControlScript()], {
-    cwd: PLUGIN_ROOT,
+  const child = spawn(command.executable, command.args, {
+    cwd: command.cwd,
     env: {
+      ...command.env,
       PATH: process.env.PATH,
       HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR,
@@ -488,6 +488,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     });
   }
   validateSmithersSource(request.workflow.source);
+  const command = workflowProcessCommand('runtime', createSmithersWorkerScript());
   const rootDir = resolveSmithersWorkflowDir(request.tenantId, request.workflow.id);
   const sourcePath = join(
     rootDir,
@@ -513,9 +514,10 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   );
 
   const timeoutMs = resolveSmithersTimeoutMs(request.timeoutMs);
-  const worker = spawn(resolveSmithersBunExecutable(), ['--eval', createSmithersWorkerScript()], {
-    cwd: PLUGIN_ROOT,
+  const worker = spawn(command.executable, command.args, {
+    cwd: command.cwd,
     env: {
+      ...command.env,
       PATH: process.env.PATH,
       HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR,
