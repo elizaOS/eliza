@@ -256,7 +256,9 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     '- dueInDays: for "once" tasks, whole days from today when the user uses relative day words ("today" -> 0, "tomorrow" -> 1, "day after tomorrow" -> 2)',
     '- dueWeekday: for "once" tasks, the weekday number (0=Sun, 1=Mon, ..., 6=Sat) when the user names a weekday ("Friday" -> 5, "next Tuesday" -> 2)',
     '- dueInMinutes: for "once" tasks, minutes from now for offsets ("in 2 hours" -> 120, "in 45 minutes" -> 45)',
-    `  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four ${unknownField} for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.`,
+    nativeTool
+      ? '  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Use null for each inapplicable selector, including all four for recurring or clock-only tasks. If timing cannot be established, use mode="respond" rather than guessing.'
+      : `  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four ${unknownField} for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.`,
     '- multiStep: true when the user asks to be reminded about MORE THAN ONE distinct task or milestone in this request (e.g. "set reminders for outline, rough draft, and final proofread"), false when it is a single task ("remind me to pay the electric bill on the 28th")',
     "Use recent conversation only to resolve short follow-ups. Do not emit requestKind='alarm' or requestKind='reminder' unless the current request or recent conversation explicitly supports it.",
     "If the user has not actually specified the todo/habit yet, choose mode='respond' and ask a concise clarifying question instead of inventing a task.",

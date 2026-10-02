@@ -1,7 +1,14 @@
 import { normalizeActionJsonSchema, validateSchema } from "@elizaos/core";
 import { expect, it } from "vitest";
-import { __INTERNAL_normalizeNativeToolsForCall } from "../../../../plugin-openai/models/text.ts";
-import { envelopeToolSchema } from "../../../../plugin-openai/utils/cerebras-tool-argument-envelope.ts";
+import { z } from "zod";
+import {
+  __INTERNAL_normalizeNativeToolsForCall,
+  __INTERNAL_restoreRecordArgToolCalls,
+} from "../../../../plugin-openai/models/text.ts";
+import {
+  decodeToolArguments,
+  envelopeToolSchema,
+} from "../../../../plugin-openai/utils/cerebras-tool-argument-envelope.ts";
 import {
   buildTaskCreatePlan,
   taskCreatePlanGuidance,
@@ -17,6 +24,9 @@ const plan = {
   title: "QA",
   cadenceKind: "once",
   dueInMinutes: 2,
+  dueDate: null,
+  dueInDays: null,
+  dueWeekday: null,
   multiStep: false,
   nativeProjection: "in_app_only",
 };
@@ -91,37 +101,48 @@ it("keeps the optional native contract closed and discriminated through provider
     [normalized, false],
     [wire, true],
   ] as const) {
-    const partialErrors: string[] = [];
+    const check = (value: unknown): string[] => {
+      const input = wrapped ? { arguments: value } : value;
+      if (schema === source) {
+        const errors: string[] = [];
+        validateSchema(source, input, "", errors);
+        return errors;
+      }
+      // Provider schemas use JSON Schema type arrays for nullable numerics.
+      // Validate the actual wire dialect, not core's authored scalar dialect.
+      const result = z.fromJSONSchema(schema).safeParse(input);
+      return result.success
+        ? []
+        : result.error.issues.map((issue) => issue.message);
+    };
+
     const partial = {
       createPlan: { mode: "create", requestKind: "reminder", multiStep: false },
     };
-    validateSchema(
-      schema as Parameters<typeof validateSchema>[0],
-      wrapped ? { arguments: partial } : partial,
-      "",
-      partialErrors,
-    );
+    const partialErrors = check(partial);
     expect(partialErrors.length).toBeGreaterThan(0);
-    const clocklessErrors: string[] = [];
+
     const clockless = { createPlan: { ...plan, dueInMinutes: undefined } };
-    validateSchema(
-      schema as Parameters<typeof validateSchema>[0],
-      wrapped ? { arguments: clockless } : clockless,
-      "",
-      clocklessErrors,
-    );
-    expect(clocklessErrors).toEqual([]);
+    const clocklessErrors = check(clockless);
+    expect(clocklessErrors.length).toBeGreaterThan(0);
     expect(parseNativeTaskCreatePlan(clockless.createPlan)).toBeNull();
+    for (const selector of [
+      "dueDate",
+      "dueInDays",
+      "dueWeekday",
+      "dueInMinutes",
+    ]) {
+      const missing: Record<string, unknown> = { ...plan };
+      delete missing[selector];
+      expect(check({ createPlan: missing }).length, selector).toBeGreaterThan(
+        0,
+      );
+    }
     const omittedDestination = {
       createPlan: { ...plan, nativeProjection: undefined },
     };
-    const omittedErrors: string[] = [];
-    validateSchema(
-      schema as Parameters<typeof validateSchema>[0],
-      wrapped ? { arguments: omittedDestination } : omittedDestination,
-      "",
-      omittedErrors,
-    );
+
+    const omittedErrors = check(omittedDestination);
     expect(omittedErrors.length).toBeGreaterThan(0);
     for (const value of [
       {},
@@ -136,14 +157,7 @@ it("keeps the optional native contract closed and discriminated through provider
         },
       },
     ]) {
-      const errors: string[] = [];
-      validateSchema(
-        schema as Parameters<typeof validateSchema>[0],
-        wrapped ? { arguments: value } : value,
-        "",
-        errors,
-      );
-      expect(errors).toEqual([]);
+      expect(check(value), JSON.stringify(value)).toEqual([]);
     }
   }
   const branches = parameter.schema?.anyOf;
@@ -159,47 +173,60 @@ it("keeps the optional native contract closed and discriminated through provider
         ),
       ),
     );
-  const create = branches?.find((branch) =>
-    branch.properties?.mode.enum?.includes("create"),
+  expect({ nativePlanProviderSchemaBytes: bytes(source) }).toMatchSnapshot();
+});
+
+it("preserves explicit timing selectors through the real provider envelope and restoration", () => {
+  const source = normalizeActionJsonSchema({
+    parameters: [TASK_CREATE_PLAN_PARAMETER],
+  });
+  const normalized = __INTERNAL_normalizeNativeToolsForCall(
+    [{ name: "PLAN_FIXTURE", strict: true, parameters: source }],
+    { cerebrasMode: true, sanitizeUnicode: true },
   );
-  if (!create?.properties) throw Error("Missing native create branch");
-  const previousDescription = parameter.description
-    .replace(
-      "For mode=create, always include nativeProjection; use null only for an unknown destination. Omit other unknown/inapplicable fields; do not send null for other fields.",
-      "Omit other unknown/inapplicable fields; do not send null.",
-    )
-    .replace(
-      "Otherwise use null for mode=create; omission is allowed only for mode=respond.",
-      "Otherwise omit it.",
-    );
-  const previous = normalizeActionJsonSchema({
-    parameters: [
+  const input = decodeToolArguments({ arguments: { createPlan: plan } });
+  const restored = __INTERNAL_restoreRecordArgToolCalls(
+    [
       {
-        ...parameter,
-        description: previousDescription,
-        schema: {
-          anyOf: branches?.map((branch) => ({
-            ...branch,
-            required: branch.required?.filter(
-              (key) => key !== "nativeProjection",
-            ),
-            properties: {
-              ...branch.properties,
-              nativeProjection: {
-                type: "string",
-                enum: ["in_app_only", "apple_reminders"],
-              },
-            },
-          })),
-        },
+        type: "tool-call",
+        toolCallId: "timing-null",
+        toolName: "PLAN_FIXTURE",
+        input,
       },
     ],
-  });
-  expect({
-    fd60ProviderSchemaBytes: bytes(previous),
-    requiredNullableDestinationProviderSchemaBytes: bytes(source),
-    addedBytes: bytes(source) - bytes(previous),
-  }).toMatchSnapshot();
+    normalized.recordArgTransformsByTool,
+  );
+  expect(restored?.[0].arguments).toEqual({ createPlan: plan });
+  const errors: string[] = [];
+  validateSchema(source, restored?.[0].arguments, "", errors);
+  expect(errors).toEqual([]);
+  expect(parseNativeTaskCreatePlan(plan)?.dueInMinutes).toBe(2);
+  expect(parseNativeTaskCreatePlan({ ...plan, dueInMinutes: null })).toBeNull();
+  expect(
+    parseNativeTaskCreatePlan({
+      ...plan,
+      dueInMinutes: null,
+      timeOfDay: "18:30",
+    })?.timeOfDay,
+  ).toBe("18:30");
+  expect(
+    parseNativeTaskCreatePlan({
+      ...plan,
+      dueInMinutes: null,
+      cadenceKind: "daily",
+      windows: ["morning"],
+    })?.cadenceKind,
+  ).toBe("daily");
+  // Existing direct callers retain the same semantic fallback/acceptance.
+  const legacy = {
+    ...plan,
+    dueDate: undefined,
+    dueInDays: undefined,
+    dueWeekday: undefined,
+  };
+  expect(parseNativeTaskCreatePlan(legacy)).toEqual(
+    buildTaskCreatePlan(legacy),
+  );
 });
 
 it.each([

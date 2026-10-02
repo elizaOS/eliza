@@ -62,12 +62,26 @@ const properties = {
   priority: { type: "integer" as const, minimum: 1, maximum: 5 },
   durationMinutes: { type: "number" as const, minimum: 1 },
   dueDate: {
-    type: "string" as const,
-    pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+    anyOf: [
+      { type: "string" as const, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+      { type: "null" as const },
+    ],
   },
-  dueInDays: { type: "integer" as const, minimum: 0 },
-  dueWeekday: { type: "integer" as const, minimum: 0, maximum: 6 },
-  dueInMinutes: { type: "number" as const, minimum: 1 },
+  dueInDays: {
+    anyOf: [
+      { type: "integer" as const, minimum: 0 },
+      { type: "null" as const },
+    ],
+  },
+  dueWeekday: {
+    anyOf: [
+      { type: "integer" as const, minimum: 0, maximum: 6 },
+      { type: "null" as const },
+    ],
+  },
+  dueInMinutes: {
+    anyOf: [{ type: "number" as const, minimum: 1 }, { type: "null" as const }],
+  },
   multiStep: { type: "boolean" as const },
 } satisfies Record<string, ActionParameterSchema>;
 
@@ -85,6 +99,10 @@ const schema = {
         "title",
         "cadenceKind",
         "nativeProjection",
+        "dueDate",
+        "dueInDays",
+        "dueWeekday",
+        "dueInMinutes",
       ],
       properties: {
         ...properties,
@@ -107,9 +125,10 @@ export const TASK_CREATE_PLAN_PARAMETER: ActionParameter = {
   name: "createPlan",
   required: false,
   subactions: ["create"],
+  requiredForSubactions: ["create"],
   description: [
-    "For a definition create, supply the complete semantic plan here using the current owner request and relevant conversation already in context. This avoids a second interpretation call. Use intent for the owner's full request; do not duplicate this plan in title/details. Omit createPlan if the necessary context is unavailable. This plan never grants permission to save or confirm a pending draft; the handler applies owner consent and draft rules.",
-    "Always include mode, multiStep and requestKind. For mode=create include title and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null only for an unknown destination. Omit other unknown/inapplicable fields; do not send null for other fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
+    "For a definition create, supply the complete semantic plan here using the current owner request and relevant conversation already in context. This avoids a second interpretation call. Use intent for the owner's full request; do not duplicate this plan in title/details. The parent umbrella may omit createPlan when necessary context is unavailable; promoted CREATE requires it. Use the existing mode=respond plan for clarification when the title or timing cannot be established, without guessing. Unknown nativeProjection remains null and follows the existing safe extraction path. This plan never grants permission to save or confirm a pending draft; the handler applies owner consent and draft rules.",
+    "Always include mode, multiStep and requestKind. For mode=create include title and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null for an unknown destination. For mode=create, always include dueDate, dueInDays, dueWeekday and dueInMinutes: fill the applicable selector from the owner's request and use null for the others. A relative minute/hour offset belongs in dueInMinutes. Omit other unknown/inapplicable fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
     taskCreatePlanGuidance(true),
   ].join("\n"),
   schema,
@@ -121,7 +140,22 @@ export function parseNativeTaskCreatePlan(
 ): ExtractedTaskCreatePlan | null {
   if (value === undefined) return null;
   const errors: string[] = [];
-  const validated = validateSchema(schema, value, "createPlan", errors);
+  // Existing direct callers may omit unknown selectors. Normalize only these
+  // unknowns; never invent a schedule. Native tools require explicit choices.
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  const input = record
+    ? {
+        ...record,
+        dueDate: record.dueDate ?? null,
+        dueInDays: record.dueInDays ?? null,
+        dueWeekday: record.dueWeekday ?? null,
+        dueInMinutes: record.dueInMinutes ?? null,
+      }
+    : value;
+  const validated = validateSchema(schema, input, "createPlan", errors);
   if (
     errors.length ||
     !validated ||
@@ -146,7 +180,7 @@ export function parseNativeTaskCreatePlan(
   const raw = validated as Record<string, unknown>;
   if (
     (raw.timeZone !== undefined && !plan.timeZone) ||
-    (raw.dueDate !== undefined && !plan.dueDate)
+    (raw.dueDate != null && !plan.dueDate)
   )
     return null;
   const dateFields = [
