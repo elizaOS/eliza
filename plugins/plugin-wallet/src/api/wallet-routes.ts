@@ -153,6 +153,16 @@ function resolveWalletRouteStewardConnection(): WalletRouteStewardConnection | n
     ...(agentToken ? { agentToken } : {}),
   };
 }
+function parseWalletNetworkField(
+  value: unknown,
+): "mainnet" | "testnet" | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") return undefined;
+  if (normalized === "mainnet" || normalized === "testnet") return normalized;
+  return null;
+}
 function resolveWalletConfigUpdateRequest(
   body: unknown,
   currentSelections: WalletRpcSelections,
@@ -166,10 +176,9 @@ function resolveWalletConfigUpdateRequest(
     typeof record.selections === "object" &&
     !Array.isArray(record.selections)
   ) {
-    const walletNetwork =
-      record.walletNetwork === "testnet" || record.walletNetwork === "mainnet"
-        ? record.walletNetwork
-        : undefined;
+    const parsedNetwork = parseWalletNetworkField(record.walletNetwork);
+    if (parsedNetwork === null) return null;
+    const walletNetwork = parsedNetwork;
     const credentials =
       record.credentials &&
       typeof record.credentials === "object" &&
@@ -197,12 +206,11 @@ function resolveWalletConfigUpdateRequest(
   if (Object.keys(compatCredentials).length === 0) {
     return null;
   }
+  const compatNetwork = parseWalletNetworkField(record.walletNetwork);
+  if (compatNetwork === null) return null;
   return {
     selections: currentSelections,
-    walletNetwork:
-      record.walletNetwork === "testnet" || record.walletNetwork === "mainnet"
-        ? record.walletNetwork
-        : undefined,
+    walletNetwork: compatNetwork,
     credentials: compatCredentials as WalletConfigUpdateRequest["credentials"],
   };
 }
