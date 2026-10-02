@@ -83,12 +83,15 @@ class SystemFlashlightInstrumentedTest {
 
     private fun clickPermission(id: String) {
         val deadline = SystemClock.elapsedRealtime() + 15000
+        val controllerPackages = setOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")
         do {
             val root = instrumentation.uiAutomation.rootInActiveWindow
-            for (pkg in listOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")) {
-                val button = root?.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.firstOrNull()
+            // Google's controller can retain the Android resource namespace.
+            // Validate the owner independently from the resource's package prefix.
+            for (resourcePackage in controllerPackages) {
+                val button = root?.findAccessibilityNodeInfosByViewId("$resourcePackage:id/$id")?.firstOrNull()
                 if (button != null && button.refresh() &&
-                    button.packageName?.toString() == pkg &&
+                    button.packageName?.toString() in controllerPackages &&
                     button.isVisibleToUser && button.isEnabled && button.isClickable) {
                     val bounds = Rect()
                     button.getBoundsInScreen(bounds)
@@ -102,6 +105,7 @@ class SystemFlashlightInstrumentedTest {
             }
             SystemClock.sleep(50)
         } while (SystemClock.elapsedRealtime() < deadline)
+        screenshot("flashlight-$id-missing.png")
         fail("Native camera permission dialog missing $id")
     }
 
