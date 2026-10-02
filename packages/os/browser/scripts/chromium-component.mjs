@@ -28,6 +28,7 @@ export const assetNames = [
   "background.mjs",
   "command-handler.mjs",
   "commands.mjs",
+  "manual-activity.mjs",
   "manifest.json",
   "native-connection.mjs",
   "task-guidance.mjs",
@@ -39,6 +40,7 @@ const resourceIds = {
   "background.mjs": "IDR_ELIZA_BROWSER_BACKGROUND",
   "command-handler.mjs": "IDR_ELIZA_BROWSER_COMMAND_HANDLER",
   "commands.mjs": "IDR_ELIZA_BROWSER_COMMANDS",
+  "manual-activity.mjs": "IDR_ELIZA_BROWSER_MANUAL_ACTIVITY",
   "manifest.json": "IDR_ELIZA_BROWSER_MANIFEST",
   "native-connection.mjs": "IDR_ELIZA_BROWSER_CONNECTION",
   "task-guidance.mjs": "IDR_ELIZA_BROWSER_TASK_GUIDANCE",
@@ -202,6 +204,15 @@ export async function generateComponentOverlay({
       "GRIT inventory",
     ),
   );
+  // Reserve space for the full module closure without crossing the next GRIT block.
+  edit("tools/gritsettings/resource_ids.spec", (source) =>
+    replaceOnce(
+      source,
+      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2460],',
+      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2470],',
+      "component resource allocation",
+    ),
+  );
   edit("chrome/browser/resources/BUILD.gn", (source) =>
     replaceOnce(
       source,
@@ -257,6 +268,14 @@ export async function generateComponentOverlay({
       "constexpr auto kAndroidNativeMessagingAllowedExtensionIds =\n    base::MakeFixedFlatSet<std::string_view>({\n",
       `constexpr auto kAndroidNativeMessagingAllowedExtensionIds =\n    base::MakeFixedFlatSet<std::string_view>({\n        "${EXTENSION_ID}",\n`,
       "native messaging identity allowlist",
+    ),
+  );
+  edit(`${prefix}api/messaging/BUILD.gn`, (source) =>
+    replaceOnce(
+      source,
+      '    deps += [ "//chrome/browser/extensions/api/messaging/android:jni_headers" ]',
+      '    deps += [\n      "//chrome/browser/extensions/api/messaging/android:jni_headers",\n      "//chrome/browser/resources:component_extension_resources",\n      "//crypto",\n      "//ui/base",\n    ]',
+      "Android verifier generated resource dependency",
     ),
   );
   edit(`${prefix}chrome_extensions_browser_client.cc`, (source) => {
