@@ -47,6 +47,19 @@ function assertStewardDataDirDeletable(
 			`[Steward] Refusing to delete ${dataDir}: outside ${allowedRoots.join(" and ")}`,
 		);
 	}
+	if (fs.existsSync(dataDir)) {
+		const realDataDir = fs.realpathSync(dataDir);
+		const insideRealRoot = allowedRoots.some(
+			(root) =>
+				fs.existsSync(root) &&
+				isStrictlyInside(realDataDir, fs.realpathSync(root)),
+		);
+		if (!insideRealRoot) {
+			throw new Error(
+				`[Steward] Refusing to delete ${dataDir}: symlink resolves outside the state roots`,
+			);
+		}
+	}
 	if (
 		fs.existsSync(dataDir) &&
 		!fs.existsSync(path.join(dataDir, "credentials.json")) &&
@@ -289,13 +302,13 @@ export async function resetSteward(): Promise<StewardSidecarStatus> {
 		(await getStewardSidecar()).getDataDir(),
 	);
 	const { resolveDesktopStewardStateRoot } = await loadStewardSidecarModule();
-	assertStewardDataDirDeletable(resolvedDataDir, [
-		resolveDesktopStewardStateRoot(),
-		resolveStateDir(),
-	]);
+	const allowedRoots = [resolveDesktopStewardStateRoot(), resolveStateDir()];
+	assertStewardDataDirDeletable(resolvedDataDir, allowedRoots);
 
 	await stopSteward();
 
+	// Stopping the sidecar is asynchronous; recheck the path before deletion.
+	assertStewardDataDirDeletable(resolvedDataDir, allowedRoots);
 	if (fs.existsSync(resolvedDataDir)) {
 		logger.info(`[Steward] Removing data directory: ${resolvedDataDir}`);
 		fs.rmSync(resolvedDataDir, { recursive: true, force: true });
