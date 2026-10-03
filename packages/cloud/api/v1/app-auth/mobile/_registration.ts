@@ -8,8 +8,11 @@ import {
 } from "@/lib/services/mobile-app-auth";
 import type { AppContext } from "@/types/cloud-worker-env";
 
-export async function requireRegisteredMobileApp(c: AppContext) {
-  const registration = resolveMobileAppAuthRegistration(c.env);
+export async function requireRegisteredMobileApp(
+  c: AppContext,
+  clientId: string,
+) {
+  const registration = resolveMobileAppAuthRegistration(c.env, clientId);
   const app = await appsRepository.findPublicInfoById(registration.appId);
   if (!app) {
     throw new MobileAppAuthProtocolError(

@@ -29,3 +29,8 @@ with split frames, cancellation, EOF, terminal errors, and no replay. It require
 a debug APK in a disposable secondary Android user, an inactive resident service,
 `residentStreamFixture=1`, and a UUID `residentStreamRunId`. It never starts an
 agent or contacts a model provider.
+
+The agent secure-store transport reads bounded frames without Java 9
+`InputStream.readNBytes`, retaining Android API 29 compatibility. Its frame-reader
+JVM tests cover fragmented input, truncation, zero-progress reads and failures;
+these do not replace Android socket peer-identity or Keystore qualification.

@@ -28,15 +28,18 @@ PRODUCT_PACKAGES += \
     default-permissions-ai.elizaos.app.xml \
     privapp-permissions-ai.elizaos.app.xml
 
-# KNOWN GAP: `-=` is not a make (or kati) operator — this block is currently
-# a no-op that defines a stray variable, so none of these stock apps are
-# actually removed from any image. Even a working subtraction here could not
-# remove packages contributed by inherited makefiles (inherit-product
-# aggregation is deferred past this file's evaluation). Role/HOME defaults in
-# vendor/eliza/overlays keep Eliza in front regardless; the real de-bloat
-# needs a supported mechanism and boot-level verification. Tracked as a
-# follow-up; do not trust this list as a removal contract.
-PRODUCT_PACKAGES -= \
+# KNOWN GAP: none of these stock apps are removed from any image. This list
+# was written as `PRODUCT_PACKAGES -=`, but `-=` is not a make (or kati)
+# operator: kati only defined a stray variable, and GNU make refused to parse
+# the file at all (which broke the PLATFORM_SDK_VERSION policy test that
+# evaluates this file with make). It is kept as an unread list so that stays
+# true. Even a working subtraction here could not remove packages contributed
+# by inherited makefiles (inherit-product aggregation is deferred past this
+# file's evaluation). Role/HOME defaults in vendor/eliza/overlays keep Eliza
+# in front regardless; the real de-bloat needs a supported mechanism and
+# boot-level verification. Tracked as a follow-up; do not trust this list as a
+# removal contract.
+ELIZA_UNREMOVED_STOCK_PACKAGES := \
     Browser2 \
     Calendar \
     Camera2 \

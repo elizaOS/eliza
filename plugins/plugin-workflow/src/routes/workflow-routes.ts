@@ -243,6 +243,31 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       ctx.json(ctx.res, service.phoneCatalog());
       return;
     }
+    if (ctx.method === 'POST' && path === '/phone/generate') {
+      const body = await readBody(ctx.req, 75000);
+      if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 75000)
+        throw new WorkflowApiError('Generation request is too large', 413);
+      if (
+        Object.keys(body).some(
+          (key) =>
+            ![
+              'prompt',
+              'operations',
+              'device',
+              'existing',
+              'catalogRevision',
+              'compilerRevision',
+            ].includes(key)
+        )
+      )
+        throw new WorkflowApiError('Unsupported generation field', 400);
+      const { catalogRevision, compilerRevision, ...input } = body;
+      ctx.json(
+        ctx.res,
+        await service.generatePhoneDraft(input, catalogRevision, compilerRevision, owner)
+      );
+      return;
+    }
     const typedReceipt = /^\/phone\/mutations\/([0-9a-f-]+)$/.exec(path);
     const typedEdit = /^\/workflows\/([^/]+)\/phone-spec$/.exec(path);
     const validMutation = (value: unknown): value is string =>

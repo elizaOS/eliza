@@ -31,8 +31,10 @@ app.get("/", async (c) => {
         "Invalid mobile authorization metadata request",
       );
     }
-    const { app: appRecord, registration } =
-      await requireRegisteredMobileApp(c);
+    const { app: appRecord, registration } = await requireRegisteredMobileApp(
+      c,
+      parsed.data.clientId,
+    );
     validateMobileAppAuthClientBinding(registration, parsed.data);
     return c.json({
       success: true,

@@ -177,7 +177,10 @@ export {
 export * from "./runtime/sub-planner.ts";
 export * from "./runtime/trajectory-recorder";
 export * from "./services/approval/index.ts";
-export { DeviceActionError } from "./services/device-actions/contract.ts";
+export {
+  DEVICE_VIEWS,
+  DeviceActionError,
+} from "./services/device-actions/contract.ts";
 export {
   DeviceActionService,
   type DeviceCredential,
