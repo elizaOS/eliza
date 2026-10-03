@@ -332,6 +332,8 @@ const ALLOWLIST: Record<string, string> = {
     "public read-only market data; no per-user data exposed",
   "/api/wallet/terminal/chart (wallet-terminal-chart)":
     "public read-only market data; no per-user data exposed",
+  "/api/wallet/terminal/token-safety (wallet-terminal-token-safety)":
+    "public read-only token security data; no per-user data exposed",
 
   // plugin-whatsapp — Meta requires the webhook endpoints to bypass auth.
   "/api/whatsapp/webhook (whatsapp-webhook-verify)":

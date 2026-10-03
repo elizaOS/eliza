@@ -1,0 +1,156 @@
+{
+  "_note": "GoPlus Solana token_security response for BONK recorded 2026-10-03; dex and holder rows trimmed to the fields the parser reads.",
+  "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  "goplus": {
+    "code": 1,
+    "message": "ok",
+    "result": {
+      "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263": {
+        "balance_mutable_authority": {
+          "authority": [],
+          "status": "0"
+        },
+        "closable": {
+          "authority": [],
+          "status": "0"
+        },
+        "creators": [],
+        "default_account_state": "1",
+        "default_account_state_upgradable": {
+          "authority": [],
+          "status": "0"
+        },
+        "dex": [
+          {
+            "dex_name": "orca",
+            "fee_rate": "0.0005",
+            "id": "5zpyutJu9ee6jFymDGoK7F6S5Kczqtc9FomP3ueKuyA9",
+            "tvl": "416884.72",
+            "type": "Concentrated",
+            "price": "32431849.463056003586",
+            "open_time": "0"
+          },
+          {
+            "dex_name": "raydium",
+            "fee_rate": "0.0015",
+            "id": "3UwfrdLTpAjxTRni1boc5HUWe6hzc4HgE5yLdvEp2Noc",
+            "tvl": "198017.64",
+            "type": "Concentrated",
+            "price": "0.000003678966519333354",
+            "open_time": "0"
+          }
+        ],
+        "freezable": {
+          "authority": [],
+          "status": "0"
+        },
+        "holder_count": "1024564",
+        "holders": [
+          {
+            "account": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0883",
+            "tag": ""
+          },
+          {
+            "account": "51yZyDSnec4xnUv7XLRVYcDyV4x3wUtzrDcRaYbmQU5j",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0679",
+            "tag": ""
+          },
+          {
+            "account": "4xLpwxgYuPwPvtQjE94RLS4WZ4aD8NJYYKr2AJk99Qdg",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0334",
+            "tag": ""
+          },
+          {
+            "account": "CK8i4zFXkDE2KWfyg7g9S748r6mwxajbcKcyGhQMR3qQ",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0313",
+            "tag": ""
+          },
+          {
+            "account": "9RpzaFh4J8F6Qg1gjnhrhSp9eXdVDjsesZXe53qp7ubB",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0306",
+            "tag": ""
+          },
+          {
+            "account": "EbLm4ZtRqDftrQnZaMMvnwcKjK5ef5vm1Hg3sAPv3tKi",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0304",
+            "tag": ""
+          },
+          {
+            "account": "8Mm46CsqxiyAputDUp2cXHg41HE3BfynTeMBDwzrMZQH",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0284",
+            "tag": ""
+          },
+          {
+            "account": "DDrxSAP14UxBJ9Xz2EaqM9WSTuavX6SuBNtsDpiVhGr6",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0252",
+            "tag": ""
+          },
+          {
+            "account": "1tjoQzWg21ceMAhyLVs4s2Zc1Pm27mLTcJ9EfEFu7km",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0245",
+            "tag": ""
+          },
+          {
+            "account": "3B7XAQrLoEMDEGvX8569F9GRb9PcXXocJmj5wvhhei9z",
+            "is_locked": 0,
+            "locked_detail": [],
+            "percent": "0.0241",
+            "tag": ""
+          }
+        ],
+        "lp_holders": [],
+        "metadata": {
+          "description": "The Official Bonk Inu token",
+          "name": "Bonk",
+          "symbol": "Bonk",
+          "uri": "https://arweave.net/QPC6FYdUn-3V8ytFNuoCS85S2tHAuiDblh6u3CIZLsw"
+        },
+        "metadata_mutable": {
+          "metadata_upgrade_authority": [
+            {
+              "address": "9AhKqLR67hwapvG8SA2JFXaCshXc9nALJjpKaHZrsbkw",
+              "malicious_address": 0
+            }
+          ],
+          "status": "1"
+        },
+        "mintable": {
+          "authority": [],
+          "status": "0"
+        },
+        "non_transferable": "0",
+        "total_supply": "87994373222212.01557",
+        "transfer_fee": {},
+        "transfer_fee_upgradable": {
+          "authority": [],
+          "status": "0"
+        },
+        "transfer_hook": [],
+        "transfer_hook_upgradable": {
+          "authority": [],
+          "status": "0"
+        },
+        "trusted_token": 0
+      }
+    }
+  }
+}

@@ -2,8 +2,9 @@
  * Transport-level DTO types shared between the wallet HTTP routes and their
  * consumers: export request/rejection shapes, the market-overview response
  * (price snapshots, movers, Polymarket predictions) served by
- * `wallet-market-overview-route.ts`, and the read-only crypto terminal market
- * list and price history served by `wallet-terminal-market-route.ts`.
+ * `wallet-market-overview-route.ts`, the read-only crypto terminal market
+ * list and price history served by `wallet-terminal-market-route.ts`, and the
+ * Solana token safety report served by `wallet-terminal-token-safety-route.ts`.
  */
 export interface WalletExportRequestBody {
   confirm?: boolean;
@@ -107,4 +108,50 @@ export interface WalletTerminalChartResponse {
   stale: boolean;
   source: WalletMarketOverviewSource;
   points: WalletTerminalChartPoint[];
+}
+
+/** Where a token safety report came from and whether it is current. */
+export interface WalletTokenSafetySource {
+  providerId: "goplus";
+  providerName: string;
+  providerUrl: string;
+  available: boolean;
+  stale: boolean;
+  error: string | null;
+}
+
+/**
+ * One check's outcome. `danger` is a power that can take or lock holder funds,
+ * `warn` is a risk worth weighing, `unknown` means the provider did not report
+ * the field, and `ok` means the provider reported it as absent.
+ */
+export type WalletTokenSafetySeverity = "danger" | "warn" | "unknown" | "ok";
+
+/** Overall reading: any danger → avoid; any warn or unknown → caution. */
+export type WalletTokenSafetyVerdict = "avoid" | "caution" | "no-major-flags";
+
+export interface WalletTokenSafetyCheck {
+  id: string;
+  label: string;
+  severity: WalletTokenSafetySeverity;
+  detail: string;
+}
+
+/** Response from GET /api/wallet/terminal/token-safety. */
+export interface WalletTerminalTokenSafetyResponse {
+  mint: string;
+  name: string | null;
+  symbol: string | null;
+  generatedAt: string;
+  stale: boolean;
+  source: WalletTokenSafetySource;
+  verdict: WalletTokenSafetyVerdict;
+  checks: WalletTokenSafetyCheck[];
+  holderCount: number | null;
+  /** Share of supply held by the ten largest holders, as a percentage. */
+  top10HolderPct: number | null;
+  /** Sum of reported pool TVL across DEXes, in USD. */
+  liquidityUsd: number | null;
+  /** GoPlus marks a small set of well-known tokens as trusted. */
+  trustedToken: boolean;
 }

@@ -19,6 +19,7 @@ Adds a unified wallet action+provider surface to an Eliza agent, replacing the p
 | `WALLET` | `pump_fun_buy` | Buy a pump.fun token on Solana via PumpPortal trade-local, local signing, browser coin-page open, and Solana RPC submission. |
 | `WALLET` | `token_info` | Read-only token/market data (DexScreener, Birdeye, CoinGecko). |
 | `WALLET` | `search_address` | Birdeye wallet/portfolio lookup by address. |
+| `WALLET` | `token_safety` | Read-only GoPlus rug-risk check of one Solana mint (authorities, Token-2022 extensions, holder concentration, liquidity) with an avoid/caution/no-major-flags verdict. |
 | `TRADE` | `inspect_account`, `inspect_session`, `submit_order` | Governed Steward trading account/session inspection and confirmed order intent for Hyperliquid and Polymarket. |
 
 Similes handled: `SWAP`, `SWAP_SOLANA`, `TRANSFER`, `TRANSFER_TOKEN`, `WALLET_SWAP`, `WALLET_TRANSFER`, `CROSS_CHAIN_TRANSFER`, `PREPARE_TRANSFER`, `WALLET_ACTION`, `WALLET_GOV`, `PUMP_FUN_BUY`, `PUMPFUN_BUY`, `TOKEN_INFO`, `BIRDEYE_LOOKUP`, `BIRDEYE_SEARCH`, `WALLET_SEARCH_ADDRESS`.
@@ -111,6 +112,8 @@ plugins/plugin-wallet/
       birdeye/                 BirdeyeService, market/trending/portfolio providers
       dexscreener/             DexScreenerService
       token-info/              TokenInfoService (multi-provider dispatcher)
+      goplus/                  GoPlus Solana token security client + WALLET token_safety handler
+                               (shared with the terminal's token safety route)
       lpinfo/                  kaminoPlugin, lpinfoPlugin, steerPlugin re-exports
       news/                    defiNewsPlugin, NewsDataService
     lp/
@@ -134,6 +137,8 @@ plugins/plugin-wallet/
       plugin.ts                Additional plugin route exports
       wallet-terminal-market-route.ts  Public read-only CoinGecko market list and
                                price history for the crypto terminal
+      wallet-terminal-token-safety-route.ts  Public read-only GoPlus Solana token
+                               safety report (checks + avoid/caution verdict)
     types/
       wallet-router.ts         WalletRouterParams, WalletRouterResult, WalletChainHandler interface
     register.ts                Renderer boot side-effect entry (elizaos.appRegister:"register");
@@ -148,8 +153,10 @@ plugins/plugin-wallet/
                                registerBuiltinWidgets (must run once at boot)
       InventoryView.tsx        GUI wallet view (Escape wrapper around InventoryAppView)
       CryptoTerminalView.tsx   /crypto terminal: live markets, watchlist, charts, paper
-                               orders, paper portfolio, and the wallet dashboard tab
-      terminal/                Paper ledger (pure), terminal data hooks, price chart
+                               orders, paper portfolio, price alerts, token safety,
+                               HUNT/SLEEP/OFF mode, and the wallet dashboard tab
+      terminal/                Paper ledger, operating mode, and price alerts (pure),
+                               terminal data hooks, price chart
       InventoryView.interact.ts  `interact` view capability handler
       wallet-view-bundle.ts    Entry for the standalone Vite view bundle (dist/views/bundle.js)
       components/              InventoryAppView DOM dashboard
@@ -243,7 +250,7 @@ Extend `src/analytics/birdeye/service.ts`. The service proxies all calls through
 - **Auto-enable.** `auto-enable.ts` must remain a lightweight env-read module with no transitive plugin imports. The auto-enable engine loads it on every agent boot.
 - **UI surface is subpath-only.** The package root (`.`) is the server barrel and must never import `src/ui/**`. Hosts import `@elizaos/plugin-wallet/ui` (components/barrel) or rely on the manifest-driven renderer boot (`elizaos.appRegister: "register"` → `src/register.ts`). `src/ui/register-routes.ts` must execute exactly once; duplicate imports create duplicate shell pages.
 - **`walletAppPlugin` naming.** The UI descriptor is named `@elizaos/plugin-wallet:ui` with `packageName: "@elizaos/plugin-wallet"` so the views registry resolves the package dir while the app-route loader id stays distinct from the runtime `wallet` plugin. `normalizeAppRoutePluginId` strips `:ui`, so `ELIZA_SKIP_APP_ROUTE_PLUGINS=wallet` skips it.
-- **Crypto terminal is paper-only.** `CryptoTerminalView` prices orders from the live `/api/wallet/terminal/*` routes but applies them only to the local `terminal/paper-ledger.ts` state persisted under `eliza:wallet:paper-terminal:v1`. It must never sign, call `WalletBackend`, or route through the `WALLET`/`TRADE` actions; real execution belongs behind the financial confirmation gate.
+- **Crypto terminal is paper-only.** `CryptoTerminalView` prices orders from the live `/api/wallet/terminal/*` routes but applies them only to the local `terminal/paper-ledger.ts` state persisted under `eliza:wallet:paper-terminal:v1`. It must never sign, call `WalletBackend`, or route through the `WALLET`/`TRADE` actions; real execution belongs behind the financial confirmation gate. Its HUNT / SLEEP / OFF mode (`terminal/operating-mode.ts`, default SLEEP, persisted under `eliza:wallet:terminal-mode:v1`) changes only after a confirm dialog and records each change; OFF must make no automatic market request, and HUNT's scout only ranks movers for review. Price alerts (`terminal/price-alerts.ts`, persisted under `eliza:wallet:terminal-alerts:v1`) are one-shot in-terminal notices checked against live prices in HUNT and SLEEP and paused in OFF. No mode or alert may place, sign, or submit an order.
 - **View bundle.** `dist/views/bundle.js` is built by `vite.config.views.ts` (entry `src/ui/wallet-view-bundle.ts`, export `InventoryView`), not by the Node build. Both must run for a complete dist.
 
 ## Verification
