@@ -219,6 +219,11 @@ function isPublicOutOfBandTokenPath(pathname: string, method = "GET"): boolean {
 }
 
 export function isPublicPath(pathname: string, method = "GET"): boolean {
+  // This leaf proves the exact presented secret against primary storage,
+  // including a tombstone after a lost response. Global active-key auth would
+  // prevent that retry. No neighboring method or key-management route bypasses it.
+  if (method === "DELETE" && /^\/api\/v1\/api-keys\/current\/?$/.test(pathname))
+    return true;
   // Local Docker's loopback browser relay is public because its one-time token
   // and loopback Origin are both checked by the route. Remote managed pairing
   // terminates on the agent-subdomain edge. Native pairing is a distinct

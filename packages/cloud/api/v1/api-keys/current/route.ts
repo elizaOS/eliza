@@ -1,10 +1,11 @@
 /**
- * Revokes only the first-party mobile credential authenticating this request.
+ * Revokes only the credential proven by the secret in this request.
  * The presented mobile-prefixed secret and authenticated database row must
  * agree on one exact identity; a response-loss retry can recover only that
  * credential's durable tombstone.
  */
 import { Hono } from "hono";
+import { authEvents } from "@/db/schemas/auth-events";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import {
   ApiError,
@@ -63,6 +64,24 @@ async function emitSelfRevocationAudit(
 
 app.delete("/", async (c) => {
   try {
+    const standardSecret = readSinglePresentedApiKey(c);
+    if (standardSecret && /^eliza_[0-9a-f]{64}$/.test(standardSecret)) {
+      const result = await apiKeysService.revokePresentedStandardCredential(
+        standardSecret,
+        async (tx, result) => {
+          await tx.insert(authEvents).values({
+            event_id: crypto.randomUUID(), ts: new Date(), actor_type: "user",
+            actor_id: result.userId, action: "api_key.revoke", result: "success",
+            resource_type: "api_key", resource_id: result.receipt.credentialId,
+            org_id: result.organizationId, request_id: c.get("requestId"),
+            metadata: {key_id: result.receipt.credentialId, reason: "credential_self_revoke"},
+          });
+        },
+      );
+      if (!result)
+        throw AuthenticationError("API key identity could not be proven");
+      return c.json({ success: true, ...result.receipt });
+    }
     let credential: Awaited<ReturnType<typeof requireApiKeyCredential>>;
     try {
       credential = await requireApiKeyCredential(c);
