@@ -107,6 +107,9 @@ jobs:
             -config-file .github/actionlint.yaml \
             "${workflows[@]}"
 
+      - name: Verify OSWorld uses configured authentication
+        run: python3 -m unittest discover -s packages/benchmarks/suites/OSWorld/tests -p test_vllm_auth.py -v
+
       - uses: ./.github/actions/setup-bun-workspace
         with:
           publish-bun-install-cache: "true"
