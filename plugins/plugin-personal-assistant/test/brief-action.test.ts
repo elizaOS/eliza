@@ -860,6 +860,77 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("narrative compose pass", () => {
+    it("retains healthy persisted items when the canonical owner-zone read fails before narrative generation", async () => {
+      const db = await PGlite.create();
+      const reportError = vi.fn();
+      const useModel = vi.fn(async () => "Must not guess the owner's timezone");
+      const runtime = makeRuntime({ reportError, useModel });
+      runtime.getSetting = (key) => (key === "TIMEZONE" ? "UTC" : undefined);
+      registerCalendarTimeZoneResolver(runtime, async () => {
+        const result = await db.query<{ timezone: string }>(
+          "SELECT timezone FROM missing_owner_facts",
+        );
+        return result.rows[0]?.timezone ?? null;
+      });
+      await db.exec(`CREATE TABLE healthy_life_items (id text, title text, due_at text);
+        INSERT INTO healthy_life_items VALUES ('kept-life', 'Persisted healthy item', '2026-10-03T01:00:00.000Z');`);
+      setBriefComposers({
+        loadLife: async () =>
+          (
+            await db.query<{ id: string; title: string; due_at: string }>(
+              "SELECT * FROM healthy_life_items",
+            )
+          ).rows.map((item) => ({
+            id: item.id,
+            title: item.title,
+            kind: "todo" as const,
+            dueAt: item.due_at,
+          })),
+      });
+      try {
+        const result = await callBrief(runtime, makeMessage(), {
+          action: "compose_morning",
+          format: "narrative",
+          include: {
+            calendar: true,
+            inbox: false,
+            life: true,
+            commitments: false,
+          },
+        });
+        expect(result.success).toBe(true);
+        const briefing = result.data?.briefing as {
+          sections: {
+            life: Array<{ id: string; title: string; dueAt: string }>;
+          };
+          sourceErrors: { calendar: string };
+          narrative?: string;
+        };
+        expect(briefing.sections.life).toEqual([
+          {
+            id: "kept-life",
+            title: "Persisted healthy item",
+            kind: "todo",
+            dueAt: "2026-10-03T01:00:00.000Z",
+          },
+        ]);
+        expect(briefing.sourceErrors).toEqual({ calendar: "unavailable" });
+        expect(briefing.narrative).toBeUndefined();
+        expect(useModel).not.toHaveBeenCalled();
+        expect(reportError).toHaveBeenCalledWith(
+          "Brief.loadCalendar",
+          expect.objectContaining({
+            code: "CALENDAR_TIME_ZONE_UNAVAILABLE",
+            cause: expect.objectContaining({ code: "42P01" }),
+          }),
+          { source: "calendar" },
+        );
+        expect(result.text).not.toContain("missing_owner_facts");
+      } finally {
+        await db.close();
+      }
+    });
+
     it("degrades to a narrative-less structured briefing when the model call throws", async () => {
       const useModel = vi.fn(async (): Promise<string> => {
         throw new Error("model unavailable");

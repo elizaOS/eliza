@@ -712,23 +712,6 @@ async function composeNarrative(args: {
   if (typeof args.runtime.useModel !== "function") {
     return undefined;
   }
-  const prompt = buildNarrativePrompt({
-    kind: args.kind,
-    period: args.period,
-    sections: args.sections,
-    sourceErrors: args.sourceErrors,
-    ...(args.sections.calendar?.length ||
-    args.sections.life?.some((item) => item.dueAt) ||
-    args.sections.commitments?.some((item) => item.dueAt)
-      ? {
-          timeZone: (await resolveCalendarTimeZone(args.runtime, new Date()))
-            .timeZone,
-        }
-      : {}),
-    editorial: args.editorial,
-    runtime: args.runtime,
-    optimizationTask: args.optimizationTask,
-  });
   // Tag the trajectory with the exact LifeOps prompt task resolved above so the
   // call buckets into its per-capability dataset for the GEPA loop (#8795).
   // A failed compose pass degrades to a narrative-less structured briefing —
@@ -736,6 +719,23 @@ async function composeNarrative(args: {
   // which all fall back to a safe default rather than propagating the error.
   let raw: unknown;
   try {
+    const prompt = buildNarrativePrompt({
+      kind: args.kind,
+      period: args.period,
+      sections: args.sections,
+      sourceErrors: args.sourceErrors,
+      ...(args.sections.calendar?.length ||
+      args.sections.life?.some((item) => item.dueAt) ||
+      args.sections.commitments?.some((item) => item.dueAt)
+        ? {
+            timeZone: (await resolveCalendarTimeZone(args.runtime, new Date()))
+              .timeZone,
+          }
+        : {}),
+      editorial: args.editorial,
+      runtime: args.runtime,
+      optimizationTask: args.optimizationTask,
+    });
     raw = await runWithTrajectoryPurpose(args.optimizationTask, async () => {
       const active = getTrajectoryContext();
       const response = await args.runtime.useModel(ModelType.TEXT_LARGE, {
@@ -750,7 +750,7 @@ async function composeNarrative(args: {
         task: args.optimizationTask,
         error: error instanceof Error ? error.message : String(error),
       },
-      "[BRIEF] narrative compose model call failed; returning structured briefing without a narrative",
+      "[BRIEF] narrative compose failed; returning structured briefing without a narrative",
     );
     return undefined;
   }

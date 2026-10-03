@@ -80,7 +80,10 @@ import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
-import { resolveDefaultTimeZone } from "../defaults.js";
+import {
+  resolveConfiguredTimeZone,
+  resolveDefaultTimeZone,
+} from "../defaults.js";
 import { FAMILY_BACKUP_CLEANUP_OPERATION } from "../family-workflows/backup-cleanup-schedule.js";
 import {
   FAMILY_MONTHLY_SYSTEM_OPERATION,
@@ -587,7 +590,7 @@ export async function composeOwnerFacingScheduledTaskText(
     );
     const { LifeOpsService } = await import("../service.js");
     const assembled = await assembleMorningBrief(runtime, {
-      timezone: facts.timezone ?? resolveDefaultTimeZone(),
+      timezone: facts.timezone ?? resolveConfiguredTimeZone(runtime),
       now,
       sources: new LifeOpsService(runtime),
     });

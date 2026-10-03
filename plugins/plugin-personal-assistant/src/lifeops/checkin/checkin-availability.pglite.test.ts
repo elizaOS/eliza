@@ -68,14 +68,23 @@ describe("check-in source availability and generation failures", () => {
     vi.unstubAllEnvs();
   });
 
-  it("composes the scheduled morning brief from the existing inbox adapter and owner-local calendar day", async () => {
-    vi.stubEnv("TZ", "UTC");
-    const now = new Date("2026-10-02T18:30:00.000Z");
-    await resolveOwnerFactStore(runtime).update(
-      { timezone: "America/Los_Angeles" },
-      { source: "first_run", recordedAt: now.toISOString() },
-    );
-    await db.exec(`CREATE SCHEMA app_calendar;
+  it.each([
+    { ownerTimezone: "America/Los_Angeles", configuredTimezone: "Asia/Tokyo" },
+    { ownerTimezone: undefined, configuredTimezone: "America/Los_Angeles" },
+  ])(
+    "composes the scheduled brief with owner zone $ownerTimezone before configured zone $configuredTimezone",
+    async ({ ownerTimezone, configuredTimezone }) => {
+      vi.stubEnv("TZ", "UTC");
+      const now = new Date("2026-10-02T18:30:00.000Z");
+      runtime.getSetting = (key) =>
+        key === "TIMEZONE" ? configuredTimezone : undefined;
+      if (ownerTimezone) {
+        await resolveOwnerFactStore(runtime).update(
+          { timezone: ownerTimezone },
+          { source: "first_run", recordedAt: now.toISOString() },
+        );
+      }
+      await db.exec(`CREATE SCHEMA app_calendar;
       CREATE TABLE app_calendar.life_calendar_events (
         id text, agent_id text, title text, start_at text, end_at text,
         status text, html_link text, updated_at text
@@ -92,52 +101,55 @@ describe("check-in source availability and generation failures", () => {
         sender_id text, sender_display text, snippet text, received_at text,
         is_unread boolean, source_ref_json jsonb, cached_at text, updated_at text
       );`);
-    const cachedAt = new Date().toISOString();
-    await db.query(
-      `INSERT INTO app_lifeops.life_inbox_messages VALUES
+      const cachedAt = new Date().toISOString();
+      await db.query(
+        `INSERT INTO app_lifeops.life_inbox_messages VALUES
         ('inbox-proof', 'checkin-availability', 'telegram', 'source-proof',
          'sender-proof', 'Source sender', 'Existing inbox adapter proof', $1,
          true, '{"channel":"telegram","externalId":"source-proof"}', $1, $1)`,
-      [cachedAt],
-    );
-    modelResponse = "Owner-local meeting and the existing inbox item.";
-    const summary = await composeOwnerFacingScheduledTaskText(runtime, {
-      taskId: "managed-brief",
-      kind: "watcher",
-      firedAtIso: now.toISOString(),
-      channelKey: "in_app",
-      intensity: "normal",
-      promptInstructions: "Assemble the managed morning brief.",
-      ownerVisible: true,
-      metadata: { delegatesAssemblyTo: "lifeops:checkin:morning" },
-    });
+        [cachedAt],
+      );
+      modelResponse = "Owner-local meeting and the existing inbox item.";
+      const summary = await composeOwnerFacingScheduledTaskText(runtime, {
+        taskId: "managed-brief",
+        kind: "watcher",
+        firedAtIso: now.toISOString(),
+        channelKey: "in_app",
+        intensity: "normal",
+        promptInstructions: "Assemble the managed morning brief.",
+        ownerVisible: true,
+        metadata: { delegatesAssemblyTo: "lifeops:checkin:morning" },
+      });
 
-    expect(summary).toBe(modelResponse);
-    expect(prompts).toHaveLength(1);
-    const payload = JSON.parse(
-      prompts[0].split("Report JSON:\n")[1].split("\n\nSummary:")[0],
-    );
-    expect(
-      payload.todaysMeetings.map((meeting: { title: string }) => meeting.title),
-    ).toEqual(["Owner-zone meeting"]);
-    const inbox = payload.briefingSections.find(
-      (section: { key: string }) => section.key === "inbox",
-    );
-    expect(inbox.error).toBeNull();
-    expect(JSON.stringify(inbox.items)).toContain(
-      "Existing inbox adapter proof",
-    );
-    expect(
-      payload.briefingSections.find(
-        (section: { key: string }) => section.key === "gmail",
-      ).error,
-    ).toEqual(expect.any(String));
-    const stored = await db.query<{ payload_json: { summaryText: string } }>(
-      "SELECT payload_json FROM app_lifeops.life_checkin_reports",
-    );
-    expect(stored.rows).toHaveLength(1);
-    expect(stored.rows[0].payload_json.summaryText).toBe(summary);
-  });
+      expect(summary).toBe(modelResponse);
+      expect(prompts).toHaveLength(1);
+      const payload = JSON.parse(
+        prompts[0].split("Report JSON:\n")[1].split("\n\nSummary:")[0],
+      );
+      expect(
+        payload.todaysMeetings.map(
+          (meeting: { title: string }) => meeting.title,
+        ),
+      ).toEqual(["Owner-zone meeting"]);
+      const inbox = payload.briefingSections.find(
+        (section: { key: string }) => section.key === "inbox",
+      );
+      expect(inbox.error).toBeNull();
+      expect(JSON.stringify(inbox.items)).toContain(
+        "Existing inbox adapter proof",
+      );
+      expect(
+        payload.briefingSections.find(
+          (section: { key: string }) => section.key === "gmail",
+        ).error,
+      ).toEqual(expect.any(String));
+      const stored = await db.query<{ payload_json: { summaryText: string } }>(
+        "SELECT payload_json FROM app_lifeops.life_checkin_reports",
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0].payload_json.summaryText).toBe(summary);
+    },
+  );
 
   it.each([
     [
