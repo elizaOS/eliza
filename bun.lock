@@ -1495,6 +1495,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@electric-sql/pglite": "^0.4.0",
         "@biomejs/biome": "2.5.14",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
