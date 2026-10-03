@@ -23,6 +23,7 @@ import {
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
+  type Memory,
   ModelType,
   parseJsonModelRecord,
   type ReminderPresentation,
@@ -1406,6 +1407,8 @@ export class RemindersDomain {
       classifierSource: "none",
       semanticReason: null,
     } satisfies ReminderReviewResponseEvidence;
+    // A closed observation remains evidence; never rejudge or rewrite it.
+    if (isReminderReviewClosed(args.attempt)) return noResponse;
     if (
       args.subjectType !== "owner" ||
       typeof this.ctx.runtime.getRoomsForParticipants !== "function" ||
@@ -1438,6 +1441,51 @@ export class RemindersDomain {
         return noResponse;
       }
       const nowMs = args.now.getTime();
+      const metadata = args.attempt.deliveryMetadata;
+      const observedAt = metadata[REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY];
+      const observedMs =
+        typeof observedAt === "string" ? Date.parse(observedAt) : Number.NaN;
+      const observedDecision = metadata[REMINDER_REVIEW_DECISION_METADATA_KEY];
+      const cachedObservation: ReminderReviewResponseEvidence | null =
+        Number.isFinite(observedMs) &&
+        (observedDecision === "unrelated" ||
+          observedDecision === "needs_clarification")
+          ? {
+              decision: observedDecision,
+              resolution: null,
+              snoozeRequest: null,
+              respondedAt: observedAt as string,
+              responseText:
+                typeof metadata[REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY] ===
+                "string"
+                  ? (metadata[
+                      REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY
+                    ] as string)
+                  : null,
+              confidence:
+                typeof metadata.reviewConfidence === "number"
+                  ? metadata.reviewConfidence
+                  : 0,
+              reason:
+                typeof metadata.reviewReason === "string"
+                  ? metadata.reviewReason
+                  : "observed_owner_response",
+              classifierSource: metadata[
+                REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY
+              ] as ReminderReviewResponseEvidence["classifierSource"],
+              semanticReason:
+                typeof metadata[
+                  REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY
+                ] === "string"
+                  ? (metadata[
+                      REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY
+                    ] as string)
+                  : null,
+            }
+          : null;
+      const memoriesById = new Map(
+        memories.map((memory) => [memory.id, memory]),
+      );
       const ownerResponses = memories
         .filter((memory) => memory.entityId === ownerEntityId)
         .map((memory) => {
@@ -1448,12 +1496,25 @@ export class RemindersDomain {
               : "";
           const roomId =
             typeof memory.roomId === "string" ? memory.roomId : null;
-          return { createdAt, roomId, text };
+          return {
+            memoryId: memory.id ?? null,
+            inReplyTo:
+              typeof memory.content.inReplyTo === "string"
+                ? memory.content.inReplyTo
+                : null,
+            metadata: isRecord(memory.content.metadata)
+              ? memory.content.metadata
+              : null,
+            createdAt,
+            roomId,
+            text,
+          };
         })
         .filter(
           (response): response is typeof response & { createdAt: number } =>
             response.createdAt !== null &&
             response.createdAt > attemptedMs &&
+            (!cachedObservation || response.createdAt > observedMs) &&
             response.createdAt <= nowMs &&
             response.text.length > 0,
         )
@@ -1471,7 +1532,7 @@ export class RemindersDomain {
           return l - r;
         });
       if (ownerResponses.length === 0) {
-        return noResponse;
+        return cachedObservation ?? noResponse;
       }
       const title =
         typeof args.attempt.deliveryMetadata.title === "string"
@@ -1483,6 +1544,30 @@ export class RemindersDomain {
           : [args.attempt];
       let latestUnrelated: ReminderReviewResponseEvidence | null = null;
       for (const response of ownerResponses) {
+        const source = response.inReplyTo
+          ? memoriesById.get(response.inReplyTo as Memory["id"])
+          : null;
+        const reference =
+          source && isRecord(source.content.metadata)
+            ? source.content.metadata
+            : null;
+        const skipReason =
+          response.metadata &&
+          Object.hasOwn(response.metadata, "reminderChoiceId")
+            ? "typed_reply_owned_by_action_pipeline"
+            : source?.entityId === agentId &&
+                source.agentId === agentId &&
+                source.roomId === response.roomId &&
+                source.content.source === "reminder" &&
+                reference &&
+                ["occurrence", "calendar_event"].includes(
+                  String(reference.ownerType),
+                ) &&
+                typeof reference.ownerId === "string" &&
+                (reference.ownerType !== args.attempt.ownerType ||
+                  reference.ownerId !== args.attempt.ownerId)
+              ? "reply_targets_other_reminder"
+              : null;
         const responseClaim = buildReminderResponseClaim({
           attempt: args.attempt,
           competingAttempts,
@@ -1490,21 +1575,34 @@ export class RemindersDomain {
             text: response.text,
             createdAt: response.createdAt,
             roomId: response.roomId,
+            memoryId: response.memoryId,
           },
           roomIds,
         });
-        const classification = await classifyReminderOwnerResponse({
-          text: response.text,
-          context: {
-            title,
-            attemptedAt,
-            respondedAt: response.createdAt,
-            channel: args.attempt.channel,
-            allowStandaloneResolution: responseClaim.allowStandaloneResolution,
-          },
-          semanticClassifier: (input) =>
-            this.classifyReminderOwnerResponseSemantically(input),
-        });
+        const classification: Awaited<
+          ReturnType<typeof classifyReminderOwnerResponse>
+        > = skipReason
+          ? {
+              decision: "unrelated",
+              resolution: null,
+              snoozeRequest: null,
+              confidence: 1,
+              reason: skipReason,
+              classifierSource: "deterministic",
+            }
+          : await classifyReminderOwnerResponse({
+              text: response.text,
+              context: {
+                title,
+                attemptedAt,
+                respondedAt: response.createdAt,
+                channel: args.attempt.channel,
+                allowStandaloneResolution:
+                  responseClaim.allowStandaloneResolution,
+              },
+              semanticClassifier: (input) =>
+                this.classifyReminderOwnerResponseSemantically(input),
+            });
         if (classification.decision === "explicit_resolution") {
           return {
             decision: "explicit_resolution",
@@ -1518,21 +1616,12 @@ export class RemindersDomain {
             semanticReason: classification.semanticReason ?? null,
           };
         }
-        if (classification.decision === "needs_clarification") {
-          return {
-            decision: "needs_clarification",
-            resolution: null,
-            snoozeRequest: null,
-            respondedAt: new Date(response.createdAt).toISOString(),
-            responseText: response.text,
-            confidence: classification.confidence,
-            reason: classification.reason,
-            classifierSource: classification.classifierSource,
-            semanticReason: classification.semanticReason ?? null,
-          };
-        }
-        latestUnrelated = {
-          decision: "unrelated",
+        const observation = {
+          ...classification,
+          decision:
+            classification.decision === "needs_clarification"
+              ? "needs_clarification"
+              : "unrelated",
           resolution: null,
           snoozeRequest: null,
           respondedAt: new Date(response.createdAt).toISOString(),
@@ -1541,7 +1630,15 @@ export class RemindersDomain {
           reason: classification.reason,
           classifierSource: classification.classifierSource,
           semanticReason: classification.semanticReason ?? null,
-        };
+        } satisfies ReminderReviewResponseEvidence;
+        // Consume non-resolving evidence even when the caller has no due review
+        // transition; the existing observed timestamp survives service restart.
+        await this.markReminderReviewObservedResponse({
+          ...observation,
+          attempt: args.attempt,
+        });
+        if (observation.decision === "needs_clarification") return observation;
+        latestUnrelated = observation;
       }
       return (
         latestUnrelated ?? {
@@ -3615,6 +3712,7 @@ export class RemindersDomain {
     reason: string;
     classifierSource?: string | null;
     semanticReason?: string | null;
+    confidence?: number;
   }): Promise<void> {
     const reviewMetadata = {
       [REMINDER_REVIEW_STATUS_METADATA_KEY]: args.decision,
@@ -3622,6 +3720,9 @@ export class RemindersDomain {
       [REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY]: args.respondedAt,
       [REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY]: args.responseText,
       reviewReason: args.reason,
+      ...(args.confidence !== undefined
+        ? { reviewConfidence: args.confidence }
+        : {}),
       [REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY]:
         args.classifierSource ?? null,
       [REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY]:
