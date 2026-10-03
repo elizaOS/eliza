@@ -1,4 +1,5 @@
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
+import { workerTermination } from './workflow-worker-termination';
 /**
  * Executes persisted Smithers workflow modules in an isolated Bun child process
  * and streams native Smithers progress events back to the owning elizaOS
@@ -657,6 +658,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   );
 
   const timeoutMs = resolveSmithersTimeoutMs(request.timeoutMs);
+  const workerStartedAt = Date.now();
   const worker = spawn(command.executable, command.args, {
     cwd: command.cwd,
     // Windows workers must survive abrupt parent loss; retain the pipes below for RPC.
@@ -896,9 +898,11 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
 
   const outcome = await new Promise<{
     exitCode: number | null;
+    exitSignal: NodeJS.Signals | null;
     processError?: { error: Error; phase: 'spawn' | 'runtime' };
   }>((resolve) => {
     let settled = false;
+    let exitSignal: NodeJS.Signals | null = null;
     let spawnObserved = false;
     let processError: { error: Error; phase: 'spawn' | 'runtime' } | undefined;
     let drainTimer: NodeJS.Timeout | undefined;
@@ -906,7 +910,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       if (settled) return;
       settled = true;
       if (drainTimer) clearTimeout(drainTimer);
-      resolve({ exitCode, ...(processError ? { processError } : {}) });
+      resolve({ exitCode, exitSignal, ...(processError ? { processError } : {}) });
     };
     const armDrainFallback = (exitCode: number | null): void => {
       if (settled || drainTimer) return;
@@ -922,7 +926,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       processError = { error, phase };
       armDrainFallback(null);
     });
-    worker.once('exit', (code) => {
+    worker.once('exit', (code, signal) => {
+      exitSignal = signal;
       processExited = true;
       // Exit can precede pipe EOF. Drain the remaining bytes even while an
       // earlier event awaits delivery; its queued protocol work stays ordered.
@@ -930,7 +935,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       protocolController.abort('exit');
       armDrainFallback(code);
     });
-    worker.once('close', (code) => {
+    worker.once('close', (code, signal) => {
+      if (signal) exitSignal = signal;
       protocolController.abort('close');
       settle(code);
     });
@@ -1057,6 +1063,11 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       code: 'SMTHRS_RESULT_MISSING',
       context: {
         exitCode: outcome.exitCode,
+        workerTermination: workerTermination(outcome.exitCode, outcome.exitSignal, {
+          pid: worker.pid,
+          uid: typeof process.getuid === 'function' ? process.getuid() : undefined,
+          startedAt: workerStartedAt,
+        }),
         workflowId: request.workflow.id,
       },
     });
