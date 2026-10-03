@@ -252,6 +252,17 @@ describe("experiencePatternEvaluator", () => {
   describe.each([false, true])(
     "action evidence (incremental=%s)",
     (incremental) => {
+      // The captured successful reminder result carried this static character
+      // sentence inside deferred reply metadata. Its word "verified" is not
+      // an operational validation event.
+      const replyGrounding = JSON.stringify({
+        domain: "lifeops",
+        scenario: "saved_definition",
+        characterVoice: JSON.stringify({
+          system:
+            "Distinguish known facts, inference and verified results; admit uncertainty and never invent memory, capability or completed work.",
+        }),
+      });
       it.each([
         { result: { success: true }, admitted: false },
         {
@@ -264,6 +275,44 @@ describe("experiencePatternEvaluator", () => {
           admitted: false,
         },
         { result: { success: false }, admitted: true },
+        {
+          result: { success: true, data: { replyGrounding } },
+          admitted: false,
+        },
+        {
+          result: { success: true, promptData: { replyGrounding } },
+          admitted: false,
+        },
+        {
+          result: {
+            success: true,
+            data: { replyGrounding },
+            promptData: { replyGrounding },
+            text: "Delivery verified after correcting the channel.",
+          },
+          admitted: true,
+        },
+        {
+          result: { success: false, data: { replyGrounding } },
+          admitted: true,
+        },
+        {
+          result: {
+            success: true,
+            data: {
+              audit: { replyGrounding: "Unexpected operation failure." },
+            },
+          },
+          admitted: true,
+        },
+        {
+          result: {
+            success: true,
+            data: { replyGrounding: { error: "Presentation failure." } },
+          },
+          admitted: true,
+        },
+        { result: new Error("Delivery timeout"), admitted: true },
         { result: { error: "Permission denied" }, admitted: true },
         {
           result: { success: true, data: { attempts: [{ success: false }] } },

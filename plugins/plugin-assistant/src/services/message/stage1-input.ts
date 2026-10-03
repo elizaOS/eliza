@@ -5,6 +5,7 @@ import {
   type ChatMessage,
   type ContextDefinition,
   type ContextObject,
+  compactHistoricalReceiptSegments,
   HANDLE_RESPONSE_TOOL_NAME,
   type IAgentRuntime,
   type Memory,
@@ -25,7 +26,6 @@ import {
   formatAvailableContextsForPrompt,
   listAvailableContextsForTurn,
 } from "./context-catalog.js";
-import { compactHistoricalReceiptSegments } from "./historical-receipt-wire.js";
 import {
   type HistoryDiscovery,
   historyReferenceNotice,
