@@ -1062,3 +1062,46 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
     false,
   );
 });
+
+it("pages rooms in a world oldest-first when the newer room has the lower id", async () => {
+  const adapter = await open();
+  const worldId = id();
+  const olderId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID;
+  const newerId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+  await adapter.createAgents([{ id: agentId, name: "Room owner" }]);
+  await adapter.createWorlds([{ id: worldId, name: "Rooms", agentId }]);
+  await adapter.createRooms([
+    {
+      id: olderId,
+      agentId,
+      worldId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+    {
+      id: newerId,
+      agentId,
+      worldId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  const older = await storage.get<Record<string, unknown>>("rooms", olderId);
+  const newer = await storage.get<Record<string, unknown>>("rooms", newerId);
+  await storage.set("rooms", olderId, {
+    ...older,
+    createdAt: "2026-08-20T16:00:00.000Z",
+  });
+  await storage.set("rooms", newerId, {
+    ...newer,
+    createdAt: "2026-08-20T23:00:00.000Z",
+  });
+
+  expect(
+    (await adapter.getRoomsByWorlds([worldId], 1, 0)).map((room) => room.id),
+  ).toEqual([olderId]);
+  expect(
+    (await adapter.getRoomsByWorlds([worldId], 1, 1)).map((room) => room.id),
+  ).toEqual([newerId]);
+});
