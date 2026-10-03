@@ -244,6 +244,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
     }
