@@ -19,6 +19,7 @@ import {
 import { buildUserMessages } from "../../../packages/agent/src/api/server-helpers.ts";
 import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
 import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
+import { CORS_ALLOWED_HEADERS } from "../../../packages/app/src/api/server-cors.ts";
 import {
   AuthStore,
   type DrizzleDatabase,
@@ -34,6 +35,7 @@ import {
   DeviceActionService,
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
+import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
 // and on-disk PGlite. All identities and requested content are synthetic.
@@ -1484,6 +1486,265 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         (await request(`/proposals/${item.id}/claim`, { digest: item.digest }))
           .status,
       ).toBe(409);
+    }
+    {
+      for (const header of [
+        "x-eliza-device-id",
+        "x-eliza-device-key",
+        "x-eliza-device-capabilities",
+      ])
+        expect(CORS_ALLOWED_HEADERS.toLowerCase().split(", ")).toContain(
+          header,
+        );
+      const discovery = await request("/view-profile");
+      expect(discovery).toMatchObject({
+        status: 200,
+        body: { version: 1, profile: null },
+      });
+      expect(discovery.body.supportedViews).toContain("photos");
+      expect(
+        (await request("/register", { label: "Profile fixture" })).body
+          .viewProfileVersion,
+      ).toBe(1);
+      for (const input of [
+        { version: 2, views: ["notes"], expectedRevision: null },
+        { version: 1, views: ["notes", "notes"], expectedRevision: null },
+        { version: 1, views: ["wallet"], expectedRevision: null },
+        {
+          version: 1,
+          views: ["notes"],
+          expectedRevision: null,
+          owner: "forged",
+        },
+        { version: 1, views: ["notes"] },
+      ])
+        expect((await request("/view-profile", input)).status).toBe(409);
+      expect((await request("/view-profile", undefined, "none")).status).toBe(
+        401,
+      );
+      expect(
+        (await request("/view-profile", undefined, "a", "wrong-key")).status,
+      ).toBe(409);
+      const first = (
+        await request("/view-profile", {
+          version: 1,
+          views: ["notes", "photos"],
+          expectedRevision: null,
+        })
+      ).body.profile;
+      const globalParameters = JSON.stringify(proposeDeviceAction.parameters);
+      const render = (credential: typeof credentials) =>
+        withDeviceActionTurn(runtimeState.runtime, credential, async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          return createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message: memory,
+            state: { values: {}, data: {}, text: "" },
+            includeTools: true,
+            selectedContexts: [
+              { id: "general", name: "General", description: "Fixture" },
+            ] as any,
+            preselectedActions: [proposeDeviceAction],
+          });
+        });
+      const contexts = await Promise.all([
+        render(credentials),
+        render({
+          ...credentials,
+          subjectUserId: ownerB,
+          deviceKey: "b".repeat(64),
+        }),
+      ]);
+      const serialized = contexts.map((context) => JSON.stringify(context));
+      expect(serialized[0]).toContain(
+        "enabled-view profile allows open_view only for",
+      );
+      expect(serialized[1]).not.toContain(
+        "enabled-view profile allows open_view only for",
+      );
+      const branch = (context: any) =>
+        context.events
+          .find(
+            (event: any) =>
+              event.type === "tool" &&
+              event.tool.name === "PROPOSE_DEVICE_ACTION",
+          )
+          .tool.parameters.properties.operation.anyOf.find(
+            (b: any) => b.properties?.type?.enum?.[0] === "open_view",
+          );
+      expect(branch(contexts[0]).properties.view.enum).toEqual([
+        "notes",
+        "photos",
+      ]);
+      expect(branch(contexts[1]).properties.view.enum).toContain("browser");
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
+        globalParameters,
+      );
+
+      expect(first).toMatchObject({
+        version: 1,
+        views: ["notes", "photos"],
+      });
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: ["photos", "notes"],
+            expectedRevision: first.revision,
+          })
+        ).body.profile,
+      ).toEqual(first);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: [],
+            expectedRevision: null,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (await request("/view-profile", undefined, "b")).body.profile,
+      ).toBeNull();
+      const proposeView = async (view: string) => {
+        mapsActionParameters = {
+          operation: { type: "open_view", view },
+          operationKey: randomUUID(),
+          reason: "Explicit fixture request",
+        };
+        const response = await fetch(`${origin}/api/maps-observation-fixture`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${sessions.a}`,
+            "x-eliza-device-id": device,
+            "x-eliza-device-key": deviceKey,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            text: "Open requested view",
+            prompt: "Open requested view",
+          }),
+        });
+        return { status: response.status, body: await response.json() };
+      };
+      const before = (await request("/proposals")).body.proposals.length;
+      const disabled = await proposeView("browser");
+      expect(disabled.body.action?.success).not.toBe(true);
+      expect((await request("/proposals")).body.proposals).toHaveLength(before);
+      await proposeView("notes");
+      const pending = (await request("/proposals")).body.proposals.find(
+        (p: any) =>
+          p.payload?.operation?.view === "notes" &&
+          p.payload?.viewProfileRevision === first.revision,
+      );
+      expect(pending).toBeTruthy();
+      expect(
+        (
+          await request(`/proposals/${pending.id}/decision`, {
+            digest: pending.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(200);
+      await proposeView("photos");
+      const waiting = (await request("/proposals")).body.proposals.find(
+        (p: any) =>
+          p.payload?.operation?.view === "photos" &&
+          p.payload?.viewProfileRevision === first.revision,
+      );
+      expect(waiting).toBeTruthy();
+      const next = (
+        await request("/view-profile", {
+          version: 1,
+          views: ["notes"],
+          expectedRevision: first.revision,
+        })
+      ).body.profile;
+      expect(next.revision).not.toBe(first.revision);
+      expect(
+        (
+          await request(`/proposals/${pending.id}/claim`, {
+            digest: pending.digest,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(`/proposals/${waiting.id}/decision`, {
+            digest: waiting.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(`/proposals/${waiting.id}/decision`, {
+            digest: waiting.digest,
+            decision: "reject",
+          })
+        ).status,
+      ).toBe(200);
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+      await runtimeState.cleanup();
+      runtimeState = await createRealTestRuntime({
+        characterName: "DeviceApprovalFixture",
+        pgliteDir: directory,
+        removePgliteDirOnCleanup: false,
+      });
+      origin = await start();
+      expect((await request("/view-profile")).body.profile).toEqual(next);
+      await proposeView("notes");
+      const current = (await request("/proposals")).body.proposals.find(
+        (p: any) => p.payload?.viewProfileRevision === next.revision,
+      );
+      expect(current).toBeTruthy();
+      expect(
+        (
+          await request(`/proposals/${current.id}/decision`, {
+            digest: current.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(200);
+      const claimed = await request(`/proposals/${current.id}/claim`, {
+        digest: current.digest,
+      });
+      expect(claimed.status).toBe(200);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: [],
+            expectedRevision: next.revision,
+          })
+        ).status,
+      ).toBe(200);
+      expect(branch(await render(credentials))).toBeUndefined();
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
+        globalParameters,
+      );
+      const receipt = {
+        digest: current.digest,
+        attemptId: claimed.body.proposal.execution.attemptId,
+        receipt: { outcome: "applied", operationId: "opened-view-fixture" },
+      };
+      expect(
+        (await request(`/proposals/${current.id}/receipt`, receipt)).status,
+      ).toBe(200);
+      expect(
+        (await request(`/proposals/${current.id}/receipt`, receipt)).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(`/proposals/${current.id}/claim`, {
+            digest: current.digest,
+          })
+        ).status,
+      ).toBe(409);
+      console.log(
+        "Authenticated view-profile HTTP: discovery, conditional persistence, disabled proposal refusal, revision-fenced approve/claim, owner isolation, restart and historical receipt PASS",
+      );
     }
     expect((await request("/revoke", {})).status).toBe(200);
     expect((await request("/proposals")).status).toBe(409);
