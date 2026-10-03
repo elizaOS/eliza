@@ -494,10 +494,9 @@ public class ElizaAgentService extends Service {
      *   {"type":"chunk","dataBase64":".."}                              (per frame)
      *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
      *
-     * Single attempt by design: a connect failure emits a terminal error event
-     * and the WebView falls back to the buffered {@link #requestLocalAgent}
-     * (which carries the cold-load connect retry), so non-idempotent POSTs are
-     * never replayed here. Runs on the caller's thread (AgentPlugin spawns one).
+     * Connect retries happen only before dispatch. A dispatched request is never
+     * replayed here; cancellation and premature EOF report an uncertain outcome.
+     * Runs on the caller's thread (AgentPlugin spawns one).
      */
     /** Closes this transport only; committed runtime effects are not rolled back. */
     public static final class LocalStreamHandle {
@@ -537,7 +536,7 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Send a streaming request over the abstract UDS and translate the agent's
+     * Send a streaming request over the private filesystem UDS and translate the agent's
      * NDJSON stream frames ({@code {stream:"response"|"chunk"|"complete"}}) into
      * the AgentPlugin envelopes. The socket connect carries the cold-boot retry
      * (the agent may not have bound the socket yet); once a frame arrives the
@@ -618,7 +617,7 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Send one buffered request over the abstract UDS and return the agent's
+     * Send one buffered request over the private filesystem UDS and return the agent's
      * response envelope ({@code {status,statusText,headers,body,bodyBase64,
      * bodyEncoding}}) — the exact shape the loopback HTTP path returned, so the
      * AgentPlugin + WebView transport are unchanged. The connect (not the sent
