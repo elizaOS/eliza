@@ -10,13 +10,16 @@
  * created and the routine is in its history exactly once when a client
  * connects, and a replay of the same occurrence does not write a second row.
  */
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   AgentEventService,
+  ChannelType,
   createCharacter,
   installHttpPluginLifecycle,
+  validateUuid,
 } from "@elizaos/core";
 import {
   createSchedulingRecordStores,
@@ -165,6 +168,7 @@ it("persists a routine fired with no conversation into the owner's conversation 
     expect(conversations).toHaveLength(1);
     const [conversation] = conversations;
     expect(conversation?.roomId).toBe(ownerChatRoomId);
+    expect(result?.metadata?.ownerChatConversationId).toBe(conversation?.id);
     const routineHistory = async () =>
       (
         (await request(`/api/conversations/${conversation?.id}/messages`)) as {
@@ -182,7 +186,7 @@ it("persists a routine fired with no conversation into the owner's conversation 
     // Replaying the same occurrence (a crash after delivery, before the
     // scheduler recorded it) returns the stored row instead of a second one.
     if (!dispatcher || !fired) throw new Error("dispatcher was not built");
-    const replay = await dispatcher.dispatch({
+    const replayRecord = {
       taskId: fired.taskId,
       kind: fired.kind,
       firedAtIso: fired.state.firedAt ?? "",
@@ -192,13 +196,58 @@ it("persists a routine fired with no conversation into the owner's conversation 
       ownerVisible: fired.ownerVisible,
       output: fired.output,
       metadata: fired.metadata,
-    });
+    } as const;
+    const replay = await dispatcher.dispatch(replayRecord);
     expect(replay).toMatchObject({
       ok: true,
-      metadata: { ownerChatMessageId },
+      metadata: {
+        ownerChatMessageId,
+        ownerChatConversationId: conversation?.id,
+      },
     });
     expect(await listConversations()).toHaveLength(1);
     expect(await routineHistory()).toEqual(delivered);
+
+    // A legacy row has no conversation selector. Resolve its stored room,
+    // without rewriting history or guessing the current owner conversation.
+    const messageId = validateUuid(ownerChatMessageId);
+    if (!messageId) throw new Error("Persisted owner message ID missing");
+    const persisted = await runtime.getMemoryById(messageId);
+    if (!persisted) throw new Error("Persisted owner message missing");
+    const legacy = { ...persisted, metadata: { ...persisted.metadata } };
+    delete legacy.metadata.conversationId;
+    await runtime.updateMemory(legacy);
+    const legacyBeforeReplay = await runtime.getMemoryById(messageId);
+    const legacyReplay = await dispatcher.dispatch(replayRecord);
+    expect(legacyReplay).toMatchObject({
+      ok: true,
+      metadata: { ownerChatConversationId: conversation?.id },
+    });
+    expect(await runtime.getMemoryById(messageId)).toEqual(legacyBeforeReplay);
+
+    const unmappedRoom = randomUUID();
+    const ownerRoom = await runtime.getRoom(persisted.roomId);
+    if (!ownerRoom?.worldId) throw new Error("Owner world missing");
+    await runtime.ensureRoomExists({
+      id: unmappedRoom,
+      worldId: ownerRoom.worldId,
+      source: "client_chat",
+      type: ChannelType.DM,
+    });
+    await runtime.updateMemory({
+      ...legacy,
+      roomId: unmappedRoom,
+      metadata: { ...legacy.metadata, conversationId: conversation?.id },
+    });
+    const unmappedBeforeReplay = await runtime.getMemoryById(messageId);
+    const unmappedReplay = await dispatcher.dispatch(replayRecord);
+    expect(unmappedReplay.ok).toBe(true);
+    if (!unmappedReplay.ok) throw new Error("Legacy replay failed");
+    expect(unmappedReplay.metadata?.ownerChatConversationId).toBeUndefined();
+    expect(await runtime.getMemoryById(messageId)).toEqual(
+      unmappedBeforeReplay,
+    );
+    expect(await listConversations()).toHaveLength(1);
   } finally {
     await server?.close();
     await runtime.stop();

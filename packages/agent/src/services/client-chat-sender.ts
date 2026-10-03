@@ -237,7 +237,16 @@ function makeOwnerChatDeliver(runtime: IAgentRuntime, state: ServerState) {
       : (crypto.randomUUID() as UUID);
     if (idempotencyKey) {
       const existing = await runtime.getMemoryById(messageId);
-      if (existing) return existing;
+      if (existing) {
+        const conversation = findConversationByRoomId(state, existing.roomId);
+        return {
+          ...existing,
+          metadata: {
+            ...existing.metadata,
+            conversationId: conversation?.id ?? null,
+          },
+        };
+      }
     }
     const conv = await ensureOwnerConversation(state, hostRuntime);
     const source =
@@ -250,6 +259,10 @@ function makeOwnerChatDeliver(runtime: IAgentRuntime, state: ServerState) {
       roomId: conv.roomId,
       content: { ...content, text, source },
     });
+    agentMessage.metadata = {
+      ...agentMessage.metadata,
+      conversationId: conv.id,
+    };
     await runtime.createMemory(agentMessage, "messages");
     conv.updatedAt = new Date().toISOString();
     state.broadcastWs?.({

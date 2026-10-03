@@ -29,6 +29,7 @@ import {
   SEND_HANDLER_NOT_FOUND,
   ServiceType,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
@@ -464,7 +465,12 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
 }
 
 type OwnerChatDelivery =
-  | { ok: true; roomId: UUID | null; messageId: UUID | null }
+  | {
+      ok: true;
+      roomId: UUID | null;
+      messageId: UUID | null;
+      conversationId: UUID | null;
+    }
   | { ok: false; failure: DispatchResult };
 
 /**
@@ -484,7 +490,7 @@ async function deliverScheduledTaskToOwnerChat(
     metadataString(record.metadata, "dispatchIdempotencyKey") ??
     `${record.taskId}:${record.firedAtIso}`;
   if (typeof runtime.sendMessageToTarget !== "function") {
-    return { ok: true, roomId: null, messageId: null };
+    return { ok: true, roomId: null, messageId: null, conversationId: null };
   }
   try {
     const result = await runtime.sendMessageToTarget(
@@ -509,10 +515,15 @@ async function deliverScheduledTaskToOwnerChat(
         context: { taskId: record.taskId },
       });
     }
-    return { ok: true, roomId: memory.roomId, messageId: memory.id ?? null };
+    return {
+      ok: true,
+      roomId: memory.roomId,
+      messageId: validateUuid(memory.id),
+      conversationId: validateUuid(memory.metadata?.conversationId),
+    };
   } catch (error) {
     if (isElizaError(error) && error.code === SEND_HANDLER_NOT_FOUND) {
-      return { ok: true, roomId: null, messageId: null };
+      return { ok: true, roomId: null, messageId: null, conversationId: null };
     }
     // error-policy:J1 boundary translation — the history write failed; the
     // runner retries (the idempotency key keeps redelivery to one row) and
@@ -1041,6 +1052,12 @@ export function createProductionScheduledTaskDispatcher(opts: {
                 taskId: record.taskId,
                 firedAtIso: record.firedAtIso,
                 channelKey: record.channelKey,
+                ...(history.conversationId && history.messageId
+                  ? {
+                      conversationId: history.conversationId,
+                      messageId: history.messageId,
+                    }
+                  : {}),
               },
             });
             surfacesAccepted += 1;
@@ -1078,6 +1095,9 @@ export function createProductionScheduledTaskDispatcher(opts: {
             ? {
                 metadata: {
                   ownerChatRoomId: history.roomId,
+                  ...(history.conversationId
+                    ? { ownerChatConversationId: history.conversationId }
+                    : {}),
                   ...(history.messageId
                     ? { ownerChatMessageId: history.messageId }
                     : {}),

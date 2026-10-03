@@ -109,6 +109,39 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     morningBriefMocks.assembleMorningBrief.mockReset();
   });
 
+  it.each([undefined, "not-a-uuid"])(
+    "does not invent a notification source for an invalid conversation receipt: %s",
+    async (conversationId) => {
+      morningBriefMocks.assembleMorningBrief.mockResolvedValueOnce({
+        promptText: "internal prompt",
+        report: { summaryText: "Your morning brief." },
+      });
+      const notify = vi.fn().mockResolvedValue(undefined);
+      const sendMessageToTarget = vi.fn(async (_target, content) => ({
+        id: "00000000-0000-0000-0000-0000000000c1",
+        entityId: "agent-test",
+        roomId: "00000000-0000-0000-0000-0000000000c2",
+        metadata: { conversationId },
+        content,
+      }));
+      const { runtime } = makeRuntime({ notify, sendMessageToTarget });
+      const record = morningBriefPack.records[0];
+      if (!record) throw new Error("Morning record missing");
+      await createProductionScheduledTaskDispatcher({ runtime }).dispatch({
+        taskId: record.taskId,
+        kind: record.kind,
+        firedAtIso: "2026-07-06T14:00:00.000Z",
+        channelKey: "in_app",
+        promptInstructions: record.promptInstructions,
+        output: record.output,
+        metadata: record.metadata,
+      });
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify.mock.calls[0][0].data.conversationId).toBeUndefined();
+      expect(notify.mock.calls[0][0].data.messageId).toBeUndefined();
+    },
+  );
+
   it("renders daily-rhythm copy through the model instead of raw promptInstructions", async () => {
     const notify = vi.fn().mockResolvedValue(undefined);
     const { runtime, modelPrompts } = makeRuntime({ notify });
@@ -207,9 +240,15 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       id: "00000000-0000-0000-0000-0000000000c1",
       entityId: "agent-test",
       roomId: "00000000-0000-0000-0000-0000000000c2",
+      metadata: { conversationId: "00000000-0000-0000-0000-0000000000c3" },
       content,
     }));
-    const { runtime } = makeRuntime({ reportError, sendMessageToTarget });
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const { runtime } = makeRuntime({
+      reportError,
+      sendMessageToTarget,
+      notify,
+    });
 
     reportSuppressedSleepCycleMorningCheckin({
       agentId: "agent-test",
@@ -245,6 +284,10 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       agentVoiced: true,
       text: summaryText,
       deliveryIdempotencyKey: `${record.taskId}:2026-07-06T14:00:00.000Z`,
+    });
+    expect(notify.mock.calls[0]?.[0].data).toMatchObject({
+      conversationId: "00000000-0000-0000-0000-0000000000c3",
+      messageId: "00000000-0000-0000-0000-0000000000c1",
     });
     expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
     const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
