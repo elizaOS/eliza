@@ -12,6 +12,10 @@ import {
   validateReminderOperation,
 } from "./reminder-contract.ts";
 import {
+  type ReminderCreateOperation,
+  validateReminderCreate,
+} from "./reminder-create-contract.ts";
+import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,
   type WorkflowDeviceBinding,
@@ -44,6 +48,7 @@ export const DEVICE_VIEWS = [
   "settings",
 ] as const;
 export type DeviceOperation =
+  | ReminderCreateOperation
   | MapsOperation
   | ReminderOperation
   | NotesOperation
@@ -94,6 +99,12 @@ export function exactKeys(
 export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
   switch (p.type) {
+    case "reminder_create":
+      try {
+        return validateReminderCreate(p);
+      } catch {
+        throw new DeviceActionError("Invalid reminder creation");
+      }
     case "maps_read_selected":
       try {
         return validateMapsOperation(p);
@@ -125,7 +136,9 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       try {
         return validateCalendarOperation(p);
       } catch {
-        throw new DeviceActionError("Invalid Calendar operation");
+        throw new DeviceActionError(
+          "Invalid Calendar operation. Calendar fields require title, description, location, start, end and timeZone. Use canonical UTC start/end with milliseconds (YYYY-MM-DDTHH:mm:ss.sssZ), end after start, a valid IANA timeZone, and exact observed source/target IDs and revisions.",
+        );
       }
     case "post_notification":
       exactKeys(p, ["type", "title", "body"]);

@@ -41,8 +41,15 @@ import {
 import {
   isReminderOperation,
   REMINDER_CAPABILITY,
+  REMINDER_TIMING_CAPABILITY,
+  reminderCapabilityAvailable,
   validateReminderResult,
 } from "./reminder-contract.ts";
+import {
+  isReminderCreate,
+  REMINDER_CREATE_CAPABILITY,
+  validateReminderCreateResult,
+} from "./reminder-create-contract.ts";
 import {
   type DeviceViewProfile,
   enabledDeviceViews,
@@ -174,6 +181,8 @@ export class DeviceActionService {
           "calendar.local-event.v1",
           "notes.local-record.v1",
           REMINDER_CAPABILITY,
+          REMINDER_TIMING_CAPABILITY,
+          REMINDER_CREATE_CAPABILITY,
           MAPS_CAPABILITY,
         ],
       };
@@ -310,8 +319,13 @@ export class DeviceActionService {
         throw new DeviceActionError("Maps capability unavailable");
     }
     if (
+      isReminderCreate(validated) &&
+      !c.capabilities?.includes(REMINDER_CREATE_CAPABILITY)
+    )
+      throw new DeviceActionError("Reminder creation capability required");
+    if (
       isReminderOperation(validated) &&
-      !c.capabilities?.includes(REMINDER_CAPABILITY)
+      !reminderCapabilityAvailable(validated, c.capabilities)
     )
       throw new DeviceActionError("Reminder capability unavailable");
     if (
@@ -332,6 +346,7 @@ export class DeviceActionService {
         "notes_update",
         "notes_delete",
         "create_reminder",
+        "reminder_create",
         "reminder_read_selected",
         "reminder_update",
         "reminder_complete",
@@ -620,8 +635,13 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Maps capability unavailable");
     if (
+      isReminderCreate(payload.operation) &&
+      !c.capabilities?.includes(REMINDER_CREATE_CAPABILITY)
+    )
+      throw new DeviceActionError("Reminder creation capability required");
+    if (
       isReminderOperation(payload.operation) &&
-      !c.capabilities?.includes(REMINDER_CAPABILITY)
+      !reminderCapabilityAvailable(payload.operation, c.capabilities)
     )
       throw new DeviceActionError("Reminder capability unavailable");
     if (
@@ -745,8 +765,13 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Maps capability unavailable");
       if (
+        isReminderCreate(payload.operation) &&
+        !c.capabilities?.includes(REMINDER_CREATE_CAPABILITY)
+      )
+        throw new DeviceActionError("Reminder creation capability required");
+      if (
         isReminderOperation(payload.operation) &&
-        !c.capabilities?.includes(REMINDER_CAPABILITY)
+        !reminderCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Reminder capability unavailable");
       if (
@@ -767,13 +792,20 @@ export class DeviceActionService {
           throw new DeviceActionError("Invalid Maps receipt");
         }
       } else if (
-        isReminderOperation(payload.operation) &&
+        (isReminderOperation(payload.operation) ||
+          isReminderCreate(payload.operation)) &&
         receipt.outcome === "applied"
       ) {
         try {
           receipt = {
             ...receipt,
-            result: validateReminderResult(payload.operation, value.result),
+            result: isReminderCreate(payload.operation)
+              ? validateReminderCreateResult(
+                  payload.operation,
+                  value.result,
+                  identifier(receipt.operationId),
+                )
+              : validateReminderResult(payload.operation, value.result),
           };
         } catch {
           throw new DeviceActionError("Invalid reminder receipt");
@@ -873,8 +905,13 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Maps capability unavailable");
       if (
+        isReminderCreate(payload.operation) &&
+        !c.capabilities?.includes(REMINDER_CREATE_CAPABILITY)
+      )
+        throw new DeviceActionError("Reminder creation capability required");
+      if (
         isReminderOperation(payload.operation) &&
-        !c.capabilities?.includes(REMINDER_CAPABILITY)
+        !reminderCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Reminder capability unavailable");
       if (
@@ -892,13 +929,20 @@ export class DeviceActionService {
           throw new DeviceActionError("Invalid Maps receipt");
         }
       } else if (
-        isReminderOperation(payload.operation) &&
+        (isReminderOperation(payload.operation) ||
+          isReminderCreate(payload.operation)) &&
         receipt.outcome === "applied"
       ) {
         try {
           receipt = {
             ...receipt,
-            result: validateReminderResult(payload.operation, value.result),
+            result: isReminderCreate(payload.operation)
+              ? validateReminderCreateResult(
+                  payload.operation,
+                  value.result,
+                  identifier(receipt.operationId),
+                )
+              : validateReminderResult(payload.operation, value.result),
           };
         } catch {
           throw new DeviceActionError("Invalid reminder receipt");

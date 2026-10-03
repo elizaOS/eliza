@@ -14,6 +14,10 @@ import {
   isReminderOperation,
   validateReminderResult,
 } from "./reminder-contract.ts";
+import {
+  isReminderCreate,
+  validateReminderCreateResult,
+} from "./reminder-create-contract.ts";
 import { DeviceActionService, getDeviceActionTurn } from "./service.ts";
 
 const reminderSchemas: ActionParameterSchema[] = [
@@ -41,15 +45,23 @@ const reminderSchemas: ActionParameterSchema[] = [
         "occurrenceId",
         "revision",
       ],
-      properties: Object.fromEntries(
-        [
-          "sourceId",
-          "sourceRevision",
-          "reminderId",
-          "occurrenceId",
-          "revision",
-        ].map((k) => [k, { type: "string" }]),
-      ),
+      properties: {
+        ...Object.fromEntries(
+          [
+            "sourceId",
+            "sourceRevision",
+            "reminderId",
+            "occurrenceId",
+            "revision",
+          ].map((k) => [k, { type: "string" }]),
+        ),
+        timingVersion: {
+          type: "integer",
+          enum: [2],
+          description:
+            "Copy the selected reminder timing version exactly when present.",
+        },
+      },
     },
     ...(type === "reminder_update"
       ? {
@@ -65,7 +77,24 @@ const reminderSchemas: ActionParameterSchema[] = [
                 additionalProperties: false,
                 required: ["at", "recurrence"],
                 properties: {
-                  at: { type: "number" },
+                  at: {
+                    type: "number",
+                    description:
+                      "UTC epoch milliseconds for the alert, or the due instant when no alert is selected.",
+                  },
+                  dueAt: {
+                    type: "number",
+                    description:
+                      "Reviewed due instant in UTC epoch milliseconds; supply together with alertMinutes.",
+                  },
+                  alertMinutes: {
+                    description:
+                      "Elapsed minutes before dueAt; null saves without a notification. Requires reminders.local-record.v2.",
+                    anyOf: [
+                      { type: "integer", minimum: 0, maximum: 10080 },
+                      { type: "null" },
+                    ],
+                  },
                   recurrence: {
                     anyOf: [
                       { type: "null" },
@@ -161,9 +190,20 @@ const calendarFields = {
     title: calendarString,
     description: calendarString,
     location: calendarString,
-    start: calendarString,
-    end: calendarString,
-    timeZone: calendarString,
+    start: {
+      type: "string",
+      description:
+        "Canonical UTC ISO instant including exactly three millisecond digits, e.g. 2026-10-04T15:00:00.000Z. Convert offset times to UTC.",
+    },
+    end: {
+      type: "string",
+      description:
+        "Canonical UTC ISO instant including exactly three millisecond digits, strictly after start, e.g. 2026-10-04T15:30:00.000Z.",
+    },
+    timeZone: {
+      type: "string",
+      description: "Valid IANA review timezone, e.g. America/New_York or UTC.",
+    },
   },
 };
 const calendarSchemas: ActionParameterSchema[] = [
@@ -198,10 +238,36 @@ const calendarSchemas: ActionParameterSchema[] = [
   })),
 ];
 /** Native tool output is a durable proposal, never a native effect or approval. */
+const selectedUpdateSchema = reminderSchemas.find(
+  (schema) =>
+    (schema.properties?.type as { enum?: string[] })?.enum?.[0] ===
+    "reminder_update",
+);
+const creationFields = structuredClone(
+  selectedUpdateSchema?.properties?.fields as ActionParameterSchema | undefined,
+);
+if (!creationFields?.properties?.schedule)
+  throw Error("Reminder creation schema unavailable");
+creationFields.required = ["title", "body", "schedule"];
+(creationFields.properties.schedule as ActionParameterSchema).required = [
+  "at",
+  "recurrence",
+  "dueAt",
+  "alertMinutes",
+];
+const reminderCreateSchema: ActionParameterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "fields"],
+  properties: {
+    type: { type: "string", enum: ["reminder_create"] },
+    fields: creationFields,
+  },
+};
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   description:
-    "Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve. This tool does not perform the operation. Do not report the proposal as completed.",
+    "Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve. This tool does not perform the operation. Do not report the proposal as completed.",
   contexts: ["general"],
   parameters: [
     {
@@ -233,6 +299,7 @@ export const proposeDeviceAction: Action = {
           ...calendarSchemas,
           ...notesSchemas,
           ...reminderSchemas,
+          reminderCreateSchema,
           {
             type: "object",
             additionalProperties: false,
@@ -281,7 +348,7 @@ export const proposeDeviceAction: Action = {
       name: "operationKey",
       required: true,
       description:
-        "Stable identifier for this proposed operation; reuse only for an exact retry",
+        "Generate a fresh UUID for each new user-requested operation. Reuse a prior key only for an exact retry with unchanged operation fields and reason. Never reuse keys based only on a title, action type, date, or wording; a conflicting key cannot be repaired by changing an existing approval.",
       schema: { type: "string" },
     },
     {
@@ -319,6 +386,7 @@ export const proposeDeviceAction: Action = {
       request.state === "done" &&
       (isMapsOperation(payload.operation) ||
         isReminderOperation(payload.operation) ||
+        isReminderCreate(payload.operation) ||
         isCalendarOperation(payload.operation) ||
         isNotesOperation(payload.operation)) &&
       receipt &&
@@ -328,11 +396,19 @@ export const proposeDeviceAction: Action = {
     ) {
       const result = isMapsOperation(payload.operation)
         ? validateMapsResult(payload.operation, receipt.result)
-        : isReminderOperation(payload.operation)
-          ? validateReminderResult(payload.operation, receipt.result)
-          : isNotesOperation(payload.operation)
-            ? validateNotesResult(payload.operation, receipt.result)
-            : validateCalendarResult(payload.operation, receipt.result);
+        : isReminderCreate(payload.operation)
+          ? validateReminderCreateResult(
+              payload.operation,
+              receipt.result,
+              typeof receipt.operationId === "string"
+                ? receipt.operationId
+                : undefined,
+            )
+          : isReminderOperation(payload.operation)
+            ? validateReminderResult(payload.operation, receipt.result)
+            : isNotesOperation(payload.operation)
+              ? validateNotesResult(payload.operation, receipt.result)
+              : validateCalendarResult(payload.operation, receipt.result);
       return {
         success: true,
         transcriptVisibility: "internal",

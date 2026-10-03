@@ -1408,6 +1408,435 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       }
     }
     {
+      const cap =
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,reminders.create.v1";
+      const c = { ...credentials, capabilities: cap.split(",") },
+        service = new DeviceActionService(runtimeState.runtime);
+      const call = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, cap);
+      expect(
+        (await call("/register", { label: "Creation fixture" })).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            cap + ",reminders.local-record.v1",
+          )
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            cap + ",invented.capability",
+          )
+        ).status,
+      ).toBe(401);
+      for (const mode of ["none", "lead", "repeat", "unknown"]) {
+        const dueAt = Date.now() + 7200000,
+          alertMinutes = mode === "lead" ? 10 : null;
+        const operation = {
+          type: "reminder_create",
+          fields: {
+            title: "Reviewed creation",
+            body: "Synthetic body",
+            schedule: {
+              at: dueAt - (alertMinutes ?? 0) * 60000,
+              dueAt,
+              alertMinutes,
+              recurrence:
+                mode === "repeat"
+                  ? {
+                      rule: "daily",
+                      zone: "UTC",
+                      date: "2026-10-03",
+                      time: "13:00",
+                      leadMinutes: 0,
+                    }
+                  : null,
+            },
+          },
+        };
+        await expect(
+          service.propose(
+            { ...c, capabilities: ["reminders.local-record.v2"] },
+            operation,
+            "old-" + mode,
+            "fixture",
+          ),
+        ).rejects.toThrow();
+        await expect(
+          service.propose(
+            c,
+            { ...operation, extra: true },
+            "bad-" + mode,
+            "fixture",
+          ),
+        ).rejects.toThrow();
+        const runAction = () =>
+          withDeviceActionTurn(runtimeState.runtime, c, () =>
+            proposeDeviceAction.handler(
+              runtimeState.runtime,
+              memory,
+              undefined,
+              {
+                parameters: {
+                  operation,
+                  operationKey: "create-" + mode,
+                  reason: "fixture",
+                },
+              },
+            ),
+          );
+        const proposed = await runAction();
+        expect(proposed && proposed.data).toMatchObject({
+          executed: false,
+          approvalRequired: true,
+        });
+        const item = (await call("/proposals")).body.proposals.find(
+          (p: any) => p.id === (proposed && proposed.data?.proposalId),
+        );
+        expect(item.payload.operation).toEqual(operation);
+        expect(
+          (
+            await call(`/proposals/${item.id}/decision`, {
+              digest: item.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        expect(
+          (
+            await request(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const claimed = await call(`/proposals/${item.id}/claim`, {
+          digest: item.digest,
+        });
+        expect(claimed.status).toBe(200);
+        const operationId = "created-" + mode,
+          result = {
+            version: 1,
+            kind: "reminder_create",
+            sourceId: "local-reminders",
+            reminderId: operationId,
+            occurrenceId: "first-occurrence",
+            revision: "c".repeat(64),
+            status: alertMinutes === null ? "pending" : "scheduled",
+            at: operation.fields.schedule.at,
+            dueAt,
+            alertMinutes,
+            fields: operation.fields,
+          };
+        const receipt = {
+          digest: item.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: { outcome: "applied", operationId, result },
+        };
+        expect(
+          (
+            await call(`/proposals/${item.id}/receipt`, {
+              ...receipt,
+              receipt: {
+                ...receipt.receipt,
+                result: { ...result, reminderId: "wrong" },
+              },
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (await request(`/proposals/${item.id}/receipt`, receipt)).status,
+        ).toBe(409);
+        if (mode === "unknown") {
+          expect(
+            (
+              await call(`/proposals/${item.id}/receipt`, {
+                ...receipt,
+                receipt: { outcome: "unknown", operationId },
+              })
+            ).body.proposal.state,
+          ).toBe("reconciliation_required");
+          const recovery = {
+            digest: item.digest,
+            attemptId: claimed.body.proposal.execution.attemptId,
+            resolution: {
+              confirmed: true,
+              outcome: "applied",
+              operationId,
+              result,
+            },
+          };
+          expect(
+            (await request(`/proposals/${item.id}/reconciliation`, recovery))
+              .status,
+          ).toBe(409);
+          expect(
+            (await call(`/proposals/${item.id}/reconciliation`, recovery)).body
+              .proposal.state,
+          ).toBe("done");
+          expect(
+            (await call(`/proposals/${item.id}/reconciliation`, recovery))
+              .status,
+          ).toBe(200);
+        } else {
+          expect(
+            (await call(`/proposals/${item.id}/receipt`, receipt)).body.proposal
+              .state,
+          ).toBe("done");
+          expect(
+            (await call(`/proposals/${item.id}/receipt`, receipt)).status,
+          ).toBe(200);
+        }
+        expect(
+          (await call(`/proposals/${item.id}/claim`, { digest: item.digest }))
+            .status,
+        ).toBe(409);
+        expect(
+          (await call("/proposals")).body.proposals.find(
+            (p: any) => p.id === item.id,
+          ).execution.providerReceipt.result,
+        ).toEqual(result);
+        const historical = await runAction();
+        expect(historical && historical.data).toMatchObject({
+          executed: false,
+          result,
+        });
+      }
+    }
+    {
+      // Real authenticated HTTP + durable approval queue: timing semantics never
+      // downgrade to v1, and an identical receipt replay never claims twice.
+      const timingCapabilities =
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1";
+      const timingCredentials = {
+        ...credentials,
+        capabilities: timingCapabilities.split(","),
+      };
+      const timingService = new DeviceActionService(runtimeState.runtime);
+      const timingRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, timingCapabilities);
+      const advertised = await timingRequest("/register", {
+        label: "Timing fixture",
+        workflowProtocol: 1,
+      });
+      expect(advertised.status).toBe(200);
+      expect(advertised.body.capabilities).toEqual(
+        expect.arrayContaining([
+          "reminders.local-record.v1",
+          "reminders.local-record.v2",
+        ]),
+      );
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            timingCapabilities + ",reminders.local-record.v1",
+          )
+        ).status,
+      ).toBe(401);
+      const timingTarget = {
+        sourceId: "19",
+        sourceRevision: "a".repeat(64),
+        reminderId: "timing-task",
+        occurrenceId: "timing-occurrence",
+        revision: "b".repeat(64),
+        timingVersion: 2 as const,
+      };
+      const dueAt = Date.now() + 3600000;
+      for (const scenario of [
+        "read-none",
+        "update-none",
+        "update-early",
+        "complete-repeat",
+        "reconcile-none",
+      ] as const) {
+        const alertMinutes = scenario === "update-early" ? 10 : null;
+        const schedule = {
+          at: dueAt - (alertMinutes ?? 0) * 60000,
+          recurrence: null,
+          dueAt,
+          alertMinutes,
+        };
+        const fields = {
+          title: "Reviewed task",
+          body: "Synthetic only",
+          schedule,
+        };
+        const operation =
+          scenario.startsWith("update") || scenario === "reconcile-none"
+            ? { type: "reminder_update" as const, target: timingTarget, fields }
+            : {
+                type:
+                  scenario === "read-none"
+                    ? ("reminder_read_selected" as const)
+                    : ("reminder_complete" as const),
+                target: timingTarget,
+              };
+        await expect(
+          timingService.propose(
+            { ...credentials, capabilities: ["reminders.local-record.v1"] },
+            operation,
+            scenario,
+            "fixture",
+          ),
+        ).rejects.toThrow();
+        const proposed = await timingService.propose(
+          timingCredentials,
+          operation,
+          scenario,
+          "fixture",
+        );
+        const item = (await timingRequest("/proposals")).body.proposals.find(
+          (p: any) => p.id === proposed.id,
+        );
+        expect(item.payload.operation).toEqual(operation);
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/decision`, {
+              digest: item.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        expect(
+          (
+            await request(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const claimed = await timingRequest(`/proposals/${item.id}/claim`, {
+          digest: item.digest,
+        });
+        expect(claimed.status).toBe(200);
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const result = {
+          version: 1,
+          kind: operation.type,
+          sourceId: timingTarget.sourceId,
+          reminderId: timingTarget.reminderId,
+          occurrenceId:
+            scenario === "complete-repeat"
+              ? "timing-next-occurrence"
+              : timingTarget.occurrenceId,
+          revision:
+            scenario === "read-none" ? timingTarget.revision : "c".repeat(64),
+          status: alertMinutes === null ? "pending" : "scheduled",
+          at: schedule.at,
+          dueAt,
+          alertMinutes,
+          ...(scenario === "read-none" ? { fields } : {}),
+        };
+        const receipt = {
+          digest: item.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: {
+            outcome: "applied",
+            operationId: `native-${scenario}`,
+            result,
+          },
+        };
+        const {
+          dueAt: ignoredDue,
+          alertMinutes: ignoredAlert,
+          ...downgraded
+        } = result;
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/receipt`, {
+              ...receipt,
+              receipt: { ...receipt.receipt, result: downgraded },
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (await request(`/proposals/${item.id}/receipt`, receipt)).status,
+        ).toBe(409);
+        if (scenario === "reconcile-none") {
+          const uncertain = await timingRequest(
+            `/proposals/${item.id}/receipt`,
+            {
+              ...receipt,
+              receipt: { outcome: "unknown", code: "synthetic_lost_response" },
+            },
+          );
+          expect(uncertain.body.proposal.state).toBe("reconciliation_required");
+          const reconciliation = {
+            digest: item.digest,
+            attemptId: claimed.body.proposal.execution.attemptId,
+            resolution: {
+              confirmed: true,
+              outcome: "applied",
+              operationId: `native-${scenario}`,
+              result,
+            },
+          };
+          expect(
+            (
+              await request(
+                `/proposals/${item.id}/reconciliation`,
+                reconciliation,
+              )
+            ).status,
+          ).toBe(409);
+          expect(
+            (
+              await timingRequest(
+                `/proposals/${item.id}/reconciliation`,
+                reconciliation,
+              )
+            ).body.proposal.state,
+          ).toBe("done");
+          expect(
+            (
+              await timingRequest(
+                `/proposals/${item.id}/reconciliation`,
+                reconciliation,
+              )
+            ).status,
+          ).toBe(200);
+        } else {
+          expect(
+            (await timingRequest(`/proposals/${item.id}/receipt`, receipt)).body
+              .proposal.state,
+          ).toBe("done");
+          expect(
+            (await timingRequest(`/proposals/${item.id}/receipt`, receipt))
+              .status,
+          ).toBe(200);
+        }
+        const canonical = (
+          await timingRequest("/proposals")
+        ).body.proposals.find((p: any) => p.id === item.id);
+        expect(canonical.execution.providerReceipt.result).toEqual(result);
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
+      }
+    }
+    {
       const operation = {
         type: "reminder_snooze",
         target: {
