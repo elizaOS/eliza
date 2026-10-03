@@ -51,6 +51,39 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("caps an omitted entity-name search at the default of 10", async () => {
+    const adapter = await open();
+    await adapter.createEntities(
+      Array.from({ length: 11 }, (_, index) => ({
+        id: id(),
+        agentId,
+        names: [`Patron ${index}`],
+      })),
+    );
+    const omitted = await adapter.searchEntitiesByName({
+      query: "patron",
+      agentId,
+    });
+    expect(omitted).toHaveLength(10);
+    expect(
+      await adapter.searchEntitiesByName({
+        query: "patron",
+        agentId,
+        limit: 0,
+      }),
+    ).toEqual([]);
+    const blank = await adapter.searchEntitiesByName({
+      query: "  ",
+      agentId,
+    });
+    expect(blank).toHaveLength(10);
+    expect(
+      blank.every((entity) =>
+        entity.names.some((name) => name.startsWith("Patron")),
+      ),
+    ).toBe(true);
+  });
+
   it("preserves complete sources and the selected embedding space across restarts", async () => {
     const adapter = await open();
     const record = memory(
