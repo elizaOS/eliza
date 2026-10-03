@@ -15,6 +15,7 @@ import {
   __resetNativeChatLimiterForTests,
   ElizaCloudGatewayWarmingExhaustedError,
   generateNativeChatCompletion,
+  handleResponseHandler,
   isWarmingUnavailableResponse,
   nextWarmingRetryDelayMs,
   requestNativeWithWarmingRetry,
@@ -114,6 +115,20 @@ function mockFetchSequence(responses: Array<() => Response>): ReturnType<typeof 
     call += 1;
     return factory();
   });
+  vi.spyOn(globalThis, "fetch").mockImplementation(impl as unknown as typeof fetch);
+  return impl;
+}
+
+/** A fetch that settles only when its request signal aborts. */
+function hangingFetchUntilAbort(): ReturnType<typeof vi.fn> {
+  const impl = vi.fn(
+    (_input: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+          once: true,
+        });
+      })
+  );
   vi.spyOn(globalThis, "fetch").mockImplementation(impl as unknown as typeof fetch);
   return impl;
 }
@@ -338,15 +353,7 @@ describe("streaming native chat completion", () => {
   });
 
   it("aborts an in-flight buffered completion with the caller's signal", async () => {
-    const fetchMock = vi.fn(
-      (_input: unknown, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
-            once: true,
-          });
-        })
-    );
-    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+    const fetchMock = hangingFetchUntilAbort();
     const controller = new AbortController();
     const abortReason = new DOMException("turn cancelled", "AbortError");
     const pending = generateNativeChatCompletion(
@@ -357,6 +364,46 @@ describe("streaming native chat completion", () => {
     ).catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort(abortReason);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(Promise.race([pending, Promise.resolve("still pending")])).resolves.toBe(
+      abortReason
+    );
+  });
+
+  it("still applies the client timeout to a buffered completion that carries a caller signal", async () => {
+    const previous = process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "1000";
+    try {
+      const fetchMock = hangingFetchUntilAbort();
+      const controller = new AbortController();
+      const pending = generateNativeChatCompletion(
+        runtime(),
+        "TEXT_SMALL",
+        { ...NATIVE_PARAMS, signal: controller.signal },
+        CONTEXT
+      ).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const settled = await Promise.race([pending, Promise.resolve("still pending")]);
+      expect(settled).toBeInstanceOf(Error);
+      expect(controller.signal.aborted).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previous === undefined) delete process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+      else process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = previous;
+    }
+  });
+
+  it("aborts an in-flight /responses round-trip with the caller's signal", async () => {
+    const fetchMock = hangingFetchUntilAbort();
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const pending = handleResponseHandler(runtime(), {
+      prompt: "hello",
+      signal: controller.signal,
+    } as Parameters<typeof handleResponseHandler>[1]).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/responses");
     controller.abort(abortReason);
     await vi.advanceTimersByTimeAsync(0);
     await expect(Promise.race([pending, Promise.resolve("still pending")])).resolves.toBe(
