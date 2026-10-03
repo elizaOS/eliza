@@ -90,8 +90,31 @@ the normal browser-launcher behavior; restoring a closed split is separate work.
 
 `setBrowserDockVisible({visible})` requests collapse or restoration of the existing
 host-owned split using Window SDK extension 3+. It never launches or reloads a URL.
-The current host session must have opened the split, and exactly one current split
-with this host as primary must exist. Missing/ambiguous/recreated sessions reject
+The current host session must have opened the split, and the topmost current split
+(in AndroidX z-order) must have this host as primary. Missing/foreign/recreated sessions reject
 instead of replaying navigation. A request receipt is not proof of resulting bounds.
 The product must pause its work before hiding help and provide a return control;
 this low-level API does not itself provide persistent entry or task resumption.
+
+Hosts can explicitly declare `SYSTEM_ALERT_WINDOW` and request Android's revocable
+overlay permission using `requestBrowserHelperEntryPermission()`. The library does
+not add that permission automatically. `hideBrowserDockWithEntry` requires the
+grant and installs a bounded, non-focusable return control before requesting
+collapse. Tapping it moves the existing host WebView into a full-screen native
+window and emits `browserHelperReturned`; no Activity, URL or browser tab is
+launched. `restoreBrowserDockFromEntry` returns the same view to the existing
+split. The host owns pause, microphone shutdown, saved context and explicit Resume.
+These windows are removed when this plugin instance is destroyed; process-death
+recovery and device lifecycle qualification remain host integration requirements.
+
+A successful explicit `openDockedBrowser` releases an existing return badge or
+full-screen helper window and emits `browserHelperWindowClosed`. The consumer
+updates its presentation state without resuming a task. Failed navigation
+preflight leaves the existing helper window intact.
+
+While the host process remains alive, overlay permission revocation restores the
+WebView to its original parent, removes return windows and requests the existing
+browser split. The same permission check runs on host resume. A closed-window
+event carries `permission-revoked`; task and microphone state remain host-owned.
+Android may kill the process when permission changes, so this recovery does not
+establish process-death persistence. The permission watcher is removed on destroy.
