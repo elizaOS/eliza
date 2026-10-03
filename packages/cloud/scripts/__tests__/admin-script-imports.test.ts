@@ -83,11 +83,13 @@ describe("cloud operator script imports", () => {
   });
 
   test("refund-crypto-payment loads the refund service before validating input", () => {
+    // A zero amount is refused by the service's own input validation, which
+    // runs before any database access.
     const result = runScript("refund-crypto-payment.ts", [
       "00000000-0000-4000-8000-000000000001",
       "00000000-0000-4000-8000-000000000002",
-      "1",
-      "x",
+      "0",
+      "support-ticket-0001",
       "00000000-0000-4000-8000-000000000003",
       "operator",
       "probe",
