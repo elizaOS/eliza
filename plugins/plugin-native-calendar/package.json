@@ -37,7 +37,9 @@
     "ios/Sources/",
     "*.podspec",
     "dist",
-    "android/",
+    "android/build.gradle",
+    "android/README.md",
+    "android/src/",
     "src/"
   ],
   "author": "elizaOS",
