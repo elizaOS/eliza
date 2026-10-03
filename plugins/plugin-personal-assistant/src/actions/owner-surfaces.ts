@@ -660,7 +660,8 @@ async function enqueueDocumentSignatureApproval(args: {
   const signatureUrl =
     readStringParam(args.options, "signatureUrl") ??
     readStringParam(args.options, "signature_url") ??
-    firstUrl(text);
+    firstUrl(text) ??
+    undefined;
   const deadline =
     readStringParam(args.options, "deadline") ?? defaultSignatureDeadline(text);
   // The OWNER_DOCUMENTS signature path creates the DocumentRequest that
