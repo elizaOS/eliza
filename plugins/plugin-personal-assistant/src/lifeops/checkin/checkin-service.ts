@@ -184,7 +184,14 @@ function formatCheckinReportForPrompt(
         : null,
     habitSummaries:
       report.collectorErrors.habitSummaries === null
-        ? report.habitSummaries
+        ? {
+            withRecordedMisses: report.habitSummaries.filter(
+              (habit) => habit.missedOccurrenceStreak > 0,
+            ),
+            withoutRecordedMisses: report.habitSummaries.filter(
+              (habit) => !(habit.missedOccurrenceStreak > 0),
+            ),
+          }
         : null,
   };
   return JSON.stringify(modelReport, (_key, value: unknown) => {

@@ -30,6 +30,38 @@ const baseReport = (
 });
 
 describe("buildCheckinSummaryPrompt", () => {
+  it("keeps every habit field while separating recorded misses from successful streaks", () => {
+    const common = {
+      kind: "habit" as const,
+      bestOccurrenceStreak: 1,
+      pauseUntil: null,
+      isPaused: false,
+      progress: null,
+    };
+    const completed = {
+      ...common,
+      definitionId: "done",
+      title: "Completed check",
+      currentOccurrenceStreak: 1,
+      missedOccurrenceStreak: 0,
+    };
+    const missed = {
+      ...common,
+      definitionId: "missed",
+      title: "Missed check",
+      currentOccurrenceStreak: 0,
+      missedOccurrenceStreak: 1,
+    };
+    const p = buildCheckinSummaryPrompt(
+      baseReport({ habitSummaries: [completed, missed] }),
+    );
+    const data = JSON.parse(
+      p.split("Report JSON:\n")[1].split("\n\nSummary:")[0],
+    );
+    expect(data.habitSummaries.withRecordedMisses).toEqual([missed]);
+    expect(data.habitSummaries.withoutRecordedMisses).toEqual([completed]);
+  });
+
   it("supplies the collector's local date across a UTC day boundary", () => {
     const p = buildCheckinSummaryPrompt(
       baseReport({
