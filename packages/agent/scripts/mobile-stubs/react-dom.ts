@@ -7,10 +7,29 @@ const NOOP_FN = function noopReactDomStub() {
   return undefined;
 };
 
+// Own enumerable names let Bun populate `import * as ReactDOM`; see ./react.ts.
+const REACT_DOM_EXPORTS = [
+  "createPortal",
+  "createRoot",
+  "flushSync",
+  "hydrate",
+  "hydrateRoot",
+  "render",
+  "unmountComponentAtNode",
+  "version",
+];
+
 function makeReactDomProxy() {
   const target = function reactDomStub() {
     return undefined;
   };
+  for (const name of REACT_DOM_EXPORTS) {
+    Object.defineProperty(target, name, {
+      configurable: true,
+      enumerable: true,
+      value: undefined,
+    });
+  }
   return new Proxy(target, {
     get(_t, prop) {
       if (prop === "default") return module.exports;

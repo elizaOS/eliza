@@ -28,6 +28,75 @@
         "eliza_cf_riscv64_phone"
       ]
     },
+    "gsi-android15": {
+      "kind": "virtual",
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-15.0.0_r36",
+        "tagObject": "1d7a1b4e33e556ed3cce86e57200f37b49cfd480",
+        "commit": "a0601d2912a6cedcaf97e1372173f8704a2715b0"
+      },
+      "projects": [
+        {
+          "path": "build/make",
+          "name": "platform/build",
+          "tagObject": "e5d90825c0d39532fcd42578ed6d3c51202b1457",
+          "commit": "d9611a86f6614b2d8b0367f81a825858dfd2207f"
+        }
+      ],
+      "requiredSourceFiles": [
+        "build/make/target/product/aosp_arm64.mk",
+        "build/make/target/product/aosp_x86_64.mk",
+        "build/make/target/product/gsi_release.mk"
+      ],
+      "supportedProducts": ["eliza_gsi_arm64", "eliza_gsi_x86_64"]
+    },
+    "gsi-android16": {
+      "kind": "virtual",
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-16.0.0_r4",
+        "tagObject": "6a0aa432c646cef4c76b276c9a0f38ecaa6e0c59",
+        "commit": "15128c9e27cfa599c48d294babd39286ee8f1426"
+      },
+      "projects": [
+        {
+          "path": "build/make",
+          "name": "platform/build",
+          "tagObject": "eb52880e37bf8fc962254cac514a3ae1545595e0",
+          "commit": "b815dded1eafbf06191a6ae306956bb6ed6fb415"
+        }
+      ],
+      "requiredSourceFiles": [
+        "build/make/target/product/aosp_arm64.mk",
+        "build/make/target/product/aosp_x86_64.mk",
+        "build/make/target/product/gsi_release.mk"
+      ],
+      "supportedProducts": ["eliza_gsi_arm64", "eliza_gsi_x86_64"]
+    },
+    "gsi-android17": {
+      "kind": "virtual",
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-17.0.0_r1",
+        "tagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+        "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+      },
+      "projects": [
+        {
+          "path": "build/make",
+          "name": "platform/build",
+          "tagObject": "2868938810740549bb85d727e0a5084e0210fcfa",
+          "commit": "5ce6f787337d0223710bf7d4a16dbe6d2a35f777"
+        }
+      ],
+      "requiredSourceFiles": [
+        "build/make/target/product/aosp_arm64.mk",
+        "build/make/target/product/aosp_x86_64.mk",
+        "build/make/target/product/gsi_release.mk"
+      ],
+      "supportedProducts": ["eliza_gsi_arm64", "eliza_gsi_x86_64"]
+    },
     "pixel9a": {
       "kind": "physical",
       "device": {

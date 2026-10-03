@@ -138,7 +138,10 @@ import {
 	resolveRendererProxyIdleTimeoutSeconds,
 	shouldProxyToApiBase,
 } from "./renderer-api-proxy";
+import { protectRendererRequest } from "./renderer-request-boundary";
 import {
+	buildRendererStaticAssetHeaders,
+	buildRendererStaticHtmlHeaders,
 	getRendererAssetContentType,
 	resolveRendererAsset,
 	resolveRendererAssetByteRange,
@@ -930,7 +933,7 @@ async function startRendererServer(): Promise<string> {
 		// while local inference is still pre-filling; keep it aligned with the
 		// API server's long request budget, capped to Bun.serve's accepted range.
 		idleTimeout: rendererProxyIdleTimeoutSeconds,
-		async fetch(req) {
+		fetch: protectRendererRequest(port, async (req) => {
 			const url = new URL(req.url);
 			const pathname = url.pathname;
 			// Proxy /api/*, /ws, /music-player to the agent port. Mirrors the Vite
@@ -978,23 +981,17 @@ async function startRendererServer(): Promise<string> {
 				if (mimeExt === ".html" || filePath.endsWith("index.html")) {
 					const html = apiBaseOwner.injectIntoHtml(content.toString("utf8"));
 					return new Response(html, {
-						headers: {
-							"Content-Type": "text/html; charset=utf-8",
-							"Access-Control-Allow-Origin": "*",
-							"Cache-Control": "public, max-age=0, must-revalidate",
-						},
+						headers: buildRendererStaticHtmlHeaders(),
 					});
 				}
-				const headers: Record<string, string> = {
-					"Content-Type": getRendererAssetContentType(mimeExt),
-					"Access-Control-Allow-Origin": "*",
-					"Cache-Control": resolveRendererCacheControl(pathname, mimeExt),
-					"Accept-Ranges": "bytes",
-					"Content-Length": String(content.byteLength),
-				};
-				if (isGzipped) {
-					headers["Content-Encoding"] = "gzip";
-				}
+				const headers: Record<string, string> = buildRendererStaticAssetHeaders(
+					{
+						contentType: getRendererAssetContentType(mimeExt),
+						cacheControl: resolveRendererCacheControl(pathname, mimeExt),
+						contentLength: content.byteLength,
+						...(isGzipped ? { contentEncoding: "gzip" } : {}),
+					},
+				);
 				const byteRange = isGzipped
 					? null
 					: resolveRendererAssetByteRange(
@@ -1015,7 +1012,7 @@ async function startRendererServer(): Promise<string> {
 			} catch {
 				return new Response("Not found", { status: 404 });
 			}
-		},
+		}),
 	});
 	console.log(`[Renderer] Static server on http://127.0.0.1:${port}`);
 	return `http://127.0.0.1:${port}`;

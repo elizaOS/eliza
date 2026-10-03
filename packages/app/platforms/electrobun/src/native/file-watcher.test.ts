@@ -27,13 +27,16 @@ it("delivers source edits beneath hidden ancestors while ignoring generated desc
 					// Recursive OS watchers can finish subscribing after startWatch returns.
 					// Keep editing until a real event arrives instead of racing that setup.
 					fs.writeFileSync(source, `changed ${++revision}`);
-					return events.some((event) => event.filePath === source);
+					return events.map((event) => event.filePath);
 				},
 				{
-					timeout: 3000,
+					// Leave the production 50ms debounce enough time to deliver
+					// between edits; polling edits at the same cadence can starve it.
+					interval: 250,
+					timeout: 10000,
 				},
 			)
-			.toBe(true);
+			.toContain(source);
 		expect(
 			events.some((event) => event.relativePath.includes("node_modules")),
 		).toBe(false);
@@ -41,4 +44,4 @@ it("delivers source edits beneath hidden ancestors while ignoring generated desc
 		watcher.stopWatch(id);
 		fs.rmSync(temporary, { recursive: true, force: true });
 	}
-});
+}, 15000);

@@ -1,0 +1,17 @@
+###
+### Android 17+ (SDK 37) vendor rules for the Eliza on-device agent.
+###
+### Added to BOARD_VENDOR_SEPOLICY_DIRS by eliza_common.mk only when
+### PLATFORM_SDK_VERSION is 37 or later: platform_app_36 does not exist in
+### Android 15 or 16 public policy, so these rules cannot live in ../eliza_agent.te.
+###
+
+# Android 17 assigns platform-signed apps targeting SDK <= 36 to this
+# compatibility domain. Keep the bundled-runtime debug allowance scoped to
+# development images; production packaging must avoid app-data execution.
+userdebug_or_eng(`
+  allow platform_app_36 app_data_file:file { execute execute_no_trans };
+  # Runtime identity atomically publishes an app-owned, fsynced candidate
+  # with linkat. Preserve no-overwrite publication rather than bypassing it.
+  allow platform_app_36 app_data_file:file link;
+')

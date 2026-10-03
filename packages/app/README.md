@@ -112,3 +112,12 @@ the expected phrase while the recognizer control passed; the model/forward-path
 defect remains unresolved (issue #30679). Diagnosis needs a matched canonical
 reference and the first divergent tensor. Microphone capture, phonemization and
 physical speaker playback are outside this IPA-input diagnostic.
+
+### Android secure-store broker
+
+Embedding Android hosts can set `ELIZA_ANDROID_SECURE_STORE_SOCKET` to their
+app-owned broker's abstract socket name (without the leading NUL byte). The host
+captures it when constructing the secure store; an unset or empty value uses
+`ai.elizaos.app.secure-store`. An explicit factory socket path takes precedence.
+The embedding app must start the corresponding app-UID-only Keystore broker;
+this option changes client routing, not broker permissions or availability.

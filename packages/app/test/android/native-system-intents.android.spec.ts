@@ -366,7 +366,9 @@ test("granting the dialer role returns the Android result and restores the origi
     await device.tap({ pkg: /.*permissioncontroller/, text: "Eliza" });
     await device.tap({
       pkg: /.*permissioncontroller/,
-      text: "Set as default",
+      res: "android:id/button1",
+      // Playwright serializes Android RegExp.source without JavaScript flags.
+      text: /^(?:Set as default|SET AS DEFAULT)$/,
       enabled: true,
     });
     const result = await outcome;

@@ -45,6 +45,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "./paths.ts";
+import { assertNoRetiredToolRestrictions } from "./retired-tool-policy.ts";
 
 export type { ElizaConfig } from "@elizaos/core";
 
@@ -226,6 +227,7 @@ export function loadElizaConfig(onReadFile?: ConfigReadObserver): ElizaConfig {
       : { logging: { level: "error" } })) as ElizaConfig;
   migrateConfig(resolved);
   normalizeModelMetadataInConfig(resolved);
+  assertNoRetiredToolRestrictions(resolved);
 
   const skillsJsonPath = path.join(stateDir, "skills.json");
 
@@ -537,6 +539,7 @@ function stripWalletPrivateKeysFromConfig(config: ElizaConfig): void {
 }
 
 export function saveElizaConfig(config: ElizaConfig): void {
+  assertNoRetiredToolRestrictions(config);
   if (isDevCloudConfigAuthorityView(config)) {
     throw new Error(
       "[eliza-config] Refusing to persist an ephemeral dev Cloud authority view",

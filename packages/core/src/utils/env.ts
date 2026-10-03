@@ -34,6 +34,18 @@ export function isEnvDisabled(value: string | undefined): boolean {
 	return raw === "0" || raw === "false" || raw === "off" || raw === "no";
 }
 
+/**
+ * Authorization predicate for dangerous operator opt-ins whose documented
+ * value is exactly `true`, such as `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS`.
+ * Deliberately strict — unlike {@link parseBooleanValue}, `"1"`, `"yes"`, and
+ * `"on"` authorize nothing — so capability gates, restore guards, and boot
+ * warnings all evaluate the same operator decision. Loosen only with a
+ * coordinated change across every reader of the flag.
+ */
+export function isExactTrueEnvFlag(value: string | undefined): boolean {
+	return value === "true";
+}
+
 import { resolveAliasedEnvValue } from "../config/boot-config-store.js";
 import {
 	buildBrandEnvSyncAliases,

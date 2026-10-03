@@ -22,6 +22,7 @@
 // the final turn to the shared liveness assertion (non-empty, non-stub reply).
 
 import path from "node:path";
+import { errors } from "@playwright/test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidScreenshot,
@@ -99,11 +100,39 @@ test.describe
                     expect(dialog.message()).toContain(
                       new URL(HOST_AGENT_BASE).host,
                     );
-                    // Keep the listener to prevent CDP auto-dismissal, but
-                    // accept through Android itself: CDP acceptance can leave
-                    // WebChromeClient's native AlertDialog covering the app.
-                    await device.tap({ text: "OK" });
-                    await dialog.accept();
+                    // Resolve the app-owned native confirmation when exposed.
+                    // Accepting through CDP first can resume the page while the
+                    // WebChromeClient's AlertDialog still covers the WebView.
+                    const nativeConfirm = {
+                      pkg: APP_ID,
+                      res: "android:id/button1",
+                      text: "OK",
+                    };
+                    let nativeConfirmVisible = false;
+                    try {
+                      await device.wait(nativeConfirm, { timeout: 15_000 });
+                      nativeConfirmVisible = true;
+                    } catch (error) {
+                      // The Android driver serializes selector absence as a
+                      // plain Error rather than Playwright's TimeoutError.
+                      const selectorAbsent =
+                        error instanceof Error &&
+                        /^(?:androidDevice\.wait: )?(?:java\.lang\.RuntimeException: )?Timed out waiting for selector$/.test(
+                          error.message,
+                        );
+                      if (
+                        !(error instanceof errors.TimeoutError) &&
+                        !selectorAbsent
+                      ) {
+                        throw error;
+                      }
+                    }
+                    if (nativeConfirmVisible) {
+                      await device.tap(nativeConfirm, { timeout: 5_000 });
+                    } else {
+                      // Some WebView implementations expose only the CDP dialog.
+                      await dialog.accept();
+                    }
                     resolve();
                   } catch (error) {
                     reject(error);
@@ -125,20 +154,56 @@ test.describe
         ]);
 
         await confirmation;
+        // Auth-status hydration selects the pairing form asynchronously. Its
+        // autofocus can scroll the instructions off screen behind the keyboard.
+        const pairingInput = page.getByPlaceholder("Enter pairing code");
+        await expect(pairingInput).toBeVisible({ timeout: 60_000 });
+        const pairingHint = page.getByText("Get a one-time code", {
+          exact: true,
+        });
+        await pairingHint.scrollIntoViewIfNeeded();
+        await expect(pairingHint).toBeInViewport();
         // Inspect Android's active accessibility window, not just DOM behind
         // a native modal. Native field placeholders are not accessibility text.
-        await expect(async () => {
-          const label = await device.info({ text: "Get a one-time code" });
-          expect(label.pkg).toBe(APP_ID);
-          expect(label.bounds.width).toBeGreaterThan(0);
-        }).toPass({ timeout: 15_000 });
+        try {
+          await expect(async () => {
+            let label: Awaited<ReturnType<typeof device.info>>;
+            try {
+              label = await device.info({ text: "Get a one-time code" });
+            } catch (cause) {
+              // Closed diagnostic categories keep native text and UI dumps private.
+              throw new Error("ANDROID_PAIRING_ACCESSIBILITY:1", { cause });
+            }
+            if (label.pkg !== APP_ID) {
+              throw new Error("ANDROID_PAIRING_ACCESSIBILITY:2");
+            }
+            if (!(label.bounds.width > 0)) {
+              throw new Error("ANDROID_PAIRING_ACCESSIBILITY:3");
+            }
+          }).toPass({ timeout: 15_000 });
+        } catch (cause) {
+          // Distinguish a native content-description label from missing native
+          // content without exporting the window hierarchy or accepting a pass.
+          let descriptionLabelPresent = false;
+          try {
+            const selector = { desc: "Get a one-time code", pkg: APP_ID };
+            await device.wait(selector, { timeout: 1_000 });
+            const label = await device.info(selector);
+            descriptionLabelPresent =
+              label.pkg === APP_ID && label.bounds.width > 0;
+          } catch {
+            // Diagnostic absence retains the original native assertion failure.
+          }
+          if (descriptionLabelPresent) {
+            throw new Error("ANDROID_PAIRING_ACCESSIBILITY:4", { cause });
+          }
+          throw cause;
+        }
 
         // OS deep links deliberately never carry bearer credentials. Complete
         // the production remote-device pairing flow against the real host,
         // obtaining the short-lived code through its loopback-only operator
         // endpoint and entering it through the rendered device UI.
-        const pairingInput = page.getByPlaceholder("Enter pairing code");
-        await expect(pairingInput).toBeVisible({ timeout: 60_000 });
         await testInfo.attach("connection state before pairing", {
           body: JSON.stringify(
             await page.evaluate(() => {

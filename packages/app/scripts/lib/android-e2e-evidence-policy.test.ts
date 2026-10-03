@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   androidProjectionFailureCode,
+  androidVideoFailureMessage,
   createAndroidEvidenceBoundary,
   projectAndroidDeviceEvidenceBundle,
   reportAndroidPlaywrightResults,
@@ -43,6 +44,39 @@ function allPublicBytes(root) {
 }
 
 describe("Android evidence diagnostics boundary", () => {
+  test("encoder diagnostics export only closed failure classes", () => {
+    const secret = "PRIVATE_VIDEO_PATH_AND_DEVICE_CANARY";
+    for (const [result, code] of [
+      [
+        { error: { code: "ENOENT", message: secret } },
+        "PROJECTION_VIDEO_UNAVAILABLE",
+      ],
+      [{ signal: "SIGKILL", stderr: secret }, "PROJECTION_VIDEO_TERMINATED"],
+      [
+        { stderr: `moov atom not found ${secret}` },
+        "PROJECTION_VIDEO_INVALID_INPUT",
+      ],
+      [
+        { stderr: `Unknown encoder ${secret}` },
+        "PROJECTION_VIDEO_ENCODER_UNAVAILABLE",
+      ],
+      [
+        { stderr: `Cannot allocate memory ${secret}` },
+        "PROJECTION_VIDEO_RESOURCE_EXHAUSTED",
+      ],
+      [{ stderr: secret }, "PROJECTION_VIDEO_FAILED"],
+    ]) {
+      const message = androidVideoFailureMessage(result);
+      expect(message).not.toContain(secret);
+      expect(androidProjectionFailureCode(new Error(message))).toBe(code);
+      const output = [];
+      createAndroidEvidenceBoundary({
+        write: (chunk) => output.push(chunk),
+      }).event("evidence-projection", "failed", code);
+      expect(output.join("")).toContain(`code=${code}`);
+      expect(output.join("")).not.toContain(secret);
+    }
+  });
   test("helper callbacks never serialize adversarial device output", () => {
     const chunks = [];
     const serial = "PHYSICAL_SERIAL_CANARY-R58N9911";
@@ -714,6 +748,64 @@ describe("Android hosted probe diagnostics", () => {
       "[android-e2e] phase=route-capture status=passed code=PLAYWRIGHT_PASSED specId=2 sourceLine=82\n",
     ]);
     expect(chunks.join("")).not.toContain(canary);
+  });
+
+  test("Android wait failures export closed categories without private error text", () => {
+    const root = fixtureRoot();
+    const reportPath = path.join(root, "report.json");
+    const messages = [
+      "Error: androidDevice.wait: java.lang.RuntimeException: Timed out waiting for selector\nCall log:\nPRIVATE_CANARY",
+      "TimeoutError: androidDevice.wait: Timeout 1000ms exceeded.",
+      "Error: androidDevice.wait: Device is closed",
+      "Error: androidDevice.wait: PRIVATE_CANARY",
+      "PRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:1\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:2\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:3\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:4\nPRIVATE_CANARY",
+      "Error: ANDROID_PAIRING_ACCESSIBILITY:99\nPRIVATE_CANARY",
+    ];
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        suites: [
+          {
+            specs: [
+              {
+                file: "onboarding-to-home.android.spec.ts",
+                line: 117,
+                tests: [
+                  {
+                    results: messages.map((message) => ({
+                      status: "failed",
+                      error: { message },
+                    })),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const chunks = [];
+    reportAndroidPlaywrightResults(
+      reportPath,
+      createAndroidEvidenceBoundary({ write: (chunk) => chunks.push(chunk) }),
+    );
+    expect(chunks).toEqual([
+      ...[1, 2, 3, 4].map(
+        (kind) =>
+          `[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117 androidWaitErrorKind=${kind}\n`,
+      ),
+      "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117\n",
+      ...[1, 2, 3, 4].map(
+        (kind) =>
+          `[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117 androidAccessibilityErrorKind=${kind}\n`,
+      ),
+      "[android-e2e] phase=route-capture status=failed code=PLAYWRIGHT_FAILED specId=1 sourceLine=117\n",
+    ]);
+    expect(chunks.join("")).not.toContain("PRIVATE_CANARY");
   });
 
   test("missing, malformed, unrecognized and symlink reports explicitly fail closed", () => {

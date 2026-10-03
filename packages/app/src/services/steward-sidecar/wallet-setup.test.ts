@@ -6,6 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CREDENTIALS_FILE } from "./types";
 import { ensureWalletSetup } from "./wallet-setup";
 
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    openSync: vi.fn(actual.openSync),
+    writeFileSync: vi.fn(actual.writeFileSync),
+    fsyncSync: vi.fn(actual.fsyncSync),
+  };
+});
+
 const API_BASE = "http://127.0.0.1:3200";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -282,5 +292,128 @@ describe("steward wallet first-launch setup", () => {
     await expect(setup).rejects.not.toThrow(
       `reset the local Steward vault by removing ${path.join(dataDir, "data")}`,
     );
+  });
+  it("preserves the resumable checkpoint when a replacement write fails", async () => {
+    const checkpoint = {
+      tenantId: "eliza-local",
+      tenantApiKey: "synthetic-tenant-key",
+      agentId: "synthetic-agent",
+      walletAddress: "0xsynthetic-wallet",
+    };
+    const target = path.join(dataDir, CREDENTIALS_FILE);
+    const original = JSON.stringify(checkpoint);
+    fs.writeFileSync(target, original, { mode: 0o600 });
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    vi.mocked(fs.writeFileSync).mockImplementationOnce((destination) => {
+      realFs.writeFileSync(destination, "{", { mode: 0o600 });
+      throw Object.assign(new Error("synthetic disk-full failure"), {
+        code: "ENOSPC",
+      });
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(200, {
+          ok: true,
+          data: { token: "synthetic-agent-token" },
+        }),
+      ),
+    );
+    const updateStatus = vi.fn();
+    await expect(
+      ensureWalletSetup(checkpoint, API_BASE, undefined, dataDir, updateStatus),
+    ).rejects.toThrow("synthetic disk-full failure");
+    expect(fs.readFileSync(target, "utf8")).toBe(original);
+    expect(fs.readdirSync(dataDir)).toEqual([CREDENTIALS_FILE]);
+    expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a real directory-flush failure on Windows without losing the checkpoint", async () => {
+    const checkpoint = {
+      tenantId: "eliza-local",
+      tenantApiKey: "synthetic-tenant-key",
+      agentId: "synthetic-agent",
+      walletAddress: "0xsynthetic-wallet",
+    };
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    // Supply a valid descriptor even on hosts that cannot open directories;
+    // this regression injects the flush error independently of host support.
+    vi.mocked(fs.openSync)
+      .mockImplementationOnce(realFs.openSync)
+      .mockImplementationOnce(() =>
+        realFs.openSync(path.join(dataDir, CREDENTIALS_FILE), "r"),
+      );
+    vi.mocked(fs.fsyncSync)
+      .mockImplementationOnce(realFs.fsyncSync)
+      .mockImplementationOnce(() => {
+        throw Object.assign(new Error("synthetic directory I/O failure"), {
+          code: "EIO",
+        });
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(200, {
+          ok: true,
+          data: { token: "synthetic-agent-token" },
+        }),
+      ),
+    );
+    const updateStatus = vi.fn();
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    if (!platform) throw new Error("process.platform descriptor is missing");
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      await expect(
+        ensureWalletSetup(
+          checkpoint,
+          API_BASE,
+          undefined,
+          dataDir,
+          updateStatus,
+        ),
+      ).rejects.toThrow("synthetic directory I/O failure");
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+    expect(
+      JSON.parse(fs.readFileSync(path.join(dataDir, CREDENTIALS_FILE), "utf8")),
+    ).toEqual({
+      ...checkpoint,
+      agentToken: "synthetic-agent-token",
+    });
+    expect(fs.readdirSync(dataDir)).toEqual([CREDENTIALS_FILE]);
+    expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("publishes complete private credentials when replacing an older permissive file", async () => {
+    const checkpoint = {
+      tenantId: "eliza-local",
+      tenantApiKey: "synthetic-tenant-key",
+      agentId: "synthetic-agent",
+      walletAddress: "0xsynthetic-wallet",
+    };
+    const target = path.join(dataDir, CREDENTIALS_FILE);
+    fs.writeFileSync(target, JSON.stringify(checkpoint), { mode: 0o644 });
+    fs.chmodSync(target, 0o644);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(200, {
+          ok: true,
+          data: { token: "synthetic-agent-token" },
+        }),
+      ),
+    );
+    const result = await ensureWalletSetup(
+      checkpoint,
+      API_BASE,
+      undefined,
+      dataDir,
+      () => {},
+    );
+    expect(JSON.parse(fs.readFileSync(target, "utf8"))).toEqual(result);
+    expect(fs.statSync(target).mode & 0o777).toBe(0o600);
+    expect(fs.readdirSync(dataDir)).toEqual([CREDENTIALS_FILE]);
   });
 });
