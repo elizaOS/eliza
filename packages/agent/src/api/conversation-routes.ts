@@ -2581,10 +2581,11 @@ const CONVERSATION_AROUND_RADIUS = 100;
  * returns the pivot's own turn plus up to CONVERSATION_AROUND_RADIUS older and
  * newer turns, ordered chronologically by the caller.
  *
- * Bounds are pushed into the store as getMemories `start`/`end` (createdAt
- * range) so there is NO in-process scan. Returns the recent window unchanged
- * when the pivot is missing or lives in another room — the latter prevents a
- * cross-room leak via a forged `around` id.
+ * Each side is a store keyset on `(createdAt, id)` so a burst of messages in
+ * the pivot's millisecond cannot push the pivot itself out of both capped
+ * halves. Returns the recent window unchanged when the pivot is missing or
+ * lives in another room — the latter prevents a cross-room leak via a forged
+ * `around` id.
  */
 async function loadConversationMessagesAround(
   runtime: AgentRuntime,
@@ -2592,7 +2593,7 @@ async function loadConversationMessagesAround(
   aroundMessageId: UUID,
 ): Promise<Memory[]> {
   const [pivot] = await runtime.getMemoriesByIds([aroundMessageId], "messages");
-  if (!pivot || pivot.roomId !== roomId) {
+  if (!pivot || pivot.roomId !== roomId || !pivot.id) {
     logger.warn(
       `[conversations] around=${aroundMessageId} is not in room ${roomId}; serving the recent window instead`,
     );
@@ -2602,32 +2603,27 @@ async function loadConversationMessagesAround(
       limit: CONVERSATION_MESSAGE_WINDOW,
     });
   }
-  const pivotCreatedAt = pivot.createdAt ?? 0;
-  const [olderOrAt, newerOrAt] = await Promise.all([
-    // The pivot and everything before it, newest-first, capped. The pivot is
-    // included because `end` is inclusive of its createdAt.
+  const cursor = { createdAt: pivot.createdAt ?? 0, id: pivot.id };
+  const [older, newer] = await Promise.all([
     runtime.getMemories({
       roomId,
       tableName: "messages",
-      end: pivotCreatedAt,
-      limit: CONVERSATION_AROUND_RADIUS + 1,
+      cursor,
+      limit: CONVERSATION_AROUND_RADIUS,
       orderBy: "createdAt",
       orderDirection: "desc",
     }),
-    // The pivot and everything after it, oldest-first, capped.
     runtime.getMemories({
       roomId,
       tableName: "messages",
-      start: pivotCreatedAt,
-      limit: CONVERSATION_AROUND_RADIUS + 1,
+      cursor,
+      limit: CONVERSATION_AROUND_RADIUS,
       orderBy: "createdAt",
       orderDirection: "asc",
     }),
   ]);
-  // Merge the two half-windows, de-duping the shared pivot (and any createdAt
-  // ties both bounds picked up) by id.
   const byId = new Map<UUID, Memory>();
-  for (const memory of [...olderOrAt, ...newerOrAt]) {
+  for (const memory of [pivot, ...older, ...newer]) {
     if (memory.id) {
       byId.set(memory.id, memory);
     }
