@@ -697,15 +697,20 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     agentId: UUID;
     limit?: number;
   }): Promise<Entity[]> {
-    const q = params.query.toLowerCase();
+    // The adapter contract defaults an omitted limit to 10. A truthy check
+    // returned every match, and a blank query matched nothing because no name
+    // contains whitespace.
+    const limit = params.limit ?? 10;
+    const q = params.query.trim().toLowerCase();
     const matches = await this.storage.getWhere<Entity>(
       COLLECTIONS.ENTITIES,
       (e) => {
+        if (q.length === 0) return true;
         const names = (e as Entity & { names?: string[] }).names ?? [];
         return names.some((name) => name.toLowerCase().includes(q));
       },
     );
-    return params.limit ? matches.slice(0, params.limit) : matches;
+    return matches.slice(0, Math.max(0, limit));
   }
 
   async queryEntities(params: {
