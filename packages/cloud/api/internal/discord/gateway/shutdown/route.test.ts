@@ -41,7 +41,7 @@ const app = new Hono().route(
   shutdownRoute,
 );
 
-function post(body?: string): Promise<Response> {
+async function post(body?: string): Promise<Response> {
   return app.request("/api/internal/discord/gateway/shutdown", {
     method: "POST",
     ...(body === undefined
