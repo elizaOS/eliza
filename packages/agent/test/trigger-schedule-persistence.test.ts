@@ -197,3 +197,118 @@ it("persists the timezone through pause and re-enable and schedules in that zone
     await fixture.runtime.deleteTask(taskId);
   }
 });
+
+it("rejects a past once time on update and leaves the stored schedule", async () => {
+  const instructions = `Past update ${randomUUID()}`;
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+  const created = await triggerAction.handler(
+    fixture.runtime,
+    {
+      entityId: fixture.runtime.agentId,
+      agentId: fixture.runtime.agentId,
+      roomId: randomUUID() as UUID,
+      content: { text: "Create a future reminder." },
+    } as Memory,
+    undefined,
+    {
+      parameters: {
+        action: "create",
+        instructions,
+        scheduledAtIso: future,
+      },
+    },
+  );
+  expect(created).toMatchObject({ success: true });
+  const task = (await fixture.runtime.getTasks({ tags: ["trigger"] })).find(
+    (candidate) => candidate.metadata?.trigger?.instructions === instructions,
+  );
+  expect(task?.id).toBeDefined();
+  const updated = await triggerAction.handler(
+    fixture.runtime,
+    {
+      entityId: fixture.runtime.agentId,
+      agentId: fixture.runtime.agentId,
+      roomId: randomUUID() as UUID,
+      content: { text: "Move the reminder to the past." },
+    } as Memory,
+    undefined,
+    {
+      parameters: {
+        action: "update",
+        taskId: task?.id,
+        scheduledAtIso: "2000-01-01T00:00:00.000Z",
+      },
+    },
+  );
+  expect(updated).toMatchObject({ success: false });
+  const saved = readTriggerConfig(
+    (await fixture.runtime.getTask(task?.id as UUID)) as Task,
+  );
+  expect(saved?.scheduledAtIso).toBe(future);
+  if (task?.id) await fixture.runtime.deleteTask(task.id);
+});
+
+it("refuses to resume a once trigger whose fire time has passed", async () => {
+  const instructions = `Past resume ${randomUUID()}`;
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Create a future reminder." },
+  } as Memory;
+  const created = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    {
+      parameters: {
+        action: "create",
+        instructions,
+        scheduledAtIso: future,
+      },
+    },
+  );
+  expect(created).toMatchObject({ success: true });
+  const task = (await fixture.runtime.getTasks({ tags: ["trigger"] })).find(
+    (candidate) => candidate.metadata?.trigger?.instructions === instructions,
+  );
+  if (!task?.id) throw new Error("created trigger missing");
+  const paused = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    {
+      parameters: { action: "toggle", taskId: task.id, enabled: false },
+    },
+  );
+  expect(paused).toMatchObject({ success: true });
+  const stored = await fixture.runtime.getTask(task.id);
+  const trigger = readTriggerConfig(stored as Task);
+  if (!stored || !trigger) throw new Error("paused trigger missing");
+  await fixture.runtime.updateTask(task.id, {
+    metadata: {
+      ...stored.metadata,
+      trigger: {
+        ...trigger,
+        enabled: false,
+        scheduledAtIso: "2000-01-01T00:00:00.000Z",
+      },
+    },
+  });
+  const resumed = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    {
+      parameters: { action: "toggle", taskId: task.id, enabled: true },
+    },
+  );
+  expect(resumed).toMatchObject({ success: false });
+  const after = readTriggerConfig(
+    (await fixture.runtime.getTask(task.id)) as Task,
+  );
+  expect(after?.enabled).toBe(false);
+  expect(after?.scheduledAtIso).toBe("2000-01-01T00:00:00.000Z");
+  await fixture.runtime.deleteTask(task.id);
+});
