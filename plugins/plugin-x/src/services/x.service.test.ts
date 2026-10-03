@@ -848,4 +848,42 @@ describe("XService trusted account routing", () => {
 
     expect(messages.map((message) => message.isInbound)).toEqual([false, true]);
   });
+
+  it("rejects connector DM reads when the DM fetch fails instead of returning an empty inbox", async () => {
+    const runtime = Object.assign(runtimeWithSettings({}), {
+      reportError: vi.fn(),
+    });
+    const service = new XService(runtime);
+    const failure = new Error("Request failed with code 401");
+    const session = dmSession("current-user", {
+      listDmEvents: vi.fn(async () => {
+        throw failure;
+      }),
+    });
+    const base = {
+      profile: { id: "current-user", username: "current" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+    const context = { runtime, source: "x" } as Parameters<
+      XService["fetchConnectorMessages"]
+    >[0];
+
+    await expect(service.fetchConnectorMessages(context, {})).rejects.toBe(
+      failure,
+    );
+    await expect(service.listRecentConnectorTargets(context)).rejects.toBe(
+      failure,
+    );
+  });
 });
