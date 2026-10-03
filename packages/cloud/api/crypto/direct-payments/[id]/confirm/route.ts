@@ -40,7 +40,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
-    const body = await c.req.json();
+    // error-policy:J3 malformed JSON is invalid request input.
+    const body = await c.req.json().catch(() => null);
     const validation = confirmSchema.safeParse(body);
     if (!validation.success) {
       return c.json(
