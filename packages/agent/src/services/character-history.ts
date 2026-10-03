@@ -6,6 +6,7 @@
  * entries and lists them newest-first for the character-history surface.
  */
 import {
+  compareMemoryIds,
   ElizaError,
   type IAgentRuntime,
   isElizaError,
@@ -772,7 +773,7 @@ export async function listCharacterHistory(
           ? left.timestamp
           : 0;
       return (
-        rightTime - leftTime || (left.id ?? "").localeCompare(right.id ?? "")
+        rightTime - leftTime || compareMemoryIds(right.id ?? "", left.id ?? "")
       );
     });
   return limit === undefined ? entries : entries.slice(0, limit);
