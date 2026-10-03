@@ -162,56 +162,62 @@ it("vetoes the captured false-binding done even if a semantic judge would return
   ).toBeUndefined();
 });
 
-it("reuses observed unrelated evidence across new service instances without another classifier call", async () => {
-  const f = await reviewFixture("The invoice check is still in progress.");
-  const judge = vi
-    .spyOn(service.remindersDomain, "classifyReminderOwnerResponseSemantically")
-    .mockResolvedValue({
-      decision: "unrelated",
-      resolution: null,
-      snoozeRequest: null,
-      confidence: 0.8,
-      reason: "not_done",
-    });
-  const first = await service.reviewOwnerResponseAfterReminderAttempt({
-    subjectType: "owner",
-    attempt: f.attempt,
-    now: f.now,
-  });
-  expect(judge).toHaveBeenCalledTimes(1);
-  const restarted = new LifeOpsService(fixture.runtime);
-  const replayJudge = vi
-    .spyOn(
-      restarted.remindersDomain,
-      "classifyReminderOwnerResponseSemantically",
-    )
-    .mockResolvedValue({
-      decision: "explicit_resolution",
-      resolution: "completed",
-      snoozeRequest: null,
-      confidence: 0.95,
-      reason: "changed_verdict",
-    });
-  const [persisted] = await restarted.repository.listReminderAttempts(
-    fixture.runtime.agentId,
-    { ownerType: "occurrence", ownerId: f.occurrence.id },
-  );
-  const repeated = await restarted.reviewOwnerResponseAfterReminderAttempt({
-    subjectType: "owner",
-    attempt: persisted,
-    now: new Date(f.now.getTime() + 68_000),
-  });
-  expect(replayJudge).not.toHaveBeenCalled();
-  expect(repeated.decision).toBe(first.decision);
-  expect(
-    (
-      await restarted.repository.getOccurrence(
-        fixture.runtime.agentId,
-        f.occurrence.id,
+it.each(["unrelated", "abstain"] as const)(
+  "reuses observed %s evidence across new service instances without another classifier call",
+  async (decision) => {
+    const f = await reviewFixture("The invoice check is still in progress.");
+    const judge = vi
+      .spyOn(
+        service.remindersDomain,
+        "classifyReminderOwnerResponseSemantically",
       )
-    )?.metadata.reminderAcknowledgedAt,
-  ).toBeUndefined();
-});
+      .mockResolvedValue({
+        decision,
+        resolution: null,
+        snoozeRequest: null,
+        confidence: 0.8,
+        reason: "not_done",
+      });
+    const first = await service.reviewOwnerResponseAfterReminderAttempt({
+      subjectType: "owner",
+      attempt: f.attempt,
+      now: f.now,
+    });
+    expect(judge).toHaveBeenCalledTimes(1);
+    const restarted = new LifeOpsService(fixture.runtime);
+    const replayJudge = vi
+      .spyOn(
+        restarted.remindersDomain,
+        "classifyReminderOwnerResponseSemantically",
+      )
+      .mockResolvedValue({
+        decision: "explicit_resolution",
+        resolution: "completed",
+        snoozeRequest: null,
+        confidence: 0.95,
+        reason: "changed_verdict",
+      });
+    const [persisted] = await restarted.repository.listReminderAttempts(
+      fixture.runtime.agentId,
+      { ownerType: "occurrence", ownerId: f.occurrence.id },
+    );
+    const repeated = await restarted.reviewOwnerResponseAfterReminderAttempt({
+      subjectType: "owner",
+      attempt: persisted,
+      now: new Date(f.now.getTime() + 68_000),
+    });
+    expect(replayJudge).not.toHaveBeenCalled();
+    expect(repeated.decision).toBe(first.decision);
+    expect(
+      (
+        await restarted.repository.getOccurrence(
+          fixture.runtime.agentId,
+          f.occurrence.id,
+        )
+      )?.metadata.reminderAcknowledgedAt,
+    ).toBeUndefined();
+  },
+);
 
 it("leaves typed control replies to their action pipeline", async () => {
   const f = await reviewFixture("done", {
@@ -481,4 +487,84 @@ it("vetoes stored externally wrapped done before semantic inference", async () =
       )
     )?.metadata.reminderAcknowledgedAt,
   ).toBeUndefined();
+});
+
+it("retries an unavailable semantic verdict without consuming it or later evidence", async () => {
+  const f = await reviewFixture(
+    "I finished the final reminder notification check.",
+  );
+  const priorCursor = new Date(
+    Date.parse(f.attempt.attemptedAt ?? "") + 1000,
+  ).toISOString();
+  const priorMetadata = {
+    reminderReviewStatus: "unrelated",
+    reminderReviewDecision: "unrelated",
+    reminderReviewRespondedAt: priorCursor,
+    reminderReviewResponseText: "Earlier unrelated reply",
+    reviewReason: "semantic_abstain",
+    reminderReviewClassifierSource: "semantic_abstain",
+  };
+  await service.repository.updateReminderAttemptOutcome(
+    f.attempt.id,
+    f.attempt.outcome,
+    priorMetadata,
+  );
+  Object.assign(f.attempt.deliveryMetadata, priorMetadata);
+  await fixture.runtime.createMemory(
+    {
+      ...f.message,
+      id: crypto.randomUUID() as UUID,
+      createdAt: (f.message.createdAt ?? 0) + 1000,
+      content: { text: "Another unrelated followup", source: "client_chat" },
+    },
+    "messages",
+  );
+  const unavailable = vi
+    .spyOn(service.remindersDomain, "classifyReminderOwnerResponseSemantically")
+    .mockResolvedValue(null);
+  const first = await service.reviewOwnerResponseAfterReminderAttempt({
+    subjectType: "owner",
+    attempt: f.attempt,
+    now: f.now,
+  });
+  expect(first.decision).toBe("no_response");
+  expect(unavailable).toHaveBeenCalledTimes(1);
+  const restarted = new LifeOpsService(fixture.runtime);
+  const [persisted] = await restarted.repository.listReminderAttempts(
+    fixture.runtime.agentId,
+    { ownerType: "occurrence", ownerId: f.occurrence.id },
+  );
+  expect(persisted.deliveryMetadata).toMatchObject(priorMetadata);
+  expect(
+    (
+      await service.repository.getOccurrence(
+        fixture.runtime.agentId,
+        f.occurrence.id,
+      )
+    )?.metadata.reminderAcknowledgedAt,
+  ).toBeUndefined();
+  const restored = vi
+    .spyOn(
+      restarted.remindersDomain,
+      "classifyReminderOwnerResponseSemantically",
+    )
+    .mockResolvedValue({
+      decision: "explicit_resolution",
+      resolution: "completed",
+      snoozeRequest: null,
+      confidence: 0.95,
+      reason: "restored_named_completed",
+    });
+  const recovered = await restarted.reviewOwnerResponseAfterReminderAttempt({
+    subjectType: "owner",
+    attempt: persisted,
+    now: f.now,
+  });
+  expect(restored).toHaveBeenCalledTimes(1);
+  expect(restored.mock.calls[0][0].text).toBe(f.message.content.text);
+  expect(recovered).toMatchObject({
+    decision: "explicit_resolution",
+    resolution: "completed",
+    respondedAt: new Date(f.message.createdAt ?? 0).toISOString(),
+  });
 });

@@ -1602,6 +1602,13 @@ export class RemindersDomain {
               semanticClassifier: (input) =>
                 this.classifyReminderOwnerResponseSemantically(input),
             });
+        if (
+          classification.classifierSource === "none" &&
+          classification.reason === "no_semantic_verdict"
+        ) {
+          // Unknown evidence must remain retryable; do not advance past it.
+          return { ...noResponse, reason: classification.reason };
+        }
         if (classification.decision === "explicit_resolution") {
           return {
             decision: "explicit_resolution",
