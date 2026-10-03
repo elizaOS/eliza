@@ -1066,7 +1066,10 @@ async function resolveDefinition(
  * ficus" reminders rendered as two identical lines with no times — an
  * unanswerable question). */
 function definitionDisambiguationLabel(entry: LifeOpsDefinitionRecord): string {
-  const when = summarizeCadence(entry.definition.cadence)?.trim();
+  const when = summarizeCadence(
+    entry.definition.cadence,
+    entry.definition.timezone,
+  )?.trim();
   return when && when.length > 0
     ? `${entry.definition.title} — ${when}`
     : entry.definition.title;
@@ -1083,7 +1086,9 @@ function resolveDuplicateByTimeHint(
 ): LifeOpsDefinitionRecord | null {
   const normalizedOwner = ownerText.toLowerCase().replace(/\s+/g, " ");
   const hits = candidates.filter((entry) => {
-    const summary = summarizeCadence(entry.definition.cadence) ?? "";
+    const summary =
+      summarizeCadence(entry.definition.cadence, entry.definition.timezone) ??
+      "";
     const clockTokens =
       summary.toLowerCase().match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/g) ?? [];
     return clockTokens.some((token) => {
@@ -1559,7 +1564,11 @@ async function resolveOccurrenceWithIntentFallback(args: {
   return resolveOccurrence(args.service, fallbackTarget, args.domain);
 }
 
-function summarizeCadence(cadence: LifeOpsCadence): string {
+/** Owner-facing cadence summary. `timeZone` is the definition's (or draft's)
+ * explicit zone: duplicate-title time-hint resolution tokenizes clock times
+ * out of this summary, so rendering in the host clock would match the wrong
+ * same-title reminder for destructive ops. */
+function summarizeCadence(cadence: LifeOpsCadence, timeZone: string): string {
   const cadenceWindows = Array.isArray(
     (cadence as { windows?: unknown }).windows,
   )
@@ -1582,7 +1591,7 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
-        timeZone: resolveDefaultTimeZone(),
+        timeZone,
       })}`;
     }
     case "daily":
@@ -5249,7 +5258,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}.`
             : "";
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence, definitionDraft.request.timezone ?? resolveDefaultTimeZone())}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -5312,7 +5321,7 @@ async function runLifeOperationHandlerInner(
           : undefined;
       if (duplicateOf) {
         await clearDeferredLifeDraftCache(runtime, message);
-        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence)} — nothing new was created.`;
+        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence, duplicateOf.definition.timezone)} — nothing new was created.`;
         return {
           success: true as const,
           text: alreadyText,
@@ -5400,7 +5409,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}`
             : "";
-      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}${leadPhrase}.`;
+      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence, created.definition.timezone)}${leadPhrase}.`;
       const savedText = await renderLifeActionReply({
         runtime,
         message,
@@ -6640,7 +6649,10 @@ async function runLifeOperationHandlerInner(
         id: record.definition.id,
         title: record.definition.title,
         status: record.definition.status,
-        cadence: summarizeCadence(record.definition.cadence),
+        cadence: summarizeCadence(
+          record.definition.cadence,
+          record.definition.timezone,
+        ),
         kind: record.definition.kind,
       }));
       const fallback = [
