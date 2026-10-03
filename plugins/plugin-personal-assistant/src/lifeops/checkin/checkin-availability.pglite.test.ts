@@ -131,7 +131,7 @@ describe("check-in source availability and generation failures", () => {
           (meeting: { title: string }) => meeting.title,
         ),
       ).toEqual(["Owner-zone meeting"]);
-      const inbox = payload.briefingSections.find(
+      const inbox = payload.briefingSections.available.find(
         (section: { key: string }) => section.key === "inbox",
       );
       expect(inbox.error).toBeNull();
@@ -139,7 +139,7 @@ describe("check-in source availability and generation failures", () => {
         "Existing inbox adapter proof",
       );
       expect(
-        payload.briefingSections.find(
+        payload.briefingSections.unavailable.find(
           (section: { key: string }) => section.key === "gmail",
         ).error,
       ).toEqual(expect.any(String));
@@ -231,6 +231,31 @@ describe("check-in source availability and generation failures", () => {
     expect(
       (await db.query("SELECT id FROM app_lifeops.life_checkin_reports")).rows,
     ).toEqual([]);
+  });
+
+  it("rejects the captured stale introduction year before saving a report", async () => {
+    modelResponse =
+      "Good morning. Here is the brief for Saturday, October 3, 2025.";
+    await expect(
+      new CheckinService(runtime).runMorningCheckin({
+        timezone: "America/Los_Angeles",
+        now: new Date("2026-10-03T20:23:00Z"),
+      }),
+    ).rejects.toMatchObject({ code: "CHECKIN_SUMMARY_YEAR_MISMATCH" });
+    expect(
+      (await db.query("SELECT id FROM app_lifeops.life_checkin_reports")).rows,
+    ).toEqual([]);
+  });
+
+  it("validates the introduction against the collector's local year at a UTC boundary", async () => {
+    modelResponse =
+      "Good morning. Here is the brief for Wednesday, December 31, 2025.";
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      timezone: "America/Los_Angeles",
+      now: new Date("2026-01-01T01:00:00Z"),
+    });
+    expect(report.summaryText).toBe(modelResponse);
+    expect(report.timezone).toBe("America/Los_Angeles");
   });
 
   it("stores collector availability with the report so reload cannot turn failure into zero", async () => {

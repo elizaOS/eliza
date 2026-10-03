@@ -1458,7 +1458,27 @@ export class CheckinService {
         code: "CHECKIN_SUMMARY_EMPTY",
       });
     }
-    return response.trim();
+    const summary = response.trim();
+    const introduction = summary.split(/\n\s*\n/u, 1)[0];
+    const introductionYear = introduction.match(
+      /\b(?:brief(?:ing)?|summary|report|recap|status)\s+(?:for|as of)\s+(?:[a-z]+day,?\s+)?[a-z]+\s+\d{1,2},?\s+(\d{4})\b/iu,
+    )?.[1];
+    if (introductionYear) {
+      const reportYear = report.timezone
+        ? new Intl.DateTimeFormat("en-US", {
+            timeZone: report.timezone,
+            year: "numeric",
+          }).format(new Date(report.generatedAt))
+        : null;
+      if (introductionYear !== reportYear)
+        throw new ElizaError(
+          "Check-in introduction contradicts the report year",
+          {
+            code: "CHECKIN_SUMMARY_YEAR_MISMATCH",
+          },
+        );
+    }
+    return summary;
   }
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);
