@@ -5005,7 +5005,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       .where(
         and(
           eq(memoryTable.agentId, this.agentId),
-          sql`${memoryTable.metadata}->>'documentId' = ${documentId}`
+          or(
+            sql`${memoryTable.metadata}->>'documentId' = ${documentId}`,
+            and(
+              eq(memoryTable.type, "message_content_segments"),
+              sql`${memoryTable.metadata}->>'messageId' = ${documentId}`
+            )
+          )
         )
       );
 
