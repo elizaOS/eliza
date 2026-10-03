@@ -268,14 +268,15 @@ export class InteractiveTaskRuntime {
         code: "TASK_UNAVAILABLE",
       });
     const controller = this.begin(id);
+    let fence = before;
     const isCurrent = () => {
       if (controller.signal.aborted || this.poisoned) return false;
       const current = this.get(id);
       return (
-        current.revision === expectedRevision &&
-        current.epoch === before.epoch &&
+        current.revision === fence.revision &&
+        current.epoch === fence.epoch &&
         current.authorization.state === "active" &&
-        current.status === before.status
+        current.status === fence.status
       );
     };
     try {
@@ -283,6 +284,14 @@ export class InteractiveTaskRuntime {
         throw new ElizaError("Task authorization changed", {
           code: "TASK_REVOKED",
         });
+      // Each explicit readback consumes a native binding, even if its result is
+      // unknown or its reply is lost. Persist a new recovery epoch first so a
+      // later check never has to reuse or widen the previous native authority.
+      fence = this.options.store.transition(
+        id,
+        { owner: this.owner, expectedRevision, now: this.now() },
+        { type: "recover" },
+      ).task;
       const result = await readback.call(
         this.options.actuator,
         operation.proposal,
@@ -299,7 +308,11 @@ export class InteractiveTaskRuntime {
       controller.signal.throwIfAborted();
       return this.options.store.transition(
         id,
-        { owner: this.owner, expectedRevision, now: this.now() },
+        {
+          owner: this.owner,
+          expectedRevision: fence.revision,
+          now: this.now(),
+        },
         {
           type: "reconcile",
           operationId,
