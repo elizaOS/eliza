@@ -66,7 +66,7 @@ public final class ResidentStopOwnershipInstrumentedTest {
             Method stop = ElizaAgentService.class.getDeclaredMethod("stopAgentProcess", boolean.class);
             stop.setAccessible(true);
             // Both initial refusal and retry traverse the actual detached stop path.
-            // Missing loader stat fails before /proc enumeration or Os.kill.
+            // Missing loader resolution fails before /proc enumeration or Os.kill.
             for (int attempt = 0; attempt < 2; attempt++) {
                 InvocationTargetException failure = assertThrows(
                     InvocationTargetException.class, () -> stop.invoke(service, false));

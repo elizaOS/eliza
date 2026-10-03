@@ -3011,9 +3011,19 @@ public class ElizaAgentService extends Service {
         File abiDir = agentAbiDir(abi);
         File bun = preferPackagedExecutable(new File(abiDir, BUN_BINARY), "libeliza_bun.so");
         File bundle = new File(agentRoot(), AGENT_BUNDLE_NAME);
-        File loader = new File(getApplicationInfo().nativeLibraryDir,
-            "arm64-v8a".equals(abi) ? "libeliza_ld_musl_aarch64_real.so" : "libeliza_ld_musl_x86_64_real.so");
         try {
+            // Mirror startup's executable selection, including unwrapped and
+            // extracted loaders and all supported ABIs.
+            String loaderName = findMuslLoader(abiDir);
+            if (loaderName == null) throw new IOException("Resident loader unavailable");
+            File loader = new File(abiDir, loaderName);
+            String packagedLoaderName = packagedMuslLoaderName(abi);
+            if (packagedLoaderName != null) {
+                loader = preferPackagedExecutable(loader, packagedLoaderName);
+                File realLoader = new File(nativeLibraryDir(),
+                    packagedLoaderName.replace(".so", "_real.so"));
+                if (realLoader.isFile()) loader = realLoader;
+            }
             WorkflowSurvivorInventory.stopResident(bun, loader, bundle);
         } catch (Exception error) {
             // Never fall back to path-wide signals: those also kill admitted workers.
