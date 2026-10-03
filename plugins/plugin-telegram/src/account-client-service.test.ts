@@ -11,9 +11,9 @@ import {
   getConnectorAccountManager,
   InMemoryConnectorAccountStorage,
 } from "@elizaos/core";
-import {
-  type RouteRequest,
-  type RouteResponse,
+import type {
+  RouteRequest,
+  RouteResponse,
 } from "@elizaos/core/api/http-plugin";
 import { Api, TelegramClient } from "telegram";
 import { AuthKey } from "telegram/crypto/AuthKey.js";
@@ -298,6 +298,18 @@ describe("personal service account-bound history", () => {
     expect(result.map((row) => row.content.text)).toEqual([
       "final-page owner fact",
     ]);
+    await service.stop();
+  });
+  it("rejects a whitespace-only query before any search", async () => {
+    const { runtime, service, clients } = await harness();
+    await service.refreshAccount("me:personal");
+    await expect(
+      service.searchConnectorMessages(
+        { runtime, accountId: "me:personal", target },
+        { target, query: "   " },
+      ),
+    ).rejects.toMatchObject({ code: "TELEGRAM_HISTORY_QUERY_INVALID" });
+    expect(clients[0].invoke).not.toHaveBeenCalled();
     await service.stop();
   });
   it("does not turn an unsupported room-only scope into an account-wide search", async () => {
