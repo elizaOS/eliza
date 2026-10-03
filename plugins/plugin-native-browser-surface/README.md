@@ -111,3 +111,10 @@ A successful explicit `openDockedBrowser` releases an existing return badge or
 full-screen helper window and emits `browserHelperWindowClosed`. The consumer
 updates its presentation state without resuming a task. Failed navigation
 preflight leaves the existing helper window intact.
+
+While the host process remains alive, overlay permission revocation restores the
+WebView to its original parent, removes return windows and requests the existing
+browser split. The same permission check runs on host resume. A closed-window
+event carries `permission-revoked`; task and microphone state remain host-owned.
+Android may kill the process when permission changes, so this recovery does not
+establish process-death persistence. The permission watcher is removed on destroy.

@@ -218,7 +218,9 @@ export interface ElizaSurfaceManagerPlugin {
 
   addListener(
     eventName: "browserHelperWindowClosed",
-    listener: (event: { reason: "website-opened" }) => void,
+    listener: (event: {
+      reason: "website-opened" | "permission-revoked";
+    }) => void,
   ): Promise<PluginListenerHandle>;
   /** Signals a native page change; consumers read current state before applying it. */
   addListener(

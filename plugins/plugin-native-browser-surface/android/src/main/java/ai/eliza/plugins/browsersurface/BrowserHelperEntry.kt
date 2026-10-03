@@ -1,6 +1,7 @@
 package ai.eliza.plugins.browsersurface
 
 import android.app.Activity
+import android.app.AppOpsManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.provider.Settings
@@ -18,7 +19,8 @@ internal class BrowserHelperEntry(
     private val activity: Activity,
     private val webView: WebView,
     private val returned: () -> Unit,
-    private val failed: () -> Unit
+    private val failed: () -> Unit,
+    private val revoked: () -> Unit
 ) {
     private val manager = activity.getSystemService(WindowManager::class.java)
     private var entry: View? = null
@@ -28,6 +30,22 @@ internal class BrowserHelperEntry(
     private var parentLayout: ViewGroup.LayoutParams? = null
     private var label = "Helper"
     private var description = "Return to helper"
+
+    private var destroyed = false
+    private val appOps = activity.getSystemService(AppOpsManager::class.java)
+    private val permissionWatcher = AppOpsManager.OnOpChangedListener { operation, packageName ->
+        if (operation == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW && packageName == activity.packageName)
+            activity.runOnUiThread { reconcilePermission() }
+    }
+
+    init { appOps.startWatchingMode(AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, activity.packageName, permissionWatcher) }
+
+    /** Android can hide an overlay without detaching its view. Restore host ownership. */
+    fun reconcilePermission() {
+        if (destroyed || Settings.canDrawOverlays(activity) || (entry == null && full == null)) return
+        release()
+        revoked()
+    }
 
     fun state() = JSObject().apply {
         put("permissionGranted", Settings.canDrawOverlays(activity))
@@ -115,4 +133,10 @@ internal class BrowserHelperEntry(
     }
 
     fun release() { removeEntry(); removeFullScreen() }
+
+    fun destroy() {
+        destroyed = true
+        appOps.stopWatchingMode(permissionWatcher)
+        release()
+    }
 }

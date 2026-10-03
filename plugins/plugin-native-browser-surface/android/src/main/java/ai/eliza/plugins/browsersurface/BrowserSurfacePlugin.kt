@@ -100,7 +100,18 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private var helperEntry: BrowserHelperEntry? = null
     private fun entry(): BrowserHelperEntry = helperEntry ?: BrowserHelperEntry(activity, bridge.webView,
         { notifyListeners("browserHelperReturned", JSObject().apply { put("presentation", "full-screen") }) },
-        { notifyListeners("browserHelperReturnFailed", JSObject().apply { put("code", "BROWSER_ENTRY_UNAVAILABLE") }) }
+        { notifyListeners("browserHelperReturnFailed", JSObject().apply { put("code", "BROWSER_ENTRY_UNAVAILABLE") }) },
+        {
+            notifyListeners("browserHelperWindowClosed", JSObject().apply { put("reason", "permission-revoked") })
+            dockScope.launch {
+                try { BrowserDockController.setVisible(activity, true) }
+                catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (error: RuntimeException) {
+                    // error-policy:J1 A changed split cannot be recreated by replaying navigation.
+                    notifyListeners("browserHelperReturnFailed", JSObject().apply { put("code", "BROWSER_DOCK_RESTORE_UNAVAILABLE") })
+                }
+            }
+        }
     ).also { helperEntry = it }
 
     @PluginMethod
@@ -164,9 +175,14 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     private val dockScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    override fun handleOnResume() {
+        super.handleOnResume()
+        helperEntry?.reconcilePermission()
+    }
+
     override fun handleOnDestroy() {
         dockScope.cancel()
-        helperEntry?.release()
+        helperEntry?.destroy()
         helperEntry = null
         BrowserDockController.release(activity)
         super.handleOnDestroy()
