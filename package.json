@@ -27,7 +27,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/scripts/patch-punycode-deprecation.ts && bun packages/scripts/patch-llama-cpp-capacitor.ts && bun packages/scripts/patch-electrobun-linux-cef-profile.ts && bun packages/scripts/ensure-workspace-symlinks.ts && bun packages/scripts/build-private-workspace-packages.ts && bun packages/scripts/build-views.ts && bun packages/app/scripts/ensure-fused-inference-install.ts",
+    "postinstall": "bun packages/scripts/check-bun-runtime-pin.ts && bun packages/scripts/patch-punycode-deprecation.ts && bun packages/scripts/patch-llama-cpp-capacitor.ts && bun packages/scripts/patch-electrobun-linux-cef-profile.ts && bun packages/scripts/ensure-workspace-symlinks.ts && bun packages/scripts/build-private-workspace-packages.ts && bun packages/scripts/build-views.ts && bun packages/app/scripts/ensure-fused-inference-install.ts",
     "cloud:mock": "bun packages/scripts/cloud/mock-stack-up.ts",
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "bun --conditions=eliza-source packages/app/src/entry.ts start",
