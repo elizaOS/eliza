@@ -394,6 +394,16 @@ test.each(mutationCases)(
 );
 
 test.each(mutationCases)(
+  "$label rejects an explicit JSON null before mutation",
+  async (testCase) => {
+    const response = await post(testCase, "null");
+
+    expect(response.status).toBe(400);
+    expect(testCase.ledger).toHaveLength(0);
+  },
+);
+
+test.each(mutationCases)(
   "$label preserves its bodyless mutation contract",
   async (testCase) => {
     const response = await post(testCase);
