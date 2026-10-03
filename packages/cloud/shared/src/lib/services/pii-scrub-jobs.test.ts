@@ -83,7 +83,7 @@ describe("pii_scrub drain inspection scope", () => {
     expect(result.succeeded).toBe(1);
     expect(markers).toEqual([
       expect.objectContaining({
-        marker_key: scrubMarkerKey(hashScrubContent(CONTENT), "r1"),
+        marker_key: `${scrubMarkerKey(hashScrubContent(CONTENT), "r1")}:declared:${hashScrubContent(JSON.stringify([[], null]))}`,
         inspection_scope: "declared_candidates",
         candidate_count: 0,
       }),
@@ -98,6 +98,69 @@ describe("pii_scrub drain inspection scope", () => {
     expect(result.failed).toBe(1);
     expect(markers.map((m) => m.inspection_scope)).toEqual(["declared_candidates"]);
     expect(jobUpdates).toContainEqual({ id: "j2", status: "attempt_failed" });
+  });
+
+  test("an empty-candidate marker cannot skip newly declared candidates", async () => {
+    claimable = [job("empty")];
+    await processPendingPiiScrubJobs({ executor: createPiiScrubItemExecutor() });
+    const next = job("new-candidates");
+    Object.assign(next.data.items[0], { candidateSpans: ["Alice"] });
+    claimable = [next];
+    const result = await processPendingPiiScrubJobs({ executor: createPiiScrubItemExecutor() });
+    expect(result.failed).toBe(1);
+    expect(jobUpdates).toContainEqual({ id: "new-candidates", status: "attempt_failed" });
+    expect(markers).toHaveLength(1);
+  });
+
+  test("the same declaration resumes without executing again", async () => {
+    claimable = [job("first")];
+    await processPendingPiiScrubJobs({ executor: createPiiScrubItemExecutor() });
+    claimable = [job("again")];
+    const scrubItem = mock(async () => {
+      throw new Error("must not execute");
+    });
+    const result = await processPendingPiiScrubJobs({ executor: { scrubItem } });
+    expect(result.succeeded).toBe(1);
+    expect(scrubItem).not.toHaveBeenCalled();
+    expect(markers).toHaveLength(1);
+  });
+
+  test("a full-content marker still satisfies a declared-candidate job", async () => {
+    markers.push({
+      organization_id: ORG,
+      marker_key: scrubMarkerKey(hashScrubContent(CONTENT), "r1"),
+      inspection_scope: "server_discovery",
+    });
+    const next = job("strong-marker");
+    Object.assign(next.data.items[0], { candidateSpans: ["Alice"] });
+    claimable = [next];
+    const scrubItem = mock(async () => {
+      throw new Error("must not execute");
+    });
+    const result = await processPendingPiiScrubJobs({ executor: { scrubItem } });
+    expect(result.succeeded).toBe(1);
+    expect(scrubItem).not.toHaveBeenCalled();
+    expect(markers).toHaveLength(1);
+  });
+
+  test("changed context and legacy partial markers cannot skip inspection", async () => {
+    claimable = [job("first")];
+    await processPendingPiiScrubJobs({ executor: createPiiScrubItemExecutor() });
+    markers.push({
+      organization_id: ORG,
+      marker_key: scrubMarkerKey(hashScrubContent(CONTENT), "r1"),
+      inspection_scope: "declared_candidates",
+    });
+    const next = job("changed-context");
+    Object.assign(next.data.items[0], { contextPack: "new context" });
+    claimable = [next];
+    const scrubItem = mock(async () => {
+      throw new Error("requires inspection");
+    });
+    const result = await processPendingPiiScrubJobs({ executor: { scrubItem } });
+    expect(result.failed).toBe(1);
+    expect(scrubItem).toHaveBeenCalledTimes(1);
+    expect(markers).toHaveLength(2);
   });
 
   test("rejects an unknown inspection scope as permanently invalid job data", () => {

@@ -67,6 +67,7 @@ export type DeviceActionPayload = {
   enrollmentId: string;
   operation: DeviceOperation;
   workflow?: WorkflowDeviceBinding;
+  viewProfileRevision?: string;
 };
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -202,6 +203,7 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     "enrollmentId",
     "operation",
     "workflow",
+    "viewProfileRevision",
   ]);
   if (p.action !== "device_action" || p.version !== 1)
     throw new DeviceActionError("Unsupported device protocol");
@@ -222,6 +224,9 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     installationId: identifier(p.installationId),
     enrollmentId: identifier(p.enrollmentId),
     operation,
+    ...(p.viewProfileRevision === undefined
+      ? {}
+      : { viewProfileRevision: identifier(p.viewProfileRevision) }),
     ...(p.workflow === undefined
       ? {}
       : { workflow: validateWorkflowBinding(p.workflow) }),

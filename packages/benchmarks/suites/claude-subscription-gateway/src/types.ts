@@ -153,7 +153,7 @@ export interface GatewayProvenance {
   harness: string;
   transport: "claude-agent-sdk";
   credential_source: "claude-code-managed";
-  sdk_version: "0.3.200";
+  sdk_version: string;
   sdk_api_key_source: "none";
   claude_code_version: string | null;
   fresh_session: true;
@@ -180,7 +180,7 @@ export interface GatewayAuditRecord {
   harness: string;
   transport: "claude-agent-sdk";
   credentialSource: "claude-code-managed";
-  sdkVersion: "0.3.200";
+  sdkVersion: string;
   sdkApiKeySource: "none";
   freshSession: true;
   toolExecution: "capture-only";

@@ -38,6 +38,26 @@ complete or replacing the runtime. The HTTP handler does this automatically.
 Unconfirmed cleanup returns `TASK_CLEANUP_UNCONFIRMED`; a later status read retries
 cleanup only, without repeating the task transition or browser action.
 
+Trusted hosts may call `runtime.reconcile` for an unknown operation through an
+optional actuator `reconcile` readback implementation. It must read evidence only,
+never repeat the effect. Revision/epoch and account checks fence late results;
+resolved results require a durable evidence reference. Reconciliation does not
+resume the task. This method is deliberately absent from renderer HTTP routes.
+
+## Optional phone workflows
+
+Lean-chat hosts may set `ELIZA_LEAN_CHAT_WORKFLOWS=1` to retain the workflow
+plugin while keeping the lean profile's desktop actuator exclusions. Android
+hosts may independently set `ELIZA_MOBILE_WORKFLOWS=1`; the default remains
+workflow-free, and iOS remains excluded. An explicit `workflow.enabled: false`
+or disabled `plugins.entries.workflow` overrides either opt-in.
+
+Android bundles include the optional workflow plugin, but execution still
+requires the separately verified workflow worker/compiler resource directory
+and the process-host configuration. Enabling the plugin does not establish
+worker readiness or authorize device effects. Use the existing reviewed
+workflow and device-action permission/receipt boundaries.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -120,3 +140,8 @@ in-memory credential. Empty or absent variables contribute no value. Other
 settings retain existing persistence behavior; invalid names reject the save.
 This does not scrub old files, logs, transformed secret values or other stores;
 the host still owns credential migration and custody.
+
+Each explicit uncertain-operation readback commits a recovery epoch before binding
+the actuator. An ambiguous result or lost reply therefore cannot strand the next
+readback on a native epoch that was already consumed. The original operation stays
+unknown until evidence resolves it, and recovery never resumes or repeats effects.

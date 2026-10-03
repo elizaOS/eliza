@@ -18,19 +18,14 @@ import { organizations } from "./organizations";
  * Content-addressed done-markers for the CLOUD lane of the async PII scrub
  * rails (#14808).
  *
- * One row per completed scrub item, keyed by the SAME marker-key shape the
- * LOCAL lane uses (`packages/core/src/security/pii-scrub-markers.ts`):
+ * Full-content inspection uses `pii:<sha256(content)>:v<rulesetVersion>`.
+ * Declared-candidate inspection appends `:declared:<sha256(inputs)>`, binding
+ * the exact candidate list and context without retaining their raw PII.
  *
- *     pii:<sha256(content)>:v<rulesetVersion>
- *
- * so work never duplicates across lanes or across re-enqueued jobs. Two
- * properties the job runner relies on:
- *
- *   1. **Content-addressed idempotency.** The key derives only from the
- *      content bytes + ruleset version. Re-enqueuing the SAME content under
- *      the SAME ruleset resolves to the SAME row, so a re-scrub no-ops before
- *      any model call. Changed content (new sha) or a bumped ruleset (new
- *      `v<...>`) produces a new key and is re-scrubbed.
+ *   1. **Inspection-bound idempotency.** Re-enqueuing the same content,
+ *      ruleset, and declared inputs resumes the same work. New candidates or
+ *      context require a new partial inspection; a full-content inspection
+ *      can satisfy a declared-candidate request for that content/ruleset.
  *
  *   2. **Crash-and-rerun with zero cursor state.** Markers are durable DB
  *      rows written ONLY after an item's scrub fully succeeded. A worker that
@@ -61,7 +56,7 @@ export const piiScrubMarkers = pgTable(
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** Full marker key `pii:<sha256(content)>:v<rulesetVersion>`. */
+    /** Content/ruleset key, plus hashed declaration inputs for partial inspection. */
     marker_key: text("marker_key").notNull(),
     /** Hex sha256 of the exact content that was scrubbed. */
     content_hash: text("content_hash").notNull(),

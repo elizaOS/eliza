@@ -97,6 +97,10 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
+import {
+  assertNoRetiredCharacterToolRestrictions,
+  assertNoRetiredToolRestrictions,
+} from "../config/retired-tool-policy.ts";
 import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
 import { createHookEvent, triggerHook } from "../hooks/registry.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
@@ -519,6 +523,9 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
 // branch. Ownership of the fallback stays with this loader table (#12665).
 STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-sql"] = () => getPluginSql();
 STATIC_ELIZA_PLUGIN_LOADERS[SQLITE_PLUGIN] = () => getPluginSqlite();
+// Android workflows execute through extracted worker/compiler resources.
+STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-workflow"] = () =>
+  import("@elizaos/plugin-workflow");
 // Mobile builds alias this literal import to the native-only browser entry.
 // Bundling code alone does not register it with the filesystem-free resolver.
 STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-browser"] = () =>
@@ -3851,6 +3858,8 @@ export async function startEliza(
 ): Promise<AgentRuntime | undefined> {
   const restoredGeneration = opts?.restoredGeneration;
   opts?.abortSignal?.throwIfAborted();
+  if (opts?.configOverride)
+    assertNoRetiredToolRestrictions(opts.configOverride);
   if (restoredGeneration !== undefined) {
     const { isAgentBackupRestoreV3RuntimeGeneration } = await import(
       "../services/agent-backup-restore-v3-runtime-generation"
@@ -4098,8 +4107,9 @@ export async function startEliza(
     );
   }
   // Destructive schema changes require an explicit operator decision. The
-  // runtime and migration layer read the same captured policy through the
-  // compatibility environment adapter until their typed settings land.
+  // migration runners read the same exact-`true` contract (isExactTrueEnvFlag)
+  // from process.env until their typed settings land, so this warning never
+  // claims more than the capability can actually arm.
   if (bootContext.policy.allowDestructiveMigrations) {
     logger.warn("[eliza] Destructive database migrations are enabled");
   }
@@ -4279,6 +4289,7 @@ export async function startEliza(
   const character = restoredGeneration
     ? restoredGeneration.character()
     : buildCharacterFromConfig(config);
+  assertNoRetiredCharacterToolRestrictions(character.settings);
   // Pin the runtime agent id to the platform character_id so the gateways can
   // resolve `agent:<id>:server` and address `/agents/<id>/message` against
   // this container. Without this the runtime would derive an id from the

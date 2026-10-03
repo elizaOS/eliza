@@ -1,6 +1,5 @@
-package ai.elizaos.app;
+package ai.eliza.plugins.browsersurface;
 
-import ai.eliza.plugins.browsersurface.ChromiumBrowserIdentity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.PackageManager;
@@ -12,7 +11,7 @@ import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
 
 /** Keeps the authorized native browser reachable while its agent runs as a foreground service. */
-final class ChromiumBrowserConnection implements AutoCloseable {
+public final class ChromiumBrowserConnection implements AutoCloseable {
     private static final String TAG = "ElizaChromiumBinding";
     private static final String BROWSER = BuildConfig.ELIZA_CHROMIUM_PACKAGE_NAME;
     private final Context context;
@@ -22,7 +21,7 @@ final class ChromiumBrowserConnection implements AutoCloseable {
     private boolean closed;
     private long retryMillis = 1000;
 
-    ChromiumBrowserConnection(Context foregroundService) { context = foregroundService; }
+    public ChromiumBrowserConnection(Context foregroundService) { context = foregroundService; }
 
     private boolean isTrustedBrowser() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false;
@@ -59,7 +58,7 @@ final class ChromiumBrowserConnection implements AutoCloseable {
         }
     };
 
-    void start() { bind(); }
+    public void start() { bind(); }
 
     private void bind() {
         if (closed || bound) return;

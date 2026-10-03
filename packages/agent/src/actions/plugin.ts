@@ -108,10 +108,34 @@ interface PluginsListResponse {
 }
 
 interface DisconnectResponse {
+  connector?: string;
+  state?: string;
   ok?: boolean;
   success?: boolean;
   message?: string;
   error?: string;
+}
+
+async function readMutationResponse(
+  resp: Response,
+): Promise<PluginMutationResponse & DisconnectResponse> {
+  try {
+    const data: unknown = await resp.json();
+    return data && typeof data === "object" && !Array.isArray(data)
+      ? (data as PluginMutationResponse & DisconnectResponse)
+      : {};
+  } catch {
+    // error-policy:J3 An unreadable response does not acknowledge a mutation.
+    return {};
+  }
+}
+
+function mutationAcknowledged(data: PluginMutationResponse): boolean {
+  return (
+    (data.ok === true || data.success === true) &&
+    data.ok !== false &&
+    data.success !== false
+  );
 }
 
 const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
@@ -389,9 +413,32 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+  let data: PluginMutationResponse;
+  try {
+    const parsed: unknown = await resp.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Save response was not a JSON object.");
+    }
+    data = parsed as PluginMutationResponse;
+  } catch {
+    // error-policy:J3 untrusted save-response parse — a 200 with a proxy
+    // HTML page, empty body, or truncated payload does not acknowledge a save,
+    // so fail closed instead of reporting a successful save.
+    logger.warn(
+      `[plugin:configure] Save response was not JSON (${resp.status}).`,
+    );
+    return fail(
+      `Failed to save config for ${pluginId}: Save failed (${resp.status}).`,
+      "PLUGIN_CONFIGURE_FAILED",
+    );
+  }
 
-  if (!resp.ok || data.success === false || data.ok === false) {
+  if (
+    !resp.ok ||
+    (data.ok !== true && data.success !== true) ||
+    data.success === false ||
+    data.ok === false
+  ) {
     const errMsg =
       data.error || data.message || `Save failed (${resp.status}).`;
     logger.warn(`[plugin:configure] ${errMsg}`);
@@ -561,9 +608,9 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+  const data = await readMutationResponse(resp);
 
-  if (!resp.ok || data.success === false || data.ok === false) {
+  if (!resp.ok || !mutationAcknowledged(data)) {
     const errMsg =
       data.error || data.message || `Toggle failed (${resp.status}).`;
     logger.warn(`[plugin:toggle] ${errMsg}`);
@@ -743,8 +790,15 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
       },
       signal: AbortSignal.timeout(30_000),
     });
-    const data = (await resp.json().catch(() => ({}))) as DisconnectResponse;
-    if (!resp.ok || data.ok === false || data.success === false) {
+    const data = await readMutationResponse(resp);
+    const acknowledged =
+      dedicatedPath === "/api/setup/telegram-account/cancel"
+        ? data.connector === "telegram-account" &&
+          data.state === "idle" &&
+          data.ok !== false &&
+          data.success !== false
+        : mutationAcknowledged(data);
+    if (!resp.ok || !acknowledged) {
       const errMsg =
         data.error || data.message || `Disconnect failed (${resp.status}).`;
       logger.warn(`[plugin:disconnect] ${errMsg}`);
@@ -779,8 +833,8 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
       signal: AbortSignal.timeout(60_000),
     },
   );
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
-  if (!resp.ok || data.success === false || data.ok === false) {
+  const data = await readMutationResponse(resp);
+  if (!resp.ok || !mutationAcknowledged(data)) {
     const errMsg =
       data.error || data.message || `Disconnect failed (${resp.status}).`;
     return fail(

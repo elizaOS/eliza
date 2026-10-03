@@ -245,6 +245,7 @@ import type { Task, TaskWorker } from "./types/task.js";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
+import { isExactTrueEnvFlag } from "./utils/env";
 import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
@@ -368,6 +369,17 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 // One process-lifetime context avoids per-runtime async-hook registrations.
 // Its immutable stores retain nested runtimes only for the originating async chain.
 const errorReportScopes = new AsyncLocalStorage<ReadonlySet<AgentRuntime>>();
+
+/**
+ * Egress swap master switches may come from the host process environment.
+ * `getSetting` reads only character/runtime settings, and hosts forward
+ * environment keys into settings through allowlists that reject any key
+ * containing "SECRET", so without this fallback a host could never enable the
+ * secret swap. An explicit runtime setting still wins.
+ */
+function swapEnvSetting(key: string): string | undefined {
+	return typeof process === "undefined" ? undefined : process.env?.[key];
+}
 
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
@@ -805,7 +817,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isSecretSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
@@ -852,7 +866,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isPiiSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(PII_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
@@ -1983,8 +1999,9 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		const isProduction = process.env.NODE_ENV === "production";
-		const forceDestructive =
-			process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+		const forceDestructive = isExactTrueEnvFlag(
+			process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
+		);
 
 		await this.adapter.runPluginMigrations(pluginsWithSchemas, {
 			verbose: !isProduction,

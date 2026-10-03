@@ -1,0 +1,24 @@
+###
+### Eliza on-device agent SELinux rules for GSI products.
+###
+### Included by `SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS` in `eliza_common.mk` when
+### ELIZA_GSI is true. A GSI runs on the tablet maker's vendor partition, so
+### the vendor policy in ../eliza_agent.te would never reach the device.
+###
+### This file must compile on the Android 15, 16 and 17 GSI source profiles,
+### so it names only `platform_app`. Android 17 assigns apps targeting SDK 36
+### or lower to `platform_app_36`; those rules are in ../system_ext_api37/.
+###
+### Both rules are development-only. ElizaAgentService execs the bundled bun
+### runtime from /data/data/<pkg>/files/agent/, and runtime identity publishes
+### its candidate with linkat. Production user builds must not execute app
+### data: the agent runtime has to ship as native libraries in the APK (or
+### under a dedicated file label) before any GSI user build can be released.
+###
+
+userdebug_or_eng(`
+  allow platform_app app_data_file:file { execute execute_no_trans };
+  # Runtime identity atomically publishes an app-owned, fsynced candidate
+  # with linkat. Preserve no-overwrite publication rather than bypassing it.
+  allow platform_app app_data_file:file link;
+')
