@@ -32,6 +32,7 @@ import {
 } from "@elizaos/core/contracts/personal-assistant";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
+import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
@@ -747,7 +748,11 @@ async function collectHabitSummaries(
       if (summary.isPaused) {
         pausedDefinitionIds.add(definitionId);
       }
-      summaries.push(summary);
+      if (
+        resolveOwnerDefinitionSurface({ kind, metadata }) !== "OWNER_REMINDERS"
+      ) {
+        summaries.push(summary);
+      }
     }
     return { rows: summaries, error: null, pausedDefinitionIds };
   } catch (error) {

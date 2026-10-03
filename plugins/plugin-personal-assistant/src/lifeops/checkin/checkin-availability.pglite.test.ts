@@ -208,6 +208,234 @@ describe("check-in source availability and generation failures", () => {
     },
   );
 
+  it.each(["mixed", "mixed-legacy", "reminders-only"])(
+    "keeps reminder delivery history outside habit counts for %s",
+    async (fixtureKind) => {
+      const now = new Date("2026-02-05T10:00:00.000Z");
+      const timezone = "Asia/Tokyo";
+      const service = new CheckinService(runtime);
+      const priorReport = await service.runMorningCheckin({ now, timezone });
+      const priorStored = (
+        await db.query(
+          "SELECT * FROM app_lifeops.life_checkin_reports WHERE id = $1",
+          [priorReport.reportId],
+        )
+      ).rows[0];
+      await db.exec(`
+        CREATE TABLE app_lifeops.life_task_definitions (
+          id text PRIMARY KEY, agent_id text, title text, kind text, status text,
+          metadata_json jsonb, cadence_json jsonb
+        );
+        CREATE TABLE app_lifeops.life_task_occurrences (
+          id text PRIMARY KEY, agent_id text, definition_id text, state text,
+          due_at text, updated_at text
+        );
+        CREATE TABLE app_lifeops.life_task_progress_events (
+          agent_id text, occurrence_id text, quantity integer
+        );`);
+      const dueAt = new Date(now.getTime() - 3600000).toISOString();
+      const nativeReminder = {
+        kind: "reminder",
+        provider: "apple_reminders",
+        source: "llm",
+        reminderId: null,
+      };
+      const rows = Array.from({ length: 19 }, (_, index) => ({
+        id: `tracked-${index}`,
+        kind: index === 18 ? "routine" : "habit",
+        metadata:
+          fixtureKind === "reminders-only"
+            ? {
+                ownerSurface: "OWNER_REMINDERS",
+                ...(index === 0
+                  ? {
+                      pauseUntil: new Date(
+                        now.getTime() + 3600000,
+                      ).toISOString(),
+                    }
+                  : {}),
+              }
+            : index === 0
+              ? {
+                  ownerSurface: "OWNER_ROUTINES",
+                  nativeAppleReminder: nativeReminder,
+                }
+              : index === 2
+                ? { ownerSurface: "unrecognized" }
+                : {},
+        cadence:
+          index === 0
+            ? { kind: "once", dueAt }
+            : { kind: "daily", windows: ["morning"] },
+        state:
+          index === 18
+            ? "completed"
+            : fixtureKind === "reminders-only" && index !== 0
+              ? "visible"
+              : "pending",
+      }));
+      rows.push({
+        id: "notification",
+        kind: "habit",
+        metadata: {
+          ownerSurface: "OWNER_REMINDERS",
+          nativeAppleReminder: nativeReminder,
+        },
+        cadence: { kind: "once", dueAt },
+        state: "visible",
+      });
+      if (fixtureKind === "mixed-legacy")
+        rows.push({
+          id: "legacy-notification",
+          kind: "habit",
+          metadata: { nativeAppleReminder: nativeReminder },
+          cadence: { kind: "once", dueAt },
+          state: "visible",
+        });
+      if (fixtureKind === "mixed-legacy")
+        rows.push({
+          id: "legacy-recurring-notification",
+          kind: "routine",
+          metadata: { nativeAppleReminder: nativeReminder },
+          cadence: { kind: "daily", windows: ["morning"] },
+          state: "visible",
+        });
+      rows.push({
+        id: "unknown-kind",
+        kind: "unrecognized",
+        metadata: {},
+        cadence: { kind: "once", dueAt },
+        state: "visible",
+      });
+      for (const row of rows) {
+        // Identical wording prevents title/name heuristics from passing this proof.
+        await db.query(
+          "INSERT INTO app_lifeops.life_task_definitions VALUES ($1,$2,$3,$4,$5,$6,$7)",
+          [
+            row.id,
+            String(runtime.agentId),
+            "Same reminder text",
+            row.kind,
+            "active",
+            JSON.stringify(row.metadata),
+            JSON.stringify(row.cadence),
+          ],
+        );
+        await db.query(
+          "INSERT INTO app_lifeops.life_task_occurrences VALUES ($1,$2,$3,$4,$5,$6)",
+          [
+            `occurrence-${row.id}`,
+            String(runtime.agentId),
+            row.id,
+            row.state,
+            dueAt,
+            dueAt,
+          ],
+        );
+      }
+      const beforeDefinitions = (
+        await db.query(
+          "SELECT * FROM app_lifeops.life_task_definitions ORDER BY id",
+        )
+      ).rows;
+      const beforeOccurrences = (
+        await db.query(
+          "SELECT * FROM app_lifeops.life_task_occurrences ORDER BY id",
+        )
+      ).rows;
+      const selectedCount = beforeDefinitions.filter(
+        (row) => row.kind === "habit" || row.kind === "routine",
+      ).length;
+      expect(selectedCount).toBe(fixtureKind === "mixed-legacy" ? 22 : 20);
+      const report = await service.runMorningCheckin({ now, timezone });
+      expect(report.collectorErrors.habitSummaries).toBeNull();
+      expect(report.timezone).toBe(timezone);
+      expect(report.generatedAt).toBe(now.toISOString());
+      expect(prompts).toHaveLength(0);
+      expect(
+        report.habitSummaries.some(
+          (summary) =>
+            summary.definitionId === "notification" ||
+            summary.definitionId === "legacy-notification" ||
+            summary.definitionId === "legacy-recurring-notification" ||
+            summary.definitionId === "unknown-kind",
+        ),
+      ).toBe(false);
+      if (fixtureKind === "reminders-only") {
+        expect(report.habitSummaries).toEqual([]);
+        expect(report.summaryText).not.toContain("tracked items");
+        // Keep the existing pause exclusion used by the overdue collector.
+        expect(report.overdueTodos).toEqual([]);
+      } else {
+        expect(report.habitSummaries).toHaveLength(19);
+        expect(
+          report.habitSummaries.find(
+            (summary) => summary.definitionId === "tracked-2",
+          ),
+        ).toBeDefined();
+        expect(
+          report.habitSummaries.filter(
+            (summary) => summary.missedOccurrenceStreak > 0,
+          ),
+        ).toHaveLength(18);
+        expect(report.summaryText).toContain(
+          "18 of 19 tracked items have missed check-ins.",
+        );
+        expect(
+          report.habitSummaries.find(
+            (summary) => summary.definitionId === "tracked-0",
+          ),
+        ).toMatchObject({ kind: "habit", missedOccurrenceStreak: 1 });
+        expect(
+          report.habitSummaries.find(
+            (summary) => summary.definitionId === "tracked-18",
+          ),
+        ).toMatchObject({
+          kind: "routine",
+          currentOccurrenceStreak: 1,
+          missedOccurrenceStreak: 0,
+        });
+      }
+      expect(
+        (
+          await db.query(
+            "SELECT * FROM app_lifeops.life_task_definitions ORDER BY id",
+          )
+        ).rows,
+      ).toEqual(beforeDefinitions);
+      expect(
+        (
+          await db.query(
+            "SELECT * FROM app_lifeops.life_task_occurrences ORDER BY id",
+          )
+        ).rows,
+      ).toEqual(beforeOccurrences);
+      const stored = await db.query<{
+        id: string;
+        generated_at: string;
+        payload_json: Pick<
+          CheckinReport,
+          "habitSummaries" | "summaryText" | "collectorErrors"
+        >;
+      }>("SELECT * FROM app_lifeops.life_checkin_reports");
+      expect(stored.rows).toHaveLength(2);
+      expect(
+        stored.rows.find((row) => row.id === priorReport.reportId),
+      ).toEqual(priorStored);
+      const currentStored = stored.rows.find(
+        (row) => row.id === report.reportId,
+      );
+      expect(currentStored?.generated_at).toBe(report.generatedAt);
+      expect(currentStored?.payload_json.habitSummaries).toEqual(
+        report.habitSummaries,
+      );
+      expect(currentStored?.payload_json.summaryText).toBe(report.summaryText);
+      expect(currentStored?.payload_json.collectorErrors).toEqual(
+        report.collectorErrors,
+      );
+    },
+  );
+
   it("rejects blank model output without persisting a completion marker", async () => {
     modelResponse = "   ";
     await expect(
