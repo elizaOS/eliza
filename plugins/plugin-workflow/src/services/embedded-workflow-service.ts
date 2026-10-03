@@ -85,6 +85,7 @@ import {
 } from './smithers-runtime';
 import { readApprovalReceipts } from './workflow-approval-receipts';
 import { cloneJson } from './workflow-json';
+import { workerTerminationFromError } from './workflow-worker-termination';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 export const WORKFLOW_TASK_KIND = 'workflow';
@@ -1826,12 +1827,14 @@ export class EmbeddedWorkflowService extends Service {
         return unresolved;
       }
       // error-policy:J1 child-process failures become explicit failed run state.
+      const workerTermination = workerTerminationFromError(error);
       const failed: WorkflowExecution = {
         ...running,
         status: controller.signal.aborted ? 'cancelled' : 'failed',
         finished: true,
         stoppedAt: nowIso(),
         error: {
+          ...(workerTermination ? { workerTermination } : {}),
           message: error instanceof Error ? error.message : String(error),
           ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
         },

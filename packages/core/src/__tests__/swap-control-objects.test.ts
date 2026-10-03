@@ -82,7 +82,10 @@ describe("model dispatch with swaps enabled", () => {
 		}
 	});
 
-	async function dispatch(settings: Record<string, string>) {
+	async function dispatch(
+		settings: Record<string, string>,
+		nativeMessages = false,
+	) {
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "SwapDispatch", bio: "test", settings } as Character,
 			logLevel: "fatal",
@@ -98,12 +101,32 @@ describe("model dispatch with swaps enabled", () => {
 		);
 		const controller = new AbortController();
 		await runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt: PROMPT,
+			...(nativeMessages
+				? {
+						messages: [
+							{ role: "system", content: "Fixture system" },
+							{ role: "user", content: PROMPT },
+						],
+					}
+				: { prompt: PROMPT }),
 			signal: controller.signal,
 		} as never);
 		if (!received) throw new Error("model handler was not invoked");
 		return { received, signal: controller.signal };
 	}
+
+	it("keeps one canonical system prompt when adding guidance to native messages", async () => {
+		const { received, signal } = await dispatch(
+			{ ELIZA_SECRET_SWAP_ENABLED: "true", ELIZA_PII_SWAP_ENABLED: "true" },
+			true,
+		);
+		expect(received.system).toContain("Fixture system");
+		expect(received.system).toContain("copy its entire reference exactly");
+		expect(received.messages).toHaveLength(1);
+		expect((received.messages as { role: string }[])[0].role).toBe("user");
+		expect(JSON.stringify(received.messages)).not.toContain(EMAIL);
+		expect(received.signal).toBe(signal);
+	});
 
 	it("hands the provider the real AbortSignal and no swapped identifiers", async () => {
 		const { received, signal } = await dispatch({
@@ -112,6 +135,11 @@ describe("model dispatch with swaps enabled", () => {
 		});
 		expect(received.signal).toBe(signal);
 		expect(received.signal).toBeInstanceOf(AbortSignal);
+		expect(received.system).toContain("copy its entire reference exactly");
+		expect(received.system).toContain(
+			"keep all existing approval requirements",
+		);
+		expect(received.system).not.toContain(EMAIL);
 		const wire = String(received.prompt);
 		for (const value of [EMAIL, CARD, SSN, ADDRESS]) {
 			expect(wire).not.toContain(value);
@@ -137,12 +165,18 @@ describe("model dispatch with swaps enabled", () => {
 			ELIZA_PII_SWAP_ENABLED: "false",
 		});
 		expect(received.prompt).toBe(PROMPT);
+		expect(String(received.system)).not.toContain(
+			"Contact references beginning __ELIZA_CONTACT_",
+		);
 	});
 
 	it("leaves the request untouched when both swaps are disabled", async () => {
 		const { received, signal } = await dispatch({});
 		expect(received.signal).toBe(signal);
 		expect(received.prompt).toBe(PROMPT);
+		expect(String(received.system)).not.toContain(
+			"Contact references beginning __ELIZA_CONTACT_",
+		);
 	});
 });
 

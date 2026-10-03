@@ -10,7 +10,9 @@ import {
 
 const MAX_SOURCE_BYTES = 65536;
 const MAX_OUTPUT_BYTES = 16384;
-const DEADLINE_MS = 15000;
+// A cold compiler loads the complete Smithers/Zod declaration graph. Keep a
+// bounded budget that also admits cold mobile storage and loaded CI hosts.
+const DEADLINE_MS = 60000;
 
 // The child runs only this trusted compiler program. Draft text is input data.
 const COMPILER_PROGRAM = String.raw`

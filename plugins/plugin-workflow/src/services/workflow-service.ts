@@ -36,7 +36,7 @@ import { checkWorkflowSource } from './workflow-source-check';
 export const WORKFLOW_SERVICE_TYPE = 'workflow';
 
 export interface WorkflowServiceConfig extends Record<string, string> {
-  host: 'eliza-cloud';
+  host: 'eliza://workflow';
   backend: 'smthrs';
 }
 
@@ -154,9 +154,9 @@ export function compareWorkflowSearchCandidates(
 export class WorkflowService extends Service {
   static override readonly serviceType = WORKFLOW_SERVICE_TYPE;
   override capabilityDescription =
-    'Chat authoring and elizaOS Cloud API facade for native Smithers workflows.';
+    'Chat authoring and agent-runtime API facade for embedded Smithers workflows.';
   readonly config: WorkflowServiceConfig = {
-    host: 'eliza-cloud',
+    host: 'eliza://workflow',
     backend: 'smthrs',
   };
 

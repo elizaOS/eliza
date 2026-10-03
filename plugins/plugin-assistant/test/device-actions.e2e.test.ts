@@ -972,7 +972,13 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         allCapabilities,
       );
       expect(enrolled.status).toBe(200);
-      expect(enrolled.body.capabilities).toHaveLength(5);
+      expect([...enrolled.body.capabilities].sort()).toEqual(
+        [
+          ...allCapabilities.split(","),
+          "reminders.local-record.v2",
+          "reminders.create.v1",
+        ].sort(),
+      );
       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
       expect(
         (
@@ -1711,7 +1717,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     }
     {
       const cap =
-        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,reminders.create.v1";
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1,reminders.create.v1";
       const c = { ...credentials, capabilities: cap.split(",") },
         service = new DeviceActionService(runtimeState.runtime);
       const call = (path: string, body?: unknown) =>
@@ -1918,7 +1924,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       // Real authenticated HTTP + durable approval queue: timing semantics never
       // downgrade to v1, and an identical receipt replay never claims twice.
       const timingCapabilities =
-        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1";
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1";
       const timingCredentials = {
         ...credentials,
         capabilities: timingCapabilities.split(","),
@@ -2232,7 +2238,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         status: 200,
         body: { version: 1, profile: null },
       });
-      expect(discovery.body.supportedViews).toContain("photos");
+      expect(discovery.body.supportedViews).toContain("workflows");
       expect(
         (await request("/register", { label: "Profile fixture" })).body
           .viewProfileVersion,
@@ -2259,7 +2265,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       const first = (
         await request("/view-profile", {
           version: 1,
-          views: ["notes", "photos"],
+          views: ["notes", "workflows"],
           expectedRevision: null,
         })
       ).body.profile;
@@ -2305,7 +2311,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           );
       expect(branch(contexts[0]).properties.view.enum).toEqual([
         "notes",
-        "photos",
+        "workflows",
       ]);
       expect(branch(contexts[1]).properties.view.enum).toContain("browser");
       expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
@@ -2314,13 +2320,13 @@ test("device approval REST lifecycle survives restart and never duplicates claim
 
       expect(first).toMatchObject({
         version: 1,
-        views: ["notes", "photos"],
+        views: ["notes", "workflows"],
       });
       expect(
         (
           await request("/view-profile", {
             version: 1,
-            views: ["photos", "notes"],
+            views: ["workflows", "notes"],
             expectedRevision: first.revision,
           })
         ).body.profile,
@@ -2377,10 +2383,10 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           })
         ).status,
       ).toBe(200);
-      await proposeView("photos");
+      await proposeView("workflows");
       const waiting = (await request("/proposals")).body.proposals.find(
         (p: any) =>
-          p.payload?.operation?.view === "photos" &&
+          p.payload?.operation?.view === "workflows" &&
           p.payload?.viewProfileRevision === first.revision,
       );
       expect(waiting).toBeTruthy();

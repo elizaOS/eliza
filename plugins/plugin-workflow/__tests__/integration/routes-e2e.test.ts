@@ -184,15 +184,16 @@ function ownerArg(state: FakeServiceState, method: string): unknown {
 
 describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => {
   test('GET /api/workflow/status answers the Smithers engine descriptor', async () => {
-    const base = await startServer(makeRuntime());
+    const base = await startServer(makeRuntime({ embedded: makeWorkflowService({ calls: [] }) }));
 
     const res = await fetch(`${base}/api/workflow/status`);
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      mode: 'cloud',
+      mode: 'local',
       status: 'ready',
-      platform: 'cloud',
+      platform: 'runtime',
+      executionLocation: 'agent-runtime',
       engine: 'smthrs',
     });
   });

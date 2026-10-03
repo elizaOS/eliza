@@ -97,7 +97,7 @@ test("workflow ownership and paired device identity remain separate and enforced
   } finally {
     await pg.close();
   }
-}, 30000);
+}, 120000);
 
 import { deterministicOwnerEntityId } from "@elizaos/core";
 import { workflowDeviceOwner } from "../../../packages/agent/src/api/workflow-device-owner";

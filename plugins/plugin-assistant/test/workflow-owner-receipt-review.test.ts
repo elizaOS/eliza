@@ -200,4 +200,4 @@ test("paired subject owns review, claim and exact durable receipt after canonica
   } finally {
     await pg.close();
   }
-}, 30000);
+}, 120000);

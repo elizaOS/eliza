@@ -8,6 +8,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    fileParallelism: false,
     include: [
       "test/device-actions.e2e.test.ts",
       "test/workflow-owner-*.test.ts",

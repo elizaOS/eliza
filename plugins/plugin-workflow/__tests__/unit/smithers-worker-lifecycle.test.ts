@@ -79,6 +79,38 @@ afterAll(async () => {
 });
 
 describe('Smithers worker lifecycle', () => {
+  for (const [mode, exitCode, signal] of [
+    ['exit-seven', 7, null],
+    ['empty-success', 0, null],
+    ['self-term', null, 'SIGTERM'],
+  ] as const) {
+    test(`retains fixed termination metadata for real ${mode} subprocess`, async () => {
+      await expect(run(mode)).rejects.toMatchObject({
+        code: 'SMTHRS_RESULT_MISSING',
+        context: { workerTermination: { exitCode, signal } },
+      });
+    });
+  }
+  test('valid terminal result remains successful with no termination error', async () => {
+    const result = await run('event-before-result');
+    expect(result.status).toBe('finished');
+    expect(result.error).toBeUndefined();
+  });
+
+  test('retains a silent nonzero worker exit in the stored error message', async () => {
+    await expect(run('exit-without-result')).rejects.toMatchObject({
+      code: 'SMTHRS_RESULT_MISSING',
+      message: 'Smithers worker exited without a result (exit=17; signal=none)',
+    });
+  });
+
+  test('retains a silent worker kill in the stored error message', async () => {
+    await expect(run('signal-without-result')).rejects.toMatchObject({
+      code: 'SMTHRS_RESULT_MISSING',
+      message: 'Smithers worker exited without a result (exit=unknown; signal=SIGKILL)',
+    });
+  });
+
   test('uses the current Bun executable when BUN_BIN is unset', () => {
     delete process.env.BUN_BIN;
     expect(resolveSmithersBunExecutable()).toBe(process.execPath);
