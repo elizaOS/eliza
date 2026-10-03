@@ -632,3 +632,6 @@ b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/solana
 # plugins/plugin-wallet/src/sdk/bridge/solana.ts
 # Public Circle CCTP token messenger program address.
 b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/sdk/bridge/solana.ts:generic-api-key:69
+
+# Existing synthetic swap-user-reply test fixture at its squash-merge commit.
+df90e84500df616bd4c170f364a3a7f1dfed13b8:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:65
