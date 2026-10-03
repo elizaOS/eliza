@@ -999,6 +999,20 @@ export function createProductionScheduledTaskDispatcher(opts: {
           message,
         );
         if (!history.ok) return history.failure;
+        const morningBrief =
+          record.metadata?.delegatesAssemblyTo === "lifeops:checkin:morning";
+        if (
+          morningBrief &&
+          (!history.roomId || !history.messageId || !history.conversationId)
+        )
+          return {
+            ok: false,
+            reason: "disconnected",
+            acceptance: "not_accepted",
+            userActionable: true,
+            message:
+              "Morning brief has no confirmed owner-chat source to open.",
+          };
         if (history.roomId) surfacesAccepted += 1;
         const eventService = getAgentEventService(opts.runtime) as {
           emit?: (event: {
@@ -1038,15 +1052,19 @@ export function createProductionScheduledTaskDispatcher(opts: {
         const notifier = getNotifier(opts.runtime);
         if (notifier) {
           try {
-            const title = await renderScheduledDispatchTitle(
-              opts.runtime,
-              record,
-              message,
-            );
+            const title = morningBrief
+              ? "Morning brief"
+              : await renderScheduledDispatchTitle(
+                  opts.runtime,
+                  record,
+                  message,
+                );
             const isUrgent = record.intensity === "urgent";
             await notifier.notify({
               title,
-              body: message,
+              body: morningBrief
+                ? "Your morning brief is ready. Open it to see the details."
+                : message,
               category: isUrgent ? "approval" : "reminder",
               priority: isUrgent ? "urgent" : "normal",
               source: "lifeops",

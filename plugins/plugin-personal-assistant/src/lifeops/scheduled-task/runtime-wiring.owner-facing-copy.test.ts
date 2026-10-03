@@ -127,7 +127,9 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       const { runtime } = makeRuntime({ notify, sendMessageToTarget });
       const record = morningBriefPack.records[0];
       if (!record) throw new Error("Morning record missing");
-      await createProductionScheduledTaskDispatcher({ runtime }).dispatch({
+      const result = await createProductionScheduledTaskDispatcher({
+        runtime,
+      }).dispatch({
         taskId: record.taskId,
         kind: record.kind,
         firedAtIso: "2026-07-06T14:00:00.000Z",
@@ -136,9 +138,8 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
         output: record.output,
         metadata: record.metadata,
       });
-      expect(notify).toHaveBeenCalledTimes(1);
-      expect(notify.mock.calls[0][0].data.conversationId).toBeUndefined();
-      expect(notify.mock.calls[0][0].data.messageId).toBeUndefined();
+      expect(result).toMatchObject({ ok: false, acceptance: "not_accepted" });
+      expect(notify).not.toHaveBeenCalled();
     },
   );
 
@@ -192,7 +193,20 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       report: { summaryText },
     });
     const notify = vi.fn().mockResolvedValue(undefined);
-    const { runtime, modelPrompts } = makeRuntime({ notify });
+    const sendMessageToTarget = vi.fn(async (_target, content) => ({
+      id: "00000000-0000-0000-0000-0000000000c1",
+      entityId: "agent-test",
+      roomId: "00000000-0000-0000-0000-0000000000c2",
+      metadata: {
+        type: "message",
+        conversationId: "00000000-0000-0000-0000-0000000000c3",
+      },
+      content,
+    }));
+    const { runtime, modelPrompts } = makeRuntime({
+      notify,
+      sendMessageToTarget,
+    });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
     const record = morningBriefPack.records[0];
     if (!record) throw new Error("morning-brief record missing");
@@ -211,11 +225,9 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     });
 
     expect(morningBriefMocks.assembleMorningBrief).toHaveBeenCalledTimes(1);
-    // Delegated assembly supplies the real brief, so the message-render seam is
-    // never used. The single model call is the notification-title render
-    // (renderScheduledDispatchTitle), which derives the title from the already
-    // assembled summaryText — never from raw promptInstructions.
-    expect(modelPrompts).toHaveLength(1);
+    // The source-rendered morning body and fixed title must not be rewritten.
+    expect(modelPrompts).toHaveLength(0);
+    expect(notify.mock.calls[0]?.[0].title).toBe("Morning brief");
     expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
     const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
     if (!emitted) throw new Error("assistant event missing");
@@ -224,7 +236,9 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     expect(emitted.data.text).not.toContain(
       "Assemble the owner's morning brief",
     );
-    expect(notify.mock.calls[0]?.[0].body).toBe(summaryText);
+    expect(notify.mock.calls[0]?.[0].body).toBe(
+      "Your morning brief is ready. Open it to see the details.",
+    );
   });
 
   it("delivers exactly one morning check-in when the sleep-cycle domain and scheduled spine are both armed", async () => {

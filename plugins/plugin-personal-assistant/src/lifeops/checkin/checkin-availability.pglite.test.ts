@@ -121,31 +121,27 @@ describe("check-in source availability and generation failures", () => {
         metadata: { delegatesAssemblyTo: "lifeops:checkin:morning" },
       });
 
-      expect(summary).toBe(modelResponse);
-      expect(prompts).toHaveLength(1);
-      const payload = JSON.parse(
-        prompts[0].split("Report JSON:\n")[1].split("\n\nSummary:")[0],
+      expect(summary).toContain("Owner-zone meeting");
+      expect(summary).toContain("Existing inbox adapter proof");
+      expect(prompts).toHaveLength(0);
+      const stored = await db.query<{ payload_json: CheckinReport }>(
+        "SELECT payload_json FROM app_lifeops.life_checkin_reports",
       );
-      expect(
-        payload.todaysMeetings.map(
-          (meeting: { title: string }) => meeting.title,
-        ),
-      ).toEqual(["Owner-zone meeting"]);
-      const inbox = payload.briefingSections.available.find(
-        (section: { key: string }) => section.key === "inbox",
+      const payload = stored.rows[0].payload_json;
+      expect(payload.todaysMeetings.map((meeting) => meeting.title)).toEqual([
+        "Owner-zone meeting",
+      ]);
+      const inbox = payload.briefingSections.find(
+        (section) => section.key === "inbox",
       );
-      expect(inbox.error).toBeNull();
-      expect(JSON.stringify(inbox.items)).toContain(
+      expect(inbox?.error).toBeNull();
+      expect(JSON.stringify(inbox?.items)).toContain(
         "Existing inbox adapter proof",
       );
       expect(
-        payload.briefingSections.unavailable.find(
-          (section: { key: string }) => section.key === "gmail",
-        ).error,
+        payload.briefingSections.find((section) => section.key === "gmail")
+          ?.error,
       ).toEqual(expect.any(String));
-      const stored = await db.query<{ payload_json: { summaryText: string } }>(
-        "SELECT payload_json FROM app_lifeops.life_checkin_reports",
-      );
       expect(stored.rows).toHaveLength(1);
       expect(stored.rows[0].payload_json.summaryText).toBe(summary);
     },
@@ -191,39 +187,30 @@ describe("check-in source availability and generation failures", () => {
   ])(
     "preserves collector failure and yesterday's local calendar window at %s in %s",
     async (instant, timezone, start, end) => {
-      await expect(
-        new CheckinService(runtime).runMorningCheckin({
-          timezone,
-          now: new Date(instant),
-        }),
-      ).rejects.toThrow("text provider is not configured");
+      const report = await new CheckinService(runtime).runMorningCheckin({
+        timezone,
+        now: new Date(instant),
+      });
       const winsQuery = statements.find((statement) =>
         statement.includes("AS completed_at"),
       );
       expect(winsQuery).toContain(`occ.updated_at >= '${start}'`);
       expect(winsQuery).toContain(`occ.updated_at <= '${end}'`);
-      expect(prompts).toHaveLength(1);
-      const payload = JSON.parse(
-        prompts[0].split("Report JSON:\n")[1].split("\n\nSummary:")[0],
-      );
-      expect(payload.overdueTodos).toBeNull();
-      expect(payload.todaysMeetings).toBeNull();
-      expect(payload.yesterdaysWins).toBeNull();
-      expect(payload.habitSummaries).toBeNull();
-      expect(payload.collectorErrors.habitSummaries).toContain(
-        "does not exist",
-      );
+      expect(prompts).toHaveLength(0);
+      expect(report.collectorErrors.habitSummaries).toContain("does not exist");
+      expect(report.summaryText).toContain("I couldn't check:");
+      expect(report.summaryText).not.toContain("No meetings listed");
       expect(
         (await db.query("SELECT id FROM app_lifeops.life_checkin_reports"))
           .rows,
-      ).toEqual([]);
+      ).toHaveLength(1);
     },
   );
 
   it("rejects blank model output without persisting a completion marker", async () => {
     modelResponse = "   ";
     await expect(
-      new CheckinService(runtime).runMorningCheckin({
+      new CheckinService(runtime).runNightCheckin({
         timezone: "UTC",
         now: new Date("2026-10-01T12:00:00Z"),
       }),
@@ -233,29 +220,26 @@ describe("check-in source availability and generation failures", () => {
     ).toEqual([]);
   });
 
-  it("rejects the captured stale introduction year before saving a report", async () => {
+  it("renders the source year without asking a model that would return the captured stale year", async () => {
     modelResponse =
       "Good morning. Here is the brief for Saturday, October 3, 2025.";
-    await expect(
-      new CheckinService(runtime).runMorningCheckin({
-        timezone: "America/Los_Angeles",
-        now: new Date("2026-10-03T20:23:00Z"),
-      }),
-    ).rejects.toMatchObject({ code: "CHECKIN_SUMMARY_YEAR_MISMATCH" });
-    expect(
-      (await db.query("SELECT id FROM app_lifeops.life_checkin_reports")).rows,
-    ).toEqual([]);
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      timezone: "America/Los_Angeles",
+      now: new Date("2026-10-03T20:23:00Z"),
+    });
+    expect(report.summaryText).toContain("October 3, 2026");
+    expect(report.summaryText).not.toContain("October 3, 2025");
+    expect(prompts).toHaveLength(0);
   });
 
-  it("validates the introduction against the collector's local year at a UTC boundary", async () => {
-    modelResponse =
-      "Good morning. Here is the brief for Wednesday, December 31, 2025.";
+  it("renders the collector's local year at a UTC boundary", async () => {
     const report = await new CheckinService(runtime).runMorningCheckin({
       timezone: "America/Los_Angeles",
       now: new Date("2026-01-01T01:00:00Z"),
     });
-    expect(report.summaryText).toBe(modelResponse);
+    expect(report.summaryText).toContain("December 31, 2025");
     expect(report.timezone).toBe("America/Los_Angeles");
+    expect(prompts).toHaveLength(0);
   });
 
   it("stores collector availability with the report so reload cannot turn failure into zero", async () => {

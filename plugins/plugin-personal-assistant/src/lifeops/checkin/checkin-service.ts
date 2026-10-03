@@ -294,6 +294,114 @@ function newReportId(): string {
   if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+function morningBriefExcerpt(text: string): string {
+  const characters = Array.from(clip(text));
+  return characters.length > 220
+    ? `${characters.slice(0, 220).join("")}… (excerpt)`
+    : characters.join("");
+}
+
+/** Render morning facts from the existing report; retain every raw record in storage. */
+export function renderMorningCheckinReport(
+  report: Omit<CheckinReport, "summaryText">,
+): string {
+  const reference = report.timezone
+    ? `${new Intl.DateTimeFormat("en-US", {
+        timeZone: report.timezone,
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(new Date(report.generatedAt))} (${report.timezone})`
+    : report.generatedAt;
+  const paragraphs = ["Good morning.", `As of ${reference}.`];
+  const unavailable: string[] = [];
+  const emptySummaries: string[] = [];
+  const lists = [
+    {
+      key: "todaysMeetings" as const,
+      title: "Meetings today",
+      empty: "No meetings listed for today.",
+      rows: report.todaysMeetings,
+    },
+    {
+      key: "overdueTodos" as const,
+      title: "Overdue tasks",
+      empty: "No overdue tasks listed.",
+      rows: report.overdueTodos,
+    },
+    {
+      key: "yesterdaysWins" as const,
+      title: "Completions recorded yesterday",
+      empty: "No completed items were recorded yesterday.",
+      rows: report.yesterdaysWins,
+    },
+  ];
+  for (const list of lists) {
+    if (report.collectorErrors[list.key]) {
+      unavailable.push(list.title);
+      continue;
+    }
+    if (list.rows.length === 0) {
+      emptySummaries.push(list.empty);
+      continue;
+    }
+    const highlights = list.rows.slice(0, 3).map((row) => {
+      const time =
+        "startAt" in row
+          ? report.timezone
+            ? new Intl.DateTimeFormat("en-US", {
+                timeZone: report.timezone,
+                timeStyle: "short",
+              }).format(new Date(row.startAt))
+            : row.startAt
+          : null;
+      return `- ${time ? `${time}: ` : ""}${morningBriefExcerpt(row.title)}`;
+    });
+    const extra = list.rows.length - highlights.length;
+    paragraphs.push(
+      `${list.title}: ${list.rows.length}.${highlights.length ? `\n${highlights.join("\n")}` : ""}${extra ? `\n${extra} more collected items.` : ""}`,
+    );
+  }
+  if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
+  if (report.collectorErrors.habitSummaries) {
+    unavailable.push("Habit tracking");
+  } else if (report.habitSummaries.length > 0) {
+    const missed = report.habitSummaries.filter(
+      (habit) => habit.missedOccurrenceStreak > 0,
+    ).length;
+    paragraphs.push(
+      `Habit tracking: ${missed} of ${report.habitSummaries.length} records have recorded misses. These tracking states do not prove that work or notification delivery failed.`,
+    );
+  }
+  const emptySourceSummaries: string[] = [];
+  for (const section of report.briefingSections) {
+    if (section.error) {
+      unavailable.push(section.title);
+      continue;
+    }
+    const highlights = section.items
+      .slice(0, 3)
+      .map(
+        (item) =>
+          `- ${morningBriefExcerpt(item.title)}${item.detail ? `: ${morningBriefExcerpt(item.detail)}` : ""}`,
+      );
+    const extra = section.items.length - highlights.length;
+    if (highlights.length === 0) {
+      emptySourceSummaries.push(section.summary);
+    } else {
+      paragraphs.push(
+        `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more collected items.` : ""}`,
+      );
+    }
+  }
+  if (emptySourceSummaries.length > 0)
+    paragraphs.push(emptySourceSummaries.join(" "));
+  if (unavailable.length > 0)
+    paragraphs.push(
+      `I couldn't check: ${unavailable.join(", ")}. This brief does not cover those sources.`,
+    );
+  return paragraphs.join("\n\n");
+}
 export function clip(text: string, maxLength = 220): string {
   void maxLength;
   return toWellFormedUnicode(text.replace(/\s+/g, " ").trim());
@@ -1438,6 +1546,7 @@ export class CheckinService {
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
+    if (report.kind === "morning") return renderMorningCheckinReport(report);
     if (typeof this.runtime.useModel !== "function") {
       throw new ElizaError(
         "Check-in summary requires a configured text model",
@@ -1458,27 +1567,7 @@ export class CheckinService {
         code: "CHECKIN_SUMMARY_EMPTY",
       });
     }
-    const summary = response.trim();
-    const introduction = summary.split(/\n\s*\n/u, 1)[0];
-    const introductionYear = introduction.match(
-      /\b(?:brief(?:ing)?|summary|report|recap|status)\s+(?:for|as of)\s+(?:[a-z]+day,?\s+)?[a-z]+\s+\d{1,2},?\s+(\d{4})\b/iu,
-    )?.[1];
-    if (introductionYear) {
-      const reportYear = report.timezone
-        ? new Intl.DateTimeFormat("en-US", {
-            timeZone: report.timezone,
-            year: "numeric",
-          }).format(new Date(report.generatedAt))
-        : null;
-      if (introductionYear !== reportYear)
-        throw new ElizaError(
-          "Check-in introduction contradicts the report year",
-          {
-            code: "CHECKIN_SUMMARY_YEAR_MISMATCH",
-          },
-        );
-    }
-    return summary;
+    return response.trim();
   }
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);

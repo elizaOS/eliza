@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCheckinSummaryPrompt,
   getCheckinSummaryTrajectoryPurpose,
+  renderMorningCheckinReport,
 } from "./checkin-service.js";
 import type { CheckinReport } from "./types.js";
 
@@ -30,6 +31,55 @@ const baseReport = (
 });
 
 describe("buildCheckinSummaryPrompt", () => {
+  it("marks long display excerpts while preserving complete source items", () => {
+    const detail = "😀".repeat(500);
+    const report = baseReport({
+      briefingSections: [
+        {
+          key: "inbox",
+          title: "Inbox",
+          summary: "One message collected.",
+          error: null,
+          items: [
+            {
+              title: "Message",
+              detail,
+              occurredAt: null,
+              href: null,
+              reason: null,
+            },
+          ],
+        },
+      ],
+    });
+    const text = renderMorningCheckinReport(report);
+    expect(text).toContain("… (excerpt)");
+    expect(text).not.toContain("\uFFFD");
+    expect(report.briefingSections[0].items[0].detail).toBe(detail);
+  });
+  it("renders the captured eighteen-miss count without model arithmetic or mutating records", () => {
+    const habits = Array.from({ length: 19 }, (_, index) => ({
+      definitionId: `habit-${index}`,
+      title: `Habit ${index}`,
+      kind: "habit" as const,
+      currentOccurrenceStreak: index === 18 ? 1 : 0,
+      bestOccurrenceStreak: index === 18 ? 1 : 0,
+      missedOccurrenceStreak: index === 18 ? 0 : 1,
+      pauseUntil: null,
+      isPaused: false,
+      progress: null,
+    }));
+    const report = baseReport({
+      habitSummaries: habits,
+      timezone: "Asia/Tokyo",
+    });
+    const original = structuredClone(report);
+    expect(renderMorningCheckinReport(report)).toContain(
+      "18 of 19 records have recorded misses",
+    );
+    expect(report).toEqual(original);
+  });
+
   it("distinguishes unavailable sections from healthy empty sections without dropping source fields", () => {
     const available = {
       key: "inbox" as const,
