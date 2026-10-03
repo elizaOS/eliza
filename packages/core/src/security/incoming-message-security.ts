@@ -13,7 +13,7 @@ import {
 	extractWrappedExternalContent,
 	wrapExternalContent,
 } from "./external-content.js";
-import { redactSensitiveText } from "./redact.js";
+import { SecretSwapSession } from "./secret-swap.js";
 
 const PUBLIC_CHANNEL_SOURCES = new Set([
 	"discord",
@@ -242,7 +242,8 @@ export function hardenIncomingUserMessage(message: Memory): void {
 
 /** Redact secret-shaped substrings before persisting user text to memory. */
 export function scrubIncomingMessageTextForStorage(text: string): string {
-	return redactSensitiveText(text, { mode: "tools" });
+	const session = new SecretSwapSession();
+	return session.restoreUserReplyText(session.substituteText(text)).replaceAll("[redacted credential]", "***");
 }
 
 /**

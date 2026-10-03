@@ -1,3 +1,5 @@
+import { CORS_ALLOWED_HEADERS } from "../../../packages/app/src/api/server-cors.ts";
+import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -508,7 +510,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     );
     const view = await service.propose(
       credentials,
-      { type: "open_view", view: "notes" },
+      { type: "open_view", view: "workflows" },
       "view-1",
       "Fixture",
     );
@@ -538,6 +540,33 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       ).status,
     ).toBe(409);
     const viewDigest = pending.find((item: any) => item.id === view.id).digest;
+    expect(
+      (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
+        .status,
+    ).toBe(409);
+    expect(
+      pending.find((item: any) => item.id === view.id).payload.operation,
+    ).toEqual({ type: "open_view", view: "workflows" });
+    expect(
+      (
+        await request(`/proposals/${view.id}/decision`, {
+          digest: viewDigest,
+          decision: "approve",
+        })
+      ).status,
+    ).toBe(200);
+    const viewClaim = await request(`/proposals/${view.id}/claim`, {
+      digest: viewDigest,
+    });
+    expect(viewClaim.status).toBe(200);
+    expect(viewClaim.body.proposal.state).toBe("executing");
+    const viewReceipt = await request(`/proposals/${view.id}/receipt`, {
+      digest: viewDigest,
+      attemptId: viewClaim.body.proposal.execution.attemptId,
+      receipt: { outcome: "applied", operationId: "fixture-open-workflows-1" },
+    });
+    expect(viewReceipt.status).toBe(200);
+    expect(viewReceipt.body.proposal.state).toBe("done");
     expect(
       (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
         .status,
@@ -930,6 +959,279 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ),
         ).toHaveLength(1);
       }
+    }
+    {
+      const capability = "clock.handoff.v1";
+      const allCapabilities =
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1";
+      const enrolled = await request(
+        "/register",
+        { label: "Fixture phone", workflowProtocol: 1 },
+        "a",
+        deviceKey,
+        allCapabilities,
+      );
+      expect(enrolled.status).toBe(200);
+      expect([...enrolled.body.capabilities].sort()).toEqual([...allCapabilities.split(","), "reminders.local-record.v2", "reminders.create.v1"].sort());
+      expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            allCapabilities,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            allCapabilities + ",unknown.v1",
+          )
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            allCapabilities + ",clock.handoff.v1",
+          )
+        ).status,
+      ).toBe(401);
+
+      const operationSchema = proposeDeviceAction.parameters!.find(
+        (p) => p.name === "operation",
+      )!.schema;
+      const clockSchemas = operationSchema.anyOf!.filter((p) =>
+        p.properties?.type.enum?.includes("clock_handoff"),
+      );
+      expect(clockSchemas).toHaveLength(4);
+      expect(clockSchemas.every((p) => p.additionalProperties === false)).toBe(
+        true,
+      );
+      expect(proposeDeviceAction.description).toContain(
+        "Never invent the phone timezone or substitute an approximate reminder for an alarm",
+      );
+
+      const c = { ...credentials, capabilities: [capability] };
+      const clockRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, capability);
+      const service = new DeviceActionService(runtimeState.runtime);
+      const set = {
+        type: "clock_handoff",
+        action: "set",
+        hour: 7,
+        minute: 30,
+        label: "Clock fixture",
+        timeZone: "UTC",
+      };
+      const observation = {
+        view: "home",
+        revision: 7,
+        sensitive: false,
+        timeZone: "UTC",
+      };
+      const proposeOverHttp = async (
+        operation: unknown,
+        context: unknown,
+        operationKey = randomUUID(),
+      ) => {
+        mapsActionParameters = {
+          operation,
+          operationKey,
+          reason: "Clock fixture",
+        };
+        const response = await fetch(`${origin}/api/maps-observation-fixture`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${sessions.a}`,
+            "x-eliza-device-id": device,
+            "x-eliza-device-key": deviceKey,
+            "x-eliza-device-capabilities": capability,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            text: "Review Clock handoff",
+            metadata: { clientDevice: { context } },
+          }),
+        });
+        return {
+          status: response.status,
+          body: (await response.json()) as any,
+        };
+      };
+      await expect(
+        service.propose(
+          credentials,
+          set,
+          "clock-no-cap",
+          "Clock fixture",
+          observation,
+        ),
+      ).rejects.toThrow();
+      for (const operation of [
+        { ...set, hour: 24 },
+        { ...set, minute: -1 },
+        { ...set, hour: 7.5 },
+        { ...set, label: "x".repeat(201) },
+        { ...set, timeZone: "Not/AZone" },
+        { ...set, alarmCreated: true },
+        { type: "clock_handoff", action: "show", hour: 7 },
+        { type: "clock_handoff", action: "dismiss", alarmId: "other" },
+        { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 },
+        { type: "clock_handoff", action: "snooze", snoozeMinutes: 61 },
+      ])
+        expect((await proposeOverHttp(operation, observation)).status).toBe(
+          409,
+        );
+      // The model's valid zone cannot replace missing/different current HTTP observation.
+      for (const context of [
+        undefined,
+        { ...observation, timeZone: undefined },
+        { ...observation, timeZone: "America/New_York" },
+        { ...observation, sensitive: true },
+      ]) {
+        expect((await proposeOverHttp(set, context)).status).toBe(409);
+      }
+      const operations = [
+        set,
+        { type: "clock_handoff", action: "show" },
+        { type: "clock_handoff", action: "dismiss" },
+        { type: "clock_handoff", action: "snooze", snoozeMinutes: 10 },
+        set,
+      ];
+      for (const [index, status] of [
+        "opened",
+        "unavailable",
+        "denied",
+        "failed",
+        "unknown",
+      ].entries()) {
+        const operation = operations[index];
+        const key = `clock-${status}`;
+        const proposed = await proposeOverHttp(operation, observation, key);
+        expect(proposed.status).toBe(200);
+        expect(proposed.body.metadata.clientDevice.context.timeZone).toBe(
+          "UTC",
+        );
+        const id = proposed.body.action.data.proposalId;
+        const listed = await clockRequest("/proposals");
+        const pending = listed.body.proposals.find((p: any) => p.id === id);
+        expect(pending.payload.operation).toEqual(operation);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claim = await clockRequest(`/proposals/${id}/claim`, {
+          digest: pending.digest,
+        });
+        expect(claim.status).toBe(200);
+        const attemptId = claim.body.proposal.execution.attemptId;
+        const endpoint = `/proposals/${id}/receipt`;
+        for (const result of [
+          {
+            kind: "clock-handoff",
+            action: operation.action,
+            status: "created",
+          },
+          {
+            kind: "clock-handoff",
+            action: operation.action,
+            status: "opened",
+            alarmCreated: true,
+          },
+          { kind: "clock-handoff", action: "wrong", status: "opened" },
+        ]) {
+          expect(
+            (
+              await clockRequest(endpoint, {
+                digest: pending.digest,
+                attemptId,
+                receipt: {
+                  outcome: "applied",
+                  operationId: randomUUID(),
+                  result,
+                },
+              })
+            ).status,
+          ).toBe(409);
+        }
+        const receipt = {
+          outcome:
+            status === "opened"
+              ? "applied"
+              : status === "unknown"
+                ? "unknown"
+                : "failed",
+          operationId: randomUUID(),
+          result: { kind: "clock-handoff", action: operation.action, status },
+        };
+        const recorded = await clockRequest(endpoint, {
+          digest: pending.digest,
+          attemptId,
+          receipt,
+        });
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.execution.providerReceipt.result).toEqual(
+          receipt.result,
+        );
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(endpoint, {
+              digest: pending.digest,
+              attemptId,
+              receipt,
+            })
+          ).status,
+        ).toBe(200);
+        if (status === "opened") {
+          const historical = await proposeOverHttp(
+            operation,
+            { ...observation, timeZone: "America/New_York" },
+            key,
+          );
+          expect(historical.status).toBe(200);
+          expect(historical.body.action.data.result.status).toBe("opened");
+          expect(historical.body.action.text).toContain(
+            "not proof of its final alarm state",
+          );
+          expect(historical.body.action.text).toContain(
+            "The request may already have changed an alarm",
+          );
+          expect(historical.body.action.text).toContain("No new dispatch occurred.");
+          expect(historical.body.action.data.executed).toBe(false);
+        }
+      }
+      console.info(
+        "Clock HTTP/PGlite: 5 outcome lifecycles, capability/schema/timezone rejection, duplicate claims and historical opened-only receipt PASS",
+      );
     }
     {
       const capability = "maps.selected-read.v1";
@@ -1406,6 +1708,95 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       }
     }
     {
+      const cap="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1,reminders.create.v1";
+      const c={...credentials,capabilities:cap.split(",")},service=new DeviceActionService(runtimeState.runtime);
+      const call=(path:string,body?:unknown)=>request(path,body,"a",deviceKey,cap);
+      expect((await call("/register",{label:"Creation fixture"})).status).toBe(200);
+      expect((await request("/proposals",undefined,"a",deviceKey,cap+",reminders.local-record.v1")).status).toBe(401);
+      expect((await request("/proposals",undefined,"a",deviceKey,cap+",invented.capability")).status).toBe(401);
+      for(const mode of ["none","lead","repeat","unknown"]){
+        const dueAt=Date.now()+7200000,alertMinutes=mode==="lead"?10:null;
+        const operation={type:"reminder_create",fields:{title:"Reviewed creation",body:"Synthetic body",schedule:{at:dueAt-(alertMinutes??0)*60000,dueAt,alertMinutes,recurrence:mode==="repeat"?{rule:"daily",zone:"UTC",date:"2026-10-03",time:"13:00",leadMinutes:0}:null}}};
+        await expect(service.propose({...c,capabilities:["reminders.local-record.v2"]},operation,"old-"+mode,"fixture")).rejects.toThrow();
+        await expect(service.propose(c,{...operation,extra:true},"bad-"+mode,"fixture")).rejects.toThrow();
+        const runAction=()=>withDeviceActionTurn(runtimeState.runtime,c,()=>proposeDeviceAction.handler(runtimeState.runtime,memory,undefined,{parameters:{operation,operationKey:"create-"+mode,reason:"fixture"}}));
+        const proposed=await runAction();expect(proposed&&proposed.data).toMatchObject({executed:false,approvalRequired:true});
+        const item=(await call("/proposals")).body.proposals.find((p:any)=>p.id===(proposed&&proposed.data?.proposalId));
+        expect(item.payload.operation).toEqual(operation);
+        expect((await call(`/proposals/${item.id}/decision`,{digest:item.digest,decision:"approve"})).status).toBe(200);
+        expect((await request(`/proposals/${item.id}/claim`,{digest:item.digest})).status).toBe(409);
+        const claimed=await call(`/proposals/${item.id}/claim`,{digest:item.digest});expect(claimed.status).toBe(200);
+        const operationId="created-"+mode,result={version:1,kind:"reminder_create",sourceId:"local-reminders",reminderId:operationId,occurrenceId:"first-occurrence",revision:"c".repeat(64),status:alertMinutes===null?"pending":"scheduled",at:operation.fields.schedule.at,dueAt,alertMinutes,fields:operation.fields};
+        const receipt={digest:item.digest,attemptId:claimed.body.proposal.execution.attemptId,receipt:{outcome:"applied",operationId,result}};
+        expect((await call(`/proposals/${item.id}/receipt`,{...receipt,receipt:{...receipt.receipt,result:{...result,reminderId:"wrong"}}})).status).toBe(409);
+        expect((await request(`/proposals/${item.id}/receipt`,receipt)).status).toBe(409);
+        if(mode==="unknown"){
+          expect((await call(`/proposals/${item.id}/receipt`,{...receipt,receipt:{outcome:"unknown",operationId}})).body.proposal.state).toBe("reconciliation_required");
+          const recovery={digest:item.digest,attemptId:claimed.body.proposal.execution.attemptId,resolution:{confirmed:true,outcome:"applied",operationId,result}};
+          expect((await request(`/proposals/${item.id}/reconciliation`,recovery)).status).toBe(409);
+          expect((await call(`/proposals/${item.id}/reconciliation`,recovery)).body.proposal.state).toBe("done");
+          expect((await call(`/proposals/${item.id}/reconciliation`,recovery)).status).toBe(200);
+        }else{expect((await call(`/proposals/${item.id}/receipt`,receipt)).body.proposal.state).toBe("done");expect((await call(`/proposals/${item.id}/receipt`,receipt)).status).toBe(200);}
+        expect((await call(`/proposals/${item.id}/claim`,{digest:item.digest})).status).toBe(409);
+        expect((await call("/proposals")).body.proposals.find((p:any)=>p.id===item.id).execution.providerReceipt.result).toEqual(result);
+        const historical=await runAction();expect(historical&&historical.data).toMatchObject({executed:false,result});
+      }
+    }
+    {
+      // Real authenticated HTTP + durable approval queue: timing semantics never
+      // downgrade to v1, and an identical receipt replay never claims twice.
+      const timingCapabilities = "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1";
+      const timingCredentials = { ...credentials, capabilities: timingCapabilities.split(",") };
+      const timingService = new DeviceActionService(runtimeState.runtime);
+      const timingRequest = (path: string, body?: unknown) => request(path, body, "a", deviceKey, timingCapabilities);
+      const advertised = await timingRequest("/register", { label: "Timing fixture", workflowProtocol: 1 });
+      expect(advertised.status).toBe(200);
+      expect(advertised.body.capabilities).toEqual(expect.arrayContaining(["reminders.local-record.v1", "reminders.local-record.v2"]));
+      expect((await request("/proposals", undefined, "a", deviceKey, timingCapabilities + ",reminders.local-record.v1")).status).toBe(401);
+      const timingTarget = { sourceId: "19", sourceRevision: "a".repeat(64), reminderId: "timing-task", occurrenceId: "timing-occurrence", revision: "b".repeat(64), timingVersion: 2 as const };
+      const dueAt = Date.now() + 3600000;
+      for (const scenario of ["read-none", "update-none", "update-early", "complete-repeat", "reconcile-none"] as const) {
+        const alertMinutes = scenario === "update-early" ? 10 : null;
+        const schedule = { at: dueAt - (alertMinutes ?? 0) * 60000, recurrence: null, dueAt, alertMinutes };
+        const fields = { title: "Reviewed task", body: "Synthetic only", schedule };
+        const operation = scenario.startsWith("update") || scenario === "reconcile-none"
+          ? { type: "reminder_update" as const, target: timingTarget, fields }
+          : { type: scenario === "read-none" ? "reminder_read_selected" as const : "reminder_complete" as const, target: timingTarget };
+        await expect(timingService.propose({ ...credentials, capabilities: ["reminders.local-record.v1"] }, operation, scenario, "fixture")).rejects.toThrow();
+        const proposed = await timingService.propose(timingCredentials, operation, scenario, "fixture");
+        const item = (await timingRequest("/proposals")).body.proposals.find((p: any) => p.id === proposed.id);
+        expect(item.payload.operation).toEqual(operation);
+        expect((await timingRequest(`/proposals/${item.id}/decision`, { digest: item.digest, decision: "approve" })).status).toBe(200);
+        expect((await request(`/proposals/${item.id}/claim`, { digest: item.digest })).status).toBe(409);
+        const claimed = await timingRequest(`/proposals/${item.id}/claim`, { digest: item.digest });
+        expect(claimed.status).toBe(200);
+        expect((await timingRequest(`/proposals/${item.id}/claim`, { digest: item.digest })).status).toBe(409);
+        const result = { version: 1, kind: operation.type, sourceId: timingTarget.sourceId, reminderId: timingTarget.reminderId,
+          occurrenceId: scenario === "complete-repeat" ? "timing-next-occurrence" : timingTarget.occurrenceId,
+          revision: scenario === "read-none" ? timingTarget.revision : "c".repeat(64),
+          status: alertMinutes === null ? "pending" : "scheduled", at: schedule.at, dueAt, alertMinutes,
+          ...(scenario === "read-none" ? { fields } : {}) };
+        const receipt = { digest: item.digest, attemptId: claimed.body.proposal.execution.attemptId, receipt: { outcome: "applied", operationId: `native-${scenario}`, result } };
+        const { dueAt: ignoredDue, alertMinutes: ignoredAlert, ...downgraded } = result;
+        expect((await timingRequest(`/proposals/${item.id}/receipt`, { ...receipt, receipt: { ...receipt.receipt, result: downgraded } })).status).toBe(409);
+        expect((await request(`/proposals/${item.id}/receipt`, receipt)).status).toBe(409);
+        if (scenario === "reconcile-none") {
+          const uncertain = await timingRequest(`/proposals/${item.id}/receipt`, { ...receipt, receipt: { outcome: "unknown", code: "synthetic_lost_response" } });
+          expect(uncertain.body.proposal.state).toBe("reconciliation_required");
+          const reconciliation = { digest: item.digest, attemptId: claimed.body.proposal.execution.attemptId, resolution: { confirmed: true, outcome: "applied", operationId: `native-${scenario}`, result } };
+          expect((await request(`/proposals/${item.id}/reconciliation`, reconciliation)).status).toBe(409);
+          expect((await timingRequest(`/proposals/${item.id}/reconciliation`, reconciliation)).body.proposal.state).toBe("done");
+          expect((await timingRequest(`/proposals/${item.id}/reconciliation`, reconciliation)).status).toBe(200);
+        } else {
+          expect((await timingRequest(`/proposals/${item.id}/receipt`, receipt)).body.proposal.state).toBe("done");
+          expect((await timingRequest(`/proposals/${item.id}/receipt`, receipt)).status).toBe(200);
+        }
+        const canonical = (await timingRequest("/proposals")).body.proposals.find((p: any) => p.id === item.id);
+        expect(canonical.execution.providerReceipt.result).toEqual(result);
+        expect((await timingRequest(`/proposals/${item.id}/claim`, { digest: item.digest })).status).toBe(409);
+      }
+    }
+    {
       const operation = {
         type: "reminder_snooze",
         target: {
@@ -1484,6 +1875,77 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         (await request(`/proposals/${item.id}/claim`, { digest: item.digest }))
           .status,
       ).toBe(409);
+    }
+    {
+      for(const header of ['x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities']) expect(CORS_ALLOWED_HEADERS.toLowerCase().split(', ')).toContain(header);
+      const discovery=await request('/view-profile');
+      expect(discovery).toMatchObject({status:200,body:{version:1,profile:null}});
+      expect(discovery.body.supportedViews).toContain('workflows');
+      expect((await request('/register',{label:'Profile fixture'})).body.viewProfileVersion).toBe(1);
+      for(const input of [
+        {version:2,views:['notes'],expectedRevision:null},
+        {version:1,views:['notes','notes'],expectedRevision:null},
+        {version:1,views:['wallet'],expectedRevision:null},
+        {version:1,views:['notes'],expectedRevision:null,owner:'forged'},
+        {version:1,views:['notes']}
+      ])expect((await request('/view-profile',input)).status).toBe(409);
+      expect((await request('/view-profile',undefined,'none')).status).toBe(401);
+      expect((await request('/view-profile',undefined,'a','wrong-key')).status).toBe(409);
+      const first=(await request('/view-profile',{version:1,views:['notes','workflows'],expectedRevision:null})).body.profile;
+      const globalParameters = JSON.stringify(proposeDeviceAction.parameters);
+      const render = (credential: typeof credentials) => withDeviceActionTurn(runtimeState.runtime, credential, async () => {
+        await new Promise(resolve => setTimeout(resolve, 1));
+        return createV5MessageContextObject({runtime:runtimeState.runtime,message:memory,state:{values:{},data:{},text:""},includeTools:true,selectedContexts:[{id:"general",name:"General",description:"Fixture"}] as any,preselectedActions:[proposeDeviceAction]});
+      });
+      const contexts = await Promise.all([render(credentials),render({...credentials,subjectUserId:ownerB,deviceKey:"b".repeat(64)})]);
+      const serialized=contexts.map(context=>JSON.stringify(context));
+      expect(serialized[0]).toContain('enabled-view profile allows open_view only for');
+      expect(serialized[1]).not.toContain('enabled-view profile allows open_view only for');
+      const branch=(context:any)=>context.events.find((event:any)=>event.type==='tool'&&event.tool.name==='PROPOSE_DEVICE_ACTION').tool.parameters.properties.operation.anyOf.find((b:any)=>b.properties?.type?.enum?.[0]==='open_view');
+      expect(branch(contexts[0]).properties.view.enum).toEqual(['notes','workflows']);
+      expect(branch(contexts[1]).properties.view.enum).toContain('browser');
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalParameters);
+
+      expect(first).toMatchObject({version:1,views:['notes','workflows']});
+      expect((await request('/view-profile',{version:1,views:['workflows','notes'],expectedRevision:first.revision})).body.profile).toEqual(first);
+      expect((await request('/view-profile',{version:1,views:[],expectedRevision:null})).status).toBe(409);
+      expect((await request('/view-profile',undefined,'b')).body.profile).toBeNull();
+      const proposeView=async(view:string)=>{
+        mapsActionParameters={operation:{type:'open_view',view},operationKey:randomUUID(),reason:'Explicit fixture request'};
+        const response=await fetch(`${origin}/api/maps-observation-fixture`,{method:'POST',headers:{authorization:`Bearer ${sessions.a}`,'x-eliza-device-id':device,'x-eliza-device-key':deviceKey,'content-type':'application/json'},body:JSON.stringify({text:'Open requested view',prompt:'Open requested view'})});
+        return {status:response.status,body:await response.json()};
+      };
+      const before=(await request('/proposals')).body.proposals.length;
+      const disabled=await proposeView('browser');expect(disabled.body.action?.success).not.toBe(true);
+      expect((await request('/proposals')).body.proposals).toHaveLength(before);
+      await proposeView('notes');
+      const pending=(await request('/proposals')).body.proposals.find((p:any)=>p.payload?.operation?.view==='notes'&&p.payload?.viewProfileRevision===first.revision);
+      expect(pending).toBeTruthy();
+      expect((await request(`/proposals/${pending.id}/decision`,{digest:pending.digest,decision:'approve'})).status).toBe(200);
+      await proposeView('workflows');
+      const waiting=(await request('/proposals')).body.proposals.find((p:any)=>p.payload?.operation?.view==='workflows'&&p.payload?.viewProfileRevision===first.revision);
+      expect(waiting).toBeTruthy();
+      const next=(await request('/view-profile',{version:1,views:['notes'],expectedRevision:first.revision})).body.profile;
+      expect(next.revision).not.toBe(first.revision);
+      expect((await request(`/proposals/${pending.id}/claim`,{digest:pending.digest})).status).toBe(409);
+      expect((await request(`/proposals/${waiting.id}/decision`,{digest:waiting.digest,decision:'approve'})).status).toBe(409);
+      expect((await request(`/proposals/${waiting.id}/decision`,{digest:waiting.digest,decision:'reject'})).status).toBe(200);
+      await new Promise<void>(resolve=>server!.close(()=>resolve()));server=undefined;await runtimeState.cleanup();
+      runtimeState=await createRealTestRuntime({characterName:'DeviceApprovalFixture',pgliteDir:directory,removePgliteDirOnCleanup:false});origin=await start();
+      expect((await request('/view-profile')).body.profile).toEqual(next);
+      await proposeView('notes');
+      const current=(await request('/proposals')).body.proposals.find((p:any)=>p.payload?.viewProfileRevision===next.revision);
+      expect(current).toBeTruthy();
+      expect((await request(`/proposals/${current.id}/decision`,{digest:current.digest,decision:'approve'})).status).toBe(200);
+      const claimed=await request(`/proposals/${current.id}/claim`,{digest:current.digest});expect(claimed.status).toBe(200);
+      expect((await request('/view-profile',{version:1,views:[],expectedRevision:next.revision})).status).toBe(200);
+      expect(branch(await render(credentials))).toBeUndefined();
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalParameters);
+      const receipt={digest:current.digest,attemptId:claimed.body.proposal.execution.attemptId,receipt:{outcome:'applied',operationId:'opened-view-fixture'}};
+      expect((await request(`/proposals/${current.id}/receipt`,receipt)).status).toBe(200);
+      expect((await request(`/proposals/${current.id}/receipt`,receipt)).status).toBe(200);
+      expect((await request(`/proposals/${current.id}/claim`,{digest:current.digest})).status).toBe(409);
+      console.log('Authenticated view-profile HTTP: discovery, conditional persistence, disabled proposal refusal, revision-fenced approve/claim, owner isolation, restart and historical receipt PASS');
     }
     expect((await request("/revoke", {})).status).toBe(200);
     expect((await request("/proposals")).status).toBe(409);

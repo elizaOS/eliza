@@ -1,3 +1,5 @@
+import { workerTermination } from './workflow-worker-termination';
+import { publishAndroidWorkflowSource } from './workflow-source-publication';
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 /**
  * Executes persisted Smithers workflow modules in an isolated Bun child process
@@ -33,6 +35,8 @@ import { workerLeasePrelude } from './workflow-worker-lease-prelude';
 export async function publishWorkflowSource(sourcePath: string, source: string): Promise<void> {
   if (process.platform === 'win32')
     return windowsWorkflowBackend.publishWorkflowSource(sourcePath, source);
+  if (process.env.ELIZA_PLATFORM === 'android' || process.env.ELIZA_MOBILE_PLATFORM === 'android')
+    return publishAndroidWorkflowSource(sourcePath, source);
   const temporary = `${sourcePath}.${randomUUID()}.pending`;
   const handle = await open(temporary, 'wx', 0o600);
   try {
@@ -633,6 +637,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   );
 
   const timeoutMs = resolveSmithersTimeoutMs(request.timeoutMs);
+  const workerStartedAt = Date.now();
   const worker = spawn(command.executable, command.args, {
     cwd: command.cwd,
     env: {
@@ -837,17 +842,19 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
 
   const outcome = await new Promise<{
     exitCode: number | null;
+    exitSignal: NodeJS.Signals | null;
     processError?: { error: Error; phase: 'spawn' | 'runtime' };
   }>((resolve) => {
     let settled = false;
     let spawnObserved = false;
+    let exitSignal: NodeJS.Signals | null = null;
     let processError: { error: Error; phase: 'spawn' | 'runtime' } | undefined;
     let drainTimer: NodeJS.Timeout | undefined;
     const settle = (exitCode: number | null): void => {
       if (settled) return;
       settled = true;
       if (drainTimer) clearTimeout(drainTimer);
-      resolve({ exitCode, ...(processError ? { processError } : {}) });
+      resolve({ exitCode, exitSignal, ...(processError ? { processError } : {}) });
     };
     const armDrainFallback = (exitCode: number | null): void => {
       if (settled || drainTimer) return;
@@ -863,7 +870,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       processError = { error, phase };
       armDrainFallback(null);
     });
-    worker.once('exit', (code) => {
+    worker.once('exit', (code, signal) => {
+      exitSignal = signal;
       processExited = true;
       // Exit can precede pipe EOF. Drain the remaining bytes even while an
       // earlier event awaits delivery; its queued protocol work stays ordered.
@@ -871,7 +879,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       protocolController.abort('exit');
       armDrainFallback(code);
     });
-    worker.once('close', (code) => {
+    worker.once('close', (code, signal) => {
+      if (signal) exitSignal = signal;
       protocolController.abort('close');
       settle(code);
     });
@@ -994,10 +1003,17 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     const detail = stripVTControlCharacters(
       redactSensitiveText(`${stderr}\n${stdoutNoise}\n${stdinError?.message ?? ''}`)
     ).trim();
-    throw new ElizaError(`Smithers worker exited without a result${detail ? `: ${detail}` : ''}`, {
+    // The execution store retains the message, not ElizaError.context. Preserve
+    // bounded OS exit evidence even when a worker writes no diagnostic bytes.
+    const exitCode = Number.isSafeInteger(outcome.exitCode) ? String(outcome.exitCode) : 'unknown';
+    const exitSignal = outcome.exitSignal && /^SIG[A-Z0-9]{1,12}$/.test(outcome.exitSignal)
+      ? outcome.exitSignal : 'none';
+    throw new ElizaError(`Smithers worker exited without a result (exit=${exitCode}; signal=${exitSignal})${detail ? `: ${detail}` : ''}`, {
       code: 'SMTHRS_RESULT_MISSING',
       context: {
         exitCode: outcome.exitCode,
+        workerTermination: workerTermination(outcome.exitCode, outcome.exitSignal, {pid:worker.pid,uid:typeof process.getuid==='function'?process.getuid():undefined,startedAt:workerStartedAt}),
+        exitSignal: outcome.exitSignal,
         workflowId: request.workflow.id,
       },
     });

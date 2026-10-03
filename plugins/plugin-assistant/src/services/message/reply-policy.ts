@@ -358,8 +358,11 @@ export function resolveZeroDeliveryRecovery(args: {
  * (reasoning trajectory) is intentionally left pseudonymized.
  */
 export function restorePiiInUserReplyText(text: string): string {
-  const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
-  return piiSwapSession ? piiSwapSession.restoreInValue(text) : text;
+  const context = getTrajectoryContext();
+  const restoredPii = context?.piiSwapSession?.restoreInValue(text) ?? text;
+  // Reverse ingress order. Personal data may have been captured by the secret
+  // detector before PII substitution; credentials must stay redacted here.
+  return context?.secretSwapSession?.restoreUserReplyText(restoredPii) ?? restoredPii;
 }
 
 export function createV5ReplyStrategyResult(args: {

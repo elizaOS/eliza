@@ -90,6 +90,7 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
+import { handleStandaloneKokoroRoute } from "./standalone-kokoro-routes";
 import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
 export {
@@ -764,6 +765,11 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // (app must not statically import plugin packages). This replaces the
     // former inline hardwired block that enumerated the four plugin handlers
     // directly in the dispatcher body (#12089 item 5).
+    id: "standalone-kokoro",
+    handler: ({ req, res, state }) =>
+      handleStandaloneKokoroRoute(req, res, state),
+  },
+  {
     id: "standalone-whisper",
     handler: ({ req, res, state }) =>
       handleStandaloneWhisperRoute(req, res, state),

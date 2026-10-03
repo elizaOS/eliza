@@ -519,6 +519,9 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
 // branch. Ownership of the fallback stays with this loader table (#12665).
 STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-sql"] = () => getPluginSql();
 STATIC_ELIZA_PLUGIN_LOADERS[SQLITE_PLUGIN] = () => getPluginSqlite();
+// Android workflows execute through extracted worker/compiler resources.
+STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-workflow"] = () =>
+  import("@elizaos/plugin-workflow");
 // Mobile builds alias this literal import to the native-only browser entry.
 // Bundling code alone does not register it with the filesystem-free resolver.
 STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-browser"] = () =>

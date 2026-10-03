@@ -574,10 +574,16 @@ export function collectPluginNames(
   const leanChat =
     !onMobile &&
     process.env.ELIZA_PLUGIN_SET?.trim().toLowerCase() === "lean-chat";
+  const leanWorkflows = readAliasedEnv("ELIZA_LEAN_CHAT_WORKFLOWS") === "1" &&
+    (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow?.enabled !== false;
+  const mobileWorkflows = isAndroidMobile() && readAliasedEnv("ELIZA_MOBILE_WORKFLOWS") === "1" &&
+    (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow?.enabled !== false;
   const seedCorePlugins = onMobile
-    ? MOBILE_CORE_PLUGINS
+    ? (mobileWorkflows ? [...MOBILE_CORE_PLUGINS, "@elizaos/plugin-workflow"] : MOBILE_CORE_PLUGINS)
     : leanChat
-      ? LEAN_CHAT_PLUGINS
+      ? (leanWorkflows
+          ? [...LEAN_CHAT_PLUGINS, "@elizaos/plugin-workflow"]
+          : LEAN_CHAT_PLUGINS)
       : CORE_PLUGINS;
   const pluginsToLoad = new Set<string>(seedCorePlugins);
   const track = (name: string, reason: string) => {
@@ -974,6 +980,7 @@ export function collectPluginNames(
   if (onMobile) {
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,
+      ...(mobileWorkflows ? ["@elizaos/plugin-workflow"] : []),
       ...MOBILE_VIEW_PLUGINS,
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
@@ -1014,6 +1021,9 @@ export function collectPluginNames(
         ?.trim()
         .toLowerCase() !== "true";
     for (const name of LEAN_CHAT_EXCLUDED_PLUGINS) {
+      // Phone consumers need reviewed workflows without desktop actuator plugins.
+      // Preserve explicit config opt-outs: retain only a previously selected plugin.
+      if (name === "@elizaos/plugin-workflow" && leanWorkflows) continue;
       if (localEmbeddingsOptIn && name === "@elizaos/plugin-local-inference") {
         // Keep the local embedder; ensure it wins TEXT_EMBEDDING over cloud.
         pluginsToLoad.add(name);

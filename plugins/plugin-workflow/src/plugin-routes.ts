@@ -80,6 +80,16 @@ const workflowHandler = makeWorkflowHandler();
 const automationsHandler = makeAutomationsHandler();
 const workbenchTodosHandler = makeWorkbenchTodosHandler();
 const workflowRouteList: Route[] = [
+  // Explicit registrations: generic workflow routes do not match hosted paths.
+  { type: 'GET', path: '/api/workflow/hosted/live-accounts', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/hosted/live-calendars', rawPath: true, handler: workflowHandler },
+  { type: 'GET', path: '/api/workflow/hosted/sources', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/hosted/sources', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/hosted/sources/revoke', rawPath: true, handler: workflowHandler },
+  { type: 'GET', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },
+  { type: 'GET', path: '/api/workflow/hosted/results', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/hosted/results/ack', rawPath: true, handler: workflowHandler },
   {
     type: 'GET',
     path: '/api/workflow/executions/:id/phone-review',
@@ -87,6 +97,7 @@ const workflowRouteList: Route[] = [
     handler: workflowHandler,
   },
   { type: 'GET', path: '/api/workflow/phone/catalog', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/phone/generate', rawPath: true, handler: workflowHandler },
   { type: 'POST', path: '/api/workflow/phone/validate', rawPath: true, handler: workflowHandler },
   { type: 'POST', path: '/api/workflow/phone/workflows', rawPath: true, handler: workflowHandler },
   {

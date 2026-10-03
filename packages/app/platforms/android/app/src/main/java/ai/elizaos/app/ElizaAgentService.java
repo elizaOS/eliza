@@ -3007,26 +3007,14 @@ public class ElizaAgentService extends Service {
         File abiDir = agentAbiDir(abi);
         File bun = preferPackagedExecutable(new File(abiDir, BUN_BINARY), "libeliza_bun.so");
         File bundle = new File(agentRoot(), AGENT_BUNDLE_NAME);
-        String killCommand = "pkill -f " + shellQuote(bun.getAbsolutePath())
-            + " 2>/dev/null || true; pkill -f "
-            + shellQuote(bundle.getAbsolutePath()) + " 2>/dev/null || true";
+        File loader = new File(getApplicationInfo().nativeLibraryDir,
+            "arm64-v8a".equals(abi) ? "libeliza_ld_musl_aarch64_real.so" : "libeliza_ld_musl_x86_64_real.so");
         try {
-            Process killer = new ProcessBuilder("/system/bin/sh", "-c", killCommand)
-                .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
-                .redirectOutput(ProcessBuilder.Redirect.to(new File("/dev/null")))
-                .redirectError(ProcessBuilder.Redirect.to(new File("/dev/null")))
-                .start();
-            long deadline = System.currentTimeMillis() + PROCESS_TERMINATE_GRACE_MS;
-            while (killer.isAlive() && System.currentTimeMillis() < deadline) {
-                Thread.sleep(100);
-            }
-            if (killer.isAlive()) {
-                killer.destroyForcibly();
-            }
-        } catch (IOException error) {
-            Log.w(TAG, "Failed to stop detached agent process: " + error.getMessage());
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
+            WorkflowSurvivorInventory.stopResident(bun, loader, bundle);
+        } catch (Exception error) {
+            // Never fall back to path-wide signals: those also kill admitted workers.
+            Log.w(TAG, "Resident stop identity unproven; preserving processes", error);
+            throw new IllegalStateException("Resident stop identity unproven", error);
         }
     }
 

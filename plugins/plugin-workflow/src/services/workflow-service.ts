@@ -29,13 +29,14 @@ import {
   phoneWorkflowCatalog,
   validatePhoneSpec,
 } from './phone-workflow-spec';
+import { phoneGenerationInput, generatePhoneSpec } from './phone-workflow-generation';
 import { validateSmithersSource } from './smithers-runtime';
 import { checkWorkflowSource } from './workflow-source-check';
 
 export const WORKFLOW_SERVICE_TYPE = 'workflow';
 
 export interface WorkflowServiceConfig extends Record<string, string> {
-  host: 'eliza-cloud';
+  host: 'eliza://workflow';
   backend: 'smthrs';
 }
 
@@ -153,9 +154,9 @@ export function compareWorkflowSearchCandidates(
 export class WorkflowService extends Service {
   static override readonly serviceType = WORKFLOW_SERVICE_TYPE;
   override capabilityDescription =
-    'Chat authoring and elizaOS Cloud API facade for native Smithers workflows.';
+    'Chat authoring and agent-runtime API facade for embedded Smithers workflows.';
   readonly config: WorkflowServiceConfig = {
-    host: 'eliza-cloud',
+    host: 'eliza://workflow',
     backend: 'smthrs',
   };
 
@@ -166,10 +167,21 @@ export class WorkflowService extends Service {
   override async stop(): Promise<void> {}
 
   phoneCatalog() {
-    return phoneWorkflowCatalog(
+    return {generationProtocol: 1, ...phoneWorkflowCatalog(
       Boolean(this.runtime.getModel(ModelType.TEXT_LARGE)),
       Boolean(this.runtime.getService('workflow_device_bridge'))
-    );
+    )};
+  }
+  async generatePhoneDraft(value: unknown, catalogRevision: unknown, compilerRevision: unknown, owner: string) {
+    if (catalogRevision !== PHONE_CATALOG_REVISION || compilerRevision !== PHONE_COMPILER_REVISION)
+      throw new WorkflowApiError('Workflow capability catalog changed; review again', 409);
+    if (!this.runtime.getModel(ModelType.TEXT_LARGE)) throw new WorkflowApiError('Selected runtime has no text model handler',409);
+    const available = this.phoneCatalog().palette.flatMap(row=>row.operations.filter(op=>op.available).map(op=>op.id));
+    const input = phoneGenerationInput(value, available);
+    // Verify current owner enrollment before sending any draft context to the model.
+    await this.validatePhoneDraft({...(input.existing ?? {version:1,name:'Generation context',description:'',trigger:{kind:'manual'},steps:[{id:'input',kind:'Read',operation:'supplied_text',text:''}]}),...(input.device?{device:input.device}:{})},catalogRevision,compilerRevision,owner);
+    const spec = await generatePhoneSpec(input, prompt=>this.runtime.useModel(ModelType.TEXT_LARGE,{prompt,temperature:0.1,responseFormat:{type:'json_object'}}));
+    return this.validatePhoneDraft(spec,catalogRevision,compilerRevision,owner);
   }
   async validatePhoneDraft(
     input: unknown,

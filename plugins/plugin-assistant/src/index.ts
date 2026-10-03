@@ -211,3 +211,5 @@ export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
 export { serializeTrajectoryExport } from "./services/trajectory-export.ts";
 export * from "./utils/prompt-batcher.ts";
+
+export { DEVICE_VIEWS } from "./services/device-actions/contract.ts";

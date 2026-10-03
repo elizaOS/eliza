@@ -64,7 +64,7 @@ const NOTHING: GuardedStreamOutput = { safe: "", visible: "" };
  */
 const OPENER_PATTERNS: readonly RegExp[] = [
 	// ENV-style assignment (NAME=… / NAME: …), value still arriving.
-	/[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\s*(?:[=:]\s*(?:["']?[^\s"'\\]*)?)?$/,
+	/[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|SEED[_-]?PHRASE)\s*(?:[=:]\s*(?:["']?[^\s"'\\]*)?)?$/i,
 	// JSON credential field, still open: name seen, optionally `: `, optionally a
 	// string value. Unlike the other openers the value can contain whitespace, so
 	// the hold must persist past the closing quote — through any trailing
@@ -168,7 +168,8 @@ export class GuardedStreamScanner {
 		let safe = raw;
 		if (this.secretSession) safe = this.secretSession.substituteText(safe);
 		if (this.piiSession) safe = this.piiSession.substituteText(safe);
-		const visible = this.piiSession ? this.piiSession.restoreText(safe) : safe;
+		const restoredPii = this.piiSession ? this.piiSession.restoreText(safe) : safe;
+		const visible = this.secretSession ? this.secretSession.restoreUserReplyText(restoredPii) : restoredPii;
 		return { safe, visible };
 	}
 

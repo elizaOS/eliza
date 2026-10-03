@@ -1,3 +1,4 @@
+import { workerTerminationFromError } from './workflow-worker-termination';
 /**
  * Tenant-scoped persistence and execution service for native Smithers workflow
  * modules. elizaOS owns definitions, revisions, run summaries, API events, and
@@ -1826,12 +1827,14 @@ export class EmbeddedWorkflowService extends Service {
         return unresolved;
       }
       // error-policy:J1 child-process failures become explicit failed run state.
+      const workerTermination = workerTerminationFromError(error);
       const failed: WorkflowExecution = {
         ...running,
         status: controller.signal.aborted ? 'cancelled' : 'failed',
         finished: true,
         stoppedAt: nowIso(),
         error: {
+          ...(workerTermination ? { workerTermination } : {}),
           message: error instanceof Error ? error.message : String(error),
           ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
         },

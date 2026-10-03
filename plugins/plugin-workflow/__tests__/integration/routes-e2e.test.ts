@@ -129,7 +129,7 @@ function makeRuntime(
     agentId: 'agent-route-test',
     character: { name: 'Route Test Agent', settings: {} },
     getSetting: () => null,
-    getService: (key: string) => (withService && key === WORKFLOW_SERVICE_TYPE ? service : null),
+    getService: (key: string) => (withService && (key === WORKFLOW_SERVICE_TYPE || key === 'embedded_workflow_service') ? service : null),
   } as unknown as AgentRuntime;
   registerHttpPluginRoutes(runtime, {
     name: 'workflow-test',
@@ -186,9 +186,10 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      mode: 'cloud',
+      mode: 'local',
       status: 'ready',
-      platform: 'cloud',
+      platform: 'runtime',
+      executionLocation: 'agent-runtime',
       engine: 'smthrs',
     });
   });

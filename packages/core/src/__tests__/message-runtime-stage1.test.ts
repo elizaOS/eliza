@@ -942,7 +942,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		{ invalid: false, transport: "native" },
 		{ invalid: true, transport: "native" },
 		{ invalid: false, transport: "json" },
+		{ invalid: true, transport: "json" },
 		{ invalid: false, transport: "wrapped-json" },
+		{ invalid: true, transport: "wrapped-json" },
 	])(
 		"resolves original-message parts before fields ($transport, invalid=$invalid)",
 		async ({ invalid, transport }) => {
@@ -978,11 +980,14 @@ describe("runV5MessageRuntimeStage1", () => {
 			const before = JSON.stringify(raw);
 			// An invalid source gets one repair attempt; reject again before fields run.
 			const runtime = makeRuntime(invalid ? [raw, raw] : [raw]);
-			if (transport !== "native")
-				vi.mocked(runtime.useModel).mockImplementationOnce(async () => {
+			if (transport !== "native") {
+				let remaining = invalid ? 2 : 1;
+				vi.mocked(runtime.useModel).mockImplementation(async () => {
+					if (remaining-- <= 0) throw Error("Unexpected source repair retry");
 					const text = JSON.stringify(raw.toolCalls[0].arguments);
 					return transport === "json" ? text : { text, finishReason: "stop" };
 				});
+			}
 
 			const dispatch = vi.spyOn(
 				runtime.responseHandlerFieldRegistry,
@@ -1004,6 +1009,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				await expect(run).rejects.toMatchObject({
 					code: "STAGE1_INVALID_SOURCE_REPLY",
 				});
+				expect(runtime.useModel).toHaveBeenCalledTimes(2);
+				expect(JSON.stringify(useModelCalls(runtime)[1])).toContain("Your previous response used an invalid source quote.");
 				expect(dispatch).not.toHaveBeenCalled();
 			} else {
 				const result = await run;

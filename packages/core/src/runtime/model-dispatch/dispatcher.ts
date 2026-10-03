@@ -95,7 +95,7 @@ import {
 	withModelInputBudgetProviderOptions,
 } from "../model-input-budget";
 import type { RuntimePipelineHooks } from "../pipeline-hooks.js";
-import { resolveEffectiveSystemPrompt } from "../system-prompt";
+import { dropDuplicateLeadingSystemMessage, resolveEffectiveSystemPrompt } from "../system-prompt";
 import {
 	buildProviderAttributionsFromState,
 	canonicalPromptForModelCall,
@@ -1488,6 +1488,25 @@ export class RuntimeModelDispatch {
 						postHookSystemPrompt === undefined
 							? undefined
 							: piiSwapSession.substituteText(postHookSystemPrompt);
+				}
+
+
+				// Contact references are opaque handles, not credentials or prose.
+				// Attach after hooks/redaction so every text-provider attempt sees it.
+				if (
+					secretSwapSession?.entries.some(entry => entry.placeholder.startsWith("__ELIZA_CONTACT_")) &&
+					TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey)) &&
+					isPlainObject(modelParams)
+				) {
+					const guidance = "Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements.";
+					const record = modelParams as Record<string, unknown>;
+					// Remove only an exact existing duplicate before extending system.
+					// Otherwise the provider receives two different system messages.
+					if (Array.isArray(record.messages)) {
+						record.messages = dropDuplicateLeadingSystemMessage(record.messages, effectiveSystemPrompt);
+					}
+					effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`;
+					(modelParams as Record<string, unknown>).system = effectiveSystemPrompt;
 				}
 
 				const hookedParamsObj =
