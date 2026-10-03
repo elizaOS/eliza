@@ -55,14 +55,20 @@ export type LifeOpsHealthServicePublic = {
   getHealthSummary(
     request?: GetLifeOpsHealthSummaryRequest,
   ): Promise<LifeOpsHealthSummaryResponse>;
-  getHealthDailySummary(date: string): Promise<HealthDailySummary>;
+  getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary>;
   getHealthTrend(
     days: number,
     window: { timeZone: string },
   ): Promise<HealthDailySummary[]>;
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]>;
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]>;
 };
