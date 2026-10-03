@@ -2635,17 +2635,19 @@ async function loadConversationMessagesAround(
   return Array.from(byId.values());
 }
 /**
- * Parse the `?before=<createdAt>` cursor: a positive integer millisecond
+ * Parse the `?before=<createdAt>` cursor: a non-negative integer millisecond
  * timestamp (the createdAt of the client's current oldest message). Returns
- * null for absent / malformed / non-positive values so the handler falls back
- * to the recent window instead of paging from a bogus cursor.
+ * null for absent, malformed, or negative values so the handler falls back
+ * to the recent window instead of paging from a bogus cursor. Zero is the
+ * Unix epoch and must page: treating it as missing reloads the recent window
+ * above a client that already holds that row.
  */
 function parseBeforeCursor(raw: string | null): number | null {
   if (raw === null) return null;
   const trimmed = raw.trim();
   if (trimmed === "" || !/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);
-  return Number.isSafeInteger(value) && value > 0 ? value : null;
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 /**
  * Clamp the `?limit=N` older-page size to a sane range. Defaults to
