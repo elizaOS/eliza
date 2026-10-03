@@ -193,6 +193,10 @@ function formatCheckinReportForPrompt(
             ),
           }
         : null,
+    briefingSections: {
+      available: report.briefingSections.filter((section) => !section.error),
+      unavailable: report.briefingSections.filter((section) => section.error),
+    },
   };
   return JSON.stringify(modelReport, (_key, value: unknown) => {
     if (value instanceof Date) {

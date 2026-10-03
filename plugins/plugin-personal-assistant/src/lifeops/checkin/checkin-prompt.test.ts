@@ -30,6 +30,31 @@ const baseReport = (
 });
 
 describe("buildCheckinSummaryPrompt", () => {
+  it("distinguishes unavailable sections from healthy empty sections without dropping source fields", () => {
+    const available = {
+      key: "inbox" as const,
+      title: "Inbox",
+      summary: "No collected items",
+      items: [],
+      error: null,
+    };
+    const unavailable = {
+      key: "gmail" as const,
+      title: "Gmail",
+      summary: "Gmail unavailable",
+      items: [],
+      error: "Not connected",
+    };
+    const p = buildCheckinSummaryPrompt(
+      baseReport({ briefingSections: [available, unavailable] }),
+    );
+    const data = JSON.parse(
+      p.split("Report JSON:\n")[1].split("\n\nSummary:")[0],
+    );
+    expect(data.briefingSections.available).toEqual([available]);
+    expect(data.briefingSections.unavailable).toEqual([unavailable]);
+  });
+
   it("keeps every habit field while separating recorded misses from successful streaks", () => {
     const common = {
       kind: "habit" as const,
