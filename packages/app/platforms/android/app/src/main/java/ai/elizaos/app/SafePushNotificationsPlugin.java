@@ -23,9 +23,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
  * Firebase-less build died the moment the shell painted.
  *
  * This subclass rejects the call cleanly when no FirebaseApp exists and
- * defers to the stock behavior otherwise. MainActivity registers it directly
- * on the live bridge after super.onCreate(), which wins the plugin-name slot
- * from the auto-registered stock plugin.
+ * defers to the stock behavior otherwise. MainActivity's initialPlugins list
+ * appends it after discovery and before the first renderer header export.
  */
 @CapacitorPlugin(
     name = "PushNotifications",
@@ -42,16 +41,6 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
             return true;
         } catch (RuntimeException error) {
             return false;
-        }
-    }
-
-    @Override
-    public void load() {
-        super.load();
-        // MainActivity replaces the auto-registered stock instance after boot.
-        // Retain its launch tap on this instance for the later JS listener.
-        if (getActivity().getIntent() != null && getActivity().getIntent().hasExtra("google.message_id")) {
-            handleOnNewIntent(getActivity().getIntent());
         }
     }
 
