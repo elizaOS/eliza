@@ -113,8 +113,19 @@ function isRetryableModelError(error: unknown): boolean {
   );
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export async function executeWithRetry<T>(
@@ -127,6 +138,7 @@ export async function executeWithRetry<T>(
   let delayMs = config.initialDelayMs;
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt += 1) {
+    signal?.throwIfAborted();
     try {
       return await fn();
     } catch (error) {
@@ -143,7 +155,8 @@ export async function executeWithRetry<T>(
           `(attempt ${attempt + 1} of ${config.maxRetries + 1} total): ${getErrorMessage(error)}`
       );
 
-      await sleep(delayMs);
+      // A cancel during the backoff ends it with the caller's abort reason.
+      await sleep(delayMs, signal);
       delayMs = Math.min(Math.round(delayMs * config.backoffFactor), config.maxDelayMs);
     }
   }
