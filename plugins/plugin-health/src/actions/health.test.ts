@@ -465,7 +465,9 @@ describe("health action runner", () => {
       await runner(runtime, message, undefined, {
         parameters: { subaction: "today" },
       });
-      expect(service.getHealthDailySummary).toHaveBeenCalledWith("2026-09-14");
+      expect(service.getHealthDailySummary).toHaveBeenCalledWith("2026-09-14", {
+        timeZone: "Asia/Tokyo",
+      });
 
       await runner(runtime, message, undefined, {
         parameters: { subaction: "trend", days: 3 },

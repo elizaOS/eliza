@@ -730,9 +730,17 @@ export class HealthDomain {
     };
   }
 
-  async getHealthDailySummary(date: string): Promise<HealthDailySummary> {
+  async getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary> {
     try {
-      return await getDailySummary(date, resolveHealthConfig());
+      // `date` is the owner's local calendar day; the bridge bounds it in the
+      // same zone, as getHealthTrend does for its window.
+      return await getDailySummary(date, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }

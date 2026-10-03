@@ -84,7 +84,10 @@ export interface HealthActionService {
     startAt: string;
     endAt: string;
   }): Promise<HealthDataPoint[]>;
-  getHealthDailySummary(date: string): Promise<HealthDailySummary>;
+  getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary>;
 }
 
 export interface HealthActionRunJsonModelArgs {
@@ -775,7 +778,7 @@ export function createHealthActionRunner(
     }
 
     const date = params.date ?? localTodayKey(timeZone);
-    const summary = await service.getHealthDailySummary(date);
+    const summary = await service.getHealthDailySummary(date, { timeZone });
     const fallback = `Health summary for ${formatSummary(summary)}`;
     return respond({
       success: true,

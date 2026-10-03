@@ -572,7 +572,7 @@ describe("HealthDomain connector lifecycle and summaries", () => {
     const domain = makeDomain({});
 
     await expect(
-      domain.getHealthDailySummary("2026-07-10"),
+      domain.getHealthDailySummary("2026-07-10", { timeZone: "UTC" }),
     ).rejects.toMatchObject({ status: 503 });
     await expect(
       domain.getHealthTrend(7, { timeZone: "UTC" }),
