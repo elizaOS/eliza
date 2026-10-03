@@ -49,6 +49,12 @@ For offline packaging discovery, run `node packages/scripts/plugins/plugin-workf
 
 A host may supply `compilerDependencyRoot` for a separate immutable compiler/declaration artifact; it defaults to the runtime `dependencyRoot`. Semantic checking anchors imports and type roots there while execution links stay on the runtime artifact. Both artifacts must describe the same supported workflow API. Host-owned workflow dependency symlinks are refreshed atomically when an artifact path changes; unexpected files/directories are rejected and preserved. This is private-directory maintenance, not protection against a hostile same-UID writer.
 
+### Android immutable source publication
+
+Android runtimes selected by `ELIZA_PLATFORM=android` or `ELIZA_MOBILE_PLATFORM=android` publish complete versioned source through a private directory reservation and same-directory rename, without requiring hard links in app data. Existing identical source is reused; conflicting bytes, nonprivate files and untrusted paths are rejected. A crashed reservation is preserved and causes a bounded refusal rather than being stolen. This coordinates cooperating publishers in one trusted app UID; it is not isolation from arbitrary hostile code with that UID.
+
+The filesystem integration tests exercise multiple real writer processes, concurrent readers, conflicting versions, symlink/permission rejection and abandoned reservations. Runtime dispatch tests exercise both environment aliases. Passing these tests on a POSIX development host does not qualify Android filesystem durability or power-loss recovery. The Windows backend and desktop hard-link publisher remain separate.
+
 ### Typed phone draft generation
 
 `POST /api/workflow/phone/generate` accepts a prompt, selected operation IDs,
