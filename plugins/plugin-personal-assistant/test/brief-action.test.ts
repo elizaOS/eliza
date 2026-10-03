@@ -24,7 +24,10 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
+import { getDefaultTriageService } from "@elizaos/plugin-assistant";
+import { CalendarService } from "@elizaos/plugin-calendar";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
@@ -39,6 +42,10 @@ import {
   briefAction,
   setBriefComposers,
 } from "../src/actions/brief.js";
+import {
+  resolveConfiguredOwnerTimeZone,
+  resolveOwnerFactStore,
+} from "../src/lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import type { RawSqlQuery } from "../src/lifeops/sql.js";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
@@ -55,6 +62,7 @@ function makeRuntime(
 ): IAgentRuntime {
   return {
     agentId: "agent-brief-test" as UUID,
+    getSetting: () => undefined,
     logger: {
       info: () => undefined,
       warn: () => undefined,
@@ -94,6 +102,10 @@ async function callBrief(
 }
 
 describe("BRIEF umbrella action — Daily Operations", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
   beforeEach(() => {
     __resetBriefComposersForTests();
     setBriefComposers({
@@ -130,6 +142,179 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("compose_morning", () => {
+    it.each([
+      [
+        "2026-10-02T02:00:00Z",
+        "America/Los_Angeles",
+        "today",
+        "2026-10-01T07:00:00Z",
+        "2026-10-02T07:00:00Z",
+        "narrative",
+      ],
+      [
+        "2026-10-02T02:00:00Z",
+        "America/Los_Angeles",
+        "tomorrow",
+        "2026-10-02T07:00:00Z",
+        "2026-10-03T07:00:00Z",
+        "json",
+      ],
+      [
+        "2026-10-02T02:00:00Z",
+        "America/Los_Angeles",
+        "this_week",
+        "2026-10-01T07:00:00Z",
+        "2026-10-08T07:00:00Z",
+        "json",
+      ],
+      [
+        "2026-03-08T12:00:00Z",
+        "America/New_York",
+        "today",
+        "2026-03-08T05:00:00Z",
+        "2026-03-09T04:00:00Z",
+        "json",
+      ],
+      [
+        "2026-11-01T12:00:00Z",
+        "America/New_York",
+        "today",
+        "2026-11-01T04:00:00Z",
+        "2026-11-02T05:00:00Z",
+        "json",
+      ],
+      [
+        "2026-03-07T12:00:00Z",
+        "America/New_York",
+        "tomorrow",
+        "2026-03-08T05:00:00Z",
+        "2026-03-09T04:00:00Z",
+        "json",
+      ],
+      [
+        "2026-03-06T12:00:00Z",
+        "America/New_York",
+        "this_week",
+        "2026-03-06T05:00:00Z",
+        "2026-03-13T04:00:00Z",
+        "json",
+      ],
+    ] as const)(
+      "reads %s in owner zone %s for %s across the deployment zone",
+      async (instant, timeZone, period, expectedStart, expectedEnd, format) => {
+        vi.stubEnv("TZ", "UTC");
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(instant));
+        const db = await PGlite.create();
+        const triage = vi
+          .spyOn(getDefaultTriageService(), "triage")
+          .mockResolvedValue([]);
+        const prompts: string[] = [];
+        const ranges: Array<{
+          timeMin: string;
+          timeMax: string;
+          timeZone?: string;
+        }> = [];
+        await db.exec(`CREATE TABLE fixture_cache (key text PRIMARY KEY, payload jsonb);
+          CREATE TABLE fixture_calendar (title text, start_at timestamptz);`);
+        await db.query(
+          "INSERT INTO fixture_calendar VALUES ($1,$2),($3,$4),($5,$6)",
+          [
+            "Owner-window event",
+            new Date(Date.parse(expectedStart) + 3600000).toISOString(),
+            "Before owner window",
+            new Date(Date.parse(expectedStart) - 1).toISOString(),
+            "At exclusive end",
+            new Date(expectedEnd).toISOString(),
+          ],
+        );
+        const calendar = {
+          getCalendarFeed: async (
+            _url: URL,
+            range: { timeMin: string; timeMax: string; timeZone?: string },
+          ) => {
+            ranges.push(range);
+            const result = await db.query<{ title: string; start_at: Date }>(
+              "SELECT title,start_at FROM fixture_calendar WHERE start_at >= $1 AND start_at < $2 ORDER BY start_at",
+              [range.timeMin, range.timeMax],
+            );
+            return {
+              events: result.rows.map((row) => ({
+                id: row.title,
+                title: row.title,
+                startAt: row.start_at.toISOString(),
+              })),
+            };
+          },
+        };
+        const runtime = Object.assign(
+          makeRuntime({
+            useModel: async (_type, params) => {
+              prompts.push(params.prompt);
+              return "Owner-window event today.";
+            },
+          }),
+          {
+            getService: (type: string) =>
+              type === CalendarService.serviceType ? calendar : null,
+            getCache: async (key: string) =>
+              (
+                await db.query<{ payload: unknown }>(
+                  "SELECT payload FROM fixture_cache WHERE key=$1",
+                  [key],
+                )
+              ).rows[0]?.payload,
+            setCache: async (key: string, value: unknown) => {
+              await db.query(
+                "INSERT INTO fixture_cache VALUES ($1,$2) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload",
+                [key, JSON.stringify(value)],
+              );
+              return true;
+            },
+          },
+        );
+        registerCalendarTimeZoneResolver(runtime, (_runtime, now) =>
+          resolveConfiguredOwnerTimeZone(runtime, now),
+        );
+        try {
+          await resolveOwnerFactStore(runtime).update(
+            { timezone: timeZone },
+            { source: "first_run", recordedAt: instant },
+          );
+          const result = await callBrief(runtime, makeMessage(), {
+            action: "compose_morning",
+            period,
+            format,
+            include: { life: false, commitments: false },
+          });
+          expect(ranges).toEqual([
+            {
+              timeMin: new Date(expectedStart).toISOString(),
+              timeMax: new Date(expectedEnd).toISOString(),
+              timeZone,
+            },
+          ]);
+          expect(triage).toHaveBeenCalledWith(runtime, {
+            sinceMs: Date.parse(expectedStart),
+          });
+          const briefing = result.data?.briefing as {
+            sections: { calendar: Array<{ title: string }> };
+            sourceErrors?: unknown;
+          };
+          expect(
+            briefing.sections.calendar.map((event) => event.title),
+          ).toEqual(["Owner-window event"]);
+          expect(briefing.sourceErrors).toBeUndefined();
+          if (format === "narrative")
+            expect(prompts[0]).toContain(`"timeZone": "${timeZone}"`);
+          else expect(prompts).toEqual([]);
+        } finally {
+          triage.mockRestore();
+          await db.close();
+        }
+      },
+    );
+
     it.each(["json", "narrative"])(
       "preserves a real PGlite requested-source failure in %s output",
       async (format) => {

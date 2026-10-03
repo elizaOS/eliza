@@ -33,8 +33,13 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
+import { resolveCalendarTimeZone } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
 import type { MessageRef } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
+import {
+  resolveCalendarWindow,
+  resolveNextCalendarEventWindow,
+} from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,
@@ -155,7 +160,7 @@ const INTERNAL_URL = new URL("http://127.0.0.1/");
 interface BriefLifeOpsService {
   getCalendarFeed(
     requestUrl: URL,
-    request: { timeMin: string; timeMax: string },
+    request: { timeMin: string; timeMax: string; timeZone: string },
   ): Promise<{ events?: readonly unknown[] }>;
   getOverview(): Promise<{
     occurrences?: readonly unknown[];
@@ -179,19 +184,28 @@ async function getBriefLifeOpsService(
   return new LifeOpsService(runtime);
 }
 
-function periodWindow(period: LifeOpsBriefingPeriod): {
+async function periodWindow(
+  runtime: IAgentRuntime,
+  period: LifeOpsBriefingPeriod,
+): Promise<{
   readonly start: Date;
   readonly end: Date;
-} {
+  readonly timeZone: string;
+}> {
   const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  if (period === "tomorrow") {
-    start.setDate(start.getDate() + 1);
-  }
-  const end = new Date(start);
-  end.setDate(end.getDate() + (period === "this_week" ? 7 : 1));
-  return { start, end };
+  const { timeZone } = await resolveCalendarTimeZone(runtime, now);
+  const today = resolveCalendarWindow({ now, timeZone });
+  const window =
+    period === "tomorrow"
+      ? resolveCalendarWindow({ now: new Date(today.timeMax), timeZone })
+      : period === "this_week"
+        ? resolveNextCalendarEventWindow({ now, timeZone, lookaheadDays: 7 })
+        : today;
+  return {
+    start: new Date(window.timeMin),
+    end: new Date(window.timeMax),
+    timeZone,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -239,10 +253,14 @@ async function loadCalendarFromLifeOps(args: {
   period: LifeOpsBriefingPeriod;
 }): Promise<readonly LifeOpsBriefingCalendarItem[]> {
   const service = await getBriefLifeOpsService(args.runtime);
-  const { start, end } = periodWindow(args.period);
+  const { start, end, timeZone } = await periodWindow(
+    args.runtime,
+    args.period,
+  );
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     timeMin: start.toISOString(),
     timeMax: end.toISOString(),
+    timeZone,
   });
   const events = Array.isArray(feed.events) ? feed.events : [];
   return events.map((event) =>
@@ -280,7 +298,7 @@ async function loadInboxFromTriage(args: {
   period: LifeOpsBriefingPeriod;
 }): Promise<readonly LifeOpsBriefingInboxItem[]> {
   if (typeof args.runtime.getService !== "function") return [];
-  const { start } = periodWindow(args.period);
+  const { start } = await periodWindow(args.runtime, args.period);
   const refs = await getDefaultTriageService().triage(args.runtime, {
     sinceMs: start.getTime(),
   });
@@ -634,6 +652,7 @@ export function buildNarrativePrompt(args: {
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
   sourceErrors?: LifeOpsBriefing["sourceErrors"];
+  timeZone?: string;
   editorial?: LifeOpsBriefingEditorialContract;
   runtime?: IAgentRuntime;
   optimizationTask?: BriefOptimizationTask;
@@ -644,6 +663,7 @@ export function buildNarrativePrompt(args: {
       period: args.period,
       sections: args.sections,
       sourceErrors: args.sourceErrors,
+      timeZone: args.timeZone,
       editorial: args.editorial,
     },
     null,
@@ -697,6 +717,14 @@ async function composeNarrative(args: {
     period: args.period,
     sections: args.sections,
     sourceErrors: args.sourceErrors,
+    ...(args.sections.calendar?.length ||
+    args.sections.life?.some((item) => item.dueAt) ||
+    args.sections.commitments?.some((item) => item.dueAt)
+      ? {
+          timeZone: (await resolveCalendarTimeZone(args.runtime, new Date()))
+            .timeZone,
+        }
+      : {}),
     editorial: args.editorial,
     runtime: args.runtime,
     optimizationTask: args.optimizationTask,
