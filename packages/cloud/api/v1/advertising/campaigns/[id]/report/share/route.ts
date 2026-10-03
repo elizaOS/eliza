@@ -7,6 +7,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { advertisingService } from "@/lib/services/advertising";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_SHARE_TTL_HOURS = 24 * 90;
@@ -31,8 +32,11 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id")!;
-    const body = await c.req.json().catch(() => ({}));
-    const parsed = ShareBodySchema.safeParse(body);
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = ShareBodySchema.safeParse(decodedBody.value);
 
     if (!parsed.success) {
       return c.json(
