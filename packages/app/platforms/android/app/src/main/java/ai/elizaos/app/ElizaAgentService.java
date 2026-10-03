@@ -143,7 +143,34 @@ public class ElizaAgentService extends Service {
      * ELIZA_LOCAL_AGENT_SOCKET; Java reaches it via {@link LocalSocketAddress}
      * with {@code Namespace.ABSTRACT}.
      */
-    static final String LOCAL_AGENT_SOCKET_NAME = "eliza_local_agent_v1";
+    static final String LOCAL_AGENT_SOCKET_NAME = "eliza_local_agent_v1"; // legacy identifier, never a transport fallback
+    private static volatile String privateSocketPath;
+    public static synchronized void initializeLocalAgentTransport(Context context) {
+        try {
+            File home=context.getFilesDir().getCanonicalFile();
+            android.system.StructStat homeStat=android.system.Os.lstat(home.getPath());
+            if(homeStat.st_uid!=android.os.Process.myUid()||!android.system.OsConstants.S_ISDIR(homeStat.st_mode))throw new IOException("Untrusted app files directory");
+            android.system.Os.chmod(home.getPath(),0700);
+            File directory=new File(home,"ipc");
+            try{android.system.Os.mkdir(directory.getPath(),0700);}catch(android.system.ErrnoException exists){if(exists.errno!=android.system.OsConstants.EEXIST)throw exists;}
+            android.system.StructStat stat=android.system.Os.lstat(directory.getPath());
+            if(stat.st_uid!=android.os.Process.myUid()||!android.system.OsConstants.S_ISDIR(stat.st_mode)||(stat.st_mode&0777)!=0700||!directory.getCanonicalPath().equals(directory.getPath()))throw new IOException("Untrusted IPC directory");
+            String value=new File(directory,"a.sock").getPath();
+            if(value.getBytes(StandardCharsets.UTF_8).length>100)throw new IOException("Private socket path too long");
+            if(privateSocketPath!=null&&!privateSocketPath.equals(value))throw new IOException("Private socket user changed");
+            privateSocketPath=value;
+        }catch(Exception error){throw new IllegalStateException("Private agent transport unavailable",error);}
+    }
+    private static String localSocketPath() throws IOException {
+        String value=privateSocketPath;if(value==null)throw new IOException("Private agent transport not initialized");
+        try{
+            File directory=new File(value).getParentFile();android.system.StructStat parent=android.system.Os.lstat(directory.getPath());
+            if(parent.st_uid!=android.os.Process.myUid()||!android.system.OsConstants.S_ISDIR(parent.st_mode)||(parent.st_mode&0777)!=0700||!directory.getCanonicalPath().equals(directory.getPath()))throw new IOException("Private IPC directory changed");
+            try{android.system.StructStat leaf=android.system.Os.lstat(value);if(leaf.st_uid!=android.os.Process.myUid()||!android.system.OsConstants.S_ISSOCK(leaf.st_mode)||(leaf.st_mode&0777)!=0600)throw new IOException("Untrusted IPC socket");}
+            catch(android.system.ErrnoException missing){if(missing.errno!=android.system.OsConstants.ENOENT)throw missing;}
+        }catch(android.system.ErrnoException error){throw new IOException("Private socket validation failed",error);}
+        return value;
+    }
     private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
     private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
     // Read-timeout budget applied to slow on-device inference routes (ASR / TTS
@@ -198,6 +225,7 @@ public class ElizaAgentService extends Service {
     private final Object processLock = new Object();
     private final Object notificationLock = new Object();
     private Process agentProcess;
+    private IpcStartupRecovery ipcRecovery;
     private Thread stdoutPump;
     private Thread stderrPump;
     private WatchdogThread watchdog;
@@ -237,6 +265,7 @@ public class ElizaAgentService extends Service {
      * {@link #writeLocalAgentTokenFile} persists, and cache it for this process.
      */
     public static JSONObject getLocalAgentBootState(Context context) throws JSONException {
+        initializeLocalAgentTransport(context);
         ElizaAgentService instance = activeInstance;
         boolean socketListening = isLocalAgentSocketListening();
         long launchStartedAtMs = 0L;
@@ -296,6 +325,9 @@ public class ElizaAgentService extends Service {
         if (status == null) return false;
         return status.startsWith("agent exited:")
             || "fatal".equals(status)
+            || "ipc-recovery-required".equals(status)
+            || IpcStartupRecovery.RETENTION_LIMIT.equals(status)
+            || "runtime-identity-unavailable".equals(status)
             || status.endsWith("-failed")
             || status.startsWith("missing-");
     }
@@ -453,6 +485,19 @@ public class ElizaAgentService extends Service {
         return payload;
     }
 
+    /**
+     * Streaming variant of {@link #requestLocalAgent}. Where that returns one
+     * buffered result, this sends an {@code http_request_stream} frame and reads
+     * the agent's response/chunk/complete frames as they arrive, translating each
+     * into the small envelope the AgentPlugin maps to Capacitor events:
+     *   {"type":"response","status":..,"statusText":..,"headers":{..}}  (once, first)
+     *   {"type":"chunk","dataBase64":".."}                              (per frame)
+     *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
+     *
+     * Connect retries happen only before dispatch. A dispatched request is never
+     * replayed here; cancellation and premature EOF report an uncertain outcome.
+     * Runs on the caller's thread (AgentPlugin spawns one).
+     */
     /** Closes this transport only; committed runtime effects are not rolled back. */
     public static final class LocalStreamHandle {
         private LocalSocket socket;
@@ -476,19 +521,6 @@ public class ElizaAgentService extends Service {
             if (closed) throw new IOException("Stream transport closed");
         }
     }
-    /**
-     * Streaming variant of {@link #requestLocalAgent}. Where that returns one
-     * buffered result, this sends an {@code http_request_stream} frame and reads
-     * the agent's response/chunk/complete frames as they arrive, translating each
-     * into the small envelope the AgentPlugin maps to Capacitor events:
-     *   {"type":"response","status":..,"statusText":..,"headers":{..}}  (once, first)
-     *   {"type":"chunk","dataBase64":".."}                              (per frame)
-     *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
-     *
-     * Connect retries happen only before dispatch. A dispatched request is never
-     * replayed here; cancellation and premature EOF report an uncertain outcome.
-     * Runs on the caller's thread (AgentPlugin spawns one).
-     */
     public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
         requestLocalAgentStream(requestJson, onEvent, new LocalStreamHandle());
     }
@@ -504,7 +536,7 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Send a streaming request over the abstract UDS and translate the agent's
+     * Send a streaming request over the private filesystem UDS and translate the agent's
      * NDJSON stream frames ({@code {stream:"response"|"chunk"|"complete"}}) into
      * the AgentPlugin envelopes. The socket connect carries the cold-boot retry
      * (the agent may not have bound the socket yet); once a frame arrives the
@@ -585,7 +617,7 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Send one buffered request over the abstract UDS and return the agent's
+     * Send one buffered request over the private filesystem UDS and return the agent's
      * response envelope ({@code {status,statusText,headers,body,bodyBase64,
      * bodyEncoding}}) — the exact shape the loopback HTTP path returned, so the
      * AgentPlugin + WebView transport are unchanged. The connect (not the sent
@@ -649,7 +681,7 @@ public class ElizaAgentService extends Service {
             try {
                 if (handle != null) handle.attach(socket);
                 socket.connect(new LocalSocketAddress(
-                    LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+                    localSocketPath(), LocalSocketAddress.Namespace.FILESYSTEM));
                 requireTrustedLocalAgentPeer(socket);
                 return socket;
             } catch (IOException connectError) {
@@ -704,6 +736,7 @@ public class ElizaAgentService extends Service {
     /** Write one NDJSON frame line (UTF-8, newline-terminated) to the socket. */
     private static void writeFrameLine(OutputStream out, JSONObject frame) throws IOException {
         byte[] line = (frame.toString() + "\n").getBytes(StandardCharsets.UTF_8);
+        if(line.length>6L*LOCAL_REQUEST_MAX_BODY_BYTES+1024*1024+1)throw new IOException("Agent request envelope too large");
         out.write(line);
         out.flush();
     }
@@ -810,6 +843,7 @@ public class ElizaAgentService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        initializeLocalAgentTransport(this);
         activeInstance = this;
         ensureNotificationChannel();
 
@@ -966,6 +1000,15 @@ public class ElizaAgentService extends Service {
         if (activeInstance == this) {
             activeInstance = null;
         }
+        // The launch worker may hold processLock during extraction; do not block main/FGS teardown.
+        new Thread(() -> {
+            synchronized (processLock) {
+                if (ipcRecovery != null) {
+                    try { ipcRecovery.close(); } catch (IOException error) { Log.w(TAG, "IPC supervisor close failed", error); }
+                    ipcRecovery = null;
+                }
+            }
+        }, "ipc-supervisor-release").start();
         super.onDestroy();
     }
 
@@ -1878,11 +1921,10 @@ public class ElizaAgentService extends Service {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
             }
-            if (!restartFirst
-                    && detachedAgentMode
-                    && ("starting".equals(currentStatus) || "running".equals(currentStatus))) {
-                return;
-            }
+            // Detached mode/status describe the previous launch, not current liveness.
+            // A detached child can die after its launcher and startup probe exit.
+            // Recheck adoption/cold-boot ownership on the start worker below;
+            // never perform socket or process identity I/O on this main-thread path.
             if (startWorker != null && startWorker.isAlive()) {
                 return;
             }
@@ -2068,6 +2110,36 @@ public class ElizaAgentService extends Service {
             // visible error (stdio is on /dev/null).
             ensureRuntimeLibraryLinks(abiDir);
 
+            final String canonicalRoot, canonicalAbiDir, canonicalNativeDir, canonicalLoader, canonicalBun;
+            try {
+                canonicalRoot = root.getCanonicalPath();
+                canonicalAbiDir = abiDir.getCanonicalPath();
+                canonicalNativeDir = nativeLibraryDir().getCanonicalPath();
+                canonicalLoader = loader.getCanonicalPath();
+                canonicalBun = bun.getCanonicalPath();
+            } catch (IOException identityError) {
+                Log.e(TAG, "Runtime deployment paths could not be resolved", identityError);
+                currentStatus = "runtime-identity-unavailable";
+                updateNotification();
+                return;
+            }
+
+            // Serialize recovery across native supervisors, preserving every unproven owner.
+            try {
+                if (ipcRecovery == null) ipcRecovery = IpcStartupRecovery.acquire(getFilesDir());
+                File workerExecutable = packagedLoaderName == null ? loader :
+                    new File(getApplicationInfo().nativeLibraryDir, packagedLoaderName.replace(".so", "_real.so"));
+                if (!workerExecutable.isFile()) workerExecutable = loader;
+                ipcRecovery.recover(bun, workerExecutable);
+            } catch (IOException recoveryError) {
+                currentStatus = recoveryError.getMessage() != null && recoveryError.getMessage().contains(IpcStartupRecovery.RETENTION_LIMIT)
+                        ? IpcStartupRecovery.RETENTION_LIMIT : "ipc-recovery-required";
+                Log.e(TAG, "Private IPC recovery refused", recoveryError);
+                appendDiagnosticEvent("ipc-recovery-required", java.util.Collections.singletonMap("reason", recoveryError.getMessage()));
+                updateNotification();
+                return;
+            }
+
             // Generate a fresh per-boot token for the WebView↔agent loopback.
             // Without this the loopback API would accept any local request
             // — including from other apps on the device — because the
@@ -2103,7 +2175,7 @@ public class ElizaAgentService extends Service {
             Map<String, String> agentEnv = new LinkedHashMap<>();
             agentEnv.put(
                 "LD_LIBRARY_PATH",
-                nativeLibraryDir().getAbsolutePath() + ":" + abiDir.getAbsolutePath()
+                canonicalNativeDir + ":" + canonicalAbiDir
             );
             // Native voice libs (Silero VAD + WeSpeaker/pyannote voice classifier)
             // ship as jniLibs and extract into nativeLibraryDir. The on-device bun
@@ -2139,12 +2211,12 @@ public class ElizaAgentService extends Service {
                 Log.i(TAG, "libelizainference.so present; exporting ELIZA_INFERENCE_LIBRARY="
                     + fusedInferenceLib.getAbsolutePath());
             }
-            agentEnv.put("AGENT_ROOT", root.getAbsolutePath());
-            agentEnv.put("RUNTIME_DIR", abiDir.getAbsolutePath());
-            agentEnv.put("DEVICE_DIR", abiDir.getAbsolutePath());
+            agentEnv.put("AGENT_ROOT", canonicalRoot);
+            agentEnv.put("RUNTIME_DIR", canonicalAbiDir);
+            agentEnv.put("DEVICE_DIR", canonicalAbiDir);
             agentEnv.put("LD_NAME", loaderName);
-            agentEnv.put("LD_PATH", loader.getAbsolutePath());
-            agentEnv.put("BUN_PATH", bun.getAbsolutePath());
+            agentEnv.put("LD_PATH", canonicalLoader);
+            agentEnv.put("BUN_PATH", canonicalBun);
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
@@ -2175,7 +2247,10 @@ public class ElizaAgentService extends Service {
             // The abstract-namespace request socket the agent binds and this
             // service dials (see LOCAL_AGENT_SOCKET_NAME). Both sides read the
             // same env var so the name stays in sync.
-            agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);
+            agentEnv.remove("ELIZA_LOCAL_AGENT_SOCKET");
+            agentEnv.put("ELIZA_LOCAL_AGENT_TRANSPORT","filesystem-v1");
+            initializeLocalAgentTransport(this);
+            agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);
             // Context can expose files/ via /data/data while getDataDir() uses
             // /data/user/0. Export both identity paths in the same namespace.
             agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir);
@@ -3503,7 +3578,7 @@ public class ElizaAgentService extends Service {
         LocalSocket socket = new LocalSocket();
         try {
             socket.connect(new LocalSocketAddress(
-                LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+                localSocketPath(), LocalSocketAddress.Namespace.FILESYSTEM));
             requireTrustedLocalAgentPeer(socket);
             return true;
         } catch (IOException | SecurityException ignored) {
@@ -4213,6 +4288,7 @@ public class ElizaAgentService extends Service {
      * already renders; branded devices ARE the agent and remain exempt.
      */
     public static void start(Context context) {
+        initializeLocalAgentTransport(context);
         long totalMemBytes = readDeviceTotalMemBytes(context);
         String mode = readRuntimeMode(context);
         if (!isBrandedDevice()
