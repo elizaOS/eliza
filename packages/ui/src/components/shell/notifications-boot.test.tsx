@@ -52,6 +52,12 @@ import {
   NotificationsShellBoot,
 } from "./notifications-boot";
 
+// Collect the real module before timing the permission/resume behavior. A cold
+// transform of its dependency graph must not consume the behavioral deadline.
+const registration = await vi.importActual<
+  typeof import("../../state/notifications/push-registration")
+>("../../state/notifications/push-registration");
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -160,9 +166,6 @@ describe("notification boot boundaries", () => {
   });
 
   it("registers once after an external permission grant on resume without prompting", async () => {
-    const registration = await vi.importActual<
-      typeof import("../../state/notifications/push-registration")
-    >("../../state/notifications/push-registration");
     registration.__resetPushRegistrationForTests();
     let permission: "denied" | "granted" = "denied";
     let onRegistered: ((token: PushRegistrationToken) => void) | undefined;
