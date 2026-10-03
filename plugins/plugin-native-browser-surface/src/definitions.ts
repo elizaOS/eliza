@@ -142,6 +142,11 @@ export interface BrowserDockState {
 }
 
 export interface ElizaSurfaceManagerPlugin {
+  /** Resize an existing host-owned Android split without navigation. Request receipt only. */
+  setBrowserDockVisible(options: {
+    visible: boolean;
+  }): Promise<{ status: "requested" }>;
+
   /** Android: explicit navigation with a requested right helper pane. Dispatch is not proof of a split. */
   openDockedBrowser(options: { url: string; panelWidthDp?: number }): Promise<{
     packageName: "org.chromium.chrome" | "ai.elizaos.chromium";

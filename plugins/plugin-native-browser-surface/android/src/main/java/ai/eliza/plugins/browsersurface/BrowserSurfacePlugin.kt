@@ -44,6 +44,11 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.security.MessageDigest
 import java.util.UUID
 import org.json.JSONObject
@@ -92,6 +97,34 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
+    private val dockScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    override fun handleOnDestroy() {
+        dockScope.cancel()
+        BrowserDockController.release(activity)
+        super.handleOnDestroy()
+    }
+
+    @PluginMethod
+    fun setBrowserDockVisible(call: PluginCall) {
+        val visible = call.getBoolean("visible") ?: run { call.reject("Visibility is required.", "BROWSER_DOCK_VISIBILITY_INVALID"); return }
+        dockScope.launch {
+            try {
+                BrowserDockController.setVisible(activity, visible)
+                call.resolve(JSObject().apply { put("status", "requested") })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Unsupported or changed sessions must not navigate as a fallback.
+                call.reject(error.message, error.code, error)
+            } catch (error: UnsupportedOperationException) {
+                // error-policy:J1 Runtime extension support may differ from advertised capability.
+                call.reject("Android cannot resize this split.", "BROWSER_DOCK_RESIZE_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Keep Android's cross-application window boundary intact.
+                call.reject("Android denied resizing this split.", "BROWSER_DOCK_RESIZE_DENIED", error)
+            }
+        }
+    }
+
     @PluginMethod
     fun getBrowserDockState(call: PluginCall) {
         activity.runOnUiThread { call.resolve(BrowserDockController.state(activity)) }
@@ -122,7 +155,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     fun presentBrowser(call: PluginCall) {
         activity.runOnUiThread {
             try {
-                ChromiumBrowserLauncher.present(activity)
+                BrowserDockController.present(activity)
                 call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME) })
             } catch (error: BrowserLaunchException) {
                 // error-policy:J1 Presentation is denied when provisioned identity is unavailable.

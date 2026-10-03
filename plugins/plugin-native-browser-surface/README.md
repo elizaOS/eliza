@@ -81,3 +81,17 @@ must observe and validate the relevant browser target before any workflow effect
 Other platforms reject these operations. Installed pane/input qualification,
 rotation, existing-tab continuity, Close/return and persistent entry are separate
 integration requirements; these APIs alone do not provide a complete helper UI.
+
+When the host is already embedded, `presentBrowser()` revalidates the installed
+browser and host embedding trust and preserves the existing pane without sending
+a launcher intent. It still does not identify or authorize a task tab: callers
+must freshly observe before acting. Outside an existing split, presentation keeps
+the normal browser-launcher behavior; restoring a closed split is separate work.
+
+`setBrowserDockVisible({visible})` requests collapse or restoration of the existing
+host-owned split using Window SDK extension 3+. It never launches or reloads a URL.
+The current host session must have opened the split, and exactly one current split
+with this host as primary must exist. Missing/ambiguous/recreated sessions reject
+instead of replaying navigation. A request receipt is not proof of resulting bounds.
+The product must pause its work before hiding help and provide a return control;
+this low-level API does not itself provide persistent entry or task resumption.
