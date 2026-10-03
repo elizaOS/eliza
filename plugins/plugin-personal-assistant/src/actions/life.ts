@@ -1991,9 +1991,11 @@ async function runLifeConnectedQueryInner(args: {
       return {
         success: false,
         text:
-          err.code === CALENDAR_TIME_ZONE_INVALID
-            ? "I can't tell what day it is for you: your saved time zone isn't valid. Tell me your time zone and I'll check your calendar."
-            : "I can't read your time zone right now, so I can't tell which day is today for you. Please try again shortly.",
+          err.code !== CALENDAR_TIME_ZONE_INVALID
+            ? "I can't read your time zone right now, so I can't tell which day is today for you. Please try again shortly."
+            : err.context?.source === "owner"
+              ? "I can't tell what day it is for you: your saved time zone isn't valid. Tell me your time zone and I'll check your calendar."
+              : "I can't tell what day it is for you: the agent's configured time zone isn't valid. Ask the operator to fix the TIMEZONE setting, or tell me your time zone.",
         data: { actionName, operation: queryOperation, error: err.code },
       };
     }

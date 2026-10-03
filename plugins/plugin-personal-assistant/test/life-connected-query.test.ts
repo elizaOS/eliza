@@ -337,6 +337,20 @@ describe("query_calendar_today availability", () => {
       expect(service.getCalendarFeed).not.toHaveBeenCalled();
     });
 
+    it("points at the agent setting when the configured TIMEZONE is invalid", async () => {
+      const service = calendarRead();
+      const settingRuntime = {
+        ...makeRuntime(),
+        getSetting: (key: string) =>
+          key === "TIMEZONE" ? "Mars/Olympus" : undefined,
+      } as unknown as IAgentRuntime;
+      const result = await run(service, "query_calendar_today", settingRuntime);
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: CALENDAR_TIME_ZONE_INVALID });
+      expect(result.text).toContain("TIMEZONE setting");
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    });
+
     it("fails visibly when the owner's zone cannot be read", async () => {
       const service = calendarRead();
       const result = await run(
