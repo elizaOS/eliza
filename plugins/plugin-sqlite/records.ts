@@ -493,6 +493,20 @@ function compareStoredMemoriesNewestFirst(
   return compareMemoryIds(bId, aId);
 }
 
+/** Matches SQL `ORDER BY createdAt, id` so relationship pages stay disjoint. */
+function compareRelationshipsForList(
+  left: StoredRelationship,
+  right: StoredRelationship,
+): number {
+  const leftTime = Date.parse(left.createdAt ?? "");
+  const rightTime = Date.parse(right.createdAt ?? "");
+  const delta =
+    (Number.isFinite(leftTime) ? leftTime : 0) -
+    (Number.isFinite(rightTime) ? rightTime : 0);
+  if (delta !== 0) return delta;
+  return compareMemoryIds(left.id, right.id);
+}
+
 const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
 
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
@@ -2993,6 +3007,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         return true;
       },
     );
+    stored.sort(compareRelationshipsForList);
 
     const offset = params.offset ?? 0;
     if (offset > 0) stored = stored.slice(offset);
