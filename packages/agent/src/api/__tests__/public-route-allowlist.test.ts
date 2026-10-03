@@ -325,8 +325,12 @@ const ALLOWLIST: Record<string, string> = {
 
   // plugin-wallet — read-only market data. The local EVM/Solana signing routes
   // are no longer public (they run behind the central session gate plus their
-  // own WALLET_BROWSER_SIGN_TOKEN check), so only market-overview stays here.
+  // own WALLET_BROWSER_SIGN_TOKEN check), so only market data stays here.
   "/api/wallet/market-overview (wallet-market-overview)":
+    "public read-only market data; no per-user data exposed",
+  "/api/wallet/terminal/markets (wallet-terminal-markets)":
+    "public read-only market data; no per-user data exposed",
+  "/api/wallet/terminal/chart (wallet-terminal-chart)":
     "public read-only market data; no per-user data exposed",
 
   // plugin-whatsapp — Meta requires the webhook endpoints to bypass auth.

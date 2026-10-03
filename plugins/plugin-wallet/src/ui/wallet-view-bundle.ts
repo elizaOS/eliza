@@ -1,7 +1,7 @@
-// Vite view-bundle entry. Re-exports the unified spatial view component plus the
-// `interact` capability handler so the built bundle (dist/views/bundle.js)
-// exposes the named exports the view loader reads (`InventoryView`, `interact`).
-// Kept separate from InventoryView.tsx so that file exports only React
-// components and stays Fast-Refresh-compatible in dev.
+// Vite view-bundle entry. Re-exports the unified spatial view components plus
+// the `interact` capability handler so the built bundle exposes the named
+// exports the view loader reads. Kept separate from the React component files
+// so they remain Fast-Refresh-compatible in dev.
+export { CryptoTerminalView } from "./CryptoTerminalView";
 export { InventoryView } from "./InventoryView";
 export { interact } from "./InventoryView.interact";

@@ -8,9 +8,9 @@
  * (balances/NFTs/trading-profile fetch + poll).
  *
  * The wrapper therefore does NO data work — that would double-fetch
- * InventoryAppView's pipeline and feed a snapshot nothing live consumes. This
- * There is one componentExport (`InventoryView`); the rich dashboard is reached
- * only through this wrapper, never registered as a separate app/nav tab.
+ * InventoryAppView's pipeline and feed a snapshot nothing live consumes.
+ * The rich dashboard is reached only through this wrapper and
+ * `CryptoTerminalView`, never registered directly as an app/nav tab.
  */
 
 import { Escape } from "@elizaos/ui/spatial";

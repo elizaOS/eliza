@@ -47,6 +47,17 @@ export default defineConfig({
         replacement: uiSource,
       },
       { find: /^@elizaos\/ui$/, replacement: uiSource },
+      {
+        find: /^@elizaos\/ui\/(app-shell-registry|navigation|widgets)$/,
+        replacement: path.resolve(rootDir, "../../packages/ui/src/$1"),
+      },
+      {
+        find: /^@elizaos\/ui\/views\/ViewIcon$/,
+        replacement: path.resolve(
+          rootDir,
+          "../../packages/ui/src/components/views/ViewIcon.tsx",
+        ),
+      },
       // plugin-health publishes no matching subpath export; redirect to source.
       {
         find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,

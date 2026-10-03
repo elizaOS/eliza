@@ -14,6 +14,7 @@
 import type http from "node:http";
 import type { Plugin, Route } from "@elizaos/core";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
+import { handleWalletTerminalMarketRoute } from "./wallet-terminal-market-route";
 
 async function marketOverviewHandler(
   req: unknown,
@@ -23,6 +24,17 @@ async function marketOverviewHandler(
   const httpReq = req as http.IncomingMessage;
   const httpRes = res as http.ServerResponse;
   await handleWalletMarketOverviewRoute(httpReq, httpRes);
+}
+
+async function terminalMarketHandler(
+  req: unknown,
+  res: unknown,
+  _runtime: unknown,
+): Promise<void> {
+  await handleWalletTerminalMarketRoute(
+    req as http.IncomingMessage,
+    res as http.ServerResponse,
+  );
 }
 
 const walletHttpRoutes: Route[] = [
@@ -38,6 +50,28 @@ const walletHttpRoutes: Route[] = [
     publicReason:
       "Market overview is cached public market data for unauthenticated wallet empty states.",
     handler: marketOverviewHandler,
+  },
+  // GET /api/wallet/terminal/markets and /chart — read-only CoinGecko market
+  // list and price history for the crypto terminal view.
+  {
+    type: "GET",
+    path: "/api/wallet/terminal/markets",
+    rawPath: true,
+    public: true,
+    name: "wallet-terminal-markets",
+    publicReason:
+      "Terminal market list is cached public CoinGecko data with no account state.",
+    handler: terminalMarketHandler,
+  },
+  {
+    type: "GET",
+    path: "/api/wallet/terminal/chart",
+    rawPath: true,
+    public: true,
+    name: "wallet-terminal-chart",
+    publicReason:
+      "Terminal price history is cached public CoinGecko data with no account state.",
+    handler: terminalMarketHandler,
   },
 ];
 

@@ -2,6 +2,8 @@
 
 @source "../components";
 @source "../inventory";
+@source "../terminal";
+@source "../CryptoTerminalView.tsx";
 
 html,
 body,
