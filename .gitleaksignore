@@ -1,9 +1,209 @@
+# Reviewed immutable findings in the staging baseline promotion.
+# Synthetic regression/benchmark fixtures, public hashes/manifest keys, and code/prose
+# identifiers only. No path, rule, future commit, or entire historical commit is excluded.
+
+# packages/core/src/__tests__/swap-user-reply.test.ts
+8615912a33886f33f3fd6d1d214767d6630a5e08:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:65
+
+# packages/core/src/__tests__/swap-user-reply.test.ts
+f4183d5e94da24623d2290ed3bd19db99453c4f1:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:37
+
+# packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts
+67580d208dad5269a7df2c87bb2a9e8e245c0612:packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts:generic-api-key:41
+
+# packages/agent/test/task-trajectory-persistence.test.ts
+7210f084193bf69cfb3947a4e6b9dbc87c8d9c25:packages/agent/test/task-trajectory-persistence.test.ts:generic-api-key:49
+
+# packages/browser-bridge-extension/scripts/chromium/upstream.json
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/browser-bridge-extension/scripts/chromium/upstream.json:generic-api-key:16
+
+# packages/browser-bridge-extension/scripts/chromium/upstream.json
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/browser-bridge-extension/scripts/chromium/upstream.json:generic-api-key:17
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3087
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3105
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3308
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3639
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3741
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3745
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3806
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3913
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3924
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3925
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4212
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4213
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4313
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4485
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4496
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4528
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4539
+
+# plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts
+dce4782e174a0038259318f0f9fa8dec189f7864:plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts:generic-api-key:38
+
+# packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts
+435deee5637f30dd698eba9a8534961325fe36a1:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:131
+
+# packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts
+435deee5637f30dd698eba9a8534961325fe36a1:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:276
+
+# packages/app/platforms/electrobun/src/native/browser-bridge-extension-identity.json
+55f4f25689160c93d57d50e1691423b0d2395263:packages/app/platforms/electrobun/src/native/browser-bridge-extension-identity.json:generic-api-key:2
+
+# packages/benchmarks/suites/terminal-bench/tasks/get-bitcoin-nodes/tests/test_outputs.py
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/get-bitcoin-nodes/tests/test_outputs.py:coinbase-access-token:96
+
+# packages/benchmarks/suites/terminal-bench/tasks/install-windows-xp/tests/test_outputs.py
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/install-windows-xp/tests/test_outputs.py:generic-api-key:239
+
+# packages/benchmarks/suites/terminal-bench/tasks/password-recovery/setup.sh
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/password-recovery/setup.sh:generic-api-key:25
+
+# packages/benchmarks/suites/terminal-bench/tasks/sanitize-git-repo/tests/test_outputs.py
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/sanitize-git-repo/tests/test_outputs.py:generic-api-key:9
+
+# packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:638
+
+# packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:641
+
+# packages/benchmarks/suites/configbench/tests/eliza-handler.test.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/tests/eliza-handler.test.ts:generic-api-key:146
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:71
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:73
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:43
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:48
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:54
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:27
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:30
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:46
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:48
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-security.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-security.ts:generic-api-key:153
+
+# packages/benchmarks/suites/nl2repo/test_files/decouple/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:551
+
+# packages/benchmarks/suites/nl2repo/test_files/decouple/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:673
+
+# packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1473
+
+# packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1521
+
+# packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:generic-api-key:1059
+
+# packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:829
+
+# packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:845
+
+# packages/benchmarks/suites/orchestrator/tests/test_code_agent_matrix.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_code_agent_matrix.py:generic-api-key:1559
+
+# packages/benchmarks/suites/standard/mmlu.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/standard/mmlu.py:generic-api-key:320
+
+# packages/benchmarks/suites/webshop/elizaos_webshop/environment.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/webshop/elizaos_webshop/environment.py:generic-api-key:459
+
+# packages/os/android/pixel11pro.lock.json
+8f835a1e0a88856180014675928528f8faba75cd:packages/os/android/pixel11pro.lock.json:generic-api-key:24
+
+# packages/testing/package.json
+8f835a1e0a88856180014675928528f8faba75cd:packages/testing/package.json:generic-api-key:50
+
+# packages/testing/package.json
+8f835a1e0a88856180014675928528f8faba75cd:packages/testing/package.json:generic-api-key:51
+
+# packages/core/src/logger.test.ts
+1047e6d00968eef607e94fe610983b33709f1fc2:packages/core/src/logger.test.ts:generic-api-key:787
+
+# plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts
+1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
+
+# plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts
+1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77
+
+# packages/cloud/shared/src/db/repositories/subscription-checkout.pglite.test.ts
+5c7151839e8a128e071e68e6d457f670f1736245:packages/cloud/shared/src/db/repositories/subscription-checkout.pglite.test.ts:stripe-access-token:10
+
+# packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts
+5c7151839e8a128e071e68e6d457f670f1736245:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:10
+
+# packages/core/src/__tests__/compose-state-trajectory-recording.test.ts
+c51b94a6fd7726d576f05ea2e09e61c82f8c92c0:packages/core/src/__tests__/compose-state-trajectory-recording.test.ts:generic-api-key:87
+
+# packages/core/src/__tests__/compose-state-trajectory-recording.test.ts
+ec938aa930aad29117d2dc04368d00342df56cb6:packages/core/src/__tests__/compose-state-trajectory-recording.test.ts:generic-api-key:87
+
+# Owner confirmed historical OSWorld Basic-auth values are test-only (2026-10-03).
+# The hardcoded authentication was also removed from current source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/os_symphony/core/engine.py:generic-api-key:383
+
 # Reviewed historical false positives in the develop-to-staging promotion.
 # Each exception pins commit + path + rule + line. No whole-file, whole-commit,
 # or future-value exclusion is introduced. Changed/new commits remain scanned.
 # Review source with: git show <commit>:<path>. Values are not copied here.
-# The OSWorld vLLM Basic-auth pair is deliberately NOT exempted: retirement
-# must be established independently even after its removal from current code.
+# The historical OSWorld Basic-auth pair was confirmed test-only by the owner
+# and is exempted by its exact fingerprint above; current source no longer embeds it.
 
 
 # .github/workflows/live-smoke.yml
@@ -432,3 +632,6 @@ b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/solana
 # plugins/plugin-wallet/src/sdk/bridge/solana.ts
 # Public Circle CCTP token messenger program address.
 b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/sdk/bridge/solana.ts:generic-api-key:69
+
+# Existing synthetic swap-user-reply test fixture at its squash-merge commit.
+df90e84500df616bd4c170f364a3a7f1dfed13b8:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:65

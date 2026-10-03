@@ -1,4 +1,4 @@
-/** Android Clock intent handoffs only: never evidence that an alarm exists or rang. */
+/** Approved Android Clock requests may mutate alarms. A dispatch receipt never proves the final alarm state. */
 export const CLOCK_CAPABILITY = "clock.handoff.v1";
 export type ClockOperation =
   | {
