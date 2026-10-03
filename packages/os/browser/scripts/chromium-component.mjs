@@ -350,11 +350,20 @@ export async function generateComponentOverlay({
       edit("chrome/android/java/AndroidManifest.xml", (source) => {
         // Only the provisioned native host signer may embed browser activities.
         // Keep exports, launch modes and unrelated authentication activities intact.
-        for (const activity of [
-          "org.chromium.chrome.browser.customtabs.CustomTabActivity",
-          "org.chromium.chrome.browser.ChromeTabbedActivity",
+        for (const [tag, activity] of [
+          [
+            "activity",
+            "org.chromium.chrome.browser.document.ChromeLauncherActivity",
+          ],
+          [
+            "activity",
+            "org.chromium.chrome.browser.customtabs.CustomTabActivity",
+          ],
+          ["activity", "org.chromium.chrome.browser.ChromeTabbedActivity"],
+          // Android 15 does not copy this certificate set from target to alias.
+          ["activity-alias", "com.google.android.apps.chrome.IntentDispatcher"],
         ]) {
-          const opening = `<activity android:name="${activity}"`;
+          const opening = `<${tag} android:name="${activity}"`;
           source = replaceOnce(
             source,
             opening,

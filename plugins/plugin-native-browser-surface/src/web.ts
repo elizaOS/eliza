@@ -9,6 +9,7 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
+  BrowserDockState,
   CreateSurfaceOptions,
   ElizaSurfaceManagerPlugin,
   NativePageRead,
@@ -30,6 +31,18 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async openDockedBrowser(_options: {
+    url: string;
+    panelWidthDp?: number;
+  }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    status: "dispatched";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async getBrowserDockState(): Promise<BrowserDockState> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async presentBrowser(): Promise<{
     packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
   }> {

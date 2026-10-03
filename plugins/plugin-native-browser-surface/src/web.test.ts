@@ -28,6 +28,10 @@ describe("BrowserSurfaceWeb", () => {
   });
 
   it("rejects every surface method as unavailable", async () => {
+    await expect(
+      web.openDockedBrowser({ url: "https://example.test" }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(web.getBrowserDockState()).rejects.toThrow(/native-only/i);
     await expect(web.presentBrowser()).rejects.toThrow(/native-only/i);
     await expect(
       web.openBrowser({ url: "https://example.com" }),

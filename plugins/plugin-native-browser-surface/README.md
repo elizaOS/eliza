@@ -64,3 +64,20 @@ workflow that needs visible native guidance. Its receipt is dispatch only: the
 caller must freshly observe and retain normal task/target/visibility guards. It
 does not select a task tab, grant action authority or navigate. Other platforms
 reject this Android-only operation.
+
+Android `openDockedBrowser({url, panelWidthDp})` requests a right-side host pane
+beside the build-pinned Chromium browser. The host application must declare
+`android.window.PROPERTY_ACTIVITY_EMBEDDING_SPLITS_ENABLED=true` and the browser
+must opt in to the host signer (including its intent dispatcher target). Android
+13+, WindowManager embedding support and sufficient window width are required.
+The helper width defaults to 400 dp, accepts 320–640 dp, and reserves at least
+480 dp for the website. Package-scoped Custom Tabs VIEW intents match a rule for
+the exact pinned package; Android independently enforces each activity's trust.
+
+The launch receipt reports dispatch only. `getBrowserDockState()` returns actual
+host embedding state and bounds in native display pixels. Neither method selects
+a task tab, authorizes an action or proves the website has loaded. The caller
+must observe and validate the relevant browser target before any workflow effect.
+Other platforms reject these operations. Installed pane/input qualification,
+rotation, existing-tab continuity, Close/return and persistent entry are separate
+integration requirements; these APIs alone do not provide a complete helper UI.

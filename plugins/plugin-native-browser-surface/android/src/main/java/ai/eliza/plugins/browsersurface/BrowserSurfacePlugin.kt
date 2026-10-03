@@ -93,6 +93,32 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
     @PluginMethod
+    fun getBrowserDockState(call: PluginCall) {
+        activity.runOnUiThread { call.resolve(BrowserDockController.state(activity)) }
+    }
+
+    @PluginMethod
+    fun openDockedBrowser(call: PluginCall) {
+        val url = call.getString("url") ?: run { call.reject("URL is required.", "BROWSER_URL_INVALID"); return }
+        val width = call.getInt("panelWidthDp", 400) ?: 400
+        activity.runOnUiThread {
+            try {
+                BrowserDockController.open(activity, url, width)
+                call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME); put("status", "dispatched") })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Host support, identity or size can prevent docking.
+                call.reject(error.message, error.code, error)
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 Installation can change between validation and dispatch.
+                call.reject("Chromium is unavailable.", "BROWSER_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Never broaden permissions to force a dock.
+                call.reject("Android prevented browser docking.", "BROWSER_LAUNCH_DENIED", error)
+            }
+        }
+    }
+
+    @PluginMethod
     fun presentBrowser(call: PluginCall) {
         activity.runOnUiThread {
             try {
