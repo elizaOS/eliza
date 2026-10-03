@@ -9,6 +9,7 @@
 
 import type http from "node:http";
 import {
+  compareMemoryIds,
   PENDING_USER_ACTION_WEIGHT,
   type PendingUserAction,
   type PendingUserActionOption,
@@ -318,7 +319,7 @@ function dedupeAndSortPendingActions(
     const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
     const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
     if (bTime !== aTime) return bTime - aTime;
-    return a.id.localeCompare(b.id);
+    return compareMemoryIds(b.id, a.id);
   });
 }
 
