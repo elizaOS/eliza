@@ -38,3 +38,18 @@ Unsupported presentation still permits an explicit denial; it does not authorize
 Generated and modified drafts are checked against the pinned Smithers TypeScript API before they are returned. The checker runs a trusted compiler child, never imports or executes the draft, ignores user compiler configuration, and allows only the documented Smithers/Zod imports. TypeScript suppression and reference directives are rejected. Source is limited to 64 KiB, compiler output to 16 KiB, compiler runtime to 15 seconds, and Node old-space heap to 512 MiB (not a total-process RSS cap). Node must be available on the service PATH. TypeScript and declaration dependencies are production dependencies so this behavior is not dependent on a development installation.
 
 One model repair is permitted for semantic diagnostics; compiler availability/resource failures return a service error without model repair. Failed drafts are not deployed, activated, scheduled, or executed. A passing check is type compatibility only: existing approval restrictions, authorization checks, and runtime controls still apply. Manually stored legacy source is outside this initial authoring-only gate.
+
+### Typed phone draft generation
+
+`POST /api/workflow/phone/generate` accepts a prompt, selected operation IDs,
+current catalog/compiler revisions, and optional existing typed draft and device
+enrollment. The phone catalog advertises `generationProtocol: 1`. A text model
+must be available; enrollment is validated for the authenticated workflow owner
+before model submission and again before returning the draft.
+
+The result is an inactive, unsaved typed spec with its digest and required reviews.
+Generation never creates workflows, schedules, executions, or device approvals.
+Notes and Calendar read scopes must match a previously selected draft scope;
+model-supplied device identities, source code and activation are rejected. An
+unsupported request returns a clarification error. Saving remains a separate,
+explicit typed mutation. This endpoint does not enable mobile workflow execution.
