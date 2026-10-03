@@ -4416,9 +4416,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<void>} A Promise that resolves when the log is deleted.
    */
   async deleteLog(logId: UUID): Promise<void> {
-    return this.withDatabase(async () => {
-      await this.db.delete(logTable).where(eq(logTable.id, logId));
-    });
+    return this.deleteLogs([logId]);
   }
 
   /**
@@ -7826,7 +7824,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
     if (logIds.length === 0) return [];
     return this.withDatabase(async () => {
-      const result = await this.db.select().from(logTable).where(inArray(logTable.id, logIds));
+      const result = await this.db
+        .select()
+        .from(logTable)
+        .where(and(inArray(logTable.id, logIds), this.ownedLogRoomCondition()));
       return result.map((log) => ({
         ...log,
         id: log.id as UUID,
@@ -7864,7 +7865,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
-  /** Restricts a log mutation to rows in this agent's rooms (logs carry no agent column). */
+  /** Restricts a log read or mutation to rows in this agent's rooms (logs carry no agent column). */
   private ownedLogRoomCondition() {
     return inArray(
       logTable.roomId,

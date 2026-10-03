@@ -332,5 +332,22 @@ describe("Log Integration Tests", () => {
         .where(eq(logTable.id, foreign.id));
       expect(still?.type).toBe("inference_timing");
     });
+
+    it("does not read or single-delete another agent's log by id", async () => {
+      const rows = await (adapter.getDatabase() as DrizzleDatabase).select().from(logTable);
+      const own = rows.find((row) => row.roomId === testRoomId);
+      const foreign = rows.find((row) => row.roomId === otherRoomId);
+      if (!own || !foreign) throw new Error("seeded logs missing");
+
+      const read = await adapter.getLogsByIds([own.id as UUID, foreign.id as UUID]);
+      await adapter.deleteLog(foreign.id as UUID);
+
+      expect(read.map((log) => log.body)).toEqual([{ who: "this agent" }]);
+      const [still] = await (adapter.getDatabase() as DrizzleDatabase)
+        .select()
+        .from(logTable)
+        .where(eq(logTable.id, foreign.id));
+      expect(still?.id).toBe(foreign.id);
+    });
   });
 });
