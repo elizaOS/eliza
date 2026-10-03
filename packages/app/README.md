@@ -137,3 +137,12 @@ SQLite session, native speech, replay, host-isolation and cancellation checks.
 The test writes synthetic audio and a report under
 `test-results/standalone-kokoro-http`; it fails if assets are unavailable.
 This qualification does not prove browser playback or Android execution.
+
+### Android secure-store broker
+
+Embedding Android hosts can set `ELIZA_ANDROID_SECURE_STORE_SOCKET` to their
+app-owned broker's abstract socket name (without the leading NUL byte). The host
+captures it when constructing the secure store; an unset or empty value uses
+`ai.elizaos.app.secure-store`. An explicit factory socket path takes precedence.
+The embedding app must start the corresponding app-UID-only Keystore broker;
+this option changes client routing, not broker permissions or availability.

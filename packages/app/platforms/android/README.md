@@ -15,3 +15,8 @@ Test from the repository root:
 ```bash
 bun run --cwd packages/app test
 ```
+
+The agent secure-store transport reads bounded frames without Java 9
+`InputStream.readNBytes`, retaining Android API 29 compatibility. Its frame-reader
+JVM tests cover fragmented input, truncation, zero-progress reads and failures;
+these do not replace Android socket peer-identity or Keystore qualification.

@@ -22,6 +22,7 @@ import {
   type ExecuteWorkflowOptions,
   isWorkflowRemoved,
 } from './embedded-workflow-service';
+import { generatePhoneSpec, phoneGenerationInput } from './phone-workflow-generation';
 import {
   PHONE_CATALOG_REVISION,
   PHONE_COMPILER_REVISION,
@@ -166,10 +167,52 @@ export class WorkflowService extends Service {
   override async stop(): Promise<void> {}
 
   phoneCatalog() {
-    return phoneWorkflowCatalog(
-      Boolean(this.runtime.getModel(ModelType.TEXT_LARGE)),
-      Boolean(this.runtime.getService('workflow_device_bridge'))
+    return {
+      generationProtocol: 1,
+      ...phoneWorkflowCatalog(
+        Boolean(this.runtime.getModel(ModelType.TEXT_LARGE)),
+        Boolean(this.runtime.getService('workflow_device_bridge'))
+      ),
+    };
+  }
+  async generatePhoneDraft(
+    value: unknown,
+    catalogRevision: unknown,
+    compilerRevision: unknown,
+    owner: string
+  ) {
+    if (catalogRevision !== PHONE_CATALOG_REVISION || compilerRevision !== PHONE_COMPILER_REVISION)
+      throw new WorkflowApiError('Workflow capability catalog changed; review again', 409);
+    if (!this.runtime.getModel(ModelType.TEXT_LARGE))
+      throw new WorkflowApiError('Selected runtime has no text model handler', 409);
+    const available = this.phoneCatalog().palette.flatMap((row) =>
+      row.operations.filter((op) => op.available).map((op) => op.id)
     );
+    const input = phoneGenerationInput(value, available);
+    // Verify current owner enrollment before sending any draft context to the model.
+    await this.validatePhoneDraft(
+      {
+        ...(input.existing ?? {
+          version: 1,
+          name: 'Generation context',
+          description: '',
+          trigger: { kind: 'manual' },
+          steps: [{ id: 'input', kind: 'Read', operation: 'supplied_text', text: '' }],
+        }),
+        ...(input.device ? { device: input.device } : {}),
+      },
+      catalogRevision,
+      compilerRevision,
+      owner
+    );
+    const spec = await generatePhoneSpec(input, (prompt) =>
+      this.runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+        temperature: 0.1,
+        responseFormat: { type: 'json_object' },
+      })
+    );
+    return this.validatePhoneDraft(spec, catalogRevision, compilerRevision, owner);
   }
   async validatePhoneDraft(
     input: unknown,
