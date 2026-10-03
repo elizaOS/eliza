@@ -9099,7 +9099,14 @@ function preferredFinalMessageFromToolOrModel(
   //   - `planner-loop-user-facing-text.test.ts` → "delivers verified tool
   //     output AND the evaluator's grounded prose" — both survive when both
   //     exist and neither contains the other.
-  const verifiedToolText = singleVerifiedUserFacingToolResultText(trajectory);
+  const verifiedCandidate = singleVerifiedUserFacingToolResultText(trajectory);
+  // Verification preserves effect authority, but cannot make malformed prose
+  // displayable. Keep a clean synthesis instead of combining it with rejected
+  // native text and forcing another recovery; the original result stays intact.
+  const verifiedToolText =
+    verifiedCandidate && !isUnsafeUserVisibleText(verifiedCandidate)
+      ? verifiedCandidate
+      : undefined;
   return (
     combinedVerifiedToolTextAndProse(
       trajectory,
