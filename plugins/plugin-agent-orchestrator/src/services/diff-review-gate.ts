@@ -498,18 +498,13 @@ function hasSensitiveLiteralAssignment(line: string): boolean {
     if (isSensitiveAssignmentKey(match[2])) return true;
   }
 
-  // Indentation is valid for both object fields and member assignments. For
-  // members, classify the assigned property, not its path: `this.maxTokens`
-  // must retain core's metadata exemption while `this.apiKey` stays sensitive.
-  const objectKey =
-    /(?:^|[,{])\s*(?:[A-Za-z_$][A-Za-z0-9_$]*\.)*([A-Za-z_$][A-Za-z0-9_$-]*)\s*[:=]\s*(?=["'`])/g;
-  for (const match of line.matchAll(objectKey)) {
-    if (isSensitiveAssignmentKey(match[1])) return true;
-  }
-
-  const declaredKey =
-    /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?=["'`])/g;
-  for (const match of line.matchAll(declaredKey)) {
+  // Literal assignments can occur inside expressions, call arguments or JSX,
+  // not just at the start of an object/line. Classify the complete assigned
+  // property name so maxTokens retains its metadata exemption. Requiring a
+  // quoted RHS excludes property reads, equality and arrow expressions.
+  const literalKey =
+    /(?<![A-Za-z0-9_$-])([A-Za-z_$][A-Za-z0-9_$-]*)\s*[:=]\s*(?=["'`])/g;
+  for (const match of line.matchAll(literalKey)) {
     if (isSensitiveAssignmentKey(match[1])) return true;
   }
 
