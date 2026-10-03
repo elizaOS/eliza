@@ -93,6 +93,25 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
     @PluginMethod
+    fun presentBrowser(call: PluginCall) {
+        activity.runOnUiThread {
+            try {
+                ChromiumBrowserLauncher.present(activity)
+                call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME) })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Presentation is denied when provisioned identity is unavailable.
+                call.reject(error.message, error.code, error)
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 The verified activity may disappear before dispatch.
+                call.reject("Chromium is unavailable.", "BROWSER_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Never broaden permissions to force foreground presentation.
+                call.reject("Android prevented browser presentation.", "BROWSER_LAUNCH_DENIED", error)
+            }
+        }
+    }
+
+    @PluginMethod
     fun openBrowser(call: PluginCall) {
         val url = call.getString("url") ?: run {
             call.reject("openBrowser requires a website address", "INVALID_BROWSER_URL")
