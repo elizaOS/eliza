@@ -1,8 +1,8 @@
 /**
  * The crypto terminal: live market browsing, watchlist, per-asset price
- * history, a paper order ticket, a paper portfolio, a Solana token safety
- * check, and the HUNT / SLEEP / OFF operating mode, alongside the real wallet
- * dashboard.
+ * history, a paper order ticket, a paper portfolio, price alerts, a Solana
+ * token safety check, and the HUNT / SLEEP / OFF operating mode, alongside the
+ * real wallet dashboard.
  *
  * Prices and history come from the plugin's read-only terminal routes and are
  * never fabricated: while they load or fail, the view says so and the order
@@ -25,7 +25,15 @@ import {
 } from "@elizaos/ui";
 import { Escape } from "@elizaos/ui/spatial";
 import { cn } from "@elizaos/ui/utils";
-import { ArrowLeft, RefreshCw, Search, ShieldCheck, Star } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Star,
+  X,
+} from "lucide-react";
 import * as React from "react";
 import { useId, useMemo, useState } from "react";
 import type {
@@ -62,10 +70,18 @@ import {
   valuePaperLedger,
 } from "./terminal/paper-ledger.ts";
 import {
+  alertsActive,
+  type PriceAlert,
+  type PriceAlertDirection,
+  type PriceAlertRejection,
+} from "./terminal/price-alerts.ts";
+import {
   type PaperLedgerState,
+  type PriceAlertsHandle,
   type TerminalMarketsState,
   useOperatingMode,
   usePaperLedger,
+  usePriceAlerts,
   useTerminalChart,
   useTerminalMarkets,
   useTokenSafety,
@@ -832,18 +848,231 @@ function OrderTicket({
   );
 }
 
+const ALERT_REJECTION_COPY: Record<PriceAlertRejection, string> = {
+  "invalid-price": "Enter a target price greater than zero.",
+  "already-met": "The live price is already past that target.",
+};
+
+function describeAlert(alert: PriceAlert): string {
+  return `${alert.symbol} ${alert.direction} ${formatTerminalUsd(alert.targetUsd)}`;
+}
+
+function PriceAlertForm({
+  market,
+  alerts,
+  paused,
+}: {
+  market: WalletTerminalMarket;
+  alerts: PriceAlertsHandle;
+  paused: boolean;
+}) {
+  const [direction, setDirection] = useState<PriceAlertDirection>("above");
+  const [target, setTarget] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const targetId = useId();
+  const waiting = alerts.alerts.filter(
+    (alert) => alert.assetId === market.id && alert.triggeredAt === null,
+  );
+
+  return (
+    <section
+      aria-labelledby="price-alert-title"
+      className="flex flex-col gap-3 rounded-md border border-border/70 p-4"
+    >
+      <h2 id="price-alert-title" className="text-sm font-semibold text-txt">
+        Price alert
+      </h2>
+      <SegmentedControl
+        value={direction}
+        onValueChange={setDirection}
+        items={[
+          { value: "above", label: "Rises above" },
+          { value: "below", label: "Falls below" },
+        ]}
+        aria-label="Alert direction"
+      />
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const rejection = alerts.add({
+            assetId: market.id,
+            symbol: market.symbol,
+            direction,
+            targetUsd: Number(target),
+            currentUsd: market.priceUsd,
+          });
+          setError(rejection ? ALERT_REJECTION_COPY[rejection] : null);
+          if (!rejection) setTarget("");
+        }}
+      >
+        <label htmlFor={targetId} className="text-xs text-muted">
+          Target price (USD)
+        </label>
+        <div className="flex gap-2">
+          <Input
+            id={targetId}
+            inputMode="decimal"
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+            placeholder={market.priceUsd.toString()}
+            data-testid="price-alert-target"
+          />
+          <Button type="submit" variant="outline" data-testid="price-alert-add">
+            <Bell className="size-4" /> Set
+          </Button>
+        </div>
+      </form>
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
+      {waiting.length > 0 ? (
+        <ul className="flex flex-col gap-1 text-xs">
+          {waiting.map((alert) => (
+            <li
+              key={alert.id}
+              className="flex items-center justify-between gap-2 text-txt"
+            >
+              <span>
+                {alert.direction === "above" ? "Above" : "Below"}{" "}
+                {formatTerminalUsd(alert.targetUsd)}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => alerts.remove(alert.id)}
+                aria-label={`Remove alert ${describeAlert(alert)}`}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="text-xs text-muted">
+        {paused
+          ? "Alerts are paused while the terminal is OFF."
+          : "Checked against live prices while the terminal is open in HUNT or SLEEP."}
+      </p>
+    </section>
+  );
+}
+
+function FiredAlerts({ alerts }: { alerts: PriceAlertsHandle }) {
+  if (alerts.fired.length === 0 && !alerts.loadError) return null;
+  return (
+    <div className="flex flex-col gap-2" data-testid="price-alerts-fired">
+      {alerts.loadError ? (
+        <p role="alert" className="text-xs text-warn">
+          {alerts.loadError}. Saved alerts were cleared.
+        </p>
+      ) : null}
+      {alerts.fired.map((alert) => (
+        <div
+          key={alert.id}
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-md border border-accent/50 bg-accent-subtle px-3 py-2 text-sm text-txt"
+        >
+          <span className="flex items-center gap-2">
+            <Bell className="size-4 shrink-0 text-accent" />
+            {alert.symbol}{" "}
+            {alert.direction === "above" ? "rose above" : "fell below"}{" "}
+            {formatTerminalUsd(alert.targetUsd)}
+            {alert.triggeredPriceUsd !== null
+              ? ` (now ${formatTerminalUsd(alert.triggeredPriceUsd)})`
+              : ""}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => alerts.dismiss(alert.id)}
+            aria-label={`Dismiss alert ${describeAlert(alert)}`}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AlertList({
+  alerts,
+  paused,
+  onOpen,
+}: {
+  alerts: PriceAlertsHandle;
+  paused: boolean;
+  onOpen: (id: string) => void;
+}) {
+  if (alerts.alerts.length === 0) return null;
+  return (
+    <section aria-labelledby="price-alerts-title" data-testid="price-alerts">
+      <h2
+        id="price-alerts-title"
+        className="mb-2 text-sm font-semibold text-txt"
+      >
+        Price alerts{paused ? " · paused" : ""}
+      </h2>
+      <ul className="divide-y divide-border/70 rounded-md border border-border/70">
+        {alerts.alerts.map((alert) => (
+          <li
+            key={alert.id}
+            className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+          >
+            <button
+              type="button"
+              className="text-left text-txt hover:underline"
+              onClick={() => onOpen(alert.assetId)}
+            >
+              {alert.symbol} {alert.direction === "above" ? "above" : "below"}{" "}
+              {formatTerminalUsd(alert.targetUsd)}
+            </button>
+            <span className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "text-xs",
+                  alert.triggeredAt === null ? "text-muted" : "text-ok",
+                )}
+              >
+                {alert.triggeredAt === null
+                  ? "Waiting"
+                  : `Triggered ${new Date(alert.triggeredAt).toLocaleTimeString()}`}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => alerts.remove(alert.id)}
+                aria-label={`Remove alert ${describeAlert(alert)}`}
+              >
+                Remove
+              </Button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function AssetDetail({
   market,
   watched,
   onToggleWatch,
   onBack,
   paper,
+  alerts,
+  alertsPaused,
 }: {
   market: WalletTerminalMarket;
   watched: boolean;
   onToggleWatch: () => void;
   onBack: () => void;
   paper: PaperLedgerState;
+  alerts: PriceAlertsHandle;
+  alertsPaused: boolean;
 }) {
   const [period, setPeriod] = useState<`${WalletTerminalChartDays}`>("7");
   const chart = useTerminalChart(
@@ -908,7 +1137,15 @@ function AssetDetail({
             <PriceChart points={chart.data.points} label={market.name} />
           )}
         </section>
-        <OrderTicket key={market.id} market={market} paper={paper} />
+        <div className="flex flex-col gap-4">
+          <OrderTicket key={market.id} market={market} paper={paper} />
+          <PriceAlertForm
+            key={`alert-${market.id}`}
+            market={market}
+            alerts={alerts}
+            paused={alertsPaused}
+          />
+        </div>
       </div>
     </div>
   );
@@ -1142,6 +1379,8 @@ export function CryptoTerminalView() {
     [markets],
   );
   const paper = usePaperLedger(prices);
+  const alertsPaused = !alertsActive(mode.mode);
+  const alerts = usePriceAlerts(prices, !alertsPaused);
   const selected = assetId ? marketsById.get(assetId) : undefined;
 
   const open = (id: string) => {
@@ -1185,6 +1424,8 @@ export function CryptoTerminalView() {
         onToggleWatch={() => watchlist.toggle(selected.id)}
         onBack={() => setAssetId(null)}
         paper={paper}
+        alerts={alerts}
+        alertsPaused={alertsPaused}
       />
     );
   } else if (section === "portfolio") {
@@ -1205,6 +1446,9 @@ export function CryptoTerminalView() {
       <div className="flex flex-col gap-4">
         {mode.mode === "hunt" && section === "markets" ? (
           <ScoutPanel markets={markets ?? []} onOpen={open} />
+        ) : null}
+        {section === "watchlist" ? (
+          <AlertList alerts={alerts} paused={alertsPaused} onOpen={open} />
         ) : null}
         <MarketList
           key={section}
@@ -1260,6 +1504,7 @@ export function CryptoTerminalView() {
               onRefresh={refreshMarkets}
             />
           ) : null}
+          <FiredAlerts alerts={alerts} />
         </header>
         <div
           className={cn(

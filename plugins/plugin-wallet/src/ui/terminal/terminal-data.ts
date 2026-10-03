@@ -2,8 +2,8 @@
  * Data hooks for the crypto terminal: the polled live market list, one asset's
  * price history, and the per-browser paper ledger and watchlist.
  *
- * It also owns the persisted HUNT / SLEEP / OFF operating mode and the
- * on-demand Solana token safety lookup.
+ * It also owns the persisted HUNT / SLEEP / OFF operating mode, price alerts,
+ * and the on-demand Solana token safety lookup.
  *
  * Market reads go through the authenticated app client to the plugin's
  * read-only `/api/wallet/terminal/*` routes. Loading, error, and ready are
@@ -32,11 +32,22 @@ import {
   parsePaperLedger,
   settleOpenPaperOrders,
 } from "./paper-ledger.ts";
+import {
+  addPriceAlert,
+  checkPriceAlerts,
+  type PriceAlert,
+  type PriceAlertInput,
+  type PriceAlertRejection,
+  type PriceAlertState,
+  parsePriceAlerts,
+  removePriceAlert,
+} from "./price-alerts.ts";
 
 export const TERMINAL_MARKETS_POLL_MS = 60_000;
 export const PAPER_LEDGER_STORAGE_KEY = "eliza:wallet:paper-terminal:v1";
 export const WATCHLIST_STORAGE_KEY = "eliza:wallet:terminal-watchlist:v1";
 export const OPERATING_MODE_STORAGE_KEY = "eliza:wallet:terminal-mode:v1";
+export const PRICE_ALERTS_STORAGE_KEY = "eliza:wallet:terminal-alerts:v1";
 const DEFAULT_WATCHLIST = ["bitcoin", "ethereum", "solana"];
 
 export type RemoteState<T> =
@@ -298,4 +309,77 @@ export function useTokenSafety(): {
   }, []);
 
   return { state, check };
+}
+
+export interface PriceAlertsHandle {
+  alerts: PriceAlert[];
+  /** Alerts fired since the terminal opened, newest first, until dismissed. */
+  fired: PriceAlert[];
+  /** Set when stored alerts could not be read and an empty list was started. */
+  loadError: string | null;
+  add: (input: PriceAlertInput) => PriceAlertRejection | null;
+  remove: (id: string) => void;
+  dismiss: (id: string) => void;
+}
+
+/** Persisted price alerts, checked against each new live price list while `active`. */
+export function usePriceAlerts(
+  livePrices: ReadonlyMap<string, number> | null,
+  active: boolean,
+): PriceAlertsHandle {
+  const initial = useMemo(
+    () => parsePriceAlerts(readStorage(PRICE_ALERTS_STORAGE_KEY)),
+    [],
+  );
+  const [state, setState] = useState<PriceAlertState>(initial.state);
+  const [loadError, setLoadError] = useState<string | null>(
+    initial.status === "invalid" ? initial.error : null,
+  );
+  const [fired, setFired] = useState<PriceAlert[]>([]);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const commit = useCallback((next: PriceAlertState) => {
+    stateRef.current = next;
+    setState(next);
+    setLoadError(null);
+    shellLocalStorage.setItem(PRICE_ALERTS_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  useEffect(() => {
+    if (!active || !livePrices) return;
+    const checked = checkPriceAlerts(stateRef.current, livePrices, Date.now());
+    if (checked.triggered.length === 0) return;
+    commit(checked.state);
+    setFired((current) => [...checked.triggered, ...current]);
+  }, [livePrices, active, commit]);
+
+  const add = useCallback(
+    (input: PriceAlertInput): PriceAlertRejection | null => {
+      const result = addPriceAlert(
+        stateRef.current,
+        input,
+        `alert-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        Date.now(),
+      );
+      if (!result.ok) return result.reason;
+      commit(result.state);
+      return null;
+    },
+    [commit],
+  );
+
+  const remove = useCallback(
+    (id: string) => {
+      commit(removePriceAlert(stateRef.current, id));
+      setFired((current) => current.filter((alert) => alert.id !== id));
+    },
+    [commit],
+  );
+
+  const dismiss = useCallback((id: string) => {
+    setFired((current) => current.filter((alert) => alert.id !== id));
+  }, []);
+
+  return { alerts: state.alerts, fired, loadError, add, remove, dismiss };
 }

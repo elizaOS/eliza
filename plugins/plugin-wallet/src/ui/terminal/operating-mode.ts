@@ -2,12 +2,13 @@
  * The terminal's HUNT / SLEEP / OFF operating state and its change history,
  * as pure functions over a plain persisted record.
  *
- * SLEEP is the default: live prices refresh and open paper limit orders settle,
- * but nothing is ranked or suggested. HUNT adds the scout, which ranks live
- * movers for review. OFF stops every automatic market request; prices load
- * only when the user asks. No state signs, submits, or places an order on its
- * own. A mode changes only through {@link changeOperatingMode}, which records
- * each change so the history shows who moved the terminal into which state.
+ * SLEEP is the default: live prices refresh, price alerts are checked, and
+ * open paper limit orders settle, but nothing is ranked or suggested. HUNT
+ * adds the scout, which ranks live movers for review. OFF stops every
+ * automatic market request and pauses price alerts; prices load only when the
+ * user asks. No state signs, submits, or places an order on its own. A mode
+ * changes only through {@link changeOperatingMode}, which records each change
+ * so the history shows who moved the terminal into which state.
  */
 
 export type TerminalOperatingMode = "hunt" | "sleep" | "off";
@@ -43,19 +44,19 @@ export const OPERATING_MODES: ReadonlyArray<{
     value: "hunt",
     label: "Hunt",
     summary:
-      "Live prices refresh and the scout ranks today's biggest movers for you to review. Nothing is bought for you.",
+      "Live prices refresh, price alerts stay on, and the scout ranks today's biggest movers for you to review. Nothing is bought for you.",
   },
   {
     value: "sleep",
     label: "Sleep",
     summary:
-      "Live prices refresh and open paper limit orders settle. No scouting.",
+      "Live prices refresh, price alerts stay on, and open paper limit orders settle. No scouting.",
   },
   {
     value: "off",
     label: "Off",
     summary:
-      "Automatic market requests stop. Prices load only when you refresh, and every paper order is manual.",
+      "Automatic market requests stop and price alerts pause. Prices load only when you refresh, and every paper order is manual.",
   },
 ];
 

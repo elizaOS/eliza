@@ -6,23 +6,25 @@
  * DOM stand-ins, and the separately tested wallet dashboard with a marker.
  * Covers loading, live list, search, watchlist, chart, paper market and limit
  * orders, reservations, persistence, the unavailable-data state, confirmed
- * HUNT / SLEEP / OFF mode changes, and the GoPlus token safety check (served
- * by the real token safety route over a recorded payload).
+ * HUNT / SLEEP / OFF mode changes, price alerts fired by a later live price
+ * and paused in OFF, and the GoPlus token safety check (served by the real
+ * token safety route over a recorded payload).
  */
 import { readFileSync } from "node:fs";
 import type http from "node:http";
 import { resolve } from "node:path";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
-  waitFor,
   within,
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __expireWalletTerminalCachesForTests,
   __resetWalletTerminalMarketRouteForTests,
   __setWalletTerminalFetchForTests,
   handleWalletTerminalMarketRoute,
@@ -118,6 +120,8 @@ import { CryptoTerminalView } from "./CryptoTerminalView";
 import {
   OPERATING_MODE_STORAGE_KEY,
   PAPER_LEDGER_STORAGE_KEY,
+  PRICE_ALERTS_STORAGE_KEY,
+  TERMINAL_MARKETS_POLL_MS,
 } from "./terminal/terminal-data";
 
 const recorded = JSON.parse(
@@ -141,6 +145,7 @@ const goplus = JSON.parse(
 ) as { mint: string; goplus: unknown };
 
 let upstreamDown = false;
+let bitcoinPriceOverride: number | null = null;
 let routeCalls: string[] = [];
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -187,6 +192,7 @@ async function viaRoute(path: string): Promise<unknown> {
 
 beforeEach(() => {
   upstreamDown = false;
+  bitcoinPriceOverride = null;
   routeCalls = [];
   routeClient.fetch = viaRoute;
   __setWalletTerminalTokenSafetyFetchForTests(async () =>
@@ -204,7 +210,13 @@ beforeEach(() => {
         ],
       });
     }
-    return jsonResponse(recorded.coinGeckoMarkets);
+    return jsonResponse(
+      recorded.coinGeckoMarkets.map((row) =>
+        row.id === "bitcoin" && bitcoinPriceOverride !== null
+          ? { ...row, current_price: bitcoinPriceOverride }
+          : row,
+      ),
+    );
   });
   const values = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
@@ -220,6 +232,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   __resetWalletTerminalMarketRouteForTests();
   __resetWalletTerminalTokenSafetyRouteForTests();
 });
@@ -434,5 +447,106 @@ describe("CryptoTerminalView", () => {
     expect(routeCalls).toContain(
       `/api/wallet/terminal/token-safety?mint=${goplus.mint}`,
     );
+  });
+
+  it("sets a price alert, refuses one already met, and fires on a later live price", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    render(<CryptoTerminalView />);
+    await openBitcoin();
+
+    fireEvent.change(screen.getByTestId("price-alert-target"), {
+      target: { value: "60000" },
+    });
+    fireEvent.click(screen.getByTestId("price-alert-add"));
+    expect(
+      screen.getByText("The live price is already past that target."),
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("price-alert-target"), {
+      target: { value: "66000" },
+    });
+    fireEvent.click(screen.getByTestId("price-alert-add"));
+    expect(
+      screen.queryByText("The live price is already past that target."),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Remove alert BTC above $66,000.00" }),
+    ).toBeTruthy();
+    const waiting = JSON.parse(
+      window.localStorage.getItem(PRICE_ALERTS_STORAGE_KEY) ?? "null",
+    );
+    expect(waiting.alerts).toHaveLength(1);
+    expect(waiting.alerts[0]).toMatchObject({
+      assetId: "bitcoin",
+      direction: "above",
+      targetUsd: 66_000,
+      triggeredAt: null,
+    });
+    expect(screen.queryByTestId("price-alerts-fired")).toBeNull();
+
+    bitcoinPriceOverride = 66_500;
+    __expireWalletTerminalCachesForTests();
+    act(() => {
+      vi.advanceTimersByTime(TERMINAL_MARKETS_POLL_MS);
+    });
+    const fired = await screen.findByTestId("price-alerts-fired");
+    expect(fired.textContent).toContain(
+      "BTC rose above $66,000.00 (now $66,500.00)",
+    );
+    const saved = JSON.parse(
+      window.localStorage.getItem(PRICE_ALERTS_STORAGE_KEY) ?? "null",
+    );
+    expect(saved.alerts[0].triggeredPriceUsd).toBe(66_500);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Dismiss alert BTC above $66,000.00",
+      }),
+    );
+    expect(screen.queryByTestId("price-alerts-fired")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back to markets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Watchlist" }));
+    expect(screen.getByTestId("price-alerts").textContent).toMatch(
+      /BTC above \$66,000\.00Triggered/,
+    );
+  });
+
+  it("pauses alerts in OFF and checks them again after leaving OFF", async () => {
+    window.localStorage.setItem(
+      OPERATING_MODE_STORAGE_KEY,
+      JSON.stringify({ mode: "off", history: [] }),
+    );
+    window.localStorage.setItem(
+      PRICE_ALERTS_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        alerts: [
+          {
+            id: "seeded",
+            assetId: "bitcoin",
+            symbol: "BTC",
+            direction: "above",
+            targetUsd: 60_000,
+            createdAt: 1,
+            triggeredAt: null,
+            triggeredPriceUsd: null,
+          },
+        ],
+      }),
+    );
+    render(<CryptoTerminalView />);
+    fireEvent.click(screen.getByTestId("terminal-refresh-prices"));
+    await screen.findByTestId("terminal-market-row-bitcoin");
+    fireEvent.click(screen.getByRole("button", { name: "Watchlist" }));
+    expect(screen.getByTestId("price-alerts").textContent).toMatch(
+      /Price alerts · paused.*Waiting/,
+    );
+    expect(screen.queryByTestId("price-alerts-fired")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sleep" }));
+    fireEvent.click(screen.getByTestId("terminal-mode-confirm"));
+    expect(
+      (await screen.findByTestId("price-alerts-fired")).textContent,
+    ).toContain("BTC rose above $60,000.00 (now $65,757.00)");
   });
 });
