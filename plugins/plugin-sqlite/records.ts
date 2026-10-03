@@ -2036,6 +2036,22 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         offset + limit,
         threshold,
         new Set(memoriesById.keys()),
+        (leftId, rightId) => {
+          const left = memoriesById.get(leftId as UUID);
+          const right = memoriesById.get(rightId as UUID);
+          const leftAt =
+            typeof left?.createdAt === "number" &&
+            Number.isFinite(left.createdAt)
+              ? left.createdAt
+              : 0;
+          const rightAt =
+            typeof right?.createdAt === "number" &&
+            Number.isFinite(right.createdAt)
+              ? right.createdAt
+              : 0;
+          if (leftAt !== rightAt) return rightAt - leftAt;
+          return compareMemoryIds(rightId, leftId);
+        },
       );
 
       const memories = results.slice(offset).flatMap((result) => {
