@@ -202,8 +202,8 @@ ec938aa930aad29117d2dc04368d00342df56cb6:packages/core/src/__tests__/compose-sta
 # Each exception pins commit + path + rule + line. No whole-file, whole-commit,
 # or future-value exclusion is introduced. Changed/new commits remain scanned.
 # Review source with: git show <commit>:<path>. Values are not copied here.
-# The OSWorld vLLM Basic-auth pair is deliberately NOT exempted: retirement
-# must be established independently even after its removal from current code.
+# The historical OSWorld Basic-auth pair was confirmed test-only by the owner
+# and is exempted by its exact fingerprint above; current source no longer embeds it.
 
 
 # .github/workflows/live-smoke.yml
@@ -632,3 +632,6 @@ b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/solana
 # plugins/plugin-wallet/src/sdk/bridge/solana.ts
 # Public Circle CCTP token messenger program address.
 b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/sdk/bridge/solana.ts:generic-api-key:69
+
+# Existing synthetic swap-user-reply test fixture at its squash-merge commit.
+df90e84500df616bd4c170f364a3a7f1dfed13b8:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:65

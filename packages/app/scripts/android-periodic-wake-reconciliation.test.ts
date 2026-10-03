@@ -100,6 +100,43 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     );
   });
 
+  it("does not claim a disconnected transport before gateway status is observed", () => {
+    const gateway = source("GatewayConnectionService.java");
+    expect(gateway).toContain(
+      "private volatile String currentStatus = STATUS_UNKNOWN;",
+    );
+    expect(gateway).toMatch(
+      /default:\s*title = "Eliza Gateway";\s*text = "Background service running";/,
+    );
+    expect(gateway).toMatch(
+      /case STATUS_DISCONNECTED:\s*title = "Eliza Gateway";\s*text = "Disconnected";/,
+    );
+  });
+
+  it("preserves explicit gateway states and the native status update contract", () => {
+    const gateway = source("GatewayConnectionService.java");
+    for (const [name, value] of [
+      ["CONNECTED", "connected"],
+      ["DISCONNECTED", "disconnected"],
+      ["RECONNECTING", "reconnecting"],
+    ]) {
+      expect(gateway).toContain(
+        `public static final String STATUS_${name} = "${value}";`,
+      );
+      expect(gateway).toContain(`case STATUS_${name}:`);
+    }
+    expect(gateway).toContain(
+      "public static void updateStatus(Context context, String status)",
+    );
+    expect(gateway).toContain('"app.eliza.action.UPDATE_STATUS"');
+    expect(gateway).toContain(
+      'private static final String EXTRA_STATUS = "status";',
+    );
+    expect(gateway).toMatch(
+      /if \(status != null\) \{\s*currentStatus = status;\s*updateNotification\(\);/,
+    );
+  });
+
   it("reconciles native token provisioning and removal", () => {
     const service = source("ElizaAgentService.java");
     const scheduler = source("ElizaWorkScheduler.java");

@@ -85,7 +85,11 @@ function OverlayAssistantTurnBody({
         </div>
       ) : (
         <div className="col-start-1 row-start-1 min-h-[1.4375rem] min-w-0">
-          <InlineWidgetText content={message.text} />
+          <InlineWidgetText
+            content={message.text}
+            messageId={message.id}
+            producerScope={message.source}
+          />
           {attachmentsNode}
           {message.secretRequest ? (
             <div className="pointer-events-auto">

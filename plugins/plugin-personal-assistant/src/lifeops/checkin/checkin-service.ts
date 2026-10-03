@@ -170,6 +170,12 @@ function formatPromptScalar(value: unknown): string {
 function formatCheckinReportForPrompt(
   report: Omit<CheckinReport, "summaryText">,
 ): string {
+  const withRecordedMisses = report.habitSummaries.filter(
+    (habit) => habit.missedOccurrenceStreak > 0,
+  );
+  const withoutRecordedMisses = report.habitSummaries.filter(
+    (habit) => !(habit.missedOccurrenceStreak > 0),
+  );
   const modelReport = {
     ...report,
     overdueTodos:
@@ -184,8 +190,21 @@ function formatCheckinReportForPrompt(
         : null,
     habitSummaries:
       report.collectorErrors.habitSummaries === null
-        ? report.habitSummaries
+        ? {
+            withRecordedMisses: {
+              count: withRecordedMisses.length,
+              records: withRecordedMisses,
+            },
+            withoutRecordedMisses: {
+              count: withoutRecordedMisses.length,
+              records: withoutRecordedMisses,
+            },
+          }
         : null,
+    briefingSections: {
+      available: report.briefingSections.filter((section) => !section.error),
+      unavailable: report.briefingSections.filter((section) => section.error),
+    },
   };
   return JSON.stringify(modelReport, (_key, value: unknown) => {
     if (value instanceof Date) {
@@ -208,15 +227,33 @@ export function buildCheckinSummaryPrompt(
     report.kind === "morning"
       ? "Write the owner's morning personal-assistant intro summary."
       : "Write the owner's night personal-assistant closeout summary.",
-    "This is generated from LifeOps source data. Do not invent facts.",
+    "Use the supplied source data. Do not invent facts.",
+    "Describe recorded states and counts without inventing their cause: a missed occurrence is not evidence of failed delivery, abandoned work, or a system fault. Missed streaks have no occurrence dates here; do not assign those misses to today or yesterday.",
+    "Streak counters count occurrences, not days. Report empty collections as no collected items, not proof that no urgent work or messages exist outside the available sources.",
+    "Habit group counts are supplied by code and count habit records, not missed occurrences. Use only supplied totals; do not invent counts for subsets or calculate a total from streaks.",
     "Rank for genuinely interesting, important, reply-needed, or schedule-changing items.",
     "Include X/socials (timeline, mentions, DMs), inboxes/messages/Discord, Gmail, GitHub, calendar changes, completed work, contacts, promises, agreements, and follow-ups when present.",
     "When a source is unavailable, say that source is unavailable in one compact clause instead of pretending it was empty.",
+    "An unavailable or disconnected source is a coverage limitation, not evidence that a service is down, critical, or needs repair. Do not make reconnecting optional sources a priority unless the report establishes an owner task or affected commitment.",
     report.kind === "morning"
       ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
       : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
-    "Use short sections or tight bullets. No markdown table. No emojis.",
+    "Write a short, natural message for the owner. Use plain words and only a few paragraphs or bullets. Do not mention internal names such as LifeOps, report JSON, collectors, operational status, or escalation levels. No markdown table or emojis.",
+    "Do not put a date or time in the heading. If the body mentions the report time, copy the supplied local report time exactly; do not calculate or invent another date.",
   ];
+  if (report.timezone) {
+    lines.push(
+      `Report time: ${new Intl.DateTimeFormat("en-US", {
+        timeZone: report.timezone,
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(new Date(report.generatedAt))} (${report.timezone}).`,
+    );
+  } else {
+    lines.push(
+      "The owner timezone is unavailable; do not invent a local date or time.",
+    );
+  }
   if (report.kind === "night" && report.sleepRecap) {
     const recap = report.sleepRecap;
     const bedtime = formatBedtimeHour(recap.medianBedtimeLocalHour);
@@ -256,6 +293,114 @@ function newReportId(): string {
   ).crypto;
   if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function morningBriefExcerpt(text: string): string {
+  const characters = Array.from(clip(text));
+  return characters.length > 220
+    ? `${characters.slice(0, 220).join("")}… (excerpt)`
+    : characters.join("");
+}
+
+/** Render morning facts from the existing report; retain every raw record in storage. */
+export function renderMorningCheckinReport(
+  report: Omit<CheckinReport, "summaryText">,
+): string {
+  const reference = report.timezone
+    ? `${new Intl.DateTimeFormat("en-US", {
+        timeZone: report.timezone,
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(new Date(report.generatedAt))} (${report.timezone})`
+    : report.generatedAt;
+  const paragraphs = ["Good morning.", `As of ${reference}.`];
+  const unavailable: string[] = [];
+  const emptySummaries: string[] = [];
+  const lists = [
+    {
+      key: "todaysMeetings" as const,
+      title: "Meetings today",
+      empty: "No meetings listed for today.",
+      rows: report.todaysMeetings,
+    },
+    {
+      key: "overdueTodos" as const,
+      title: "Overdue tasks",
+      empty: "No overdue tasks listed.",
+      rows: report.overdueTodos,
+    },
+    {
+      key: "yesterdaysWins" as const,
+      title: "Completions recorded yesterday",
+      empty: "No completed items were recorded yesterday.",
+      rows: report.yesterdaysWins,
+    },
+  ];
+  for (const list of lists) {
+    if (report.collectorErrors[list.key]) {
+      unavailable.push(list.title);
+      continue;
+    }
+    if (list.rows.length === 0) {
+      emptySummaries.push(list.empty);
+      continue;
+    }
+    const highlights = list.rows.slice(0, 3).map((row) => {
+      const time =
+        "startAt" in row
+          ? report.timezone
+            ? new Intl.DateTimeFormat("en-US", {
+                timeZone: report.timezone,
+                timeStyle: "short",
+              }).format(new Date(row.startAt))
+            : row.startAt
+          : null;
+      return `- ${time ? `${time}: ` : ""}${morningBriefExcerpt(row.title)}`;
+    });
+    const extra = list.rows.length - highlights.length;
+    paragraphs.push(
+      `${list.title}: ${list.rows.length}.${highlights.length ? `\n${highlights.join("\n")}` : ""}${extra ? `\n${extra} more collected items.` : ""}`,
+    );
+  }
+  if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
+  if (report.collectorErrors.habitSummaries) {
+    unavailable.push("Habit tracking");
+  } else if (report.habitSummaries.length > 0) {
+    const missed = report.habitSummaries.filter(
+      (habit) => habit.missedOccurrenceStreak > 0,
+    ).length;
+    paragraphs.push(
+      `Habit tracking: ${missed} of ${report.habitSummaries.length} records have recorded misses. These tracking states do not prove that work or notification delivery failed.`,
+    );
+  }
+  const emptySourceSummaries: string[] = [];
+  for (const section of report.briefingSections) {
+    if (section.error) {
+      unavailable.push(section.title);
+      continue;
+    }
+    const highlights = section.items
+      .slice(0, 3)
+      .map(
+        (item) =>
+          `- ${morningBriefExcerpt(item.title)}${item.detail ? `: ${morningBriefExcerpt(item.detail)}` : ""}`,
+      );
+    const extra = section.items.length - highlights.length;
+    if (highlights.length === 0) {
+      emptySourceSummaries.push(section.summary);
+    } else {
+      paragraphs.push(
+        `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more collected items.` : ""}`,
+      );
+    }
+  }
+  if (emptySourceSummaries.length > 0)
+    paragraphs.push(emptySourceSummaries.join(" "));
+  if (unavailable.length > 0)
+    paragraphs.push(
+      `I couldn't check: ${unavailable.join(", ")}. This brief does not cover those sources.`,
+    );
+  return paragraphs.join("\n\n");
 }
 export function clip(text: string, maxLength = 220): string {
   void maxLength;
@@ -1367,6 +1512,7 @@ export class CheckinService {
       reportId: newReportId(),
       kind,
       generatedAt: now.toISOString(),
+      timezone,
       escalationLevel,
       overdueTodos: overdueTodos.rows,
       todaysMeetings: todaysMeetings.rows,
@@ -1400,6 +1546,7 @@ export class CheckinService {
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
+    if (report.kind === "morning") return renderMorningCheckinReport(report);
     if (typeof this.runtime.useModel !== "function") {
       throw new ElizaError(
         "Check-in summary requires a configured text model",
@@ -1425,6 +1572,7 @@ export class CheckinService {
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);
     const payload = JSON.stringify({
+      timezone: report.timezone,
       overdueTodos: report.overdueTodos,
       todaysMeetings: report.todaysMeetings,
       yesterdaysWins: report.yesterdaysWins,
