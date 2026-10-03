@@ -14,13 +14,19 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./android": {
+      "eliza-source": "./src/android.ts",
+      "types": "./dist/android.d.ts",
+      "import": "./dist/android.js"
     }
   },
   "files": [
     "dist",
     "android/build.gradle",
     "android/src/main",
-    "android/README.md"
+    "android/README.md",
+    "src"
   ],
   "engines": {
     "node": ">=24.0.0"
@@ -46,12 +52,14 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:android-package": "node test/packed-consumer/check.mjs"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "@capacitor/core": "^8.3.1"
   },
   "author": "elizaOS",
   "license": "MIT",
@@ -66,5 +74,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/core": {
+      "optional": true
+    }
   }
 }

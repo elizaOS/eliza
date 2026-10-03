@@ -2415,10 +2415,17 @@
       "name": "@elizaos/macosreminders",
       "version": "2.0.3-beta.7",
       "devDependencies": {
+        "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+      "optionalPeers": [
+        "@capacitor/core",
+      ],
     },
     "plugins/plugin-native-secure-store": {
       "name": "@elizaos/capacitor-secure-store",
