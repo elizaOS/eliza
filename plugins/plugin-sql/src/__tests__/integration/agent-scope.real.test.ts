@@ -92,3 +92,38 @@ test("agent scope cannot replace an inherited entity transaction context", async
     )
   ).rejects.toMatchObject({ code: "TRANSACTION_ENTITY_CONTEXT_MISMATCH" });
 }, 60000);
+
+test("updating a shared entity from another agent keeps it in its owner's rooms", async () => {
+  const other = id(),
+    world = id(),
+    room = id(),
+    user = id();
+  await adapter.withAgentScope(other, async (scoped) => {
+    await scoped.createAgents([
+      { id: other, name: "Other", createdAt: Date.now(), updatedAt: Date.now() },
+    ]);
+  });
+  await adapter.createWorlds([{ id: world, agentId: testAgentId, name: "Host world" }]);
+  await adapter.createRooms([
+    { id: room, agentId: testAgentId, worldId: world, source: "web", type: ChannelType.DM },
+  ]);
+  await adapter.createEntities([
+    { id: user, agentId: testAgentId, names: ["alice"], metadata: { web: { id: "u1" } } },
+  ]);
+  await adapter.addParticipant(user, room);
+
+  await adapter.withAgentScope(other, async (scoped) => {
+    const [existing] = await scoped.getEntitiesByIds([user]);
+    await scoped.updateEntity({
+      id: user,
+      agentId: other,
+      names: ["alice", "alice@example.test"],
+      metadata: { ...existing?.metadata, seenBy: "other" },
+    });
+  });
+
+  const [row] = await adapter.getEntitiesByIds([user]);
+  expect(row?.agentId).toBe(testAgentId);
+  expect(row?.names).toEqual(["alice", "alice@example.test"]);
+  expect((await adapter.getEntitiesForRoom(room)).map((entity) => entity.id)).toEqual([user]);
+});
