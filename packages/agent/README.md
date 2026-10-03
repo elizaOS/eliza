@@ -145,3 +145,9 @@ Each explicit uncertain-operation readback commits a recovery epoch before bindi
 the actuator. An ambiguous result or lost reply therefore cannot strand the next
 readback on a native epoch that was already consumed. The original operation stays
 unknown until evidence resolves it, and recovery never resumes or repeats effects.
+
+Mobile hosts may set `ELIZA_MOBILE_DNS_SERVERS` to one through eight comma-separated
+IP literals from their trusted native network configuration. Missing configuration
+retains the public resolver defaults; malformed addresses reject before installing
+DNS overrides. This startup snapshot does not implement Private DNS, VPN-bound
+resolution or automatic network-change refresh.

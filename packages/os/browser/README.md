@@ -175,3 +175,32 @@ distribution. Native messaging still checks its separate host application ID.
 The default remains disabled. Host WindowManager support, actual split bounds,
 existing-tab continuity, input and lifecycle must be qualified on the installed
 browser; a generated manifest is only one prerequisite for a native dock.
+
+The Android overlay includes full-origin Autofill transport (including ports and
+per-field origins). The original patch provenance is in `scripts/chromium/autofill`.
+The Java regression requires JDK 21. Consumers must not apply a second Autofill patch.
+
+Products may add the complete reviewed protection resource set exposed by
+`protectionAssetNames`. This opts the component into `declarativeNetRequest` and
+exposes only `warning.html`; partial inventories, extra permissions and other
+web-accessible resources reject. Products retain their policy and warning UI.
+Unprotected builds retain their existing permissions and resource inventory.
+
+Eliza OS owns Android Chromium compilation as well as source preparation. On a
+provisioned Linux Chromium/depot_tools host, run:
+
+```sh
+node packages/os/scripts/distro-android/build-chromium-browser.ts \
+  --source /absolute/chromium/src --extension /absolute/product/extension \
+  --out /absolute/new-overlay --build /absolute/chromium/src/out/Owned \
+  --args-file /absolute/reviewed-args.gn --jobs 8 \
+  --application PRODUCT_APP_ID --certificate APP_CERTIFICATE_SHA256 \
+  --embed-host true
+```
+
+The build requires the pinned pristine sources and a new output directory. GN args
+must explicitly select Android, arm64 or x64, Desktop Android, and package
+`ai.elizaos.chromium`. The command applies the verified overlay, runs GN and bounded
+Ninja, and records APK and GN-input hashes. It does not sign a release, install an
+APK, provision AOSP or qualify a device. Preserve `chromium-build.json` alongside
+the overlay and use the existing signed-artifact admission flow for release.
