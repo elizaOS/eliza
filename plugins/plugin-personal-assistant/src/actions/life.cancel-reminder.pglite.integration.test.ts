@@ -99,6 +99,7 @@ async function invoke(
   text: string,
   userRoles: Array<"OWNER" | "USER"> = ["OWNER"],
   before?: (message: Memory) => Promise<void>,
+  toolName = "OWNER_REMINDERS",
 ) {
   const message = {
     id: crypto.randomUUID() as UUID,
@@ -120,7 +121,7 @@ async function invoke(
       activeContexts: ["general", "tasks"],
       replyOwner: "planner",
     },
-    { name: "OWNER_REMINDERS", params },
+    { name: toolName, params },
   );
 }
 
@@ -500,6 +501,32 @@ async function reminderSource(
   await fixture.runtime.createMemory(source, "messages");
   return { source, occurrence };
 }
+
+it("executes source-bound Done through the promoted tool after API language augmentation", async () => {
+  const original = await seed("Actual promoted bound Done");
+  const { source, occurrence } = await reminderSource(original);
+  const result = await invoke(
+    { target: "Check the bound Done button" },
+    "done",
+    ["OWNER"],
+    async (message) => {
+      message.content.inReplyTo = source.id;
+      message.content.metadata = { reminderChoiceId: "source-choice" };
+      message.content.text =
+        "done\n\n[Language instruction: Reply in natural English unless the user explicitly requests another language.]";
+    },
+    "OWNER_REMINDERS_COMPLETE",
+  );
+  expect(result.success, JSON.stringify(result)).toBe(true);
+  expect(
+    (
+      await service.repository.getOccurrence(
+        fixture.runtime.agentId,
+        occurrence.id,
+      )
+    )?.state,
+  ).toBe("completed");
+});
 
 it.each([
   ["done", "completed"],

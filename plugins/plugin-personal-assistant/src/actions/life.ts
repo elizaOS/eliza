@@ -4293,6 +4293,7 @@ async function runLifeOperationHandlerInner(
   });
   const choiceMetadata = detailObject(message.content, "metadata");
   if (choiceMetadata?.reminderChoiceId !== undefined) {
+    const choiceValue = extractUserText(currentText);
     const sourceId = validateUuid(message.content.inReplyTo);
     const source = sourceId ? await runtime.getMemoryById(sourceId) : null;
     const reference = source
@@ -4309,7 +4310,7 @@ async function runLifeOperationHandlerInner(
               block.kind === "choice" &&
               block.scope === "lifeops-reminder" &&
               block.id === choiceMetadata.reminderChoiceId &&
-              block.options.some((option) => option.value === currentText),
+              block.options.some((option) => option.value === choiceValue),
           )
         : null;
     if (
@@ -4330,7 +4331,7 @@ async function runLifeOperationHandlerInner(
       !["pending", "visible", "snoozed", "completed"].includes(
         occurrence.state,
       ) ||
-      !["done", "skip", "10 minutes"].includes(currentText)
+      !["done", "skip", "10 minutes"].includes(choiceValue)
     ) {
       return {
         success: false,
@@ -4342,9 +4343,9 @@ async function runLifeOperationHandlerInner(
       };
     }
     const action =
-      currentText === "done"
+      choiceValue === "done"
         ? "complete"
-        : currentText === "skip"
+        : choiceValue === "skip"
           ? "skip"
           : "snooze";
     // The authenticated click owns this operation and exact occurrence;
