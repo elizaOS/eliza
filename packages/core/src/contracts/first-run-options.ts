@@ -945,6 +945,12 @@ export function getFirstRunProviderSignalEnvKeys(
 	if (providerId === "zai") {
 		return ["ZAI_API_KEY", "Z_AI_API_KEY"];
 	}
+	if (providerId === "gemini") {
+		return ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"];
+	}
+	if (providerId === "moonshot") {
+		return ["MOONSHOT_API_KEY", "KIMI_API_KEY"];
+	}
 
 	const provider = getFirstRunProviderOption(providerId);
 	return provider?.envKey ? [provider.envKey] : [];
