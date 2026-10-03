@@ -30,6 +30,12 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async presentBrowser(): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+
   async openBrowser(_options: { url: string }): Promise<{
     packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
     engine: "chromium";

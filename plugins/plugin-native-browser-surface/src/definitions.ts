@@ -136,6 +136,14 @@ export interface NativePageRead {
 }
 
 export interface ElizaSurfaceManagerPlugin {
+  /** Android: present the build-pinned browser without a URL or new website tab.
+   * Dispatch receipt only; callers must re-observe before any task action.
+   * Requires an explicit user interaction. Other platforms reject as unavailable.
+   */
+  presentBrowser(): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+  }>;
+
   /**
    * Android: open a website in installed full Chromium with browser-owned
    * storage and permissions. Resolves on dispatch, not page load. This is not

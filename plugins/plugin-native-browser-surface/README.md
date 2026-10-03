@@ -57,3 +57,10 @@ It verifies the module's build-pinned package and signing certificate before
 binding and after connection. The priority-preserving Custom Tabs binding keeps
 the browser reachable without opening an activity, tab, URL or debugging port.
 It does not grant task/action authority or claim that a renderer is observable.
+
+Android `presentBrowser()` foregrounds the certificate-pinned browser without a
+URL or new website tab. Invoke it from an explicit user interaction before a
+workflow that needs visible native guidance. Its receipt is dispatch only: the
+caller must freshly observe and retain normal task/target/visibility guards. It
+does not select a task tab, grant action authority or navigate. Other platforms
+reject this Android-only operation.
