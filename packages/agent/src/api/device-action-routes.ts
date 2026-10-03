@@ -5,12 +5,14 @@ import {
   ApprovalNotFoundError,
   type ApprovalRequest,
   ApprovalStateTransitionError,
+  DEVICE_VIEWS,
   DeviceActionError,
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import { workflowDeviceOwner } from "./workflow-device-owner.ts";
 
 export function requiresDeviceIdentity(
   req: Pick<http.IncomingMessage, "headers">,
@@ -125,6 +127,25 @@ export async function handleDeviceActionRoutes(
       });
       return true;
     }
+    if (pathname === "/api/client-devices/view-profile") {
+      if (method === "GET") {
+        json(res, {
+          version: 1,
+          supportedViews: DEVICE_VIEWS,
+          profile: await service.viewProfile(credential),
+        });
+        return true;
+      }
+      if (method === "POST") {
+        const body = await ctx.readJsonBody<unknown>(req, res);
+        if (body)
+          json(res, {
+            version: 1,
+            profile: await service.setViewProfile(credential, body),
+          });
+        return true;
+      }
+    }
     if (method === "POST" && pathname === "/api/client-devices/register") {
       const body = await ctx.readJsonBody<{
         label: string;
@@ -137,6 +158,11 @@ export async function handleDeviceActionRoutes(
             credential,
             body.label,
             body.workflowProtocol ?? 0,
+            workflowDeviceOwner(
+              runtime,
+              ctx.authorization,
+              credential.subjectUserId,
+            ),
           ),
         );
       return true;

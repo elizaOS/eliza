@@ -34,15 +34,32 @@ object ChromiumBrowserLauncher {
         return parsed.toASCIIString()
     }
 
+    /** Present the pinned browser without navigating or creating a website tab. */
     @JvmStatic
-    fun launch(activity: Activity, url: String) {
-        val target = Uri.parse(validatedUrl(url))
+    fun present(activity: Activity) {
+        requireTrustedBrowser(activity)
+        val intent = activity.packageManager.getLaunchIntentForPackage(PACKAGE_NAME)
+            ?: throw BrowserLaunchException("BROWSER_UNAVAILABLE", "The configured browser has no launchable activity.")
+        if (intent.component?.packageName != PACKAGE_NAME) {
+            throw BrowserLaunchException("BROWSER_UNTRUSTED", "The browser activity does not match provisioning.")
+        }
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        activity.startActivity(intent)
+    }
+
+    internal fun requireTrustedBrowser(activity: Activity) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
             !ChromiumBrowserIdentity.isTrustedPackage(PACKAGE_NAME, BuildConfig.ELIZA_CHROMIUM_CERT_SHA256) { packageName, certificate ->
                 activity.packageManager.hasSigningCertificate(packageName, certificate, PackageManager.CERT_INPUT_SHA256)
             }) {
             throw BrowserLaunchException("BROWSER_UNTRUSTED", "The configured Chromium package or signing certificate is unavailable. Repair the provisioned browser and try again.")
         }
+    }
+
+    @JvmStatic
+    fun launch(activity: Activity, url: String) {
+        val target = Uri.parse(validatedUrl(url))
+        requireTrustedBrowser(activity)
         val service = Intent(CustomTabsService.ACTION_CUSTOM_TABS_CONNECTION).setPackage(PACKAGE_NAME)
         if (activity.packageManager.resolveService(service, 0) == null) {
             throw BrowserLaunchException("BROWSER_UNAVAILABLE", "Chromium is unavailable. Install or repair the system Chromium browser, then try again.")

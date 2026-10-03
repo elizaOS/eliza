@@ -17,6 +17,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import {
+  captureAndroidScreenshot,
   finalizeAndroidRecordingSegments,
   hasPositiveVideoDuration,
   isFinalizedMp4,
@@ -467,4 +468,46 @@ describe("chunked Android screenrecord collection", () => {
     expect(fs.existsSync(path.join(artifactDir, "flow.mp4"))).toBe(false);
     expect(fs.readdirSync(artifactDir)).toEqual([]);
   }, 30_000);
+});
+
+describe("Android screenshot output", () => {
+  function screenshotFixture(fail = false) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-screenshot-"));
+    paths.push(root);
+    const adb = path.join(root, "adb");
+    fs.writeFileSync(
+      adb,
+      `#!${process.execPath}
+const fs = require("node:fs");
+fs.writeSync(1, Buffer.alloc(2 * 1024 * 1024, 7));
+process.exit(${fail ? 1 : 0});
+`,
+      { mode: 0o755 },
+    );
+    return { adb, artifactDir: root, serial: "emulator-fixture" };
+  }
+
+  test("preserves screenshot bytes beyond the subprocess stdout buffer", () => {
+    const fixture = screenshotFixture();
+    const output = captureAndroidScreenshot(fixture);
+    expect(fs.readFileSync(output)).toEqual(Buffer.alloc(2 * 1024 * 1024, 7));
+    expect(fs.readdirSync(fixture.artifactDir).sort()).toEqual([
+      "adb",
+      "screenshot.png",
+    ]);
+  });
+
+  test("rejects failed capture without publishing partial bytes", () => {
+    const fixture = screenshotFixture(true);
+    const output = path.join(fixture.artifactDir, "screenshot.png");
+    fs.writeFileSync(output, "previous capture");
+    expect(() => captureAndroidScreenshot(fixture)).toThrow(
+      "adb screencap failed",
+    );
+    expect(fs.readFileSync(output, "utf8")).toBe("previous capture");
+    expect(fs.readdirSync(fixture.artifactDir).sort()).toEqual([
+      "adb",
+      "screenshot.png",
+    ]);
+  });
 });

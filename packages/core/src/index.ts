@@ -3656,6 +3656,7 @@ export {
 export {
 	DEFAULT_APP_ROUTE_PLUGIN_MODULES,
 	isEnvDisabled,
+	isExactTrueEnvFlag,
 	normalizeEnvValue,
 	normalizeEnvValueOrNull,
 	readAliasedEnv,

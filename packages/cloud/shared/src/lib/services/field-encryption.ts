@@ -290,6 +290,27 @@ export class FieldEncryptionService {
     );
   }
 
+  /** Verify tenant ownership before accepting an existing envelope for storage. */
+  async assertEncryptedValueOrganization(
+    organizationId: string,
+    encryptedValue: string,
+  ): Promise<void> {
+    const parsed = this.parseEncryptedValue(encryptedValue);
+    const orgKey = await this.keyStore.findById(parsed.orgKeyId);
+    if (!orgKey) {
+      throw new ElizaError("Encryption key not found for the supplied environment envelope", {
+        code: "FIELD_ENCRYPTION_KEY_NOT_FOUND",
+        severity: "fatal",
+      });
+    }
+    if (orgKey.organization_id !== organizationId) {
+      throw new ElizaError("Encrypted environment value belongs to another organization", {
+        code: "FIELD_ENCRYPTION_ORGANIZATION_MISMATCH",
+        severity: "fatal",
+      });
+    }
+  }
+
   /**
    * Encrypt a plaintext value for an organization.
    *

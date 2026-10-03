@@ -15,6 +15,7 @@ import type { IDatabaseAdapter } from "./types/database";
 import type { JsonValue, UUID } from "./types/primitives.js";
 import { ChannelType } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime";
+import { isExactTrueEnvFlag } from "./utils/env";
 
 const logger = createLogger({ namespace: "provisioning", level: "info" });
 
@@ -88,8 +89,9 @@ export async function runPluginMigrations(
 	}
 
 	const isProduction = process.env.NODE_ENV === "production";
-	const forceDestructive =
-		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+	const forceDestructive = isExactTrueEnvFlag(
+		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
+	);
 
 	await adapter.runPluginMigrations(pluginsWithSchemas, {
 		verbose: !isProduction,

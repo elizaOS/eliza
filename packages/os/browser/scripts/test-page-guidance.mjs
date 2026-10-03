@@ -221,6 +221,32 @@ try {
   await call(pageGuidance, { kind: "hide" });
   assert.equal((await state()).visible, false);
   cases.push("expiry, origin mismatch and host hide remove guidance");
+  // A landscape IME leaves room beside the field, but neither above nor
+  // below it. Side placement must shift vertically inside the visible area.
+  await page.setViewport({ width: 1280, height: 220 });
+  await page.$eval("#target", (node) => {
+    node.style.cssText =
+      "position:fixed;left:34px;top:88px;width:295px;height:44px;margin:0;padding:0";
+  });
+  await offer("short-viewport", {
+    text: "Synthetic guidance: this is the nickname field.",
+  });
+  await settle();
+  const short = await state();
+  assert.equal(
+    short.visible,
+    true,
+    "A guide with room beside the field must remain visible",
+  );
+  assert.ok(short.label.y >= 8 && short.label.y + short.label.height <= 212);
+  assert.ok(
+    short.label.x >= short.target.x + short.target.width + 8 ||
+      short.label.x + short.label.width <= short.target.x - 8,
+  );
+  await page.screenshot({ path: `${output}/short-viewport.png` });
+  cases.push(
+    "IME-sized viewport uses available side space without covering the field",
+  );
   await writeFile(
     `${output}/verification.json`,
     JSON.stringify(

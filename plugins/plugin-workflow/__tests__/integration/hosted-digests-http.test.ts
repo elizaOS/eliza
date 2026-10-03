@@ -137,6 +137,12 @@ test('two actual scheduled hosted digests survive restart and reconnect with one
       expiresAt: new Date(Date.now() + 3600000).toISOString(),
       confirmed: true,
     };
+    const oversizedUnicodeId = randomUUID();
+    expect(
+      (await call('/hosted/sources', { ...input, id: oversizedUnicodeId, text: '界'.repeat(5300) }))
+        .status
+    ).toBe(400);
+    expect((await call('/hosted/sources')).body.sources).toHaveLength(0);
     const source = (await call('/hosted/sources', input)).body.source;
     expect(source.revision).toMatch(/^[a-f0-9]{64}$/);
     expect((await call('/hosted/sources')).body.sources[0].text).toBeUndefined();

@@ -1,5 +1,7 @@
 package ai.elizaos.app;
 
+import ai.eliza.plugins.browsersurface.ChromiumBrowserConnection;
+
 import android.app.ActivityManager;
 import android.app.ApplicationExitInfo;
 import android.app.Notification;

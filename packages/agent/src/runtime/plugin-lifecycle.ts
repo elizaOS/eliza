@@ -4,6 +4,7 @@ import {
   ElizaError,
   type IDatabaseAdapter,
   installHttpPluginLifecycle,
+  isExactTrueEnvFlag,
   type Plugin,
   type PluginOwnership,
 } from "@elizaos/core";
@@ -178,7 +179,7 @@ async function migratePluginSchemasIfReady(
   const turn = readyForTurn.then(() =>
     runPluginMigrations([{ name: plugin.name, schema: plugin.schema }], {
       verbose: !isProduction,
-      force: process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true",
+      force: isExactTrueEnvFlag(process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS),
       dryRun: false,
     }),
   );

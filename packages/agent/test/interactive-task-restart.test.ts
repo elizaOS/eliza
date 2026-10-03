@@ -1,6 +1,6 @@
 /** Real Bun host kill/restart against a shared durable SQLite file. */
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +67,70 @@ it("recovers an interrupted dispatch after SIGKILL without executing it again", 
         (kind, sequence) => ({ id: `task-1#${sequence}`, kind }),
       ),
     });
+    const readback = (mode: string) =>
+      JSON.parse(
+        execFileSync(
+          "bun",
+          ["--conditions=eliza-source", fixture, file, mode],
+          { encoding: "utf8", timeout: 10000 },
+        ).trim(),
+      );
+    for (const [mode, code] of [
+      ["denied", "TASK_REVOKED"],
+      ["stale", "TASK_CONFLICT"],
+      ["missing-evidence", "TASK_INVALID"],
+    ]) {
+      const result = readback(mode);
+      expect(result.operation).toBe("unknown");
+      expect(result.operations).toBe(1);
+      expect(result.errorCode).toBe(code);
+    }
+    const retryFile = join(root, "retry.sqlite");
+    copyFileSync(file, retryFile);
+    const retried = JSON.parse(
+      execFileSync(
+        "bun",
+        ["--conditions=eliza-source", fixture, retryFile, "retry-readback"],
+        { encoding: "utf8", timeout: 10000 },
+      ).trim(),
+    );
+    expect(retried).toEqual({
+      status: "paused",
+      operation: "failed",
+      operations: 1,
+      errorCode: null,
+      readbacks: 2,
+    });
+    const revokedFile = join(root, "revoked.sqlite");
+    copyFileSync(file, revokedFile);
+    const revoked = JSON.parse(
+      execFileSync(
+        "bun",
+        ["--conditions=eliza-source", fixture, revokedFile, "revoke-readback"],
+        { encoding: "utf8", timeout: 10000 },
+      ).trim(),
+    );
+    expect(revoked.operation).toBe("unknown");
+    expect(revoked.errorCode).toBe("TASK_CONFLICT");
+    expect(readback("ambiguous")).toEqual({
+      status: "paused",
+      operation: "unknown",
+      operations: 1,
+      errorCode: null,
+    });
+    expect(readback("cancel-readback")).toEqual({
+      status: "cancelled",
+      operation: "unknown",
+      operations: 1,
+      errorCode: "TASK_CONFLICT",
+    });
+    expect(readback("reconcile")).toEqual({
+      status: "cancelled",
+      operation: "failed",
+      operations: 1,
+      errorCode: null,
+    });
+    expect(readback("reconcile").errorCode).toBe("TASK_REPLAY");
   } finally {
     if (child.exitCode === null && child.signalCode === null) {
       child.kill("SIGKILL");

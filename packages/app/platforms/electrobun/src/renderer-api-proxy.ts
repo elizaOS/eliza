@@ -114,3 +114,12 @@ export function createRendererApiProxyRequestInit(
 
 	return init;
 }
+
+/** Match only the IPv4 renderer listener's loopback aliases and actual port. */
+export function isRendererServerRequestHostAllowed(
+	host: string | null | undefined,
+	port: number,
+): boolean {
+	const authority = host?.toLowerCase();
+	return authority === `127.0.0.1:${port}` || authority === `localhost:${port}`;
+}

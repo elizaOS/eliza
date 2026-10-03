@@ -30,13 +30,9 @@
 ###
 
 allow platform_app app_data_file:file { execute execute_no_trans };
-
-# Android 17 assigns platform-signed apps targeting SDK <= 36 to this
-# compatibility domain. Keep the bundled-runtime debug allowance scoped to
-# development images; production packaging must avoid app-data execution.
+# Runtime identity atomically publishes an app-owned, fsynced candidate with
+# linkat (Android 15/16 run the agent as platform_app; Android 17 rules are in
+# api37/). Development images only.
 userdebug_or_eng(`
-  allow platform_app_36 app_data_file:file { execute execute_no_trans };
-  # Runtime identity atomically publishes an app-owned, fsynced candidate
-  # with linkat. Preserve no-overwrite publication rather than bypassing it.
-  allow platform_app_36 app_data_file:file link;
+  allow platform_app app_data_file:file link;
 ')

@@ -13,7 +13,9 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { FieldEncryptionService, isFieldEncryptionRequired } = await import("./field-encryption");
+const { FieldEncryptionService, fieldEncryption, isFieldEncryptionRequired } = await import(
+  "./field-encryption"
+);
 type OrgEncryptionKeyStore = import("./field-encryption").OrgEncryptionKeyStore;
 const { encryptAgentEnvVarsForStorage } = await import("./agent-env-crypto");
 
@@ -328,5 +330,33 @@ describe("decryptIfNeeded plaintext passthrough", () => {
     expect(await service.decryptIfNeeded("postgres://legacy")).toBe("postgres://legacy");
     expect(loggedErrors).toHaveLength(1);
     expect(JSON.stringify(loggedErrors)).not.toContain("postgres://legacy");
+  });
+});
+
+describe("agent environment envelope organization", () => {
+  test("rejects replay of another organization's encrypted environment value", async () => {
+    useMasterKeys(KEY_A);
+    const store = memoryStore();
+    const owner = new FieldEncryptionService(store);
+    const ciphertext = await owner.encrypt(ORG_ID, "owner-secret");
+    const originalStore = (fieldEncryption as unknown as { keyStore: OrgEncryptionKeyStore })
+      .keyStore;
+    (fieldEncryption as unknown as { keyStore: OrgEncryptionKeyStore }).keyStore = store;
+    try {
+      const otherOrg = "00000000-0000-4000-8000-000000000002";
+      for (const key of ["OPENAI_API_KEY", "ORDINARY_CONFIG"]) {
+        const error = await rejection(
+          encryptAgentEnvVarsForStorage(otherOrg, { [key]: ciphertext }),
+        );
+        expect(error).toMatchObject({ code: "FIELD_ENCRYPTION_ORGANIZATION_MISMATCH" });
+        expect(String(error)).not.toContain("owner-secret");
+        expect(String(error)).not.toContain(ciphertext);
+      }
+      expect(await encryptAgentEnvVarsForStorage(ORG_ID, { OPENAI_API_KEY: ciphertext })).toEqual({
+        OPENAI_API_KEY: ciphertext,
+      });
+    } finally {
+      (fieldEncryption as unknown as { keyStore: OrgEncryptionKeyStore }).keyStore = originalStore;
+    }
   });
 });

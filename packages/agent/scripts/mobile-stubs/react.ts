@@ -10,7 +10,8 @@
 // `@types/react/index.d.ts`, then dies parsing TypeScript-only syntax
 // (`export as namespace React`).
 //
-// The stub exposes a Proxy-backed namespace so `React.useState`,
+// The stub exposes a Proxy-backed namespace, with each named export also
+// defined as an own enumerable property, so `React.useState`,
 // `React.createElement`, and friends evaluate to no-op functions when
 // touched. Nothing at runtime should call them — the mobile bundle never
 // executes JSX — so this is a strictly-typed safety net.
@@ -22,10 +23,57 @@ const NOOP_FN = function noopReactStub() {
 
 const FRAGMENT = Symbol("React.Fragment");
 
+// Bun lowers `import * as React` by copying the stub's own property names
+// onto a fresh namespace object. Proxy get/has traps alone do not populate
+// that namespace, so every named export must also be an own property of the
+// proxy target; the get trap below still supplies each value.
+const REACT_EXPORTS = [
+  "Children",
+  "Component",
+  "Fragment",
+  "Profiler",
+  "PureComponent",
+  "StrictMode",
+  "Suspense",
+  "cloneElement",
+  "createContext",
+  "createElement",
+  "createRef",
+  "forwardRef",
+  "isValidElement",
+  "lazy",
+  "memo",
+  "startTransition",
+  "use",
+  "useCallback",
+  "useContext",
+  "useDebugValue",
+  "useDeferredValue",
+  "useEffect",
+  "useId",
+  "useImperativeHandle",
+  "useInsertionEffect",
+  "useLayoutEffect",
+  "useMemo",
+  "useReducer",
+  "useRef",
+  "useState",
+  "useSyncExternalStore",
+  "useTransition",
+  "version",
+];
+
 function makeReactProxy() {
   const target = function reactStub() {
     return undefined;
   };
+  for (const name of REACT_EXPORTS) {
+    Object.defineProperty(target, name, {
+      configurable: true,
+      enumerable: true,
+      value: undefined,
+    });
+  }
   return new Proxy(target, {
     get(_t, prop) {
       if (prop === "default") return module.exports;
