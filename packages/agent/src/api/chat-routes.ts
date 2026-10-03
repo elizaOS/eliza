@@ -18,6 +18,7 @@ import {
   type ChatToolCallEvent,
   type ChatTurnStatus,
   type Content,
+  compareMemoryIds,
   createMessageMemory,
   type EffectReceipt,
   ElizaError,
@@ -420,7 +421,7 @@ export function compareCreatedAtAscending(
   },
 ): number {
   if (left.createdAt === right.createdAt) {
-    return (left.id ?? "").localeCompare(right.id ?? "");
+    return compareMemoryIds(left.id ?? "", right.id ?? "");
   }
   const leftVal =
     typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
@@ -430,7 +431,7 @@ export function compareCreatedAtAscending(
     typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
       ? right.createdAt
       : -1;
-  return leftVal - rightVal || (left.id ?? "").localeCompare(right.id ?? "");
+  return leftVal - rightVal || compareMemoryIds(left.id ?? "", right.id ?? "");
 }
 // ---------------------------------------------------------------------------
 // Exported types
@@ -1880,8 +1881,8 @@ export async function getRecentVisibleAssistantMemoryTextSince(
 /**
  * Orders candidate assistant turns newest-first, treating a missing or
  * non-finite `createdAt` as epoch zero so a poisoned timestamp can never make
- * the comparator inconsistent, and breaking ties on ascending id so the
- * selected turn is deterministic rather than dependent on storage order.
+ * the comparator inconsistent. Same-millisecond ties follow UUID order, higher
+ * id first, matching the store.
  */
 export function compareAssistantTurnRecencyDescending(
   a: {
@@ -1903,7 +1904,7 @@ export function compareAssistantTurnRecencyDescending(
       : 0;
   return (
     bCreated - aCreated ||
-    (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+    compareMemoryIds(b.id ? String(b.id) : "", a.id ? String(a.id) : "")
   );
 }
 export async function getRecentVisibleAssistantMemorySince(

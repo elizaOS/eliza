@@ -43,6 +43,7 @@ import {
   type AgentRuntime,
   type ConnectorAccount,
   type ConnectorAccountManager,
+  compareMemoryIds,
   createUniqueUuid,
   expandConnectorSourceFilter,
   getConnectorAccountManager,
@@ -1745,7 +1746,7 @@ async function loadLatestRoomMemory(
             : 0;
         return (
           rightCreated - leftCreated ||
-          (left.id ?? "").localeCompare(right.id ?? "")
+          compareMemoryIds(right.id ?? "", left.id ?? "")
         );
       });
     return candidates[0] ?? null;
@@ -1900,7 +1901,7 @@ async function loadInboxMessages(
       typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
         ? a.timestamp
         : 0;
-    return bTime - aTime || a.id.localeCompare(b.id);
+    return bTime - aTime || compareMemoryIds(b.id, a.id);
   });
   const ordered = deduped.slice(0, limit);
   await Promise.all(
