@@ -1944,9 +1944,11 @@ async function runLifeConnectedQueryInner(args: {
         data: toActionData(next),
       };
     }
+    // "Today" is the owner's calendar day, not the host's.
+    const ownerTimeZone = await resolveOwnerTimeZone(runtime, new Date());
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
-      ...dayRange(0),
-      timeZone: resolveDefaultTimeZone(),
+      ...dayRange(0, ownerTimeZone),
+      timeZone: ownerTimeZone,
     });
     const fallback =
       feed.events.length === 0
