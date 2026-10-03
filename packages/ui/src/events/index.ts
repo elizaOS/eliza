@@ -484,6 +484,7 @@ function dropOldestPendingNavigateViewRequest(): void {
  */
 export function dispatchNavigateViewRequest(
   detail: NavigateViewDetail,
+  options?: { onRejected: () => void },
 ): Promise<boolean> {
   if (typeof window === "undefined") return Promise.resolve(false);
   navigateViewDispatchEpoch += 1;
@@ -502,6 +503,7 @@ export function dispatchNavigateViewRequest(
       const pendingIndex = pendingNavigateViewRequests.indexOf(request);
       if (pendingIndex >= 0)
         pendingNavigateViewRequests.splice(pendingIndex, 1);
+      if (!applied) options?.onRejected();
       navigateViewRequestResolvers.get(request)?.(applied);
       navigateViewRequestResolvers.delete(request);
     },

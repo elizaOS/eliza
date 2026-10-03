@@ -695,7 +695,10 @@ export interface AppActions {
   /** Restore the active personal conversation; null means recovery is unavailable. */
   ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
-  handleSelectConversation: (id: string) => Promise<void>;
+  handleSelectConversation: (
+    id: string,
+    options?: { onRejected: () => void },
+  ) => Promise<void>;
   /**
    * Replace the active thread with a window CENTERED on `messageId` so a
    * keyword-search jump can scroll to a hit older than the most-recent window

@@ -14,6 +14,10 @@
  * unrecognized paths, so an unknown deep link is non-routable rather than
  * silently opening chat.
  */
+import { validateUuid } from "@elizaos/core/utils/uuid";
+import type { NotificationChatRequest } from "@elizaos/ui/state/notifications/navigate-deep-link";
+import { readNotificationChatTarget } from "@elizaos/ui/state/notifications/navigate-deep-link";
+
 const ASSISTANT_ENTRY_SOURCE = "assistant-entry";
 const ASSISTANT_LAUNCH_TEXT_KEYS = ["text", "q", "query", "body"] as const;
 
@@ -40,6 +44,7 @@ export interface DeepLinkNavigationIntent {
    * parse nested forms via the structured settings hash route helpers.
    */
   subview?: string;
+  payload?: NotificationChatRequest;
 }
 
 /**
@@ -59,7 +64,24 @@ export interface DeepLinkNavigationIntent {
 export function resolveDeepLinkNavigationIntent(
   path: string,
   searchParams?: URLSearchParams,
-): DeepLinkNavigationIntent | null {
+): DeepLinkNavigationIntent | false | null {
+  if (path === "chat" && searchParams?.has("notificationId")) {
+    if (!validateUuid(searchParams.get("notificationId"))) return false;
+    const selectors: Record<string, unknown> = {};
+    for (const key of ["conversationId", "messageId"]) {
+      if (searchParams.has(key)) selectors[key] = searchParams.get(key);
+    }
+    const target = readNotificationChatTarget(selectors);
+    if (target === null) return false;
+    return {
+      viewId: "chat",
+      viewPath: "/chat",
+      payload: {
+        kind: "notification-chat",
+        ...(target ? { target } : {}),
+      },
+    };
+  }
   // eliza://connectors → Settings → Connectors index.
   // eliza://settings/connectors/<provider> → Settings → connector detail.
   if (path === "connectors" || path === "settings/connectors") {

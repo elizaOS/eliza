@@ -2400,8 +2400,19 @@ export function ChatOverlay({
       try {
         // Select the hit's conversation and let its recent window load first, so
         // the in-window case (the common one) scrolls without a second fetch.
-        await handleSelectConversation(result.conversationId);
+        let rejected = false;
+        if (onMissing)
+          await handleSelectConversation(result.conversationId, {
+            onRejected: () => {
+              rejected = true;
+            },
+          });
+        else await handleSelectConversation(result.conversationId);
         if (!isCurrent()) return false;
+        if (rejected) {
+          onMissing?.();
+          return false;
+        }
         let el = await waitForSearchAnchor(anchorId, 20);
         if (!isCurrent()) return false;
         if (!el) {
