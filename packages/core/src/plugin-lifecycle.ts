@@ -116,9 +116,8 @@ type RuntimeWithPluginLifecycle = IAgentRuntime &
 		__elizaPluginLifecycleInstalled?: boolean;
 		__elizaPluginOwnership?: Map<string, PluginOwnership>;
 		// The concrete runtime owns the chat pre-handler registry; the lifecycle
-		// wrapper only needs its size to tell a fresh registration from an
-		// id-keyed upsert of an existing handler.
-		chatPreHandlerRegistry?: { readonly size: number };
+		// wrapper only needs to know whether an id is already registered.
+		chatPreHandlerRegistry?: { has(id: string): boolean };
 		registerDatabaseAdapter: (adapter: IAgentRuntime["adapter"]) => void;
 		unloadPlugin?: (pluginName: string) => Promise<PluginOwnership | null>;
 		reloadPlugin?: (plugin: Plugin) => Promise<void>;
@@ -1003,16 +1002,31 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		handler: RuntimeChatPreHandler,
 	) => {
 		const capture = pluginRegistrationContext.getStore();
-		const sizeBefore = runtimeWithLifecycle.chatPreHandlerRegistry?.size ?? 0;
-		originalRegisterChatPreHandler(handler);
-		if (!capture) return;
-		// register() is an id-keyed upsert; only claim ownership when THIS call
-		// added a new id, so teardown never deletes a handler another owner had
-		// already installed under the same id.
-		const sizeAfter = runtimeWithLifecycle.chatPreHandlerRegistry?.size ?? 0;
-		if (sizeAfter > sizeBefore) {
-			pushUniqueString(capture.ownership.chatPreHandlerIds, handler.id);
+		if (!capture) {
+			originalRegisterChatPreHandler(handler);
+			return;
 		}
+		// register() is an id-keyed upsert. Across plugin boundaries that would
+		// displace another owner's handler, which teardown cannot restore
+		// (#12658), so plugin registration is first-wins like actions/providers/
+		// evaluators. Re-registering an id this plugin already owns stays safe.
+		if (
+			runtimeWithLifecycle.chatPreHandlerRegistry?.has(handler.id) &&
+			!capture.ownership.chatPreHandlerIds.includes(handler.id)
+		) {
+			runtimeWithLifecycle.logger.warn(
+				{
+					src: "agent",
+					agentId: runtimeWithLifecycle.agentId,
+					plugin: capture.ownership.pluginName,
+					preHandler: handler.id,
+				},
+				"Chat pre-handler id already registered; keeping the existing handler",
+			);
+			return;
+		}
+		originalRegisterChatPreHandler(handler);
+		pushUniqueString(capture.ownership.chatPreHandlerIds, handler.id);
 	}) as typeof runtimeWithLifecycle.registerChatPreHandler;
 
 	runtimeWithLifecycle.registerResponseHandlerEvaluator = ((

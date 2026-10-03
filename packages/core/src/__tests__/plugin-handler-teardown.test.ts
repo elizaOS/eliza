@@ -106,3 +106,71 @@ it("re-registering after unload installs fresh handler instances", async () => {
 		),
 	).toHaveLength(1);
 });
+
+type PreHandler = NonNullable<Plugin["chatPreHandlers"]>[number];
+
+function preHandlerPlugin(name: string, handler: PreHandler): Plugin {
+	return {
+		name,
+		description: "Same-id chat pre-handler fixture",
+		chatPreHandlers: [handler],
+	};
+}
+
+function livePreHandler(runtime: unknown, id: string) {
+	return (runtime as RuntimeWithPreHandlerRegistry).chatPreHandlerRegistry
+		.list()
+		.find((handler) => handler.id === id);
+}
+
+it("a second plugin's same-id chat pre-handler never displaces or outlives the first", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown same id", bio: [] },
+		logLevel: "fatal",
+	});
+	const first: PreHandler = {
+		id: "shared-pre-handler",
+		tryHandle: async () => null,
+	};
+	const second: PreHandler = {
+		id: "shared-pre-handler",
+		tryHandle: async () => null,
+	};
+
+	await runtime.registerPlugin(preHandlerPlugin("pre-handler-first", first));
+	await runtime.registerPlugin(preHandlerPlugin("pre-handler-second", second));
+	// Teardown cannot restore a displaced incumbent, so a plugin-boundary
+	// same-id registration is first-wins, like actions/providers/evaluators.
+	expect(livePreHandler(runtime, "shared-pre-handler")).toBe(first);
+
+	await runtime.unloadPlugin("pre-handler-second");
+	expect(livePreHandler(runtime, "shared-pre-handler")).toBe(first);
+
+	await runtime.unloadPlugin("pre-handler-first");
+	expect(livePreHandler(runtime, "shared-pre-handler")).toBeUndefined();
+});
+
+it("unloading a plugin whose same-name response-handler evaluators were skipped keeps the incumbent's", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown same name", bio: [] },
+		logLevel: "fatal",
+	});
+	const incumbent = buildPlugin();
+	await runtime.registerPlugin(incumbent);
+	// Response-handler (field) evaluator registration skips a duplicate name,
+	// so the second plugin never owns the incumbent's evaluators.
+	await runtime.registerPlugin({
+		...buildPlugin(),
+		name: "handler-teardown-duplicate",
+	});
+	await runtime.unloadPlugin("handler-teardown-duplicate");
+
+	expect(runtime.responseHandlerEvaluators).toContain(
+		incumbent.responseHandlerEvaluators?.[0],
+	);
+	expect(runtime.responseHandlerFieldEvaluators).toContain(
+		incumbent.responseHandlerFieldEvaluators?.[0],
+	);
+});
