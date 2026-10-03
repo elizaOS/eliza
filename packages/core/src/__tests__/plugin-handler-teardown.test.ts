@@ -90,21 +90,26 @@ it("re-registering after unload installs fresh handler instances", async () => {
 
 	await runtime.registerPlugin(buildPlugin());
 	await runtime.unloadPlugin("handler-teardown-fixture");
-	// A leaked registration would make this a silent duplicate-skip; a clean
-	// teardown lets the fresh instances register again.
-	await runtime.registerPlugin(buildPlugin());
+	// A leaked registration would make this a silent duplicate-skip that keeps
+	// the stale instances live; a clean teardown lets the fresh ones register.
+	const fresh = buildPlugin();
+	await runtime.registerPlugin(fresh);
 
-	expect(preHandlerIds(runtime)).toContain("fixture-pre-handler");
-	expect(
-		runtime.responseHandlerEvaluators.filter(
-			(evaluator) => evaluator.name === "FIXTURE_RH_EVALUATOR",
-		),
-	).toHaveLength(1);
-	expect(
-		runtime.responseHandlerFieldEvaluators.filter(
-			(evaluator) => evaluator.name === "fixtureField",
-		),
-	).toHaveLength(1);
+	expect(livePreHandler(runtime, "fixture-pre-handler")).toBe(
+		fresh.chatPreHandlers?.[0],
+	);
+	const liveEvaluators = runtime.responseHandlerEvaluators.filter(
+		(evaluator) => evaluator.name === "FIXTURE_RH_EVALUATOR",
+	);
+	expect(liveEvaluators).toHaveLength(1);
+	expect(liveEvaluators[0]).toBe(fresh.responseHandlerEvaluators?.[0]);
+	const liveFieldEvaluators = runtime.responseHandlerFieldEvaluators.filter(
+		(evaluator) => evaluator.name === "fixtureField",
+	);
+	expect(liveFieldEvaluators).toHaveLength(1);
+	expect(liveFieldEvaluators[0]).toBe(
+		fresh.responseHandlerFieldEvaluators?.[0],
+	);
 });
 
 type PreHandler = NonNullable<Plugin["chatPreHandlers"]>[number];
