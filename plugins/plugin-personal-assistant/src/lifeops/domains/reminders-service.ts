@@ -730,19 +730,9 @@ export function buildReminderBody(args: {
   nearbyReminderTitles?: string[];
   derivedTarget?: Record<string, unknown> | null;
 }): string {
-  const focus = readLadderRungTitle(args.derivedTarget) ?? args.title;
-  const parts: string[] = [];
-  if (args.lifecycle === "escalation") {
-    parts.push(`Follow-up reminder: ${focus}`);
-  } else {
-    parts.push(`Reminder: ${focus}`);
-  }
-  if (args.dueAt) {
-    parts.push(
-      `Due: ${args.timezone ? new Date(args.dueAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.dueAt).toLocaleString()}`,
-    );
-  }
-  return parts.join("\n");
+  // Timing and delivery identity remain on the saved occurrence and receipts.
+  // The alert itself is the owner's message, including the current ladder rung.
+  return readLadderRungTitle(args.derivedTarget) ?? args.title;
 }
 
 // Stretch cadence + walk-out / weekend / late-evening rules live as
@@ -4664,7 +4654,7 @@ export class RemindersDomain {
         presentation = createReminderPresentation(
           reminderBody,
           reminderBody,
-          "Reminder",
+          reminderBody,
         );
       if (args.channel === "in_app") {
         connectorRef = "system:in_app";
