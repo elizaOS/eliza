@@ -2961,10 +2961,15 @@ public class ElizaAgentService extends Service {
             toStop = agentProcess;
             outPump = stdoutPump;
             errPump = stderrPump;
+            wasDetached = detachedAgentMode;
+            if (wasDetached) {
+                // Keep ownership and credentials retryable until termination is
+                // confirmed. Serialize this with adoption/start under the same lock.
+                stopDetachedAgentProcess();
+            }
             agentProcess = null;
             stdoutPump = null;
             stderrPump = null;
-            wasDetached = detachedAgentMode;
             detachedAgentMode = false;
             detachedLaunchStartedAtMs = 0L;
             currentLocalAgentToken = null;
@@ -2979,7 +2984,6 @@ public class ElizaAgentService extends Service {
         persistDetachedLaunchTimestamp(0L);
         if (wasDetached) {
             appendDiagnosticEvent("stop-detached-agent", null);
-            stopDetachedAgentProcess();
         }
         if (toStop == null) {
             return;
@@ -3008,26 +3012,24 @@ public class ElizaAgentService extends Service {
         File abiDir = agentAbiDir(abi);
         File bun = preferPackagedExecutable(new File(abiDir, BUN_BINARY), "libeliza_bun.so");
         File bundle = new File(agentRoot(), AGENT_BUNDLE_NAME);
-        String killCommand = "pkill -f " + shellQuote(bun.getAbsolutePath())
-            + " 2>/dev/null || true; pkill -f "
-            + shellQuote(bundle.getAbsolutePath()) + " 2>/dev/null || true";
         try {
-            Process killer = new ProcessBuilder("/system/bin/sh", "-c", killCommand)
-                .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
-                .redirectOutput(ProcessBuilder.Redirect.to(new File("/dev/null")))
-                .redirectError(ProcessBuilder.Redirect.to(new File("/dev/null")))
-                .start();
-            long deadline = System.currentTimeMillis() + PROCESS_TERMINATE_GRACE_MS;
-            while (killer.isAlive() && System.currentTimeMillis() < deadline) {
-                Thread.sleep(100);
+            // Mirror startup's executable selection, including unwrapped and
+            // extracted loaders and all supported ABIs.
+            String loaderName = findMuslLoader(abiDir);
+            if (loaderName == null) throw new IOException("Resident loader unavailable");
+            File loader = new File(abiDir, loaderName);
+            String packagedLoaderName = packagedMuslLoaderName(abi);
+            if (packagedLoaderName != null) {
+                loader = preferPackagedExecutable(loader, packagedLoaderName);
+                File realLoader = new File(nativeLibraryDir(),
+                    packagedLoaderName.replace(".so", "_real.so"));
+                if (realLoader.isFile()) loader = realLoader;
             }
-            if (killer.isAlive()) {
-                killer.destroyForcibly();
-            }
-        } catch (IOException error) {
-            Log.w(TAG, "Failed to stop detached agent process: " + error.getMessage());
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
+            WorkflowSurvivorInventory.stopResident(bun, loader, bundle);
+        } catch (Exception error) {
+            // Never fall back to path-wide signals: those also kill admitted workers.
+            Log.w(TAG, "Resident stop identity unproven; preserving processes", error);
+            throw new IllegalStateException("Resident stop identity unproven", error);
         }
     }
 
