@@ -7,7 +7,11 @@
  * surfaces write under. Lookup failures reject instead of selecting another identity. Used to attribute owner-scoped trust and permissions.
  */
 import { ElizaError } from "./errors";
-import { deterministicOwnerEntityId, resolveCanonicalOwnerId } from "./roles";
+import {
+	deterministicOwnerEntityId,
+	hasConfiguredCanonicalOwner,
+	resolveOwnerEntityIdOrDefault,
+} from "./roles";
 import type { IAgentRuntime } from "./types/runtime.js";
 import { validateUuid } from "./utils.ts";
 
@@ -24,9 +28,10 @@ export function resolveFallbackOwnerEntityId(
 export async function resolveOwnerEntityId(
 	runtime: IAgentRuntime,
 ): Promise<string | null> {
-	const configuredOwnerId = resolveCanonicalOwnerId(runtime);
-	if (configuredOwnerId) {
-		return configuredOwnerId;
+	// Configured owners outrank world metadata, so a non-UUID configured id
+	// takes the deterministic fallback instead of the world scan.
+	if (hasConfiguredCanonicalOwner(runtime)) {
+		return resolveOwnerEntityIdOrDefault(runtime);
 	}
 
 	let phase = "rooms";
@@ -44,13 +49,7 @@ export async function resolveOwnerEntityId(
 			worldId = room.worldId;
 			const world = await runtime.getWorld(room.worldId);
 			const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
-			// Connector platform identifiers are not entity IDs. Legacy connector
-			// worlds sometimes persisted numeric provider IDs in ownership.ownerId;
-			// reject them here exactly as resolveCanonicalOwnerId does, so this
-			// resolver cannot fork the owner subject_id away from every other owner
-			// resolver (all of which validateUuid the same field). Skip an invalid
-			// world and keep scanning; an all-invalid result falls through to the
-			// deterministic fallback.
+			// Legacy connector worlds may hold a platform id here (see roles.ts).
 			const candidateOwnerId = validateUuid(metadata.ownership?.ownerId);
 			if (candidateOwnerId) return candidateOwnerId;
 		}
