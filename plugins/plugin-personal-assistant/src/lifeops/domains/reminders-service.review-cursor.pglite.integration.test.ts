@@ -25,6 +25,7 @@ let service: LifeOpsService;
 let roomId: UUID;
 let nextTime = Date.parse("2026-10-03T02:28:10.796Z");
 beforeAll(async () => {
+  vi.setSystemTime(new Date("2026-10-02T20:00:00.000Z"));
   vi.stubEnv("ELIZA_DISABLE_LIFEOPS_SCHEDULER", "1");
   fixture = await createLifeOpsTestRuntime({ withLLM: false });
   await TaskService.stop(fixture.runtime);
@@ -72,6 +73,7 @@ afterEach(() => {
 afterAll(async () => {
   await fixture?.cleanup();
   vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 
 async function reviewFixture(

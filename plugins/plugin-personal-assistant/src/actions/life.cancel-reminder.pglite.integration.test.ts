@@ -35,6 +35,7 @@ let fixture: Awaited<ReturnType<typeof createLifeOpsTestRuntime>>;
 let service: LifeOpsService;
 let roomId: UUID;
 beforeAll(async () => {
+  vi.setSystemTime(new Date("2026-10-02T20:00:00.000Z"));
   vi.stubEnv("ELIZA_DISABLE_LIFEOPS_SCHEDULER", "1");
   fixture = await createLifeOpsTestRuntime({ withLLM: false });
   await TaskService.stop(fixture.runtime);
@@ -79,6 +80,7 @@ afterEach(() => {
 afterAll(async () => {
   await fixture?.cleanup();
   vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 
 async function seed(title: string) {
@@ -373,6 +375,12 @@ it("requires an occurrence ID for recurring reminders instead of selecting a new
     kind: "habit",
     timezone: "UTC",
     cadence: { kind: "daily", windows: ["morning"] },
+    windowPolicy: {
+      timezone: "UTC",
+      windows: [
+        { name: "morning", label: "Morning", startMinute: 480, endMinute: 600 },
+      ],
+    },
     metadata: {
       ownerSurface: "OWNER_REMINDERS",
       nativeProjection: "in_app_only",
