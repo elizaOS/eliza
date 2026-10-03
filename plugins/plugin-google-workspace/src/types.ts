@@ -911,9 +911,9 @@ export interface IGoogleGmailService extends Service {
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
-      threadId?: string;
     }
   ): Promise<GoogleGmailSendResult>;
   sendGmailMessage(

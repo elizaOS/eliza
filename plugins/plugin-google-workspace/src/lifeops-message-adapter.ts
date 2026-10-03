@@ -71,10 +71,10 @@ interface GmailDraftContext {
     accountId: string;
     to: string;
     subject: string;
-    inReplyTo: string | null;
-    references: string | null;
+    inReplyTo: string;
+    references: string;
     externalId: string;
-    threadId?: string;
+    threadId: string;
   };
 }
 
@@ -116,6 +116,12 @@ function asReceivedAtMs(value: string): number {
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function gmailReplyReferences(referencesHeader: string | null, messageIdHeader: string): string {
+  if (!referencesHeader) return messageIdHeader;
+  if (referencesHeader.includes(messageIdHeader)) return referencesHeader;
+  return `${referencesHeader} ${messageIdHeader}`;
 }
 
 function mapGmailMessage(accountId: string, message: GoogleGmailMessageSummary): MessageRef {
@@ -551,14 +557,29 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       return { draftId, preview, snapshot: structuredClone(draft) };
     }
     const message = await this.ensureMessage(runtime, draft.inReplyToId);
+    const threadId = message.threadId?.trim();
+    if (!threadId) {
+      throw new ElizaError("Gmail reply requires the original thread id", {
+        code: "GMAIL_REPLY_THREAD_REQUIRED",
+      });
+    }
+    const inReplyTo = metadataString(message.metadata ?? {}, "messageIdHeader");
+    if (!inReplyTo) {
+      throw new ElizaError("Gmail reply requires the original Message-ID header", {
+        code: "GMAIL_REPLY_MESSAGE_ID_REQUIRED",
+      });
+    }
     const replyEnvelope = {
       accountId: messageAccountId(message),
       to: metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier,
       subject: message.subject ?? "Re: your message",
-      inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
-      references: metadataString(message.metadata ?? {}, "references"),
+      inReplyTo,
+      references: gmailReplyReferences(
+        metadataString(message.metadata ?? {}, "referencesHeader"),
+        inReplyTo
+      ),
       externalId: message.externalId,
-      threadId: message.threadId,
+      threadId,
     };
     draft.to = [{ identifier: replyEnvelope.to }];
     draft.worldId = replyEnvelope.accountId;

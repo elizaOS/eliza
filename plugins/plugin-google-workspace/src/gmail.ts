@@ -641,11 +641,18 @@ export class GoogleGmailClient {
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
-      threadId?: string;
     }
   ): Promise<GoogleGmailSendResult> {
+    const threadId = params.threadId.trim();
+    if (!threadId) {
+      throw new ElizaError("Gmail reply send requires the original thread id.", {
+        code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED",
+        severity: "fatal",
+      });
+    }
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc && params.cc.length > 0
@@ -659,7 +666,7 @@ export class GoogleGmailClient {
       "",
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
-    return this.sendRawGmailMessage(params, raw, "gmail.sendGmailReply");
+    return this.sendRawGmailMessage({ ...params, threadId }, raw, "gmail.sendGmailReply");
   }
 
   async sendGmailMessage(
