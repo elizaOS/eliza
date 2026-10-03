@@ -40,6 +40,16 @@ internal object BrowserDockController {
         }
     }
 
+    /** Preserve the visible embedded browser instead of selecting its launcher tab. */
+    fun present(activity: Activity) {
+        ChromiumBrowserLauncher.requireTrustedBrowser(activity)
+        if (Build.VERSION.SDK_INT >= 33 && ActivityEmbeddingController.getInstance(activity).isActivityEmbedded(activity)) {
+            BrowserEmbeddingTrust.requireInstalledTrust(activity)
+            return
+        }
+        ChromiumBrowserLauncher.present(activity)
+    }
+
     fun open(activity: Activity, url: String, panelWidthDp: Int) {
         ChromiumBrowserLauncher.validatedUrl(url)
         ChromiumBrowserLauncher.requireTrustedBrowser(activity)

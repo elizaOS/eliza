@@ -81,3 +81,9 @@ must observe and validate the relevant browser target before any workflow effect
 Other platforms reject these operations. Installed pane/input qualification,
 rotation, existing-tab continuity, Close/return and persistent entry are separate
 integration requirements; these APIs alone do not provide a complete helper UI.
+
+When the host is already embedded, `presentBrowser()` revalidates the installed
+browser and host embedding trust and preserves the existing pane without sending
+a launcher intent. It still does not identify or authorize a task tab: callers
+must freshly observe before acting. Outside an existing split, presentation keeps
+the normal browser-launcher behavior; restoring a closed split is separate work.

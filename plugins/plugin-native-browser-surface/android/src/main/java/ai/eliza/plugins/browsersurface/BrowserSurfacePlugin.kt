@@ -122,7 +122,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     fun presentBrowser(call: PluginCall) {
         activity.runOnUiThread {
             try {
-                ChromiumBrowserLauncher.present(activity)
+                BrowserDockController.present(activity)
                 call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME) })
             } catch (error: BrowserLaunchException) {
                 // error-policy:J1 Presentation is denied when provisioned identity is unavailable.
