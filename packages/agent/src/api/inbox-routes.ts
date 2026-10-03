@@ -43,6 +43,7 @@ import {
   type AgentRuntime,
   type ConnectorAccount,
   type ConnectorAccountManager,
+  compareMemoryIds,
   createUniqueUuid,
   expandConnectorSourceFilter,
   getConnectorAccountManager,
@@ -2449,7 +2450,7 @@ async function loadInboxChats(
       typeof a.lastMessageAt === "number" && Number.isFinite(a.lastMessageAt)
         ? a.lastMessageAt
         : 0;
-    return bLast - aLast || a.id.localeCompare(b.id);
+    return bLast - aLast || compareMemoryIds(b.id, a.id);
   });
   return chats;
 }
