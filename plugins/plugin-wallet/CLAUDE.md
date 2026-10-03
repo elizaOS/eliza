@@ -19,6 +19,7 @@ Adds a unified wallet action+provider surface to an Eliza agent, replacing the p
 | `WALLET` | `pump_fun_buy` | Buy a pump.fun token on Solana via PumpPortal trade-local, local signing, browser coin-page open, and Solana RPC submission. |
 | `WALLET` | `token_info` | Read-only token/market data (DexScreener, Birdeye, CoinGecko). |
 | `WALLET` | `search_address` | Birdeye wallet/portfolio lookup by address. |
+| `WALLET` | `token_safety` | Read-only GoPlus rug-risk check of one Solana mint (authorities, Token-2022 extensions, holder concentration, liquidity) with an avoid/caution/no-major-flags verdict. |
 | `TRADE` | `inspect_account`, `inspect_session`, `submit_order` | Governed Steward trading account/session inspection and confirmed order intent for Hyperliquid and Polymarket. |
 
 Similes handled: `SWAP`, `SWAP_SOLANA`, `TRANSFER`, `TRANSFER_TOKEN`, `WALLET_SWAP`, `WALLET_TRANSFER`, `CROSS_CHAIN_TRANSFER`, `PREPARE_TRANSFER`, `WALLET_ACTION`, `WALLET_GOV`, `PUMP_FUN_BUY`, `PUMPFUN_BUY`, `TOKEN_INFO`, `BIRDEYE_LOOKUP`, `BIRDEYE_SEARCH`, `WALLET_SEARCH_ADDRESS`.
@@ -111,6 +112,8 @@ plugins/plugin-wallet/
       birdeye/                 BirdeyeService, market/trending/portfolio providers
       dexscreener/             DexScreenerService
       token-info/              TokenInfoService (multi-provider dispatcher)
+      goplus/                  GoPlus Solana token security client + WALLET token_safety handler
+                               (shared with the terminal's token safety route)
       lpinfo/                  kaminoPlugin, lpinfoPlugin, steerPlugin re-exports
       news/                    defiNewsPlugin, NewsDataService
     lp/

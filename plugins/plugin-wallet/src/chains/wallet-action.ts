@@ -1,15 +1,15 @@
 /**
  * Defines `walletRouterAction`, the single `WALLET` action that dispatches
  * every wallet subaction (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`,
- * `token_info`, `search_address`) and absorbs the legacy per-verb similes
+ * `token_info`, `search_address`, `token_safety`) and absorbs the legacy per-verb similes
  * (`SWAP`, `TRANSFER`, `CROSS_CHAIN_TRANSFER`, `WALLET_GOV`, `PUMP_FUN_BUY`,
  * `TOKEN_INFO`, `BIRDEYE_SEARCH`, …) so older prompts keep working. It parses
  * and validates raw params via `parseWalletRouterParams`, routes financial
  * subactions through the `wallet-context-safety` recipient/injection guards
  * and the `wallet-financial-confirmation` gate before touching
- * `WalletBackendService`, and dispatches the two read-only analytics
- * subactions (`token_info`, `search_address`) directly to their handlers
- * without the financial confirmation gate.
+ * `WalletBackendService`, and dispatches the three read-only analytics
+ * subactions (`token_info`, `search_address`, `token_safety`) directly to
+ * their handlers without the financial confirmation gate.
  */
 import type {
   Action,
@@ -23,6 +23,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { walletSearchAddressHandler } from "../analytics/birdeye/actions/wallet-search-address.js";
+import { tokenSafetyHandler } from "../analytics/goplus/action.js";
 import { tokenInfoHandler } from "../analytics/token-info/action.js";
 import {
   assertEvmTransferRecipientAuthorized,
@@ -82,7 +83,11 @@ const LEGACY_SEARCH_ADDRESS_ACTIONS = new Set([
 ]);
 const GOV_OPS = new Set(["propose", "vote", "queue", "execute"]);
 
-const ANALYTICS_SUBACTIONS = ["token_info", "search_address"] as const;
+const ANALYTICS_SUBACTIONS = [
+  "token_info",
+  "search_address",
+  "token_safety",
+] as const;
 type WalletAnalyticsSubaction = (typeof ANALYTICS_SUBACTIONS)[number];
 
 const WALLET_SUBACTIONS = [
@@ -543,9 +548,9 @@ async function runWalletRouter(
 export const walletRouterAction: Action = {
   name: "WALLET",
   description:
-    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
+    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address); action=token_safety for a GoPlus rug-risk check of a Solana mint (param: address).",
   descriptionCompressed:
-    "WALLET transfer|swap|bridge|gov|pump_fun_buy|token_info|search_address; chain ops + market/portfolio",
+    "WALLET transfer|swap|bridge|gov|pump_fun_buy|token_info|search_address|token_safety; chain ops + market/portfolio + token safety",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
   roleGate: { minRole: "ADMIN" },
@@ -582,6 +587,7 @@ export const walletRouterAction: Action = {
         "pump_fun_buy",
         "token_info",
         "search_address",
+        "token_safety",
       ],
     },
     {
@@ -720,7 +726,7 @@ export const walletRouterAction: Action = {
     {
       name: "address",
       description:
-        "Wallet address for search_address; token contract address for token_info token lookups.",
+        "Wallet address for search_address; token contract address for token_info token lookups; Solana token mint for token_safety.",
       required: false,
       schema: { type: "string" },
     },
@@ -753,6 +759,9 @@ export const walletRouterAction: Action = {
 
     if (subaction === "token_info") {
       return tokenInfoHandler(runtime, message, state, options, callback);
+    }
+    if (subaction === "token_safety") {
+      return tokenSafetyHandler(runtime, message, state, options, callback);
     }
     if (subaction === "search_address") {
       return walletSearchAddressHandler(

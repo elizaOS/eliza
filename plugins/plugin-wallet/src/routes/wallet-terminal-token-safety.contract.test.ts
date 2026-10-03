@@ -1,5 +1,5 @@
 /**
- * Drives the real token safety route and GoPlus parser with a recorded GoPlus
+ * Drives the real token safety route and the shared GoPlus parser with a recorded GoPlus
  * Solana payload and adversarial variants through an injected fetch.
  * Deterministic and keyless; it covers mint validation, each danger flag,
  * unreported fields, upstream errors, stale-cache recovery, and
@@ -9,13 +9,13 @@ import { readFileSync } from "node:fs";
 import type http from "node:http";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { parseGoPlusSolanaTokenSecurity } from "../analytics/goplus/solana-token-security";
 import type { WalletTerminalTokenSafetyResponse } from "../contracts";
 import {
   __expireWalletTerminalTokenSafetyCacheForTests,
   __resetWalletTerminalTokenSafetyRouteForTests,
   __setWalletTerminalTokenSafetyFetchForTests,
   handleWalletTerminalTokenSafetyRoute,
-  parseGoPlusSolanaTokenSecurity,
 } from "./wallet-terminal-token-safety-route";
 
 const recorded = JSON.parse(

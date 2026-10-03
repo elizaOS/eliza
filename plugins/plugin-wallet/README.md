@@ -24,6 +24,7 @@ All write operations default to `mode=prepare` (stages the transaction but does 
 |-----------|-------------|
 | `token_info` | Token and market data from DexScreener, Birdeye, or CoinGecko. |
 | `search_address` | Birdeye wallet portfolio lookup by address. |
+| `token_safety` | GoPlus rug-risk check of a Solana mint with an avoid/caution/no-major-flags verdict (read-only). |
 
 ### LP management
 
