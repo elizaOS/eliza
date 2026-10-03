@@ -108,7 +108,12 @@ export function findWorkspaceSourceEntry(packageDir, subpath, target = "bun") {
       : ["index.node.ts", "index.ts", "index.tsx", "index.node.tsx"];
   for (const candidate of candidates) {
     const full = path.join(srcDir, candidate);
-    if (existsSync(full) && statSync(full).isFile()) return full;
+    if (
+      existsSync(full) &&
+      statSync(full).isFile() &&
+      realpathSync(full).startsWith(`${realpathSync(packageDir)}${path.sep}`)
+    )
+      return full;
   }
   return undefined;
 }

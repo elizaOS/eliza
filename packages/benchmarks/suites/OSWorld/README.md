@@ -13,3 +13,7 @@ Test from this directory:
 ```bash
 python -m pytest
 ```
+
+The OS Symphony vLLM engine uses the supplied API key (or `vLLM_API_KEY`) and
+endpoint (or `vLLM_ENDPOINT_URL`). Authentication is the OpenAI-compatible Bearer
+header derived from that key; the engine does not substitute bundled credentials.

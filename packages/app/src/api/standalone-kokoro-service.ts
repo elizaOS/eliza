@@ -65,7 +65,9 @@ export class StandaloneKokoroService {
     const work = new Promise<void>((resolve, reject) => {
       this.rejectBoot = reject;
       let text = "";
-      const timer = setTimeout(() => this.stop(), 15000);
+      const timer = setTimeout(() => {
+        if (this.child === child) this.stop();
+      }, 15000);
       const failed = () => {
         clearTimeout(timer);
         if (this.child === child) this.stop();

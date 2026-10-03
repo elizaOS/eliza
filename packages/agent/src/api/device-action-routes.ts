@@ -49,8 +49,7 @@ export function deviceRequestCredential(
       ? capabilityHeader.split(",").map((value) => value.trim())
       : [];
   if (
-    capabilities.length >
-      (capabilities.includes("reminders.create.v1") ? 6 : 5) ||
+    capabilities.length > 6 ||
     (capabilities.includes("reminders.local-record.v1") &&
       capabilities.includes("reminders.local-record.v2")) ||
     new Set(capabilities).size !== capabilities.length ||

@@ -353,8 +353,8 @@ export function resolveZeroDeliveryRecovery(args: {
  * the tool-call egress restore here so the user (and the persisted assistant
  * message they read back) sees the real value, while the model, trajectory,
  * logs, and providers upstream keep the surrogate. Best-effort + a zero-cost
- * no-op when PII swap is disabled (no session on the trajectory context) or the
- * text carries no surrogate. Scoped to the reply TEXT only — the `thought`
+ * no-op when both swaps are disabled (no sessions on the trajectory context) or
+ * the text carries no surrogate. Credential surrogates remain redacted. Scoped to the reply TEXT only — the `thought`
  * (reasoning trajectory) is intentionally left pseudonymized.
  */
 export function restorePiiInUserReplyText(text: string): string {

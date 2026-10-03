@@ -107,15 +107,16 @@ export async function createV5MessageContextObject(args: {
   // Enrollment is authenticated by the host, never inferred from user metadata.
   // Interpret against this turn's actual capability even if older dialogue
   // reported a deployment without phone tools. No device effect is authorized.
-  if (getDeviceActionTurn()?.runtime === args.runtime) {
+  const authenticatedDeviceTurn = getDeviceActionTurn();
+  if (authenticatedDeviceTurn?.runtime === args.runtime) {
     events.push({
       id: "authenticated-phone-capability",
       type: "instruction",
       source: "message-service",
       stable: false,
       content:
-        (getDeviceActionTurn()?.viewProfile
-          ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(getDeviceActionTurn()?.viewProfile?.views)}. Do not offer or propose another view. This subset is not approval to execute. `
+        (authenticatedDeviceTurn.viewProfile
+          ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. Do not offer or propose another view. This subset is not approval to execute. `
           : "") +
         (getDeviceActionTurn()?.credential.capabilities?.some(
           (capability) =>

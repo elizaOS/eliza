@@ -1,5 +1,20 @@
 import { types } from "node:util";
 
+// Browser util polyfills may expose isProxy as a throwing stub. Probe only
+// trusted local objects; without native proxy detection, never inspect an
+// untrusted value to grant a control-object exemption.
+const detectProxy = (() => {
+	const inspect = types?.isProxy;
+	if (typeof inspect !== "function") return undefined;
+	try {
+		if (inspect({}) !== false || inspect(new Proxy({}, {})) !== true)
+			return undefined;
+		return inspect;
+	} catch {
+		return undefined;
+	}
+})();
+
 const signalPrototype =
 	typeof AbortSignal === "undefined" ? undefined : AbortSignal.prototype;
 const abortedGetter =
@@ -12,7 +27,8 @@ const abortedGetter =
  * All other values stay in the existing bounded descriptor-only walker.
  */
 export function isRuntimeAbortSignal(value: object): boolean {
-	if (!signalPrototype || !abortedGetter || types.isProxy(value)) return false;
+	if (!detectProxy || !signalPrototype || !abortedGetter || detectProxy(value))
+		return false;
 	if (Object.getPrototypeOf(value) !== signalPrototype) return false;
 	for (const key of Reflect.ownKeys(value)) {
 		const descriptor = Object.getOwnPropertyDescriptor(value, key)!;

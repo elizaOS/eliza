@@ -4,10 +4,40 @@ import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson } from "./response";
 import { StandaloneKokoroService } from "./standalone-kokoro-service";
 
-const service = new StandaloneKokoroService();
-process.once("exit", () => service.stop());
-const seen = new Map<string, number>();
-let active = false;
+interface KokoroHost {
+  service: StandaloneKokoroService;
+  seen: Map<string, number>;
+  active: boolean;
+  stopped: boolean;
+}
+const hosts = new WeakMap<CompatRuntimeState, KokoroHost>();
+const closedHosts = new WeakSet<CompatRuntimeState>();
+const generations = new WeakMap<CompatRuntimeState, number>();
+export function closeStandaloneKokoro(state: CompatRuntimeState): void {
+  closedHosts.add(state);
+  stopStandaloneKokoro(state);
+}
+export function stopStandaloneKokoro(state: CompatRuntimeState): void {
+  generations.set(state, (generations.get(state) ?? 0) + 1);
+  const host = hosts.get(state);
+  if (!host) return;
+  hosts.delete(state);
+  host.stopped = true;
+  host.service.stop();
+}
+function hostFor(state: CompatRuntimeState): KokoroHost {
+  let host = hosts.get(state);
+  if (!host) {
+    host = {
+      service: new StandaloneKokoroService(),
+      seen: new Map(),
+      active: false,
+      stopped: false,
+    };
+    hosts.set(state, host);
+  }
+  return host;
+}
 export async function handleStandaloneKokoroRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -17,6 +47,10 @@ export async function handleStandaloneKokoroRoute(
   const status = req.method === "GET" && path === "/api/tts/kokoro/status";
   if (!status && !(req.method === "POST" && path === "/api/tts/kokoro"))
     return false;
+  const runtime = state.current;
+  const generation = generations.get(state) ?? 0;
+  const current = () =>
+    state.current === runtime && (generations.get(state) ?? 0) === generation;
   const identity = await resolveAuthorizedRouteRole(req, {
     state,
     allowTrustedLocalBypass: false,
@@ -29,6 +63,14 @@ export async function handleStandaloneKokoroRoute(
     sendJson(res, 403, { error: "paired_owner_required" });
     return true;
   }
+  if (!current()) {
+    sendJson(res, 409, { error: "speech_host_changed" });
+    return true;
+  }
+  if (closedHosts.has(state)) {
+    sendJson(res, 503, { error: "speech_host_closed" });
+    return true;
+  }
   if (process.env.ELIZA_KOKORO_ENABLED !== "1") {
     sendJson(
       res,
@@ -39,12 +81,32 @@ export async function handleStandaloneKokoroRoute(
     );
     return true;
   }
+  if (!process.versions.bun) {
+    sendJson(
+      res,
+      status ? 200 : 503,
+      status
+        ? {
+            ready: false,
+            provider: "standalone-kokoro",
+            error: "bun_host_required",
+          }
+        : { error: "bun_host_required" },
+    );
+    return true;
+  }
+  const host = hostFor(state);
+  const { service, seen } = host;
   if (status) {
     try {
       await service.initialize();
+      if (!current() || host.stopped) {
+        sendJson(res, 409, { error: "speech_host_changed" });
+        return true;
+      }
       sendJson(res, 200, {
         ready: service.initialized,
-        busy: active,
+        busy: host.active,
         provider: "standalone-kokoro",
         voice: "af_bella",
         sampleRate: 24000,
@@ -72,7 +134,7 @@ export async function handleStandaloneKokoroRoute(
     sendJson(res, 409, { error: "duplicate_request" });
     return true;
   }
-  if (active || seen.size >= 256) {
+  if (host.active || seen.size >= 256) {
     sendJson(res, 429, { error: "provider_busy" });
     return true;
   }
@@ -91,7 +153,7 @@ export async function handleStandaloneKokoroRoute(
     abort();
     req.destroy();
   }, 45000);
-  active = true;
+  host.active = true;
   try {
     let size = 0;
     const parts: Buffer[] = [];
@@ -131,9 +193,11 @@ export async function handleStandaloneKokoroRoute(
       sendJson(res, 422, { error: "no_speakable_text" });
       return true;
     }
+    if (!current() || host.stopped) throw new Error("Speech host stopped");
     seen.set(key, now + 600000);
     const audio = await service.synthesize(requestId, text, controller.signal);
     controller.signal.throwIfAborted();
+    if (!current() || host.stopped) throw new Error("Speech host stopped");
     if (!res.destroyed) {
       res.writeHead(200, {
         "Content-Type": "audio/wav",
@@ -153,7 +217,7 @@ export async function handleStandaloneKokoroRoute(
     clearTimeout(deadline);
     req.off("aborted", abort);
     res.off("close", close);
-    active = false;
+    host.active = false;
   }
   return true;
 }

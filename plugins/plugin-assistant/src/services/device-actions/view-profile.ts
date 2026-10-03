@@ -29,7 +29,7 @@ export function storedDeviceViewProfile(
   if (value === null || value === undefined) return null;
   if (typeof value !== "string" || value.length > 2048)
     throw new DeviceActionError("View profile unavailable");
-  let row;
+  let row: Record<string, unknown>;
   try {
     row = object(JSON.parse(value));
   } catch {

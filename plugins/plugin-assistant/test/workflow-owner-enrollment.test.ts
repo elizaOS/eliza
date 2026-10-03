@@ -65,6 +65,20 @@ test("workflow ownership and paired device identity remain separate and enforced
         agentId: randomUUID(),
       }).validateWorkflowTarget(canonical, target),
     ).rejects.toThrow();
+    // Installation labels may repeat across authenticated subjects. The exact
+    // enrollment remains authoritative even when their workflow owner matches.
+    const sibling = await service.register(
+      { ...credential, subjectUserId: randomUUID(), deviceKey: "d".repeat(64) },
+      "Other authenticated subject",
+      1,
+      canonical,
+    );
+    expect(sibling.enrollmentId).not.toBe(target.enrollmentId);
+    await service.validateWorkflowTarget(canonical, target);
+    await service.validateWorkflowTarget(canonical, {
+      installationId: sibling.installationId,
+      enrollmentId: sibling.enrollmentId,
+    });
     await pg.exec("UPDATE client_devices SET workflow_owner_id=NULL");
     await service.validateWorkflowTarget(paired, target);
     await expect(

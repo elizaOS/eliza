@@ -40,7 +40,7 @@ process.env.ELIZA_KOKORO_DEFAULT_VOICE_ID = "af_bella";
 const config = resolveKokoroEngineConfig();
 if (!config) throw Error("Missing speech assets");
 const ffi = loadElizaInferenceFfi(library);
-if (Number(ffi.libraryAbiVersion) < 14 || !ffi.kokoroSupported())
+if (Number(ffi.libraryAbiVersion) < 14 || !ffi.kokoroSupported?.())
 	throw Error("Unsupported speech ABI");
 const backend = createKokoroTtsBackend(config, { ffi }),
 	preset = createKokoroSpeakerPreset(config);

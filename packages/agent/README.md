@@ -44,6 +44,20 @@ never repeat the effect. Revision/epoch and account checks fence late results;
 resolved results require a durable evidence reference. Reconciliation does not
 resume the task. This method is deliberately absent from renderer HTTP routes.
 
+## Optional phone workflows
+
+Lean-chat hosts may set `ELIZA_LEAN_CHAT_WORKFLOWS=1` to retain the workflow
+plugin while keeping the lean profile's desktop actuator exclusions. Android
+hosts may independently set `ELIZA_MOBILE_WORKFLOWS=1`; the default remains
+workflow-free, and iOS remains excluded. An explicit `workflow.enabled: false`
+or disabled `plugins.entries.workflow` overrides either opt-in.
+
+Android bundles include the optional workflow plugin, but execution still
+requires the separately verified workflow worker/compiler resource directory
+and the process-host configuration. Enabling the plugin does not establish
+worker readiness or authorize device effects. Use the existing reviewed
+workflow and device-action permission/receipt boundaries.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

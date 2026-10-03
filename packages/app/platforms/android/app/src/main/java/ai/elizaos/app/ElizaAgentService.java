@@ -494,10 +494,9 @@ public class ElizaAgentService extends Service {
      *   {"type":"chunk","dataBase64":".."}                              (per frame)
      *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
      *
-     * Single attempt by design: a connect failure emits a terminal error event
-     * and the WebView falls back to the buffered {@link #requestLocalAgent}
-     * (which carries the cold-load connect retry), so non-idempotent POSTs are
-     * never replayed here. Runs on the caller's thread (AgentPlugin spawns one).
+     * Connect retries happen only before dispatch. A dispatched request is never
+     * replayed here; cancellation and premature EOF report an uncertain outcome.
+     * Runs on the caller's thread (AgentPlugin spawns one).
      */
     /** Closes this transport only; committed runtime effects are not rolled back. */
     public static final class LocalStreamHandle {
@@ -537,7 +536,7 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Send a streaming request over the abstract UDS and translate the agent's
+     * Send a streaming request over the private filesystem UDS and translate the agent's
      * NDJSON stream frames ({@code {stream:"response"|"chunk"|"complete"}}) into
      * the AgentPlugin envelopes. The socket connect carries the cold-boot retry
      * (the agent may not have bound the socket yet); once a frame arrives the
@@ -618,7 +617,7 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Send one buffered request over the abstract UDS and return the agent's
+     * Send one buffered request over the private filesystem UDS and return the agent's
      * response envelope ({@code {status,statusText,headers,body,bodyBase64,
      * bodyEncoding}}) — the exact shape the loopback HTTP path returned, so the
      * AgentPlugin + WebView transport are unchanged. The connect (not the sent
@@ -2962,10 +2961,15 @@ public class ElizaAgentService extends Service {
             toStop = agentProcess;
             outPump = stdoutPump;
             errPump = stderrPump;
+            wasDetached = detachedAgentMode;
+            if (wasDetached) {
+                // Keep ownership and credentials retryable until termination is
+                // confirmed. Serialize this with adoption/start under the same lock.
+                stopDetachedAgentProcess();
+            }
             agentProcess = null;
             stdoutPump = null;
             stderrPump = null;
-            wasDetached = detachedAgentMode;
             detachedAgentMode = false;
             detachedLaunchStartedAtMs = 0L;
             currentLocalAgentToken = null;
@@ -2980,7 +2984,6 @@ public class ElizaAgentService extends Service {
         persistDetachedLaunchTimestamp(0L);
         if (wasDetached) {
             appendDiagnosticEvent("stop-detached-agent", null);
-            stopDetachedAgentProcess();
         }
         if (toStop == null) {
             return;
@@ -3009,9 +3012,19 @@ public class ElizaAgentService extends Service {
         File abiDir = agentAbiDir(abi);
         File bun = preferPackagedExecutable(new File(abiDir, BUN_BINARY), "libeliza_bun.so");
         File bundle = new File(agentRoot(), AGENT_BUNDLE_NAME);
-        File loader = new File(getApplicationInfo().nativeLibraryDir,
-            "arm64-v8a".equals(abi) ? "libeliza_ld_musl_aarch64_real.so" : "libeliza_ld_musl_x86_64_real.so");
         try {
+            // Mirror startup's executable selection, including unwrapped and
+            // extracted loaders and all supported ABIs.
+            String loaderName = findMuslLoader(abiDir);
+            if (loaderName == null) throw new IOException("Resident loader unavailable");
+            File loader = new File(abiDir, loaderName);
+            String packagedLoaderName = packagedMuslLoaderName(abi);
+            if (packagedLoaderName != null) {
+                loader = preferPackagedExecutable(loader, packagedLoaderName);
+                File realLoader = new File(nativeLibraryDir(),
+                    packagedLoaderName.replace(".so", "_real.so"));
+                if (realLoader.isFile()) loader = realLoader;
+            }
             WorkflowSurvivorInventory.stopResident(bun, loader, bundle);
         } catch (Exception error) {
             // Never fall back to path-wide signals: those also kill admitted workers.

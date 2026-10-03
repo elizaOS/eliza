@@ -16,9 +16,8 @@ type Reply =
   | SecureStoreDeleteResult;
 
 export function createAndroidPlatformSecureStore(
-  socketPath = "\0" +
-    (process.env.ELIZA_ANDROID_SECURE_STORE_SOCKET ||
-      "ai.elizaos.app.secure-store"),
+  // Embedding Android hosts supply the abstract socket name without its NUL prefix.
+  socketPath = `\0${process.env.ELIZA_ANDROID_SECURE_STORE_SOCKET || "ai.elizaos.app.secure-store"}`,
   timeoutMs = 15_000,
 ): PlatformSecureStore {
   async function request(

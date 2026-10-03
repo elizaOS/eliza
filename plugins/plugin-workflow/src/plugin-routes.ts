@@ -87,7 +87,13 @@ const workflowRouteList: Route[] = [
     handler: workflowHandler,
   },
   { type: 'GET', path: '/api/workflow/phone/catalog', rawPath: true, handler: workflowHandler },
-  { type: 'POST', path: '/api/workflow/phone/generate', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/phone/generate',
+    rawPath: true,
+    maxBodyBytes: 75000,
+    handler: workflowHandler,
+  },
   { type: 'POST', path: '/api/workflow/phone/validate', rawPath: true, handler: workflowHandler },
   { type: 'POST', path: '/api/workflow/phone/workflows', rawPath: true, handler: workflowHandler },
   {

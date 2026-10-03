@@ -90,7 +90,11 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
-import { handleStandaloneKokoroRoute } from "./standalone-kokoro-routes";
+import {
+  closeStandaloneKokoro,
+  handleStandaloneKokoroRoute,
+  stopStandaloneKokoro,
+} from "./standalone-kokoro-routes";
 import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
 export {
@@ -1116,6 +1120,8 @@ export async function startApiServer(
   const server = await upstreamStartApiServer({
     ...callerOptions,
     onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+      if (compatState.current !== activeRuntime)
+        stopStandaloneKokoro(compatState);
       compatState.current = activeRuntime;
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
@@ -1239,6 +1245,7 @@ export async function startApiServer(
   ) => void;
 
   server.updateRuntime = (runtime: AgentRuntime) => {
+    if (compatState.current !== runtime) stopStandaloneKokoro(compatState);
     compatState.current = runtime;
     clearCompatRuntimeRestart(compatState);
     // Make the runtime immediately visible to upstream routes so hot swaps do
@@ -1265,5 +1272,10 @@ export async function startApiServer(
     })();
   };
 
+  const originalClose = server.close.bind(server);
+  server.close = async () => {
+    closeStandaloneKokoro(compatState);
+    await originalClose();
+  };
   return server;
 }

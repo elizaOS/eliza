@@ -378,6 +378,8 @@ class LMMEnginevLLM(LMMEngine):
                 "An endpoint URL needs to be provided in either the endpoint_url parameter or as an environment variable named vLLM_ENDPOINT_URL"
             )
         if not self.llm_client:
+            # Use the explicitly configured vLLM key. An imported Basic-auth
+            # override previously replaced it with hard-coded credentials.
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
         # Use self.temperature if set, otherwise use the temperature argument
         temp = self.temperature if self.temperature is not None else temperature
