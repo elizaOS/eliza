@@ -28,33 +28,20 @@ PRODUCT_PACKAGES += \
     default-permissions-ai.elizaos.app.xml \
     privapp-permissions-ai.elizaos.app.xml
 
-# KNOWN GAP: `-=` is not a make (or kati) operator — this block is currently
-# a no-op that defines a stray variable, so none of these stock apps are
-# actually removed from any image. Even a working subtraction here could not
-# remove packages contributed by inherited makefiles (inherit-product
-# aggregation is deferred past this file's evaluation). Role/HOME defaults in
-# vendor/eliza/overlays keep Eliza in front regardless; the real de-bloat
-# needs a supported mechanism and boot-level verification. Tracked as a
-# follow-up; do not trust this list as a removal contract.
-PRODUCT_PACKAGES -= \
-    Browser2 \
-    Calendar \
-    Camera2 \
-    Contacts \
-    DeskClock \
-    Dialer \
-    Email \
-    Gallery2 \
-    Launcher3 \
-    Launcher3QuickStep \
-    ManagedProvisioning \
-    Messaging \
-    messaging \
-    Music \
-    Provision \
-    QuickSearchBox \
-    SetupWizard \
-    Trebuchet
+# Stock apps kept off the default-role surface: Browser2, Calendar, Camera2,
+# Contacts, DeskClock, Dialer, Email, Gallery2, Launcher3, Launcher3QuickStep,
+# ManagedProvisioning, Messaging, messaging, Music, Provision, QuickSearchBox,
+# SetupWizard, Trebuchet.
+#
+# The historical `PRODUCT_PACKAGES -=` strip list was never executable: `-=`
+# is not a make (or kati) operator, so the line failed this whole file to
+# parse ("missing separator") for every consumer, and even a working
+# subtraction could not remove packages contributed by inherited makefiles
+# (inherit-product aggregation is deferred past this file's evaluation). The
+# removal contract is the Soong `overrides:` list in apps/Eliza/Android.bp;
+# role/HOME defaults in vendor/eliza/overlays keep Eliza in front regardless.
+# Boot-level verification that no stock app resolves as a default role is
+# tracked as a follow-up; do not treat this list as a removal contract.
 
 PRODUCT_PACKAGE_OVERLAYS += \
     vendor/eliza/overlays
