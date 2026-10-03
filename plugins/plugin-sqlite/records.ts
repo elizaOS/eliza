@@ -2355,21 +2355,43 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getMemoriesByWorldId(params: {
+    worldId?: UUID;
     worldIds?: UUID[];
     limit?: number;
+    count?: number;
     tableName?: string;
   }): Promise<Memory[]> {
-    const worldSet = params.worldIds ? new Set(params.worldIds) : null;
+    // Runtime passes `worldId`. The adapter interface also passes `worldIds`.
+    // Reading only `worldIds` made a runtime call match every memory. SQL
+    // resolves the world through its rooms and defaults the table to messages.
+    const requestedIds = (
+      params.worldIds && params.worldIds.length > 0
+        ? params.worldIds
+        : params.worldId
+          ? [params.worldId]
+          : []
+    ).filter((id): id is UUID => typeof id === "string" && id.length > 0);
+    if (requestedIds.length === 0) return [];
+    const worldSet = new Set(requestedIds);
+    const rooms = await this.storage.getWhere<Room>(
+      COLLECTIONS.ROOMS,
+      (room) => (room.worldId ? worldSet.has(room.worldId as UUID) : false),
+    );
+    const roomSet = new Set(
+      rooms.flatMap((room) => (room.id ? [room.id as UUID] : [])),
+    );
+    if (roomSet.size === 0) return [];
+    const tableName = params.tableName || "messages";
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) =>
-        (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
-        (params.tableName
-          ? storedMemoryTableName(m) === params.tableName
-          : true),
+      (memory) =>
+        roomSet.has(memory.roomId as UUID) &&
+        storedMemoryTableName(memory) === tableName,
     );
     memories.sort(compareStoredMemoriesNewestFirst);
-    const sliced = params.limit ? memories.slice(0, params.limit) : memories;
+    const limit = params.limit ?? params.count;
+    const sliced =
+      limit === undefined ? memories : memories.slice(0, Math.max(0, limit));
     return sliced.map(toMemory);
   }
 
