@@ -28,13 +28,13 @@ public final class ReminderBridgeFlowTest {
  private JSONObject result()throws Exception {until("window.__result");return new JSONObject(evaluate("window.__result"));}
  private JSONObject call(String method,JSONObject args)throws Exception {start(method,args);JSONObject value=result();assertFalse(value.toString(),value.has("bridgeError"));return value;}
  private JSONObject bound(JSONObject operation)throws Exception{return new JSONObject().put("operationId",UUID.randomUUID().toString()).put("bindingHash","a".repeat(64)).put("operation",operation);}
- private void permission(String label)throws Exception {
+ private void permission(String resourceId)throws Exception {
   for(int i=0;i<120;i++){
    if(!"null".equals(evaluate("window.__result")))fail("Resolved before permission control: "+evaluate("window.__result"));
    AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
-   if(root!=null){java.util.ArrayDeque<AccessibilityNodeInfo> nodes=new java.util.ArrayDeque<>();nodes.add(root);while(!nodes.isEmpty()){AccessibilityNodeInfo node=nodes.removeFirst();String pkg=String.valueOf(node.getPackageName());if((pkg.equals("com.android.permissioncontroller")||pkg.equals("com.google.android.permissioncontroller"))&&node.getText()!=null&&label.equalsIgnoreCase(node.getText().toString())&&node.isVisibleToUser()&&node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;for(int child=0;child<node.getChildCount();child++){AccessibilityNodeInfo value=node.getChild(child);if(value!=null)nodes.add(value);}}}
+   if(root!=null){java.util.ArrayDeque<AccessibilityNodeInfo> nodes=new java.util.ArrayDeque<>();nodes.add(root);while(!nodes.isEmpty()){AccessibilityNodeInfo node=nodes.removeFirst();String pkg=String.valueOf(node.getPackageName());if((pkg.equals("com.android.permissioncontroller")||pkg.equals("com.google.android.permissioncontroller"))&&(pkg+":id/"+resourceId).equals(node.getViewIdResourceName())&&node.isVisibleToUser()&&node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;for(int child=0;child<node.getChildCount();child++){AccessibilityNodeInfo value=node.getChild(child);if(value!=null)nodes.add(value);}}}
    SystemClock.sleep(100);
-  }fail("Missing permission control: "+label);
+  }fail("Missing permission control: "+resourceId);
  }
  @Test public void permissionCallbackReviewedOperationsAndResume()throws Exception {
   assertEquals("1",InstrumentationRegistry.getArguments().getString("reminderBridge"));assertTrue("Owned secondary user required",Process.myUid()/100000>0);assertTrue("Notification permission runtime requires API33+",android.os.Build.VERSION.SDK_INT>=33);
@@ -44,8 +44,8 @@ public final class ReminderBridgeFlowTest {
   try(ActivityScenario<BridgeActivity> owned=ActivityScenario.launch(BridgeActivity.class)){
    scenario=owned;until("window.Capacitor && typeof Capacitor.nativePromise === 'function'");
    JSONObject schedule=new JSONObject().put("id",id).put("title","Synthetic bridge reminder").put("body","Owned fixture").put("at",System.currentTimeMillis()+3600000);
-   start("scheduleReminder",schedule);permission("Don't allow");assertEquals("permission-denied",result().getString("status"));assertEquals(0,call("listReminders",new JSONObject()).getJSONArray("reminders").length());
-   start("scheduleReminder",schedule);permission("Allow");assertEquals("scheduled",result().getString("status"));assertEquals(PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS));
+   start("scheduleReminder",schedule);permission("permission_deny_button");assertEquals("permission-denied",result().getString("status"));assertEquals(0,call("listReminders",new JSONObject()).getJSONArray("reminders").length());
+   start("scheduleReminder",schedule);permission("permission_allow_button");assertEquals("scheduled",result().getString("status"));assertEquals(PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS));
    JSONObject listed=call("listReminders",new JSONObject());assertTrue(listed.getBoolean("notificationsEnabled"));assertEquals(1,listed.getJSONArray("reminders").length());assertEquals(id,listed.getJSONArray("reminders").getJSONObject(0).getString("id"));
    JSONObject target=call("selectedReminder",new JSONObject().put("id",id));
    JSONObject read=call("operateReminder",bound(new JSONObject().put("type","reminder_read_selected").put("target",target)));assertEquals("succeeded",read.getString("status"));assertEquals("Synthetic bridge reminder",read.getJSONObject("result").getJSONObject("fields").getString("title"));
