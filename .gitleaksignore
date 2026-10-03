@@ -193,3 +193,7 @@ c51b94a6fd7726d576f05ea2e09e61c82f8c92c0:packages/core/src/__tests__/compose-sta
 
 # packages/core/src/__tests__/compose-state-trajectory-recording.test.ts
 ec938aa930aad29117d2dc04368d00342df56cb6:packages/core/src/__tests__/compose-state-trajectory-recording.test.ts:generic-api-key:87
+
+# Owner confirmed historical OSWorld Basic-auth values are test-only (2026-10-03).
+# The hardcoded authentication was also removed from current source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/os_symphony/core/engine.py:generic-api-key:383
