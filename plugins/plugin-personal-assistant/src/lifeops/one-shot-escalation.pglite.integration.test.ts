@@ -782,3 +782,123 @@ it("processes a persisted owner snooze reply after the one-shot delivery", async
     await f.cleanup();
   }
 }, 120000);
+
+it("classifies an unrelated owner reply once while the delivered one-shot keeps being processed", async () => {
+  const f = await createLifeOpsTestRuntime();
+  const model = vi.spyOn(f.runtime, "useModel").mockResolvedValue(
+    JSON.stringify({
+      decision: "unrelated",
+      resolution: null,
+      snoozeMinutes: null,
+      snoozePreset: null,
+      confidence: 0.9,
+      reason: "different_topic",
+    }),
+  );
+  try {
+    const ownerId = randomUUID() as UUID;
+    const roomId = randomUUID() as UUID;
+    f.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId, false);
+    await f.runtime.ensureConnection({
+      entityId: ownerId,
+      roomId,
+      worldId: randomUUID() as UUID,
+      worldName: "Reminder review",
+      userName: "Owner",
+      name: "Owner",
+      source: "test",
+      type: ChannelType.DM,
+      channelId: roomId,
+    });
+    await f.runtime.ensureParticipantInRoom(f.runtime.agentId, roomId);
+    await f.runtime.ensureParticipantInRoom(ownerId, roomId);
+    const service = new LifeOpsService(f.runtime, { ownerEntityId: ownerId });
+    const due = Date.now() + 1000;
+    await service.createDefinition({
+      title: "Review notebook",
+      kind: "habit",
+      priority: 2,
+      cadence: {
+        kind: "once",
+        dueAt: new Date(due).toISOString(),
+        visibilityLeadMinutes: 0,
+        visibilityLagMinutes: 120,
+      },
+      timezone: "UTC",
+      metadata: {
+        ownerSurface: "OWNER_REMINDERS",
+        nativeProjection: "in_app_only",
+      },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    await service.processReminders({
+      now: new Date(due).toISOString(),
+      scope: "definitions",
+    });
+    const [delivered] = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    expect(delivered.outcome).toBe("delivered");
+    await service.repository.updateReminderAttemptOutcome(
+      delivered.id,
+      delivered.outcome,
+      { deliveryRoomId: roomId },
+    );
+    // An ordinary chat message after delivery that needs the semantic
+    // classifier to tell it is not about the reminder.
+    await f.runtime.createMemory(
+      {
+        id: randomUUID() as UUID,
+        agentId: f.runtime.agentId,
+        entityId: ownerId,
+        roomId,
+        createdAt: due + 60000,
+        content: { text: "can you also find me a lunch spot near the office" },
+      },
+      "messages",
+    );
+    // The scheduler processes reminders every minute; the delivered one-shot
+    // is still active for its whole visibility window.
+    for (let minute = 2; minute <= 40; minute++) {
+      await service.processReminders({
+        now: new Date(due + minute * 60000).toISOString(),
+        scope: "definitions",
+      });
+    }
+    const classifyCalls = () =>
+      model.mock.calls.filter((call) =>
+        String(
+          (call[1] as { prompt?: unknown } | undefined)?.prompt ?? "",
+        ).includes(
+          "Classify whether the owner reply resolves one specific reminder.",
+        ),
+      );
+    expect(classifyCalls()).toHaveLength(1);
+
+    // A new owner message is still classified, once.
+    await f.runtime.createMemory(
+      {
+        id: randomUUID() as UUID,
+        agentId: f.runtime.agentId,
+        entityId: ownerId,
+        roomId,
+        createdAt: due + 41 * 60000,
+        content: { text: "and remind me what the weather is like there" },
+      },
+      "messages",
+    );
+    for (let minute = 42; minute <= 50; minute++) {
+      await service.processReminders({
+        now: new Date(due + minute * 60000).toISOString(),
+        scope: "definitions",
+      });
+    }
+    expect(classifyCalls()).toHaveLength(2);
+    expect(getRecordedTestNotifications(f.runtime)).toHaveLength(1);
+  } finally {
+    model.mockRestore();
+    await f.cleanup();
+  }
+}, 180000);
