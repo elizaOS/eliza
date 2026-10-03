@@ -44,6 +44,7 @@
       ],
       "inputs": [
         "packages/scripts/**",
+        ".gitleaks.toml",
         "*.md",
         "**/*.md",
         "packages/scripts/audit-*.ts",
