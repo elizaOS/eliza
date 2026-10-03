@@ -12,6 +12,7 @@ import {
   type Room,
   type UUID,
 } from "@elizaos/core";
+import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -22,6 +23,7 @@ import {
   SQL_JSON_SANITIZE_UNBOUNDED,
 } from "../../sanitize-json";
 import { logTable } from "../../schema/log";
+import { roomTable } from "../../schema/room";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -263,6 +265,89 @@ describe("Log Integration Tests", () => {
       });
       expect(logs).toHaveLength(1);
       expect(logs[0].type).toBe("typeA");
+    });
+  });
+
+  describe("agent scoping", () => {
+    const otherAgentId = uuidv4() as UUID;
+    const otherEntityId = uuidv4() as UUID;
+    const otherRoomId = uuidv4() as UUID;
+
+    beforeAll(async () => {
+      await adapter.createAgent({
+        id: otherAgentId,
+        name: `log-scope-agent-${otherAgentId.slice(0, 8)}`,
+        bio: "second agent sharing the database",
+      } as Parameters<typeof adapter.createAgent>[0]);
+      await adapter.createEntities([
+        { id: otherEntityId, agentId: otherAgentId, names: ["Other Entity"] } as Entity,
+      ]);
+      // createRooms stamps the calling adapter's agentId, so the other agent's
+      // room is written directly, as that agent's own adapter would.
+      await (adapter.getDatabase() as DrizzleDatabase).insert(roomTable).values({
+        id: otherRoomId,
+        agentId: otherAgentId,
+        name: "Other Room",
+        source: "test",
+        type: ChannelType.GROUP,
+      });
+    });
+
+    beforeEach(async () => {
+      await (adapter.getDatabase() as DrizzleDatabase).delete(logTable);
+      await adapter.log({
+        body: { who: "this agent" },
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "inference_timing",
+      });
+      await adapter.log({
+        body: { who: "other agent" },
+        entityId: otherEntityId,
+        roomId: otherRoomId,
+        type: "inference_timing",
+      });
+    });
+
+    it("returns only this agent's logs when no room filter is given", async () => {
+      const byType = await adapter.getLogs({ type: "inference_timing" });
+      const all = await adapter.getLogs({ limit: Number.MAX_SAFE_INTEGER });
+
+      expect(byType.map((log) => log.body)).toEqual([{ who: "this agent" }]);
+      expect(all.map((log) => log.body)).toEqual([{ who: "this agent" }]);
+    });
+
+    it("does not delete or update another agent's log by id", async () => {
+      const [foreign] = await (adapter.getDatabase() as DrizzleDatabase)
+        .select()
+        .from(logTable)
+        .where(eq(logTable.roomId, otherRoomId));
+
+      await adapter.updateLogs([{ id: foreign.id as UUID, updates: { type: "rewritten" } }]);
+      await adapter.deleteLogs([foreign.id as UUID]);
+
+      const [still] = await (adapter.getDatabase() as DrizzleDatabase)
+        .select()
+        .from(logTable)
+        .where(eq(logTable.id, foreign.id));
+      expect(still?.type).toBe("inference_timing");
+    });
+
+    it("does not read or single-delete another agent's log by id", async () => {
+      const rows = await (adapter.getDatabase() as DrizzleDatabase).select().from(logTable);
+      const own = rows.find((row) => row.roomId === testRoomId);
+      const foreign = rows.find((row) => row.roomId === otherRoomId);
+      if (!own || !foreign) throw new Error("seeded logs missing");
+
+      const read = await adapter.getLogsByIds([own.id as UUID, foreign.id as UUID]);
+      await adapter.deleteLog(foreign.id as UUID);
+
+      expect(read.map((log) => log.body)).toEqual([{ who: "this agent" }]);
+      const [still] = await (adapter.getDatabase() as DrizzleDatabase)
+        .select()
+        .from(logTable)
+        .where(eq(logTable.id, foreign.id));
+      expect(still?.id).toBe(foreign.id);
     });
   });
 });
