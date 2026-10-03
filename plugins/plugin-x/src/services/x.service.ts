@@ -1559,10 +1559,12 @@ export class XService extends Service {
     const roomId =
       target?.roomId ??
       createUniqueUuid(runtime, `x:${normalizedAccountId}:dm:${senderId}`);
-    const entityId =
-      senderId === runtime.agentId
-        ? runtime.agentId
-        : createUniqueUuid(runtime, `x:user:${senderId}`);
+    // `senderId` is an X user id, never the agent's UUID; the account's own
+    // DMs are the ones listRecentDirectMessages marked as not inbound.
+    const fromAccount = message.isInbound === false;
+    const entityId = fromAccount
+      ? runtime.agentId
+      : createUniqueUuid(runtime, `x:user:${senderId}`);
 
     return {
       id: createUniqueUuid(runtime, `x:dm:${message.id}`),
@@ -1581,7 +1583,7 @@ export class XService extends Service {
         accountId: normalizedAccountId,
         provider: "x",
         timestamp: createdAt,
-        fromBot: entityId === runtime.agentId,
+        fromBot: fromAccount,
         messageIdFull: message.id,
         chatType: ChannelType.DM,
         sender: {
