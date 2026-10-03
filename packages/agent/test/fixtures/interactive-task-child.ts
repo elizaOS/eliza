@@ -18,6 +18,7 @@ if (
     "missing-evidence",
     "cancel-readback",
     "revoke-readback",
+    "retry-readback",
   ].includes(mode)
 )
   throw new Error("Expected database path and mode");
@@ -28,6 +29,8 @@ const owner = {
   agentId: "agent",
   connector: { source: "browser", accountId: "account" },
 };
+let readbacks = 0,
+  lastReadbackEpoch = -1;
 const runtime = new InteractiveTaskRuntime({
   owner,
   store: new SqliteInteractiveTaskStore(db),
@@ -45,6 +48,12 @@ const runtime = new InteractiveTaskRuntime({
     },
     async reconcile(proposal, context) {
       if (!context.isCurrent()) throw new Error("Stale readback");
+      const epoch = runtime.get("task-1").epoch;
+      if (epoch <= lastReadbackEpoch)
+        throw new Error("Native binding epoch was reused");
+      lastReadbackEpoch = epoch;
+      readbacks++;
+
       if (mode === "cancel-readback" || mode === "revoke-readback") {
         const task = runtime.get("task-1");
         runtime.control(
@@ -56,7 +65,7 @@ const runtime = new InteractiveTaskRuntime({
       // Real file readback stands in for a host effect receipt. This tests the
       // journal boundary, not browser/provider semantics.
       const status =
-        mode === "ambiguous"
+        mode === "ambiguous" || (mode === "retry-readback" && readbacks === 1)
           ? "unknown"
           : existsSync(`${databasePath}.effect`)
             ? "succeeded"
@@ -91,12 +100,26 @@ if (!["dispatch", "recover"].includes(mode)) {
       "operation-1",
       async () => mode !== "denied",
     );
+    if (mode === "retry-readback") {
+      const pending = runtime.get(before.id);
+      if (
+        pending.operations[0].status !== "unknown" ||
+        pending.status !== "paused"
+      )
+        throw new Error("Readback resumed or resolved ambiguous work");
+      await runtime.reconcile(
+        before.id,
+        pending.revision,
+        "operation-1",
+        async () => true,
+      );
+    }
   } catch (error) {
     errorCode = (error as { code?: string }).code ?? "UNKNOWN";
   }
   const after = runtime.get(before.id);
   process.stdout.write(
-    `${JSON.stringify({ status: after.status, operation: after.operations[0].status, operations: after.operations.length, errorCode })}\n`,
+    `${JSON.stringify({ status: after.status, operation: after.operations[0].status, operations: after.operations.length, errorCode, ...(mode === "retry-readback" ? { readbacks } : {}) })}\n`,
   );
   db.close();
 } else if (mode === "recover") {

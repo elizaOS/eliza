@@ -85,6 +85,22 @@ it("recovers an interrupted dispatch after SIGKILL without executing it again", 
       expect(result.operations).toBe(1);
       expect(result.errorCode).toBe(code);
     }
+    const retryFile = join(root, "retry.sqlite");
+    copyFileSync(file, retryFile);
+    const retried = JSON.parse(
+      execFileSync(
+        "bun",
+        ["--conditions=eliza-source", fixture, retryFile, "retry-readback"],
+        { encoding: "utf8", timeout: 10000 },
+      ).trim(),
+    );
+    expect(retried).toEqual({
+      status: "paused",
+      operation: "failed",
+      operations: 1,
+      errorCode: null,
+      readbacks: 2,
+    });
     const revokedFile = join(root, "revoked.sqlite");
     copyFileSync(file, revokedFile);
     const revoked = JSON.parse(

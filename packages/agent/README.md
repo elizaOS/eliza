@@ -126,3 +126,8 @@ in-memory credential. Empty or absent variables contribute no value. Other
 settings retain existing persistence behavior; invalid names reject the save.
 This does not scrub old files, logs, transformed secret values or other stores;
 the host still owns credential migration and custody.
+
+Each explicit uncertain-operation readback commits a recovery epoch before binding
+the actuator. An ambiguous result or lost reply therefore cannot strand the next
+readback on a native epoch that was already consumed. The original operation stays
+unknown until evidence resolves it, and recovery never resumes or repeats effects.
