@@ -1117,6 +1117,7 @@ export async function startApiServer(
   }
 
   const callerOptions = args[0];
+  let speechHostStarted = false;
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
@@ -1124,7 +1125,7 @@ export async function startApiServer(
       if (compatState.current !== activeRuntime)
         stopStandaloneKokoro(compatState);
       compatState.current = activeRuntime;
-      warmStandaloneKokoro(compatState);
+      if (speechHostStarted) warmStandaloneKokoro(compatState);
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
     },
@@ -1242,6 +1243,7 @@ export async function startApiServer(
   compatState.runtimeOperations = server.runtimeOperations;
   compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
+  speechHostStarted = true;
   warmStandaloneKokoro(compatState);
 
   const originalUpdateRuntime = server.updateRuntime as (
