@@ -32,7 +32,10 @@ internal object BrowserDockController {
             ?: throw BrowserLaunchException("BROWSER_DOCK_SESSION_UNAVAILABLE", "No browser split was opened by this host session.")
         val controller = SplitController.getInstance(activity)
         val splits = withTimeoutOrNull(2000) { controller.splitInfoList(activity).first { it.isNotEmpty() } }
-        val split = splits?.singleOrNull()?.takeIf { it.primaryActivityStack.contains(activity) }
+        // AndroidX reports bottom-to-top z-order. Repeated explicit navigation
+        // can retain older secondary stacks; resize only the topmost split.
+        // Never fall back to an obscured split if the host is not its primary.
+        val split = splits?.lastOrNull()?.takeIf { it.primaryActivityStack.contains(activity) }
             ?: throw BrowserLaunchException("BROWSER_DOCK_SESSION_UNAVAILABLE", "The current browser split could not be identified.")
         if (sessions[activity] !== session || activity.isDestroyed)
             throw BrowserLaunchException("BROWSER_DOCK_SESSION_UNAVAILABLE", "The browser host session changed.")
