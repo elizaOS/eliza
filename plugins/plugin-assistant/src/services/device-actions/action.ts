@@ -3,6 +3,7 @@ import {
   isCalendarOperation,
   validateCalendarResult,
 } from "./calendar-contract.ts";
+import { isClockOperation, validateClockResult } from "./clock-contract.ts";
 import { DEVICE_VIEWS, object, validateDevicePayload } from "./contract.ts";
 import {
   deviceActionEffectReceipts,
@@ -197,11 +198,49 @@ const calendarSchemas: ActionParameterSchema[] = [
     },
   })),
 ];
+const clockSchemas: ActionParameterSchema[] = [
+  ...["show", "dismiss"].map((action) => ({
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "action"],
+    properties: {
+      type: { type: "string", enum: ["clock_handoff"] },
+      action: { type: "string", enum: [action] },
+    },
+  })),
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "action", "hour", "minute", "label", "timeZone"],
+    properties: {
+      type: { type: "string", enum: ["clock_handoff"] },
+      action: { type: "string", enum: ["set"] },
+      hour: { type: "integer", minimum: 0, maximum: 23 },
+      minute: { type: "integer", minimum: 0, maximum: 59 },
+      label: { type: "string", maxLength: 200 },
+      timeZone: { type: "string", maxLength: 100 },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "action", "snoozeMinutes"],
+    properties: {
+      type: { type: "string", enum: ["clock_handoff"] },
+      action: { type: "string", enum: ["snooze"] },
+      snoozeMinutes: {
+        type: "integer",
+        minimum: 1,
+        maximum: 60,
+      },
+    },
+  },
+];
 /** Native tool output is a durable proposal, never a native effect or approval. */
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   description:
-    "Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve. This tool does not perform the operation. Do not report the proposal as completed.",
+    "Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve. Clock handoff requires clock.handoff.v1. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Never invent the phone timezone or substitute an approximate reminder for an alarm. Only show is navigation-only. After explicit owner approval, set/dismiss/snooze may change alarms immediately: dismiss can disable the active one-shot alarm or suppress a repeating occurrence, and targetless snooze can affect all ringing alarms. Clock may use its default snooze duration or show a chooser. Never promise a second confirmation in Clock, target one selected alarm using this targetless contract, or claim an opened receipt proves creation, dismissal, snoozing or ringing. The owner must see and approve the actual scope before any native request. This tool does not perform the operation. Do not report the proposal as completed.",
   contexts: ["general"],
   parameters: [
     {
@@ -212,6 +251,7 @@ export const proposeDeviceAction: Action = {
       // Service validation enforces exact keys and length bounds after decoding.
       schema: {
         anyOf: [
+          ...clockSchemas,
           {
             type: "object",
             additionalProperties: false,
@@ -315,6 +355,30 @@ export const proposeDeviceAction: Action = {
     const request = outcome.request;
     const payload = validateDevicePayload(request.payload);
     const receipt = request.execution?.providerReceipt;
+    if (
+      isClockOperation(payload.operation) &&
+      request.state === "done" &&
+      receipt?.outcome === "applied"
+    ) {
+      const result = validateClockResult(
+        payload.operation,
+        receipt.result,
+        "applied",
+      );
+      return {
+        success: true,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        effectReceipts: deviceActionEffectReceipts(outcome),
+        text: "Retrieved the historical approved Clock handoff receipt. Opened records dispatch of the approved Clock request, not proof of its final alarm state. The request may already have changed an alarm; check Clock before requesting another. It does not establish creation, snoozing, dismissal or ringing. No new dispatch occurred.",
+        data: {
+          proposalId: request.id,
+          state: request.state,
+          executed: false,
+          result,
+        },
+      };
+    }
     if (
       request.state === "done" &&
       (isMapsOperation(payload.operation) ||

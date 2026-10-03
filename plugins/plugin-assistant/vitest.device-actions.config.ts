@@ -8,7 +8,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["test/device-actions.e2e.test.ts"],
+    include: [
+      "test/device-actions.e2e.test.ts",
+      "test/workflow-owner-*.test.ts",
+    ],
     testTimeout: 120000,
     hookTimeout: 120000,
   },

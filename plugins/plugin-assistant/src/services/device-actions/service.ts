@@ -18,6 +18,12 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
+  assertClockObservation,
+  CLOCK_CAPABILITY,
+  isClockOperation,
+  validateClockResult,
+} from "./clock-contract.ts";
+import {
   DeviceActionError,
   type DeviceActionPayload,
   exactKeys,
@@ -43,6 +49,11 @@ import {
   REMINDER_CAPABILITY,
   validateReminderResult,
 } from "./reminder-contract.ts";
+import {
+  type DeviceViewProfile,
+  enabledDeviceViews,
+  storedDeviceViewProfile,
+} from "./view-profile.ts";
 
 import {
   validateWorkflowBinding,
@@ -64,6 +75,7 @@ interface DeviceTurn {
   runtime: IAgentRuntime;
   credential: DeviceCredential;
   active: boolean;
+  viewProfile: DeviceViewProfile | null;
 }
 const turn = new AsyncLocalStorage<DeviceTurn>();
 export function getDeviceActionTurn(): DeviceTurn | undefined {
@@ -75,8 +87,10 @@ export async function withDeviceActionTurn<T>(
   credential: DeviceCredential,
   fn: () => Promise<T>,
 ): Promise<T> {
-  await new DeviceActionService(runtime).authenticate(credential);
-  const context = { runtime, credential, active: true };
+  const viewProfile = await new DeviceActionService(runtime).viewProfile(
+    credential,
+  );
+  const context = { runtime, credential, active: true, viewProfile };
   try {
     return await turn.run(context, fn);
   } finally {
@@ -134,10 +148,12 @@ export class DeviceActionService {
     c: DeviceCredential,
     label: string,
     workflowProtocol: 0 | 1 | 2 = 0,
+    workflowOwnerId: string = c.subjectUserId,
   ): Promise<{
     installationId: string;
     enrollmentId: string;
     capabilities: string[];
+    viewProfileVersion: 1;
   }> {
     if (
       workflowProtocol !== 0 &&
@@ -154,15 +170,17 @@ export class DeviceActionService {
       const row = await this.lock(tx, c);
       await executeRawSqlTx(
         tx,
-        `UPDATE client_devices SET workflow_protocol=${workflowProtocol} WHERE ${scope(c, this.runtime.agentId)}`,
+        `UPDATE client_devices SET workflow_protocol=${workflowProtocol}, workflow_owner_id=${sqlText(text(workflowOwnerId, 256))} WHERE ${scope(c, this.runtime.agentId)}`,
       );
       return {
         installationId: c.installationId,
         enrollmentId: String(row.enrollment_id),
+        viewProfileVersion: 1,
         capabilities: [
           "calendar.local-event.v1",
           "notes.local-record.v1",
           REMINDER_CAPABILITY,
+          CLOCK_CAPABILITY,
           MAPS_CAPABILITY,
         ],
       };
@@ -175,7 +193,7 @@ export class DeviceActionService {
     const hash = keyHash(c.deviceKey);
     const rows = await executeRawSqlTx(
       tx,
-      `SELECT enrollment_id, key_hash, revoked, workflow_protocol FROM client_devices WHERE ${scope(c, this.runtime.agentId)} FOR UPDATE`,
+      `SELECT enrollment_id, key_hash, revoked, workflow_protocol, view_profile FROM client_devices WHERE ${scope(c, this.runtime.agentId)} FOR UPDATE`,
     );
     const row = rows[0];
     if (
@@ -205,6 +223,60 @@ export class DeviceActionService {
   }
   async authenticate(c: DeviceCredential): Promise<void> {
     await this.access(c, async () => {});
+  }
+  async viewProfile(c: DeviceCredential): Promise<DeviceViewProfile | null> {
+    return this.access(c, async (_q, row) =>
+      storedDeviceViewProfile(row.view_profile),
+    );
+  }
+  async setViewProfile(
+    c: DeviceCredential,
+    input: unknown,
+  ): Promise<DeviceViewProfile> {
+    const value = object(input);
+    exactKeys(value, ["version", "views", "expectedRevision"]);
+    if (
+      value.version !== 1 ||
+      !(
+        value.expectedRevision === null ||
+        typeof value.expectedRevision === "string"
+      )
+    )
+      throw new DeviceActionError("Unsupported view profile");
+    const views = enabledDeviceViews(value.views);
+    return this.access(c, async (_q, row, tx) => {
+      const previous = storedDeviceViewProfile(row.view_profile);
+      if ((previous?.revision ?? null) !== value.expectedRevision)
+        throw new DeviceActionError("View profile changed");
+      if (previous && JSON.stringify(previous.views) === JSON.stringify(views))
+        return previous;
+      const profile: DeviceViewProfile = {
+        version: 1,
+        revision: randomUUID(),
+        views,
+      };
+      await executeRawSqlTx(
+        tx,
+        `UPDATE client_devices SET view_profile=${sqlText(JSON.stringify(profile))} WHERE ${scope(c, this.runtime.agentId)}`,
+      );
+      return profile;
+    });
+  }
+  private assertViewProfile(
+    row: Record<string, unknown>,
+    payload: DeviceActionPayload,
+  ): void {
+    if (payload.operation.type !== "open_view") return;
+    const profile = storedDeviceViewProfile(row.view_profile);
+    if (
+      profile
+        ? profile.revision !== payload.viewProfileRevision ||
+          !profile.views.includes(payload.operation.view)
+        : payload.viewProfileRevision !== undefined
+    )
+      throw new DeviceActionError(
+        "Enabled view profile changed or view unavailable",
+      );
   }
   async revoke(c: DeviceCredential): Promise<void> {
     await this.access(c, async (_q, _row, tx) => {
@@ -240,6 +312,11 @@ export class DeviceActionService {
     observation?: unknown,
   ): Promise<ApprovalEnqueueResult> {
     const validated = validateDeviceOperation(operation);
+    if (
+      isClockOperation(validated) &&
+      !c.capabilities?.includes(CLOCK_CAPABILITY)
+    )
+      throw new DeviceActionError("Clock capability unavailable");
     if (isMapsOperation(validated)) {
       if (!c.capabilities?.includes(MAPS_CAPABILITY))
         throw new DeviceActionError("Maps capability unavailable");
@@ -261,6 +338,7 @@ export class DeviceActionService {
       throw new DeviceActionError("Calendar capability unavailable");
     if (
       ![
+        "clock_handoff",
         "create_note",
         "maps_read_selected",
         "notes_read_selected",
@@ -282,12 +360,22 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
     return this.access(c, async (queue, row, tx) => {
+      const viewProfile = storedDeviceViewProfile(row.view_profile);
+      if (
+        validated.type === "open_view" &&
+        viewProfile &&
+        !viewProfile.views.includes(validated.view)
+      )
+        throw new DeviceActionError("View unavailable on this installation");
       const payload: DeviceActionPayload = {
         action: "device_action",
         version: 1,
         installationId: c.installationId,
         enrollmentId: String(row.enrollment_id),
         operation: validated,
+        ...(validated.type === "open_view" && viewProfile
+          ? { viewProfileRevision: viewProfile.revision }
+          : {}),
       };
       // This is the canonical queue's transaction API: no notification or effect before commit.
       const idempotencyKey = `device:${digest([c.subjectUserId, c.installationId, identifier(operationKey)])}`;
@@ -295,6 +383,22 @@ export class DeviceActionService {
         idempotencyKey,
         c.subjectUserId,
       );
+      if (isClockOperation(validated)) {
+        const receipt = existing?.execution?.providerReceipt;
+        const historical =
+          existing?.state === "done" &&
+          stableStringify(existing.payload) === stableStringify(payload) &&
+          receipt?.outcome === "applied";
+        try {
+          if (historical)
+            validateClockResult(validated, receipt.result, "applied");
+          else assertClockObservation(validated, observation);
+        } catch {
+          throw new DeviceActionError(
+            "Clock observation unavailable or changed",
+          );
+        }
+      }
       if (isMapsOperation(validated)) {
         const receipt = existing?.execution?.providerReceipt;
         const historical =
@@ -365,9 +469,10 @@ export class DeviceActionService {
     await this.database().transaction(async (tx) => {
       const rows = await executeRawSqlTx(
         tx,
-        `SELECT enrollment_id,revoked,workflow_protocol FROM client_devices WHERE agent_id=${sqlText(this.runtime.agentId)} AND subject_user_id=${sqlText(text(subjectUserId, 256))} AND installation_id=${sqlText(identifier(target.installationId))}`,
+        `SELECT enrollment_id,revoked,workflow_protocol FROM client_devices WHERE agent_id=${sqlText(this.runtime.agentId)} AND COALESCE(workflow_owner_id, subject_user_id)=${sqlText(text(subjectUserId, 256))} AND installation_id=${sqlText(identifier(target.installationId))} AND enrollment_id=${sqlText(target.enrollmentId)}`,
       );
       if (
+        rows.length !== 1 ||
         rows[0]?.revoked !== false ||
         Number(rows[0]?.workflow_protocol) < minimumProtocol ||
         rows[0]?.enrollment_id !== target.enrollmentId
@@ -385,9 +490,10 @@ export class DeviceActionService {
     return this.database().transaction(async (tx) => {
       const rows = await executeRawSqlTx(
         tx,
-        `SELECT enrollment_id, revoked, workflow_protocol FROM client_devices WHERE agent_id = ${sqlText(this.runtime.agentId)} AND subject_user_id = ${sqlText(text(subjectUserId, 256))} AND installation_id = ${sqlText(identifier(dispatch.target.installationId))} FOR UPDATE`,
+        `SELECT subject_user_id, enrollment_id, revoked, workflow_protocol FROM client_devices WHERE agent_id = ${sqlText(this.runtime.agentId)} AND COALESCE(workflow_owner_id, subject_user_id) = ${sqlText(text(subjectUserId, 256))} AND installation_id = ${sqlText(identifier(dispatch.target.installationId))} AND enrollment_id = ${sqlText(dispatch.target.enrollmentId)} FOR UPDATE`,
       );
       if (
+        rows.length !== 1 ||
         rows[0]?.revoked !== false ||
         Number(rows[0]?.workflow_protocol) <
           (["post_notification", "speak_text"].includes(operation.type)
@@ -475,19 +581,21 @@ export class DeviceActionService {
           throw new DeviceActionError("Workflow speech scope changed");
       } else
         throw new DeviceActionError("Unsupported workflow device operation");
+      // Workflow ownership stays canonical; phone approvals retain the authenticated device subject.
+      const deviceSubjectUserId = text(rows[0].subject_user_id, 256);
       const queue = new PgApprovalQueue(transactionRuntime(this.runtime, tx), {
         agentId: this.runtime.agentId,
       });
       const idempotencyKey = `workflow-device:${digest([subjectUserId, binding.runId, binding.stepId])}`;
       const existing = await queue.byIdempotencyKey(
         idempotencyKey,
-        subjectUserId,
+        deviceSubjectUserId,
       );
       return (
         await queue.enqueueTransactional(
           {
             requestedBy: this.runtime.agentId,
-            subjectUserId,
+            subjectUserId: deviceSubjectUserId,
             action: "device_action",
             payload: {
               action: "device_action",
@@ -536,6 +644,11 @@ export class DeviceActionService {
     if (!request) throw new DeviceActionError("Proposal unavailable");
     const payload = validateDevicePayload(request.payload);
     if (
+      isClockOperation(payload.operation) &&
+      !c.capabilities?.includes(CLOCK_CAPABILITY)
+    )
+      throw new DeviceActionError("Clock capability unavailable");
+    if (
       isMapsOperation(payload.operation) &&
       !c.capabilities?.includes(MAPS_CAPABILITY)
     )
@@ -582,6 +695,8 @@ export class DeviceActionService {
   ): Promise<ApprovalRequest> {
     return this.access(c, async (q, row, tx) => {
       const request = await this.proposal(q, row, c, id, expectedDigest, tx);
+      if (approve)
+        this.assertViewProfile(row, validateDevicePayload(request.payload));
       const target = approve ? "approved" : "rejected";
       if (request.state === target) return request;
       if (
@@ -602,6 +717,7 @@ export class DeviceActionService {
   ): Promise<ApprovalRequest> {
     return this.access(c, async (q, row, tx) => {
       const request = await this.proposal(q, row, c, id, expectedDigest, tx);
+      this.assertViewProfile(row, validateDevicePayload(request.payload));
       if (
         request.state !== "approved" ||
         request.expiresAt.getTime() <= Date.now() ||
@@ -658,6 +774,11 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isClockOperation(payload.operation) &&
+        !c.capabilities?.includes(CLOCK_CAPABILITY)
+      )
+        throw new DeviceActionError("Clock capability unavailable");
+      if (
         isMapsOperation(payload.operation) &&
         !c.capabilities?.includes(MAPS_CAPABILITY)
       )
@@ -675,7 +796,24 @@ export class DeviceActionService {
       const read =
         payload.operation.type === "read_selected_notes" ||
         payload.operation.type === "read_calendar_range";
-      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
+      if (isClockOperation(payload.operation)) {
+        try {
+          if (receipt.outcome !== "unknown" || value.result !== undefined)
+            receipt = {
+              ...receipt,
+              result: validateClockResult(
+                payload.operation,
+                value.result,
+                receipt.outcome,
+              ),
+            };
+        } catch {
+          throw new DeviceActionError("Invalid Clock receipt");
+        }
+      } else if (
+        isMapsOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
         try {
           receipt = {
             ...receipt,
@@ -786,6 +924,11 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isClockOperation(payload.operation) &&
+        !c.capabilities?.includes(CLOCK_CAPABILITY)
+      )
+        throw new DeviceActionError("Clock capability unavailable");
+      if (
         isMapsOperation(payload.operation) &&
         !c.capabilities?.includes(MAPS_CAPABILITY)
       )
@@ -800,7 +943,24 @@ export class DeviceActionService {
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
         throw new DeviceActionError("Notes capability unavailable");
-      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
+      if (isClockOperation(payload.operation)) {
+        try {
+          if (receipt.outcome !== "unknown" || value.result !== undefined)
+            receipt = {
+              ...receipt,
+              result: validateClockResult(
+                payload.operation,
+                value.result,
+                receipt.outcome,
+              ),
+            };
+        } catch {
+          throw new DeviceActionError("Invalid Clock receipt");
+        }
+      } else if (
+        isMapsOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
         try {
           receipt = {
             ...receipt,

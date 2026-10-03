@@ -2,6 +2,10 @@ import {
   type CalendarOperation,
   validateCalendarOperation,
 } from "./calendar-contract.ts";
+import {
+  type ClockOperation,
+  validateClockOperation,
+} from "./clock-contract.ts";
 import { type MapsOperation, validateMapsOperation } from "./maps-contract.ts";
 import {
   type NotesOperation,
@@ -42,8 +46,10 @@ export const DEVICE_VIEWS = [
   "maps",
   "inbox",
   "settings",
+  "workflows",
 ] as const;
 export type DeviceOperation =
+  | ClockOperation
   | MapsOperation
   | ReminderOperation
   | NotesOperation
@@ -61,6 +67,7 @@ export type DeviceActionPayload = {
   enrollmentId: string;
   operation: DeviceOperation;
   workflow?: WorkflowDeviceBinding;
+  viewProfileRevision?: string;
 };
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -93,6 +100,12 @@ export function exactKeys(
 export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
   switch (p.type) {
+    case "clock_handoff":
+      try {
+        return validateClockOperation(p);
+      } catch {
+        throw new DeviceActionError("Invalid Clock operation");
+      }
     case "maps_read_selected":
       try {
         return validateMapsOperation(p);
@@ -190,6 +203,7 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     "enrollmentId",
     "operation",
     "workflow",
+    "viewProfileRevision",
   ]);
   if (p.action !== "device_action" || p.version !== 1)
     throw new DeviceActionError("Unsupported device protocol");
@@ -210,6 +224,9 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     installationId: identifier(p.installationId),
     enrollmentId: identifier(p.enrollmentId),
     operation,
+    ...(p.viewProfileRevision === undefined
+      ? {}
+      : { viewProfileRevision: identifier(p.viewProfileRevision) }),
     ...(p.workflow === undefined
       ? {}
       : { workflow: validateWorkflowBinding(p.workflow) }),

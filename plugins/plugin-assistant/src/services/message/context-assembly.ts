@@ -107,13 +107,17 @@ export async function createV5MessageContextObject(args: {
   // Enrollment is authenticated by the host, never inferred from user metadata.
   // Interpret against this turn's actual capability even if older dialogue
   // reported a deployment without phone tools. No device effect is authorized.
-  if (getDeviceActionTurn()?.runtime === args.runtime) {
+  const authenticatedDeviceTurn = getDeviceActionTurn();
+  if (authenticatedDeviceTurn?.runtime === args.runtime) {
     events.push({
       id: "authenticated-phone-capability",
       type: "instruction",
       source: "message-service",
       stable: false,
       content:
+        (authenticatedDeviceTurn.viewProfile
+          ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. Do not offer or propose another view. This subset is not approval to execute. `
+          : "") +
         (getDeviceActionTurn()?.credential.capabilities?.includes(
           "reminders.local-record.v1",
         )
@@ -352,7 +356,41 @@ export async function createV5MessageContextObject(args: {
         )
       : actions;
     for (const action of displayActions) {
-      const tool = actionToTool(action);
+      // Clone only this turn's action schema. Never mutate the registered action
+      // or its cached catalog: concurrent installations may enable different views.
+      const profile =
+        getDeviceActionTurn()?.runtime === args.runtime
+          ? getDeviceActionTurn()?.viewProfile
+          : null;
+      const scopedAction =
+        profile && action.name === "PROPOSE_DEVICE_ACTION"
+          ? {
+              ...action,
+              parameters: action.parameters?.map((parameter) => {
+                if (parameter.name !== "operation") return parameter;
+                const schema = structuredClone(parameter.schema);
+                schema.anyOf = schema.anyOf?.flatMap((branch) => {
+                  if (branch.properties?.type?.enum?.[0] !== "open_view")
+                    return [branch];
+                  if (!profile.views.length) return [];
+                  return [
+                    {
+                      ...branch,
+                      properties: {
+                        ...branch.properties,
+                        view: {
+                          ...branch.properties.view,
+                          enum: [...profile.views],
+                        },
+                      },
+                    },
+                  ];
+                });
+                return { ...parameter, schema };
+              }),
+            }
+          : action;
+      const tool = actionToTool(scopedAction);
       events.push({
         id: `tool:${tool.function.name}`,
         type: "tool",

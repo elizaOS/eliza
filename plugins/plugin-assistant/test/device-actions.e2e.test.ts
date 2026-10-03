@@ -19,6 +19,7 @@ import {
 import { buildUserMessages } from "../../../packages/agent/src/api/server-helpers.ts";
 import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
 import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
+import { CORS_ALLOWED_HEADERS } from "../../../packages/app/src/api/server-cors.ts";
 import {
   AuthStore,
   type DrizzleDatabase,
@@ -34,6 +35,7 @@ import {
   DeviceActionService,
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
+import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
 // and on-disk PGlite. All identities and requested content are synthetic.
@@ -508,7 +510,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     );
     const view = await service.propose(
       credentials,
-      { type: "open_view", view: "notes" },
+      { type: "open_view", view: "workflows" },
       "view-1",
       "Fixture",
     );
@@ -538,6 +540,33 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       ).status,
     ).toBe(409);
     const viewDigest = pending.find((item: any) => item.id === view.id).digest;
+    expect(
+      (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
+        .status,
+    ).toBe(409);
+    expect(
+      pending.find((item: any) => item.id === view.id).payload.operation,
+    ).toEqual({ type: "open_view", view: "workflows" });
+    expect(
+      (
+        await request(`/proposals/${view.id}/decision`, {
+          digest: viewDigest,
+          decision: "approve",
+        })
+      ).status,
+    ).toBe(200);
+    const viewClaim = await request(`/proposals/${view.id}/claim`, {
+      digest: viewDigest,
+    });
+    expect(viewClaim.status).toBe(200);
+    expect(viewClaim.body.proposal.state).toBe("executing");
+    const viewReceipt = await request(`/proposals/${view.id}/receipt`, {
+      digest: viewDigest,
+      attemptId: viewClaim.body.proposal.execution.attemptId,
+      receipt: { outcome: "applied", operationId: "fixture-open-workflows-1" },
+    });
+    expect(viewReceipt.status).toBe(200);
+    expect(viewReceipt.body.proposal.state).toBe("done");
     expect(
       (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
         .status,
@@ -930,6 +959,281 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ),
         ).toHaveLength(1);
       }
+    }
+    {
+      const capability = "clock.handoff.v1";
+      const allCapabilities =
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1";
+      const enrolled = await request(
+        "/register",
+        { label: "Fixture phone", workflowProtocol: 1 },
+        "a",
+        deviceKey,
+        allCapabilities,
+      );
+      expect(enrolled.status).toBe(200);
+      expect(enrolled.body.capabilities).toHaveLength(5);
+      expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            allCapabilities,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            allCapabilities + ",unknown.v1",
+          )
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            allCapabilities + ",clock.handoff.v1",
+          )
+        ).status,
+      ).toBe(401);
+
+      const operationSchema = proposeDeviceAction.parameters!.find(
+        (p) => p.name === "operation",
+      )!.schema;
+      const clockSchemas = operationSchema.anyOf!.filter((p) =>
+        p.properties?.type.enum?.includes("clock_handoff"),
+      );
+      expect(clockSchemas).toHaveLength(4);
+      expect(clockSchemas.every((p) => p.additionalProperties === false)).toBe(
+        true,
+      );
+      expect(proposeDeviceAction.description).toContain(
+        "Never invent the phone timezone or substitute an approximate reminder for an alarm",
+      );
+
+      const c = { ...credentials, capabilities: [capability] };
+      const clockRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, capability);
+      const service = new DeviceActionService(runtimeState.runtime);
+      const set = {
+        type: "clock_handoff",
+        action: "set",
+        hour: 7,
+        minute: 30,
+        label: "Clock fixture",
+        timeZone: "UTC",
+      };
+      const observation = {
+        view: "home",
+        revision: 7,
+        sensitive: false,
+        timeZone: "UTC",
+      };
+      const proposeOverHttp = async (
+        operation: unknown,
+        context: unknown,
+        operationKey = randomUUID(),
+      ) => {
+        mapsActionParameters = {
+          operation,
+          operationKey,
+          reason: "Clock fixture",
+        };
+        const response = await fetch(`${origin}/api/maps-observation-fixture`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${sessions.a}`,
+            "x-eliza-device-id": device,
+            "x-eliza-device-key": deviceKey,
+            "x-eliza-device-capabilities": capability,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            text: "Review Clock handoff",
+            metadata: { clientDevice: { context } },
+          }),
+        });
+        return {
+          status: response.status,
+          body: (await response.json()) as any,
+        };
+      };
+      await expect(
+        service.propose(
+          credentials,
+          set,
+          "clock-no-cap",
+          "Clock fixture",
+          observation,
+        ),
+      ).rejects.toThrow();
+      for (const operation of [
+        { ...set, hour: 24 },
+        { ...set, minute: -1 },
+        { ...set, hour: 7.5 },
+        { ...set, label: "x".repeat(201) },
+        { ...set, timeZone: "Not/AZone" },
+        { ...set, alarmCreated: true },
+        { type: "clock_handoff", action: "show", hour: 7 },
+        { type: "clock_handoff", action: "dismiss", alarmId: "other" },
+        { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 },
+        { type: "clock_handoff", action: "snooze", snoozeMinutes: 61 },
+      ])
+        expect((await proposeOverHttp(operation, observation)).status).toBe(
+          409,
+        );
+      // The model's valid zone cannot replace missing/different current HTTP observation.
+      for (const context of [
+        undefined,
+        { ...observation, timeZone: undefined },
+        { ...observation, timeZone: "America/New_York" },
+        { ...observation, sensitive: true },
+      ]) {
+        expect((await proposeOverHttp(set, context)).status).toBe(409);
+      }
+      const operations = [
+        set,
+        { type: "clock_handoff", action: "show" },
+        { type: "clock_handoff", action: "dismiss" },
+        { type: "clock_handoff", action: "snooze", snoozeMinutes: 10 },
+        set,
+      ];
+      for (const [index, status] of [
+        "opened",
+        "unavailable",
+        "denied",
+        "failed",
+        "unknown",
+      ].entries()) {
+        const operation = operations[index];
+        const key = `clock-${status}`;
+        const proposed = await proposeOverHttp(operation, observation, key);
+        expect(proposed.status).toBe(200);
+        expect(proposed.body.metadata.clientDevice.context.timeZone).toBe(
+          "UTC",
+        );
+        const id = proposed.body.action.data.proposalId;
+        const listed = await clockRequest("/proposals");
+        const pending = listed.body.proposals.find((p: any) => p.id === id);
+        expect(pending.payload.operation).toEqual(operation);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claim = await clockRequest(`/proposals/${id}/claim`, {
+          digest: pending.digest,
+        });
+        expect(claim.status).toBe(200);
+        const attemptId = claim.body.proposal.execution.attemptId;
+        const endpoint = `/proposals/${id}/receipt`;
+        for (const result of [
+          {
+            kind: "clock-handoff",
+            action: operation.action,
+            status: "created",
+          },
+          {
+            kind: "clock-handoff",
+            action: operation.action,
+            status: "opened",
+            alarmCreated: true,
+          },
+          { kind: "clock-handoff", action: "wrong", status: "opened" },
+        ]) {
+          expect(
+            (
+              await clockRequest(endpoint, {
+                digest: pending.digest,
+                attemptId,
+                receipt: {
+                  outcome: "applied",
+                  operationId: randomUUID(),
+                  result,
+                },
+              })
+            ).status,
+          ).toBe(409);
+        }
+        const receipt = {
+          outcome:
+            status === "opened"
+              ? "applied"
+              : status === "unknown"
+                ? "unknown"
+                : "failed",
+          operationId: randomUUID(),
+          result: { kind: "clock-handoff", action: operation.action, status },
+        };
+        const recorded = await clockRequest(endpoint, {
+          digest: pending.digest,
+          attemptId,
+          receipt,
+        });
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.execution.providerReceipt.result).toEqual(
+          receipt.result,
+        );
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(endpoint, {
+              digest: pending.digest,
+              attemptId,
+              receipt,
+            })
+          ).status,
+        ).toBe(200);
+        if (status === "opened") {
+          const historical = await proposeOverHttp(
+            operation,
+            { ...observation, timeZone: "America/New_York" },
+            key,
+          );
+          expect(historical.status).toBe(200);
+          expect(historical.body.action.data.result.status).toBe("opened");
+          expect(historical.body.action.text).toContain(
+            "not proof of its final alarm state",
+          );
+          expect(historical.body.action.text).toContain(
+            "The request may already have changed an alarm",
+          );
+          expect(historical.body.action.text).toContain(
+            "No new dispatch occurred.",
+          );
+          expect(historical.body.action.data.executed).toBe(false);
+        }
+      }
+      console.info(
+        "Clock HTTP/PGlite: 5 outcome lifecycles, capability/schema/timezone rejection, duplicate claims and historical opened-only receipt PASS",
+      );
     }
     {
       const capability = "maps.selected-read.v1";
@@ -1484,6 +1788,265 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         (await request(`/proposals/${item.id}/claim`, { digest: item.digest }))
           .status,
       ).toBe(409);
+    }
+    {
+      for (const header of [
+        "x-eliza-device-id",
+        "x-eliza-device-key",
+        "x-eliza-device-capabilities",
+      ])
+        expect(CORS_ALLOWED_HEADERS.toLowerCase().split(", ")).toContain(
+          header,
+        );
+      const discovery = await request("/view-profile");
+      expect(discovery).toMatchObject({
+        status: 200,
+        body: { version: 1, profile: null },
+      });
+      expect(discovery.body.supportedViews).toContain("photos");
+      expect(
+        (await request("/register", { label: "Profile fixture" })).body
+          .viewProfileVersion,
+      ).toBe(1);
+      for (const input of [
+        { version: 2, views: ["notes"], expectedRevision: null },
+        { version: 1, views: ["notes", "notes"], expectedRevision: null },
+        { version: 1, views: ["wallet"], expectedRevision: null },
+        {
+          version: 1,
+          views: ["notes"],
+          expectedRevision: null,
+          owner: "forged",
+        },
+        { version: 1, views: ["notes"] },
+      ])
+        expect((await request("/view-profile", input)).status).toBe(409);
+      expect((await request("/view-profile", undefined, "none")).status).toBe(
+        401,
+      );
+      expect(
+        (await request("/view-profile", undefined, "a", "wrong-key")).status,
+      ).toBe(409);
+      const first = (
+        await request("/view-profile", {
+          version: 1,
+          views: ["notes", "photos"],
+          expectedRevision: null,
+        })
+      ).body.profile;
+      const globalParameters = JSON.stringify(proposeDeviceAction.parameters);
+      const render = (credential: typeof credentials) =>
+        withDeviceActionTurn(runtimeState.runtime, credential, async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          return createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message: memory,
+            state: { values: {}, data: {}, text: "" },
+            includeTools: true,
+            selectedContexts: [
+              { id: "general", name: "General", description: "Fixture" },
+            ] as any,
+            preselectedActions: [proposeDeviceAction],
+          });
+        });
+      const contexts = await Promise.all([
+        render(credentials),
+        render({
+          ...credentials,
+          subjectUserId: ownerB,
+          deviceKey: "b".repeat(64),
+        }),
+      ]);
+      const serialized = contexts.map((context) => JSON.stringify(context));
+      expect(serialized[0]).toContain(
+        "enabled-view profile allows open_view only for",
+      );
+      expect(serialized[1]).not.toContain(
+        "enabled-view profile allows open_view only for",
+      );
+      const branch = (context: any) =>
+        context.events
+          .find(
+            (event: any) =>
+              event.type === "tool" &&
+              event.tool.name === "PROPOSE_DEVICE_ACTION",
+          )
+          .tool.parameters.properties.operation.anyOf.find(
+            (b: any) => b.properties?.type?.enum?.[0] === "open_view",
+          );
+      expect(branch(contexts[0]).properties.view.enum).toEqual([
+        "notes",
+        "photos",
+      ]);
+      expect(branch(contexts[1]).properties.view.enum).toContain("browser");
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
+        globalParameters,
+      );
+
+      expect(first).toMatchObject({
+        version: 1,
+        views: ["notes", "photos"],
+      });
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: ["photos", "notes"],
+            expectedRevision: first.revision,
+          })
+        ).body.profile,
+      ).toEqual(first);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: [],
+            expectedRevision: null,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (await request("/view-profile", undefined, "b")).body.profile,
+      ).toBeNull();
+      const proposeView = async (view: string) => {
+        mapsActionParameters = {
+          operation: { type: "open_view", view },
+          operationKey: randomUUID(),
+          reason: "Explicit fixture request",
+        };
+        const response = await fetch(`${origin}/api/maps-observation-fixture`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${sessions.a}`,
+            "x-eliza-device-id": device,
+            "x-eliza-device-key": deviceKey,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            text: "Open requested view",
+            prompt: "Open requested view",
+          }),
+        });
+        return { status: response.status, body: await response.json() };
+      };
+      const before = (await request("/proposals")).body.proposals.length;
+      const disabled = await proposeView("browser");
+      expect(disabled.body.action?.success).not.toBe(true);
+      expect((await request("/proposals")).body.proposals).toHaveLength(before);
+      await proposeView("notes");
+      const pending = (await request("/proposals")).body.proposals.find(
+        (p: any) =>
+          p.payload?.operation?.view === "notes" &&
+          p.payload?.viewProfileRevision === first.revision,
+      );
+      expect(pending).toBeTruthy();
+      expect(
+        (
+          await request(`/proposals/${pending.id}/decision`, {
+            digest: pending.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(200);
+      await proposeView("photos");
+      const waiting = (await request("/proposals")).body.proposals.find(
+        (p: any) =>
+          p.payload?.operation?.view === "photos" &&
+          p.payload?.viewProfileRevision === first.revision,
+      );
+      expect(waiting).toBeTruthy();
+      const next = (
+        await request("/view-profile", {
+          version: 1,
+          views: ["notes"],
+          expectedRevision: first.revision,
+        })
+      ).body.profile;
+      expect(next.revision).not.toBe(first.revision);
+      expect(
+        (
+          await request(`/proposals/${pending.id}/claim`, {
+            digest: pending.digest,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(`/proposals/${waiting.id}/decision`, {
+            digest: waiting.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(`/proposals/${waiting.id}/decision`, {
+            digest: waiting.digest,
+            decision: "reject",
+          })
+        ).status,
+      ).toBe(200);
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+      await runtimeState.cleanup();
+      runtimeState = await createRealTestRuntime({
+        characterName: "DeviceApprovalFixture",
+        pgliteDir: directory,
+        removePgliteDirOnCleanup: false,
+      });
+      origin = await start();
+      expect((await request("/view-profile")).body.profile).toEqual(next);
+      await proposeView("notes");
+      const current = (await request("/proposals")).body.proposals.find(
+        (p: any) => p.payload?.viewProfileRevision === next.revision,
+      );
+      expect(current).toBeTruthy();
+      expect(
+        (
+          await request(`/proposals/${current.id}/decision`, {
+            digest: current.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(200);
+      const claimed = await request(`/proposals/${current.id}/claim`, {
+        digest: current.digest,
+      });
+      expect(claimed.status).toBe(200);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: [],
+            expectedRevision: next.revision,
+          })
+        ).status,
+      ).toBe(200);
+      expect(branch(await render(credentials))).toBeUndefined();
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
+        globalParameters,
+      );
+      const receipt = {
+        digest: current.digest,
+        attemptId: claimed.body.proposal.execution.attemptId,
+        receipt: { outcome: "applied", operationId: "opened-view-fixture" },
+      };
+      expect(
+        (await request(`/proposals/${current.id}/receipt`, receipt)).status,
+      ).toBe(200);
+      expect(
+        (await request(`/proposals/${current.id}/receipt`, receipt)).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(`/proposals/${current.id}/claim`, {
+            digest: current.digest,
+          })
+        ).status,
+      ).toBe(409);
+      console.log(
+        "Authenticated view-profile HTTP: discovery, conditional persistence, disabled proposal refusal, revision-fenced approve/claim, owner isolation, restart and historical receipt PASS",
+      );
     }
     expect((await request("/revoke", {})).status).toBe(200);
     expect((await request("/proposals")).status).toBe(409);
