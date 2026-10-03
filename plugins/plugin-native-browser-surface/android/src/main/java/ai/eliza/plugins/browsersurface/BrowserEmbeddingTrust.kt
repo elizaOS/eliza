@@ -27,7 +27,7 @@ internal object BrowserEmbeddingTrust {
     @RequiresApi(33)
     fun requireInstalledTrust(activity: Activity) {
         val manager = activity.packageManager
-        val certificates = try {
+        val certificates: List<Set<String>> = try {
             activities.map { name ->
                 val info = manager.getActivityInfo(ComponentName(ChromiumBrowserLauncher.PACKAGE_NAME, name), 0)
                 if (!info.enabled) emptySet() else info.knownActivityEmbeddingCerts
