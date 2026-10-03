@@ -112,3 +112,28 @@ the expected phrase while the recognizer control passed; the model/forward-path
 defect remains unresolved (issue #30679). Diagnosis needs a matched canonical
 reference and the first divergent tensor. Microphone capture, phonemization and
 physical speaker playback are outside this IPA-input diagnostic.
+
+## Standalone host speech
+
+Bun hosts may explicitly enable owner-authenticated local speech with
+`ELIZA_KOKORO_ENABLED=1`, an absolute `ELIZA_INFERENCE_LIBRARY`, its reviewed
+`ELIZA_KOKORO_LIBRARY_SHA256`, and an absolute `ELIZA_KOKORO_MODEL_DIR`.
+The worker requires ABI 14 or later, the pinned Kokoro 82M v1.0 GGUF and
+`voices/af_bella.bin`; it does not download assets or use a cloud fallback.
+`GET /api/tts/kokoro/status` reports readiness. `POST /api/tts/kokoro` accepts
+only `{ "text": "..." }` (1–500 characters) and a UUID `X-Request-Id`, returning
+mono PCM16 WAV at 24 kHz. Both require an active owner session, not merely the
+host's static API token, and are available only in local runtime modes.
+
+Each server owns its worker and replay ledger. Runtime replacement stops the
+old worker; closing the server prevents further speech startup. Cancelling a
+request destroys its worker context and a subsequent request initializes a
+new one. Direct compat-handler hosts must call `closeStandaloneKokoro(state)`
+on shutdown and `stopStandaloneKokoro(state)` before replacing the runtime.
+
+With the same reviewed native asset environment, run
+`bun run --cwd packages/app test:tts:standalone` for real HTTP policy, durable
+SQLite session, native speech, replay, host-isolation and cancellation checks.
+The test writes synthetic audio and a report under
+`test-results/standalone-kokoro-http`; it fails if assets are unavailable.
+This qualification does not prove browser playback or Android execution.
