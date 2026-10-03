@@ -49,3 +49,11 @@ node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plu
 ```
 
 The bridge fixture exports native screenshots and complete page-read results.
+
+Android foreground-service hosts can share `ChromiumBrowserConnection`: construct
+it with the service context, call `start()` after entering foreground, and
+`close()` when the service stops. Call its lifecycle methods on the main thread.
+It verifies the module's build-pinned package and signing certificate before
+binding and after connection. The priority-preserving Custom Tabs binding keeps
+the browser reachable without opening an activity, tab, URL or debugging port.
+It does not grant task/action authority or claim that a renderer is observable.
