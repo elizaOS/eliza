@@ -51,6 +51,42 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("keeps a createdAt of 0 inside an inclusive start/end window", async () => {
+    const adapter = await open();
+    const epoch = {
+      ...memory("epoch-message"),
+      createdAt: 0,
+      embedding: undefined,
+    };
+    const later = {
+      ...memory("later-message"),
+      createdAt: 10,
+      embedding: undefined,
+    };
+    await adapter.createMemories([
+      { memory: epoch, tableName: "messages" },
+      { memory: later, tableName: "messages" },
+    ]);
+
+    const epochOnly = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      start: 0,
+      end: 0,
+    });
+    expect(epochOnly.map((row) => row.content.text)).toEqual(["epoch-message"]);
+
+    const throughLater = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      start: 1,
+      end: 10,
+    });
+    expect(throughLater.map((row) => row.content.text)).toEqual([
+      "later-message",
+    ]);
+  });
+
   it("preserves complete sources and the selected embedding space across restarts", async () => {
     const adapter = await open();
     const record = memory(
