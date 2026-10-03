@@ -115,7 +115,7 @@ export async function createV5MessageContextObject(args: {
       stable: false,
       content:
         (getDeviceActionTurn()?.viewProfile
-          ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(getDeviceActionTurn()!.viewProfile!.views)}. Do not offer or propose another view. This subset is not approval to execute. `
+          ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(getDeviceActionTurn()?.viewProfile?.views)}. Do not offer or propose another view. This subset is not approval to execute. `
           : "") +
         (getDeviceActionTurn()?.credential.capabilities?.some(
           (capability) =>

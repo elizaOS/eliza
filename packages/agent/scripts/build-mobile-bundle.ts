@@ -456,9 +456,11 @@ const optionalPluginStubs = {
   "@elizaos/plugin-x402": path.join(stubsDir, "null-plugin.ts"),
   // Android ships a separate verified Bun worker/compiler resource directory.
   // iOS has not qualified that process contract and retains its exclusion.
-  ...(TARGET === "android" ? {} : {
-    "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.ts"),
-  }),
+  ...(TARGET === "android"
+    ? {}
+    : {
+        "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.ts"),
+      }),
   // NOTE: @elizaos/plugin-native-filesystem is intentionally NOT stubbed. It
   // is a declared MOBILE_CORE_PLUGINS member — the mobile-safe FILE
   // target=device bridge (duck-typed window.Capacitor on iOS/Android,
@@ -1836,7 +1838,10 @@ const manifest = {
       ...ELIZAOS_ANDROID_CORE_PLUGINS,
       ...ELIZAOS_ANDROID_TERMINAL_PLUGINS,
     ],
-    optional: [...MOBILE_MODEL_PROVIDER_PLUGINS, ...(TARGET === "android" ? ["@elizaos/plugin-workflow"] : [])],
+    optional: [
+      ...MOBILE_MODEL_PROVIDER_PLUGINS,
+      ...(TARGET === "android" ? ["@elizaos/plugin-workflow"] : []),
+    ],
   },
   externalsAsStubs: Object.keys(stubAliases),
   unsupportedAndroidRuntimeStubs: [

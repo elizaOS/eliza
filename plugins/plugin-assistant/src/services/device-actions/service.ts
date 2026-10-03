@@ -1,8 +1,3 @@
-import {
-  enabledDeviceViews,
-  storedDeviceViewProfile,
-  type DeviceViewProfile,
-} from "./view-profile.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -61,6 +56,11 @@ import {
   REMINDER_CREATE_CAPABILITY,
   validateReminderCreateResult,
 } from "./reminder-create-contract.ts";
+import {
+  type DeviceViewProfile,
+  enabledDeviceViews,
+  storedDeviceViewProfile,
+} from "./view-profile.ts";
 
 import {
   validateWorkflowBinding,

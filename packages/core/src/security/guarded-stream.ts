@@ -168,8 +168,12 @@ export class GuardedStreamScanner {
 		let safe = raw;
 		if (this.secretSession) safe = this.secretSession.substituteText(safe);
 		if (this.piiSession) safe = this.piiSession.substituteText(safe);
-		const restoredPii = this.piiSession ? this.piiSession.restoreText(safe) : safe;
-		const visible = this.secretSession ? this.secretSession.restoreUserReplyText(restoredPii) : restoredPii;
+		const restoredPii = this.piiSession
+			? this.piiSession.restoreText(safe)
+			: safe;
+		const visible = this.secretSession
+			? this.secretSession.restoreUserReplyText(restoredPii)
+			: restoredPii;
 		return { safe, visible };
 	}
 

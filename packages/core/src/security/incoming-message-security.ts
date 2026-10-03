@@ -243,7 +243,9 @@ export function hardenIncomingUserMessage(message: Memory): void {
 /** Redact secret-shaped substrings before persisting user text to memory. */
 export function scrubIncomingMessageTextForStorage(text: string): string {
 	const session = new SecretSwapSession();
-	return session.restoreUserReplyText(session.substituteText(text)).replaceAll("[redacted credential]", "***");
+	return session
+		.restoreUserReplyText(session.substituteText(text))
+		.replaceAll("[redacted credential]", "***");
 }
 
 /**

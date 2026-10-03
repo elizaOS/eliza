@@ -1,4 +1,3 @@
-import { workerTerminationFromError } from './workflow-worker-termination';
 /**
  * Tenant-scoped persistence and execution service for native Smithers workflow
  * modules. elizaOS owns definitions, revisions, run summaries, API events, and
@@ -86,6 +85,7 @@ import {
 } from './smithers-runtime';
 import { readApprovalReceipts } from './workflow-approval-receipts';
 import { cloneJson } from './workflow-json';
+import { workerTerminationFromError } from './workflow-worker-termination';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 export const WORKFLOW_TASK_KIND = 'workflow';

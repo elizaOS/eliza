@@ -362,7 +362,9 @@ export function restorePiiInUserReplyText(text: string): string {
   const restoredPii = context?.piiSwapSession?.restoreInValue(text) ?? text;
   // Reverse ingress order. Personal data may have been captured by the secret
   // detector before PII substitution; credentials must stay redacted here.
-  return context?.secretSwapSession?.restoreUserReplyText(restoredPii) ?? restoredPii;
+  return (
+    context?.secretSwapSession?.restoreUserReplyText(restoredPii) ?? restoredPii
+  );
 }
 
 export function createV5ReplyStrategyResult(args: {

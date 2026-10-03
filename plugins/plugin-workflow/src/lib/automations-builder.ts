@@ -15,9 +15,9 @@
 import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
 import { ElizaError, stringToUuid } from '@elizaos/core';
 import { getRouteOwnerEntityId } from '../routes/_helpers';
-import { workflowRuntimeStatus } from '../services/workflow-status';
 import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import { workflowRuntimeStatus } from '../services/workflow-status';
 import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
@@ -598,7 +598,10 @@ export async function buildAutomationListResponse(
     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
   const service = getWorkflowService(runtime);
-  const workflowStatus = workflowRuntimeStatus(Boolean(service), Boolean(runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE)));
+  const workflowStatus = workflowRuntimeStatus(
+    Boolean(service),
+    Boolean(runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+  );
   const { workflows: workflowList, workflowFetchError } = await loadWorkflowList(
     service,
     ownerEntityId

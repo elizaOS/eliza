@@ -1010,7 +1010,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					code: "STAGE1_INVALID_SOURCE_REPLY",
 				});
 				expect(runtime.useModel).toHaveBeenCalledTimes(2);
-				expect(JSON.stringify(useModelCalls(runtime)[1])).toContain("Your previous response used an invalid source quote.");
+				expect(JSON.stringify(useModelCalls(runtime)[1])).toContain(
+					"Your previous response used an invalid source quote.",
+				);
 				expect(dispatch).not.toHaveBeenCalled();
 			} else {
 				const result = await run;

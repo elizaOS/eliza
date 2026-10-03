@@ -56,20 +56,32 @@ export function findWorkspaceSourceEntry(packageDir, subpath, target = "bun") {
   // Export aliases can point into nested source directories; guessing src/<subpath>
   // loses those mappings in a clean checkout without distribution outputs.
   if (target !== "browser") {
-    const manifest = JSON.parse(readFileSync(path.join(packageDir, "package.json"), "utf8"));
+    const manifest = JSON.parse(
+      readFileSync(path.join(packageDir, "package.json"), "utf8"),
+    );
     let exported;
     try {
       exported = resolveExports(manifest, subpath ? `./${subpath}` : ".", {
-        conditions: ["eliza-source", "bun", "node"], unsafe: true,
+        conditions: ["eliza-source", "bun", "node"],
+        unsafe: true,
       });
     } catch (error) {
-      if (!error.message.startsWith("Missing ") && !error.message.startsWith("No known conditions ")) throw error;
+      if (
+        !error.message.startsWith("Missing ") &&
+        !error.message.startsWith("No known conditions ")
+      )
+        throw error;
     }
     for (const candidate of exported ?? []) {
       const entry = path.resolve(packageDir, candidate);
-      if (/\.(?:[cm]?ts|tsx)$/.test(candidate) && !candidate.endsWith(".d.ts") &&
-          existsSync(entry) && statSync(entry).isFile() &&
-          realpathSync(entry).startsWith(`${realpathSync(packageDir)}${path.sep}`)) return entry;
+      if (
+        /\.(?:[cm]?ts|tsx)$/.test(candidate) &&
+        !candidate.endsWith(".d.ts") &&
+        existsSync(entry) &&
+        statSync(entry).isFile() &&
+        realpathSync(entry).startsWith(`${realpathSync(packageDir)}${path.sep}`)
+      )
+        return entry;
     }
   }
   const srcDir = existsSync(path.join(packageDir, "src"))

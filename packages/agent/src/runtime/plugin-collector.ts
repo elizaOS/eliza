@@ -574,16 +574,23 @@ export function collectPluginNames(
   const leanChat =
     !onMobile &&
     process.env.ELIZA_PLUGIN_SET?.trim().toLowerCase() === "lean-chat";
-  const leanWorkflows = readAliasedEnv("ELIZA_LEAN_CHAT_WORKFLOWS") === "1" &&
-    (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow?.enabled !== false;
-  const mobileWorkflows = isAndroidMobile() && readAliasedEnv("ELIZA_MOBILE_WORKFLOWS") === "1" &&
-    (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow?.enabled !== false;
+  const leanWorkflows =
+    readAliasedEnv("ELIZA_LEAN_CHAT_WORKFLOWS") === "1" &&
+    (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow
+      ?.enabled !== false;
+  const mobileWorkflows =
+    isAndroidMobile() &&
+    readAliasedEnv("ELIZA_MOBILE_WORKFLOWS") === "1" &&
+    (config as ElizaConfig & { workflow?: { enabled?: boolean } }).workflow
+      ?.enabled !== false;
   const seedCorePlugins = onMobile
-    ? (mobileWorkflows ? [...MOBILE_CORE_PLUGINS, "@elizaos/plugin-workflow"] : MOBILE_CORE_PLUGINS)
+    ? mobileWorkflows
+      ? [...MOBILE_CORE_PLUGINS, "@elizaos/plugin-workflow"]
+      : MOBILE_CORE_PLUGINS
     : leanChat
-      ? (leanWorkflows
-          ? [...LEAN_CHAT_PLUGINS, "@elizaos/plugin-workflow"]
-          : LEAN_CHAT_PLUGINS)
+      ? leanWorkflows
+        ? [...LEAN_CHAT_PLUGINS, "@elizaos/plugin-workflow"]
+        : LEAN_CHAT_PLUGINS
       : CORE_PLUGINS;
   const pluginsToLoad = new Set<string>(seedCorePlugins);
   const track = (name: string, reason: string) => {

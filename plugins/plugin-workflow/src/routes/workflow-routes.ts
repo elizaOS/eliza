@@ -27,6 +27,7 @@ export interface WorkflowRouteContext {
 }
 
 export type { WorkflowStatusResponse } from '../services/workflow-status';
+
 import { workflowRuntimeStatus } from '../services/workflow-status';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -211,7 +212,10 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (ctx.method === 'GET' && path === '/status') {
       ctx.json(ctx.res, {
-        ...workflowRuntimeStatus(true, Boolean(ctx.runtime?.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))),
+        ...workflowRuntimeStatus(
+          true,
+          Boolean(ctx.runtime?.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+        ),
         manualSubmissionProtocol: 1,
         approvalReceiptProtocol: 1,
         approvalPresentationProtocol: 1,
@@ -229,10 +233,27 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (ctx.method === 'POST' && path === '/phone/generate') {
       const body = await readBody(ctx.req, 75000);
-      if (Buffer.byteLength(JSON.stringify(body),'utf8') > 75000) throw new WorkflowApiError('Generation request is too large',413);
-      if (Object.keys(body).some(key=>!['prompt','operations','device','existing','catalogRevision','compilerRevision'].includes(key))) throw new WorkflowApiError('Unsupported generation field',400);
-      const {catalogRevision,compilerRevision,...input} = body;
-      ctx.json(ctx.res, await service.generatePhoneDraft(input,catalogRevision,compilerRevision,owner));
+      if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 75000)
+        throw new WorkflowApiError('Generation request is too large', 413);
+      if (
+        Object.keys(body).some(
+          (key) =>
+            ![
+              'prompt',
+              'operations',
+              'device',
+              'existing',
+              'catalogRevision',
+              'compilerRevision',
+            ].includes(key)
+        )
+      )
+        throw new WorkflowApiError('Unsupported generation field', 400);
+      const { catalogRevision, compilerRevision, ...input } = body;
+      ctx.json(
+        ctx.res,
+        await service.generatePhoneDraft(input, catalogRevision, compilerRevision, owner)
+      );
       return;
     }
     const typedReceipt = /^\/phone\/mutations\/([0-9a-f-]+)$/.exec(path);

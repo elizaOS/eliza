@@ -12,7 +12,10 @@ export interface WorkflowStatusResponse {
   errorMessage?: string | null;
 }
 
-export function workflowRuntimeStatus(authoringAvailable: boolean, executionAvailable: boolean): WorkflowStatusResponse {
+export function workflowRuntimeStatus(
+  authoringAvailable: boolean,
+  executionAvailable: boolean
+): WorkflowStatusResponse {
   const available = authoringAvailable && executionAvailable;
   return {
     mode: available ? 'local' : 'disabled',
@@ -24,6 +27,8 @@ export function workflowRuntimeStatus(authoringAvailable: boolean, executionAvai
     executionLocation: 'agent-runtime',
     cloudHealth: 'unknown',
     engine: 'smthrs',
-    ...(!available ? {errorMessage: 'Workflow authoring or execution service is not registered'} : {}),
+    ...(!available
+      ? { errorMessage: 'Workflow authoring or execution service is not registered' }
+      : {}),
   };
 }

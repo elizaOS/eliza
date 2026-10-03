@@ -1,18 +1,18 @@
 import type http from "node:http";
-import { workflowDeviceOwner } from "./workflow-device-owner.ts";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   ApprovalIdempotencyConflictError,
   ApprovalNotFoundError,
   type ApprovalRequest,
   ApprovalStateTransitionError,
-  DeviceActionError,
   DEVICE_VIEWS,
+  DeviceActionError,
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import { workflowDeviceOwner } from "./workflow-device-owner.ts";
 
 export function requiresDeviceIdentity(
   req: Pick<http.IncomingMessage, "headers">,

@@ -169,7 +169,15 @@ export interface WorkflowExecution {
   stoppedAt?: string | null;
   input: Record<string, unknown>;
   output?: unknown;
-  error?: { message: string; stack?: string; workerTermination?: { exitCode: number | null; signal: string | null; identity?: {pid:number;uid:number;startedAt:number} } };
+  error?: {
+    message: string;
+    stack?: string;
+    workerTermination?: {
+      exitCode: number | null;
+      signal: string | null;
+      identity?: { pid: number; uid: number; startedAt: number };
+    };
+  };
   /** Host process reconciliation; never a replacement for canonical Smithers receipts. */
   reconciliation?: {
     state: 'worker-running' | 'outcome-unknown';

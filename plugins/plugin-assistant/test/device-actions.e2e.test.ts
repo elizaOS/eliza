@@ -1,5 +1,3 @@
-import { CORS_ALLOWED_HEADERS } from "../../../packages/app/src/api/server-cors.ts";
-import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -21,6 +19,7 @@ import {
 import { buildUserMessages } from "../../../packages/agent/src/api/server-helpers.ts";
 import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
 import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
+import { CORS_ALLOWED_HEADERS } from "../../../packages/app/src/api/server-cors.ts";
 import {
   AuthStore,
   type DrizzleDatabase,
@@ -36,6 +35,7 @@ import {
   DeviceActionService,
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
+import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
 // and on-disk PGlite. All identities and requested content are synthetic.
@@ -972,7 +972,13 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         allCapabilities,
       );
       expect(enrolled.status).toBe(200);
-      expect([...enrolled.body.capabilities].sort()).toEqual([...allCapabilities.split(","), "reminders.local-record.v2", "reminders.create.v1"].sort());
+      expect([...enrolled.body.capabilities].sort()).toEqual(
+        [
+          ...allCapabilities.split(","),
+          "reminders.local-record.v2",
+          "reminders.create.v1",
+        ].sort(),
+      );
       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
       expect(
         (
@@ -1225,7 +1231,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           expect(historical.body.action.text).toContain(
             "The request may already have changed an alarm",
           );
-          expect(historical.body.action.text).toContain("No new dispatch occurred.");
+          expect(historical.body.action.text).toContain(
+            "No new dispatch occurred.",
+          );
           expect(historical.body.action.data.executed).toBe(false);
         }
       }
@@ -1708,92 +1716,432 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       }
     }
     {
-      const cap="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1,reminders.create.v1";
-      const c={...credentials,capabilities:cap.split(",")},service=new DeviceActionService(runtimeState.runtime);
-      const call=(path:string,body?:unknown)=>request(path,body,"a",deviceKey,cap);
-      expect((await call("/register",{label:"Creation fixture"})).status).toBe(200);
-      expect((await request("/proposals",undefined,"a",deviceKey,cap+",reminders.local-record.v1")).status).toBe(401);
-      expect((await request("/proposals",undefined,"a",deviceKey,cap+",invented.capability")).status).toBe(401);
-      for(const mode of ["none","lead","repeat","unknown"]){
-        const dueAt=Date.now()+7200000,alertMinutes=mode==="lead"?10:null;
-        const operation={type:"reminder_create",fields:{title:"Reviewed creation",body:"Synthetic body",schedule:{at:dueAt-(alertMinutes??0)*60000,dueAt,alertMinutes,recurrence:mode==="repeat"?{rule:"daily",zone:"UTC",date:"2026-10-03",time:"13:00",leadMinutes:0}:null}}};
-        await expect(service.propose({...c,capabilities:["reminders.local-record.v2"]},operation,"old-"+mode,"fixture")).rejects.toThrow();
-        await expect(service.propose(c,{...operation,extra:true},"bad-"+mode,"fixture")).rejects.toThrow();
-        const runAction=()=>withDeviceActionTurn(runtimeState.runtime,c,()=>proposeDeviceAction.handler(runtimeState.runtime,memory,undefined,{parameters:{operation,operationKey:"create-"+mode,reason:"fixture"}}));
-        const proposed=await runAction();expect(proposed&&proposed.data).toMatchObject({executed:false,approvalRequired:true});
-        const item=(await call("/proposals")).body.proposals.find((p:any)=>p.id===(proposed&&proposed.data?.proposalId));
+      const cap =
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1,reminders.create.v1";
+      const c = { ...credentials, capabilities: cap.split(",") },
+        service = new DeviceActionService(runtimeState.runtime);
+      const call = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, cap);
+      expect(
+        (await call("/register", { label: "Creation fixture" })).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            cap + ",reminders.local-record.v1",
+          )
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            cap + ",invented.capability",
+          )
+        ).status,
+      ).toBe(401);
+      for (const mode of ["none", "lead", "repeat", "unknown"]) {
+        const dueAt = Date.now() + 7200000,
+          alertMinutes = mode === "lead" ? 10 : null;
+        const operation = {
+          type: "reminder_create",
+          fields: {
+            title: "Reviewed creation",
+            body: "Synthetic body",
+            schedule: {
+              at: dueAt - (alertMinutes ?? 0) * 60000,
+              dueAt,
+              alertMinutes,
+              recurrence:
+                mode === "repeat"
+                  ? {
+                      rule: "daily",
+                      zone: "UTC",
+                      date: "2026-10-03",
+                      time: "13:00",
+                      leadMinutes: 0,
+                    }
+                  : null,
+            },
+          },
+        };
+        await expect(
+          service.propose(
+            { ...c, capabilities: ["reminders.local-record.v2"] },
+            operation,
+            "old-" + mode,
+            "fixture",
+          ),
+        ).rejects.toThrow();
+        await expect(
+          service.propose(
+            c,
+            { ...operation, extra: true },
+            "bad-" + mode,
+            "fixture",
+          ),
+        ).rejects.toThrow();
+        const runAction = () =>
+          withDeviceActionTurn(runtimeState.runtime, c, () =>
+            proposeDeviceAction.handler(
+              runtimeState.runtime,
+              memory,
+              undefined,
+              {
+                parameters: {
+                  operation,
+                  operationKey: "create-" + mode,
+                  reason: "fixture",
+                },
+              },
+            ),
+          );
+        const proposed = await runAction();
+        expect(proposed && proposed.data).toMatchObject({
+          executed: false,
+          approvalRequired: true,
+        });
+        const item = (await call("/proposals")).body.proposals.find(
+          (p: any) => p.id === (proposed && proposed.data?.proposalId),
+        );
         expect(item.payload.operation).toEqual(operation);
-        expect((await call(`/proposals/${item.id}/decision`,{digest:item.digest,decision:"approve"})).status).toBe(200);
-        expect((await request(`/proposals/${item.id}/claim`,{digest:item.digest})).status).toBe(409);
-        const claimed=await call(`/proposals/${item.id}/claim`,{digest:item.digest});expect(claimed.status).toBe(200);
-        const operationId="created-"+mode,result={version:1,kind:"reminder_create",sourceId:"local-reminders",reminderId:operationId,occurrenceId:"first-occurrence",revision:"c".repeat(64),status:alertMinutes===null?"pending":"scheduled",at:operation.fields.schedule.at,dueAt,alertMinutes,fields:operation.fields};
-        const receipt={digest:item.digest,attemptId:claimed.body.proposal.execution.attemptId,receipt:{outcome:"applied",operationId,result}};
-        expect((await call(`/proposals/${item.id}/receipt`,{...receipt,receipt:{...receipt.receipt,result:{...result,reminderId:"wrong"}}})).status).toBe(409);
-        expect((await request(`/proposals/${item.id}/receipt`,receipt)).status).toBe(409);
-        if(mode==="unknown"){
-          expect((await call(`/proposals/${item.id}/receipt`,{...receipt,receipt:{outcome:"unknown",operationId}})).body.proposal.state).toBe("reconciliation_required");
-          const recovery={digest:item.digest,attemptId:claimed.body.proposal.execution.attemptId,resolution:{confirmed:true,outcome:"applied",operationId,result}};
-          expect((await request(`/proposals/${item.id}/reconciliation`,recovery)).status).toBe(409);
-          expect((await call(`/proposals/${item.id}/reconciliation`,recovery)).body.proposal.state).toBe("done");
-          expect((await call(`/proposals/${item.id}/reconciliation`,recovery)).status).toBe(200);
-        }else{expect((await call(`/proposals/${item.id}/receipt`,receipt)).body.proposal.state).toBe("done");expect((await call(`/proposals/${item.id}/receipt`,receipt)).status).toBe(200);}
-        expect((await call(`/proposals/${item.id}/claim`,{digest:item.digest})).status).toBe(409);
-        expect((await call("/proposals")).body.proposals.find((p:any)=>p.id===item.id).execution.providerReceipt.result).toEqual(result);
-        const historical=await runAction();expect(historical&&historical.data).toMatchObject({executed:false,result});
+        expect(
+          (
+            await call(`/proposals/${item.id}/decision`, {
+              digest: item.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        expect(
+          (
+            await request(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const claimed = await call(`/proposals/${item.id}/claim`, {
+          digest: item.digest,
+        });
+        expect(claimed.status).toBe(200);
+        const operationId = "created-" + mode,
+          result = {
+            version: 1,
+            kind: "reminder_create",
+            sourceId: "local-reminders",
+            reminderId: operationId,
+            occurrenceId: "first-occurrence",
+            revision: "c".repeat(64),
+            status: alertMinutes === null ? "pending" : "scheduled",
+            at: operation.fields.schedule.at,
+            dueAt,
+            alertMinutes,
+            fields: operation.fields,
+          };
+        const receipt = {
+          digest: item.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: { outcome: "applied", operationId, result },
+        };
+        expect(
+          (
+            await call(`/proposals/${item.id}/receipt`, {
+              ...receipt,
+              receipt: {
+                ...receipt.receipt,
+                result: { ...result, reminderId: "wrong" },
+              },
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (await request(`/proposals/${item.id}/receipt`, receipt)).status,
+        ).toBe(409);
+        if (mode === "unknown") {
+          expect(
+            (
+              await call(`/proposals/${item.id}/receipt`, {
+                ...receipt,
+                receipt: { outcome: "unknown", operationId },
+              })
+            ).body.proposal.state,
+          ).toBe("reconciliation_required");
+          const recovery = {
+            digest: item.digest,
+            attemptId: claimed.body.proposal.execution.attemptId,
+            resolution: {
+              confirmed: true,
+              outcome: "applied",
+              operationId,
+              result,
+            },
+          };
+          expect(
+            (await request(`/proposals/${item.id}/reconciliation`, recovery))
+              .status,
+          ).toBe(409);
+          expect(
+            (await call(`/proposals/${item.id}/reconciliation`, recovery)).body
+              .proposal.state,
+          ).toBe("done");
+          expect(
+            (await call(`/proposals/${item.id}/reconciliation`, recovery))
+              .status,
+          ).toBe(200);
+        } else {
+          expect(
+            (await call(`/proposals/${item.id}/receipt`, receipt)).body.proposal
+              .state,
+          ).toBe("done");
+          expect(
+            (await call(`/proposals/${item.id}/receipt`, receipt)).status,
+          ).toBe(200);
+        }
+        expect(
+          (await call(`/proposals/${item.id}/claim`, { digest: item.digest }))
+            .status,
+        ).toBe(409);
+        expect(
+          (await call("/proposals")).body.proposals.find(
+            (p: any) => p.id === item.id,
+          ).execution.providerReceipt.result,
+        ).toEqual(result);
+        const historical = await runAction();
+        expect(historical && historical.data).toMatchObject({
+          executed: false,
+          result,
+        });
       }
     }
     {
       // Real authenticated HTTP + durable approval queue: timing semantics never
       // downgrade to v1, and an identical receipt replay never claims twice.
-      const timingCapabilities = "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1";
-      const timingCredentials = { ...credentials, capabilities: timingCapabilities.split(",") };
+      const timingCapabilities =
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1";
+      const timingCredentials = {
+        ...credentials,
+        capabilities: timingCapabilities.split(","),
+      };
       const timingService = new DeviceActionService(runtimeState.runtime);
-      const timingRequest = (path: string, body?: unknown) => request(path, body, "a", deviceKey, timingCapabilities);
-      const advertised = await timingRequest("/register", { label: "Timing fixture", workflowProtocol: 1 });
+      const timingRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, timingCapabilities);
+      const advertised = await timingRequest("/register", {
+        label: "Timing fixture",
+        workflowProtocol: 1,
+      });
       expect(advertised.status).toBe(200);
-      expect(advertised.body.capabilities).toEqual(expect.arrayContaining(["reminders.local-record.v1", "reminders.local-record.v2"]));
-      expect((await request("/proposals", undefined, "a", deviceKey, timingCapabilities + ",reminders.local-record.v1")).status).toBe(401);
-      const timingTarget = { sourceId: "19", sourceRevision: "a".repeat(64), reminderId: "timing-task", occurrenceId: "timing-occurrence", revision: "b".repeat(64), timingVersion: 2 as const };
+      expect(advertised.body.capabilities).toEqual(
+        expect.arrayContaining([
+          "reminders.local-record.v1",
+          "reminders.local-record.v2",
+        ]),
+      );
+      expect(
+        (
+          await request(
+            "/proposals",
+            undefined,
+            "a",
+            deviceKey,
+            timingCapabilities + ",reminders.local-record.v1",
+          )
+        ).status,
+      ).toBe(401);
+      const timingTarget = {
+        sourceId: "19",
+        sourceRevision: "a".repeat(64),
+        reminderId: "timing-task",
+        occurrenceId: "timing-occurrence",
+        revision: "b".repeat(64),
+        timingVersion: 2 as const,
+      };
       const dueAt = Date.now() + 3600000;
-      for (const scenario of ["read-none", "update-none", "update-early", "complete-repeat", "reconcile-none"] as const) {
+      for (const scenario of [
+        "read-none",
+        "update-none",
+        "update-early",
+        "complete-repeat",
+        "reconcile-none",
+      ] as const) {
         const alertMinutes = scenario === "update-early" ? 10 : null;
-        const schedule = { at: dueAt - (alertMinutes ?? 0) * 60000, recurrence: null, dueAt, alertMinutes };
-        const fields = { title: "Reviewed task", body: "Synthetic only", schedule };
-        const operation = scenario.startsWith("update") || scenario === "reconcile-none"
-          ? { type: "reminder_update" as const, target: timingTarget, fields }
-          : { type: scenario === "read-none" ? "reminder_read_selected" as const : "reminder_complete" as const, target: timingTarget };
-        await expect(timingService.propose({ ...credentials, capabilities: ["reminders.local-record.v1"] }, operation, scenario, "fixture")).rejects.toThrow();
-        const proposed = await timingService.propose(timingCredentials, operation, scenario, "fixture");
-        const item = (await timingRequest("/proposals")).body.proposals.find((p: any) => p.id === proposed.id);
+        const schedule = {
+          at: dueAt - (alertMinutes ?? 0) * 60000,
+          recurrence: null,
+          dueAt,
+          alertMinutes,
+        };
+        const fields = {
+          title: "Reviewed task",
+          body: "Synthetic only",
+          schedule,
+        };
+        const operation =
+          scenario.startsWith("update") || scenario === "reconcile-none"
+            ? { type: "reminder_update" as const, target: timingTarget, fields }
+            : {
+                type:
+                  scenario === "read-none"
+                    ? ("reminder_read_selected" as const)
+                    : ("reminder_complete" as const),
+                target: timingTarget,
+              };
+        await expect(
+          timingService.propose(
+            { ...credentials, capabilities: ["reminders.local-record.v1"] },
+            operation,
+            scenario,
+            "fixture",
+          ),
+        ).rejects.toThrow();
+        const proposed = await timingService.propose(
+          timingCredentials,
+          operation,
+          scenario,
+          "fixture",
+        );
+        const item = (await timingRequest("/proposals")).body.proposals.find(
+          (p: any) => p.id === proposed.id,
+        );
         expect(item.payload.operation).toEqual(operation);
-        expect((await timingRequest(`/proposals/${item.id}/decision`, { digest: item.digest, decision: "approve" })).status).toBe(200);
-        expect((await request(`/proposals/${item.id}/claim`, { digest: item.digest })).status).toBe(409);
-        const claimed = await timingRequest(`/proposals/${item.id}/claim`, { digest: item.digest });
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/decision`, {
+              digest: item.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        expect(
+          (
+            await request(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const claimed = await timingRequest(`/proposals/${item.id}/claim`, {
+          digest: item.digest,
+        });
         expect(claimed.status).toBe(200);
-        expect((await timingRequest(`/proposals/${item.id}/claim`, { digest: item.digest })).status).toBe(409);
-        const result = { version: 1, kind: operation.type, sourceId: timingTarget.sourceId, reminderId: timingTarget.reminderId,
-          occurrenceId: scenario === "complete-repeat" ? "timing-next-occurrence" : timingTarget.occurrenceId,
-          revision: scenario === "read-none" ? timingTarget.revision : "c".repeat(64),
-          status: alertMinutes === null ? "pending" : "scheduled", at: schedule.at, dueAt, alertMinutes,
-          ...(scenario === "read-none" ? { fields } : {}) };
-        const receipt = { digest: item.digest, attemptId: claimed.body.proposal.execution.attemptId, receipt: { outcome: "applied", operationId: `native-${scenario}`, result } };
-        const { dueAt: ignoredDue, alertMinutes: ignoredAlert, ...downgraded } = result;
-        expect((await timingRequest(`/proposals/${item.id}/receipt`, { ...receipt, receipt: { ...receipt.receipt, result: downgraded } })).status).toBe(409);
-        expect((await request(`/proposals/${item.id}/receipt`, receipt)).status).toBe(409);
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const result = {
+          version: 1,
+          kind: operation.type,
+          sourceId: timingTarget.sourceId,
+          reminderId: timingTarget.reminderId,
+          occurrenceId:
+            scenario === "complete-repeat"
+              ? "timing-next-occurrence"
+              : timingTarget.occurrenceId,
+          revision:
+            scenario === "read-none" ? timingTarget.revision : "c".repeat(64),
+          status: alertMinutes === null ? "pending" : "scheduled",
+          at: schedule.at,
+          dueAt,
+          alertMinutes,
+          ...(scenario === "read-none" ? { fields } : {}),
+        };
+        const receipt = {
+          digest: item.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: {
+            outcome: "applied",
+            operationId: `native-${scenario}`,
+            result,
+          },
+        };
+        const {
+          dueAt: ignoredDue,
+          alertMinutes: ignoredAlert,
+          ...downgraded
+        } = result;
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/receipt`, {
+              ...receipt,
+              receipt: { ...receipt.receipt, result: downgraded },
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (await request(`/proposals/${item.id}/receipt`, receipt)).status,
+        ).toBe(409);
         if (scenario === "reconcile-none") {
-          const uncertain = await timingRequest(`/proposals/${item.id}/receipt`, { ...receipt, receipt: { outcome: "unknown", code: "synthetic_lost_response" } });
+          const uncertain = await timingRequest(
+            `/proposals/${item.id}/receipt`,
+            {
+              ...receipt,
+              receipt: { outcome: "unknown", code: "synthetic_lost_response" },
+            },
+          );
           expect(uncertain.body.proposal.state).toBe("reconciliation_required");
-          const reconciliation = { digest: item.digest, attemptId: claimed.body.proposal.execution.attemptId, resolution: { confirmed: true, outcome: "applied", operationId: `native-${scenario}`, result } };
-          expect((await request(`/proposals/${item.id}/reconciliation`, reconciliation)).status).toBe(409);
-          expect((await timingRequest(`/proposals/${item.id}/reconciliation`, reconciliation)).body.proposal.state).toBe("done");
-          expect((await timingRequest(`/proposals/${item.id}/reconciliation`, reconciliation)).status).toBe(200);
+          const reconciliation = {
+            digest: item.digest,
+            attemptId: claimed.body.proposal.execution.attemptId,
+            resolution: {
+              confirmed: true,
+              outcome: "applied",
+              operationId: `native-${scenario}`,
+              result,
+            },
+          };
+          expect(
+            (
+              await request(
+                `/proposals/${item.id}/reconciliation`,
+                reconciliation,
+              )
+            ).status,
+          ).toBe(409);
+          expect(
+            (
+              await timingRequest(
+                `/proposals/${item.id}/reconciliation`,
+                reconciliation,
+              )
+            ).body.proposal.state,
+          ).toBe("done");
+          expect(
+            (
+              await timingRequest(
+                `/proposals/${item.id}/reconciliation`,
+                reconciliation,
+              )
+            ).status,
+          ).toBe(200);
         } else {
-          expect((await timingRequest(`/proposals/${item.id}/receipt`, receipt)).body.proposal.state).toBe("done");
-          expect((await timingRequest(`/proposals/${item.id}/receipt`, receipt)).status).toBe(200);
+          expect(
+            (await timingRequest(`/proposals/${item.id}/receipt`, receipt)).body
+              .proposal.state,
+          ).toBe("done");
+          expect(
+            (await timingRequest(`/proposals/${item.id}/receipt`, receipt))
+              .status,
+          ).toBe(200);
         }
-        const canonical = (await timingRequest("/proposals")).body.proposals.find((p: any) => p.id === item.id);
+        const canonical = (
+          await timingRequest("/proposals")
+        ).body.proposals.find((p: any) => p.id === item.id);
         expect(canonical.execution.providerReceipt.result).toEqual(result);
-        expect((await timingRequest(`/proposals/${item.id}/claim`, { digest: item.digest })).status).toBe(409);
+        expect(
+          (
+            await timingRequest(`/proposals/${item.id}/claim`, {
+              digest: item.digest,
+            })
+          ).status,
+        ).toBe(409);
       }
     }
     {
@@ -1877,75 +2225,263 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       ).toBe(409);
     }
     {
-      for(const header of ['x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities']) expect(CORS_ALLOWED_HEADERS.toLowerCase().split(', ')).toContain(header);
-      const discovery=await request('/view-profile');
-      expect(discovery).toMatchObject({status:200,body:{version:1,profile:null}});
-      expect(discovery.body.supportedViews).toContain('workflows');
-      expect((await request('/register',{label:'Profile fixture'})).body.viewProfileVersion).toBe(1);
-      for(const input of [
-        {version:2,views:['notes'],expectedRevision:null},
-        {version:1,views:['notes','notes'],expectedRevision:null},
-        {version:1,views:['wallet'],expectedRevision:null},
-        {version:1,views:['notes'],expectedRevision:null,owner:'forged'},
-        {version:1,views:['notes']}
-      ])expect((await request('/view-profile',input)).status).toBe(409);
-      expect((await request('/view-profile',undefined,'none')).status).toBe(401);
-      expect((await request('/view-profile',undefined,'a','wrong-key')).status).toBe(409);
-      const first=(await request('/view-profile',{version:1,views:['notes','workflows'],expectedRevision:null})).body.profile;
-      const globalParameters = JSON.stringify(proposeDeviceAction.parameters);
-      const render = (credential: typeof credentials) => withDeviceActionTurn(runtimeState.runtime, credential, async () => {
-        await new Promise(resolve => setTimeout(resolve, 1));
-        return createV5MessageContextObject({runtime:runtimeState.runtime,message:memory,state:{values:{},data:{},text:""},includeTools:true,selectedContexts:[{id:"general",name:"General",description:"Fixture"}] as any,preselectedActions:[proposeDeviceAction]});
+      for (const header of [
+        "x-eliza-device-id",
+        "x-eliza-device-key",
+        "x-eliza-device-capabilities",
+      ])
+        expect(CORS_ALLOWED_HEADERS.toLowerCase().split(", ")).toContain(
+          header,
+        );
+      const discovery = await request("/view-profile");
+      expect(discovery).toMatchObject({
+        status: 200,
+        body: { version: 1, profile: null },
       });
-      const contexts = await Promise.all([render(credentials),render({...credentials,subjectUserId:ownerB,deviceKey:"b".repeat(64)})]);
-      const serialized=contexts.map(context=>JSON.stringify(context));
-      expect(serialized[0]).toContain('enabled-view profile allows open_view only for');
-      expect(serialized[1]).not.toContain('enabled-view profile allows open_view only for');
-      const branch=(context:any)=>context.events.find((event:any)=>event.type==='tool'&&event.tool.name==='PROPOSE_DEVICE_ACTION').tool.parameters.properties.operation.anyOf.find((b:any)=>b.properties?.type?.enum?.[0]==='open_view');
-      expect(branch(contexts[0]).properties.view.enum).toEqual(['notes','workflows']);
-      expect(branch(contexts[1]).properties.view.enum).toContain('browser');
-      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalParameters);
+      expect(discovery.body.supportedViews).toContain("workflows");
+      expect(
+        (await request("/register", { label: "Profile fixture" })).body
+          .viewProfileVersion,
+      ).toBe(1);
+      for (const input of [
+        { version: 2, views: ["notes"], expectedRevision: null },
+        { version: 1, views: ["notes", "notes"], expectedRevision: null },
+        { version: 1, views: ["wallet"], expectedRevision: null },
+        {
+          version: 1,
+          views: ["notes"],
+          expectedRevision: null,
+          owner: "forged",
+        },
+        { version: 1, views: ["notes"] },
+      ])
+        expect((await request("/view-profile", input)).status).toBe(409);
+      expect((await request("/view-profile", undefined, "none")).status).toBe(
+        401,
+      );
+      expect(
+        (await request("/view-profile", undefined, "a", "wrong-key")).status,
+      ).toBe(409);
+      const first = (
+        await request("/view-profile", {
+          version: 1,
+          views: ["notes", "workflows"],
+          expectedRevision: null,
+        })
+      ).body.profile;
+      const globalParameters = JSON.stringify(proposeDeviceAction.parameters);
+      const render = (credential: typeof credentials) =>
+        withDeviceActionTurn(runtimeState.runtime, credential, async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          return createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message: memory,
+            state: { values: {}, data: {}, text: "" },
+            includeTools: true,
+            selectedContexts: [
+              { id: "general", name: "General", description: "Fixture" },
+            ] as any,
+            preselectedActions: [proposeDeviceAction],
+          });
+        });
+      const contexts = await Promise.all([
+        render(credentials),
+        render({
+          ...credentials,
+          subjectUserId: ownerB,
+          deviceKey: "b".repeat(64),
+        }),
+      ]);
+      const serialized = contexts.map((context) => JSON.stringify(context));
+      expect(serialized[0]).toContain(
+        "enabled-view profile allows open_view only for",
+      );
+      expect(serialized[1]).not.toContain(
+        "enabled-view profile allows open_view only for",
+      );
+      const branch = (context: any) =>
+        context.events
+          .find(
+            (event: any) =>
+              event.type === "tool" &&
+              event.tool.name === "PROPOSE_DEVICE_ACTION",
+          )
+          .tool.parameters.properties.operation.anyOf.find(
+            (b: any) => b.properties?.type?.enum?.[0] === "open_view",
+          );
+      expect(branch(contexts[0]).properties.view.enum).toEqual([
+        "notes",
+        "workflows",
+      ]);
+      expect(branch(contexts[1]).properties.view.enum).toContain("browser");
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
+        globalParameters,
+      );
 
-      expect(first).toMatchObject({version:1,views:['notes','workflows']});
-      expect((await request('/view-profile',{version:1,views:['workflows','notes'],expectedRevision:first.revision})).body.profile).toEqual(first);
-      expect((await request('/view-profile',{version:1,views:[],expectedRevision:null})).status).toBe(409);
-      expect((await request('/view-profile',undefined,'b')).body.profile).toBeNull();
-      const proposeView=async(view:string)=>{
-        mapsActionParameters={operation:{type:'open_view',view},operationKey:randomUUID(),reason:'Explicit fixture request'};
-        const response=await fetch(`${origin}/api/maps-observation-fixture`,{method:'POST',headers:{authorization:`Bearer ${sessions.a}`,'x-eliza-device-id':device,'x-eliza-device-key':deviceKey,'content-type':'application/json'},body:JSON.stringify({text:'Open requested view',prompt:'Open requested view'})});
-        return {status:response.status,body:await response.json()};
+      expect(first).toMatchObject({
+        version: 1,
+        views: ["notes", "workflows"],
+      });
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: ["workflows", "notes"],
+            expectedRevision: first.revision,
+          })
+        ).body.profile,
+      ).toEqual(first);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: [],
+            expectedRevision: null,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (await request("/view-profile", undefined, "b")).body.profile,
+      ).toBeNull();
+      const proposeView = async (view: string) => {
+        mapsActionParameters = {
+          operation: { type: "open_view", view },
+          operationKey: randomUUID(),
+          reason: "Explicit fixture request",
+        };
+        const response = await fetch(`${origin}/api/maps-observation-fixture`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${sessions.a}`,
+            "x-eliza-device-id": device,
+            "x-eliza-device-key": deviceKey,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            text: "Open requested view",
+            prompt: "Open requested view",
+          }),
+        });
+        return { status: response.status, body: await response.json() };
       };
-      const before=(await request('/proposals')).body.proposals.length;
-      const disabled=await proposeView('browser');expect(disabled.body.action?.success).not.toBe(true);
-      expect((await request('/proposals')).body.proposals).toHaveLength(before);
-      await proposeView('notes');
-      const pending=(await request('/proposals')).body.proposals.find((p:any)=>p.payload?.operation?.view==='notes'&&p.payload?.viewProfileRevision===first.revision);
+      const before = (await request("/proposals")).body.proposals.length;
+      const disabled = await proposeView("browser");
+      expect(disabled.body.action?.success).not.toBe(true);
+      expect((await request("/proposals")).body.proposals).toHaveLength(before);
+      await proposeView("notes");
+      const pending = (await request("/proposals")).body.proposals.find(
+        (p: any) =>
+          p.payload?.operation?.view === "notes" &&
+          p.payload?.viewProfileRevision === first.revision,
+      );
       expect(pending).toBeTruthy();
-      expect((await request(`/proposals/${pending.id}/decision`,{digest:pending.digest,decision:'approve'})).status).toBe(200);
-      await proposeView('workflows');
-      const waiting=(await request('/proposals')).body.proposals.find((p:any)=>p.payload?.operation?.view==='workflows'&&p.payload?.viewProfileRevision===first.revision);
+      expect(
+        (
+          await request(`/proposals/${pending.id}/decision`, {
+            digest: pending.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(200);
+      await proposeView("workflows");
+      const waiting = (await request("/proposals")).body.proposals.find(
+        (p: any) =>
+          p.payload?.operation?.view === "workflows" &&
+          p.payload?.viewProfileRevision === first.revision,
+      );
       expect(waiting).toBeTruthy();
-      const next=(await request('/view-profile',{version:1,views:['notes'],expectedRevision:first.revision})).body.profile;
+      const next = (
+        await request("/view-profile", {
+          version: 1,
+          views: ["notes"],
+          expectedRevision: first.revision,
+        })
+      ).body.profile;
       expect(next.revision).not.toBe(first.revision);
-      expect((await request(`/proposals/${pending.id}/claim`,{digest:pending.digest})).status).toBe(409);
-      expect((await request(`/proposals/${waiting.id}/decision`,{digest:waiting.digest,decision:'approve'})).status).toBe(409);
-      expect((await request(`/proposals/${waiting.id}/decision`,{digest:waiting.digest,decision:'reject'})).status).toBe(200);
-      await new Promise<void>(resolve=>server!.close(()=>resolve()));server=undefined;await runtimeState.cleanup();
-      runtimeState=await createRealTestRuntime({characterName:'DeviceApprovalFixture',pgliteDir:directory,removePgliteDirOnCleanup:false});origin=await start();
-      expect((await request('/view-profile')).body.profile).toEqual(next);
-      await proposeView('notes');
-      const current=(await request('/proposals')).body.proposals.find((p:any)=>p.payload?.viewProfileRevision===next.revision);
+      expect(
+        (
+          await request(`/proposals/${pending.id}/claim`, {
+            digest: pending.digest,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(`/proposals/${waiting.id}/decision`, {
+            digest: waiting.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(`/proposals/${waiting.id}/decision`, {
+            digest: waiting.digest,
+            decision: "reject",
+          })
+        ).status,
+      ).toBe(200);
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = undefined;
+      await runtimeState.cleanup();
+      runtimeState = await createRealTestRuntime({
+        characterName: "DeviceApprovalFixture",
+        pgliteDir: directory,
+        removePgliteDirOnCleanup: false,
+      });
+      origin = await start();
+      expect((await request("/view-profile")).body.profile).toEqual(next);
+      await proposeView("notes");
+      const current = (await request("/proposals")).body.proposals.find(
+        (p: any) => p.payload?.viewProfileRevision === next.revision,
+      );
       expect(current).toBeTruthy();
-      expect((await request(`/proposals/${current.id}/decision`,{digest:current.digest,decision:'approve'})).status).toBe(200);
-      const claimed=await request(`/proposals/${current.id}/claim`,{digest:current.digest});expect(claimed.status).toBe(200);
-      expect((await request('/view-profile',{version:1,views:[],expectedRevision:next.revision})).status).toBe(200);
+      expect(
+        (
+          await request(`/proposals/${current.id}/decision`, {
+            digest: current.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(200);
+      const claimed = await request(`/proposals/${current.id}/claim`, {
+        digest: current.digest,
+      });
+      expect(claimed.status).toBe(200);
+      expect(
+        (
+          await request("/view-profile", {
+            version: 1,
+            views: [],
+            expectedRevision: next.revision,
+          })
+        ).status,
+      ).toBe(200);
       expect(branch(await render(credentials))).toBeUndefined();
-      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalParameters);
-      const receipt={digest:current.digest,attemptId:claimed.body.proposal.execution.attemptId,receipt:{outcome:'applied',operationId:'opened-view-fixture'}};
-      expect((await request(`/proposals/${current.id}/receipt`,receipt)).status).toBe(200);
-      expect((await request(`/proposals/${current.id}/receipt`,receipt)).status).toBe(200);
-      expect((await request(`/proposals/${current.id}/claim`,{digest:current.digest})).status).toBe(409);
-      console.log('Authenticated view-profile HTTP: discovery, conditional persistence, disabled proposal refusal, revision-fenced approve/claim, owner isolation, restart and historical receipt PASS');
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
+        globalParameters,
+      );
+      const receipt = {
+        digest: current.digest,
+        attemptId: claimed.body.proposal.execution.attemptId,
+        receipt: { outcome: "applied", operationId: "opened-view-fixture" },
+      };
+      expect(
+        (await request(`/proposals/${current.id}/receipt`, receipt)).status,
+      ).toBe(200);
+      expect(
+        (await request(`/proposals/${current.id}/receipt`, receipt)).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(`/proposals/${current.id}/claim`, {
+            digest: current.digest,
+          })
+        ).status,
+      ).toBe(409);
+      console.log(
+        "Authenticated view-profile HTTP: discovery, conditional persistence, disabled proposal refusal, revision-fenced approve/claim, owner isolation, restart and historical receipt PASS",
+      );
     }
     expect((await request("/revoke", {})).status).toBe(200);
     expect((await request("/proposals")).status).toBe(409);

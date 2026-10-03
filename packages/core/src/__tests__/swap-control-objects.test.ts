@@ -82,7 +82,10 @@ describe("model dispatch with swaps enabled", () => {
 		}
 	});
 
-	async function dispatch(settings: Record<string, string>, nativeMessages = false) {
+	async function dispatch(
+		settings: Record<string, string>,
+		nativeMessages = false,
+	) {
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "SwapDispatch", bio: "test", settings } as Character,
 			logLevel: "fatal",
@@ -98,7 +101,14 @@ describe("model dispatch with swaps enabled", () => {
 		);
 		const controller = new AbortController();
 		await runtime.useModel(ModelType.TEXT_LARGE, {
-			...(nativeMessages ? { messages: [{ role: "system", content: "Fixture system" }, { role: "user", content: PROMPT }] } : { prompt: PROMPT }),
+			...(nativeMessages
+				? {
+						messages: [
+							{ role: "system", content: "Fixture system" },
+							{ role: "user", content: PROMPT },
+						],
+					}
+				: { prompt: PROMPT }),
 			signal: controller.signal,
 		} as never);
 		if (!received) throw new Error("model handler was not invoked");
@@ -106,7 +116,10 @@ describe("model dispatch with swaps enabled", () => {
 	}
 
 	it("keeps one canonical system prompt when adding guidance to native messages", async () => {
-		const { received, signal } = await dispatch({ ELIZA_SECRET_SWAP_ENABLED: "true", ELIZA_PII_SWAP_ENABLED: "true" }, true);
+		const { received, signal } = await dispatch(
+			{ ELIZA_SECRET_SWAP_ENABLED: "true", ELIZA_PII_SWAP_ENABLED: "true" },
+			true,
+		);
 		expect(received.system).toContain("Fixture system");
 		expect(received.system).toContain("copy its entire reference exactly");
 		expect(received.messages).toHaveLength(1);
@@ -123,7 +136,9 @@ describe("model dispatch with swaps enabled", () => {
 		expect(received.signal).toBe(signal);
 		expect(received.signal).toBeInstanceOf(AbortSignal);
 		expect(received.system).toContain("copy its entire reference exactly");
-		expect(received.system).toContain("keep all existing approval requirements");
+		expect(received.system).toContain(
+			"keep all existing approval requirements",
+		);
 		expect(received.system).not.toContain(EMAIL);
 		const wire = String(received.prompt);
 		for (const value of [EMAIL, CARD, SSN, ADDRESS]) {
@@ -150,49 +165,125 @@ describe("model dispatch with swaps enabled", () => {
 			ELIZA_PII_SWAP_ENABLED: "false",
 		});
 		expect(received.prompt).toBe(PROMPT);
-		expect(String(received.system)).not.toContain("Contact references beginning __ELIZA_CONTACT_");
+		expect(String(received.system)).not.toContain(
+			"Contact references beginning __ELIZA_CONTACT_",
+		);
 	});
 
 	it("leaves the request untouched when both swaps are disabled", async () => {
 		const { received, signal } = await dispatch({});
 		expect(received.signal).toBe(signal);
 		expect(received.prompt).toBe(PROMPT);
-		expect(String(received.system)).not.toContain("Contact references beginning __ELIZA_CONTACT_");
+		expect(String(received.system)).not.toContain(
+			"Contact references beginning __ELIZA_CONTACT_",
+		);
 	});
 });
 
-describe('untrusted control-shaped values stay inside the redaction boundary',()=>{
- it('does not exempt a forged AbortSignal prototype from secret swapping',()=>{
-  const forged=Object.assign(Object.create(AbortSignal.prototype),{body:PROMPT});
-  const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue({payload:forged});
-  expect(result.payload).not.toBe(forged);expect(JSON.stringify(result)).not.toContain(EMAIL);
- });
- it('does not exempt a forged AbortSignal prototype from PII swapping',async()=>{
-  const session=new PseudonymSession({recognizer:new RegexEntityRecognizer()});await session.learn(PROMPT);
-  const forged=Object.assign(Object.create(AbortSignal.prototype),{body:PROMPT});const result=session.substituteInValue({payload:forged});
-  expect(result.payload).not.toBe(forged);expect(JSON.stringify(result)).not.toContain(ADDRESS);
- });
- it('does not inspect an untrusted proxy prototype or read its properties',()=>{
-  let calls=0;const value=new Proxy({body:PROMPT},{getPrototypeOf(){calls++;throw Error('Prototype executed');},get(){calls++;throw Error('Getter executed');}});
-  const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue(value);expect(calls).toBe(0);expect(JSON.stringify(result)).not.toContain(EMAIL);
- });
- it('does not pass through a genuine signal carrying added serializable text',()=>{
-  const signal=Object.assign(new AbortController().signal,{body:PROMPT});const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue({signal});
-  expect(result.signal).not.toBe(signal);expect(JSON.stringify(result)).not.toContain(EMAIL);
- });
+describe("untrusted control-shaped values stay inside the redaction boundary", () => {
+	it("does not exempt a forged AbortSignal prototype from secret swapping", () => {
+		const forged = Object.assign(Object.create(AbortSignal.prototype), {
+			body: PROMPT,
+		});
+		const result = new SecretSwapSession({
+			knownSecrets: {},
+		}).substituteInValue({ payload: forged });
+		expect(result.payload).not.toBe(forged);
+		expect(JSON.stringify(result)).not.toContain(EMAIL);
+	});
+	it("does not exempt a forged AbortSignal prototype from PII swapping", async () => {
+		const session = new PseudonymSession({
+			recognizer: new RegexEntityRecognizer(),
+		});
+		await session.learn(PROMPT);
+		const forged = Object.assign(Object.create(AbortSignal.prototype), {
+			body: PROMPT,
+		});
+		const result = session.substituteInValue({ payload: forged });
+		expect(result.payload).not.toBe(forged);
+		expect(JSON.stringify(result)).not.toContain(ADDRESS);
+	});
+	it("does not inspect an untrusted proxy prototype or read its properties", () => {
+		let calls = 0;
+		const value = new Proxy(
+			{ body: PROMPT },
+			{
+				getPrototypeOf() {
+					calls++;
+					throw Error("Prototype executed");
+				},
+				get() {
+					calls++;
+					throw Error("Getter executed");
+				},
+			},
+		);
+		const result = new SecretSwapSession({
+			knownSecrets: {},
+		}).substituteInValue(value);
+		expect(calls).toBe(0);
+		expect(JSON.stringify(result)).not.toContain(EMAIL);
+	});
+	it("does not pass through a genuine signal carrying added serializable text", () => {
+		const signal = Object.assign(new AbortController().signal, {
+			body: PROMPT,
+		});
+		const result = new SecretSwapSession({
+			knownSecrets: {},
+		}).substituteInValue({ signal });
+		expect(result.signal).not.toBe(signal);
+		expect(JSON.stringify(result)).not.toContain(EMAIL);
+	});
 });
 
-describe('clean cancellation controls and accessor safety',()=>{
- it('preserves cancellation through native controller and combined signals',()=>{
-  const controller=new AbortController();const signals=[controller.signal,AbortSignal.any([controller.signal])];const session=new SecretSwapSession({knownSecrets:{}});
-  const result=session.substituteInValue({signals,prompt:PROMPT});expect(result.signals[0]).toBe(signals[0]);expect(result.signals[1]).toBe(signals[1]);controller.abort();expect(result.signals.every(signal=>signal.aborted)).toBe(true);
- });
- it('does not execute an accessor attached to a control-shaped object',()=>{
-  let calls=0;const value=Object.create(AbortSignal.prototype);Object.defineProperty(value,Symbol('private'),{get(){calls++;return true;}});Object.defineProperty(value,'body',{value:PROMPT,enumerable:true});
-  const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue(value);expect(calls).toBe(0);expect(JSON.stringify(result)).not.toContain(EMAIL);
- });
- it('PII swapping does not execute proxy prototype or property traps',async()=>{
-  let calls=0;const session=new PseudonymSession({recognizer:new RegexEntityRecognizer()});await session.learn(PROMPT);
-  const value=new Proxy({body:PROMPT},{getPrototypeOf(){calls++;throw Error('Prototype executed');},get(){calls++;throw Error('Getter executed');}});const result=session.substituteInValue(value);expect(calls).toBe(0);expect(JSON.stringify(result)).not.toContain(ADDRESS);
- });
+describe("clean cancellation controls and accessor safety", () => {
+	it("preserves cancellation through native controller and combined signals", () => {
+		const controller = new AbortController();
+		const signals = [controller.signal, AbortSignal.any([controller.signal])];
+		const session = new SecretSwapSession({ knownSecrets: {} });
+		const result = session.substituteInValue({ signals, prompt: PROMPT });
+		expect(result.signals[0]).toBe(signals[0]);
+		expect(result.signals[1]).toBe(signals[1]);
+		controller.abort();
+		expect(result.signals.every((signal) => signal.aborted)).toBe(true);
+	});
+	it("does not execute an accessor attached to a control-shaped object", () => {
+		let calls = 0;
+		const value = Object.create(AbortSignal.prototype);
+		Object.defineProperty(value, Symbol("private"), {
+			get() {
+				calls++;
+				return true;
+			},
+		});
+		Object.defineProperty(value, "body", { value: PROMPT, enumerable: true });
+		const result = new SecretSwapSession({
+			knownSecrets: {},
+		}).substituteInValue(value);
+		expect(calls).toBe(0);
+		expect(JSON.stringify(result)).not.toContain(EMAIL);
+	});
+	it("PII swapping does not execute proxy prototype or property traps", async () => {
+		let calls = 0;
+		const session = new PseudonymSession({
+			recognizer: new RegexEntityRecognizer(),
+		});
+		await session.learn(PROMPT);
+		const value = new Proxy(
+			{ body: PROMPT },
+			{
+				getPrototypeOf() {
+					calls++;
+					throw Error("Prototype executed");
+				},
+				get() {
+					calls++;
+					throw Error("Getter executed");
+				},
+			},
+		);
+		const result = session.substituteInValue(value);
+		expect(calls).toBe(0);
+		expect(JSON.stringify(result)).not.toContain(ADDRESS);
+	});
 });

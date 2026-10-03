@@ -1,6 +1,6 @@
-import { workerTermination } from './workflow-worker-termination';
 import { publishAndroidWorkflowSource } from './workflow-source-publication';
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
+import { workerTermination } from './workflow-worker-termination';
 /**
  * Executes persisted Smithers workflow modules in an isolated Bun child process
  * and streams native Smithers progress events back to the owning elizaOS
@@ -1065,17 +1065,26 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     // The execution store retains the message, not ElizaError.context. Preserve
     // bounded OS exit evidence even when a worker writes no diagnostic bytes.
     const exitCode = Number.isSafeInteger(outcome.exitCode) ? String(outcome.exitCode) : 'unknown';
-    const exitSignal = outcome.exitSignal && /^SIG[A-Z0-9]{1,12}$/.test(outcome.exitSignal)
-      ? outcome.exitSignal : 'none';
-    throw new ElizaError(`Smithers worker exited without a result (exit=${exitCode}; signal=${exitSignal})${detail ? `: ${detail}` : ''}`, {
-      code: 'SMTHRS_RESULT_MISSING',
-      context: {
-        exitCode: outcome.exitCode,
-        workerTermination: workerTermination(outcome.exitCode, outcome.exitSignal, {pid:worker.pid,uid:typeof process.getuid==='function'?process.getuid():undefined,startedAt:workerStartedAt}),
-        exitSignal: outcome.exitSignal,
-        workflowId: request.workflow.id,
-      },
-    });
+    const exitSignal =
+      outcome.exitSignal && /^SIG[A-Z0-9]{1,12}$/.test(outcome.exitSignal)
+        ? outcome.exitSignal
+        : 'none';
+    throw new ElizaError(
+      `Smithers worker exited without a result (exit=${exitCode}; signal=${exitSignal})${detail ? `: ${detail}` : ''}`,
+      {
+        code: 'SMTHRS_RESULT_MISSING',
+        context: {
+          exitCode: outcome.exitCode,
+          workerTermination: workerTermination(outcome.exitCode, outcome.exitSignal, {
+            pid: worker.pid,
+            uid: typeof process.getuid === 'function' ? process.getuid() : undefined,
+            startedAt: workerStartedAt,
+          }),
+          exitSignal: outcome.exitSignal,
+          workflowId: request.workflow.id,
+        },
+      }
+    );
   }
   return {
     runId: result.runId,
