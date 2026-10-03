@@ -1,5 +1,0 @@
-accelerate
-datasets
-faiss-gpu
-transformers
-wandb

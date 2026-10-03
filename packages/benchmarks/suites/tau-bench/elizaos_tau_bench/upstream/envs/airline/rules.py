@@ -1,3 +1,0 @@
-# Copyright Sierra
-
-RULES = []

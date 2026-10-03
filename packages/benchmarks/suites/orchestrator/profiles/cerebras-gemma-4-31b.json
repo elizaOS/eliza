@@ -1,7 +1,0 @@
-{
-  "provider": "cerebras",
-  "model": "gemma-4-31b",
-  "extra": {
-    "reasoning_effort": "none"
-  }
-}

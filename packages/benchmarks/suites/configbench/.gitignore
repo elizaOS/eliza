@@ -1,5 +1,0 @@
-node_modules/
-dist/
-results/*.json
-results/*.md
-!results/.gitkeep
