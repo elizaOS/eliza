@@ -21,6 +21,18 @@ export interface InteractiveTaskActuator {
     taskId: string;
     signal: AbortSignal;
   }): Promise<TaskObservation>;
+  /** Trusted readback only; must never repeat the effect or accept client receipts. */
+  reconcile?(
+    proposal: TaskActionProposal,
+    context: {
+      owner: TaskOwner;
+      signal: AbortSignal;
+      isCurrent: () => boolean;
+    },
+  ): Promise<
+    | { status: "succeeded" | "failed"; evidenceRef: string }
+    | { status: "unknown"; evidenceRef?: string }
+  >;
   execute(
     proposal: TaskActionProposal,
     context: {
@@ -223,6 +235,82 @@ export class InteractiveTaskRuntime {
       ).task;
     } finally {
       this.pending.delete(id);
+    }
+  }
+  /** Trusted host readback; resolving an operation never resumes the task. */
+  async reconcile(
+    id: string,
+    expectedRevision: number,
+    operationId: string,
+    stillAuthorized: () => Promise<boolean>,
+  ): Promise<InteractiveTask> {
+    await this.settle(id);
+    const before = this.get(id);
+    if (before.revision !== expectedRevision)
+      throw new ElizaError("Task revision changed", { code: "TASK_CONFLICT" });
+    if (
+      before.authorization.state !== "active" ||
+      !["paused", "blocked", "cancelled"].includes(before.status)
+    )
+      throw new ElizaError("Task is not authorized for readback", {
+        code: "TASK_NOT_ACTIVE",
+      });
+    const operation = before.operations.find(
+      (op) => op.proposal.id === operationId,
+    );
+    if (operation?.status !== "unknown")
+      throw new ElizaError("No unknown operation to reconcile", {
+        code: "TASK_REPLAY",
+      });
+    const readback = this.options.actuator.reconcile;
+    if (!readback)
+      throw new ElizaError("Readback is unavailable", {
+        code: "TASK_UNAVAILABLE",
+      });
+    const controller = this.begin(id);
+    const isCurrent = () => {
+      if (controller.signal.aborted || this.poisoned) return false;
+      const current = this.get(id);
+      return (
+        current.revision === expectedRevision &&
+        current.epoch === before.epoch &&
+        current.authorization.state === "active" &&
+        current.status === before.status
+      );
+    };
+    try {
+      if (!(await stillAuthorized()) || !isCurrent())
+        throw new ElizaError("Task authorization changed", {
+          code: "TASK_REVOKED",
+        });
+      const result = await readback.call(
+        this.options.actuator,
+        operation.proposal,
+        {
+          owner: this.owner,
+          signal: controller.signal,
+          isCurrent,
+        },
+      );
+      if (!(await stillAuthorized()) || !isCurrent())
+        throw new ElizaError("Task changed during readback", {
+          code: "TASK_CONFLICT",
+        });
+      controller.signal.throwIfAborted();
+      return this.options.store.transition(
+        id,
+        { owner: this.owner, expectedRevision, now: this.now() },
+        {
+          type: "reconcile",
+          operationId,
+          status: result.status,
+          evidenceRef: result.evidenceRef,
+        },
+      ).task;
+    } finally {
+      this.pending.delete(id);
+      this.startCleanup(id);
+      await this.settle(id);
     }
   }
   /** Trusted planner entrypoint; deliberately absent from the renderer routes. */
