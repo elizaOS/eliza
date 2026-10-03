@@ -2040,12 +2040,15 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.healthDomain.getHealthTrend(days, window);
   }
 
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
-    return this.healthDomain.getHealthDataPoints(opts);
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
+    return this.healthDomain.getHealthDataPoints(opts, window);
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.

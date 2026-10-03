@@ -760,13 +760,20 @@ export class HealthDomain {
     }
   }
 
-  async getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
+  async getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
     try {
-      return await getDataPoints(opts, resolveHealthConfig());
+      // Sleep series are per local calendar day in the owner's zone.
+      return await getDataPoints(opts, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }

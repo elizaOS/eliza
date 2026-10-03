@@ -440,7 +440,7 @@ describe("health action runner", () => {
           syncedAt: "2026-09-13T22:30:00.000Z",
         })),
         getHealthTrend: vi.fn(async () => []),
-        getHealthDataPoints: vi.fn(),
+        getHealthDataPoints: vi.fn(async () => []),
         getHealthDailySummary: vi.fn(async (date: string) => ({
           date,
           steps: 1200,
@@ -475,6 +475,14 @@ describe("health action runner", () => {
       expect(service.getHealthTrend).toHaveBeenCalledWith(3, {
         timeZone: "Asia/Tokyo",
       });
+
+      await runner(runtime, message, undefined, {
+        parameters: { subaction: "by_metric", metric: "sleep_hours", days: 2 },
+      });
+      expect(service.getHealthDataPoints).toHaveBeenCalledWith(
+        expect.objectContaining({ metric: "sleep_hours" }),
+        { timeZone: "Asia/Tokyo" },
+      );
     } finally {
       vi.useRealTimers();
     }

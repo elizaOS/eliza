@@ -63,9 +63,12 @@ export type LifeOpsHealthServicePublic = {
     days: number,
     window: { timeZone: string },
   ): Promise<HealthDailySummary[]>;
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]>;
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]>;
 };

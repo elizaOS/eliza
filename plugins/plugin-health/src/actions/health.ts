@@ -79,11 +79,14 @@ export interface HealthActionService {
     days: number,
     window: { timeZone: string },
   ): Promise<HealthDailySummary[]>;
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]>;
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]>;
   getHealthDailySummary(
     date: string,
     window: { timeZone: string },
@@ -737,11 +740,10 @@ export function createHealthActionRunner(
       const startAt = new Date(
         Date.now() - days * 24 * 60 * 60 * 1000,
       ).toISOString();
-      const points = await service.getHealthDataPoints({
-        metric,
-        startAt,
-        endAt,
-      });
+      const points = await service.getHealthDataPoints(
+        { metric, startAt, endAt },
+        { timeZone },
+      );
       const total = points.reduce((acc, p) => acc + p.value, 0);
       const firstPoint = points[0];
       if (!firstPoint) {
