@@ -26,12 +26,15 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
   ElizaError,
   extractUserText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveActionArgs,
+  resolveCalendarTimeZone,
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
@@ -1944,11 +1947,14 @@ async function runLifeConnectedQueryInner(args: {
         data: toActionData(next),
       };
     }
-    // "Today" is the owner's calendar day, not the host's.
-    const ownerTimeZone = await resolveOwnerTimeZone(runtime, new Date());
+    // "Today" is the owner's calendar day, resolved by the shared fail-closed
+    // calendar zone owner so an unreadable or invalid zone is never replaced
+    // by the host's.
+    const now = new Date();
+    const { timeZone } = await resolveCalendarTimeZone(runtime, now);
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
-      ...dayRange(0, ownerTimeZone),
-      timeZone: ownerTimeZone,
+      ...dayRange(0, timeZone, now),
+      timeZone,
     });
     const fallback =
       feed.events.length === 0
@@ -1979,6 +1985,18 @@ async function runLifeConnectedQueryInner(args: {
       data: toActionData(feed),
     };
   } catch (err) {
+    if (err instanceof CalendarTimeZoneError) {
+      // error-policy:J4 the owner's zone is unreadable or invalid; answering
+      // for another zone's day would be a wrong answer reported as success.
+      return {
+        success: false,
+        text:
+          err.code === CALENDAR_TIME_ZONE_INVALID
+            ? "I can't tell what day it is for you: your saved time zone isn't valid. Tell me your time zone and I'll check your calendar."
+            : "I can't read your time zone right now, so I can't tell which day is today for you. Please try again shortly.",
+        data: { actionName, operation: queryOperation, error: err.code },
+      };
+    }
     if (err instanceof LifeOpsServiceError) {
       return {
         success: false,

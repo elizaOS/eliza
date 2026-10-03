@@ -21,20 +21,30 @@
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  CALENDAR_TIME_ZONE_INVALID,
+  CALENDAR_TIME_ZONE_UNAVAILABLE,
+  registerCalendarTimeZoneResolver,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runLifeConnectedQuery } from "../src/actions/life.js";
 import type { LifeOpsService } from "../src/lifeops/service.js";
 import { LifeOpsServiceError } from "../src/lifeops/service.js";
 
-const runtime = {
-  agentId: "agent-life-query-test",
-  logger: {
-    info: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
-    debug: () => undefined,
-  },
-} as unknown as IAgentRuntime;
+function makeRuntime(): IAgentRuntime {
+  return {
+    agentId: "agent-life-query-test",
+    getSetting: () => undefined,
+    logger: {
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+      debug: () => undefined,
+    },
+  } as unknown as IAgentRuntime;
+}
+
+const runtime = makeRuntime();
 
 const message = {
   id: "00000000-0000-0000-0000-000000000201",
@@ -150,9 +160,10 @@ function run(
     | "query_calendar_today"
     | "query_calendar_next"
     | "query_email",
+  queryRuntime: IAgentRuntime = runtime,
 ) {
   return runLifeConnectedQuery({
-    runtime,
+    runtime: queryRuntime,
     message,
     state: undefined as State | undefined,
     intent: "connected query test",
@@ -272,6 +283,75 @@ describe("query_calendar_today availability", () => {
     const result = await run(service, "query_calendar_today");
     expect(result.success).toBe(true);
     expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
+  });
+
+  describe("owner calendar day", () => {
+    const calendarRead = () =>
+      stubService({
+        status: connectorStatus({
+          connected: true,
+          grantedCapabilities: ["google.calendar.read"],
+        }),
+      });
+
+    function runtimeWithOwnerZone(resolve: () => Promise<string | null>) {
+      const ownerRuntime = makeRuntime();
+      registerCalendarTimeZoneResolver(ownerRuntime, resolve);
+      return ownerRuntime;
+    }
+
+    it("queries the owner's local day in the owner's zone", async () => {
+      vi.useFakeTimers({ now: new Date("2026-10-03T01:00:00.000Z") });
+      try {
+        const service = calendarRead();
+        const result = await run(
+          service,
+          "query_calendar_today",
+          runtimeWithOwnerZone(async () => "America/New_York"),
+        );
+        expect(result.success).toBe(true);
+        // 21:00 on Oct 2 in New York: the UTC date has already rolled over.
+        expect(service.getCalendarFeed).toHaveBeenCalledWith(
+          expect.anything(),
+          {
+            timeMin: "2026-10-02T04:00:00.000Z",
+            timeMax: "2026-10-03T04:00:00.000Z",
+            timeZone: "America/New_York",
+          },
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("fails visibly instead of using another zone when the owner's zone is invalid", async () => {
+      const service = calendarRead();
+      const result = await run(
+        service,
+        "query_calendar_today",
+        runtimeWithOwnerZone(async () => "Mars/Olympus"),
+      );
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: CALENDAR_TIME_ZONE_INVALID });
+      expect(result.text).toContain("time zone");
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    });
+
+    it("fails visibly when the owner's zone cannot be read", async () => {
+      const service = calendarRead();
+      const result = await run(
+        service,
+        "query_calendar_today",
+        runtimeWithOwnerZone(async () => {
+          throw new Error("fact store unavailable");
+        }),
+      );
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: CALENDAR_TIME_ZONE_UNAVAILABLE,
+      });
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    });
   });
 
   it("translates a LifeOpsServiceError from the availability probe instead of throwing", async () => {
