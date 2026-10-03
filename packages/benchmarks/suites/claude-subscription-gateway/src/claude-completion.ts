@@ -5,6 +5,7 @@
 
 import { tmpdir } from "node:os";
 import { z } from "zod";
+import gatewayPackage from "../package.json" with { type: "json" };
 import type {
   CapturedToolCall,
   ClaudeCompletionResult,
@@ -15,7 +16,8 @@ import type {
   NormalizedFunctionTool,
 } from "./types.js";
 
-export const CLAUDE_AGENT_SDK_VERSION = "0.3.200" as const;
+export const CLAUDE_AGENT_SDK_VERSION =
+  gatewayPackage.dependencies["@anthropic-ai/claude-agent-sdk"];
 const SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
 const MCP_SERVER_NAME = "benchmark";
 const MCP_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`;

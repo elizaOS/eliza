@@ -48,3 +48,24 @@ Without configuration, Node semantic checking and Bun worker/control/approval co
 For offline packaging discovery, run `node packages/scripts/plugins/plugin-workflow/inventory-mobile-dependencies.ts` from the repository root after the pinned installation. It reports the physical declared dependency/peer graph, separate installed versions, missing edges and platform constraints without executing packages. This conservative inventory is not a minimal runtime closure or an authenticated mobile artifact; package contents, target binaries, declarations, safe extraction and real Android execution still require qualification.
 
 A host may supply `compilerDependencyRoot` for a separate immutable compiler/declaration artifact; it defaults to the runtime `dependencyRoot`. Semantic checking anchors imports and type roots there while execution links stay on the runtime artifact. Both artifacts must describe the same supported workflow API. Host-owned workflow dependency symlinks are refreshed atomically when an artifact path changes; unexpected files/directories are rejected and preserved. This is private-directory maintenance, not protection against a hostile same-UID writer.
+
+### Android immutable source publication
+
+Android runtimes selected by `ELIZA_PLATFORM=android` or `ELIZA_MOBILE_PLATFORM=android` publish complete versioned source through a private directory reservation and same-directory rename, without requiring hard links in app data. Existing identical source is reused; conflicting bytes, nonprivate files and untrusted paths are rejected. A crashed reservation is preserved and causes a bounded refusal rather than being stolen. This coordinates cooperating publishers in one trusted app UID; it is not isolation from arbitrary hostile code with that UID.
+
+The filesystem integration tests exercise multiple real writer processes, concurrent readers, conflicting versions, symlink/permission rejection and abandoned reservations. Runtime dispatch tests exercise both environment aliases. Passing these tests on a POSIX development host does not qualify Android filesystem durability or power-loss recovery. The Windows backend and desktop hard-link publisher remain separate.
+
+### Typed phone draft generation
+
+`POST /api/workflow/phone/generate` accepts a prompt, selected operation IDs,
+current catalog/compiler revisions, and optional existing typed draft and device
+enrollment. The phone catalog advertises `generationProtocol: 1`. A text model
+must be available; enrollment is validated for the authenticated workflow owner
+before model submission and again before returning the draft.
+
+The result is an inactive, unsaved typed spec with its digest and required reviews.
+Generation never creates workflows, schedules, executions, or device approvals.
+Notes and Calendar read scopes must match a previously selected draft scope;
+model-supplied device identities, source code and activation are rejected. An
+unsupported request returns a clarification error. Saving remains a separate,
+explicit typed mutation. This endpoint does not enable mobile workflow execution.

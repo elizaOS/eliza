@@ -8,16 +8,20 @@
 
 import {
   type ComponentType,
+  lazy,
   Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
+  getAppShellPageRegistrySnapshot,
   overlayAgentSurfaceDescriptor,
   requireRegisteredAgentSurface,
+  subscribeAppShellPages,
 } from "../../app-shell-registry";
 import type {
   OverlayApp,
@@ -28,7 +32,20 @@ import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { Card } from "../ui/card";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
+import { resolveDeclaredAppWindowRoute } from "./AppWindowRenderer.route-resolution";
 import { getAppSlug } from "./helpers";
+
+const DeclaredAppWindowSurface = lazy(() =>
+  import("./AppWindowRenderer.routes").then((module) => ({
+    default: module.DeclaredAppWindowSurface,
+  })),
+);
+const RegistryAppWindowView = lazy(() =>
+  import("./AppWindowRenderer.routes").then((module) => ({
+    default: module.RegistryAppWindowView,
+  })),
+);
+
 export interface AppWindowRendererProps {
   slug: string;
 }
@@ -147,6 +164,25 @@ export function OverlayAppSurface({
 export function AppWindowRenderer({
   slug,
 }: AppWindowRendererProps): React.ReactElement {
+  useSyncExternalStore(
+    subscribeAppShellPages,
+    getAppShellPageRegistrySnapshot,
+    getAppShellPageRegistrySnapshot,
+  );
+  return (
+    <Suspense fallback={<AppFallback />}>
+      {resolveDeclaredAppWindowRoute(slug) ? (
+        <DeclaredAppWindowSurface slug={slug} />
+      ) : (
+        <OverlayOrCatalogWindow key={slug} slug={slug} />
+      )}
+    </Suspense>
+  );
+}
+
+function OverlayOrCatalogWindow({
+  slug,
+}: AppWindowRendererProps): React.ReactElement {
   const initialApp = useMemo(() => resolveOverlayAppBySlug(slug), [slug]);
   const [app, setApp] = useState<OverlayApp | undefined>(initialApp);
   // Reset to the freshest synchronous resolution whenever the slug changes.
@@ -198,11 +234,7 @@ export function AppWindowRenderer({
     [exitToApps, uiTheme],
   );
   if (!app) {
-    return (
-      <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
-        App not found: {slug}
-      </div>
-    );
+    return <RegistryAppWindowView slug={slug} />;
   }
   return <OverlayAppSurface app={app} {...context} />;
 }

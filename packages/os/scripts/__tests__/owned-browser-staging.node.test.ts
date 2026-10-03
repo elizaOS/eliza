@@ -69,6 +69,7 @@ function fixture(t, application = "ai.elizaos.app") {
     "background.mjs",
     "commands.mjs",
     "command-handler.mjs",
+    "manual-activity.mjs",
     "task-guidance.mjs",
     "page-guidance.mjs",
     "protocol.mjs",
@@ -530,6 +531,7 @@ test("owned admission checks the full guidance resource inventory and bytes", (t
   const f = fixture(t);
   for (const name of [
     "command-handler.mjs",
+    "manual-activity.mjs",
     "task-guidance.mjs",
     "page-guidance.mjs",
   ]) {

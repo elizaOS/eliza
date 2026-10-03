@@ -714,7 +714,7 @@
     "thinking-orbs": "0.2.0",
     "three": "^0.184.0",
     "vaul": "^1.1.2",
-    "viem": "^2.48.8",
+    "viem": "^2.56.9",
     "wagmi": "^2.19.5",
     "ws": "^8.21.3",
     "@solana/wallet-adapter-coinbase": "^0.1.23",

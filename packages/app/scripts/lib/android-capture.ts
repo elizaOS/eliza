@@ -516,18 +516,31 @@ export function captureAndroidScreenshot({
 
   ensureDir(artifactDir);
   const localPath = path.join(artifactDir, filename);
-  const result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"], {
-    timeout: ADB_COMMAND_TIMEOUT_MS,
-  });
-  if (result.status !== 0 || !result.stdout?.length) {
-    const detail = result.stderr?.toString("utf8").trim();
-    throw new Error(
-      `adb screencap failed for ${serial}${detail ? `: ${detail}` : ""}`,
-    );
-  }
-  fs.writeFileSync(localPath, result.stdout);
-  if (!isNonEmptyFile(localPath)) {
-    throw new Error(`adb screencap wrote an empty file: ${localPath}`);
+  const stagingDir = fs.mkdtempSync(path.join(artifactDir, ".screenshot-"));
+  const stagingPath = path.join(stagingDir, "capture.png");
+  try {
+    const fd = fs.openSync(stagingPath, "wx");
+    let result: ReturnType<typeof spawnSync>;
+    try {
+      // Stream PNG bytes to disk: a real high-resolution screen can exceed
+      // spawnSync's default stdout buffer before adb finishes the capture.
+      result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"], {
+        timeout: ADB_COMMAND_TIMEOUT_MS,
+        stdio: ["ignore", fd, "pipe"],
+      });
+    } finally {
+      fs.closeSync(fd);
+    }
+    if (result.error || result.status !== 0 || !isNonEmptyFile(stagingPath)) {
+      const detail =
+        result.error?.message || result.stderr?.toString("utf8").trim();
+      throw new Error(
+        `adb screencap failed for ${serial}${detail ? `: ${detail}` : ""}`,
+      );
+    }
+    fs.renameSync(stagingPath, localPath);
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
   }
   log(`wrote Android screenshot: ${localPath}`);
   return localPath;

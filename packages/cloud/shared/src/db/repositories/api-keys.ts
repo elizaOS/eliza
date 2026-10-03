@@ -1,4 +1,5 @@
 /** Persists API-key records and primary-consistent authorization reads for cloud services. */
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
@@ -251,7 +252,19 @@ export class ApiKeysRepository {
   /** Atomically replaces one immutable credential row with a freshly identified row. */
   async replace(id: string, replacement: NewApiKey, tx?: DbTransaction): Promise<ApiKey> {
     const run = async (inner: DbTransaction): Promise<ApiKey> => {
-      await inner.delete(apiKeys).where(eq(apiKeys.id, id));
+      // The primary read before rotation is only a snapshot. Consume the
+      // still-active original identity inside this transaction so a second
+      // rotation or a concurrent deactivation cannot mint a replacement.
+      const [consumed] = await inner
+        .delete(apiKeys)
+        .where(and(eq(apiKeys.id, id), eq(apiKeys.is_active, true), isNull(apiKeys.source_app_id)))
+        .returning({ id: apiKeys.id });
+      if (!consumed) {
+        throw new ElizaError("API key not found or no longer eligible for rotation", {
+          code: "API_KEY_NOT_FOUND",
+          context: { apiKeyId: id },
+        });
+      }
       const [created] = await inner.insert(apiKeys).values(replacement).returning();
       return created;
     };
@@ -397,6 +410,37 @@ export class ApiKeysRepository {
           eq(apiKeys.key_hash, keyHash),
           isNull(apiKeys.deleted_at),
           isNotNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
+  }
+
+  /** Retains only the hash-backed receipt and removes recoverable secret bytes. */
+  async tombstoneExactStandardCredential(
+    id: string,
+    keyHash: string,
+    revokedAt: Date,
+    tx?: DbTransaction,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await (tx ?? dbWrite)
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.key_hash, keyHash),
+          isNull(apiKeys.deleted_at),
+          isNull(apiKeys.source_app_id),
         ),
       )
       .returning();

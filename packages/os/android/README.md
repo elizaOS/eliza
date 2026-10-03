@@ -23,6 +23,14 @@ Android 17 `cp2a` release and vendor API `202604`. Its hashed vendor reference i
 a build input; physical installation still requires qualification and a signed contract.
 Alpha Phone (#31023) names Pixel 10, which has no lock here; see the grizzly
 `decisionNote` in `hardware-targets.json` before choosing a device.
+The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
+images from the separate `gsi-android15` (`bp1a`), `gsi-android16` (`bp4a`) and
+`gsi-android17` (`cp2a`) profiles in `aosp.lock.json`, not from the Cuttlefish
+checkout; `make build` does not select them. They use system_ext SELinux policy,
+are userdebug-only, and `generic-mediatek-gsi` stays blocked in
+`hardware-targets.json`. Every product selects the Android 17-only
+`platform_app_36` policy (`sepolicy/api37`, `sepolicy/system_ext_api37`) from
+`PLATFORM_SDK_VERSION`, so the same vendor tree compiles on Android 15, 16 and 17.
 Builds leave existing Cuttlefish sessions running. Stop selected instances
 explicitly when reclaiming memory before a build.
 
@@ -81,6 +89,28 @@ AOSP targets may admit them. Sync rechecks copied bytes before replacing vendor
 output. Launcher builds derive `ELIZA_CHROMIUM_CERT_SHA256` from the selected pin
 and reject a conflicting override. Bitwarden's upstream source/signature contract
 is unchanged. Development unpacked-extension proofs do not qualify release builds.
+
+## Builder hosts, release keys and device qualification
+
+- [`builder/`](builder/README.md): dry-run-first GCE and bare-metal builder and
+  Cuttlefish host provisioning, plus `sync-aosp.sh` for mirrors and snapshots of
+  a profile in `aosp.lock.json`.
+- [`signing/`](signing/README.md): offline key ceremony for the AOSP image keys
+  and the Ed25519 release keys, and the signing-environment decryptor.
+- Read-only device qualification against a requirements file. The shipped
+  [`device-requirements/treble-gsi.json`](device-requirements/treble-gsi.json)
+  checks Treble/GSI readiness; products pass their own thresholds:
+
+  ```bash
+  node packages/os/scripts/android/device-qualify.ts --serial SERIAL \
+    [--requirements product.json] [--fastboot]
+  ```
+
+  adb mode runs a fixed, tested allowlist of read-only commands; fastboot mode
+  runs only `getvar`. Records go to `test-results/os-device-qualification/` and
+  label emulator captures `emulator-observation`. A pass is an observation, not
+  a GSI boot. It complements, and never replaces, the `hardware-targets.json`
+  admission gate (`installerEligible`, `blockedReasons`) for supported targets.
 
 ## White-label builds
 

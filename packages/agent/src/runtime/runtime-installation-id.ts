@@ -78,29 +78,50 @@ function sameIdentity(left: FileStat, right: FileStat): boolean {
   );
 }
 
-function assertTrustedDirectoryStat(stat: FileStat): void {
+/** Renders the permission bits an operator compares against `ls -l` output. */
+function formatTrustMode(stat: FileStat): string {
+  return (Number(stat.mode) & 0o7777).toString(8).padStart(4, "0");
+}
+
+function assertTrustedDirectoryStat(
+  stat: FileStat,
+  directoryPath: string,
+): void {
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("Runtime state directory must be a real directory.");
+    throw new Error(
+      `Runtime state directory ${directoryPath} must be a real directory.`,
+    );
   }
-  assertOwnedByRuntime(stat, "Runtime state directory");
+  assertOwnedByRuntime(stat, `Runtime state directory ${directoryPath}`);
   if ((Number(stat.mode) & 0o022) !== 0) {
-    throw new Error("Runtime state directory is writable by another user.");
+    throw new Error(
+      `Runtime state directory ${directoryPath} is writable by another user (mode ${formatTrustMode(stat)}).`,
+    );
   }
 }
 
-function assertTrustedParentDirectoryStat(stat: FileStat): void {
+function assertTrustedParentDirectoryStat(
+  stat: FileStat,
+  directoryPath: string,
+): void {
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("Runtime state parent must be a real directory.");
+    throw new Error(
+      `Runtime state parent ${directoryPath} must be a real directory.`,
+    );
   }
   const uid = currentUid();
   const mode = Number(stat.mode) & 0o7777;
   const isTrustedOwner =
     uid === undefined || Number(stat.uid) === uid || Number(stat.uid) === 0;
   if (!isTrustedOwner) {
-    throw new Error("Runtime state parent is not owned by a trusted user.");
+    throw new Error(
+      `Runtime state parent ${directoryPath} is not owned by a trusted user (mode ${formatTrustMode(stat)}, uid ${Number(stat.uid)}; runtime uid ${uid ?? "unknown"}).`,
+    );
   }
   if ((mode & 0o022) !== 0 && (mode & 0o1000) === 0) {
-    throw new Error("Runtime state parent is replaceable by another user.");
+    throw new Error(
+      `Runtime state parent ${directoryPath} is replaceable by another user (mode ${formatTrustMode(stat)}; sticky bit absent). Remove group/other write access or set the sticky bit on this ancestor of the runtime state directory.`,
+    );
   }
 }
 
@@ -163,9 +184,14 @@ function isMobilePlatformAncestor(
   );
 }
 
-function assertMobilePlatformAncestorStat(stat: FileStat): void {
+function assertMobilePlatformAncestorStat(
+  stat: FileStat,
+  ancestorPath: string,
+): void {
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("Mobile app-data ancestor must be a real directory.");
+    throw new Error(
+      `Mobile app-data ancestor ${ancestorPath} must be a real directory.`,
+    );
   }
 }
 
@@ -201,15 +227,17 @@ async function closeLexicalAncestors(
   );
 }
 
-function assertTrustedSymlinkStat(stat: FileStat): void {
+function assertTrustedSymlinkStat(stat: FileStat, symlinkPath: string): void {
   if (!stat.isSymbolicLink()) {
     throw new Error(
-      "Runtime state lexical redirect changed during validation.",
+      `Runtime state lexical redirect ${symlinkPath} changed during validation.`,
     );
   }
   const uid = currentUid();
   if (uid !== undefined && Number(stat.uid) !== uid && Number(stat.uid) !== 0) {
-    throw new Error("Runtime state lexical redirect has an untrusted owner.");
+    throw new Error(
+      `Runtime state lexical redirect ${symlinkPath} has an untrusted owner (mode ${formatTrustMode(stat)}, uid ${Number(stat.uid)}; runtime uid ${uid}).`,
+    );
   }
 }
 
@@ -227,14 +255,16 @@ async function openTrustedLexicalChain(
           index === paths.length - 1 ||
           entryPath === mobileBoundary?.appDataDirectory
         ) {
-          throw new Error("Runtime state parent must be a real directory.");
+          throw new Error(
+            `Runtime state parent ${entryPath} must be a real directory.`,
+          );
         }
-        assertTrustedSymlinkStat(stat);
+        assertTrustedSymlinkStat(stat, entryPath);
         trusted.push({ path: entryPath, stat, validation: "symlink" });
         continue;
       }
       if (isMobilePlatformAncestor(entryPath, mobileBoundary)) {
-        assertMobilePlatformAncestorStat(stat);
+        assertMobilePlatformAncestorStat(stat, entryPath);
         trusted.push({
           path: entryPath,
           stat,
@@ -242,7 +272,7 @@ async function openTrustedLexicalChain(
         });
         continue;
       }
-      assertTrustedParentDirectoryStat(stat);
+      assertTrustedParentDirectoryStat(stat, entryPath);
       const handle = await fs.open(
         entryPath,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -271,19 +301,19 @@ async function revalidateLexicalChain(
       throw new Error("Runtime state lexical path changed during validation.");
     }
     if (ancestor.validation === "mobile-platform") {
-      assertMobilePlatformAncestorStat(pathStat);
+      assertMobilePlatformAncestorStat(pathStat, ancestor.path);
       continue;
     }
     if (ancestor.validation === "symlink") {
-      assertTrustedSymlinkStat(pathStat);
+      assertTrustedSymlinkStat(pathStat, ancestor.path);
       continue;
     }
     if (!ancestor.handle) {
       throw new Error("Runtime state lexical descriptor is unavailable.");
     }
-    assertTrustedParentDirectoryStat(pathStat);
+    assertTrustedParentDirectoryStat(pathStat, ancestor.path);
     const descriptorStat = await ancestor.handle.stat();
-    assertTrustedParentDirectoryStat(descriptorStat);
+    assertTrustedParentDirectoryStat(descriptorStat, ancestor.path);
     if (!sameIdentity(descriptorStat, ancestor.stat)) {
       throw new Error("Runtime state lexical path changed during validation.");
     }
@@ -301,7 +331,7 @@ async function revalidateParentPath(
 ): Promise<void> {
   const pathStat = await fs.lstat(trusted.path);
   if (trusted.validation === "mobile-platform") {
-    assertMobilePlatformAncestorStat(pathStat);
+    assertMobilePlatformAncestorStat(pathStat, trusted.path);
     if (!sameIdentity(pathStat, trusted.stat)) {
       throw new Error("Runtime state parent changed during validation.");
     }
@@ -311,8 +341,8 @@ async function revalidateParentPath(
     throw new Error("Runtime state parent descriptor is unavailable.");
   }
   const descriptorStat = await trusted.handle.stat();
-  assertTrustedParentDirectoryStat(pathStat);
-  assertTrustedParentDirectoryStat(descriptorStat);
+  assertTrustedParentDirectoryStat(pathStat, trusted.path);
+  assertTrustedParentDirectoryStat(descriptorStat, trusted.path);
   if (
     !sameIdentity(pathStat, trusted.stat) ||
     !sameIdentity(descriptorStat, trusted.stat)
@@ -326,7 +356,7 @@ async function revalidateDirectoryPath(
   trusted: TrustedDirectory,
 ): Promise<void> {
   const pathStat = await fs.lstat(stateDirectory);
-  assertTrustedDirectoryStat(pathStat);
+  assertTrustedDirectoryStat(pathStat, stateDirectory);
   if (!sameIdentity(pathStat, trusted.stat)) {
     throw new Error("Runtime state directory changed during validation.");
   }
@@ -347,7 +377,7 @@ async function openTrustedStateDirectory(
     for (const ancestorPath of ancestorPaths(parentPath)) {
       const ancestorStat = await fs.lstat(ancestorPath);
       if (isMobilePlatformAncestor(ancestorPath, mobileBoundary)) {
-        assertMobilePlatformAncestorStat(ancestorStat);
+        assertMobilePlatformAncestorStat(ancestorStat, ancestorPath);
         ancestors.push({
           path: ancestorPath,
           stat: ancestorStat,
@@ -355,7 +385,7 @@ async function openTrustedStateDirectory(
         });
         continue;
       }
-      assertTrustedParentDirectoryStat(ancestorStat);
+      assertTrustedParentDirectoryStat(ancestorStat, ancestorPath);
       const handle = await fs.open(
         ancestorPath,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -379,7 +409,7 @@ async function openTrustedStateDirectory(
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
     const pathStat = await fs.lstat(stateDirectory);
-    assertTrustedDirectoryStat(pathStat);
+    assertTrustedDirectoryStat(pathStat, stateDirectory);
     const handle = await fs.open(
       stateDirectory,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,

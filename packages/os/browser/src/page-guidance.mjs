@@ -286,6 +286,10 @@ export function pageGuidance(request) {
             view.left + 8,
             Math.min(p.x, view.left + view.width - width - 8),
           ),
+          y: Math.max(
+            view.top + 8,
+            Math.min(p.y, view.top + view.height - height - 8),
+          ),
         }))
         .find(
           (p) =>

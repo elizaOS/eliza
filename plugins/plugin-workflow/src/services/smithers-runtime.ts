@@ -1,3 +1,4 @@
+import { publishAndroidWorkflowSource } from './workflow-source-publication';
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 /**
  * Executes persisted Smithers workflow modules in an isolated Bun child process
@@ -33,6 +34,8 @@ import { workerLeasePrelude } from './workflow-worker-lease-prelude';
 export async function publishWorkflowSource(sourcePath: string, source: string): Promise<void> {
   if (process.platform === 'win32')
     return windowsWorkflowBackend.publishWorkflowSource(sourcePath, source);
+  if (process.env.ELIZA_PLATFORM === 'android' || process.env.ELIZA_MOBILE_PLATFORM === 'android')
+    return publishAndroidWorkflowSource(sourcePath, source);
   const temporary = `${sourcePath}.${randomUUID()}.pending`;
   const handle = await open(temporary, 'wx', 0o600);
   try {
