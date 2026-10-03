@@ -78,6 +78,10 @@ import {
   resolveOwnerDefinitionSurface,
 } from "../lifeops/definition-owner-surface.js";
 import {
+  getCallerDefinition,
+  getCallerOccurrenceView,
+} from "../lifeops/domains/definition-authorization.js";
+import {
   dayRange,
   detailArray,
   detailBoolean,
@@ -1381,6 +1385,52 @@ async function resolveOccurrence(
   domain?: LifeOpsDomain,
 ): Promise<OccurrenceResult> {
   if (!target) return { match: null, ambiguousCandidates: [] };
+  if (validateUuid(target)) {
+    const occurrence = await getCallerOccurrenceView(
+      service.repository,
+      service,
+      target,
+    );
+    if (occurrence && (!domain || occurrence.domain === domain)) {
+      return { match: occurrence, ambiguousCandidates: [] };
+    }
+    const definition = await getCallerDefinition(
+      service.repository,
+      service,
+      target,
+    );
+    // A definition names one occurrence only for a one-shot reminder. A stale
+    // recurring choice must supply its occurrence ID instead of completing a
+    // newer date. These scoped reads also avoid the overview's display limit.
+    if (
+      definition?.status !== "active" ||
+      definition.cadence.kind !== "once" ||
+      (domain && definition.domain !== domain)
+    ) {
+      return { match: null, ambiguousCandidates: [] };
+    }
+    const occurrences = await service.repository.listOccurrencesForDefinition(
+      service.agentId(),
+      definition.id,
+    );
+    const candidates = await Promise.all(
+      occurrences
+        .filter((candidate) =>
+          ["pending", "visible", "snoozed"].includes(candidate.state),
+        )
+        .map((candidate) =>
+          getCallerOccurrenceView(service.repository, service, candidate.id),
+        ),
+    );
+    const matches = candidates.filter((candidate) => candidate !== null);
+    return {
+      match: matches.length === 1 ? matches[0] : null,
+      ambiguousCandidates:
+        matches.length > 1
+          ? matches.map(formatOccurrenceDisambiguationLabel)
+          : [],
+    };
+  }
   const overview = await service.getOverview();
   const all = [
     ...overview.owner.occurrences,

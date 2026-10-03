@@ -249,3 +249,212 @@ it("does not let a non-owner cancellation write the stored reminder", async () =
     (await service.getDefinition(original.definition.id)).definition,
   ).toEqual(original.definition);
 });
+
+it.each([
+  ["complete", "completed"],
+  ["skip", "skipped"],
+  ["snooze", "snoozed"],
+] as const)(
+  "%s resolves an exact reminder definition ID to its caller-owned occurrence",
+  async (action, expectedState) => {
+    const original = await seed(`Definition-selected reminder ${action}`);
+    const unrelated = await seed(`Unrelated reminder ${action}`);
+    const [occurrence] = await service.repository.listOccurrencesForDefinition(
+      fixture.runtime.agentId,
+      original.definition.id,
+    );
+    expect(occurrence).toBeDefined();
+    const result = await invoke(
+      {
+        action,
+        target: original.definition.id,
+        title: "An unrelated planner title must not select the target",
+        ...(action === "snooze" ? { minutes: 10 } : {}),
+      },
+      action === "complete"
+        ? "done"
+        : action === "skip"
+          ? "skip"
+          : "10 minutes",
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (
+        await service.repository.getOccurrence(
+          fixture.runtime.agentId,
+          occurrence.id,
+        )
+      )?.state,
+    ).toBe(expectedState);
+    expect(
+      (await service.getDefinition(unrelated.definition.id)).definition,
+    ).toEqual(unrelated.definition);
+  },
+);
+
+it("does not let a non-owner complete a definition-selected reminder", async () => {
+  const original = await seed("Owner-only definition-selected completion");
+  const [occurrence] = await service.repository.listOccurrencesForDefinition(
+    fixture.runtime.agentId,
+    original.definition.id,
+  );
+  const result = await invoke(
+    { action: "complete", target: original.definition.id },
+    "done",
+    ["USER"],
+  );
+  expect(result.success).toBe(false);
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrence.id,
+    ),
+  ).toEqual(occurrence);
+});
+
+it("rejects an ambiguous definition without completing either occurrence", async () => {
+  const original = await seed("Ambiguous definition-selected completion");
+  const [occurrence] = await service.repository.listOccurrencesForDefinition(
+    fixture.runtime.agentId,
+    original.definition.id,
+  );
+  const second = {
+    ...occurrence,
+    id: crypto.randomUUID(),
+    occurrenceKey: `${occurrence.occurrenceKey}:second`,
+  };
+  await service.repository.upsertOccurrence(second);
+  const result = await invoke(
+    { action: "complete", target: original.definition.id },
+    "done",
+  );
+  expect(result.success).toBe(false);
+  expect(result.text).toContain("Multiple items match");
+  for (const selected of [occurrence, second]) {
+    expect(
+      (
+        await service.repository.getOccurrence(
+          fixture.runtime.agentId,
+          selected.id,
+        )
+      )?.state,
+    ).toBe("pending");
+  }
+});
+
+it("does not substitute a title when the exact definition UUID is unknown", async () => {
+  const original = await seed("Known title with unknown definition target");
+  const result = await invoke(
+    {
+      action: "complete",
+      target: crypto.randomUUID(),
+      title: original.definition.title,
+    },
+    "done",
+  );
+  expect(result.success).toBe(false);
+  expect(
+    (await service.getDefinition(original.definition.id)).definition,
+  ).toEqual(original.definition);
+});
+
+it("requires an occurrence ID for recurring reminders instead of selecting a newer date", async () => {
+  const recurring = await service.createDefinition({
+    title: "Recurring source-bound reminder",
+    kind: "habit",
+    timezone: "UTC",
+    cadence: { kind: "daily", windows: ["morning"] },
+    metadata: {
+      ownerSurface: "OWNER_REMINDERS",
+      nativeProjection: "in_app_only",
+    },
+  });
+  const occurrences = await service.repository.listOccurrencesForDefinition(
+    fixture.runtime.agentId,
+    recurring.definition.id,
+  );
+  const result = await invoke(
+    { action: "complete", target: recurring.definition.id },
+    "done",
+  );
+  expect(result.success).toBe(false);
+  expect(
+    await service.repository.listOccurrencesForDefinition(
+      fixture.runtime.agentId,
+      recurring.definition.id,
+    ),
+  ).toEqual(occurrences);
+  const selected = occurrences.find(
+    (occurrence) => occurrence.state === "pending",
+  );
+  if (!selected) throw new Error("Missing recurring source occurrence");
+  const boundResult = await invoke(
+    { action: "complete", target: selected.id },
+    "done",
+  );
+  expect(boundResult.success, JSON.stringify(boundResult)).toBe(true);
+  const after = await service.repository.listOccurrencesForDefinition(
+    fixture.runtime.agentId,
+    recurring.definition.id,
+  );
+  expect(after.find((occurrence) => occurrence.id === selected.id)?.state).toBe(
+    "completed",
+  );
+  for (const other of occurrences.filter(
+    (occurrence) => occurrence.id !== selected.id,
+  )) {
+    const stored = after.find((occurrence) => occurrence.id === other.id);
+    // The normal cadence refresh may update an expired row's observation time.
+    expect({ ...stored, updatedAt: other.updatedAt }).toEqual(other);
+  }
+});
+
+it("rejects another owner's exact reminder definition ID", async () => {
+  const foreignService = new LifeOpsService(fixture.runtime, {
+    ownerEntityId: crypto.randomUUID(),
+  });
+  const foreign = await foreignService.createDefinition({
+    title: "Foreign reminder definition",
+    kind: "habit",
+    timezone: "UTC",
+    cadence: {
+      kind: "once",
+      dueAt: new Date(Date.now() + 3_600_000).toISOString(),
+    },
+    metadata: {
+      ownerSurface: "OWNER_REMINDERS",
+      nativeProjection: "in_app_only",
+    },
+  });
+  const result = await invoke(
+    { action: "complete", target: foreign.definition.id },
+    "done",
+  );
+  expect(result.success).toBe(false);
+  expect(
+    (await foreignService.getDefinition(foreign.definition.id)).definition,
+  ).toEqual(foreign.definition);
+});
+
+it("rejects an exact reminder reference outside the requested domain", async () => {
+  const original = await seed("Domain-bound definition-selected completion");
+  const [occurrence] = await service.repository.listOccurrencesForDefinition(
+    fixture.runtime.agentId,
+    original.definition.id,
+  );
+  const result = await invoke(
+    {
+      action: "complete",
+      target: original.definition.id,
+      details: { domain: "agent_ops" },
+    },
+    "done",
+  );
+  expect(result.success).toBe(false);
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrence.id,
+    ),
+  ).toEqual(occurrence);
+});
