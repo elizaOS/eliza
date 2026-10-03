@@ -1,4 +1,4 @@
-// Handles internal cloud API internal discord gateway shutdown route traffic with service-to-service auth.
+/** Handles the internal Discord gateway shutdown endpoint with service-to-service auth. */
 import { Hono } from "hono";
 import { z } from "zod";
 import { discordConnectionsRepository } from "@/db/repositories/discord-connections";
@@ -24,7 +24,28 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    const body = shutdownSchema.parse(await c.req.json().catch(() => ({})));
+    // An empty or absent body means "release the caller's pod". A NON-empty
+    // body that is not valid JSON is a client error and must never fall back
+    // to those defaults — that turned a truncated request into a pod release.
+    const rawBody = await c.req.text();
+    let bodyValue: unknown = {};
+    if (rawBody.trim().length > 0) {
+      try {
+        bodyValue = JSON.parse(rawBody);
+      } catch {
+        // error-policy:J3 untrusted-input sanitizing: malformed JSON on this
+        // mutating route is an explicit invalid result, never a default pod.
+        return c.json(
+          {
+            success: false,
+            error: "Invalid shutdown request: body is not valid JSON.",
+          },
+          400,
+        );
+      }
+    }
+
+    const body = shutdownSchema.parse(bodyValue);
     const podName = body.pod_name ?? auth.podName;
     const released =
       await discordConnectionsRepository.clearPodAssignments(podName);
