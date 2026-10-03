@@ -3,7 +3,11 @@
  * HTTPS clone URL formatting, and SSH preservation.
  */
 import { describe, expect, it } from "vitest";
-import { assertSafeGitRemote, normalizeRepositoryInput } from "./repo-input.ts";
+import {
+  assertSafeGitRemote,
+  extractRepositoryUrlFromText,
+  normalizeRepositoryInput,
+} from "./repo-input.ts";
 
 describe("repo-input", () => {
   it("returns empty string for empty input", () => {
@@ -83,4 +87,39 @@ describe("repo-input", () => {
       expect(normalizeRepositoryInput(input)).toBe(expected);
     },
   );
+
+  it.each([
+    [
+      "clone https://gitlab.com/gitlab-org/charts/gitlab.",
+      "https://gitlab.com/gitlab-org/charts/gitlab.git",
+    ],
+    [
+      "Please fix https://gitlab.com/acme/platform/api/-/merge_requests/12.",
+      "https://gitlab.com/acme/platform/api.git",
+    ],
+    [
+      "work in https://github.com/elizaOS/eliza.git.",
+      "https://github.com/elizaOS/eliza.git",
+    ],
+    [
+      "see https://github.com/elizaOS/eliza/pull/33045 for context",
+      "https://github.com/elizaOS/eliza.git",
+    ],
+  ])(
+    "extracts and normalizes the repository in task text: %s",
+    (text, expected) => {
+      const extracted = extractRepositoryUrlFromText(text);
+      expect(extracted).not.toBeNull();
+      expect(normalizeRepositoryInput(extracted ?? "")).toBe(expected);
+    },
+  );
+
+  it("finds no repository in text without a known-host URL", () => {
+    expect(
+      extractRepositoryUrlFromText("fix the build on my laptop"),
+    ).toBeNull();
+    expect(
+      extractRepositoryUrlFromText("https://example.com/acme/api"),
+    ).toBeNull();
+  });
 });

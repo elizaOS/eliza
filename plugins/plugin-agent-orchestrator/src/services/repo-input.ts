@@ -108,6 +108,21 @@ function toHttpsCloneUrl(host: string, pathSegments: string[]): string {
   return `https://${host}/${path}.git`;
 }
 
+const REPOSITORY_URL_IN_TEXT_RE =
+  /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)(?:\/[\w.-]+){2,}/i;
+
+/**
+ * The first known-host repository URL in free task text, or null. Deeper paths
+ * are kept for GitLab subgroups (normalizeRepositoryInput trims page routes
+ * back to the repository). Path characters include `.`, so a URL that ends a
+ * sentence would carry the period into the last segment (`…/project.`); it is
+ * dropped here rather than becoming part of the repository name.
+ */
+export function extractRepositoryUrlFromText(text: string): string | null {
+  const match = REPOSITORY_URL_IN_TEXT_RE.exec(text);
+  return match ? match[0].replace(/\.+$/, "") : null;
+}
+
 export function normalizeRepositoryInput(repo: string): string {
   const trimmed = repo.trim();
   if (!trimmed) return trimmed;
