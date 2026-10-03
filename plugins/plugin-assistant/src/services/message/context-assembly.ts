@@ -118,10 +118,12 @@ export async function createV5MessageContextObject(args: {
         (authenticatedDeviceTurn.viewProfile
           ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. Do not offer or propose another view. This subset is not approval to execute. `
           : "") +
-        (getDeviceActionTurn()?.credential.capabilities?.includes(
-          "reminders.local-record.v1",
+        (getDeviceActionTurn()?.credential.capabilities?.some(
+          (capability) =>
+            capability === "reminders.local-record.v1" ||
+            capability === "reminders.local-record.v2",
         )
-          ? "Selected reminder read/update/complete/snooze/cancel is available with reminders.local-record.v1. Use exact sourceId/sourceRevision/reminderId/occurrenceId/revision from this turn. Reading private content requires approval. Cancel stops future repeats; Snooze means ten minutes. Never invent identifiers or report a proposal as complete. "
+          ? "Selected reminder read/update/complete/snooze/cancel is available with the negotiated reminders.local-record.v1 or v2 capability. Targets containing timingVersion:2 and schedules containing both dueAt and alertMinutes require v2. Preserve the exact timingVersion marker from the phone. alertMinutes:null saves a task without notifications; do not snooze it or silently enable an alert. Use exact sourceId/sourceRevision/reminderId/occurrenceId/revision from this turn. Reading private content requires approval. Cancel stops future repeats; Snooze means ten minutes. Never invent identifiers or report a proposal as complete. "
           : "") +
         (getDeviceActionTurn()?.credential.capabilities?.includes(
           "notes.local-record.v1",
