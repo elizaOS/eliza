@@ -22,6 +22,7 @@ import {
 import type { ApiKey, NewApiKey } from "../../db/schemas/api-keys";
 import type { MobileAppAuthEnvironment } from "../../db/schemas/mobile-app-auth-grants";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
+import { selectRegisteredMobileClient } from "./mobile-client-registry";
 
 export const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
 export const MOBILE_APP_AUTH_REDIRECT_URI = "https://eliza.app/auth/callback";
@@ -73,9 +74,9 @@ export class MobileAppAuthProtocolError extends ElizaError {
 
 export interface MobileAppAuthRegistration {
   appId: string;
-  clientId: typeof MOBILE_APP_AUTH_CLIENT_ID;
+  clientId: string;
   environment: MobileAppAuthEnvironment;
-  redirectUri: typeof MOBILE_APP_AUTH_REDIRECT_URI;
+  redirectUri: string;
   scopes: typeof MOBILE_APP_AUTH_SCOPES;
 }
 
@@ -83,6 +84,7 @@ export interface MobileAppAuthRuntimeEnv {
   ENVIRONMENT?: unknown;
   ELIZA_MOBILE_APP_AUTH_APP_ID?: unknown;
   ELIZA_MOBILE_APP_AUTH_ENABLED?: unknown;
+  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: unknown;
 }
 
 export interface MobileAppAuthClientBinding {
@@ -136,6 +138,7 @@ function requireEnvironment(value: unknown): MobileAppAuthEnvironment {
 
 export function resolveMobileAppAuthRegistration(
   env: MobileAppAuthRuntimeEnv,
+  clientId: string = MOBILE_APP_AUTH_CLIENT_ID,
 ): MobileAppAuthRegistration {
   const environment = requireEnvironment(env.ENVIRONMENT);
   if (env.ELIZA_MOBILE_APP_AUTH_ENABLED === "false") {
@@ -158,6 +161,25 @@ export function resolveMobileAppAuthRegistration(
       "server_configuration_error",
       `${MOBILE_APP_AUTH_APP_ID_ENV} must be a registered app UUID`,
     );
+  }
+  if (clientId !== MOBILE_APP_AUTH_CLIENT_ID) {
+    const selected = selectRegisteredMobileClient(
+      env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
+      clientId,
+      {
+        clientId: MOBILE_APP_AUTH_CLIENT_ID,
+        appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,
+        redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+      },
+    );
+    if (!selected.ok)
+      return invalid(
+        selected.code,
+        selected.code === "invalid_client"
+          ? "Unknown or disabled mobile App Auth client"
+          : "Invalid server mobile client registry",
+      );
+    return { ...selected.registration, environment, scopes: MOBILE_APP_AUTH_SCOPES };
   }
   return {
     appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,
