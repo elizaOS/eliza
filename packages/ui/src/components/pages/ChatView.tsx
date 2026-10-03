@@ -539,9 +539,8 @@ export function ChatView({
       currentMessages: conversationMessagesRef.current,
       before: loadOlderResumeRef.current.before,
       prependMessages: (older) => {
-        if (loadOlderConversationIdRef.current === conversationId) {
-          prependConversationMessages(older);
-        }
+        if (loadOlderConversationIdRef.current !== conversationId) return 0;
+        return prependConversationMessages(older);
       },
     });
     if (loadOlderConversationIdRef.current === conversationId) {
