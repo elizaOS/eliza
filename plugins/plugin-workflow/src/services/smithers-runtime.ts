@@ -87,6 +87,7 @@ import {
   defaultWorkflowBunExecutable,
   workflowDependencyPackage,
   workflowProcessCommand,
+  workflowRuntimeFileCommand,
 } from './workflow-process-host';
 
 type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
@@ -161,6 +162,8 @@ export interface SmithersRunRequest {
   timeoutMs?: number;
   /** Continue the host's persisted event sequence across parked-run resumes. */
   eventSequenceOffset?: number;
+  /** Trusted host diagnostics: fixed phases only, never workflow data. */
+  onStartupPhase?: (phase: string) => void | Promise<void>;
   signal?: AbortSignal;
   onEvent?: (event: WorkflowRunEvent) => void | Promise<void>;
   device?: (request: { payload: unknown; signal: AbortSignal }) => Promise<unknown>;
@@ -301,6 +304,10 @@ export function createSmithersWorkerScript(): string {
     import { createInterface } from 'node:readline';
 
     const PREFIX = ${JSON.stringify(PROTOCOL_PREFIX)};
+    const startupDiagnostics=process.env.ELIZA_SMTHRS_STARTUP_DIAGNOSTICS==='1';
+    if(startupDiagnostics)process.stderr.on('error',()=>{});
+    const startupPhase = phase => {if(startupDiagnostics){try{process.stderr.write('[smithers-startup:'+phase+']\n',()=>{});}catch{}}};
+    startupPhase('dependencies-loaded');
     const payload = JSON.parse(readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, 'utf8'));
     let workerLease;
     const encode = (message) => PREFIX + JSON.stringify(message, (_key, value) =>
@@ -369,15 +376,20 @@ export function createSmithersWorkerScript(): string {
     console.error = (...values) => process.stderr.write('[workflow:error] ' + values.map(String).join(' ') + '\n');
 
     try {
+      startupPhase('lease-start');
       workerLease=await globalThis.__elizaAcquireWorkerLease(payload.workerLease);
+      startupPhase('lease-admitted');
       if(createHash('sha256').update(readFileSync(payload.sourcePath)).digest('hex') !== payload.workerLease.sourceSha256) throw new Error('Workflow source digest mismatch');
       const moduleUrl = pathToFileURL(payload.sourcePath);
       moduleUrl.searchParams.set('version', payload.versionId);
+      startupPhase('workflow-import-start');
       const workflowModule = await import(moduleUrl.href);
+      startupPhase('workflow-imported');
       const workflow = workflowModule.default;
       if (!workflow || typeof workflow.build !== 'function') {
         throw new Error('Default export is not a Smithers workflow');
       }
+      startupPhase('execution-start');
       const result = await Effect.runPromise(runWorkflow(workflow, {
         runId: payload.runId,
         input: payload.input,
@@ -582,7 +594,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     });
   }
   validateSmithersSource(request.workflow.source);
-  const command = workflowProcessCommand('runtime', createSmithersWorkerScript());
+  const workerProgram = createSmithersWorkerScript();
+  let command = workflowProcessCommand('runtime', workerProgram);
   const rootDir = resolveSmithersWorkflowDir(request.tenantId, request.workflow.id);
   const sourceDigest = createHash('sha256').update(request.workflow.source).digest('hex');
   const sourcePath = join(
@@ -623,6 +636,17 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     linkWorkflowDependency(rootDir, 'zod'),
   ]);
   await publishWorkflowSource(sourcePath, request.workflow.source);
+  if (process.platform === 'win32') {
+    // The native helper makes this module larger than Windows' command-line limit.
+    // Publish immutable bytes beside the workflow's pinned dependency links; stdin
+    // remains exclusively available for the parent/worker response protocol.
+    const workerProgramPath = join(
+      rootDir,
+      `.worker-${createHash('sha256').update(workerProgram).digest('hex')}.mjs`
+    );
+    await publishWorkflowSource(workerProgramPath, workerProgram);
+    command = workflowRuntimeFileCommand(workerProgramPath);
+  }
   await writeFile(
     payloadPath,
     JSON.stringify({
@@ -640,6 +664,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   const workerStartedAt = Date.now();
   const worker = spawn(command.executable, command.args, {
     cwd: command.cwd,
+    // Windows workers must survive abrupt parent loss; retain the pipes below for RPC.
+    ...(process.platform === 'win32' ? { detached: true } : {}),
     env: {
       ...command.env,
       PATH: process.env.PATH,
@@ -648,6 +674,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       NODE_ENV: process.env.NODE_ENV,
       // The Windows lease helper resolves the OS PowerShell binary from this host-only path.
       ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {}),
+      ...(request.onStartupPhase ? { ELIZA_SMTHRS_STARTUP_DIAGNOSTICS: '1' } : {}),
       ELIZA_SMTHRS_DB_PATH: join(rootDir, 'runs.sqlite'),
       ELIZA_SMTHRS_PAYLOAD_PATH: payloadPath,
       MSGPACKR_NATIVE_ACCELERATION_DISABLED: 'true',
@@ -655,6 +682,18 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
+  const emitStartupPhase = (phase: string) => {
+    try {
+      void Promise.resolve(request.onStartupPhase?.(phase)).catch(() => {
+        /* Best-effort observer only. */
+      });
+    } catch {
+      /* Diagnostic observers cannot alter workflow execution. */
+    }
+  };
+  worker.once('spawn', () => emitStartupPhase('worker-spawned'));
+  let startupTail = '';
+  const reportedStartupPhases = new Set<string>();
   const events: WorkflowRunEvent[] = [];
   let sequence = eventSequenceOffset;
   let result: WorkerResultMessage['result'] | undefined;
@@ -813,6 +852,26 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   });
   worker.stderr?.setEncoding('utf8');
   worker.stderr?.on('data', (chunk: string) => {
+    if (request.onStartupPhase) {
+      const startupScan = startupTail + chunk;
+      for (const phase of [
+        'dependencies-loaded',
+        'lease-start',
+        'lease-admitted',
+        'workflow-import-start',
+        'workflow-imported',
+        'execution-start',
+      ]) {
+        if (
+          !reportedStartupPhases.has(phase) &&
+          startupScan.includes('[smithers-startup:' + phase + ']')
+        ) {
+          reportedStartupPhases.add(phase);
+          emitStartupPhase(phase);
+        }
+      }
+      startupTail = startupScan.slice(-4096);
+    }
     stderr += chunk;
   });
 

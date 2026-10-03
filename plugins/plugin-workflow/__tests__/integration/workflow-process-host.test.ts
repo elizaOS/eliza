@@ -36,7 +36,7 @@ function fixture(body: string, mutate?: (config: WorkflowProcessHost, root: stri
       libraryDirectories: [root],
     };
     mutate?.(config, root);
-    const script = `import {configureWorkflowProcessHost,workflowProcessCommand,workflowCompilerModule,workflowCompilerDependencyRoot} from ${JSON.stringify(modulePath)}; import {spawnSync} from 'node:child_process'; import {writeFileSync} from 'node:fs'; const config=${JSON.stringify(config)}; ${body}`;
+    const script = `import {configureWorkflowProcessHost,workflowProcessCommand,workflowCompilerModule,workflowCompilerDependencyRoot,workflowRuntimeFileCommand} from ${JSON.stringify(modulePath)}; import {spawnSync} from 'node:child_process'; import {writeFileSync} from 'node:fs'; const config=${JSON.stringify(config)}; ${body}`;
     return spawnSync(bun, ['--eval', script], {
       encoding: 'utf8',
       timeout: 15000,
@@ -51,6 +51,14 @@ function fixture(body: string, mutate?: (config: WorkflowProcessHost, root: stri
   }
 }
 describe('trusted workflow process host real subprocesses', () => {
+  test('large file programs use a short command and preserve stdin through a pinned host', () => {
+    const result = fixture(
+      `configureWorkflowProcessHost(config); const path=config.dependencyRoot+'/large worker module.mjs'; writeFileSync(path,'/*'+'x'.repeat(100000)+'*/process.stdout.write(await Bun.stdin.text());'); const c=workflowRuntimeFileCommand(path); if(c.args.join(' ').length>4096)throw Error('Source leaked onto command line'); const r=spawnSync(c.executable,c.args,{cwd:c.cwd,env:c.env,encoding:'utf8',input:'parent protocol bytes'}); if(r.status!==0)throw Error(r.stderr); if(r.stdout!=='parent protocol bytes')throw Error('stdin was consumed by bootstrap'); console.log('ok');`
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('ok');
+  });
+
   test('runtime launches through a pinned prefix and preserves exact argument bytes without a shell', () => {
     const result = fixture(
       `configureWorkflowProcessHost(config); const c=workflowProcessCommand('runtime','process.stdout.write(JSON.stringify({arg:process.argv[1],lib:process.env.LD_LIBRARY_PATH,secret:process.env.UNRELATED_SECRET??null}))',['literal $(touch nope); spaces']); const r=spawnSync(c.executable,c.args,{cwd:c.cwd,env:c.env,encoding:'utf8'}); if(r.status!==0)throw Error(r.stderr); const v=JSON.parse(r.stdout); if(v.arg!=='literal $(touch nope); spaces'||v.lib!==config.dependencyRoot||v.secret!==null)throw Error('wrong child contract'); console.log('ok');`

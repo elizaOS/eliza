@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export interface WorkflowHostFile {
   path: string;
@@ -177,4 +177,12 @@ export function workflowProcessCommand(
       ),
     },
   };
+}
+
+/** Load a host-published module without putting its source on the OS command line. */
+export function workflowRuntimeFileCommand(programPath: string) {
+  return workflowProcessCommand(
+    'runtime',
+    `await import(${JSON.stringify(pathToFileURL(programPath).href)});`
+  );
 }
