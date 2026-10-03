@@ -43,7 +43,8 @@ internal object BrowserDockController {
     fun open(activity: Activity, url: String, panelWidthDp: Int) {
         ChromiumBrowserLauncher.validatedUrl(url)
         ChromiumBrowserLauncher.requireTrustedBrowser(activity)
-        if (!supported(activity)) throw BrowserLaunchException("BROWSER_DOCK_UNAVAILABLE", "Activity embedding is unavailable on this host.")
+        if (android.os.Build.VERSION.SDK_INT < 33 || !supported(activity)) throw BrowserLaunchException("BROWSER_DOCK_UNAVAILABLE", "Activity embedding is unavailable on this host.")
+        BrowserEmbeddingTrust.requireInstalledTrust(activity)
         val metrics = WindowMetricsCalculator.getOrCreate().computeMaximumWindowMetrics(activity)
         val widthDp = metrics.bounds.width() / activity.resources.displayMetrics.density
         val attributes = SplitAttributes.Builder()
