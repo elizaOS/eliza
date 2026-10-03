@@ -49,6 +49,7 @@ export async function prepareChromiumBrowser({
   certificate,
   application = "ai.elizaos.app",
   revision,
+  embedHost = false,
 }) {
   for (const [name, value] of Object.entries({ source, extension, out })) {
     if (!value || !path.isAbsolute(value))
@@ -56,6 +57,8 @@ export async function prepareChromiumBrowser({
   }
   if (!/^[a-f0-9]{64}$/i.test(certificate ?? ""))
     throw new Error("The final launcher certificate SHA-256 is required.");
+  if (typeof embedHost !== "boolean")
+    throw new Error("embedHost must be boolean");
   const nativeHost = androidNativeHost(certificate, application);
   const sourceRoot = fs.realpathSync(source);
   const outputRoot = path.resolve(out);
@@ -89,6 +92,7 @@ export async function prepareChromiumBrowser({
       certificate,
       "--application",
       nativeHost.application,
+      ...(embedHost ? ["--embed-host"] : []),
     ],
     { stdio: "pipe" },
   );
