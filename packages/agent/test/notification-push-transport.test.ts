@@ -262,6 +262,68 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
       },
     ]);
 
+    // A negotiated device and a legacy device coexist in the same durable registry.
+    const nativeToken = "synthetic-native-data-android-token";
+    await registry.register("android", nativeToken, true);
+    const previousCount = requests.length;
+    const nativeReminder = await notifier.notify({
+      title: "Cold pair",
+      body: "First saved reminder",
+      category: "reminder",
+      deepLink: "/notifications",
+    });
+    await expect.poll(() => requests.length).toBe(previousCount + 2);
+    const pair = requests.slice(previousCount);
+    const nativeMessage = pair.find(
+      (r) => r.message.token === nativeToken,
+    )?.message;
+    expect(nativeMessage).not.toHaveProperty("notification");
+    expect(nativeMessage).toMatchObject({
+      data: {
+        elizaReminderData: "1",
+        notificationId: nativeReminder.id,
+        title: "Cold pair",
+        body: "First saved reminder",
+        deepLink: "/notifications",
+        priority: "normal",
+      },
+      android: { priority: "HIGH" },
+    });
+    expect(nativeMessage).not.toHaveProperty("android.collapse_key");
+    expect(
+      pair.find((r) => r.message.token === token)?.message.notification,
+    ).toEqual({ title: "Cold pair", body: "First saved reminder" });
+    const genericStart = requests.length;
+    await notifier.notify({
+      title: "Generic stays stock",
+      category: "workflow",
+    });
+    await expect.poll(() => requests.length).toBe(genericStart + 2);
+    expect(
+      requests.slice(genericStart).every((r) => r.message.notification),
+    ).toBe(true);
+    // Formerly accepted incompatible fields retain the legacy serializer.
+    for (const incompatible of [
+      { title: "x".repeat(513) },
+      { body: "x".repeat(4097) },
+      {
+        data: {
+          category: "reminder",
+          notificationId: nativeReminder.id,
+          deepLink: "x".repeat(2049),
+        },
+      },
+    ]) {
+      const shaped = JSON.parse(
+        android.buildMessageBody(nativeToken, {
+          title: "Reminder",
+          data: { category: "reminder", notificationId: nativeReminder.id },
+          androidReminderDataNotifications: true,
+          ...incompatible,
+        }),
+      );
+      expect(shaped.message).toHaveProperty("notification");
+    }
     await push.stop();
     expect(push.isDeliveryEnabled("android")).toBe(false);
     push = new NotificationPushService(runtime, {

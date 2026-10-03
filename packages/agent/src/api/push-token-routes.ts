@@ -94,7 +94,11 @@ export async function handlePushTokenRoute(
     // validation failure is a client error (400); a durable-write failure
     // propagates and the server boundary maps it to 500.
     try {
-      await registry.register(platform, token);
+      await registry.register(
+        platform,
+        token,
+        body.reminderDataNotifications as boolean | undefined,
+      );
     } catch (err) {
       // error-policy:J4 user-facing degrade — only the expected validation
       // shape becomes a 400; every other failure rethrows to the 500 boundary.

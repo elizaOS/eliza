@@ -55,6 +55,7 @@ export interface PushRegistrationDeps {
   registerToken: (
     platform: "ios" | "android",
     token: string,
+    reminderDataNotifications?: boolean,
   ) => Promise<unknown>;
   unregisterToken: (token: string) => Promise<unknown>;
   navigate: (deepLink: string) => void;
@@ -75,8 +76,8 @@ function captureClientAuthority(): PushRegistrationAuthority {
   const authorityClient = new ElizaClient(baseUrl, token ?? undefined);
   return {
     key: `${profileId}\u0000${baseUrl}\u0000${token ?? ""}`,
-    registerToken: (platform, value) =>
-      authorityClient.registerPushToken(platform, value),
+    registerToken: (platform, value, capability) =>
+      authorityClient.registerPushToken(platform, value, capability),
     unregisterToken: (value) => authorityClient.unregisterPushToken(value),
   };
 }
@@ -85,7 +86,8 @@ const defaultDeps: PushRegistrationDeps = {
   getPlatform: getFrontendPlatform,
   isRemotePushEnabled: isRemotePushTransportEnabled,
   getPlugin: getPushNotificationsPlugin,
-  registerToken: (platform, token) => client.registerPushToken(platform, token),
+  registerToken: (platform, token, capability) =>
+    client.registerPushToken(platform, token, capability),
   unregisterToken: (token) => client.unregisterPushToken(token),
   navigate: navigateDeepLink,
   captureAuthority: captureClientAuthority,
@@ -216,6 +218,21 @@ async function onRegistration(
   ) {
     return;
   }
+  let reminderDataNotifications = false;
+  if (platform === "android") {
+    const plugin = deps.getPlugin();
+    try {
+      const capabilities = await plugin.getReminderDataCapabilities?.();
+      reminderDataNotifications =
+        capabilities?.reminderDataNotifications === true;
+    } catch (error) {
+      // error-policy:J4 older native plugins reject unknown methods; retain legacy push.
+      logger.debug(
+        { src: "push-registration", error },
+        "[push-registration] reminder data receiver unavailable",
+      );
+    }
+  }
   let lastError: unknown;
   for (const delayMs of TOKEN_POST_RETRY_DELAYS_MS) {
     if (epoch !== authorityEpoch || authority.key !== activeAuthorityKey)
@@ -225,7 +242,9 @@ async function onRegistration(
     }
     let registration: unknown;
     try {
-      registration = await authority.registerToken(platform, value);
+      registration = reminderDataNotifications
+        ? await authority.registerToken(platform, value, true)
+        : await authority.registerToken(platform, value);
     } catch (error) {
       lastError = error;
       continue;

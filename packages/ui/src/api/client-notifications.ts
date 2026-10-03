@@ -46,6 +46,7 @@ declare module "./client-base" {
     registerPushToken(
       platform: PushTokenPlatform,
       token: string,
+      reminderDataNotifications?: boolean,
     ): Promise<{ ok: boolean; deliveryEnabled?: boolean }>;
     unregisterPushToken(token: string): Promise<{ ok: boolean }>;
   }
@@ -117,12 +118,19 @@ ElizaClient.prototype.registerPushToken = async function (
   this: ElizaClient,
   platform: PushTokenPlatform,
   token: string,
+  reminderDataNotifications?: boolean,
 ): Promise<{ ok: boolean; deliveryEnabled?: boolean }> {
   return this.fetch<{ ok: boolean; deliveryEnabled?: boolean }>(
     "/api/notifications/push-tokens",
     {
       method: "POST",
-      body: JSON.stringify({ platform, token }),
+      body: JSON.stringify({
+        platform,
+        token,
+        ...(reminderDataNotifications === true
+          ? { reminderDataNotifications: true }
+          : {}),
+      }),
     },
   );
 };

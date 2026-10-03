@@ -3,6 +3,7 @@ package ai.elizaos.app;
 import android.Manifest;
 import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 import com.getcapacitor.PluginCall;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
@@ -42,6 +43,23 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
         } catch (RuntimeException error) {
             return false;
         }
+    }
+
+    @Override
+    public void load() {
+        super.load();
+        // MainActivity replaces the auto-registered stock instance after boot.
+        // Retain its launch tap on this instance for the later JS listener.
+        if (getActivity().getIntent() != null && getActivity().getIntent().hasExtra("google.message_id")) {
+            handleOnNewIntent(getActivity().getIntent());
+        }
+    }
+
+    @PluginMethod
+    public void getReminderDataCapabilities(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("reminderDataNotifications", ElizaReminderMessagingService.isDeclaredHandler(getContext()));
+        call.resolve(result);
     }
 
     @Override

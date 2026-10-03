@@ -188,7 +188,15 @@ export class NotificationPushService extends Service {
     for (const record of tokens) {
       const provider = this.providers[record.platform];
       if (!provider.isConfigured()) continue;
-      await this.dispatch(provider, record.platform, record.token, message);
+      await this.dispatch(
+        provider,
+        record.platform,
+        record.token,
+        record.platform === "android" &&
+          record.reminderDataNotifications === true
+          ? { ...message, androidReminderDataNotifications: true }
+          : message,
+      );
     }
   }
 

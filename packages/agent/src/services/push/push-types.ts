@@ -12,6 +12,8 @@ export interface PushMessage {
   body?: string;
   /** Canonical urgency; omitted by legacy callers that retain transport defaults. */
   priority?: NotificationPriority;
+  /** Selected from the registered Android device capability, never notification data. */
+  androidReminderDataNotifications?: boolean;
   /**
    * Structured custom data delivered alongside the alert so the app can
    * deep-link and dedupe against the in-app notification center. Values are

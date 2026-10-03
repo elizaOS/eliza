@@ -207,3 +207,47 @@ it.each(["ios", "web"])(
     await vi.waitFor(() => expect(delivery.show).toHaveBeenCalledOnce());
   },
 );
+
+it.each([true, false, "true", undefined])(
+  "advertises native data projection only for strict capability %j",
+  async (capability) => {
+    const r = registration();
+    const originalPlugin = r.deps.getPlugin();
+    r.deps.getPlugin = () => ({
+      ...originalPlugin,
+      getReminderDataCapabilities: async () => ({
+        reminderDataNotifications: capability as boolean,
+      }),
+    });
+    await initPushRegistration(r.deps);
+    await vi.waitFor(() => expect(r.registerToken).toHaveBeenCalledOnce());
+    if (capability === true)
+      expect(r.registerToken).toHaveBeenCalledWith(
+        "android",
+        "native-device-token",
+        true,
+      );
+    else
+      expect(r.registerToken).toHaveBeenCalledWith(
+        "android",
+        "native-device-token",
+      );
+  },
+);
+it("keeps older native plugin registration on legacy payloads", async () => {
+  const r = registration();
+  const originalPlugin = r.deps.getPlugin();
+  r.deps.getPlugin = () => ({
+    ...originalPlugin,
+    getReminderDataCapabilities: async () => {
+      throw new Error("method not implemented");
+    },
+  });
+  await initPushRegistration(r.deps);
+  await vi.waitFor(() =>
+    expect(r.registerToken).toHaveBeenCalledWith(
+      "android",
+      "native-device-token",
+    ),
+  );
+});

@@ -471,10 +471,19 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
   return {
     ...stripPolicy,
     safePushNotifications: false,
+    components: [
+      ...stripPolicy.components,
+      "ElizaReminderMessagingService",
+      "com.capacitorjs.plugins.pushnotifications.MessagingService",
+    ],
     // This wrapper subclasses the native FCM plugin. The dedicated fallback
     // intentionally excludes that dependency because it has no Firebase
     // project, so its Java wrapper must leave the generated tree with it.
-    javaFiles: [...stripPolicy.javaFiles, "SafePushNotificationsPlugin.java"],
+    javaFiles: [
+      ...stripPolicy.javaFiles,
+      "SafePushNotificationsPlugin.java",
+      "ElizaReminderMessagingService.java",
+    ],
   };
 }
 
@@ -694,6 +703,7 @@ export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
   "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
   "receiver:androidx.profileinstaller.ProfileInstallReceiver",
   "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+  `service:${APP.appId}.ElizaReminderMessagingService`,
   "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
   "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
   "service:com.google.firebase.components.ComponentDiscoveryService",
@@ -938,6 +948,7 @@ export function createAndroidPlayManifestPolicy({
     "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
     "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
     "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+    `service:${APP.appId}.ElizaReminderMessagingService`,
     "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
     "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
     "service:com.google.firebase.components.ComponentDiscoveryService",
@@ -989,10 +1000,13 @@ export const ANDROID_SMS_GATEWAY_PERMISSIONS = new Set([
   "RECEIVE_WAP_PUSH",
 ]);
 
-export const ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS =
-  ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
+export const ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS = [
+  ...ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
     (component) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(component),
-  );
+  ),
+  "ElizaReminderMessagingService",
+  "com.capacitorjs.plugins.pushnotifications.MessagingService",
+];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
   ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
@@ -1004,6 +1018,7 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
     (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
   ),
   "SafePushNotificationsPlugin.java",
+  "ElizaReminderMessagingService.java",
 ];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
