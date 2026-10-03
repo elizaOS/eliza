@@ -47,8 +47,12 @@ import {
   resolveConfiguredOwnerTimeZone,
   resolveOwnerFactStore,
 } from "../src/lifeops/owner/fact-store.js";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import {
+  createLifeOpsReminderAttempt,
+  LifeOpsRepository,
+} from "../src/lifeops/repository.js";
 import type { RawSqlQuery } from "../src/lifeops/sql.js";
+import type { LifeOpsBriefing } from "../src/types/briefing.js";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 function makeRuntime(
@@ -280,6 +284,218 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             ),
           ),
         ).toEqual(before);
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("preserves canonical visible and overdue facts after sent attempts until actual lifecycle transitions", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-02T22:00:00.000Z"));
+      const fixture = await createLifeOpsTestRuntime();
+      try {
+        const { LifeOpsService } = await import("../src/lifeops/service.js");
+        const service = new LifeOpsService(fixture.runtime);
+        const definitions = [];
+        for (const title of [
+          "Sent canary A",
+          "Sent canary B",
+          "Actually completed",
+          "Actually skipped",
+        ]) {
+          definitions.push(
+            await service.createDefinition({
+              title,
+              kind: "habit",
+              timezone: "America/Los_Angeles",
+              cadence: {
+                kind: "once",
+                dueAt: "2026-10-02T23:32:12.551Z",
+                visibilityLeadMinutes: 0,
+              },
+              metadata: {
+                ownerSurface: "OWNER_REMINDERS",
+                nativeProjection: "in_app_only",
+              },
+              reminderPlan: {
+                steps: [
+                  { channel: "in_app", offsetMinutes: 0, label: "Notify" },
+                ],
+              },
+            }),
+          );
+        }
+        vi.setSystemTime(new Date("2026-10-03T01:00:00.000Z"));
+        const initial = await service.getOverview();
+        expect(initial.summary).toMatchObject({
+          activeOccurrenceCount: 4,
+          overdueOccurrenceCount: 4,
+        });
+        for (const definition of definitions.slice(0, 2)) {
+          const occurrence = initial.occurrences.find(
+            (item) => item.definitionId === definition.definition.id,
+          );
+          if (!occurrence?.dueAt || !definition.reminderPlan)
+            throw new Error("Missing persisted reminder fixture");
+          await service.repository.createReminderAttempt(
+            createLifeOpsReminderAttempt({
+              agentId: fixture.runtime.agentId,
+              planId: definition.reminderPlan.id,
+              ownerType: "occurrence",
+              ownerId: occurrence.id,
+              occurrenceId: occurrence.id,
+              channel: "in_app",
+              stepIndex: 0,
+              scheduledFor: occurrence.dueAt,
+              attemptedAt: new Date().toISOString(),
+              outcome: "delivered",
+              connectorRef: null,
+              deliveryMetadata: {},
+            }),
+          );
+        }
+        expect((await service.getOverview()).summary).toEqual(initial.summary);
+        const completedId = initial.occurrences.find(
+          (item) => item.definitionId === definitions[2].definition.id,
+        )?.id;
+        const skippedId = initial.occurrences.find(
+          (item) => item.definitionId === definitions[3].definition.id,
+        )?.id;
+        if (!completedId || !skippedId)
+          throw new Error("Missing terminal lifecycle fixture");
+        await service.completeOccurrence(completedId, {});
+        await service.skipOccurrence(skippedId);
+        const overview = await service.getOverview();
+        expect(overview.summary).toMatchObject({
+          activeOccurrenceCount: 2,
+          overdueOccurrenceCount: 2,
+        });
+        expect(overview.occurrences.map((item) => item.state)).toEqual([
+          "visible",
+          "visible",
+        ]);
+        const persistedBefore = await Promise.all(
+          initial.occurrences.map((item) =>
+            service.repository.getOccurrence(fixture.runtime.agentId, item.id),
+          ),
+        );
+        expect(
+          persistedBefore.find((item) => item?.id === completedId)?.state,
+        ).toBe("completed");
+        expect(
+          persistedBefore.find((item) => item?.id === skippedId)?.state,
+        ).toBe("skipped");
+        const attemptsBefore = await service.repository.listReminderAttempts(
+          fixture.runtime.agentId,
+        );
+        expect(attemptsBefore.map((item) => item.outcome)).toEqual([
+          "delivered",
+          "delivered",
+        ]);
+        await resolveOwnerFactStore(fixture.runtime).update(
+          { timezone: "America/Los_Angeles" },
+          { source: "first_run", recordedAt: new Date().toISOString() },
+        );
+        const prompts: string[] = [];
+        vi.spyOn(fixture.runtime, "useModel").mockImplementation(
+          async (_model, parameters) => {
+            prompts.push((parameters as { prompt: string }).prompt);
+            return "Deterministic lifecycle boundary test" as never;
+          },
+        );
+        setBriefComposers({
+          loadCalendar: async () => [],
+          loadInbox: async () => [],
+          loadCommitments: async () => [],
+        });
+        const result = await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_evening",
+          format: "narrative",
+        });
+        const briefing = result.data?.briefing as LifeOpsBriefing;
+        expect(briefing.lifeSummary).toEqual(overview.summary);
+        expect(
+          briefing.sections.life?.map((item) => ({
+            id: item.id,
+            state: item.state,
+            dueAt: item.dueAt,
+          })),
+        ).toEqual(
+          overview.occurrences.map((item) => ({
+            id: item.id,
+            state: item.state,
+            dueAt: item.dueAt,
+          })),
+        );
+        expect(briefing.sections.completedToday).toContainEqual(
+          expect.objectContaining({ id: completedId, state: "completed" }),
+        );
+        expect(
+          briefing.sections.completedToday?.some(
+            (item) => item.id === skippedId,
+          ),
+        ).toBe(false);
+        const payload = JSON.parse(prompts[0].split("Data:\n")[1]);
+        expect(payload.lifeSummary).toEqual(overview.summary);
+        expect(
+          payload.sections.life.every(
+            (item: { state: string }) => item.state === "visible",
+          ),
+        ).toBe(true);
+        expect(payload.sections.completedToday).toContainEqual(
+          expect.objectContaining({ id: completedId, state: "completed" }),
+        );
+        expect(prompts[0]).toContain(
+          "lifeSummary counts are canonical source facts",
+        );
+        const overviewRead = vi.spyOn(LifeOpsService.prototype, "getOverview");
+        const optedOut = await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_morning",
+          format: "narrative",
+          include: { life: false },
+        });
+        const optedOutBriefing = optedOut.data?.briefing as LifeOpsBriefing;
+        expect(optedOutBriefing.lifeSummary).toBeUndefined();
+        expect(optedOutBriefing.sections.life).toBeUndefined();
+        expect(JSON.parse(prompts[1].split("Data:\n")[1])).not.toHaveProperty(
+          "lifeSummary",
+        );
+        expect(overviewRead).not.toHaveBeenCalled();
+        try {
+          // A standalone plan projection carries a delivery-view state, which
+          // cannot attest the occurrence lifecycle without its source occurrence.
+          overviewRead.mockResolvedValueOnce({ ...overview, occurrences: [] });
+          const projections = await callBrief(fixture.runtime, makeMessage(), {
+            action: "compose_morning",
+            format: "json",
+            include: { calendar: false, inbox: false, commitments: false },
+          });
+          const projectionBriefing = projections.data
+            ?.briefing as LifeOpsBriefing;
+          expect(projectionBriefing.lifeSummary).toEqual(overview.summary);
+          expect(projectionBriefing.sections.life).toHaveLength(2);
+          for (const item of projectionBriefing.sections.life ?? []) {
+            expect(item).not.toHaveProperty("state");
+          }
+          expect(overviewRead).toHaveBeenCalledTimes(1);
+        } finally {
+          overviewRead.mockRestore();
+        }
+        expect(
+          await Promise.all(
+            initial.occurrences.map((item) =>
+              service.repository.getOccurrence(
+                fixture.runtime.agentId,
+                item.id,
+              ),
+            ),
+          ),
+        ).toEqual(persistedBefore);
+        expect(
+          await service.repository.listReminderAttempts(
+            fixture.runtime.agentId,
+          ),
+        ).toEqual(attemptsBefore);
       } finally {
         await fixture.cleanup();
       }
@@ -638,6 +854,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           expect(briefing.sections.life).toEqual([]);
           expect(briefing.sections.calendar).toBeUndefined();
           expect(briefing.sourceErrors).toEqual({ life: "unavailable" });
+          expect(briefing).not.toHaveProperty("lifeSummary");
           expect(reportError).toHaveBeenCalledWith(
             "Brief.loadLife",
             expect.objectContaining({ code: "42P01" }),
@@ -646,6 +863,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           if (format === "narrative") {
             expect(prompts).toHaveLength(1);
             expect(prompts[0]).toContain('"life": "unavailable"');
+            expect(
+              JSON.parse(prompts[0].split("Data:\n")[1]),
+            ).not.toHaveProperty("lifeSummary");
             expect(prompts[0]).toContain("are unavailable, not empty");
             expect(briefing.narrative).toBe("Life source unavailable.");
           } else {

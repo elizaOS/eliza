@@ -43,6 +43,10 @@ import {
   resolveCalendarWindow,
   resolveNextCalendarEventWindow,
 } from "@elizaos/plugin-calendar";
+import type {
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+} from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,
@@ -68,6 +72,7 @@ import type {
   LifeOpsBriefingEditorialContract,
   LifeOpsBriefingInboxItem,
   LifeOpsBriefingKind,
+  LifeOpsBriefingLifeCollection,
   LifeOpsBriefingLifeItem,
   LifeOpsBriefingPeriod,
   LifeOpsBriefingSections,
@@ -166,18 +171,11 @@ interface BriefLifeOpsService {
     requestUrl: URL,
     request: { timeMin: string; timeMax: string; timeZone: string },
   ): Promise<{ events?: readonly unknown[] }>;
-  getOverview(): Promise<{
-    occurrences?: readonly unknown[];
-    reminders?: readonly unknown[];
-    goals?: readonly unknown[];
-  }>;
+  getOverview(): Promise<
+    Pick<LifeOpsOverview, "occurrences" | "reminders" | "goals" | "summary">
+  >;
   listOwnerOccurrencesCompletedToday(): Promise<
-    ReadonlyArray<{
-      id: string;
-      definitionKind: string;
-      title: string;
-      dueAt: string | null;
-    }>
+    readonly LifeOpsOccurrenceView[]
   >;
 }
 
@@ -311,7 +309,7 @@ async function loadInboxFromTriage(args: {
 
 async function loadLifeFromOverview(args: {
   runtime: IAgentRuntime;
-}): Promise<readonly LifeOpsBriefingLifeItem[]> {
+}): Promise<LifeOpsBriefingLifeCollection> {
   const service = await getBriefLifeOpsService(args.runtime);
   const overview = await service.getOverview();
   const occurrences = Array.isArray(overview.occurrences)
@@ -331,7 +329,7 @@ async function loadLifeFromOverview(args: {
       : []),
     ...(Array.isArray(overview.goals) ? overview.goals : []),
   ];
-  return records.map((item, index) => {
+  const items = records.map((item, index) => {
     const record = asRecord(item);
     const metadata = asRecord(record.metadata);
     const ownerId = readString(record, "ownerId");
@@ -350,12 +348,16 @@ async function loadLifeFromOverview(args: {
           metadata.kind,
       ),
       title: readString(record, "title") ?? "Untitled item",
+      ...(index < occurrences.length
+        ? { state: occurrences[index].state }
+        : {}),
       dueAt:
         readString(record, "dueAt") ??
         readString(record, "scheduledFor") ??
         null,
     };
   });
+  return { items, summary: overview.summary };
 }
 
 /**
@@ -374,6 +376,7 @@ async function loadCompletedTodayFromService(args: {
     kind: normalizeLifeKind(occurrence.definitionKind),
     title: occurrence.title,
     dueAt: occurrence.dueAt ?? null,
+    state: occurrence.state,
   }));
 }
 
@@ -530,7 +533,9 @@ export interface BriefComposers {
   loadLife: (args: {
     runtime: IAgentRuntime;
     period: LifeOpsBriefingPeriod;
-  }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
+  }) => Promise<
+    readonly LifeOpsBriefingLifeItem[] | LifeOpsBriefingLifeCollection
+  >;
   loadCompletedToday: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
@@ -675,6 +680,7 @@ export function buildNarrativePrompt(args: {
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
   sourceErrors?: LifeOpsBriefing["sourceErrors"];
+  lifeSummary?: LifeOpsBriefing["lifeSummary"];
   timeZone?: string;
   asOf?: string;
   editorial?: LifeOpsBriefingEditorialContract;
@@ -759,6 +765,7 @@ export function buildNarrativePrompt(args: {
       period: args.period,
       sections,
       sourceErrors: args.sourceErrors,
+      lifeSummary: args.lifeSummary,
       timeZone: args.timeZone,
       asOf,
       localAsOf: describeTime(asOf)?.localTime,
@@ -787,7 +794,7 @@ export function buildNarrativePrompt(args: {
   return `You are composing the owner's ${args.kind} briefing for ${args.period}.
 
 ${instructions}
-Use asOf as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. Use relationToAsOf rather than converting UTC timestamps or guessing the current day. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding.${args.sourceErrors ? "\nRequested sources in sourceErrors are unavailable, not empty. Name each unavailable source in one compact clause; never claim it has no items or nothing due." : ""}
+Use asOf as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. Use relationToAsOf rather than converting UTC timestamps or guessing the current day. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding. Item state and lifeSummary counts are canonical source facts: a visible or snoozed occurrence remains active even if a notification was sent; only the canonical completed state means completed, and skipped is distinct.${args.sourceErrors ? "\nRequested sources in sourceErrors are unavailable, not empty. Name each unavailable source in one compact clause; never claim it has no items or nothing due." : ""}
 
 Data:
 ${payload}`;
@@ -799,6 +806,7 @@ async function composeNarrative(args: {
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
   sourceErrors?: LifeOpsBriefing["sourceErrors"];
+  lifeSummary?: LifeOpsBriefing["lifeSummary"];
   editorial: LifeOpsBriefingEditorialContract;
   optimizationTask: BriefOptimizationTask;
   asOf: string;
@@ -824,6 +832,7 @@ async function composeNarrative(args: {
       period: args.period,
       sections: args.sections,
       sourceErrors: args.sourceErrors,
+      lifeSummary: args.lifeSummary,
       asOf: args.asOf,
       timeZone: (
         await resolveCalendarTimeZone(args.runtime, new Date(args.asOf))
@@ -885,8 +894,8 @@ async function assembleBriefing(args: {
   const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
   const collectSource = async <T>(
     source: keyof LifeOpsBriefingSections,
-    collect: () => Promise<readonly T[]>,
-  ): Promise<readonly T[]> => {
+    collect: () => Promise<T>,
+  ): Promise<T | readonly never[]> => {
     try {
       return await collect();
     } catch (error) {
@@ -904,7 +913,7 @@ async function assembleBriefing(args: {
   const [
     calendarItems,
     inboxItems,
-    lifeItems,
+    lifeCollection,
     commitmentItems,
     engagementSummaries,
   ] = await Promise.all([
@@ -933,6 +942,11 @@ async function assembleBriefing(args: {
       : Promise.resolve([] as readonly LifeOpsBriefingCommitmentItem[]),
     composers.loadEngagementSummaries({ runtime: args.runtime }),
   ]);
+
+  const lifeItems =
+    "items" in lifeCollection ? lifeCollection.items : lifeCollection;
+  const lifeSummary =
+    "items" in lifeCollection ? lifeCollection.summary : undefined;
 
   const kind = SUBACTION_TO_KIND[args.subaction];
   // The evening brief is the recap surface: it must know what got DONE today
@@ -964,6 +978,7 @@ async function assembleBriefing(args: {
       kind,
       period: args.period,
       sections,
+      ...(lifeSummary ? { lifeSummary } : {}),
       ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
       editorial,
       optimizationTask: args.optimizationTask,
@@ -977,6 +992,7 @@ async function assembleBriefing(args: {
     period: args.period,
     generatedAt: asOf,
     sections,
+    ...(lifeSummary ? { lifeSummary } : {}),
     ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
     editorial,
     ...(narrativeResult?.text ? { narrative: narrativeResult.text } : {}),
