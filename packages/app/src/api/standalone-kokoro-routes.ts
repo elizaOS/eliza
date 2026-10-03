@@ -38,6 +38,25 @@ function hostFor(state: CompatRuntimeState): KokoroHost {
   }
   return host;
 }
+/** Warm only the configured host; requests share its cancellable worker boot. */
+export function warmStandaloneKokoro(state: CompatRuntimeState): void {
+  if (
+    process.env.ELIZA_KOKORO_ENABLED !== "1" ||
+    !process.versions.bun ||
+    closedHosts.has(state)
+  )
+    return;
+  const host = hostFor(state);
+  void Promise.all([
+    host.service.initialize(),
+    import("@elizaos/plugin-local-inference/routes/local-inference-tts-route"),
+  ]).catch(() => {
+    if (!host.stopped)
+      console.warn(
+        "Local speech initialization failed; the next request can retry.",
+      );
+  });
+}
 export async function handleStandaloneKokoroRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,

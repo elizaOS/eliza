@@ -94,6 +94,7 @@ import {
   closeStandaloneKokoro,
   handleStandaloneKokoroRoute,
   stopStandaloneKokoro,
+  warmStandaloneKokoro,
 } from "./standalone-kokoro-routes";
 import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
@@ -1123,6 +1124,7 @@ export async function startApiServer(
       if (compatState.current !== activeRuntime)
         stopStandaloneKokoro(compatState);
       compatState.current = activeRuntime;
+      warmStandaloneKokoro(compatState);
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
     },
@@ -1240,6 +1242,8 @@ export async function startApiServer(
   compatState.runtimeOperations = server.runtimeOperations;
   compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
+  warmStandaloneKokoro(compatState);
+
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
   ) => void;
@@ -1251,6 +1255,7 @@ export async function startApiServer(
     // Make the runtime immediately visible to upstream routes so hot swaps do
     // not briefly return 503s while compat setup finishes in the background.
     originalUpdateRuntime(runtime);
+    warmStandaloneKokoro(compatState);
 
     // Continue repairing SQL compatibility asynchronously without blocking
     // the runtime from becoming available to unrelated routes.
