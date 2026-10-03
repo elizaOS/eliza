@@ -153,4 +153,25 @@ describe("queryEntities intersection contract", () => {
       "secondary",
     ]);
   });
+
+  it("serves every entity exactly once when paging across an update", async () => {
+    const paged = Array.from({ length: 4 }, () => uuidv4() as UUID);
+    await adapter.createEntities(
+      paged.map((id): Entity => ({ id, agentId, names: [`paged-${id}`] }))
+    );
+    const seen = new Set([entityOne, entityTwo, entityThree]);
+    const served: UUID[] = [];
+    for (let offset = 0; ; offset += 1) {
+      const [entity] = await adapter.queryEntities({ agentId, limit: 1, offset });
+      if (!entity) break;
+      served.push(entity.id as UUID);
+      if (offset === 0) {
+        // Rewrites the first row's physical position mid-scan.
+        await adapter.updateEntity({ ...entity, names: ["renamed"] });
+      }
+    }
+
+    expect(served.filter((id) => !seen.has(id)).sort()).toEqual([...paged].sort());
+    expect(new Set(served).size).toBe(served.length);
+  });
 });
