@@ -11,7 +11,7 @@
  * and whether the mutation ran.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Hono } from "hono";
+import { type Env, Hono } from "hono";
 
 const disconnectCalls: Array<{
   organizationId: string;
@@ -49,10 +49,7 @@ mock.module("@/lib/services/agent-google-connector", () => ({
 
 const { default: disconnectRoute } = await import("./route");
 
-function mounted<E extends Parameters<typeof Hono>[0]>(
-  route: Hono<E>,
-  path: string,
-): Hono {
+function mounted<E extends Env>(route: Hono<E>, path: string): Hono<E> {
   return new Hono<E>().route(path, route);
 }
 
@@ -108,6 +105,19 @@ describe("google disconnect body validation (#33073)", () => {
   test("still rejects schema-invalid JSON with 400", async () => {
     const response = await post(JSON.stringify({ side: "bogus" }));
     expect(response.status).toBe(400);
+    expect(disconnectCalls).toHaveLength(0);
+  });
+
+  test("rejects unrecognized keys like snake_case connection_id instead of silently revoking", async () => {
+    const response = await post(
+      JSON.stringify({ connection_id: "3f1c2a4e-0000-4000-8000-000000000000" }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error?: string;
+      details?: Array<{ code?: string }>;
+    };
+    expect(body.details?.[0]?.code).toBe("unrecognized_keys");
     expect(disconnectCalls).toHaveLength(0);
   });
 

@@ -1,8 +1,8 @@
 /**
  * POST /api/v1/eliza/google/disconnect
  *
- * Removes a managed Google connection (or all connections on the given side
- * when `connectionId` is null).
+ * Removes the managed Google connection for the caller's side (preferring
+ * the active connection when `connectionId` is omitted or null).
  */
 
 import { Hono } from "hono";
@@ -17,25 +17,23 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-const requestSchema = z.object({
-  side: z.enum(["owner", "agent"]).optional(),
-  connectionId: z.string().uuid().nullable().optional(),
-});
+const requestSchema = z
+  .object({
+    side: z.enum(["owner", "agent"]).optional(),
+    connectionId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
 
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    // #33073: an empty or absent body means "disconnect on the side" (the
-    // documented default; the connector then revokes that side's current
-    // connection). A NON-empty body that is not valid JSON is a client error
-    // and must never fall back to those defaults — that turned a truncated
-    // request into a default-side disconnect.
     const rawBody = await c.req.text();
     let bodyValue: unknown = {};
     if (rawBody.trim().length > 0) {
       try {
         bodyValue = JSON.parse(rawBody);
       } catch {
+        // error-policy:J3 malformed client JSON is an explicit invalid request.
         return c.json(
           { error: "Invalid disconnect request: body is not valid JSON." },
           400,
