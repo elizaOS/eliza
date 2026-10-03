@@ -137,6 +137,22 @@ describe("Anthropic retry + error translation (rate-limit / overload)", () => {
     expect(formatModelError("test op", overloaded).message).toContain("temporarily overloaded");
   });
 
+  it("does not retry once the caller's signal is aborted", async () => {
+    const controller = new AbortController();
+    const aborted = Object.assign(new Error("This operation was aborted"), {
+      name: "AbortError",
+    });
+    const fn = vi.fn(async () => {
+      controller.abort();
+      throw aborted;
+    });
+
+    await expect(executeWithRetry("test op", fn, fastRetry, controller.signal)).rejects.toBe(
+      aborted
+    );
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retry a non-retryable 403 and preserves the cause chain", async () => {
     const forbidden = Object.assign(new Error("forbidden"), {
       statusCode: 403,

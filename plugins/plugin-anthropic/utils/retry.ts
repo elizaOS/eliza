@@ -120,7 +120,9 @@ function sleep(ms: number): Promise<void> {
 export async function executeWithRetry<T>(
   operationName: string,
   fn: () => Promise<T>,
-  config: RetryConfig = DEFAULT_RETRY_CONFIG
+  config: RetryConfig = DEFAULT_RETRY_CONFIG,
+  /** The caller's cancellation signal; a cancelled request is never retried. */
+  signal?: AbortSignal
 ): Promise<T> {
   let delayMs = config.initialDelayMs;
 
@@ -129,9 +131,10 @@ export async function executeWithRetry<T>(
       return await fn();
     } catch (error) {
       // error-policy:J2 context-adding rethrow — transient errors are retried
-      // with backoff; non-retryable errors and exhausted attempts rethrow the
-      // original provider error unchanged. No failure is converted to a result.
-      if (!isRetryableModelError(error) || attempt === config.maxRetries) {
+      // with backoff; non-retryable errors, cancellation by the caller, and
+      // exhausted attempts rethrow the original provider error unchanged. No
+      // failure is converted to a result.
+      if (signal?.aborted || !isRetryableModelError(error) || attempt === config.maxRetries) {
         throw error;
       }
 
