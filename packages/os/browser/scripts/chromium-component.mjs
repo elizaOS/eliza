@@ -144,6 +144,7 @@ export async function generateComponentOverlay({
   platform,
   certificate,
   application = "ai.elizaos.app",
+  embedHost = false,
   revision,
 }) {
   if (revision !== pin.revision)
@@ -154,6 +155,8 @@ export async function generateComponentOverlay({
     if (sha256(sources[filename] ?? "") !== expected)
       throw new Error(`Chromium source integrity mismatch: ${filename}`);
   validateAssets(assets, platform, certificate, application);
+  if (typeof embedHost !== "boolean" || (embedHost && platform !== "android"))
+    throw new Error("Host embedding is an explicit Android-only build option");
   const files = {};
   const edit = (filename, transform) => {
     files[filename] = transform(files[filename] ?? sources[filename]);
@@ -343,6 +346,25 @@ export async function generateComponentOverlay({
   if (platform === "android") {
     applyStandaloneCredMan(edit, replaceOnce);
     applyStandaloneCredManTests(edit, replaceOnce);
+    if (embedHost) {
+      edit("chrome/android/java/AndroidManifest.xml", (source) => {
+        // Only the provisioned native host signer may embed browser activities.
+        // Keep exports, launch modes and unrelated authentication activities intact.
+        for (const activity of [
+          "org.chromium.chrome.browser.customtabs.CustomTabActivity",
+          "org.chromium.chrome.browser.ChromeTabbedActivity",
+        ]) {
+          const opening = `<activity android:name="${activity}"`;
+          source = replaceOnce(
+            source,
+            opening,
+            `${opening}\n            android:knownActivityEmbeddingCerts="${certificate.toUpperCase()}"`,
+            `trusted host embedding for ${activity}`,
+          );
+        }
+        return source;
+      });
+    }
   }
   return {
     files,
@@ -364,6 +386,9 @@ export async function generateComponentOverlay({
       outputs: Object.fromEntries(
         Object.entries(files).map(([name, bytes]) => [name, sha256(bytes)]),
       ),
+      trustedActivityEmbedding: embedHost
+        ? { certificateSha256: certificate.toUpperCase(), application }
+        : null,
       unrestrictedAllowlistBypass: false,
       releaseBrowserBuildValidated: false,
     },
@@ -485,6 +510,7 @@ async function main(args) {
     application: args.includes("--application")
       ? option("--application")
       : "ai.elizaos.app",
+    embedHost: args.includes("--embed-host"),
     certificate: args.includes("--certificate")
       ? option("--certificate")
       : undefined,

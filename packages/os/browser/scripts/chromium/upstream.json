@@ -21,6 +21,7 @@
     "third_party/blink/renderer/bindings/BUILD.gn": "a0f038c3b3079c8a1a500baebf5bc7584b95dc7ceb82d900b62c120321cca6ba",
     "content/browser/indexed_db/instance/connection.cc": "f305f4ec28f279a36098c450f603bd5c654de576bc71768d54ac80f5aad770f8",
     "content/browser/indexed_db/instance/transaction_unittest.cc": "eb21c606b01160ed8774d087754552d4abe874a0d752d2401b96ce0253b17f27",
-    "chrome/browser/extensions/api/messaging/BUILD.gn": "1ace86c16c43e5d55f7ff44f2494b6c601d1340c730562cfb2a2ef916ef08018"
+    "chrome/browser/extensions/api/messaging/BUILD.gn": "1ace86c16c43e5d55f7ff44f2494b6c601d1340c730562cfb2a2ef916ef08018",
+    "chrome/android/java/AndroidManifest.xml": "55cb5be8a4f0e03b228ce778487d9a6a26ae13e72cf81739c4b08fea4255c802"
   }
 }
