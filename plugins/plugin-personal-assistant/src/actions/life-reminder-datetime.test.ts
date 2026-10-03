@@ -700,6 +700,7 @@ function makeRuntime(respond: (prompt: string) => string): IAgentRuntime {
   const cache = new Map<string, unknown>();
   return {
     agentId: "00000000-0000-0000-0000-000000000003" as UUID,
+    getSetting: () => undefined,
     getRoom: vi.fn(async () => null),
     reportError: vi.fn(),
     useModel: vi.fn(async (_modelType: unknown, args: { prompt: string }) =>
