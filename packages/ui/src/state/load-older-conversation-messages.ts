@@ -31,7 +31,7 @@ export interface LoadOlderConversationMessagesDeps {
    */
   currentMessages: ConversationMessage[];
   /** Prepend the older, renderable turns in front of the thread. Returns how many were actually added when known. */
-  prependMessages: (older: ConversationMessage[]) => number | void;
+  prependMessages: (older: ConversationMessage[]) => number | undefined;
   /** Page size hint; the server may clamp it. */
   limit?: number;
   signal?: AbortSignal;
