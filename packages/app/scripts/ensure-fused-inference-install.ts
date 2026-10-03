@@ -14,6 +14,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statfsSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -33,6 +34,60 @@ export const FUSED_EMBEDDING_ARTIFACT = Object.freeze({
 
 function log(message) {
   console.log(`[ensure-fused-inference] ${message}`);
+}
+
+/**
+ * Free space the pinned llama.cpp submodule clone plus native build staging
+ * needs before `git submodule update` may start. Git retries a failed clone
+ * once, so an ENOSPC midway costs the pack download twice and then aborts the
+ * whole `bun install` with an opaque git error; probing first keeps that
+ * failure off constrained hosts. `ELIZA_SKIP_FUSED_INFERENCE_SETUP=1` remains
+ * the documented opt-out for hosts that cannot spare the space.
+ */
+export const FUSED_INFERENCE_MIN_FREE_BYTES = 3 * 1024 ** 3;
+
+const FUSED_INFERENCE_SUBMODULE_PATH =
+  "plugins/plugin-local-inference/native/llama.cpp";
+
+function gib(bytes) {
+  return (bytes / 1024 ** 3).toFixed(1);
+}
+
+/**
+ * The typed preflight error, or null when `freeBytes` covers the requirement.
+ * Pure so tests can pin the message without touching a filesystem.
+ */
+export function fusedInferenceSpaceError(
+  freeBytes,
+  requiredBytes = FUSED_INFERENCE_MIN_FREE_BYTES,
+  targetPath = FUSED_INFERENCE_SUBMODULE_PATH,
+) {
+  if (freeBytes >= requiredBytes) return null;
+  return new Error(
+    `insufficient disk space for the fused inference submodule: ${gib(freeBytes)} GB free, ` +
+      `need about ${gib(requiredBytes)} GB to clone ${targetPath} and stage its native build. ` +
+      "Free space and rerun bun install, or set ELIZA_SKIP_FUSED_INFERENCE_SETUP=1 to skip desktop fused inference setup.",
+  );
+}
+
+/**
+ * Probe free bytes for the filesystem holding `repoRoot`. Returns null — never
+ * throws — when the platform has no statfs or the probe fails, so a missing
+ * probe can never block an install that would otherwise succeed.
+ */
+export function fusedInferenceFreeBytes({
+  platform = process.platform,
+  repoRoot = defaultRepoRoot,
+  statfs = statfsSync,
+} = {}) {
+  if (platform !== "linux" && platform !== "darwin") return null;
+  if (!existsSync(repoRoot)) return null;
+  try {
+    const stats = statfs(repoRoot);
+    return Number(stats.bavail) * Number(stats.bsize);
+  } catch {
+    return null;
+  }
 }
 
 function commandResult(command, args, options = {}) {
@@ -222,6 +277,7 @@ export async function ensureFusedInferenceInstall({
   provisionMac = provisionMacPackages,
   fetchImpl = fetch,
   ensureEmbedding = ensureEmbeddingArtifact,
+  freeBytesFor = fusedInferenceFreeBytes,
 } = {}) {
   if (env.ELIZA_SKIP_FUSED_INFERENCE_SETUP === "1") {
     log("skipped by ELIZA_SKIP_FUSED_INFERENCE_SETUP=1");
@@ -234,6 +290,16 @@ export async function ensureFusedInferenceInstall({
   }
 
   const forkPath = "plugins/plugin-local-inference/native/llama.cpp";
+  // Only the first clone moves gigabytes; an already-initialized submodule
+  // updates in place, so probe just the clone case and leave updates alone.
+  if (!existsSync(path.join(repoRoot, forkPath, ".git"))) {
+    const freeBytes = freeBytesFor({ platform, repoRoot });
+    if (freeBytes !== null) {
+      const spaceError = fusedInferenceSpaceError(freeBytes);
+      if (spaceError) throw spaceError;
+      log(`disk space ok: ${gib(freeBytes)} GB free for the ${forkPath} clone`);
+    }
+  }
   run("git", ["submodule", "update", "--init", "--recursive", forkPath], {
     cwd: repoRoot,
   });

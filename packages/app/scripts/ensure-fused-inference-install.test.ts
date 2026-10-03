@@ -16,6 +16,9 @@ import {
   ensureEmbeddingArtifact,
   ensureFusedInferenceInstall,
   FUSED_EMBEDDING_ARTIFACT,
+  FUSED_INFERENCE_MIN_FREE_BYTES,
+  fusedInferenceFreeBytes,
+  fusedInferenceSpaceError,
   resolveEmbeddingArtifactPath,
 } from "./ensure-fused-inference-install.ts";
 
@@ -33,6 +36,85 @@ test("the install artifact pins the verified BGE-small F16 model", () => {
     sha256: "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999",
     size: 67_308_128,
   });
+});
+
+test("a low-disk host refuses the clone before any bytes move", async () => {
+  const calls = [];
+  await assert.rejects(
+    ensureFusedInferenceInstall({
+      env: {},
+      platform: "linux",
+      repoRoot: "/repo",
+      bunExecutable: "/bun",
+      provision: false,
+      ensureEmbedding: readyEmbedding,
+      freeBytesFor: () => 512 * 1024 ** 2,
+      run(command, args) {
+        calls.push([command, ...args]);
+      },
+    }),
+    (error) => {
+      assert.match(error.message, /insufficient disk space/);
+      assert.match(error.message, /0\.5 GB free/);
+      assert.match(error.message, /ELIZA_SKIP_FUSED_INFERENCE_SETUP=1/);
+      return true;
+    },
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("a host with enough space still clones the pinned submodule", async () => {
+  const calls = [];
+  await ensureFusedInferenceInstall({
+    env: {},
+    platform: "linux",
+    repoRoot: "/repo",
+    bunExecutable: "/bun",
+    provision: false,
+    ensureEmbedding: readyEmbedding,
+    freeBytesFor: () => FUSED_INFERENCE_MIN_FREE_BYTES,
+    run(command, args) {
+      calls.push([command, ...args]);
+    },
+  });
+
+  assert.equal(calls[0][0], "git");
+  assert.deepEqual(calls[0].slice(1), [
+    "submodule",
+    "update",
+    "--init",
+    "--recursive",
+    "plugins/plugin-local-inference/native/llama.cpp",
+  ]);
+});
+
+test("the space guard fails open when the platform probe is unavailable", () => {
+  assert.equal(fusedInferenceFreeBytes({ platform: "win32" }), null);
+  assert.equal(
+    fusedInferenceFreeBytes({
+      platform: "linux",
+      repoRoot: "/definitely-not-a-repo-path",
+    }),
+    null,
+  );
+  assert.equal(
+    fusedInferenceFreeBytes({
+      platform: "linux",
+      repoRoot: import.meta.dirname,
+      statfs: () => {
+        throw new Error("ENOSYS");
+      },
+    }),
+    null,
+  );
+});
+
+test("the preflight boundary is exact at the required minimum", () => {
+  assert.equal(fusedInferenceSpaceError(1024, 1024, "x"), null);
+  assert.match(
+    fusedInferenceSpaceError(1023, 1024, "x").message,
+    /^insufficient disk space for the fused inference submodule: /,
+  );
 });
 
 test("a normal install initializes the pinned source and ensures the fused library", async () => {
