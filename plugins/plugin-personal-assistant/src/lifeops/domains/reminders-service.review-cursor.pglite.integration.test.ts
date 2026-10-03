@@ -342,3 +342,95 @@ it("preserves an already resolved invalid legacy observation as evidence", async
     }),
   ).toEqual([before]);
 });
+
+it.each(["done", "skip"])(
+  "preserves Calendar %s acknowledgment without editing the event",
+  async (text) => {
+    const f = await reviewFixture(text);
+    if (!f.attempt.attemptedAt) throw new Error("Missing attempted timestamp");
+    const event = {
+      id: crypto.randomUUID(),
+      externalId: crypto.randomUUID(),
+      agentId: fixture.runtime.agentId,
+      provider: "google" as const,
+      side: "owner" as const,
+      calendarId: "primary",
+      title: "Calendar acknowledgment",
+      description: "Original description",
+      location: "Original location",
+      status: "confirmed",
+      startAt: f.attempt.attemptedAt,
+      endAt: f.now.toISOString(),
+      isAllDay: false,
+      timezone: "UTC",
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: {},
+      syncedAt: f.now.toISOString(),
+      updatedAt: f.now.toISOString(),
+    };
+    await service.repository.upsertCalendarEvent(event);
+    const attempt = createLifeOpsReminderAttempt({
+      ...f.attempt,
+      id: crypto.randomUUID(),
+      ownerType: "calendar_event",
+      ownerId: event.id,
+      occurrenceId: null,
+      deliveryMetadata: { title: event.title, deliveryRoomId: roomId },
+    });
+    await service.repository.createReminderAttempt(attempt);
+    const respondedAt = Date.parse(event.startAt) + 60_000;
+    await fixture.runtime.createMemory(
+      {
+        ...f.message,
+        id: crypto.randomUUID() as UUID,
+        createdAt: respondedAt,
+        content: { text, source: "client_chat" },
+      },
+      "messages",
+    );
+    const judge = vi.spyOn(
+      service.remindersDomain,
+      "classifyReminderOwnerResponseSemantically",
+    );
+    const review = await service.reviewOwnerResponseAfterReminderAttempt({
+      subjectType: "owner",
+      attempt,
+      now: new Date(respondedAt + 1000),
+    });
+    expect(review.decision).toBe("explicit_resolution");
+    expect(review.resolution).toBe(text === "done" ? "completed" : "skipped");
+    expect(judge).not.toHaveBeenCalled();
+    if (!review.resolution)
+      throw new Error("Missing Calendar acknowledgment resolution");
+    await service.remindersDomain.resolveReminderReviewFromOwnerResponse({
+      ownerType: "calendar_event",
+      ownerId: event.id,
+      attempt,
+      reviewedAt: new Date(respondedAt + 1000).toISOString(),
+      resolution: review.resolution,
+      respondedAt: review.respondedAt,
+      responseText: review.responseText,
+      snoozeRequest: null,
+      confidence: review.confidence,
+      reason: review.reason,
+      classifierSource: review.classifierSource,
+    });
+    const actual = (
+      await service.repository.listCalendarEvents(
+        fixture.runtime.agentId,
+        "google",
+      )
+    ).find((row) => row.id === event.id);
+    expect(actual).toMatchObject({
+      ...event,
+      updatedAt: expect.any(String),
+      metadata: expect.objectContaining({
+        reminderAcknowledgedResolution: review.resolution,
+      }),
+    });
+    expect(attempt.reviewStatus).toBe("resolved");
+  },
+);

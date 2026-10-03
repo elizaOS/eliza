@@ -142,3 +142,27 @@ it.each([true, false])(
     expect(runtime.sendMessageToTarget).not.toHaveBeenCalled();
   },
 );
+
+it("keeps Calendar reminder choices on the generic legacy acknowledgment path", async () => {
+  const emitAssistantEvent = vi.fn();
+  const domain = new TestRemindersDomain(
+    {
+      emitAssistantEvent,
+      runtime: { getService: () => null },
+    } as never,
+    makeDeps(),
+  );
+  await domain.emitTestNudge({
+    text: "Meeting soon.",
+    ownerType: "calendar_event",
+    ownerId: "event-1",
+    subjectType: "owner",
+    scheduledFor: "2026-10-03T02:00:00Z",
+    dueAt: "2026-10-03T02:10:00Z",
+  });
+  const text = emitAssistantEvent.mock.calls[0]?.[0] as string;
+  expect(text).toContain("[CHOICE:lifeops-calendar-reminder id=reminder-");
+  expect(text).not.toContain("[CHOICE:lifeops-reminder ");
+  expect(text).toContain("done=Done");
+  expect(text).toContain("skip=Skip");
+});

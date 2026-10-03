@@ -458,7 +458,7 @@ function appendReminderChoiceChips(
   return [
     text.trim(),
     "",
-    `[CHOICE:lifeops-reminder id=${choiceId}]`,
+    `[CHOICE:${args.ownerType === "calendar_event" ? "lifeops-calendar-reminder" : "lifeops-reminder"} id=${choiceId}]`,
     "done=Done",
     "10 minutes=Snooze 10m",
     "skip=Skip",
