@@ -2661,33 +2661,36 @@ function clampOlderPageLimit(raw: string | null): number {
   return Math.min(Math.floor(parsed), CONVERSATION_MESSAGE_WINDOW);
 }
 /**
- * Load one page of messages STRICTLY OLDER than the `before` cursor for the
- * infinite upward scroll (#13532). `before` is the createdAt of the oldest
- * message the client already holds; this returns up to `limit` turns with a
- * smaller createdAt, newest-first from the store, so the caller can prepend
- * them above the current top.
+ * Load one page of messages strictly older than the cursor for the infinite
+ * upward scroll (#13532). `before` is the createdAt of the oldest message the
+ * client already holds. The page comes back newest-first from the store so the
+ * caller can prepend it above the current top.
  *
- * The bound is pushed into the store as getMemories `end` (an inclusive
- * createdAt upper bound) with `before - 1`, so the cursor row itself is
- * excluded and there is NO in-process scan. One extra row beyond `limit` is
- * requested to compute `hasMore` without a second COUNT query; the caller
- * trims it.
+ * When the client names the cursor row with `beforeId`, the store keyset
+ * `(createdAt, id)` keeps every other message in that millisecond and still
+ * excludes the cursor. A timestamp alone cannot tell those siblings apart, so
+ * that older contract stays `end: before - 1`. One extra row beyond `limit`
+ * computes `hasMore` without a second COUNT query; the caller trims it.
  */
 async function loadConversationMessagesBefore(
   runtime: AgentRuntime,
   roomId: UUID,
   before: number,
   limit: number,
+  beforeId?: UUID,
 ): Promise<{
   memories: Memory[];
   hasMore: boolean;
 }> {
-  // `end` is inclusive, so subtract 1ms to make the cursor exclusive: the
-  // client already holds the message at `before`, we want strictly older.
   const rows = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    end: before - 1,
+    // Timestamp-only callers cannot name one row inside a shared millisecond,
+    // so they keep the exclusive `before - 1` bound. A keyset cursor is already
+    // exclusive and must not also apply that bound, or the siblings disappear.
+    ...(beforeId
+      ? { cursor: { createdAt: before, id: beforeId } }
+      : { end: before - 1 }),
     limit: limit + 1,
     orderBy: "createdAt",
     orderDirection: "desc",
@@ -3492,14 +3495,20 @@ async function listConversationMessages(
     // far-back) message so a keyword-search jump can scroll to a hit older
     // than the default recent window (#9955). Absent → unchanged recent window.
     const aroundParam = validateUuid(requestUrl.searchParams.get("around"));
-    // `?before=<createdAt>&limit=N` loads one page STRICTLY OLDER than the
-    // cursor for the infinite upward scroll (#13532): the client passes the
-    // createdAt of its current oldest message and prepends the returned page.
-    // Mutually exclusive with `around` — a centered jump defines its own
-    // window. Returns `hasMore` so the client stops paging at the true top.
+    // `?before=<createdAt>&beforeId=<id>&limit=N` loads one page strictly older
+    // than the cursor for the infinite upward scroll (#13532). `beforeId` is
+    // the oldest message the client already holds, so other messages in that
+    // same millisecond stay reachable. Timestamp-only `before` remains the
+    // previous exclusive bound. Mutually exclusive with `around`.
     const beforeParam = parseBeforeCursor(
       requestUrl.searchParams.get("before"),
     );
+    const beforeIdRaw = requestUrl.searchParams.get("beforeId");
+    const beforeId = beforeIdRaw === null ? null : validateUuid(beforeIdRaw);
+    if (beforeIdRaw !== null && (beforeParam === null || beforeId === null)) {
+      error(res, "beforeId must be a UUID paired with before", 400);
+      return true;
+    }
     const olderLimit = clampOlderPageLimit(
       requestUrl.searchParams.get("limit"),
     );
@@ -3511,6 +3520,7 @@ async function listConversationMessages(
         conv.roomId,
         beforeParam,
         olderLimit,
+        beforeId ?? undefined,
       );
       memories = page.memories;
       hasMore = page.hasMore;
