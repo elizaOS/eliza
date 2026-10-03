@@ -24,5 +24,8 @@ and accessibility checks remain separate.
 The browser-safe `components/interactive-task/TaskChoice` leaf renders validated
 task choices in a chat or panel. The host owns transport, authorization, styling
 and localized messages. It suppresses duplicate in-flight clicks and expired
-responses; the durable runtime remains authoritative. `voice/speech-segments`
+responses; the durable runtime remains authoritative. Hosts that pass
+`explainUnavailable` keep options activatable (`aria-disabled`) and announce why
+an in-flight or expired choice cannot be used, and hide options once the choice
+is no longer pending. `voice/speech-segments`
 shares lossless caption/playback chunks without importing the voice runtime.

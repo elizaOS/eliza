@@ -245,6 +245,7 @@ import type { Task, TaskWorker } from "./types/task.js";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
+import { isExactTrueEnvFlag } from "./utils/env";
 import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
@@ -1998,8 +1999,9 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		const isProduction = process.env.NODE_ENV === "production";
-		const forceDestructive =
-			process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+		const forceDestructive = isExactTrueEnvFlag(
+			process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
+		);
 
 		await this.adapter.runPluginMigrations(pluginsWithSchemas, {
 			verbose: !isProduction,

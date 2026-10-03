@@ -60,7 +60,7 @@ export interface GatewayReadinessDocument {
   health_url: string;
   transport: {
     provider: "claude-agent-sdk";
-    sdk_version: "0.3.200";
+    sdk_version: string;
     credential_policy: "claude-code-oauth-only";
     fresh_session_per_request: true;
     tool_execution: "capture-only";

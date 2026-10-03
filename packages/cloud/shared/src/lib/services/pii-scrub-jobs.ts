@@ -13,9 +13,9 @@
  *     never drain the same job — the same exactly-once claim the provisioning
  *     worker relies on.
  *   - **Execute**: per item, the drain checks the tenant-scoped
- *     content-addressed done-marker (`pii:<sha256(content)>:v<ruleset>`,
- *     built by core's `scrubMarkerKey` — the SAME key the LOCAL lane uses),
- *     skips if a marker of at least the job's inspection scope is present,
+ *     done-marker (core's content/ruleset key, plus hashed candidate/context
+ *     inputs for partial inspection), skips only a matching declaration or
+ *     a full-content inspection of the same content/ruleset,
  *     otherwise runs the injected {@link PiiScrubItemExecutor} and writes the
  *     marker ONLY on success. Crash-and-rerun resumes with zero cursor state:
  *     restart loses only in-flight items, every marked item skips.
@@ -585,13 +585,24 @@ async function executePiiScrubJob(
     }
 
     const contentHash = hashScrubContent(item.content);
-    const markerKey = scrubMarkerKey(contentHash, data.rulesetVersion);
+    const fullInspectionKey = scrubMarkerKey(contentHash, data.rulesetVersion);
+    // Partial inspection proves only the supplied candidates/context. Never
+    // reuse an old content-only partial marker for a different declaration.
+    // Hash these inputs so marker rows retain no raw candidate or context PII.
+    const markerKey =
+      inspectionScope === "server_discovery"
+        ? fullInspectionKey
+        : `${fullInspectionKey}:declared:${hashScrubContent(JSON.stringify([item.candidateSpans ?? [], item.contextPack ?? null]))}`;
 
-    // Idempotent resume: a marker means THIS org already scrubbed THIS exact
-    // content under THIS ruleset at an inspection scope at least as strong as
-    // this job's — zero executor calls, zero duplicate writes. A weaker
-    // (declared-candidates) marker never short-circuits a server-discovery job.
-    if (await piiScrubMarkersRepository.isDone(job.organization_id, markerKey, inspectionScope)) {
+    const fullyInspected = await piiScrubMarkersRepository.isDone(
+      job.organization_id,
+      fullInspectionKey,
+      "server_discovery",
+    );
+    const sameDeclarationInspected =
+      inspectionScope === "declared_candidates" &&
+      (await piiScrubMarkersRepository.isDone(job.organization_id, markerKey, inspectionScope));
+    if (fullyInspected || sameDeclarationInspected) {
       progress.itemsSkipped++;
       progress.lastItemRef = item.itemRef;
       await writeProgress(job.id, progress);

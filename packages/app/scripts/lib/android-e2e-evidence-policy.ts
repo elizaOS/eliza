@@ -34,7 +34,13 @@ const PHASES = new Set([
 ]);
 
 const STATUSES = new Set(["started", "passed", "failed", "skipped"]);
-const COUNTERS = new Set(["mediaArtifactCount", "sourceLine", "specId"]);
+const COUNTERS = new Set([
+  "mediaArtifactCount",
+  "sourceLine",
+  "specId",
+  "androidWaitErrorKind",
+  "androidAccessibilityErrorKind",
+]);
 
 const CODES = new Set([
   "PHASE_STARTED",
@@ -59,6 +65,11 @@ const CODES = new Set([
   "PROJECTION_INVALID_REVISION",
   "PROJECTION_INVALID_BUILD_ID",
   "PROJECTION_VIDEO_FAILED",
+  "PROJECTION_VIDEO_UNAVAILABLE",
+  "PROJECTION_VIDEO_TERMINATED",
+  "PROJECTION_VIDEO_INVALID_INPUT",
+  "PROJECTION_VIDEO_ENCODER_UNAVAILABLE",
+  "PROJECTION_VIDEO_RESOURCE_EXHAUSTED",
   "PROJECTION_DESTINATION_EXISTS",
 ]);
 
@@ -157,8 +168,31 @@ export function createAndroidEvidenceBoundary({
   };
 }
 
-// Only source-owned probe identifiers and numeric locations leave the private
-// report. Titles, errors, attachments, stdout and stderr may contain device data.
+// Numeric categories distinguish Android wait failures without exporting the
+// private error text: 1 selector absent, 2 deadline, 3 device closed, 4 other.
+function androidWaitErrorKind(error) {
+  if (typeof error?.message !== "string") return undefined;
+  // Playwright's JSON reporter prepends the serialized Error class name.
+  const firstLine = error.message
+    .split("\n", 1)[0]
+    .replace(/^(?:Error|TimeoutError): /, "");
+  const prefix = "androidDevice.wait: ";
+  if (!firstLine.startsWith(prefix)) return undefined;
+  const message = firstLine.slice(prefix.length);
+  if (
+    /^(?:java\.lang\.RuntimeException: )?Timed out waiting for selector$/.test(
+      message,
+    )
+  ) {
+    return 1;
+  }
+  if (/^Timeout \d+ms exceeded\.$/.test(message)) return 2;
+  if (/^Device (?:is closed|closed)$/.test(message)) return 3;
+  return 4;
+}
+
+// Only source-owned probe identifiers, numeric locations and closed numeric
+// categories leave the private report. Error text and media remain private.
 export function reportAndroidPlaywrightResults(reportPath, boundary) {
   const specs = [
     "onboarding-to-home.android.spec.ts",
@@ -220,6 +254,19 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                 location.line > 0
                   ? location.line
                   : spec.line;
+              const waitErrorKind =
+                result.status === "failed"
+                  ? androidWaitErrorKind(result.error)
+                  : undefined;
+              // Only source-authored closed markers may identify the failed
+              // native predicate: lookup, app ownership, or rendered bounds.
+              const accessibilityMarker =
+                result.status === "failed" &&
+                typeof result.error?.message === "string"
+                  ? result.error.message.match(
+                      /(?:^|\n)(?:Error: )?ANDROID_PAIRING_ACCESSIBILITY:([1234])(?:\n|$)/,
+                    )
+                  : undefined;
               boundary.event(
                 "route-capture",
                 result.status === "passed"
@@ -228,7 +275,20 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
                     ? "skipped"
                     : "failed",
                 code,
-                { specId: specId + 1, sourceLine },
+                {
+                  specId: specId + 1,
+                  sourceLine,
+                  ...(waitErrorKind !== undefined
+                    ? { androidWaitErrorKind: waitErrorKind }
+                    : {}),
+                  ...(accessibilityMarker
+                    ? {
+                        androidAccessibilityErrorKind: Number(
+                          accessibilityMarker[1],
+                        ),
+                      }
+                    : {}),
+                },
               );
               emitted += 1;
             }
@@ -263,6 +323,23 @@ export function androidProjectionFailureCode(error) {
       "PROJECTION_INVALID_BUILD_ID",
     ],
     ["Android evidence video redaction failed.", "PROJECTION_VIDEO_FAILED"],
+    [
+      "Android evidence video encoder unavailable.",
+      "PROJECTION_VIDEO_UNAVAILABLE",
+    ],
+    [
+      "Android evidence video encoder terminated.",
+      "PROJECTION_VIDEO_TERMINATED",
+    ],
+    ["Android evidence video input invalid.", "PROJECTION_VIDEO_INVALID_INPUT"],
+    [
+      "Android evidence video codec unavailable.",
+      "PROJECTION_VIDEO_ENCODER_UNAVAILABLE",
+    ],
+    [
+      "Android evidence video resources exhausted.",
+      "PROJECTION_VIDEO_RESOURCE_EXHAUSTED",
+    ],
     [
       "Android evidence output directory must not already exist.",
       "PROJECTION_DESTINATION_EXISTS",
@@ -768,12 +845,36 @@ function packagedFfmpeg() {
   }
 }
 
+/** Only closed classifications may cross the device-evidence boundary. */
+export function androidVideoFailureMessage(result) {
+  if (result.error?.code === "ENOENT" || result.error?.code === "EACCES")
+    return "Android evidence video encoder unavailable.";
+  if (result.signal) return "Android evidence video encoder terminated.";
+  const diagnostic = typeof result.stderr === "string" ? result.stderr : "";
+  if (
+    /Cannot allocate memory|Resource temporarily unavailable|pthread_create failed/i.test(
+      diagnostic,
+    )
+  )
+    return "Android evidence video resources exhausted.";
+  if (/Unknown encoder|Encoder .* not found/i.test(diagnostic))
+    return "Android evidence video codec unavailable.";
+  if (
+    /Invalid data found when processing input|moov atom not found/i.test(
+      diagnostic,
+    )
+  )
+    return "Android evidence video input invalid.";
+  return "Android evidence video redaction failed.";
+}
+
 function defaultRedactVideo(source, destination) {
   const candidates = [
     process.env.ELIZA_FFMPEG_BIN,
     packagedFfmpeg(),
     "ffmpeg",
   ].filter(Boolean);
+  let failure = "Android evidence video encoder unavailable.";
   for (const command of candidates) {
     const result = spawnSync(
       command,
@@ -798,7 +899,11 @@ function defaultRedactVideo(source, destination) {
         "+faststart",
         destination,
       ],
-      { stdio: "ignore" },
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024,
+      },
     );
     if (
       result.status === 0 &&
@@ -807,9 +912,16 @@ function defaultRedactVideo(source, destination) {
     ) {
       return;
     }
+    const classified = androidVideoFailureMessage(result);
+    // Preserve a real encoder failure when a later fallback is not installed.
+    if (
+      classified !== "Android evidence video encoder unavailable." ||
+      failure === "Android evidence video encoder unavailable."
+    )
+      failure = classified;
     fs.rmSync(destination, { force: true });
   }
-  throw new Error("Android evidence video redaction failed.");
+  throw new Error(failure);
 }
 
 /**

@@ -11,6 +11,7 @@ import path from "node:path";
 import {
   type Character,
   ElizaError,
+  isExactTrueEnvFlag,
   parseAndValidateCharacter,
   resolveAliasedEnvValue,
   resolveStateDir,
@@ -237,12 +238,7 @@ export class AgentBackupRestoreV3RuntimeGeneration {
 
   assertEnvironment(): void {
     if (this.#closed) fail("CLOSED");
-    if (
-      ["1", "true", "on", "yes"].includes(
-        process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS?.trim().toLowerCase() ??
-          "",
-      )
-    )
+    if (isExactTrueEnvFlag(process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS))
       fail("DESTRUCTIVE_MIGRATION_FORBIDDEN");
     if (
       resolveStateDir() !== this.receipt.paths.state ||

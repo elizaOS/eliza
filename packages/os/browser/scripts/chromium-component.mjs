@@ -28,6 +28,7 @@ export const assetNames = [
   "background.mjs",
   "command-handler.mjs",
   "commands.mjs",
+  "manual-activity.mjs",
   "manifest.json",
   "native-connection.mjs",
   "task-guidance.mjs",
@@ -39,6 +40,7 @@ const resourceIds = {
   "background.mjs": "IDR_ELIZA_BROWSER_BACKGROUND",
   "command-handler.mjs": "IDR_ELIZA_BROWSER_COMMAND_HANDLER",
   "commands.mjs": "IDR_ELIZA_BROWSER_COMMANDS",
+  "manual-activity.mjs": "IDR_ELIZA_BROWSER_MANUAL_ACTIVITY",
   "manifest.json": "IDR_ELIZA_BROWSER_MANIFEST",
   "native-connection.mjs": "IDR_ELIZA_BROWSER_CONNECTION",
   "task-guidance.mjs": "IDR_ELIZA_BROWSER_TASK_GUIDANCE",
@@ -142,6 +144,7 @@ export async function generateComponentOverlay({
   platform,
   certificate,
   application = "ai.elizaos.app",
+  embedHost = false,
   revision,
 }) {
   if (revision !== pin.revision)
@@ -152,6 +155,8 @@ export async function generateComponentOverlay({
     if (sha256(sources[filename] ?? "") !== expected)
       throw new Error(`Chromium source integrity mismatch: ${filename}`);
   validateAssets(assets, platform, certificate, application);
+  if (typeof embedHost !== "boolean" || (embedHost && platform !== "android"))
+    throw new Error("Host embedding is an explicit Android-only build option");
   const files = {};
   const edit = (filename, transform) => {
     files[filename] = transform(files[filename] ?? sources[filename]);
@@ -200,6 +205,15 @@ export async function generateComponentOverlay({
           )
           .join(""),
       "GRIT inventory",
+    ),
+  );
+  // Reserve space for the full module closure without crossing the next GRIT block.
+  edit("tools/gritsettings/resource_ids.spec", (source) =>
+    replaceOnce(
+      source,
+      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2460],',
+      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2470],',
+      "component resource allocation",
     ),
   );
   edit("chrome/browser/resources/BUILD.gn", (source) =>
@@ -257,6 +271,14 @@ export async function generateComponentOverlay({
       "constexpr auto kAndroidNativeMessagingAllowedExtensionIds =\n    base::MakeFixedFlatSet<std::string_view>({\n",
       `constexpr auto kAndroidNativeMessagingAllowedExtensionIds =\n    base::MakeFixedFlatSet<std::string_view>({\n        "${EXTENSION_ID}",\n`,
       "native messaging identity allowlist",
+    ),
+  );
+  edit(`${prefix}api/messaging/BUILD.gn`, (source) =>
+    replaceOnce(
+      source,
+      '    deps += [ "//chrome/browser/extensions/api/messaging/android:jni_headers" ]',
+      '    deps += [\n      "//chrome/browser/extensions/api/messaging/android:jni_headers",\n      "//chrome/browser/resources:component_extension_resources",\n      "//crypto",\n      "//ui/base",\n    ]',
+      "Android verifier generated resource dependency",
     ),
   );
   edit(`${prefix}chrome_extensions_browser_client.cc`, (source) => {
@@ -324,6 +346,34 @@ export async function generateComponentOverlay({
   if (platform === "android") {
     applyStandaloneCredMan(edit, replaceOnce);
     applyStandaloneCredManTests(edit, replaceOnce);
+    if (embedHost) {
+      edit("chrome/android/java/AndroidManifest.xml", (source) => {
+        // Only the provisioned native host signer may embed browser activities.
+        // Keep exports, launch modes and unrelated authentication activities intact.
+        for (const [tag, activity] of [
+          [
+            "activity",
+            "org.chromium.chrome.browser.document.ChromeLauncherActivity",
+          ],
+          [
+            "activity",
+            "org.chromium.chrome.browser.customtabs.CustomTabActivity",
+          ],
+          ["activity", "org.chromium.chrome.browser.ChromeTabbedActivity"],
+          // Android 15 does not copy this certificate set from target to alias.
+          ["activity-alias", "com.google.android.apps.chrome.IntentDispatcher"],
+        ]) {
+          const opening = `<${tag} android:name="${activity}"`;
+          source = replaceOnce(
+            source,
+            opening,
+            `${opening}\n            android:knownActivityEmbeddingCerts="${certificate.toUpperCase()}"`,
+            `trusted host embedding for ${activity}`,
+          );
+        }
+        return source;
+      });
+    }
   }
   return {
     files,
@@ -345,6 +395,9 @@ export async function generateComponentOverlay({
       outputs: Object.fromEntries(
         Object.entries(files).map(([name, bytes]) => [name, sha256(bytes)]),
       ),
+      trustedActivityEmbedding: embedHost
+        ? { certificateSha256: certificate.toUpperCase(), application }
+        : null,
       unrestrictedAllowlistBypass: false,
       releaseBrowserBuildValidated: false,
     },
@@ -466,6 +519,7 @@ async function main(args) {
     application: args.includes("--application")
       ? option("--application")
       : "ai.elizaos.app",
+    embedHost: args.includes("--embed-host"),
     certificate: args.includes("--certificate")
       ? option("--certificate")
       : undefined,

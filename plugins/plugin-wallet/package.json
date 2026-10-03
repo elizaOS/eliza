@@ -95,7 +95,7 @@
     "ethers": "^6.16.0",
     "tweetnacl": "^1.0.3",
     "uuid": "^11.1.0",
-    "viem": "^2.48.8",
+    "viem": "^2.56.9",
     "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*"
   },

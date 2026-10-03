@@ -140,6 +140,96 @@ function failAuditWrites() {
 
 describe("transactional API-key audit", () => {
   test(
+    "two rotations that read the same key consume it only once",
+    async () => {
+      const { apiKey: original } = await createKey(createTransactionalAudit());
+      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      const read = apiKeysRepository.findByIdConsistent.bind(apiKeysRepository);
+      let release!: () => void;
+      const bothRead = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let readers = 0;
+      spyOn(apiKeysRepository, "findByIdConsistent").mockImplementation(
+        async (id) => {
+          const row = await read(id);
+          if (id === original.id) {
+            readers += 1;
+            if (readers === 2) release();
+            await bothRead;
+          }
+          return row;
+        },
+      );
+      const rotate = async () => {
+        const audit = createTransactionalAudit();
+        const result = await apiKeysService.regenerate(
+          original.id,
+          async (tx, created) => {
+            await audit.write(tx, {
+              actor: { type: "user", id: USER_ID },
+              action: "api_key.rotate",
+              result: "success",
+              resource: { type: "api_key", id: original.id },
+              org_id: ORG_ID,
+              metadata: { key_id: created.id },
+            });
+          },
+        );
+        await audit.publish();
+        return result;
+      };
+      const outcomes = await Promise.allSettled([rotate(), rotate()]);
+      expect(readers).toBe(2);
+      expect(
+        outcomes.filter((outcome) => outcome.status === "fulfilled"),
+      ).toHaveLength(1);
+      const refused = outcomes.find((outcome) => outcome.status === "rejected");
+      expect(refused?.status === "rejected" && refused.reason).toMatchObject({
+        code: "API_KEY_NOT_FOUND",
+      });
+      expect(await count("api_keys")).toBe(1);
+      const rows = (await dbWrite.execute(sql`SELECT id FROM api_keys`)) as {
+        rows: Array<{ id: string }>;
+      };
+      expect(rows.rows[0].id).not.toBe(original.id);
+      expect(await auditActions()).toEqual([
+        "api_key.create",
+        "api_key.rotate",
+      ]);
+    },
+    PGLITE_TIMEOUT_MS,
+  );
+
+  test(
+    "an inactive key cannot be rotated using an earlier active read",
+    async () => {
+      const { apiKey: original } = await createKey(createTransactionalAudit());
+      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      const read = apiKeysRepository.findByIdConsistent.bind(apiKeysRepository);
+      spyOn(apiKeysRepository, "findByIdConsistent").mockImplementation(
+        async (id) => {
+          const row = await read(id);
+          if (id === original.id)
+            await dbWrite.execute(
+              sql`UPDATE api_keys SET is_active = false WHERE id = ${id}`,
+            );
+          return row;
+        },
+      );
+      await expect(
+        apiKeysService.regenerate(original.id),
+      ).rejects.toMatchObject({ code: "API_KEY_NOT_FOUND" });
+      const rows = (await dbWrite.execute(
+        sql`SELECT id, is_active FROM api_keys`,
+      )) as { rows: Array<{ id: string; is_active: boolean }> };
+      expect(rows.rows).toEqual([{ id: original.id, is_active: false }]);
+      expect(await auditActions()).toEqual(["api_key.create"]);
+    },
+    PGLITE_TIMEOUT_MS,
+  );
+
+  test(
     "create commits the key and its audit row together",
     async () => {
       const audit = createTransactionalAudit();

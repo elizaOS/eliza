@@ -476,7 +476,7 @@ export class EmbeddedWorkflowService extends Service {
       observedAt,
       expiresAt,
     };
-    if (JSON.stringify(fields).length > 15000)
+    if (Buffer.byteLength(JSON.stringify(fields), 'utf8') > 15000)
       throw new WorkflowApiError('Encoded snapshot exceeds the reviewed byte bound', 400);
     const source = { ...fields, revision: digestHash(fields), revoked: false };
     const [prior] = await this.getDb()

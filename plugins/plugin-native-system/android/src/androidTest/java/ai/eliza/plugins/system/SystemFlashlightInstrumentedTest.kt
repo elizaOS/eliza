@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Rect
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -82,19 +83,29 @@ class SystemFlashlightInstrumentedTest {
 
     private fun clickPermission(id: String) {
         val deadline = SystemClock.elapsedRealtime() + 15000
+        val controllerPackages = setOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")
         do {
             val root = instrumentation.uiAutomation.rootInActiveWindow
-            for (pkg in listOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")) {
-                val button = root?.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.firstOrNull()
-                if (button != null) {
-                    // Let the system sheet finish animating before capturing its controls.
-                    instrumentation.uiAutomation.waitForIdle(500, 5000)
-                    screenshot("flashlight-$id.png")
-                    if (button.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+            // Google's controller can retain the Android resource namespace.
+            // Validate the owner independently from the resource's package prefix.
+            for (resourcePackage in controllerPackages) {
+                val button = root?.findAccessibilityNodeInfosByViewId("$resourcePackage:id/$id")?.firstOrNull()
+                if (button != null && button.refresh() &&
+                    button.packageName?.toString() in controllerPackages &&
+                    button.isVisibleToUser && button.isEnabled && button.isClickable) {
+                    val bounds = Rect()
+                    button.getBoundsInScreen(bounds)
+                    if (!bounds.isEmpty) {
+                        // Global accessibility traffic need not become idle. The
+                        // actual permission control must be present and actionable.
+                        screenshot("flashlight-$id.png")
+                        if (button.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+                    }
                 }
             }
             SystemClock.sleep(50)
         } while (SystemClock.elapsedRealtime() < deadline)
+        screenshot("flashlight-$id-missing.png")
         fail("Native camera permission dialog missing $id")
     }
 
