@@ -19,6 +19,7 @@ import {
   ChannelType,
   createCharacter,
   installHttpPluginLifecycle,
+  isMessageMetadata,
   validateUuid,
 } from "@elizaos/core";
 import {
@@ -214,7 +215,13 @@ it("persists a routine fired with no conversation into the owner's conversation 
     if (!messageId) throw new Error("Persisted owner message ID missing");
     const persisted = await runtime.getMemoryById(messageId);
     if (!persisted) throw new Error("Persisted owner message missing");
-    const legacy = { ...persisted, metadata: { ...persisted.metadata } };
+    if (!persisted.metadata || !isMessageMetadata(persisted.metadata))
+      throw new Error("Persisted message metadata missing");
+    const legacy = {
+      ...persisted,
+      id: messageId,
+      metadata: { ...persisted.metadata },
+    };
     delete legacy.metadata.conversationId;
     await runtime.updateMemory(legacy);
     const legacyBeforeReplay = await runtime.getMemoryById(messageId);
@@ -241,8 +248,9 @@ it("persists a routine fired with no conversation into the owner's conversation 
     });
     const unmappedBeforeReplay = await runtime.getMemoryById(messageId);
     const unmappedReplay = await dispatcher.dispatch(replayRecord);
-    expect(unmappedReplay.ok).toBe(true);
-    if (!unmappedReplay.ok) throw new Error("Legacy replay failed");
+    expect(unmappedReplay?.ok).toBe(true);
+    if (!unmappedReplay?.ok)
+      throw new Error("Legacy replay failed");
     expect(unmappedReplay.metadata?.ownerChatConversationId).toBeUndefined();
     expect(await runtime.getMemoryById(messageId)).toEqual(
       unmappedBeforeReplay,
