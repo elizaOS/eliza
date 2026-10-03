@@ -481,6 +481,46 @@ describe("FormService form schema hardening", () => {
       service.updateField(session.id, entityId, "name", "Janet", 1, "manual"),
     ).rejects.toThrow(`Session not found: ${session.id}`);
   });
+
+  it("undoes the most recent change, including a field's first answer", async () => {
+    service.registerForm(
+      validForm({
+        controls: [
+          { key: "name", label: "Name", type: "text", required: true },
+          { key: "email", label: "Email", type: "text", required: false },
+        ],
+      }),
+    );
+    const session = await service.startSession("signup", entityId, roomId);
+    await service.updateField(session.id, entityId, "name", "Bob", 1, "manual");
+    await service.updateField(session.id, entityId, "name", "Rob", 1, "manual");
+    await service.updateField(
+      session.id,
+      entityId,
+      "email",
+      "a@b.co",
+      1,
+      "manual",
+    );
+
+    await expect(service.undoLastChange(session.id, entityId)).resolves.toEqual(
+      {
+        field: "email",
+        restoredValue: undefined,
+      },
+    );
+    let current = await service.getActiveSession(entityId, roomId);
+    expect(current?.fields.email).toEqual({ status: "empty" });
+    expect(current?.fields.name).toMatchObject({ value: "Rob" });
+
+    await service.undoLastChange(session.id, entityId);
+    await service.undoLastChange(session.id, entityId);
+    current = await service.getActiveSession(entityId, roomId);
+    expect(current?.fields.name).toEqual({ status: "empty" });
+    await expect(
+      service.undoLastChange(session.id, entityId),
+    ).resolves.toBeNull();
+  });
 });
 
 describe("form extraction hardening", () => {
