@@ -880,24 +880,6 @@ export const generateMediaAction = {
       schema: { type: "string" as const },
     },
     {
-      name: "quality",
-      description: "Image quality preset.",
-      required: false,
-      schema: { type: "string" as const, enum: ["standard", "hd"] },
-    },
-    {
-      name: "style",
-      description: "Image style preset.",
-      required: false,
-      schema: { type: "string" as const, enum: ["natural", "vivid"] },
-    },
-    {
-      name: "negativePrompt",
-      description: "What the generated image should avoid.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
       name: "instrumental",
       description: "For music, true to generate without vocals.",
       required: false,
@@ -911,7 +893,8 @@ export const generateMediaAction = {
     },
     {
       name: "voice",
-      description: "For speech (audioKind tts), the requested voice name.",
+      description:
+        "For speech (audioKind tts), the TTS provider's voice ID; omit unless the user names one.",
       required: false,
       schema: { type: "string" as const },
     },

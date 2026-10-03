@@ -59,13 +59,6 @@ describe("generateMediaAction availability", () => {
 
   it.each([
     {
-      mediaType: "image",
-      prompt: "a glass lighthouse",
-      quality: "hd",
-      style: "natural",
-      negativePrompt: "blurry",
-    },
-    {
       mediaType: "audio",
       audioKind: "music",
       prompt: "rainy night beat",
@@ -76,10 +69,10 @@ describe("generateMediaAction availability", () => {
       mediaType: "audio",
       audioKind: "tts",
       prompt: "Good morning",
-      voice: "nova",
+      voice: "21m00Tcm4TlvDq8ikWAM",
     },
   ])(
-    "admits every control the handler forwards to the media service: %j",
+    "admits the music and speech controls every media path forwards: %j",
     async (parameters) => {
       expect(validateToolArgs(generateMediaAction, parameters)).toMatchObject({
         valid: true,
@@ -105,6 +98,25 @@ describe("generateMediaAction availability", () => {
       );
     },
   );
+
+  it("keeps image controls undeclared while the cloud and fallback image paths drop them", () => {
+    // ImageGenerationParams has no quality/style/negativePrompt, so only the
+    // own-key provider branch could honor them; admitting them would report
+    // success for a request whose controls were ignored.
+    for (const control of [
+      { quality: "hd" },
+      { style: "natural" },
+      { negativePrompt: "blurry" },
+    ]) {
+      expect(
+        validateToolArgs(generateMediaAction, {
+          mediaType: "image",
+          prompt: "a glass lighthouse",
+          ...control,
+        }).valid,
+      ).toBe(false);
+    }
+  });
 
   it("is hidden when the media service reports no configured provider", async () => {
     await expect(
