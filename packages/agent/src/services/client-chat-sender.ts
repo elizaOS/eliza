@@ -14,6 +14,7 @@ import {
   createMessageMemory,
   ElizaError,
   type IAgentRuntime,
+  isMessageMetadata,
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_OWNER_CHAT,
   type Memory,
@@ -238,6 +239,8 @@ function makeOwnerChatDeliver(runtime: IAgentRuntime, state: ServerState) {
     if (idempotencyKey) {
       const existing = await runtime.getMemoryById(messageId);
       if (existing) {
+        if (!existing.metadata || !isMessageMetadata(existing.metadata))
+          return existing;
         const conversation = findConversationByRoomId(state, existing.roomId);
         return {
           ...existing,
@@ -259,6 +262,10 @@ function makeOwnerChatDeliver(runtime: IAgentRuntime, state: ServerState) {
       roomId: conv.roomId,
       content: { ...content, text, source },
     });
+    if (!agentMessage.metadata || !isMessageMetadata(agentMessage.metadata))
+      throw new ElizaError("owner_chat message metadata is unavailable", {
+        code: "OWNER_CHAT_MESSAGE_METADATA_INVALID",
+      });
     agentMessage.metadata = {
       ...agentMessage.metadata,
       conversationId: conv.id,

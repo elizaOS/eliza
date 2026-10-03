@@ -23,6 +23,7 @@ import {
   type IAgentRuntime,
   inspectSendHandlerResult,
   isElizaError,
+  isMessageMetadata,
   logger,
   MESSAGE_SOURCE_OWNER_CHAT,
   requireConfirmedSendHandlerDelivery,
@@ -519,7 +520,10 @@ async function deliverScheduledTaskToOwnerChat(
       ok: true,
       roomId: memory.roomId,
       messageId: validateUuid(memory.id),
-      conversationId: validateUuid(memory.metadata?.conversationId),
+      conversationId:
+        memory.metadata && isMessageMetadata(memory.metadata)
+          ? validateUuid(memory.metadata.conversationId)
+          : null,
     };
   } catch (error) {
     if (isElizaError(error) && error.code === SEND_HANDLER_NOT_FOUND) {

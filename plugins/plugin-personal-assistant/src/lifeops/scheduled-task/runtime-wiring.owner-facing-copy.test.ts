@@ -121,7 +121,7 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
         id: "00000000-0000-0000-0000-0000000000c1",
         entityId: "agent-test",
         roomId: "00000000-0000-0000-0000-0000000000c2",
-        metadata: { conversationId },
+        metadata: { type: "message", conversationId },
         content,
       }));
       const { runtime } = makeRuntime({ notify, sendMessageToTarget });
@@ -240,7 +240,10 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       id: "00000000-0000-0000-0000-0000000000c1",
       entityId: "agent-test",
       roomId: "00000000-0000-0000-0000-0000000000c2",
-      metadata: { conversationId: "00000000-0000-0000-0000-0000000000c3" },
+      metadata: {
+        type: "message",
+        conversationId: "00000000-0000-0000-0000-0000000000c3",
+      },
       content,
     }));
     const notify = vi.fn().mockResolvedValue(undefined);
