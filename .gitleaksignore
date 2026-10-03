@@ -202,8 +202,8 @@ ec938aa930aad29117d2dc04368d00342df56cb6:packages/core/src/__tests__/compose-sta
 # Each exception pins commit + path + rule + line. No whole-file, whole-commit,
 # or future-value exclusion is introduced. Changed/new commits remain scanned.
 # Review source with: git show <commit>:<path>. Values are not copied here.
-# The OSWorld vLLM Basic-auth pair is deliberately NOT exempted: retirement
-# must be established independently even after its removal from current code.
+# The historical OSWorld Basic-auth pair was confirmed test-only by the owner
+# and is exempted by its exact fingerprint above; current source no longer embeds it.
 
 
 # .github/workflows/live-smoke.yml
