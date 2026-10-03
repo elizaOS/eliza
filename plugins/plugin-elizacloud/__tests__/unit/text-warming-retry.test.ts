@@ -337,6 +337,51 @@ describe("streaming native chat completion", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("aborts an in-flight buffered completion with the caller's signal", async () => {
+    const fetchMock = vi.fn(
+      (_input: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        })
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const pending = generateNativeChatCompletion(
+      runtime(),
+      "TEXT_SMALL",
+      { ...NATIVE_PARAMS, signal: controller.signal },
+      CONTEXT
+    ).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort(abortReason);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(Promise.race([pending, Promise.resolve("still pending")])).resolves.toBe(
+      abortReason
+    );
+  });
+
+  it("ends a buffered completion's warming backoff on caller abort without another request", async () => {
+    const fetchMock = mockFetchSequence([warmingResponse]);
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const pending = generateNativeChatCompletion(
+      runtime(),
+      "TEXT_SMALL",
+      { ...NATIVE_PARAMS, signal: controller.signal },
+      CONTEXT
+    ).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort(abortReason);
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toBe(abortReason);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves caller abort during warming backoff without another request", async () => {
     const fetchMock = mockFetchSequence([warmingResponse]);
     const controller = new AbortController();
