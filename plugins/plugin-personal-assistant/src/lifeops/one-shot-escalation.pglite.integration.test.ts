@@ -106,7 +106,7 @@ it.each([
       );
       const body = getRecordedTestNotifications(f.runtime)[0].body;
       expect(body).toBe("Check the in-app notification");
-      expect(getRecordedTestNotifications(f.runtime)[0].title).toBe(body);
+      expect(getRecordedTestNotifications(f.runtime)[0].title).toBe("Reminder");
       expect(attempts[0].deliveryMetadata.message).toBe(body);
       expect(before?.dueAt).toBe(new Date(due).toISOString());
       expect(attempts[0].scheduledFor).toBe(new Date(due).toISOString());
@@ -232,7 +232,7 @@ it("explicit post-fire snooze crosses the original window and preserves its save
     expect(notifications).toHaveLength(2);
     expect(notifications[1].body).toBe("Explicit snooze deadline");
     expect(notifications[1].body).toBe(firstBody);
-    expect(notifications[1].title).toBe("Explicit snooze deadline");
+    expect(notifications[1].title).toBe("Reminder");
     const atDeadline = await service.repository.getOccurrence(
       f.runtime.agentId,
       original.id,
