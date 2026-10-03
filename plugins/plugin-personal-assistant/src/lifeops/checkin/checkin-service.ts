@@ -208,15 +208,32 @@ export function buildCheckinSummaryPrompt(
     report.kind === "morning"
       ? "Write the owner's morning personal-assistant intro summary."
       : "Write the owner's night personal-assistant closeout summary.",
-    "This is generated from LifeOps source data. Do not invent facts.",
+    "Use the supplied source data. Do not invent facts.",
+    "Describe recorded states and counts without inventing their cause: a missed occurrence is not evidence of failed delivery, abandoned work, or a system fault. Missed streaks have no occurrence dates here; do not assign those misses to today or yesterday.",
+    "Streak counters count occurrences, not days. Report empty collections as no collected items, not proof that no urgent work or messages exist outside the available sources.",
     "Rank for genuinely interesting, important, reply-needed, or schedule-changing items.",
     "Include X/socials (timeline, mentions, DMs), inboxes/messages/Discord, Gmail, GitHub, calendar changes, completed work, contacts, promises, agreements, and follow-ups when present.",
     "When a source is unavailable, say that source is unavailable in one compact clause instead of pretending it was empty.",
+    "An unavailable or disconnected source is a coverage limitation, not evidence that a service is down, critical, or needs repair. Do not make reconnecting optional sources a priority unless the report establishes an owner task or affected commitment.",
     report.kind === "morning"
       ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
       : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
-    "Use short sections or tight bullets. No markdown table. No emojis.",
+    "Write a short, natural message for the owner. Use plain words and only a few paragraphs or bullets. Do not mention internal names such as LifeOps, report JSON, collectors, operational status, or escalation levels. No markdown table or emojis.",
+    "Do not put a date or time in the heading. If the body mentions the report time, copy the supplied local report time exactly; do not calculate or invent another date.",
   ];
+  if (report.timezone) {
+    lines.push(
+      `Report time: ${new Intl.DateTimeFormat("en-US", {
+        timeZone: report.timezone,
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(new Date(report.generatedAt))} (${report.timezone}).`,
+    );
+  } else {
+    lines.push(
+      "The owner timezone is unavailable; do not invent a local date or time.",
+    );
+  }
   if (report.kind === "night" && report.sleepRecap) {
     const recap = report.sleepRecap;
     const bedtime = formatBedtimeHour(recap.medianBedtimeLocalHour);
@@ -1367,6 +1384,7 @@ export class CheckinService {
       reportId: newReportId(),
       kind,
       generatedAt: now.toISOString(),
+      timezone,
       escalationLevel,
       overdueTodos: overdueTodos.rows,
       todaysMeetings: todaysMeetings.rows,
@@ -1425,6 +1443,7 @@ export class CheckinService {
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);
     const payload = JSON.stringify({
+      timezone: report.timezone,
       overdueTodos: report.overdueTodos,
       todaysMeetings: report.todaysMeetings,
       yesterdaysWins: report.yesterdaysWins,

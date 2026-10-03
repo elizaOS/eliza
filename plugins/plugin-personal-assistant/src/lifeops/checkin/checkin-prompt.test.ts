@@ -30,6 +30,36 @@ const baseReport = (
 });
 
 describe("buildCheckinSummaryPrompt", () => {
+  it("supplies the collector's local date across a UTC day boundary", () => {
+    const p = buildCheckinSummaryPrompt(
+      baseReport({
+        generatedAt: "2026-10-04T01:00:00.000Z",
+        timezone: "America/Los_Angeles",
+      }),
+    );
+    expect(p).toContain("Saturday, October 3, 2026 at 6:00 PM");
+    expect(p).toContain("(America/Los_Angeles)");
+    expect(p).toContain('"generatedAt":"2026-10-04T01:00:00.000Z"');
+  });
+
+  it("does not substitute the host timezone for a legacy report", () => {
+    const p = buildCheckinSummaryPrompt(baseReport());
+    expect(p).toContain("owner timezone is unavailable");
+    expect(p).not.toContain("Report time:");
+  });
+
+  it("uses another owner's timezone rather than Pacific time", () => {
+    const p = buildCheckinSummaryPrompt(
+      baseReport({
+        generatedAt: "2026-10-03T18:00:00.000Z",
+        timezone: "Asia/Tokyo",
+      }),
+    );
+    expect(p).toContain("Sunday, October 4, 2026 at 3:00 AM");
+    expect(p).toContain("(Asia/Tokyo)");
+    expect(p).not.toContain("America/Los_Angeles");
+  });
+
   it("uses the optimized task purpose for each owner-facing check-in kind", () => {
     expect(getCheckinSummaryTrajectoryPurpose("morning")).toBe("morning_brief");
     expect(getCheckinSummaryTrajectoryPurpose("night")).toBe("health_checkin");
