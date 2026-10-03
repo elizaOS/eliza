@@ -493,6 +493,27 @@ function compareStoredMemoriesNewestFirst(
   return compareMemoryIds(bId, aId);
 }
 
+function roomListCreatedAtMs(room: Room): number {
+  const value = (room as Room & { createdAt?: unknown }).createdAt;
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? time : 0;
+  }
+  return 0;
+}
+
+/** Matches SQL `ORDER BY createdAt ASC, id ASC` for room pages. */
+function compareRoomsForList(left: Room, right: Room): number {
+  const delta = roomListCreatedAtMs(left) - roomListCreatedAtMs(right);
+  if (delta !== 0) return delta;
+  return compareMemoryIds(String(left.id ?? ""), String(right.id ?? ""));
+}
+
 const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
 
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
@@ -2734,6 +2755,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     let rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
       r.worldId ? worldSet.has(r.worldId as UUID) : false,
     );
+    rooms.sort(compareRoomsForList);
     const off = offset ?? 0;
     if (off > 0) rooms = rooms.slice(off);
     if (limit !== undefined) rooms = rooms.slice(0, limit);
