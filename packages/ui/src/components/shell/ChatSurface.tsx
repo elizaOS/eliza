@@ -164,7 +164,10 @@ export function ChatSurface({
                         {isUser ? (
                           <UserMessageContent content={message.content} />
                         ) : (
-                          <InlineWidgetText content={message.content} />
+                          <InlineWidgetText
+                            content={message.content}
+                            messageId={message.id}
+                          />
                         )}
                       </ChatBubble>
                     )}

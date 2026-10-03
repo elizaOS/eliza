@@ -108,6 +108,22 @@ describe("InlineWidgetText", () => {
     expect(container.textContent).toContain("just a normal reply");
   });
 
+  it("retains the source message when choosing a reminder in the shell", () => {
+    const id = "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9";
+    const view = withApp(
+      <InlineWidgetText
+        messageId={id}
+        content={
+          "[CHOICE:lifeops-reminder id=reminder-source]\ndone=Done\n[/CHOICE]"
+        }
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(view.sendActionMessage).toHaveBeenCalledWith("done", {
+      metadata: { replyToMessageId: id, reminderChoiceId: "reminder-source" },
+    });
+  });
+
   it("renders a choice picker and does not leak the [CHOICE] marker", () => {
     const { container } = withApp(
       <InlineWidgetText

@@ -121,6 +121,13 @@ it("delivers saved facts through chat voice boundary and notification store with
     });
     expect(messages).toHaveLength(1);
     expect(messages[0].content.text).toBe(canonicalChat);
+    expect(messages[0].content.metadata).toMatchObject({
+      ownerType: "occurrence",
+      ownerId: plan.ownerId,
+      subjectType: "owner",
+      scheduledFor: due,
+      dueAt: due,
+    });
     expect(canonicalChat?.split("\n\n[CHOICE:")[0]).toBe(body);
     expect(broadcasts).toContainEqual(
       expect.objectContaining({

@@ -95,6 +95,13 @@ export async function routeAutonomyTextToUser(
   responseText: string,
   source = "autonomy",
   reminderPresentation?: unknown,
+  reminderReference?: {
+    ownerType: "occurrence";
+    ownerId: string;
+    subjectType: "owner";
+    scheduledFor: string;
+    dueAt: string | null;
+  },
 ): Promise<void> {
   const runtime = state.runtime;
   if (!runtime) return;
@@ -177,6 +184,9 @@ export async function routeAutonomyTextToUser(
         text: deliveredText,
         source,
         ...(agentVoiced ? { agentVoiced: true } : {}),
+        ...(source === "reminder" && reminderReference
+          ? { metadata: reminderReference }
+          : {}),
       },
     });
     await runtime.createMemory(agentMessage, "messages");

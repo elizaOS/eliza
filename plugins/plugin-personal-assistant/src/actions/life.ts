@@ -35,6 +35,7 @@ import {
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
+import { findInteractionRegions } from "@elizaos/core/messaging/interactions/parse";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import type {
   CreateLifeOpsDefinitionRequest,
@@ -4284,9 +4285,83 @@ async function runLifeOperationHandlerInner(
   const rawParams = (options as HandlerOptions | undefined)?.parameters as
     | LifeParams
     | undefined;
-  const params = rawParams ?? ({} as LifeParams);
+  let params = rawParams ?? ({} as LifeParams);
   const authoredText = extractPrimaryLifeInputText(messageText(message));
   const currentText = normalizeLifeInputText(authoredText);
+  const service = new LifeOpsService(runtime, {
+    ownerEntityId: message.entityId,
+  });
+  const choiceMetadata = detailObject(message.content, "metadata");
+  if (choiceMetadata?.reminderChoiceId !== undefined) {
+    const sourceId = validateUuid(message.content.inReplyTo);
+    const source = sourceId ? await runtime.getMemoryById(sourceId) : null;
+    const reference = source
+      ? detailObject(source.content, "metadata")
+      : undefined;
+    const ownerId = validateUuid(reference?.ownerId);
+    const occurrence = ownerId
+      ? await getCallerOccurrenceView(service.repository, service, ownerId)
+      : null;
+    const chosen =
+      source && typeof source.content.text === "string"
+        ? findInteractionRegions(source.content.text).find(
+            ({ block }) =>
+              block.kind === "choice" &&
+              block.scope === "lifeops-reminder" &&
+              block.id === choiceMetadata.reminderChoiceId &&
+              block.options.some((option) => option.value === currentText),
+          )
+        : null;
+    if (
+      ownerSurfaceActionName !== "OWNER_REMINDERS" ||
+      !source ||
+      source.entityId !== runtime.agentId ||
+      source.agentId !== runtime.agentId ||
+      source.roomId !== message.roomId ||
+      source.content.source !== "reminder" ||
+      !chosen ||
+      reference?.ownerType !== "occurrence" ||
+      reference.subjectType !== "owner" ||
+      typeof reference.scheduledFor !== "string" ||
+      !Number.isFinite(Date.parse(reference.scheduledFor)) ||
+      !occurrence ||
+      occurrence.subjectType !== "owner" ||
+      reference.dueAt !== occurrence.dueAt ||
+      !["pending", "visible", "snoozed", "completed"].includes(
+        occurrence.state,
+      ) ||
+      !["done", "skip", "10 minutes"].includes(currentText)
+    ) {
+      return {
+        success: false,
+        text: "I couldn't verify which reminder that choice belongs to. Open the current reminder and try again.",
+        data: {
+          actionName: ownerSurfaceActionName,
+          reason: "reminder_choice_source_invalid",
+        },
+      };
+    }
+    const action =
+      currentText === "done"
+        ? "complete"
+        : currentText === "skip"
+          ? "skip"
+          : "snooze";
+    // The authenticated click owns this operation and exact occurrence;
+    // unrelated planner targets or edit fields cannot redirect its effect.
+    params = {
+      action,
+      subaction: action,
+      kind: "definition",
+      ownerSurface: "OWNER_REMINDERS",
+      target: occurrence.id,
+      details: {
+        occurrenceId: occurrence.id,
+        domain: occurrence.domain,
+        ...(action === "snooze" ? { minutes: 10 } : {}),
+      },
+    };
+  }
   const details = params.details;
   // The owner surface preserves this canonical selector while stripping edit
   // fields. An ordinary update's details.status grants no archive authority.
@@ -4626,9 +4701,6 @@ async function runLifeOperationHandlerInner(
     : !isLifeOwnedOperation(operationPlan.operation)
       ? operationPlan.operation
       : null;
-  const service = new LifeOpsService(runtime, {
-    ownerEntityId: message.entityId,
-  });
   if (
     queryOperation === "query_calendar_today" ||
     queryOperation === "query_calendar_next" ||

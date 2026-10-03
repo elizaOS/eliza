@@ -38,21 +38,53 @@ function assistant(over: Partial<ConversationMessage>): ConversationMessage {
 }
 
 function withApp(node: React.ReactElement) {
+  const sendActionMessage = vi.fn();
   const appValue = {
     t: (key: string, vars?: Record<string, unknown>) =>
       String(vars?.defaultValue ?? key),
-    sendActionMessage: vi.fn(),
+    sendActionMessage,
   } as never;
   __setAppValueForTests(appValue);
-  return render(
+  const view = render(
     <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
   );
+  return { ...view, sendActionMessage };
 }
 
 describe("MessageContent non-bytes interaction rendering", () => {
   afterEach(() => {
     cleanup();
     __setAppValueForTests(null);
+  });
+
+  it("binds a reminder choice to its source message without changing ordinary choices", () => {
+    const id = "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9";
+    const view = withApp(
+      <MessageContent
+        message={assistant({
+          id,
+          text: "Reminder\n\n[CHOICE:lifeops-reminder id=reminder-380aaddfa298]\ndone=Done\n[/CHOICE]",
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(view.sendActionMessage).toHaveBeenCalledWith("done", {
+      metadata: {
+        replyToMessageId: id,
+        reminderChoiceId: "reminder-380aaddfa298",
+      },
+    });
+    view.unmount();
+    const ordinary = withApp(
+      <MessageContent
+        message={assistant({
+          id,
+          text: "[CHOICE:ordinary id=c1]\nyes=Yes\n[/CHOICE]",
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(ordinary.sendActionMessage).toHaveBeenCalledWith("yes");
   });
 
   it("renders the visible reply alongside a reasoning/thinking block", () => {

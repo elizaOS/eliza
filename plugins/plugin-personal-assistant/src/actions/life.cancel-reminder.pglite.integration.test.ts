@@ -458,3 +458,145 @@ it("rejects an exact reminder reference outside the requested domain", async () 
     ),
   ).toEqual(occurrence);
 });
+
+async function reminderSource(
+  original: Awaited<ReturnType<typeof seed>>,
+  changes: Partial<Memory> = {},
+) {
+  if (changes.roomId && !(await fixture.runtime.getRoom(changes.roomId))) {
+    const currentRoom = await fixture.runtime.getRoom(roomId);
+    if (!currentRoom?.worldId) throw new Error("Missing fixture world");
+    await fixture.runtime.createRoom({
+      id: changes.roomId,
+      worldId: currentRoom.worldId,
+      name: "Foreign source room",
+      source: "client_chat",
+      type: ChannelType.DM,
+    });
+  }
+  const [occurrence] = await service.repository.listOccurrencesForDefinition(
+    fixture.runtime.agentId,
+    original.definition.id,
+  );
+  const source = {
+    id: crypto.randomUUID() as UUID,
+    agentId: fixture.runtime.agentId,
+    entityId: fixture.runtime.agentId,
+    roomId,
+    createdAt: Date.now(),
+    content: {
+      text: "Reminder\n\n[CHOICE:lifeops-reminder id=source-choice]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]",
+      source: "reminder",
+      metadata: {
+        ownerType: "occurrence",
+        ownerId: occurrence.id,
+        subjectType: "owner",
+        scheduledFor: occurrence.scheduledAt,
+        dueAt: occurrence.dueAt,
+      },
+    },
+    ...changes,
+  } as Memory;
+  await fixture.runtime.createMemory(source, "messages");
+  return { source, occurrence };
+}
+
+it.each([
+  ["done", "completed"],
+  ["skip", "skipped"],
+  ["10 minutes", "snoozed"],
+] as const)(
+  "binds clicked %s to the canonical source occurrence despite an unrelated planner target",
+  async (value, state) => {
+    const original = await seed(`Bound choice ${value}`);
+    const other = await seed(`Concurrent reminder ${value}`);
+    const { source, occurrence } = await reminderSource(original);
+    const result = await invoke(
+      { action: "complete", target: other.definition.id },
+      value,
+      ["OWNER"],
+      async (message) => {
+        message.content.inReplyTo = source.id;
+        message.content.metadata = { reminderChoiceId: "source-choice" };
+      },
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (
+        await service.repository.getOccurrence(
+          fixture.runtime.agentId,
+          occurrence.id,
+        )
+      )?.state,
+    ).toBe(state);
+    const [unrelated] = await service.repository.listOccurrencesForDefinition(
+      fixture.runtime.agentId,
+      other.definition.id,
+    );
+    expect(unrelated.state).toBe("pending");
+  },
+);
+
+it.each([
+  "missing",
+  "foreign_room",
+  "foreign_author",
+  "wrong_choice",
+  "unbound",
+  "stale",
+  "tampered_value",
+])(
+  "rejects %s reminder choice sources without falling back to the planner target",
+  async (mode) => {
+    const original = await seed(`Rejected source ${mode}`);
+    const other = await seed(`Protected planner target ${mode}`);
+    const { source, occurrence } = await reminderSource(original, {
+      ...(mode === "foreign_room"
+        ? { roomId: crypto.randomUUID() as UUID }
+        : {}),
+      ...(mode === "foreign_author"
+        ? { entityId: service.ownerEntityId() as UUID }
+        : {}),
+      ...(mode === "unbound"
+        ? {
+            content: {
+              text: "[CHOICE:lifeops-reminder id=source-choice]\ndone=Done\n[/CHOICE]",
+              source: "reminder",
+            },
+          }
+        : {}),
+    });
+    if (mode === "stale")
+      await service.repository.upsertOccurrence({
+        ...occurrence,
+        state: "expired",
+      });
+    const result = await invoke(
+      { action: "complete", target: other.definition.id },
+      mode === "tampered_value" ? "erase everything" : "done",
+      ["OWNER"],
+      async (message) => {
+        message.content.inReplyTo =
+          mode === "missing" ? (crypto.randomUUID() as UUID) : source.id;
+        message.content.metadata = {
+          reminderChoiceId:
+            mode === "wrong_choice" ? "forged-choice" : "source-choice",
+        };
+      },
+    );
+    expect(result.success).toBe(false);
+    const [unrelated] = await service.repository.listOccurrencesForDefinition(
+      fixture.runtime.agentId,
+      other.definition.id,
+    );
+    expect(unrelated.state).toBe("pending");
+    expect(
+      (
+        await service.repository.getOccurrence(
+          fixture.runtime.agentId,
+          occurrence.id,
+        )
+      )?.state,
+    ).toBe(mode === "stale" ? "expired" : "pending");
+  },
+);

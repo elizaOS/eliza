@@ -5,7 +5,7 @@
  * payloads, client-chat echoes, and events whose room is already tracked by an
  * open conversation, then handing the rest to routeAutonomyTextToUser.
  */
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import { MESSAGE_SOURCE_CLIENT_CHAT, validateUuid } from "@elizaos/core";
 import type { AgentEventPayloadLike } from "../runtime/agent-event-service.ts";
 import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";
 import type { ServerState } from "./server-types.ts";
@@ -54,5 +54,22 @@ export async function maybeRouteAutonomyEventToConversation(
     text,
     source,
     payload?.reminderPresentation,
+    source === "reminder" &&
+      payload?.ownerType === "occurrence" &&
+      payload.subjectType === "owner" &&
+      validateUuid(payload.ownerId) &&
+      typeof payload.scheduledFor === "string" &&
+      Number.isFinite(Date.parse(payload.scheduledFor)) &&
+      (payload.dueAt === null ||
+        (typeof payload.dueAt === "string" &&
+          Number.isFinite(Date.parse(payload.dueAt))))
+      ? {
+          ownerType: "occurrence",
+          ownerId: payload.ownerId as string,
+          subjectType: "owner",
+          scheduledFor: payload.scheduledFor,
+          dueAt: payload.dueAt as string | null,
+        }
+      : undefined,
   );
 }

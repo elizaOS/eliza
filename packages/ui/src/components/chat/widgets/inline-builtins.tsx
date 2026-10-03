@@ -57,7 +57,15 @@ registerInlineWidget<ChoiceMatch>({
       scope={m.scope}
       options={m.options}
       allowCustom={m.allowCustom}
-      onChoose={ctx.sendAction}
+      onChoose={
+        m.scope === "lifeops-reminder"
+          ? (value) =>
+              ctx.sendAction(value, {
+                replyToMessageId: ctx.messageId,
+                reminderChoiceId: m.id,
+              })
+          : ctx.sendAction
+      }
     />
   ),
 });
