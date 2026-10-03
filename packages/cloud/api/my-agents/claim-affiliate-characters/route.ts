@@ -1,5 +1,6 @@
-// Handles cloud API my agents claim affiliate characters route traffic with route-local auth expectations.
+/** Handles ownership claims for affiliate characters discovered through chats or anonymous sessions. */
 import { Hono } from "hono";
+import { z } from "zod";
 import {
   participantsRepository,
   roomsRepository,
@@ -10,6 +11,7 @@ import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { charactersService } from "@/lib/services/characters/characters";
 import { usersService } from "@/lib/services/users";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -32,6 +34,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 const app = new Hono<AppEnv>();
 
+const claimAffiliateCharactersBodySchema = z.object({
+  sessionToken: z.string().min(1).optional(),
+});
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -48,15 +54,33 @@ app.post("/", async (c) => {
     );
 
     try {
-      let sessionToken: string | undefined;
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          sessionToken?: string;
-        };
-        sessionToken = body.sessionToken;
-      } catch {
-        // No body or invalid JSON - that's okay
+      const decodedBody = await decodeOptionalRequestJson(c.req);
+      if (!decodedBody.ok) {
+        return c.json(
+          {
+            success: false,
+            claimed: [],
+            failed: [],
+            message: "Invalid JSON body",
+          },
+          400,
+        );
       }
+      const parsedBody = claimAffiliateCharactersBodySchema.safeParse(
+        decodedBody.value,
+      );
+      if (!parsedBody.success) {
+        return c.json(
+          {
+            success: false,
+            claimed: [],
+            failed: [],
+            message: "Invalid request data",
+          },
+          400,
+        );
+      }
+      const { sessionToken } = parsedBody.data;
 
       // Find affiliate characters user has interacted with via room associations
       // New architecture: entityId = userId, rooms.agentId = characterId

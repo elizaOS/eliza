@@ -13,6 +13,8 @@ const AGENT = {
   user_id: USER.id,
   status: "running",
 };
+const AFFILIATE_CHARACTER_ID = "00000000-0000-4000-8000-000000000010";
+const AFFILIATE_OWNER_ID = "00000000-0000-4000-8000-000000000011";
 
 const calls = {
   suspend: [] as unknown[],
@@ -24,6 +26,7 @@ const calls = {
   oauthCancel: [] as unknown[],
   paymentCancel: [] as unknown[],
   gatewayShutdown: [] as unknown[],
+  claimAffiliate: [] as unknown[],
 };
 
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
@@ -31,6 +34,46 @@ mock.module("@/lib/auth/service-key-hono-worker", () => ({
 }));
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => USER,
+  requireUserWithOrg: async () => USER,
+}));
+mock.module("@/db/repositories", () => ({
+  participantsRepository: {
+    findRoomsByEntityId: async () => ["room-1"],
+  },
+  roomsRepository: {
+    findByIds: async () => [{ id: "room-1", agentId: AFFILIATE_CHARACTER_ID }],
+  },
+  userCharactersRepository: {
+    findById: async () => ({
+      id: AFFILIATE_CHARACTER_ID,
+      name: "Affiliate agent",
+      user_id: AFFILIATE_OWNER_ID,
+    }),
+    listByUser: async () => [],
+  },
+}));
+mock.module("@/lib/services/anonymous-sessions", () => ({
+  anonymousSessionsService: {
+    getByToken: async () => null,
+    markConverted: async () => {},
+  },
+}));
+mock.module("@/lib/services/characters/characters", () => ({
+  charactersService: {
+    claimAffiliateCharacter: async (...input: unknown[]) => {
+      calls.claimAffiliate.push(input);
+      return { success: true, message: "claimed" };
+    },
+  },
+}));
+mock.module("@/lib/services/users", () => ({
+  usersService: {
+    getById: async () => ({
+      id: AFFILIATE_OWNER_ID,
+      is_anonymous: true,
+      email: "owner@anonymous.elizacloud.ai",
+    }),
+  },
 }));
 mock.module("../compat/_lib/auth", () => ({
   requireCompatAuth: async () => ({ user: USER, authMethod: "standard" }),
@@ -217,6 +260,9 @@ const { default: paymentCancelRoute } = await import(
 const { default: gatewayShutdownRoute } = await import(
   "../internal/discord/gateway/shutdown/route"
 );
+const { default: claimAffiliateRoute } = await import(
+  "../my-agents/claim-affiliate-characters/route"
+);
 
 afterAll(() => mock.restore());
 
@@ -310,6 +356,16 @@ const mutationCases: MutationCase[] = [
     expectedStatus: 200,
     ledger: calls.gatewayShutdown,
   },
+  {
+    label: "affiliate-character ownership claim",
+    route: mounted(
+      claimAffiliateRoute,
+      "/my-agents/claim-affiliate-characters",
+    ),
+    path: "/my-agents/claim-affiliate-characters",
+    expectedStatus: 200,
+    ledger: calls.claimAffiliate,
+  },
 ];
 
 async function post(testCase: MutationCase, body?: string): Promise<Response> {
@@ -356,6 +412,14 @@ test.each([mutationCases[0], mutationCases[1]])(
     expect(testCase.ledger).toHaveLength(0);
   },
 );
+
+test("affiliate-character ownership claim rejects an invalid session token before mutation", async () => {
+  const claim = mutationCases[10];
+  const response = await post(claim, JSON.stringify({ sessionToken: 123 }));
+
+  expect(response.status).toBe(400);
+  expect(claim.ledger).toHaveLength(0);
+});
 
 test("whitespace-only and explicit empty-object bodies retain the optional-body contract", async () => {
   const payment = mutationCases[8];
