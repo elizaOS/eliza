@@ -10,10 +10,13 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { inArray, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { entityTable } from "../../schema/entity";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("queryEntities intersection contract", () => {
@@ -159,7 +162,7 @@ describe("queryEntities intersection contract", () => {
     await adapter.createEntities(
       paged.map((id): Entity => ({ id, agentId, names: [`paged-${id}`] }))
     );
-    const seen = new Set([entityOne, entityTwo, entityThree]);
+    const all = (await adapter.queryEntities({ agentId })).map((e) => e.id as UUID);
     const served: UUID[] = [];
     for (let offset = 0; ; offset += 1) {
       const [entity] = await adapter.queryEntities({ agentId, limit: 1, offset });
@@ -171,7 +174,61 @@ describe("queryEntities intersection contract", () => {
       }
     }
 
-    expect(served.filter((id) => !seen.has(id)).sort()).toEqual([...paged].sort());
-    expect(new Set(served).size).toBe(served.length);
+    // Every entity exactly once: catches a skip as well as a duplicate.
+    expect([...served].sort()).toEqual([...all].sort());
+    expect(all).toEqual(expect.arrayContaining(paged));
+  });
+
+  it("keeps the page order across a read-modify-write of a microsecond created_at", async () => {
+    const before = (await adapter.queryEntities({ agentId })).map((e) => e.id as UUID);
+    const batch = Array.from({ length: 4 }, () => uuidv4() as UUID);
+    await adapter.createEntities(
+      batch.map((id): Entity => ({ id, agentId, names: [`precise-${id}`] }))
+    );
+    // PostgreSQL's now() carries microseconds; PGlite's clock does not, so set
+    // them explicitly. Reads hand created_at back as a millisecond Date.
+    await (adapter.getDatabase() as DrizzleDatabase)
+      .update(entityTable)
+      .set({
+        createdAt: sql`date_trunc('milliseconds', ${entityTable.createdAt}) + interval '456 microseconds'`,
+      })
+      .where(inArray(entityTable.id, batch));
+    const order = (await adapter.queryEntities({ agentId })).map((e) => e.id as UUID);
+    const batchOrder = order.filter((id) => batch.includes(id));
+    const firstOfBatch = batchOrder[0];
+    const lastOfBatch = batchOrder[batchOrder.length - 1];
+
+    const served: UUID[] = [];
+    for (let offset = 0; ; offset += 1) {
+      const [entity] = await adapter.queryEntities({ agentId, limit: 1, offset });
+      if (!entity) break;
+      served.push(entity.id as UUID);
+      if (entity.id === firstOfBatch) {
+        // An ordinary caller update of a row the scan has not reached yet.
+        const [unserved] = await adapter.getEntitiesByIds([lastOfBatch]);
+        if (!unserved) throw new Error("seeded entity missing");
+        await adapter.updateEntity({ ...unserved, names: ["renamed"] });
+      }
+    }
+
+    expect([...served].sort()).toEqual([...before, ...batch].sort());
+  });
+
+  it("serves an entity inserted mid-scan after the rows already paged", async () => {
+    const served: UUID[] = [];
+    // The smallest possible id: an id-only order would put it first and shift
+    // every remaining page by one.
+    const inserted = "00000000-0000-4000-8000-000000000000" as UUID;
+    const before = (await adapter.queryEntities({ agentId })).map((e) => e.id as UUID);
+    for (let offset = 0; ; offset += 1) {
+      const [entity] = await adapter.queryEntities({ agentId, limit: 1, offset });
+      if (!entity) break;
+      served.push(entity.id as UUID);
+      if (offset === 1) {
+        await adapter.createEntities([{ id: inserted, agentId, names: ["late"] }]);
+      }
+    }
+
+    expect([...served].sort()).toEqual([...before, inserted].sort());
   });
 });
