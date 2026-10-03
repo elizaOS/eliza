@@ -70,6 +70,7 @@ it("routes the captured native child URI to its canonical source instead of gene
     viewPath: "/chat",
     payload: {
       kind: "notification-chat",
+      notificationId: "630784a5-5f4e-47e7-88e9-162ac5bb7425",
       target: {
         conversationId: "d13804ae-4156-47ba-abd1-12961448106e",
         messageId: "5fe90369-e521-4a28-adaa-c5f5688ee221",

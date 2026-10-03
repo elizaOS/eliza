@@ -81,6 +81,7 @@ it("does not acknowledge an unmounted asynchronous owner", async () => {
   retry();
 });
 it.each([
+  { ...target, notificationId: "invalid" },
   { messageId: target.messageId },
   { ...target, messageId: "missing" },
   { ...target, conversationId: "foreign" },
@@ -119,3 +120,19 @@ it.each(["decline", "reject"])(
     stopSecond();
   },
 );
+
+it("retains the validated canonical notification ID through push metadata admission", async () => {
+  const notificationId = "630784a5-5f4e-47e7-88e9-162ac5bb7425";
+  const stop = listenForNavigateViewRequests((event) => {
+    expect(event.detail.payload).toEqual({
+      kind: "notification-chat",
+      target,
+      notificationId,
+    });
+    return true;
+  });
+  await expect(
+    navigateDeepLink("/chat", { ...target, notificationId }),
+  ).resolves.toBe(true);
+  stop();
+});

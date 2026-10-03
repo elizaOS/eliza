@@ -66,7 +66,8 @@ export function resolveDeepLinkNavigationIntent(
   searchParams?: URLSearchParams,
 ): DeepLinkNavigationIntent | false | null {
   if (path === "chat" && searchParams?.has("notificationId")) {
-    if (!validateUuid(searchParams.get("notificationId"))) return false;
+    const notificationId = searchParams.get("notificationId");
+    if (!validateUuid(notificationId)) return false;
     const selectors: Record<string, unknown> = {};
     for (const key of ["conversationId", "messageId"]) {
       if (searchParams.has(key)) selectors[key] = searchParams.get(key);
@@ -78,6 +79,7 @@ export function resolveDeepLinkNavigationIntent(
       viewPath: "/chat",
       payload: {
         kind: "notification-chat",
+        notificationId: notificationId as string,
         ...(target ? { target } : {}),
       },
     };

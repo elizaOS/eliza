@@ -46,6 +46,7 @@ vi.mock("../../api/client", () => ({
     // Shell capability gates consult the configured agent base before mounting
     // the composer-adjacent provider indicator.
     getBaseUrl: vi.fn(() => ""),
+    getRestAuthToken: vi.fn(() => null),
     // Transcription archival is best-effort and fire-and-forget; resolve so the
     // attachment path (the user-facing behavior) is what the test asserts.
     createTranscript: vi
@@ -55,6 +56,7 @@ vi.mock("../../api/client", () => ({
     // resolved value is the real `GET /api/conversations/messages/search`
     // response shape so the query→results→jump path is exercised end to end.
     searchConversationMessages: vi.fn(),
+    markNotificationRead: vi.fn(async () => ({ ok: true })),
   },
 }));
 
@@ -92,6 +94,7 @@ import type {
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   CHAT_PREFILL_EVENT,
+  dispatchNavigateViewRequest,
   ELIZA_BACK_INTENT_EVENT,
   listenForNavigateViewRequests,
   NAVIGATE_VIEW_EVENT,
@@ -110,8 +113,17 @@ import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
 } from "../../os-intent/host";
+import {
+  loadAgentProfileRegistry,
+  saveAgentProfileRegistry,
+} from "../../state/agent-profiles";
 import { __setAppValueForTests } from "../../state/app-store";
 import { navigateDeepLink } from "../../state/notifications/navigate-deep-link";
+import {
+  __getStateForTests,
+  __ingestNotificationForTests,
+  __resetNotificationStoreForTests,
+} from "../../state/notifications/notification-store";
 import {
   getShellSurface,
   goLauncher,
@@ -5839,6 +5851,7 @@ describe("ChatOverlay notification source targets", () => {
   const conversationId = "d13804ae-4156-47ba-abd1-12961448106e";
   const firstId = "19ea32c4-43d5-4dc9-af91-aeceae70bdd3";
   const secondId = "0168583b-8aea-4420-a6d7-ed2339bca079";
+  const notificationId = "630784a5-5f4e-47e7-88e9-162ac5bb7425";
   const messages = [
     {
       id: firstId,
@@ -5874,7 +5887,28 @@ describe("ChatOverlay notification source targets", () => {
       }),
     );
   }
+  let originalProfiles: ReturnType<typeof loadAgentProfileRegistry>;
+  beforeEach(() => {
+    originalProfiles = loadAgentProfileRegistry();
+    __resetNotificationStoreForTests();
+    vi.mocked(client.markNotificationRead).mockReset();
+    vi.mocked(client.markNotificationRead).mockResolvedValue({ ok: true });
+    __ingestNotificationForTests({
+      id: notificationId,
+      title: "Canonical source notification",
+      category: "general",
+      priority: "high",
+      source: "lifeops",
+      createdAt: 1,
+      readAt: null,
+      deepLink: "/chat",
+      data: { conversationId, messageId: firstId },
+    });
+  });
   afterEach(() => {
+    __resetNotificationStoreForTests();
+    saveAgentProfileRegistry(originalProfiles);
+    vi.mocked(client.getRestAuthToken).mockReturnValue(null);
     const stop = listenForNavigateViewRequests(() => true);
     stop();
     vi.mocked(client.getBaseUrl).mockReturnValue("");
@@ -5886,14 +5920,26 @@ describe("ChatOverlay notification source targets", () => {
     const pending = navigateDeepLink("/chat", {
       conversationId,
       messageId: firstId,
+      notificationId,
     });
     let applied = false;
     void pending?.then(() => {
       applied = true;
     });
     expect(applied).toBe(false);
+    expect(client.markNotificationRead).not.toHaveBeenCalled();
     render(<ChatOverlay controller={makeController({ messages })} />);
     await expect(pending).resolves.toBe(true);
+    expect(client.markNotificationRead).toHaveBeenCalledExactlyOnceWith(
+      notificationId,
+    );
+    expect(__getStateForTests().notifications).toHaveLength(1);
+    expect(__getStateForTests().notifications[0]).toMatchObject({
+      id: notificationId,
+      title: "Canonical source notification",
+      readAt: expect.any(Number),
+    });
+    expect(__getStateForTests().unreadCount).toBe(0);
     expect(select).toHaveBeenCalledOnce();
     expect(select).toHaveBeenCalledWith(
       conversationId,
@@ -5909,6 +5955,52 @@ describe("ChatOverlay notification source targets", () => {
       second?.querySelector('[data-chat-search-highlight="true"]'),
     ).toBeNull();
   });
+  it("does not mark notifications for legacy chat opening or source jumps without an ID", async () => {
+    collaborators(
+      vi.fn(async () => {}),
+      vi.fn(async () => false),
+    );
+    render(<ChatOverlay controller={makeController({ messages })} />);
+    await expect(navigateDeepLink("/chat")).resolves.toBe(true);
+    await expect(
+      navigateDeepLink("/chat", { conversationId, messageId: firstId }),
+    ).resolves.toBe(true);
+    expect(client.markNotificationRead).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications[0].readAt).toBeNull();
+  });
+  it("keeps navigation successful and restores canonical unread history when the read write fails", async () => {
+    let failRead: (error: Error) => void = () => {};
+    vi.mocked(client.markNotificationRead).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          failRead = reject;
+        }),
+    );
+    collaborators(
+      vi.fn(async () => {}),
+      vi.fn(async () => false),
+    );
+    const original = __getStateForTests().notifications[0];
+    render(<ChatOverlay controller={makeController({ messages })} />);
+    await expect(
+      navigateDeepLink("/chat", {
+        conversationId,
+        messageId: firstId,
+        notificationId,
+      }),
+    ).resolves.toBe(true);
+    expect(client.markNotificationRead).toHaveBeenCalledExactlyOnceWith(
+      notificationId,
+    );
+    expect(__getStateForTests().notifications[0].readAt).toEqual(
+      expect.any(Number),
+    );
+    failRead(new Error("read unavailable"));
+    await waitFor(() =>
+      expect(__getStateForTests().notifications).toEqual([original]),
+    );
+    expect(__getStateForTests().unreadCount).toBe(1);
+  });
   it("rejects an authoritative missing source and permits the next valid source", async () => {
     const select = vi.fn(async () => {});
     const around = vi.fn(async (...args: unknown[]) => {
@@ -5923,9 +6015,15 @@ describe("ChatOverlay notification source targets", () => {
       <ChatOverlay controller={makeController({ messages: [messages[1]] })} />,
     );
     await expect(
-      navigateDeepLink("/chat", { conversationId, messageId: firstId }),
+      navigateDeepLink("/chat", {
+        conversationId,
+        messageId: firstId,
+        notificationId,
+      }),
     ).resolves.toBe(false);
     expect(around).toHaveBeenCalledTimes(1);
+    expect(client.markNotificationRead).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications[0].readAt).toBeNull();
     await expect(
       navigateDeepLink("/chat", { conversationId, messageId: secondId }),
     ).resolves.toBe(true);
@@ -5940,6 +6038,7 @@ describe("ChatOverlay notification source targets", () => {
     const pending = navigateDeepLink("/chat", {
       conversationId,
       messageId: firstId,
+      notificationId,
     });
     let applied = false;
     void pending?.then(() => {
@@ -5947,6 +6046,7 @@ describe("ChatOverlay notification source targets", () => {
     });
     await waitFor(() => expect(around).toHaveBeenCalledTimes(1));
     expect(applied).toBe(false);
+    expect(client.markNotificationRead).not.toHaveBeenCalled();
     view.unmount();
     render(<ChatOverlay controller={makeController({ messages })} />);
     await expect(pending).resolves.toBe(true);
@@ -5971,6 +6071,7 @@ describe("ChatOverlay notification source targets", () => {
     const pending = navigateDeepLink("/chat", {
       conversationId,
       messageId: firstId,
+      notificationId,
     });
     let applied = false;
     void pending?.then(() => {
@@ -5989,7 +6090,37 @@ describe("ChatOverlay notification source targets", () => {
     expect(around).toHaveBeenCalledTimes(2);
     expect(select).toHaveBeenCalledTimes(3);
   });
-  it.each(["unmount", "profile"])(
+  it("does not mark an in-flight source after generic routes evict its queue claim", async () => {
+    let release: () => void = () => {};
+    collaborators(
+      vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      ),
+      vi.fn(async () => false),
+    );
+    render(<ChatOverlay controller={makeController({ messages })} />);
+    const pending = navigateDeepLink("/chat", {
+      conversationId,
+      messageId: firstId,
+      notificationId,
+    });
+    for (let i = 0; i < 16; i++)
+      void dispatchNavigateViewRequest({
+        viewId: "settings",
+        viewPath: "/settings",
+      });
+    await expect(pending).resolves.toBe(false);
+    await act(async () => {
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(client.markNotificationRead).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications[0].readAt).toBeNull();
+  });
+  it.each(["unmount", "base", "token", "profile"])(
     "does not load or scroll stale navigation after %s",
     async (kind) => {
       let release: () => void = () => {};
@@ -6007,6 +6138,7 @@ describe("ChatOverlay notification source targets", () => {
       const pending = navigateDeepLink("/chat", {
         conversationId,
         messageId: firstId,
+        notificationId,
       });
       let applied = false;
       void pending?.then(() => {
@@ -6014,6 +6146,13 @@ describe("ChatOverlay notification source targets", () => {
       });
       await waitFor(() => expect(select).toHaveBeenCalledTimes(1));
       if (kind === "unmount") view.unmount();
+      else if (kind === "profile")
+        saveAgentProfileRegistry({
+          ...originalProfiles,
+          activeProfileId: "changed-profile",
+        });
+      else if (kind === "token")
+        vi.mocked(client.getRestAuthToken).mockReturnValue("changed-token");
       else
         vi.mocked(client.getBaseUrl).mockReturnValue(
           "http://different-profile",
@@ -6022,6 +6161,7 @@ describe("ChatOverlay notification source targets", () => {
       await Promise.resolve();
       await Promise.resolve();
       expect(applied).toBe(false);
+      expect(client.markNotificationRead).not.toHaveBeenCalled();
       expect(around).not.toHaveBeenCalled();
       expect(
         document.querySelector('[data-chat-search-highlight="true"]'),

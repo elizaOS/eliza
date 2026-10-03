@@ -36,6 +36,7 @@ export interface NotificationChatTarget {
 export interface NotificationChatRequest {
   kind: "notification-chat";
   target?: NotificationChatTarget;
+  notificationId?: string;
 }
 
 /** Undefined is legacy/unanchored; null is a malformed claimed anchor. */
@@ -94,6 +95,12 @@ export function navigateDeepLink(
       const prefill = new URLSearchParams(query).get("prefill")?.trim();
       const target = readNotificationChatTarget(data);
       if (target === null) return Promise.resolve(false);
+      const notificationId =
+        data && typeof data === "object" && "notificationId" in data
+          ? data.notificationId
+          : undefined;
+      if (notificationId !== undefined && !validateUuid(notificationId))
+        return Promise.resolve(false);
       if (prefill && !target) {
         dispatchChatPrefill({ text: prefill });
         return;
@@ -104,6 +111,9 @@ export function navigateDeepLink(
         payload: {
           kind: "notification-chat",
           ...(target ? { target } : {}),
+          ...(notificationId
+            ? { notificationId: notificationId as string }
+            : {}),
         } satisfies NotificationChatRequest,
       });
     }

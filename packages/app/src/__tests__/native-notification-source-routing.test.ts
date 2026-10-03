@@ -98,7 +98,11 @@ it("retains exact native URI selectors and waits for the actual source owner bef
     complete = resolve;
   });
   const owner = vi.fn((event) => {
-    expect(event.detail.payload).toEqual({ kind: "notification-chat", target });
+    expect(event.detail.payload).toEqual({
+      kind: "notification-chat",
+      notificationId: "630784a5-5f4e-47e7-88e9-162ac5bb7425",
+      target,
+    });
     return result;
   });
   stops.push(listenForNavigateViewRequests(owner));

@@ -516,6 +516,14 @@ export function dispatchNavigateViewRequest(
   drainNavigateViewRequests();
   return applied;
 }
+/** Whether this retained request still owns a live, unconsumed queue claim. */
+export function isNavigateViewRequestPending(
+  event: NavigateViewEvent,
+): boolean {
+  const claim = event.detail && navigateViewRequestClaims.get(event.detail);
+  return Boolean(claim && !claim.claimed);
+}
+
 /** Reject only a current destination's authoritative invalid/missing target. */
 export function rejectNavigateViewRequest(event: NavigateViewEvent): boolean {
   const detail = event.detail;

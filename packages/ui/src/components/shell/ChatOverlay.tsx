@@ -5,6 +5,7 @@
 
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/core/chat-upload-limits";
 import { transcriptPlainText } from "@elizaos/core/transcripts";
+import { validateUuid } from "@elizaos/core/utils/uuid";
 import {
   AudioLines,
   FileText,
@@ -47,6 +48,7 @@ import {
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
+  isNavigateViewRequestPending,
   listenForNavigateViewRequests,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
@@ -101,6 +103,7 @@ import {
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
 import { readNotificationChatTarget } from "../../state/notifications/navigate-deep-link";
+import { markNotificationRead } from "../../state/notifications/notification-store";
 import { goHome } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
@@ -4328,6 +4331,7 @@ export function ChatOverlay({
       const payload = detail?.payload as
         | {
             kind?: unknown;
+            notificationId?: unknown;
             target?: { conversationId: string; messageId: string };
           }
         | undefined;
@@ -4341,6 +4345,9 @@ export function ChatOverlay({
         onOpen();
         return true;
       }
+      const notificationId = payload.notificationId;
+      if (notificationId !== undefined && !validateUuid(notificationId))
+        return false;
       const target = readNotificationChatTarget(payload.target);
       if (!target) return false;
       const revision = ++notificationChatRequestRevision.current;
@@ -4349,6 +4356,7 @@ export function ChatOverlay({
       const profile = loadAgentProfileRegistry().activeProfileId;
       const isCurrent = () =>
         mounted &&
+        isNavigateViewRequestPending(event) &&
         revision === notificationChatRequestRevision.current &&
         baseUrl === client.getBaseUrl?.() &&
         token === client.getRestAuthToken?.() &&
@@ -4359,7 +4367,14 @@ export function ChatOverlay({
         .jump({ ...target, role: "assistant" }, isCurrent, () => {
           if (isCurrent()) rejectNavigateViewRequest(event);
         })
-        .then((applied) => isCurrent() && applied);
+        .then((applied) => {
+          if (!applied || !isCurrent()) return false;
+          // Reading the exact source consumes only its notification unread flag.
+          // The store rolls failed writes back without undoing navigation.
+          if (notificationId)
+            void markNotificationRead(notificationId as string);
+          return true;
+        });
     });
     window.addEventListener(CHAT_OPEN_EVENT, onOpen);
     return () => {
