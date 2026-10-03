@@ -40,6 +40,7 @@ vi.mock("@elizaos/agent", async (importOriginal) => ({
 import {
   __resetBriefComposersForTests,
   briefAction,
+  buildNarrativePrompt,
   setBriefComposers,
 } from "../src/actions/brief.js";
 import {
@@ -142,6 +143,278 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("compose_morning", () => {
+    it("collects each captured reminder occurrence once without merging distinct same-title items", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-02T22:00:00.000Z"));
+      const fixture = await createLifeOpsTestRuntime();
+      try {
+        const { LifeOpsService } = await import("../src/lifeops/service.js");
+        const service = new LifeOpsService(fixture.runtime);
+        const definitions = [];
+        for (const [title, dueAt] of [
+          ["Check locked-phone notification", "2026-10-02T23:32:12.551Z"],
+          ["QA FCM app-absent reminder", "2026-10-03T00:23:25.528Z"],
+          ["QA FCM app-absent reminder", "2026-10-03T00:23:25.528Z"],
+        ]) {
+          definitions.push(
+            await service.createDefinition({
+              title,
+              kind: "habit",
+              cadence: { kind: "once", dueAt, visibilityLeadMinutes: 0 },
+              timezone: "America/Los_Angeles",
+              metadata: {
+                ownerSurface: "OWNER_REMINDERS",
+                nativeProjection: "in_app_only",
+              },
+              reminderPlan: {
+                steps: [
+                  { channel: "in_app", offsetMinutes: 0, label: "Notify" },
+                ],
+              },
+            }),
+          );
+        }
+        vi.setSystemTime(new Date("2026-10-03T01:00:00.000Z"));
+        await resolveOwnerFactStore(fixture.runtime).update(
+          { timezone: "America/Los_Angeles" },
+          { source: "first_run", recordedAt: new Date().toISOString() },
+        );
+        const prompts: string[] = [];
+        vi.spyOn(fixture.runtime, "useModel").mockImplementation(
+          async (_model, parameters) => {
+            prompts.push((parameters as { prompt: string }).prompt);
+            return "Deterministic briefing boundary test" as never;
+          },
+        );
+        const overview = await service.getOverview();
+        expect(overview.occurrences).toHaveLength(3);
+        expect(overview.reminders).toHaveLength(3);
+        expect(
+          overview.reminders.map((item) => item.occurrenceId).sort(),
+        ).toEqual(overview.occurrences.map((item) => item.id).sort());
+        const before = await Promise.all(
+          definitions.map((item) =>
+            service.repository.listOccurrencesForDefinition(
+              fixture.runtime.agentId,
+              item.definition.id,
+            ),
+          ),
+        );
+        setBriefComposers({
+          loadCalendar: async () => [],
+          loadInbox: async () => [],
+          loadCommitments: async () => [],
+        });
+        const result = await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_morning",
+          format: "narrative",
+        });
+        const briefing = result.data?.briefing as {
+          generatedAt: string;
+          sections: {
+            life: Array<{ id: string; title: string; dueAt: string }>;
+          };
+          editorial: {
+            items: Array<{ itemId: string; sourceId: string; summary: string }>;
+          };
+        };
+        expect(prompts).toHaveLength(1);
+        const payload = JSON.parse(prompts[0].split("Data:\n")[1]);
+        expect(payload.asOf).toBe(briefing.generatedAt);
+        expect(payload.localAsOf).toBe("Oct 2, 2026, 6:00 PM PDT");
+        expect(payload.sections.life).toHaveLength(3);
+        expect(
+          payload.sections.life.every(
+            (item: {
+              timeContext: {
+                dueAt: { localDate: string; relationToAsOf: string };
+              };
+            }) =>
+              item.timeContext.dueAt.localDate === "2026-10-02" &&
+              item.timeContext.dueAt.relationToAsOf === "before_as_of",
+          ),
+        ).toBe(true);
+        expect(
+          payload.editorial.items.every(
+            (item: {
+              summary: string;
+              timeContext?: unknown;
+              sourceSummary?: unknown;
+            }) =>
+              item.summary.includes("Oct 2, 2026") &&
+              item.summary.includes("before_as_of") &&
+              item.timeContext === undefined &&
+              item.sourceSummary === undefined,
+          ),
+        ).toBe(true);
+        const dueTimes = new Map(
+          overview.occurrences.map((item) => [item.id, item.dueAt]),
+        );
+        for (const item of briefing.sections.life) {
+          expect(item.dueAt).toBe(dueTimes.get(item.id));
+          expect(item).not.toHaveProperty("timeContext");
+        }
+        for (const item of briefing.editorial.items) {
+          expect(item.summary).toBe(`due ${dueTimes.get(item.sourceId)}`);
+          expect(item).not.toHaveProperty("timeContext");
+          expect(item).not.toHaveProperty("sourceSummary");
+        }
+        expect(briefing.sections.life.map((item) => item.id).sort()).toEqual(
+          overview.occurrences.map((item) => item.id).sort(),
+        );
+        expect(
+          briefing.sections.life.filter(
+            (item) => item.title === "QA FCM app-absent reminder",
+          ),
+        ).toHaveLength(2);
+        expect(
+          new Set(briefing.editorial.items.map((item) => item.itemId)).size,
+        ).toBe(3);
+        expect(
+          await Promise.all(
+            definitions.map((item) =>
+              service.repository.listOccurrencesForDefinition(
+                fixture.runtime.agentId,
+                item.definition.id,
+              ),
+            ),
+          ),
+        ).toEqual(before);
+      } finally {
+        await fixture.cleanup();
+      }
+    });
+
+    it("keeps raw briefing data immutable and omits unavailable timestamp annotations", () => {
+      const sections = {
+        calendar: [
+          {
+            id: "invalid-event",
+            title: "Untimed",
+            startAt: "invalid",
+            endAt: "invalid",
+          },
+        ],
+        life: [
+          {
+            id: "undated",
+            kind: "todo" as const,
+            title: "Undated",
+            dueAt: null,
+          },
+          {
+            id: "invalid",
+            kind: "reminder" as const,
+            title: "Invalid",
+            dueAt: "invalid",
+          },
+          {
+            id: "valid",
+            kind: "reminder" as const,
+            title: "Timed",
+            dueAt: "2026-10-03T00:23:25.528Z",
+          },
+        ],
+      };
+      const editorial = {
+        maxItems: 7,
+        demotedItemClasses: [],
+        pushback: null,
+        decisions: [],
+        items: [
+          {
+            itemId: "life:valid",
+            source: "life" as const,
+            kind: "reminder" as const,
+            sourceId: "valid",
+            itemClass: "life:reminder",
+            title: "Timed",
+            summary: "due 2026-10-03T00:23:25.528Z",
+            consequenceScore: 65,
+          },
+        ],
+      };
+      const before = structuredClone({ sections, editorial });
+      const prompt = buildNarrativePrompt({
+        kind: "morning",
+        period: "today",
+        sections,
+        editorial,
+        timeZone: "America/Los_Angeles",
+        asOf: "2026-10-03T01:00:00.000Z",
+      });
+      const payload = JSON.parse(prompt.split("Data:\n")[1]);
+      expect(payload.sections.calendar[0]).not.toHaveProperty("timeContext");
+      expect(payload.sections.life[0]).not.toHaveProperty("timeContext");
+      expect(payload.sections.life[1]).not.toHaveProperty("timeContext");
+      expect(payload.sections.life[2].timeContext.dueAt.localDate).toBe(
+        "2026-10-02",
+      );
+      expect(payload.editorial.items[0].summary).toContain(
+        "Oct 2, 2026, 5:23 PM PDT",
+      );
+      expect(payload.editorial.items[0]).not.toHaveProperty("sourceSummary");
+      expect(payload.editorial.items[0]).not.toHaveProperty("timeContext");
+      expect({ sections, editorial }).toEqual(before);
+    });
+
+    it.each([
+      [
+        "2026-10-03T01:00:00.000Z",
+        "America/Los_Angeles",
+        "2026-10-03T00:23:25.528Z",
+        "2026-10-02",
+        "before_as_of",
+        "Oct 2, 2026, 5:23 PM PDT",
+      ],
+      [
+        "2026-10-03T06:59:59.000Z",
+        "America/Los_Angeles",
+        "2026-10-03T07:00:00.000Z",
+        "2026-10-03",
+        "after_as_of",
+        "Oct 3, 2026, 12:00 AM PDT",
+      ],
+      [
+        "2026-11-01T08:30:00.000Z",
+        "America/Los_Angeles",
+        "2026-11-01T09:30:00.000Z",
+        "2026-11-01",
+        "after_as_of",
+        "Nov 1, 2026, 1:30 AM PST",
+      ],
+    ])(
+      "grounds %s against %s at %s without model date arithmetic",
+      (asOf, timeZone, dueAt, localDate, relationToAsOf, localTime) => {
+        const prompt = buildNarrativePrompt({
+          kind: "morning",
+          period: "today",
+          asOf,
+          timeZone,
+          sections: {
+            life: [
+              {
+                id: "canary",
+                kind: "reminder",
+                title: "QA FCM app-absent reminder",
+                dueAt,
+              },
+            ],
+          },
+        });
+        const payload = JSON.parse(prompt.split("Data:\n")[1]);
+        expect(payload.asOf).toBe(asOf);
+        expect(payload.localAsOf).toEqual(expect.any(String));
+        expect(payload.sections.life[0]).toMatchObject({
+          dueAt,
+          timeContext: { dueAt: { localDate, localTime, relationToAsOf } },
+        });
+        expect(prompt).toContain(
+          "Completion and delivery cannot be inferred from a timestamp",
+        );
+      },
+    );
+
     it.each([
       [
         "2026-10-02T02:00:00Z",

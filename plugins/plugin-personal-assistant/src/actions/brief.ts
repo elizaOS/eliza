@@ -33,7 +33,10 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { resolveCalendarTimeZone } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
+import {
+  calendarDateKey,
+  resolveCalendarTimeZone,
+} from "@elizaos/core/lifeops-normalize/calendar-time-zone";
 import type { MessageRef } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import {
@@ -52,6 +55,7 @@ import {
   buildCommitmentRegretAudit,
   type CommitmentRegretAuditItem,
 } from "../lifeops/commitments/index.js";
+import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
@@ -310,16 +314,35 @@ async function loadLifeFromOverview(args: {
 }): Promise<readonly LifeOpsBriefingLifeItem[]> {
   const service = await getBriefLifeOpsService(args.runtime);
   const overview = await service.getOverview();
+  const occurrences = Array.isArray(overview.occurrences)
+    ? overview.occurrences
+    : [];
+  const occurrenceIds = new Set(
+    occurrences.map((item) => readString(asRecord(item), "id")).filter(Boolean),
+  );
   const records = [
-    ...(Array.isArray(overview.occurrences) ? overview.occurrences : []),
-    ...(Array.isArray(overview.reminders) ? overview.reminders : []),
+    ...occurrences,
+    // Reminder-plan steps project the same occurrence, not additional owner items.
+    ...(Array.isArray(overview.reminders)
+      ? overview.reminders.filter((item) => {
+          const occurrenceId = readString(asRecord(item), "occurrenceId");
+          return !occurrenceId || !occurrenceIds.has(occurrenceId);
+        })
+      : []),
     ...(Array.isArray(overview.goals) ? overview.goals : []),
   ];
-  return records.map((item) => {
+  return records.map((item, index) => {
     const record = asRecord(item);
     const metadata = asRecord(record.metadata);
+    const ownerId = readString(record, "ownerId");
+    const ownerType = readString(record, "ownerType");
     return {
-      id: readString(record, "id") ?? "life-item",
+      id:
+        readString(record, "id") ??
+        readString(record, "occurrenceId") ??
+        (ownerId && ownerType
+          ? `${ownerType}:${ownerId}:${record.stepIndex ?? index}`
+          : `life-item:${index}`),
       kind: normalizeLifeKind(
         readString(record, "kind") ??
           readString(record, "type") ??
@@ -653,18 +676,93 @@ export function buildNarrativePrompt(args: {
   sections: LifeOpsBriefingSections;
   sourceErrors?: LifeOpsBriefing["sourceErrors"];
   timeZone?: string;
+  asOf?: string;
   editorial?: LifeOpsBriefingEditorialContract;
   runtime?: IAgentRuntime;
   optimizationTask?: BriefOptimizationTask;
 }): string {
+  const asOf = args.asOf ?? new Date().toISOString();
+  const asOfMs = Date.parse(asOf);
+  const describeTime = (value: string | null | undefined) => {
+    if (!value || !args.timeZone || !Number.isFinite(Date.parse(value)))
+      return undefined;
+    const instant = new Date(value);
+    return {
+      localTime: formatCalendarEventDateTime(
+        { startAt: value, timezone: args.timeZone },
+        { includeYear: true, includeTimeZoneName: true },
+      ),
+      localDate: calendarDateKey(instant, args.timeZone),
+      relationToAsOf:
+        instant.getTime() < asOfMs
+          ? "before_as_of"
+          : instant.getTime() > asOfMs
+            ? "after_as_of"
+            : "at_as_of",
+    };
+  };
+  const calendar = args.sections.calendar?.map((item) => {
+    const startAt = describeTime(item.startAt);
+    const endAt = describeTime(item.endAt);
+    return {
+      ...item,
+      ...(startAt || endAt
+        ? {
+            timeContext: {
+              ...(startAt ? { startAt } : {}),
+              ...(endAt ? { endAt } : {}),
+            },
+          }
+        : {}),
+    };
+  });
+  const withDueTime = <T extends { dueAt: string | null }>(item: T) => {
+    const dueAt = describeTime(item.dueAt);
+    return { ...item, ...(dueAt ? { timeContext: { dueAt } } : {}) };
+  };
+  const life = args.sections.life?.map(withDueTime);
+  const sections = {
+    ...args.sections,
+    ...(calendar ? { calendar } : {}),
+    ...(life ? { life } : {}),
+    ...(args.sections.completedToday
+      ? { completedToday: args.sections.completedToday.map(withDueTime) }
+      : {}),
+    ...(args.sections.commitments
+      ? { commitments: args.sections.commitments.map(withDueTime) }
+      : {}),
+  };
+  const editorial = args.editorial
+    ? {
+        ...args.editorial,
+        items: args.editorial.items.map((item) => {
+          const localTime =
+            item.source === "life"
+              ? life?.find((source) => source.id === item.sourceId)?.timeContext
+                  ?.dueAt
+              : item.source === "calendar"
+                ? calendar?.find((source) => source.id === item.sourceId)
+                    ?.timeContext?.startAt
+                : undefined;
+          return localTime
+            ? {
+                ...item,
+                summary: `${item.source === "life" ? "due" : "starts"} ${localTime.localTime} (${localTime.relationToAsOf})`,
+              }
+            : item;
+        }),
+      }
+    : undefined;
   const payload = JSON.stringify(
     {
       kind: args.kind,
       period: args.period,
-      sections: args.sections,
+      sections,
       sourceErrors: args.sourceErrors,
       timeZone: args.timeZone,
-      editorial: args.editorial,
+      asOf,
+      localAsOf: describeTime(asOf)?.localTime,
+      editorial,
     },
     null,
     2,
@@ -688,7 +786,8 @@ export function buildNarrativePrompt(args: {
         : BRIEF_NARRATIVE_INSTRUCTIONS;
   return `You are composing the owner's ${args.kind} briefing for ${args.period}.
 
-${instructions}${args.sourceErrors ? "\nRequested sources in sourceErrors are unavailable, not empty. Name each unavailable source in one compact clause; never claim it has no items or nothing due." : ""}
+${instructions}
+Use asOf as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. Use relationToAsOf rather than converting UTC timestamps or guessing the current day. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding.${args.sourceErrors ? "\nRequested sources in sourceErrors are unavailable, not empty. Name each unavailable source in one compact clause; never claim it has no items or nothing due." : ""}
 
 Data:
 ${payload}`;
@@ -702,6 +801,7 @@ async function composeNarrative(args: {
   sourceErrors?: LifeOpsBriefing["sourceErrors"];
   editorial: LifeOpsBriefingEditorialContract;
   optimizationTask: BriefOptimizationTask;
+  asOf: string;
 }): Promise<
   | {
       text: string;
@@ -724,14 +824,10 @@ async function composeNarrative(args: {
       period: args.period,
       sections: args.sections,
       sourceErrors: args.sourceErrors,
-      ...(args.sections.calendar?.length ||
-      args.sections.life?.some((item) => item.dueAt) ||
-      args.sections.commitments?.some((item) => item.dueAt)
-        ? {
-            timeZone: (await resolveCalendarTimeZone(args.runtime, new Date()))
-              .timeZone,
-          }
-        : {}),
+      asOf: args.asOf,
+      timeZone: (
+        await resolveCalendarTimeZone(args.runtime, new Date(args.asOf))
+      ).timeZone,
       editorial: args.editorial,
       runtime: args.runtime,
       optimizationTask: args.optimizationTask,
@@ -784,6 +880,7 @@ async function assembleBriefing(args: {
   format: "narrative" | "json";
   optimizationTask: BriefOptimizationTask;
 }): Promise<LifeOpsBriefing> {
+  const asOf = new Date().toISOString();
   const composers = activeComposers;
   const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
   const collectSource = async <T>(
@@ -870,6 +967,7 @@ async function assembleBriefing(args: {
       ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
       editorial,
       optimizationTask: args.optimizationTask,
+      asOf,
     });
   }
 
@@ -877,7 +975,7 @@ async function assembleBriefing(args: {
     id: newBriefingId(),
     kind,
     period: args.period,
-    generatedAt: new Date().toISOString(),
+    generatedAt: asOf,
     sections,
     ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
     editorial,
