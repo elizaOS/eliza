@@ -5894,7 +5894,11 @@ describe("ChatOverlay notification source targets", () => {
     expect(applied).toBe(false);
     render(<ChatOverlay controller={makeController({ messages })} />);
     await expect(pending).resolves.toBe(true);
-    expect(select).toHaveBeenCalledWith(conversationId);
+    expect(select).toHaveBeenCalledOnce();
+    expect(select).toHaveBeenCalledWith(
+      conversationId,
+      expect.objectContaining({ onRejected: expect.any(Function) }),
+    );
     expect(around).not.toHaveBeenCalled();
     const first = document.getElementById(`chat-message-${firstId}`);
     const second = document.getElementById(`chat-message-${secondId}`);
