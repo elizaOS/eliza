@@ -643,6 +643,7 @@ export class GoogleGmailClient {
       bodyText: string;
       inReplyTo?: string | null;
       references?: string | null;
+      threadId?: string;
     }
   ): Promise<GoogleGmailSendResult> {
     const raw = encodeRawGmailMessage([
@@ -888,14 +889,15 @@ export class GoogleGmailClient {
   }
 
   private async sendRawGmailMessage(
-    params: GoogleAccountRef,
+    params: GoogleAccountRef & { threadId?: string | null },
     raw: string,
     reason: string
   ): Promise<GoogleGmailSendResult> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.send"], reason);
+    const threadId = params.threadId?.trim();
     const response = await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw },
+      requestBody: threadId ? { raw, threadId } : { raw },
     });
     return {
       messageId: response.data.id ?? null,

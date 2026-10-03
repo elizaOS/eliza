@@ -246,6 +246,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       bodyText: string;
       inReplyTo?: string | null;
       references?: string | null;
+      threadId?: string;
     }
   ): Promise<GoogleGmailSendResult> {
     return this.gmailClient.sendGmailReply(params);

@@ -74,6 +74,7 @@ interface GmailDraftContext {
     inReplyTo: string | null;
     references: string | null;
     externalId: string;
+    threadId?: string;
   };
 }
 
@@ -557,10 +558,12 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
       references: metadataString(message.metadata ?? {}, "references"),
       externalId: message.externalId,
+      threadId: message.threadId,
     };
     draft.to = [{ identifier: replyEnvelope.to }];
     draft.worldId = replyEnvelope.accountId;
     draft.subject = replyEnvelope.subject;
+    draft.threadId = replyEnvelope.threadId;
     this.draftCache.set(draftId, { request: draft, preview, replyEnvelope });
     return { draftId, preview, snapshot: structuredClone(draft) };
   }
@@ -596,6 +599,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       bodyText: request.body,
       inReplyTo: envelope.inReplyTo,
       references: envelope.references,
+      threadId: envelope.threadId,
     });
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {

@@ -261,6 +261,7 @@ describe("GoogleGmailAdapter", () => {
       bodyText: "Tomorrow works.",
       inReplyTo: "<msg_1@example.com>",
       references: "<root@example.com>",
+      threadId: "thread_1",
     });
     expect(sent.externalId).toBe("sent_1");
     expect(runtime.emitEvent).toHaveBeenCalledWith(
@@ -305,6 +306,7 @@ describe("GoogleGmailAdapter", () => {
       bodyText: "Approved body.",
       inReplyTo: "<msg_1@example.com>",
       references: "<root@example.com>",
+      threadId: "thread_1",
     });
   });
 

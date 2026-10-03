@@ -913,6 +913,7 @@ export interface IGoogleGmailService extends Service {
       bodyText: string;
       inReplyTo?: string | null;
       references?: string | null;
+      threadId?: string;
     }
   ): Promise<GoogleGmailSendResult>;
   sendGmailMessage(
