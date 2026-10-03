@@ -58,11 +58,12 @@ export function shouldReadDocumentFileAsText(
     "application/json",
     "application/xml",
   ];
+  const lowerName = file.name.toLowerCase();
 
   return (
     textTypes.some((t) => file.type.includes(t)) ||
-    file.name.endsWith(".md") ||
-    file.name.endsWith(".mdx")
+    lowerName.endsWith(".md") ||
+    lowerName.endsWith(".mdx")
   );
 }
 
