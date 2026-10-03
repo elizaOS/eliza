@@ -1,9 +1,13 @@
 /** Canonical owner cancellation through the real executor/service/PGlite path. */
 import {
   attestDeliveryAudienceFromCanonicalRoom,
+  buildPlannerToolsFromActions,
   ChannelType,
   executePlannedToolCall,
   type Memory,
+  type MessageHandlerResult,
+  ModelType,
+  runResponseHandlerEvaluators,
   TaskService,
   type UUID,
 } from "@elizaos/core";
@@ -16,6 +20,9 @@ import {
   it,
   vi,
 } from "vitest";
+import { collectV5PlannerCandidateActions } from "../../../plugin-assistant/src/services/message/action-surface.ts";
+import { runV5MessageRuntimeStage1 } from "../../../plugin-assistant/src/services/message/pipeline.ts";
+import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../plugin-assistant/src/services/message/stage1-evaluators.ts";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
@@ -526,6 +533,309 @@ it("executes source-bound Done through the promoted tool after API language augm
       )
     )?.state,
   ).toBe("completed");
+});
+
+it.each([
+  ["done", "OWNER_REMINDERS_COMPLETE", "completed"],
+  ["skip", "OWNER_REMINDERS_SKIP", "skipped"],
+  ["10 minutes", "OWNER_REMINDERS_SNOOZE", "snoozed"],
+] as const)(
+  "routes typed %s from the captured tasks/household plan directly to %s",
+  async (value, operation, state) => {
+    const original = await seed(`Stage-one typed choice ${value}`);
+    const { source, occurrence } = await reminderSource(original);
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      agentId: fixture.runtime.agentId,
+      entityId: service.ownerEntityId() as UUID,
+      roomId,
+      content: {
+        text: `${value}\n\n[Language instruction: Reply in natural English.]`,
+        source: "client_chat",
+        inReplyTo: source.id,
+        metadata: { reminderChoiceId: "source-choice" },
+      },
+    } as Memory;
+    await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, message);
+    const messageHandler = {
+      processMessage: "RESPOND",
+      thought: "Captured tasks routing",
+      plan: {
+        contexts: ["tasks"],
+        requiresTool: true,
+        candidateActions: ["HOUSEHOLD_OPERATIONS"],
+        intents: ["complete reminder"],
+      },
+    } as MessageHandlerResult;
+    const replyState = { values: {}, data: {}, text: "" };
+    await runResponseHandlerEvaluators({
+      runtime: fixture.runtime,
+      message,
+      state: replyState,
+      messageHandler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS.filter(
+        (evaluator) =>
+          evaluator.name === "core.direct_registered_capability_request",
+      ),
+    });
+    expect(messageHandler.plan.candidateActions).toEqual([operation]);
+    expect(messageHandler.plan.deterministicToolCall).toEqual({
+      name: operation,
+      params: {},
+    });
+    const candidates = await collectV5PlannerCandidateActions({
+      runtime: fixture.runtime,
+      message,
+      state: replyState,
+      selectedContexts: messageHandler.plan.contexts,
+      candidateActions: messageHandler.plan.candidateActions,
+      userRoles: ["OWNER"],
+    });
+    expect(
+      buildPlannerToolsFromActions(candidates).map((tool) => tool.name),
+    ).toContain(operation);
+    const selected = messageHandler.plan.deterministicToolCall;
+    if (!selected) throw new Error("Missing deterministic choice");
+    const result = await executePlannedToolCall(
+      fixture.runtime,
+      {
+        message,
+        state: replyState,
+        userRoles: ["OWNER"],
+        activeContexts: messageHandler.plan.contexts,
+        replyOwner: "planner",
+      },
+      selected,
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(result.effectReceipts).toContainEqual(
+      expect.objectContaining({
+        outcome: "applied",
+        resource: expect.objectContaining({ id: occurrence.id }),
+      }),
+    );
+    expect(
+      (
+        await service.repository.getOccurrence(
+          fixture.runtime.agentId,
+          occurrence.id,
+        )
+      )?.state,
+    ).toBe(state);
+  },
+);
+
+it("does not fall back to household operations when the typed choice actor lacks owner access", async () => {
+  const message = {
+    id: crypto.randomUUID() as UUID,
+    agentId: fixture.runtime.agentId,
+    entityId: crypto.randomUUID() as UUID,
+    roomId,
+    content: {
+      text: "done",
+      source: "client_chat",
+      inReplyTo: crypto.randomUUID() as UUID,
+      metadata: { reminderChoiceId: "source-choice" },
+    },
+  } as Memory;
+  const messageHandler = {
+    processMessage: "RESPOND",
+    thought: "Captured tasks routing",
+    plan: {
+      contexts: ["tasks"],
+      requiresTool: true,
+      candidateActions: ["HOUSEHOLD_OPERATIONS"],
+    },
+  } as MessageHandlerResult;
+  await runResponseHandlerEvaluators({
+    runtime: fixture.runtime,
+    message,
+    state: { values: {}, data: {}, text: "" },
+    messageHandler,
+    availableContexts: [],
+    userRoles: ["USER"],
+    evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS.filter(
+      (evaluator) =>
+        evaluator.name === "core.direct_registered_capability_request",
+    ),
+  });
+  expect(messageHandler.plan.requiresTool).toBe(false);
+  expect(messageHandler.plan.candidateActions).toBeUndefined();
+  expect(messageHandler.plan.deterministicToolCall).toBeUndefined();
+});
+
+it("the message pipeline executes a typed Done without an ACTION_PLANNER or discovery call", async () => {
+  const original = await seed("Pipeline typed Done");
+  const { source, occurrence } = await reminderSource(original);
+  const message = {
+    id: crypto.randomUUID() as UUID,
+    agentId: fixture.runtime.agentId,
+    entityId: service.ownerEntityId() as UUID,
+    roomId,
+    createdAt: Date.now(),
+    content: {
+      text: "done\n\n[Language instruction: Reply in natural English.]",
+      source: "client_chat",
+      inReplyTo: source.id,
+      metadata: { reminderChoiceId: "source-choice" },
+    },
+  } as Memory;
+  await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, message);
+  const modelTypes: string[] = [];
+  vi.mocked(fixture.runtime.useModel).mockImplementation(async (type) => {
+    modelTypes.push(String(type));
+    if (type === ModelType.RESPONSE_HANDLER)
+      return {
+        text: "",
+        toolCalls: [
+          {
+            id: "captured-handle",
+            name: "HANDLE_RESPONSE",
+            arguments: {
+              shouldRespond: "RESPOND",
+              contexts: ["tasks"],
+              contextRequests: [],
+              intents: ["complete reminder"],
+              replyText: [],
+              replyEffectStatus: "pending",
+              facts: [],
+              relationships: [],
+              addressedTo: [service.ownerEntityId()],
+              emotion: "none",
+            },
+          },
+        ],
+      } as never;
+    if (type === ModelType.TEXT_LARGE)
+      return 'Marked "Pipeline typed Done" done.' as never;
+    throw new Error(`Unexpected model call ${String(type)}`);
+  });
+  const result = await runV5MessageRuntimeStage1({
+    runtime: fixture.runtime,
+    message,
+    state: { values: {}, data: {}, text: "" },
+    responseId: crypto.randomUUID() as UUID,
+    deliveredVisibleTexts: new Set(),
+    callback: async () => [],
+  });
+  expect(result.messageHandler.plan.deterministicToolCall?.name).toBe(
+    "OWNER_REMINDERS_COMPLETE",
+  );
+  expect(
+    (
+      await service.repository.getOccurrence(
+        fixture.runtime.agentId,
+        occurrence.id,
+      )
+    )?.state,
+  ).toBe("completed");
+  expect(modelTypes).not.toContain(ModelType.ACTION_PLANNER);
+  expect(
+    modelTypes.filter((type) => type === ModelType.RESPONSE_HANDLER),
+  ).toHaveLength(1);
+  expect(modelTypes).toEqual([ModelType.RESPONSE_HANDLER]);
+  expect(result.kind).toBe("planned_reply");
+  // This case supplies offline model stand-ins to exercise the real pipeline.
+  vi.mocked(fixture.runtime.useModel).mockClear();
+});
+
+it.each([
+  "missing_reply",
+  "bad_reply",
+  "bad_choice_id",
+  "empty_choice_id",
+  "invalid_value",
+])(
+  "rejects the malformed %s typed envelope before household or discovery fallback",
+  async (mode) => {
+    const metadata = {
+      reminderChoiceId:
+        mode === "bad_choice_id"
+          ? 42
+          : mode === "empty_choice_id"
+            ? ""
+            : "source-choice",
+    };
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      agentId: fixture.runtime.agentId,
+      entityId: service.ownerEntityId() as UUID,
+      roomId,
+      content: {
+        text: mode === "invalid_value" ? "erase everything" : "done",
+        source: "client_chat",
+        ...(mode === "missing_reply"
+          ? {}
+          : {
+              inReplyTo: mode === "bad_reply" ? "invalid" : crypto.randomUUID(),
+            }),
+        metadata,
+      },
+    } as Memory;
+    const messageHandler = {
+      processMessage: "RESPOND",
+      thought: "Captured tasks routing",
+      plan: {
+        contexts: ["tasks"],
+        requiresTool: true,
+        candidateActions: ["HOUSEHOLD_OPERATIONS"],
+        parentActionHints: ["HOUSEHOLD_OPERATIONS"],
+      },
+    } as MessageHandlerResult;
+    await runResponseHandlerEvaluators({
+      runtime: fixture.runtime,
+      message,
+      state: { values: {}, data: {}, text: "" },
+      messageHandler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS.filter(
+        (evaluator) =>
+          evaluator.name === "core.direct_registered_capability_request",
+      ),
+    });
+    expect(messageHandler.plan.requiresTool).toBe(false);
+    expect(messageHandler.plan.candidateActions).toBeUndefined();
+    expect(messageHandler.plan.parentActionHints).toBeUndefined();
+    expect(messageHandler.plan.deterministicToolCall).toBeUndefined();
+  },
+);
+
+it("does not take ownership of ordinary done text without typed control metadata", async () => {
+  const message = {
+    id: crypto.randomUUID() as UUID,
+    agentId: fixture.runtime.agentId,
+    entityId: service.ownerEntityId() as UUID,
+    roomId,
+    content: { text: "done", source: "client_chat" },
+  } as Memory;
+  const messageHandler = {
+    processMessage: "RESPOND",
+    thought: "Ordinary text",
+    plan: {
+      contexts: ["tasks"],
+      requiresTool: true,
+      candidateActions: ["HOUSEHOLD_OPERATIONS"],
+    },
+  } as MessageHandlerResult;
+  await runResponseHandlerEvaluators({
+    runtime: fixture.runtime,
+    message,
+    state: { values: {}, data: {}, text: "" },
+    messageHandler,
+    availableContexts: [],
+    userRoles: ["OWNER"],
+    evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS.filter(
+      (evaluator) =>
+        evaluator.name === "core.direct_registered_capability_request",
+    ),
+  });
+  expect(messageHandler.plan.candidateActions).toEqual([
+    "HOUSEHOLD_OPERATIONS",
+  ]);
+  expect(messageHandler.plan.deterministicToolCall).toBeUndefined();
 });
 
 it.each([
