@@ -3324,6 +3324,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         Boolean(convId) &&
         userMsg.source !== "local_command" &&
         !userMsg.id.startsWith("temp-");
+      const hasLaterUserTurn = currentMessages
+        .slice(assistantIdx + 1)
+        .some((m) => m.role === "user");
+      if (canTruncate && convId && hasLaterUserTurn) {
+        await sendChatText(retryText, { conversationId: convId });
+        return;
+      }
       // Preferred path: re-run the turn IN PLACE. Truncate from the user message
       // (inclusive) so [Q, fail] is removed server-side, then resend Q — exactly
       // like handleChatEdit. The old behaviour only dropped the assistant bubble
