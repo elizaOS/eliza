@@ -11,6 +11,8 @@
  */
 import crypto from "node:crypto";
 import {
+  AUTONOMY_NOTIFICATION_DELIVERY,
+  type AutonomyNotificationDelivery,
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
@@ -433,39 +435,6 @@ export interface SleepCycleCheckinDeliveryReport {
   reason: string | null;
   message: string | null;
   persisted: boolean;
-}
-
-function reminderChoiceId(args: {
-  ownerType: "occurrence" | "calendar_event";
-  ownerId: string;
-  scheduledFor: string;
-}): string {
-  const digest = crypto
-    .createHash("sha1")
-    .update(`${args.ownerType}:${args.ownerId}:${args.scheduledFor}`)
-    .digest("hex")
-    .slice(0, 12);
-  return `reminder-${digest}`;
-}
-
-function appendReminderChoiceChips(
-  text: string,
-  args: {
-    ownerType: "occurrence" | "calendar_event";
-    ownerId: string;
-    scheduledFor: string;
-  },
-): string {
-  const choiceId = reminderChoiceId(args);
-  return [
-    text.trim(),
-    "",
-    `[CHOICE:${args.ownerType === "calendar_event" ? "lifeops-calendar-reminder" : "lifeops-reminder"} id=${choiceId}]`,
-    "done=Done",
-    "10 minutes=Snooze 10m",
-    "skip=Skip",
-    "[/CHOICE]",
-  ].join("\n");
 }
 
 /** Supplied by authenticated owner ingress, independently of the request body. */
@@ -1206,17 +1175,8 @@ export class RemindersDomain {
       scheduledFor: args.scheduledFor,
       dueAt: args.dueAt,
     };
-    const chatText = appendReminderChoiceChips(args.text, args);
-    this.ctx.emitAssistantEvent(
-      args.presentation?.chatText ?? chatText,
-      "reminder",
-      {
-        ...metadata,
-        ...(args.presentation
-          ? { reminderPresentation: args.presentation }
-          : {}),
-      },
-    );
+    const chatText = args.text.trim();
+    let notificationDelivery: AutonomyNotificationDelivery | undefined;
     // Also push onto the unified notification rail so the reminder lands in
     // the notification center and reaches desktop/mobile (focus-gated) — not
     // just the in-app assistant stream. groupKey collapses repeat nudges for
@@ -1237,23 +1197,28 @@ export class RemindersDomain {
               ownerId: args.ownerId,
             },
           }));
-        await notifier.notify({
-          title,
-          body: args.text,
-          category: "reminder",
-          // Tier calendar reminders by lead time (#10697): "starting soon" → high,
-          // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
-          // normal). dueAt is the event start for a calendar_event.
-          priority: resolveReminderNotificationPriority({
-            ownerType: args.ownerType,
-            dueAt: args.dueAt,
-            nowMs: Date.now(),
-          }),
-          source: "lifeops",
-          deepLink: "/chat",
-          groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
-          data: metadata,
-        });
+        const notify = notifier.notify.bind(notifier);
+        let published: Promise<unknown> | undefined;
+        notificationDelivery = {
+          publish: (target) =>
+            (published ??= notify({
+              title,
+              body: args.text,
+              category: "reminder",
+              // Tier calendar reminders by lead time (#10697): "starting soon" → high,
+              // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
+              // normal). dueAt is the event start for a calendar_event.
+              priority: resolveReminderNotificationPriority({
+                ownerType: args.ownerType,
+                dueAt: args.dueAt,
+                nowMs: Date.now(),
+              }),
+              source: "lifeops",
+              deepLink: "/chat",
+              groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
+              data: { ...metadata, ...target },
+            })),
+        };
       } catch (error) {
         // error-policy:J4 the assistant stream already accepted the same body;
         // report notification/title degradation without failing the reminder.
@@ -1263,6 +1228,32 @@ export class RemindersDomain {
           { ownerType: args.ownerType, ownerId: args.ownerId },
         );
       }
+    }
+    const handoff =
+      args.ownerType === "occurrence" && args.subjectType === "owner"
+        ? notificationDelivery
+        : undefined;
+    this.ctx.emitAssistantEvent(
+      args.presentation?.chatText ?? chatText,
+      "reminder",
+      {
+        ...metadata,
+        ...(args.presentation
+          ? { reminderPresentation: args.presentation }
+          : {}),
+        ...(handoff ? { [AUTONOMY_NOTIFICATION_DELIVERY]: handoff } : {}),
+      },
+    );
+    try {
+      if (handoff?.routed) await handoff.routed;
+      else await notificationDelivery?.publish();
+    } catch (error) {
+      this.ctx.runtime.reportError(
+        "lifeops:reminder:notification-delivery",
+        error,
+        { ownerType: args.ownerType, ownerId: args.ownerId },
+      );
+      throw error;
     }
   }
 
@@ -4666,7 +4657,7 @@ export class RemindersDomain {
       if (exactReminder)
         presentation = createReminderPresentation(
           reminderBody,
-          appendReminderChoiceChips(reminderBody, args),
+          reminderBody,
           "Reminder",
         );
       if (args.channel === "in_app") {

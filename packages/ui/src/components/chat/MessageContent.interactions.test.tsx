@@ -302,4 +302,16 @@ describe("MessageContent non-bytes interaction rendering", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(handleChatRetry).toHaveBeenCalledWith("planner-failure");
   });
+
+  it("suppresses only old reminder-source panels without changing history bytes", () => {
+    const message = assistant({
+      source: "reminder",
+      text: "Reminder: Take your meds.\n\n[CHOICE:lifeops-reminder id=history]\ndone=Done\nskip=Skip\n[/CHOICE]",
+    });
+    const before = JSON.stringify(message);
+    withApp(<MessageContent message={message} />);
+    expect(screen.getByText(/Reminder: Take your meds/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    expect(JSON.stringify(message)).toBe(before);
+  });
 });

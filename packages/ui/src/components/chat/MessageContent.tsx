@@ -1357,6 +1357,7 @@ export function MessageContent({
     sendActionMessage,
     setChatInput,
     message.id,
+    message.role === "assistant" ? message.source : undefined,
   );
   const handleOpenSettings = useCallback(() => {
     setTab?.("settings");

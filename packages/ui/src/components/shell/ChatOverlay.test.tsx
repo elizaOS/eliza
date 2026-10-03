@@ -93,6 +93,7 @@ import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   CHAT_PREFILL_EVENT,
   ELIZA_BACK_INTENT_EVENT,
+  listenForNavigateViewRequests,
   NAVIGATE_VIEW_EVENT,
 } from "../../events";
 import {
@@ -110,6 +111,7 @@ import {
   type OsIntentComposerPrefillDetail,
 } from "../../os-intent/host";
 import { __setAppValueForTests } from "../../state/app-store";
+import { navigateDeepLink } from "../../state/notifications/navigate-deep-link";
 import {
   getShellSurface,
   goLauncher,
@@ -5831,4 +5833,195 @@ describe("ChatOverlay — no LLM provider configured", () => {
     // Typing is still allowed (the send comes back with the gate again if needed).
     expect(input.hasAttribute("readonly")).toBe(false);
   });
+});
+
+describe("ChatOverlay notification source targets", () => {
+  const conversationId = "d13804ae-4156-47ba-abd1-12961448106e";
+  const firstId = "19ea32c4-43d5-4dc9-af91-aeceae70bdd3";
+  const secondId = "0168583b-8aea-4420-a6d7-ed2339bca079";
+  const messages = [
+    {
+      id: firstId,
+      role: "assistant" as const,
+      content: "First canonical reminder",
+      source: "reminder",
+      createdAt: 1,
+    },
+    {
+      id: secondId,
+      role: "assistant" as const,
+      content: "Second canonical reminder",
+      source: "reminder",
+      createdAt: 2,
+    },
+  ];
+  function collaborators(
+    select: (id: string) => Promise<void>,
+    around: (...args: unknown[]) => Promise<boolean>,
+  ) {
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_target, key) {
+          if (key === "handleSelectConversation") return select;
+          if (key === "loadConversationMessagesAround") return around;
+          if (key === "t") return (value: string) => value;
+          if (key === "uiLanguage") return "en";
+          if (key === "navigation")
+            return { scheduleAfterTabCommit: (fn: () => void) => fn() };
+          return noop;
+        },
+      }),
+    );
+  }
+  afterEach(() => {
+    const stop = listenForNavigateViewRequests(() => true);
+    stop();
+    vi.mocked(client.getBaseUrl).mockReturnValue("");
+  });
+  it("buffers a cold first notification and scrolls its own message instead of the latest", async () => {
+    const select = vi.fn(async () => {});
+    const around = vi.fn(async () => false);
+    collaborators(select, around);
+    const pending = navigateDeepLink("/chat", {
+      conversationId,
+      messageId: firstId,
+    });
+    let applied = false;
+    void pending?.then(() => {
+      applied = true;
+    });
+    expect(applied).toBe(false);
+    render(<ChatOverlay controller={makeController({ messages })} />);
+    await expect(pending).resolves.toBe(true);
+    expect(select).toHaveBeenCalledWith(conversationId);
+    expect(around).not.toHaveBeenCalled();
+    const first = document.getElementById(`chat-message-${firstId}`);
+    const second = document.getElementById(`chat-message-${secondId}`);
+    expect(
+      first?.querySelector('[data-chat-search-highlight="true"]'),
+    ).toBeTruthy();
+    expect(
+      second?.querySelector('[data-chat-search-highlight="true"]'),
+    ).toBeNull();
+  });
+  it("rejects an authoritative missing source and permits the next valid source", async () => {
+    const select = vi.fn(async () => {});
+    const around = vi.fn(async (...args: unknown[]) => {
+      const options = args[2] as
+        | { onMessages?: (messages: unknown[]) => void }
+        | undefined;
+      options?.onMessages?.([]);
+      return true;
+    });
+    collaborators(select, around);
+    render(
+      <ChatOverlay controller={makeController({ messages: [messages[1]] })} />,
+    );
+    await expect(
+      navigateDeepLink("/chat", { conversationId, messageId: firstId }),
+    ).resolves.toBe(false);
+    expect(around).toHaveBeenCalledTimes(1);
+    await expect(
+      navigateDeepLink("/chat", { conversationId, messageId: secondId }),
+    ).resolves.toBe(true);
+  });
+  it("retains a transient failure and retries after a destination remount", async () => {
+    const select = vi.fn(async () => {});
+    const around = vi.fn(async () => false);
+    collaborators(select, around);
+    const view = render(
+      <ChatOverlay controller={makeController({ messages: [messages[1]] })} />,
+    );
+    const pending = navigateDeepLink("/chat", {
+      conversationId,
+      messageId: firstId,
+    });
+    let applied = false;
+    void pending?.then(() => {
+      applied = true;
+    });
+    await waitFor(() => expect(around).toHaveBeenCalledTimes(1));
+    expect(applied).toBe(false);
+    view.unmount();
+    render(<ChatOverlay controller={makeController({ messages })} />);
+    await expect(pending).resolves.toBe(true);
+  });
+  it("retries a transient head on an explicit later tap in the same mounted overlay", async () => {
+    const select = vi.fn(async () => {});
+    let recovered = false;
+    let view: ReturnType<typeof render>;
+    const around = vi.fn(async (...args: unknown[]) => {
+      if (!recovered) return false;
+      const options = args[2] as
+        | { onMessages?: (messages: unknown[]) => void }
+        | undefined;
+      options?.onMessages?.([{ id: firstId }]);
+      view.rerender(<ChatOverlay controller={makeController({ messages })} />);
+      return true;
+    });
+    collaborators(select, around);
+    view = render(
+      <ChatOverlay controller={makeController({ messages: [messages[1]] })} />,
+    );
+    const pending = navigateDeepLink("/chat", {
+      conversationId,
+      messageId: firstId,
+    });
+    let applied = false;
+    void pending?.then(() => {
+      applied = true;
+    });
+    await waitFor(() => expect(around).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(applied).toBe(false);
+    recovered = true;
+    const later = navigateDeepLink("/chat", {
+      conversationId,
+      messageId: secondId,
+    });
+    await expect(pending).resolves.toBe(true);
+    await expect(later).resolves.toBe(true);
+    expect(around).toHaveBeenCalledTimes(2);
+    expect(select).toHaveBeenCalledTimes(3);
+  });
+  it.each(["unmount", "profile"])(
+    "does not load or scroll stale navigation after %s",
+    async (kind) => {
+      let release: () => void = () => {};
+      const select = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const around = vi.fn(async () => false);
+      collaborators(select, around);
+      const view = render(
+        <ChatOverlay controller={makeController({ messages })} />,
+      );
+      const pending = navigateDeepLink("/chat", {
+        conversationId,
+        messageId: firstId,
+      });
+      let applied = false;
+      void pending?.then(() => {
+        applied = true;
+      });
+      await waitFor(() => expect(select).toHaveBeenCalledTimes(1));
+      if (kind === "unmount") view.unmount();
+      else
+        vi.mocked(client.getBaseUrl).mockReturnValue(
+          "http://different-profile",
+        );
+      release();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(applied).toBe(false);
+      expect(around).not.toHaveBeenCalled();
+      expect(
+        document.querySelector('[data-chat-search-highlight="true"]'),
+      ).toBeNull();
+    },
+  );
 });

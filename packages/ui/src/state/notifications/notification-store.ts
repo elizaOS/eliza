@@ -211,6 +211,7 @@ async function deliver(notification: AgentNotification): Promise<void> {
       title: notification.title,
       body: notification.body,
       deepLink: notification.deepLink,
+      data: notification.data,
       priority: notification.priority,
       groupKey: notification.groupKey,
     },

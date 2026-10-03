@@ -25,10 +25,12 @@ export function useInlineWidgetContext(
   ) => Promise<void>,
   setChatInput: (text: string) => void,
   messageId?: string,
+  producerScope?: string,
 ): InlineWidgetContext {
   return useMemo<InlineWidgetContext>(
     () => ({
       messageId,
+      producerScope,
       // A choice pick / default followup: send the value back through the
       // action-message pipeline.
       sendAction: (value: string, metadata?: Record<string, unknown>) => {
@@ -59,6 +61,6 @@ export function useInlineWidgetContext(
         );
       },
     }),
-    [sendActionMessage, setChatInput, messageId],
+    [sendActionMessage, setChatInput, messageId, producerScope],
   );
 }

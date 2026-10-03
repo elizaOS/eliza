@@ -40,7 +40,10 @@ import {
   getFrontendPlatform,
 } from "../../platform/platform-guards";
 import { loadAgentProfileRegistry } from "../agent-profiles";
-import { navigateDeepLink } from "./navigate-deep-link";
+import {
+  navigateDeepLink,
+  readNotificationChatTarget,
+} from "./navigate-deep-link";
 
 /**
  * Injectable boundaries. The Capacitor push plugin, the platform detector, the
@@ -57,7 +60,7 @@ export interface PushRegistrationDeps {
     token: string,
   ) => Promise<unknown>;
   unregisterToken: (token: string) => Promise<unknown>;
-  navigate: (deepLink: string) => void;
+  navigate: (deepLink: string, data?: unknown) => void;
   captureAuthority?: () => PushRegistrationAuthority;
   sleep?: (delayMs: number) => Promise<void>;
 }
@@ -362,7 +365,11 @@ async function addPushListeners(
     "pushNotificationActionPerformed",
     (action: PushActionPerformed) => {
       const deepLink = deepLinkFromAction(action);
-      if (deepLink) deps.navigate(deepLink);
+      if (deepLink) {
+        if (readNotificationChatTarget(action.notification.data) === undefined)
+          deps.navigate(deepLink);
+        else deps.navigate(deepLink, action.notification.data);
+      }
     },
   );
 }

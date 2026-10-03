@@ -312,4 +312,28 @@ describe("InlineWidgetText", () => {
       ),
     );
   });
+
+  it.each(["lifeops-reminder", "lifeops-calendar-reminder"])(
+    "hides historical %s panels only for reminder producer messages",
+    (scope) => {
+      const content = `Reminder: Take your meds.\n\n[CHOICE:${scope} id=history]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]`;
+      const before = content;
+      withApp(<InlineWidgetText content={content} producerScope="reminder" />);
+      expect(screen.getByText(/Reminder: Take your meds/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+      expect(content).toBe(before);
+    },
+  );
+  it("keeps ordinary agent question choices visible", () => {
+    withApp(
+      <InlineWidgetText
+        content={
+          "[CHOICE:clarification id=question]\nyes=Yes\nno=No\n[/CHOICE]"
+        }
+        producerScope="reminder"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Yes" })).toBeTruthy();
+  });
 });

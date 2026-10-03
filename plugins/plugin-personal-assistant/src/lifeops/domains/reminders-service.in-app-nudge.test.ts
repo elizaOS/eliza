@@ -48,7 +48,7 @@ describe("RemindersDomain.emitInAppReminderNudge", () => {
     });
 
     expect(emitAssistantEvent).toHaveBeenCalledWith(
-      expect.stringContaining("Take your meds.\n\n[CHOICE:lifeops-reminder"),
+      "Take your meds.",
       "reminder",
       expect.objectContaining({
         ownerType: "occurrence",
@@ -59,9 +59,8 @@ describe("RemindersDomain.emitInAppReminderNudge", () => {
       }),
     );
     const chatText = emitAssistantEvent.mock.calls[0]?.[0] as string;
-    expect(chatText).toContain("done=Done");
-    expect(chatText).toContain("10 minutes=Snooze 10m");
-    expect(chatText).toContain("skip=Skip");
+    expect(chatText).toBe("Take your meds.");
+    expect(chatText).not.toContain("[CHOICE:");
 
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -143,7 +142,7 @@ it.each([true, false])(
   },
 );
 
-it("keeps Calendar reminder choices on the generic legacy acknowledgment path", async () => {
+it("emits plain Calendar reminders without automatic choices", async () => {
   const emitAssistantEvent = vi.fn();
   const domain = new TestRemindersDomain(
     {
@@ -161,8 +160,6 @@ it("keeps Calendar reminder choices on the generic legacy acknowledgment path", 
     dueAt: "2026-10-03T02:10:00Z",
   });
   const text = emitAssistantEvent.mock.calls[0]?.[0] as string;
-  expect(text).toContain("[CHOICE:lifeops-calendar-reminder id=reminder-");
-  expect(text).not.toContain("[CHOICE:lifeops-reminder ");
-  expect(text).toContain("done=Done");
-  expect(text).toContain("skip=Skip");
+  expect(text).toBe("Meeting soon.");
+  expect(text).not.toContain("[CHOICE:");
 });

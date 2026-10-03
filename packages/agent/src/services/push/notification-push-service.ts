@@ -221,6 +221,10 @@ function toPushMessage(notification: AgentNotification): PushMessage {
   };
   if (notification.deepLink) data.deepLink = notification.deepLink;
   if (notification.groupKey) data.groupKey = notification.groupKey;
+  for (const key of ["conversationId", "messageId"] as const) {
+    const value = notification.data?.[key];
+    if (typeof value === "string") data[key] = value;
+  }
   return {
     title: notification.title,
     body: notification.body,

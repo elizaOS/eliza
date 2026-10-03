@@ -27,9 +27,11 @@ import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 export function InlineWidgetText({
   content,
   messageId,
+  producerScope,
 }: {
   content: string;
   messageId?: string;
+  producerScope?: string;
 }): ReactNode {
   const { sendActionMessage } = useAppSelectorShallow((s) => ({
     sendActionMessage: s.sendActionMessage,
@@ -44,6 +46,7 @@ export function InlineWidgetText({
     sendActionMessage,
     setChatInput,
     messageId,
+    producerScope,
   );
 
   // The overlay shows clean display text (no raw analysis view), so parse in

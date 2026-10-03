@@ -167,6 +167,7 @@ export function ChatSurface({
                           <InlineWidgetText
                             content={message.content}
                             messageId={message.id}
+                            producerScope={message.source}
                           />
                         )}
                       </ChatBubble>

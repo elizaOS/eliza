@@ -6,7 +6,11 @@
  * open conversation, then handing the rest to routeAutonomyTextToUser.
  */
 import { MESSAGE_SOURCE_CLIENT_CHAT, validateUuid } from "@elizaos/core";
-import type { AgentEventPayloadLike } from "../runtime/agent-event-service.ts";
+import {
+  type AgentEventPayloadLike,
+  AUTONOMY_NOTIFICATION_DELIVERY,
+  type AutonomyNotificationDelivery,
+} from "../runtime/agent-event-service.ts";
 import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";
 import type { ServerState } from "./server-types.ts";
 
@@ -49,7 +53,11 @@ export async function maybeRouteAutonomyEventToConversation(
     return;
   }
 
-  await routeAutonomyTextToUser(
+  const handoff = (payload as Record<PropertyKey, unknown> | null)?.[
+    AUTONOMY_NOTIFICATION_DELIVERY
+  ] as AutonomyNotificationDelivery | undefined;
+  if (handoff?.routed) return handoff.routed;
+  const routed = routeAutonomyTextToUser(
     state,
     text,
     source,
@@ -71,5 +79,8 @@ export async function maybeRouteAutonomyEventToConversation(
           dueAt: payload.dueAt as string | null,
         }
       : undefined,
+    handoff?.publish,
   );
+  if (handoff) handoff.routed = routed;
+  await routed;
 }

@@ -29,6 +29,8 @@ import type { FormResultValue } from "./form-request";
 export interface InlineWidgetContext {
   /** Persisted assistant message that owns the inline reminder choice. */
   messageId?: string;
+  /** Trusted message origin, supplied by the persisted message DTO. */
+  producerScope?: string;
   /** Send a value back through the action-message pipeline (a choice pick). */
   sendAction: (value: string, metadata?: Record<string, unknown>) => void;
   /** Passive view-switch suggestion (a followup `navigate` chip). */

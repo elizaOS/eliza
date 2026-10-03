@@ -705,6 +705,9 @@ export interface AppActions {
   loadConversationMessagesAround: (
     conversationId: string,
     messageId: string,
+    options?: {
+      onMessages: (messages: readonly ConversationMessage[]) => void;
+    },
   ) => Promise<boolean>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
