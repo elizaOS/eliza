@@ -756,8 +756,13 @@ export class ApiKeysService {
         : null;
     let result = resultFor(existing, false);
     if (!result) {
-      const row = await dbWrite.transaction(async tx => {
-        const row = await apiKeysRepository.tombstoneExactStandardCredential(existing.id, hash, new Date(), tx);
+      const row = await dbWrite.transaction(async (tx) => {
+        const row = await apiKeysRepository.tombstoneExactStandardCredential(
+          existing.id,
+          hash,
+          new Date(),
+          tx,
+        );
         const value = resultFor(row, true);
         if (value && audit) await audit(tx, value);
         return row;

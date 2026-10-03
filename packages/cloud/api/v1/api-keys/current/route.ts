@@ -70,11 +70,20 @@ app.delete("/", async (c) => {
         standardSecret,
         async (tx, result) => {
           await tx.insert(authEvents).values({
-            event_id: crypto.randomUUID(), ts: new Date(), actor_type: "user",
-            actor_id: result.userId, action: "api_key.revoke", result: "success",
-            resource_type: "api_key", resource_id: result.receipt.credentialId,
-            org_id: result.organizationId, request_id: c.get("requestId"),
-            metadata: {key_id: result.receipt.credentialId, reason: "credential_self_revoke"},
+            event_id: crypto.randomUUID(),
+            ts: new Date(),
+            actor_type: "user",
+            actor_id: result.userId,
+            action: "api_key.revoke",
+            result: "success",
+            resource_type: "api_key",
+            resource_id: result.receipt.credentialId,
+            org_id: result.organizationId,
+            request_id: c.get("requestId"),
+            metadata: {
+              key_id: result.receipt.credentialId,
+              reason: "credential_self_revoke",
+            },
           });
         },
       );

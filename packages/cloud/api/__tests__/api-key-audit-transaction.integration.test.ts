@@ -1,16 +1,22 @@
-import {beforeAll,afterAll,test,expect,mock} from "bun:test";
-import {sql} from "drizzle-orm";
-import {createHash} from "node:crypto";
-process.env.DATABASE_URL="pglite://memory";
-process.env.NODE_ENV="test";
-const original=await import("@/lib/services/inference-credential-revocation");
-mock.module("@/lib/services/inference-credential-revocation",()=>({...original,revokeInferenceApiKey:async()=>{}}));
-const {dbWrite,closeDatabaseConnectionsForTests}=await import("@/db/client");
-const {apiKeysService}=await import("@/lib/services/api-keys");
-const {apiKeysRepository}=await import("@/db/repositories/api-keys");
-const secret="eliza_"+"b".repeat(64), other="eliza_"+"c".repeat(64);
-const id="00000000-0000-4000-8000-0000000000a1";
-beforeAll(async()=>{
+import { beforeAll, afterAll, test, expect, mock } from "bun:test";
+import { sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.NODE_ENV = "test";
+const original = await import("@/lib/services/inference-credential-revocation");
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  ...original,
+  revokeInferenceApiKey: async () => {},
+}));
+const { dbWrite, closeDatabaseConnectionsForTests } = await import(
+  "@/db/client"
+);
+const { apiKeysService } = await import("@/lib/services/api-keys");
+const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+const secret = "eliza_" + "b".repeat(64),
+  other = "eliza_" + "c".repeat(64);
+const id = "00000000-0000-4000-8000-0000000000a1";
+beforeAll(async () => {
   await dbWrite.execute(sql`
     CREATE TABLE IF NOT EXISTS api_keys (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,19 +50,46 @@ beforeAll(async()=>{
     )
   `);
 
-for (const [key,keyId] of [[secret,id],[other,"00000000-0000-4000-8000-0000000000a2"]]) {
- const hash=createHash("sha256").update(key).digest("hex");
- await dbWrite.execute(sql`INSERT INTO api_keys (id,name,key_hash,key_prefix,organization_id,user_id,key_ciphertext) VALUES (${keyId},'CLI test',${hash},'eliza_', '00000000-0000-4000-8000-0000000000b1','00000000-0000-4000-8000-0000000000c1','encrypted')`);
-}
-},60000);
-afterAll(async()=>{await closeDatabaseConnectionsForTests();});
-test("rollback, exact-key isolation and durable response-loss receipt",async()=>{
- await expect(apiKeysService.revokePresentedStandardCredential(secret,async()=>{throw Error("audit failure");})).rejects.toThrow("audit failure");
- expect((await apiKeysRepository.findByIdConsistent(id))?.is_active).toBe(true);
- const first=await apiKeysService.revokePresentedStandardCredential(secret);
- const retry=await apiKeysService.revokePresentedStandardCredential(secret);
- expect(first?.revokedNow).toBe(true);expect(retry?.revokedNow).toBe(false);expect(retry?.receipt).toEqual(first?.receipt);
- expect((await apiKeysRepository.findByIdConsistent(id))?.key_ciphertext).toBeNull();
- expect((await apiKeysRepository.findByHashConsistent(createHash("sha256").update(other).digest("hex")))?.is_active).toBe(true);
- expect(await apiKeysService.revokePresentedStandardCredential("eliza_"+"0".repeat(64))).toBeNull();
-},60000);
+  for (const [key, keyId] of [
+    [secret, id],
+    [other, "00000000-0000-4000-8000-0000000000a2"],
+  ]) {
+    const hash = createHash("sha256").update(key).digest("hex");
+    await dbWrite.execute(
+      sql`INSERT INTO api_keys (id,name,key_hash,key_prefix,organization_id,user_id,key_ciphertext) VALUES (${keyId},'CLI test',${hash},'eliza_', '00000000-0000-4000-8000-0000000000b1','00000000-0000-4000-8000-0000000000c1','encrypted')`,
+    );
+  }
+}, 60000);
+afterAll(async () => {
+  await closeDatabaseConnectionsForTests();
+});
+test("rollback, exact-key isolation and durable response-loss receipt", async () => {
+  await expect(
+    apiKeysService.revokePresentedStandardCredential(secret, async () => {
+      throw Error("audit failure");
+    }),
+  ).rejects.toThrow("audit failure");
+  expect((await apiKeysRepository.findByIdConsistent(id))?.is_active).toBe(
+    true,
+  );
+  const first = await apiKeysService.revokePresentedStandardCredential(secret);
+  const retry = await apiKeysService.revokePresentedStandardCredential(secret);
+  expect(first?.revokedNow).toBe(true);
+  expect(retry?.revokedNow).toBe(false);
+  expect(retry?.receipt).toEqual(first?.receipt);
+  expect(
+    (await apiKeysRepository.findByIdConsistent(id))?.key_ciphertext,
+  ).toBeNull();
+  expect(
+    (
+      await apiKeysRepository.findByHashConsistent(
+        createHash("sha256").update(other).digest("hex"),
+      )
+    )?.is_active,
+  ).toBe(true);
+  expect(
+    await apiKeysService.revokePresentedStandardCredential(
+      "eliza_" + "0".repeat(64),
+    ),
+  ).toBeNull();
+}, 60000);
