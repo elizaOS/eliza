@@ -170,6 +170,12 @@ function formatPromptScalar(value: unknown): string {
 function formatCheckinReportForPrompt(
   report: Omit<CheckinReport, "summaryText">,
 ): string {
+  const withRecordedMisses = report.habitSummaries.filter(
+    (habit) => habit.missedOccurrenceStreak > 0,
+  );
+  const withoutRecordedMisses = report.habitSummaries.filter(
+    (habit) => !(habit.missedOccurrenceStreak > 0),
+  );
   const modelReport = {
     ...report,
     overdueTodos:
@@ -185,12 +191,14 @@ function formatCheckinReportForPrompt(
     habitSummaries:
       report.collectorErrors.habitSummaries === null
         ? {
-            withRecordedMisses: report.habitSummaries.filter(
-              (habit) => habit.missedOccurrenceStreak > 0,
-            ),
-            withoutRecordedMisses: report.habitSummaries.filter(
-              (habit) => !(habit.missedOccurrenceStreak > 0),
-            ),
+            withRecordedMisses: {
+              count: withRecordedMisses.length,
+              records: withRecordedMisses,
+            },
+            withoutRecordedMisses: {
+              count: withoutRecordedMisses.length,
+              records: withoutRecordedMisses,
+            },
           }
         : null,
     briefingSections: {
@@ -222,6 +230,7 @@ export function buildCheckinSummaryPrompt(
     "Use the supplied source data. Do not invent facts.",
     "Describe recorded states and counts without inventing their cause: a missed occurrence is not evidence of failed delivery, abandoned work, or a system fault. Missed streaks have no occurrence dates here; do not assign those misses to today or yesterday.",
     "Streak counters count occurrences, not days. Report empty collections as no collected items, not proof that no urgent work or messages exist outside the available sources.",
+    "Habit group counts are supplied by code and count habit records, not missed occurrences. Use only supplied totals; do not invent counts for subsets or calculate a total from streaks.",
     "Rank for genuinely interesting, important, reply-needed, or schedule-changing items.",
     "Include X/socials (timeline, mentions, DMs), inboxes/messages/Discord, Gmail, GitHub, calendar changes, completed work, contacts, promises, agreements, and follow-ups when present.",
     "When a source is unavailable, say that source is unavailable in one compact clause instead of pretending it was empty.",

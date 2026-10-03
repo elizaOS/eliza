@@ -83,8 +83,14 @@ describe("buildCheckinSummaryPrompt", () => {
     const data = JSON.parse(
       p.split("Report JSON:\n")[1].split("\n\nSummary:")[0],
     );
-    expect(data.habitSummaries.withRecordedMisses).toEqual([missed]);
-    expect(data.habitSummaries.withoutRecordedMisses).toEqual([completed]);
+    expect(data.habitSummaries.withRecordedMisses).toEqual({
+      count: 1,
+      records: [missed],
+    });
+    expect(data.habitSummaries.withoutRecordedMisses).toEqual({
+      count: 1,
+      records: [completed],
+    });
   });
 
   it("supplies the collector's local date across a UTC day boundary", () => {
