@@ -111,7 +111,7 @@
     "@scure/bip39": "^1.6.0",
     "@scure/btc-signer": "^2.2.0",
     "@solana/web3.js": "^1",
-    "viem": "^2.30.0",
+    "viem": "^2.56.9",
     "@aws-sdk/client-kms": "^3.1136.0",
     "graphene-pk11": "^2.2.0",
     "hono": "^4.13.8",

@@ -472,7 +472,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1),
     );
 
-    const trigger = screen.getByRole("button", {
+    const trigger = await screen.findByRole("button", {
       name: "More browser actions",
     });
     const selectAction = async (name: string): Promise<void> => {

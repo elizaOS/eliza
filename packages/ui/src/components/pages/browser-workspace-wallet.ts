@@ -322,3 +322,65 @@ export function resolveBrowserWorkspaceSignMessage(
   }
   return typeof first === "string" ? first : null;
 }
+
+export type BrowserWorkspaceSolanaCluster = "mainnet" | "devnet" | "testnet";
+
+function matchBrowserWorkspaceSolanaCluster(
+  value: unknown,
+): BrowserWorkspaceSolanaCluster | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^solana:/, "");
+  if (normalized === "mainnet" || normalized === "mainnet-beta")
+    return "mainnet";
+  if (normalized === "devnet" || normalized === "testnet") return normalized;
+  if (URL.canParse(value)) {
+    const endpoint = new URL(value);
+    if (
+      endpoint.protocol === "https:" &&
+      !endpoint.port &&
+      !endpoint.username &&
+      !endpoint.password
+    ) {
+      if (endpoint.hostname === "api.mainnet-beta.solana.com") return "mainnet";
+      if (endpoint.hostname === "api.devnet.solana.com") return "devnet";
+      if (endpoint.hostname === "api.testnet.solana.com") return "testnet";
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the Solana cluster a dApp expressed for signTransaction /
+ * signAndSendTransaction. `cluster` wins over the legacy `chain` fallback.
+ * An absent value (undefined/null on both) returns `{ cluster: null }` so
+ * the request omits the field and the server's documented mainnet default
+ * applies. A sent-but-unrecognizable value ("localnet", "mainent", 123)
+ * returns `{ error }`: the bridge must reply with that error and never
+ * forward the request, because omitting the field would silently route a
+ * dApp that asked for some other network to mainnet.
+ */
+export function resolveBrowserWorkspaceSolanaCluster(
+  params: unknown,
+): { cluster: BrowserWorkspaceSolanaCluster | null } | { error: string } {
+  const raw =
+    params && typeof params === "object" && !Array.isArray(params)
+      ? (params as Record<string, unknown>)
+      : undefined;
+  const requested =
+    raw && raw.cluster !== undefined && raw.cluster !== null
+      ? raw.cluster
+      : raw && raw.chain !== undefined && raw.chain !== null
+        ? raw.chain
+        : undefined;
+  if (requested === undefined) return { cluster: null };
+  const cluster = matchBrowserWorkspaceSolanaCluster(requested);
+  if (!cluster) {
+    return {
+      error: `Unsupported Solana cluster ${JSON.stringify(String(requested))}: expected mainnet, devnet, or testnet.`,
+    };
+  }
+  return { cluster };
+}

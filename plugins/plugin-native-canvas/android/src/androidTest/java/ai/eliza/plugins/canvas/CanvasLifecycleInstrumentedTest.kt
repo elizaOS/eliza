@@ -761,15 +761,40 @@ class CanvasLifecycleInstrumentedTest {
 
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            var hostWindowId = -1
+            fun waitForOwnedWindow(popup: Boolean): Int {
+                val deadline = SystemClock.elapsedRealtime() + 5000
+                while (true) {
+                    var hostFocused = false
+                    var ownerPackage = ""
+                    scenario.onActivity { activity ->
+                        hostFocused = activity.window.decorView.hasWindowFocus()
+                        ownerPackage = activity.packageName
+                    }
+                    val root = instrumentation.uiAutomation.rootInActiveWindow
+                    val windowId = try {
+                        if (root?.packageName?.toString() == ownerPackage) root.windowId else -1
+                    } finally {
+                        root?.recycle()
+                    }
+                    if (hostFocused != popup && windowId >= 0 && (!popup || windowId != hostWindowId)) return windowId
+                    assertTrue("Canvas ${if (popup) "popup" else "host"} window did not gain focus", SystemClock.elapsedRealtime() < deadline)
+                    SystemClock.sleep(20)
+                }
+            }
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+            hostWindowId = waitForOwnedWindow(false)
             success(scenario, "navigate", JSONObject().put("url", "about:blank").put("placement", "popup"))
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            // Main-thread idleness does not prove WindowManager has transferred
+            // input focus; injecting Back earlier can cancel its key-up event.
+            val popupWindowId = waitForOwnedWindow(true)
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            assertEquals("Back must restore the original host window", hostWindowId, waitForOwnedWindow(false))
             val dismissed = call(scenario, "snapshot")
             success(scenario, "navigate", JSONObject().put("url", "about:blank").put("placement", "inline"))
             val recovered = success(scenario, "eval", JSONObject().put("script", "6*7"))
-            receipt("canvas-popup-dismissal.json", JSONObject().put("dismissed", dismissed).put("recovered", recovered))
+            receipt("canvas-popup-dismissal.json", JSONObject().put("hostWindowId", hostWindowId).put("popupWindowId", popupWindowId).put("dismissed", dismissed).put("recovered", recovered))
             assertFalse(dismissed.getBoolean("ok"))
             assertEquals("WEBVIEW_NOT_READY", dismissed.getString("code"))
             assertEquals("42", recovered.getString("result"))

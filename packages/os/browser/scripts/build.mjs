@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { androidNativeHost } from "./android-host.mjs";
+import { assetNames } from "./chromium-component.mjs";
+import { validateExtensionModules } from "./validate-extension-modules.mjs";
 
 const root = new URL("../", import.meta.url);
 const identity = JSON.parse(
@@ -30,7 +32,7 @@ await writeFile(
     {
       manifest_version: 3,
       name: "Eliza Browser Control",
-      version: "2.0.4",
+      version: "2.0.5",
       key: identity.chromeDevManifestKey,
       description:
         "Native, authenticated control of this Chromium profile for your Eliza agent.",
@@ -53,16 +55,12 @@ await writeFile(
   new URL("runtime-config.mjs", out),
   `export const nativeHost = ${JSON.stringify(nativeHost)};\n`,
 );
-for (const file of [
-  "background.mjs",
-  "command-handler.mjs",
-  "commands.mjs",
-  "native-connection.mjs",
-  "task-guidance.mjs",
-  "page-guidance.mjs",
-])
+// Keep copied source modules in the same reviewed inventory as the GRIT bundle.
+for (const file of assetNames.filter(
+  (name) =>
+    !["manifest.json", "runtime-config.mjs", "protocol.mjs"].includes(name),
+))
   await copyFile(new URL(`src/${file}`, root), new URL(file, out));
-process.stdout.write(`${fileURLToPath(out)}\n`);
 
 const wireBuild = spawnSync(
   "bun",
@@ -75,3 +73,6 @@ const wireBuild = spawnSync(
   { stdio: "inherit" },
 );
 if (wireBuild.status !== 0) throw new Error("Native wire codec build failed.");
+
+await validateExtensionModules(fileURLToPath(out));
+process.stdout.write(`${fileURLToPath(out)}\n`);

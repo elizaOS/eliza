@@ -20,6 +20,7 @@ import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
 import { detectPii } from "./pii-detectors";
 import { getDefaultRedactPatterns } from "./redact";
+import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 
 export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
 export const SECRET_SWAP_EXEMPT_VALUES_SETTING =
@@ -256,6 +257,10 @@ function walkSecretSwapValue(
 	if (value === null || typeof value !== "object") {
 		return value;
 	}
+	// Preserve a clean native cancellation signal, never control-shaped payload data.
+	if (isRuntimeAbortSignal(value)) {
+		return value;
+	}
 	if (depth > MAX_SECRET_SWAP_WALK_DEPTH) {
 		failSecretSwapUnbounded({
 			depth,
@@ -321,6 +326,7 @@ function walkSecretSwapValue(
 }
 
 export class SecretSwapSession {
+	private readonly replyProtectedValues = new Set<string>();
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
 	private readonly exemptValues: ReadonlySet<string>;
@@ -364,6 +370,7 @@ export class SecretSwapSession {
 				typeof value === "string" &&
 				shouldSwapValue(value, this.exemptValues)
 			) {
+				this.replyProtectedValues.add(value);
 				this.entryForValue(value, name);
 			}
 		}
@@ -387,6 +394,7 @@ export class SecretSwapSession {
 			SECRET_PATTERNS,
 			this.exemptValues,
 		)) {
+			this.replyProtectedValues.add(value);
 			this.entryForValue(value, "secret");
 		}
 		// 2) Validated PII / token classes (credit-card+Luhn, email, ssn, iban,
@@ -401,6 +409,18 @@ export class SecretSwapSession {
 				!this.exemptValues.has(trimmed) &&
 				!trimmed.match(PLACEHOLDER_PATTERN)
 			) {
+				if (
+					![
+						"email",
+						"phone",
+						"ipv4",
+						"mac-address",
+						"credit-card",
+						"ssn",
+						"iban",
+					].includes(match.kind)
+				)
+					this.replyProtectedValues.add(trimmed);
 				this.entryForValue(trimmed, match.kind);
 			}
 		}
@@ -421,6 +441,32 @@ export class SecretSwapSession {
 			createSecretSwapWalkContext(),
 			(text) => this.substituteText(text),
 		) as T;
+	}
+
+	/** Restore personal data only at the local user-reply boundary, never credentials. */
+	restoreUserReplyText(text: string): string {
+		this.placeholderPattern.lastIndex = 0;
+		return text.replace(this.placeholderPattern, (placeholder) => {
+			const entry = this.placeholderToEntry.get(placeholder);
+			if (
+				!entry ||
+				[...this.replyProtectedValues].some(
+					(value) => value.includes(entry.value) || entry.value.includes(value),
+				)
+			)
+				return "[redacted credential]";
+			return [
+				"email",
+				"phone",
+				"ipv4",
+				"mac-address",
+				"credit-card",
+				"ssn",
+				"iban",
+			].includes(entry.kind)
+				? entry.value
+				: "[redacted credential]";
+		});
 	}
 
 	restoreText(

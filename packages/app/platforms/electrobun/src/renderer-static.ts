@@ -163,3 +163,50 @@ export function resolveRendererAsset({
 		mimeExt: resolveMimeExtension(filePath),
 	};
 }
+
+export type RendererStaticAssetHeadersInput = {
+	contentType: string;
+	cacheControl: string;
+	contentLength: number;
+	contentEncoding?: string;
+	contentRange?: string;
+};
+
+/**
+ * Response headers for renderer HTML documents served by the desktop static
+ * server. These documents embed the local agent API base URL and bearer token
+ * via `apiBaseOwner.injectIntoHtml`, so they must never be readable
+ * cross-origin: no `Access-Control-Allow-Origin` header is set. Any website
+ * the user visits could otherwise fetch the index page and extract the
+ * OWNER-level credential (elizaOS/eliza#33034).
+ */
+export function buildRendererStaticHtmlHeaders(): Record<string, string> {
+	return {
+		"Content-Type": "text/html; charset=utf-8",
+		"Cache-Control": "no-store",
+	};
+}
+
+/**
+ * Response headers for renderer static assets served by the desktop static
+ * server. Same cross-origin contract as the HTML documents: the renderer
+ * webview loads these same-origin, so no `Access-Control-Allow-Origin`
+ * header is set (elizaOS/eliza#33034).
+ */
+export function buildRendererStaticAssetHeaders(
+	input: RendererStaticAssetHeadersInput,
+): Record<string, string> {
+	const headers: Record<string, string> = {
+		"Content-Type": input.contentType,
+		"Cache-Control": input.cacheControl,
+		"Accept-Ranges": "bytes",
+		"Content-Length": String(input.contentLength),
+	};
+	if (input.contentEncoding) {
+		headers["Content-Encoding"] = input.contentEncoding;
+	}
+	if (input.contentRange) {
+		headers["Content-Range"] = input.contentRange;
+	}
+	return headers;
+}

@@ -101,6 +101,14 @@ export async function encryptAgentEnvVarsForStorage(
   organizationId: string,
   environmentVars: Record<string, string>,
 ): Promise<Record<string, string>> {
+  // The materializer decrypts envelopes under every key, including ordinary
+  // config keys. Check ownership before the no-plaintext fast path can return
+  // an attacker-supplied envelope unchanged.
+  for (const value of Object.values(environmentVars)) {
+    if (typeof value === "string" && fieldEncryption.isEncrypted(value)) {
+      await fieldEncryption.assertEncryptedValueOrganization(organizationId, value);
+    }
+  }
   const pending = Object.entries(environmentVars).filter(
     ([key, value]) =>
       isSensitiveAgentEnvKey(key) &&

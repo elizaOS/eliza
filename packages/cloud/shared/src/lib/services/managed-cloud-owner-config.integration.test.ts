@@ -1,7 +1,10 @@
 import { expect, mock, test } from "bun:test";
+import crypto from "node:crypto";
 import { exportJWK, generateKeyPair } from "jose";
+import type { OrganizationEncryptionKey } from "../../db/schemas";
 import { _resetOidcKeyCacheForTests } from "../oidc/keys";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
+import type { OrgEncryptionKeyStore } from "./field-encryption";
 import { MANAGED_CLOUD_OWNER_KEYS } from "./managed-cloud-owner-config";
 import {
   findReservedManagedElizaEnvKeys,
@@ -109,15 +112,47 @@ test("provision, restart, transfer and removal preserve owner and isolate confid
 }, 30000);
 
 const actualFieldEncryption = await import("./field-encryption");
+function memoryStore(): OrgEncryptionKeyStore & { rows: Map<string, OrganizationEncryptionKey> } {
+  const rows = new Map<string, OrganizationEncryptionKey>();
+  const byOrg = async (organizationId: string) =>
+    [...rows.values()].find((row) => row.organization_id === organizationId);
+  return {
+    rows,
+    findByOrgId: byOrg,
+    findByOrgIdPrimary: byOrg,
+    findById: async (keyId) => rows.get(keyId),
+    insertIfAbsent: async (organizationId, encryptedDek) => {
+      if (await byOrg(organizationId)) return undefined;
+      const row: OrganizationEncryptionKey = {
+        id: crypto.randomUUID(),
+        organization_id: organizationId,
+        encrypted_dek: encryptedDek,
+        key_version: 1,
+        algorithm: "aes-256-gcm",
+        created_at: new Date(),
+        rotated_at: null,
+      };
+      rows.set(row.id, row);
+      return row;
+    },
+    updateWrappedDek: async (keyId, expectedVersion, encryptedDek, nextVersion) => {
+      const row = rows.get(keyId);
+      if (!row || row.key_version !== expectedVersion) return undefined;
+      const updated = {
+        ...row,
+        encrypted_dek: encryptedDek,
+        key_version: nextVersion,
+        rotated_at: new Date(),
+      };
+      rows.set(keyId, updated);
+      return updated;
+    },
+  };
+}
+
 mock.module("./field-encryption", () => ({
-  isFieldEncryptionRequired: actualFieldEncryption.isFieldEncryptionRequired,
-  fieldEncryption: {
-    isEncrypted: (value: string) => value.startsWith("enc:v1:"),
-    encrypt: mock(
-      async (_org: string, value: string) => "enc:v1:" + Buffer.from(value).toString("base64"),
-    ),
-    decrypt: mock(async (value: string) => Buffer.from(value.slice(7), "base64").toString()),
-  },
+  ...actualFieldEncryption,
+  fieldEncryption: new actualFieldEncryption.FieldEncryptionService(memoryStore()),
 }));
 test("confidential registered-client secret stays encrypted across storage and materialization", async () => {
   const { isSensitiveAgentEnvKey, encryptAgentEnvVarsForStorage, decryptAgentEnvVars } =
@@ -133,9 +168,13 @@ test("confidential registered-client secret stays encrypted across storage and m
     await expect(encryptAgentEnvVarsForStorage(owner.organizationId, clear)).rejects.toThrow(
       "requires encrypted",
     );
-    process.env.SECRETS_MASTER_KEY = "fixture-key-present";
+    process.env.SECRETS_MASTER_KEY = "a".repeat(64);
     const stored = await encryptAgentEnvVarsForStorage(owner.organizationId, clear);
     expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET).not.toBe(
+      clear.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET,
+    );
+    expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET).toStartWith("enc:v1:");
+    expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET).not.toContain(
       clear.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET,
     );
     expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_ID).toBe("public-id");

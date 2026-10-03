@@ -38,7 +38,10 @@ app.post("/", async (c) => {
         "Invalid mobile authorization token request",
       );
     }
-    const { registration } = await requireRegisteredMobileApp(c);
+    const { registration } = await requireRegisteredMobileApp(
+      c,
+      parsed.data.clientId,
+    );
     const result = await exchangeMobileAppAuthCode({
       registration,
       binding: {
