@@ -42,6 +42,13 @@ function selectPolicy(sdk: string, gsi: boolean) {
     { encoding: "utf8" },
   );
   fs.rmSync(path.dirname(printer), { recursive: true, force: true });
+  if (sdk) {
+    assert.equal(
+      result.status,
+      0,
+      `Policy probe failed: ${result.error?.message ?? result.stderr}`,
+    );
+  }
   const [vendor = "", systemExt = ""] = result.stdout.trim().split("|");
   return {
     status: result.status,

@@ -7,10 +7,8 @@
 # Invariants:
 #   1. The Eliza APK is installed as a privileged system app.
 #   2. The privapp / default-permissions XMLs ship under /system/etc/.
-#   3. Every stock app whose role we override is removed from
-#      PRODUCT_PACKAGES so the resolver has a single answer for HOME,
-#      DIALER, SMS, ASSISTANT, contacts, browser, calendar, camera,
-#      gallery, music, deskclock, search.
+#   3. Role/HOME overlays prefer Eliza. Stock-app package removal still
+#      requires a supported implementation and boot-level verification.
 #   4. First-boot setup wizard / provisioning is disabled — the device
 #      must boot directly to Eliza, not to a Google "Welcome" flow.
 #   5. Brand properties land on /product/ where the product layer owns
@@ -28,33 +26,12 @@ PRODUCT_PACKAGES += \
     default-permissions-ai.elizaos.app.xml \
     privapp-permissions-ai.elizaos.app.xml
 
-# KNOWN GAP: `-=` is not a make (or kati) operator — this block is currently
-# a no-op that defines a stray variable, so none of these stock apps are
-# actually removed from any image. Even a working subtraction here could not
-# remove packages contributed by inherited makefiles (inherit-product
-# aggregation is deferred past this file's evaluation). Role/HOME defaults in
-# vendor/eliza/overlays keep Eliza in front regardless; the real de-bloat
-# needs a supported mechanism and boot-level verification. Tracked as a
-# follow-up; do not trust this list as a removal contract.
-PRODUCT_PACKAGES -= \
-    Browser2 \
-    Calendar \
-    Camera2 \
-    Contacts \
-    DeskClock \
-    Dialer \
-    Email \
-    Gallery2 \
-    Launcher3 \
-    Launcher3QuickStep \
-    ManagedProvisioning \
-    Messaging \
-    messaging \
-    Music \
-    Provision \
-    QuickSearchBox \
-    SetupWizard \
-    Trebuchet
+# Stock-app removal is not implemented here. `-=` is not a Make/Kati
+# assignment: modern GNU Make rejects it, while older Make versions treat it
+# as an ineffective variable definition. A local filter would also miss
+# packages contributed later by deferred inherit-product aggregation.
+# Role/HOME defaults in vendor/eliza/overlays select Eliza; removing replaced
+# stock apps requires a supported mechanism and boot-level verification.
 
 PRODUCT_PACKAGE_OVERLAYS += \
     vendor/eliza/overlays
