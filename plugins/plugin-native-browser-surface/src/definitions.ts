@@ -142,6 +142,17 @@ export interface BrowserDockState {
 }
 
 export interface ElizaSurfaceManagerPlugin {
+  getBrowserHelperEntryState(): Promise<{
+    permissionGranted: boolean;
+    visible: boolean;
+    fullScreen: boolean;
+  }>;
+  requestBrowserHelperEntryPermission(): Promise<{ status: "dispatched" }>;
+  hideBrowserDockWithEntry(options: {
+    label: string;
+    description: string;
+  }): Promise<{ status: "requested" }>;
+  restoreBrowserDockFromEntry(): Promise<{ status: "requested" }>;
   /** Resize an existing host-owned Android split without navigation. Request receipt only. */
   setBrowserDockVisible(options: {
     visible: boolean;
@@ -196,6 +207,15 @@ export interface ElizaSurfaceManagerPlugin {
   readPage(
     options: SurfaceIdOptions & { selector?: string },
   ): Promise<NativePageRead>;
+  addListener(
+    eventName: "browserHelperReturned",
+    listener: (event: { presentation: "full-screen" }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "browserHelperReturnFailed",
+    listener: (event: { code: string }) => void,
+  ): Promise<PluginListenerHandle>;
+
   /** Signals a native page change; consumers read current state before applying it. */
   addListener(
     eventName: "navigationChanged",

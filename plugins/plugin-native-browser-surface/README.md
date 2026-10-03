@@ -95,3 +95,14 @@ with this host as primary must exist. Missing/ambiguous/recreated sessions rejec
 instead of replaying navigation. A request receipt is not proof of resulting bounds.
 The product must pause its work before hiding help and provide a return control;
 this low-level API does not itself provide persistent entry or task resumption.
+
+Hosts can explicitly declare `SYSTEM_ALERT_WINDOW` and request Android's revocable
+overlay permission using `requestBrowserHelperEntryPermission()`. The library does
+not add that permission automatically. `hideBrowserDockWithEntry` requires the
+grant and installs a bounded, non-focusable return control before requesting
+collapse. Tapping it moves the existing host WebView into a full-screen native
+window and emits `browserHelperReturned`; no Activity, URL or browser tab is
+launched. `restoreBrowserDockFromEntry` returns the same view to the existing
+split. The host owns pause, microphone shutdown, saved context and explicit Resume.
+These windows are removed when this plugin instance is destroyed; process-death
+recovery and device lifecycle qualification remain host integration requirements.

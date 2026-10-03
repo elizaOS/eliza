@@ -31,6 +31,27 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async getBrowserHelperEntryState(): Promise<{
+    permissionGranted: boolean;
+    visible: boolean;
+    fullScreen: boolean;
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async requestBrowserHelperEntryPermission(): Promise<{
+    status: "dispatched";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async hideBrowserDockWithEntry(_options: {
+    label: string;
+    description: string;
+  }): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async restoreBrowserDockFromEntry(): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async setBrowserDockVisible(_options: {
     visible: boolean;
   }): Promise<{ status: "requested" }> {
