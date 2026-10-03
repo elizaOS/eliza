@@ -491,6 +491,9 @@ async function deliverScheduledTaskToOwnerChat(
       { source: MESSAGE_SOURCE_OWNER_CHAT },
       {
         text: message,
+        // Composition already produced owner-facing copy, as on connector sends.
+        // A second cosmetic rewrite can change its source-grounded facts.
+        agentVoiced: true,
         source: "lifeops-scheduled-task",
         deliveryIdempotencyKey,
         scheduledTaskId: record.taskId,

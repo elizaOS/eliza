@@ -242,6 +242,7 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       source: "owner_chat",
     });
     expect(sendMessageToTarget.mock.calls[0]?.[1]).toMatchObject({
+      agentVoiced: true,
       text: summaryText,
       deliveryIdempotencyKey: `${record.taskId}:2026-07-06T14:00:00.000Z`,
     });
