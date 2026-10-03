@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
 const getTransactionByStripePaymentIntent = mock(
   async (): Promise<{
@@ -27,7 +28,15 @@ const refundCredits = mock(async () => ({
   transaction: { id: "tx-reinstated" },
   newBalance: 100,
 }));
-const failChargeAndEnqueue = mock(async () => undefined);
+const releaseShortfallHoldForReinstatement = mock(async () => null);
+const settleOutstandingShortfalls = mock(async () => ({
+  appliedUsd: "0.000000",
+  outstandingUsd: "0.000000",
+  releasedHoldIds: [],
+  repaymentTransactionId: null,
+}));
+const getBillingHoldState = mock(async () => ({ status: "clear" }));
+const logWarning = mock(async (_warning: { context?: unknown }) => true);
 const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);
 const retrieveInvoice = mock(async (id: string) => ({
@@ -51,13 +60,30 @@ const retrieveCharge = mock(
   }),
 );
 
-// Terminal authority has independent real-DB consumer coverage; these fixtures own purchased-credit dispatch.
+const retrieveSubscription = mock(async (id: string) => ({
+  id,
+  status: "active",
+}));
+let scheduledLifecycleFailure: unknown = new Error(
+  "Scheduled subscription lifecycle unavailable in legacy fixture",
+);
+const openSubscriptionEventIncident = mock(
+  async (_input: { reason: string; eventType: string }) => true,
+);
+
+// Lifecycle owners have independent real-DB consumer coverage (subscription-dunning.pglite.test.ts); these fixtures own purchased-credit dispatch.
 mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
   reconcileStripeScheduledCancellationLifecycle: async () => {
-    throw new Error(
-      "Scheduled subscription lifecycle unavailable in legacy fixture",
-    );
+    throw scheduledLifecycleFailure;
   },
+}));
+mock.module("@/lib/services/stripe-dunning-lifecycle", () => ({
+  reconcileStripeDunningLifecycle: async () => {
+    throw new Error("Dunning lifecycle unavailable in legacy fixture");
+  },
+}));
+mock.module("@/lib/services/subscription-event-incidents", () => ({
+  openSubscriptionEventIncident,
 }));
 mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
   reconcileStripeTerminalLifecycle: async () => {
@@ -77,11 +103,14 @@ mock.module("@/db/schemas/agent-sandboxes", () => ({ agentSandboxes: {} }));
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: mock(async () => Response.json({ ok: true })),
 }));
-mock.module("@/lib/services/app-charge-callbacks", () => ({
-  appChargeCallbacksService: { failChargeAndEnqueue },
+mock.module("@/db/repositories/payment-reversal-holds", () => ({
+  releaseShortfallHoldForReinstatement,
 }));
-mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: {},
+mock.module("@/lib/services/billing-hold", () => ({
+  billingHoldService: {
+    settleOutstandingShortfalls,
+    getState: getBillingHoldState,
+  },
 }));
 mock.module("@/lib/services/app-credits", () => ({ appCreditsService: {} }));
 mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
@@ -95,7 +124,10 @@ mock.module("@/lib/services/credits", () => ({
   ReservationNotFoundError: class extends Error {},
 }));
 mock.module("@/lib/services/discord", () => ({
-  discordService: { logPaymentReceived: mock(async () => undefined) },
+  discordService: {
+    logPaymentReceived: mock(async () => undefined),
+    logWarning,
+  },
 }));
 mock.module("@/lib/services/invoices", () => ({
   invoicesService: { getByStripeInvoiceId, create: createInvoice },
@@ -127,6 +159,7 @@ mock.module("@/lib/stripe", () => ({
   requireStripe: () => ({
     invoices: { retrieve: retrieveInvoice },
     charges: { retrieve: retrieveCharge },
+    subscriptions: { retrieve: retrieveSubscription },
   }),
 }));
 mock.module("@/lib/utils/logger", () => ({
@@ -187,7 +220,10 @@ beforeEach(() => {
   addCredits.mockClear();
   clawbackCredits.mockClear();
   refundCredits.mockClear();
-  failChargeAndEnqueue.mockClear();
+  releaseShortfallHoldForReinstatement.mockClear();
+  settleOutstandingShortfalls.mockClear();
+  getBillingHoldState.mockClear();
+  logWarning.mockClear();
   getByStripeInvoiceId.mockClear();
   getByStripeInvoiceId.mockResolvedValue(null);
   createInvoice.mockClear();
@@ -197,6 +233,10 @@ beforeEach(() => {
     id,
     invoice: null,
   }));
+  openSubscriptionEventIncident.mockClear();
+  scheduledLifecycleFailure = new Error(
+    "Scheduled subscription lifecycle unavailable in legacy fixture",
+  );
 });
 
 describe("STRIPE_MAX_CREDITS", () => {
@@ -280,6 +320,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_unpaid",
+          mode: "payment",
           payment_status: "unpaid",
           payment_intent: "pi_unpaid",
           metadata: { organization_id: "org-1", credits: "10.00" },
@@ -295,6 +336,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_no_pi",
+          mode: "payment",
           payment_status: "paid",
           payment_intent: null,
           metadata: { organization_id: "org-1", credits: "10.00" },
@@ -309,6 +351,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_expanded",
+          mode: "payment",
           payment_status: "paid",
           payment_intent: { id: "pi_expanded" },
           metadata: { credits: "0" },
@@ -457,7 +500,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
     expect(addCredits).not.toHaveBeenCalled();
   });
 
-  test("retains invoice-backed payment before metadata can grant global credits", async () => {
+  test("acknowledges subscription-invoice payments without letting metadata grant global credits", async () => {
     for (const invoice of ["in_recurring", { id: "in_recurring" }]) {
       expect(
         await processStripeEvent(
@@ -474,7 +517,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
             invoice,
           }),
         ),
-      ).toBe("retry");
+      ).toBe("ack");
     }
     expect(addCredits).not.toHaveBeenCalled();
     expect(createInvoice).not.toHaveBeenCalled();
@@ -482,7 +525,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
 });
 
 describe("processStripeEvent payment_intent.payment_failed", () => {
-  test("acks a failed intent that is not a miniapp charge without callbacks", async () => {
+  test("acks a failed intent without financial side effects", async () => {
     expect(
       await processStripeEvent(
         delivery("payment_intent.payment_failed", {
@@ -494,10 +537,10 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
         }),
       ),
     ).toBe("ack");
-    expect(failChargeAndEnqueue).not.toHaveBeenCalled();
+    expect(addCredits).not.toHaveBeenCalled();
   });
 
-  test("forwards a miniapp charge failure with the Stripe error message", async () => {
+  test("acks a failed retired mini-app intent without callbacks or credits", async () => {
     expect(
       await processStripeEvent(
         delivery("payment_intent.payment_failed", {
@@ -517,62 +560,132 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
         }),
       ),
     ).toBe("ack");
-    expect(failChargeAndEnqueue).toHaveBeenCalledWith({
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(logWarning).not.toHaveBeenCalled();
+  });
+});
+
+describe("processStripeEvent retired mini-app payments", () => {
+  const legacyMetadata = [
+    {
+      source: "miniapp_app",
+      app_id: "app-1",
+      charge_request_id: "cr-1",
+      type: "app_credit_purchase",
+    },
+    { type: "app_credit_purchase", app_id: "app-1" },
+    { purchase_source: "miniapp_app", app_id: "app-1" },
+    { charge_request_id: "cr-2" },
+  ];
+
+  test("acks legacy payment_intent.succeeded without crediting the org", async () => {
+    for (const legacy of legacyMetadata) {
+      expect(
+        await processStripeEvent(
+          delivery("payment_intent.succeeded", {
+            id: "pi_retired_miniapp",
+            invoice: null,
+            amount: 500,
+            amount_received: 500,
+            currency: "usd",
+            metadata: {
+              organization_id: "org-1",
+              user_id: "user-1",
+              credits: "5.00",
+              amount: "5.00",
+              ...legacy,
+            },
+          }),
+        ),
+      ).toBe("ack");
+    }
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
+    expect(createInvoice).not.toHaveBeenCalled();
+    expect(logWarning).toHaveBeenCalledTimes(legacyMetadata.length);
+    expect(logWarning.mock.calls[0]?.[0].context).toMatchObject({
+      code: "retired_miniapp_payment",
+      eventType: "payment_intent.succeeded",
+      objectId: "pi_retired_miniapp",
       appId: "app-1",
       chargeRequestId: "cr-1",
-      status: "failed",
-      provider: "stripe",
-      providerPaymentId: "pi_app_failed",
-      amountUsd: 1.99,
-      payerUserId: "user-1",
-      payerOrganizationId: "org-1",
-      reason: "Your card was declined.",
-      metadata: { stripe_payment_intent_status: "requires_payment_method" },
     });
   });
 
-  test("falls back to the error code then a default reason", async () => {
-    expect(
-      await processStripeEvent(
-        delivery("payment_intent.payment_failed", {
-          id: "pi_code_only",
-          invoice: null,
-          status: "requires_payment_method",
-          amount: 100,
-          metadata: {
-            source: "miniapp_app",
-            app_id: "app-1",
-            charge_request_id: "cr-2",
-          },
-          last_payment_error: { code: "card_declined" },
-        }),
-      ),
-    ).toBe("ack");
-    expect(failChargeAndEnqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ reason: "card_declined", amountUsd: 1 }),
-    );
+  test("acks legacy checkout.session.completed without crediting the org", async () => {
+    for (const legacy of legacyMetadata) {
+      expect(
+        await processStripeEvent(
+          delivery("checkout.session.completed", {
+            id: "cs_retired_miniapp",
+            mode: "payment",
+            payment_status: "paid",
+            payment_intent: "pi_retired_miniapp",
+            amount_total: 500,
+            currency: "usd",
+            customer: "cus_1",
+            metadata: {
+              organization_id: "org-1",
+              user_id: "user-1",
+              credits: "5.00",
+              amount: "5.00",
+              ...legacy,
+            },
+          }),
+        ),
+      ).toBe("ack");
+    }
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
+    expect(createInvoice).not.toHaveBeenCalled();
+    expect(logWarning).toHaveBeenCalledTimes(legacyMetadata.length);
+  });
 
-    failChargeAndEnqueue.mockClear();
+  test("still acks when the ops warning channel fails", async () => {
+    logWarning.mockImplementationOnce(async () => {
+      throw new Error("discord down");
+    });
     expect(
       await processStripeEvent(
-        delivery("payment_intent.payment_failed", {
-          id: "pi_no_error",
+        delivery("payment_intent.succeeded", {
+          id: "pi_retired_ops_down",
           invoice: null,
-          status: "requires_payment_method",
+          amount: 500,
+          amount_received: 500,
+          currency: "usd",
           metadata: {
+            organization_id: "org-1",
+            credits: "5.00",
+            type: "app_credit_purchase",
             source: "miniapp_app",
             app_id: "app-1",
-            charge_request_id: "cr-3",
           },
         }),
       ),
     ).toBe("ack");
-    expect(failChargeAndEnqueue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        reason: "Payment failed",
-        amountUsd: undefined,
-      }),
-    );
+    expect(addCredits).not.toHaveBeenCalled();
+  });
+
+  test("an app_id alone (payment requests) is not a retired mini-app marker", async () => {
+    expect(
+      await processStripeEvent(
+        delivery("payment_intent.succeeded", {
+          id: "pi_one_time_app",
+          invoice: null,
+          amount: 500,
+          amount_received: 500,
+          currency: "usd",
+          metadata: {
+            organization_id: "org-1",
+            credits: "5.00",
+            type: "one_time",
+            app_id: "app-1",
+          },
+        }),
+      ),
+    ).toBe("ack");
+    expect(addCredits).toHaveBeenCalledTimes(1);
+    expect(logWarning).not.toHaveBeenCalled();
   });
 });
 
@@ -699,6 +812,32 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
     expect(refundCredits).not.toHaveBeenCalled();
   });
 
+  test("a closed dispute never changes credits or billing holds", async () => {
+    getTransactionByStripePaymentIntent.mockResolvedValue({
+      id: "tx-clawback",
+      organization_id: "org-1",
+      amount: "-45",
+      type: "clawback",
+    });
+    for (const status of ["lost", "won"]) {
+      expect(
+        await processStripeEvent(
+          delivery("charge.dispute.closed", {
+            id: `dp_${status}`,
+            status,
+            amount: 4500,
+            charge: "ch_1",
+            payment_intent: "pi_1",
+          }),
+        ),
+      ).toBe("ack");
+    }
+    expect(clawbackCredits).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
+    expect(releaseShortfallHoldForReinstatement).not.toHaveBeenCalled();
+    expect(settleOutstandingShortfalls).not.toHaveBeenCalled();
+  });
+
   test("acks a lookup whose error message is a permanent 'not found'", async () => {
     getTransactionByStripePaymentIntent.mockRejectedValueOnce(
       new Error("organization not found"),
@@ -781,12 +920,8 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
 });
 
 describe("recurring event retention", () => {
-  test("retains subscription lifecycle and invoice deliveries across retries without granting purchased credits", async () => {
-    const events = [
-      delivery("customer.subscription.created", {
-        id: "sub_first",
-        status: "trialing",
-      }),
+  test("retries failed lifecycle owners and acknowledges unowned recurring deliveries without granting purchased credits", async () => {
+    const owned = [
       delivery("customer.subscription.updated", {
         id: "sub_first",
         status: "active",
@@ -800,6 +935,17 @@ describe("recurring event retention", () => {
         subscription: "sub_first",
         amount_paid: 0,
       }),
+    ];
+    for (const event of owned) {
+      expect(await processStripeEvent(event)).toBe("retry");
+      expect(await processStripeEvent({ ...event, attempts: 8 })).toBe("retry");
+    }
+    const unowned = [
+      delivery("customer.subscription.created", {
+        id: "sub_first",
+        status: "trialing",
+      }),
+      // The pinned-client invoice has no subscription: nothing owns it.
       delivery("invoice.payment_failed", {
         id: "in_failed",
         subscription: { id: "sub_first" },
@@ -820,22 +966,38 @@ describe("recurring event retention", () => {
         subscription: "sub_first",
       }),
     ];
-    for (const event of events.reverse()) {
-      expect(await processStripeEvent(event)).toBe("retry");
-      expect(await processStripeEvent({ ...event, attempts: 8 })).toBe("retry");
-    }
+    for (const event of unowned)
+      expect(await processStripeEvent(event)).toBe("ack");
     expect(addCredits).not.toHaveBeenCalled();
     expect(createInvoice).not.toHaveBeenCalled();
     expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
   });
 
+  test("routes subscription updates on live status and branches on typed lifecycle failures", async () => {
+    const update = delivery("customer.subscription.updated", {
+      id: "sub_live",
+      status: "past_due",
+    });
+    scheduledLifecycleFailure = new ElizaError("unknown", {
+      code: "SUBSCRIPTION_LIFECYCLE_REOBSERVE",
+      context: { reason: "unknown_subscription" },
+    });
+    expect(await processStripeEvent(update)).toBe("ack");
+    expect(retrieveSubscription).toHaveBeenCalledWith("sub_live");
+    scheduledLifecycleFailure = new ElizaError("lease", {
+      code: "SUBSCRIPTION_LIFECYCLE_REOBSERVE",
+      context: { reason: "receipt_lease_unavailable" },
+    });
+    expect(await processStripeEvent(update)).toBe("retry");
+  });
+
   test("isolates paid and abandoned subscription checkout even with legacy credit metadata", async () => {
     for (const payment_status of ["paid", "unpaid", "no_payment_required"]) {
-      for (const type of [
-        "checkout.session.completed",
-        "checkout.session.expired",
-        "checkout.session.async_payment_failed",
-      ]) {
+      for (const [type, result] of [
+        ["checkout.session.completed", "retry"],
+        ["checkout.session.expired", "ack"],
+        ["checkout.session.async_payment_failed", "ack"],
+      ] as const) {
         expect(
           await processStripeEvent(
             delivery(type, {
@@ -850,7 +1012,7 @@ describe("recurring event retention", () => {
               },
             }),
           ),
-        ).toBe("retry");
+        ).toBe(result);
       }
     }
     expect(addCredits).not.toHaveBeenCalled();
@@ -872,7 +1034,7 @@ describe("recurring event retention", () => {
   });
 });
 
-test("the real queue retains the full recurring delivery in DLQ after its retry budget", async () => {
+test("the real queue backs off across drains and dead-letters the full delivery once", async () => {
   queueLists.clear();
   const input = delivery("invoice.paid", {
     id: "in_retained",
@@ -883,29 +1045,62 @@ test("the real queue retains the full recurring delivery in DLQ after its retry 
     },
   });
   await enqueue("stripe-events", input.body);
-  const stats = await drain("stripe-events", processStripeEvent, {
-    max: 5,
-    maxAttempts: 5,
-  });
-  expect(stats).toEqual({
-    attempted: 5,
+  const deadLetters: unknown[] = [];
+  const options = {
+    max: 25,
+    maxAttempts: 3,
+    onDeadLetter: async (envelope: unknown) => {
+      deadLetters.push(envelope);
+    },
+  };
+  // One drain handles a retried message once, however large its batch.
+  expect(await drain("stripe-events", processStripeEvent, options)).toEqual({
+    attempted: 1,
     acked: 0,
-    retried: 4,
-    dlqed: 1,
+    retried: 1,
+    dlqed: 0,
     failed: 0,
+    deferred: 0,
   });
+  // The next tick defers it until its backoff elapses.
+  expect(await drain("stripe-events", processStripeEvent, options)).toEqual({
+    attempted: 0,
+    acked: 0,
+    retried: 0,
+    dlqed: 0,
+    failed: 0,
+    deferred: 1,
+  });
+  const [waiting] = queueLists.get("stripe-events") ?? [];
+  if (!waiting) throw new Error("Retried delivery was not requeued");
+  expect(JSON.parse(waiting).notBefore).toBeGreaterThan(Date.now() + 50_000);
+  // Elapse the backoff, then retry with no further delay.
+  queueLists.set("stripe-events", [
+    JSON.stringify({ ...JSON.parse(waiting), notBefore: 0 }),
+  ]);
+  const elapsed = { ...options, retryBaseDelayMs: 0 };
+  expect(
+    (await drain("stripe-events", processStripeEvent, elapsed)).retried,
+  ).toBe(1);
+  expect(
+    (await drain("stripe-events", processStripeEvent, elapsed)).dlqed,
+  ).toBe(1);
   expect(queueLists.get("stripe-events")).toEqual([]);
   const retained = queueLists.get("stripe-events:dlq");
   expect(retained).toHaveLength(1);
   if (!retained?.[0]) throw new Error("Recurring event was not retained");
-  expect(JSON.parse(retained[0])).toMatchObject({
+  expect(JSON.parse(retained[0])).toEqual({
     body: input.body,
-    attempts: 5,
+    attempts: 3,
+    enqueuedAt: expect.any(Number),
   });
+  expect(deadLetters).toEqual([
+    { body: input.body, attempts: 3, enqueuedAt: expect.any(Number) },
+  ]);
   expect(addCredits).not.toHaveBeenCalled();
 });
 
-test("retains invoice refunds and disputes without touching purchased-credit reversals", async () => {
+test("acknowledges subscription invoice refunds and disputes with an incident, never purchased-credit reversals", async () => {
   expect(
     await processStripeEvent(
       delivery("charge.refunded", {
@@ -915,7 +1110,7 @@ test("retains invoice refunds and disputes without touching purchased-credit rev
         amount_refunded: 9900,
       }),
     ),
-  ).toBe("retry");
+  ).toBe("ack");
   retrieveCharge.mockResolvedValue({
     id: "ch_invoice",
     invoice: "in_recurring",
@@ -933,8 +1128,18 @@ test("retains invoice refunds and disputes without touching purchased-credit rev
           amount: 9900,
         }),
       ),
-    ).toBe("retry");
+    ).toBe("ack");
   }
+  expect(
+    openSubscriptionEventIncident.mock.calls.map(([input]) => [
+      input.eventType,
+      input.reason,
+    ]),
+  ).toEqual([
+    ["charge.refunded", "subscription_invoice_refunded"],
+    ["charge.dispute.funds_withdrawn", "subscription_invoice_disputed"],
+    ["charge.dispute.funds_reinstated", "subscription_invoice_disputed"],
+  ]);
   expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
   expect(clawbackCredits).not.toHaveBeenCalled();
   expect(refundCredits).not.toHaveBeenCalled();
@@ -1010,7 +1215,6 @@ test("retains Basil payment and refund deliveries without an invoice field", asy
   expect(addCredits).not.toHaveBeenCalled();
   expect(clawbackCredits).not.toHaveBeenCalled();
   expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
-  expect(failChargeAndEnqueue).not.toHaveBeenCalled();
 });
 
 test("retains missing or undefined linkage even on an Acacia delivery", async () => {

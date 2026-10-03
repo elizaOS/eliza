@@ -14,22 +14,24 @@
  * audit rows through the LifeOps repository.
  */
 
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  CreateLifeOpsCalendarEventResponse,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsNextCalendarEventContext,
-  ListLifeOpsCalendarsRequest,
-  SetLifeOpsCalendarIncludedRequest,
-  SetLifeOpsCalendarIncludedResponse,
-} from "@elizaos/shared";
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type CreateLifeOpsCalendarEventResponse,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsCalendarSummary,
+  type LifeOpsNextCalendarEventContext,
+  type ListLifeOpsCalendarsRequest,
+  type SetLifeOpsCalendarIncludedRequest,
+  type SetLifeOpsCalendarIncludedResponse,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+} from "@elizaos/core/contracts/personal-assistant";
 
 export interface LifeOpsCalendarService {
   listCalendars(

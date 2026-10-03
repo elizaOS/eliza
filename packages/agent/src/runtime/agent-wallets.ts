@@ -18,14 +18,14 @@
  * up — see `runtime/eliza.ts`.
  */
 
-import { logger } from "@elizaos/core";
-import type { WalletChain } from "@elizaos/shared";
 import {
   removeEntryMeta,
   setEntryMeta,
   type Vault,
   VaultDecryptionError,
-} from "@elizaos/vault";
+} from "@elizaos/auth/vault";
+import { logger, type WalletChain } from "@elizaos/core";
+
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
 import { teeBootGateBlocksSecrets } from "../services/tee-boot-gate-state.ts";
 

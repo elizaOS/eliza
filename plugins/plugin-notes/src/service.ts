@@ -1,3 +1,4 @@
+import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
  * the durable per-agent document; HTTP routes and view capabilities call this
@@ -5,8 +6,9 @@
  * identical across every entry point.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { CalendarNoteSourceReference } from "@elizaos/core/contracts/calendar";
 import { NotesStore } from "./store.js";
 import type {
   NotesSnapshot,
@@ -17,6 +19,9 @@ import type {
 import {
   parseCreateNoteInput,
   parseEntityId,
+  parseNoteContent,
+  parseNoteEditRevision,
+  parseStickyNote,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -76,7 +81,7 @@ function queryMatches(
   );
   if (exactTitle.length > 0) return exactTitle;
   const contained = indexed.filter(({ note }) =>
-    normalizedLookup(`${note.title} ${note.body} ${note.color}`).includes(
+    normalizedLookup(`${reconstructNoteContent(note)} ${note.color}`).includes(
       target,
     ),
   );
@@ -174,14 +179,72 @@ function resolveNoteIndex(
   return candidate.index;
 }
 
+function assertEditRevision(
+  current: number,
+  expected: number | undefined,
+): void {
+  if (expected !== undefined && current !== expected)
+    throw new ElizaError(
+      "The notes changed since this edit was prepared. Read the note again and reconcile the requested edit; nothing changed.",
+      {
+        code: "NOTES_EDIT_CONFLICT",
+        context: { expectedRevision: expected, currentRevision: current },
+        severity: "ephemeral",
+      },
+    );
+}
+
 function applyNotePatch(
   existing: StickyNote,
   patch: UpdateNoteInput,
   updatedAt: string,
 ): StickyNote {
   const updated: StickyNote = { ...existing, updatedAt };
-  if (patch.title !== undefined) updated.title = patch.title;
-  if (patch.body !== undefined) updated.body = patch.body;
+  if (patch.textEdit) {
+    const { field, oldText, newText } = patch.textEdit;
+    const original = existing[field];
+    const first = original.indexOf(oldText);
+    const ambiguous = first >= 0 && original.indexOf(oldText, first + 1) >= 0;
+    if (first < 0 || ambiguous) {
+      throw new ElizaError(
+        first < 0
+          ? "The exact old text is absent from the current note; read it before choosing another edit. Nothing changed."
+          : "The old text matches more than once; include enough surrounding text to identify one occurrence. Nothing changed.",
+        {
+          code:
+            first < 0
+              ? "NOTES_EDIT_TEXT_NOT_FOUND"
+              : "NOTES_EDIT_TEXT_AMBIGUOUS",
+          context: { noteId: existing.id, field },
+          severity: "ephemeral",
+        },
+      );
+    }
+    // A replacement callback keeps $&, $1 and similar text literal. The
+    // match is checked under the same store barrier that commits the update.
+    const replacement = original.replace(oldText, () => newText);
+    const validated = parseStickyNote({ ...updated, [field]: replacement });
+    if (validated[field] !== replacement) {
+      throw new ElizaError(
+        "The exact edit would require whitespace normalization; nothing changed.",
+        {
+          code: "NOTES_EDIT_NORMALIZATION_REQUIRED",
+          context: { noteId: existing.id, field },
+          severity: "ephemeral",
+        },
+      );
+    }
+    updated[field] = replacement;
+    return updated;
+  }
+  if (patch.content !== undefined) {
+    Object.assign(updated, parseNoteContent(patch.content));
+  } else {
+    if (patch.title !== undefined) updated.title = patch.title;
+    // Public structured bodies exclude the separator; stored remainders include it.
+    if (patch.body !== undefined)
+      updated.body = patch.body ? `\n${patch.body}` : "";
+  }
   if (patch.color !== undefined) updated.color = patch.color;
   return updated;
 }
@@ -256,15 +319,79 @@ export class NotesService extends Service {
     return this.snapshot().notes;
   }
 
-  getNote(idValue: unknown): StickyNote {
+  getNote(
+    idValue: unknown,
+    snapshot: NotesSnapshot = this.snapshot(),
+  ): StickyNote {
     const id = parseEntityId(idValue);
-    const note = this.snapshot().notes.find((candidate) => candidate.id === id);
+    const note = snapshot.notes.find((candidate) => candidate.id === id);
     if (!note) throw notFound(id);
     return note;
   }
 
-  getNoteByLookup(selector: NoteLookupSelector, value: string): StickyNote {
-    const notes = this.snapshot().notes;
+  sourceReference(note: StickyNote): CalendarNoteSourceReference {
+    if (!this.eventRuntime) {
+      throw new ElizaError(
+        "Notes source references require an agent identity.",
+        {
+          code: "NOTES_SOURCE_UNAVAILABLE",
+        },
+      );
+    }
+    const agentId = String(this.eventRuntime.agentId);
+    return {
+      agentId,
+      noteId: note.id,
+      contentHash: createHash("sha256")
+        .update(JSON.stringify([agentId, note.id, note.title, note.body]))
+        .digest("hex"),
+    };
+  }
+
+  /** Wait for pending Notes writes before checking the exact source bytes. */
+  async assertSourceReference(
+    reference: CalendarNoteSourceReference,
+  ): Promise<void> {
+    let snapshot: NotesSnapshot;
+    try {
+      snapshot = await this.store.persistedSnapshot();
+    } catch (error) {
+      // error-policy:J2 Unreadable source storage cannot authorize calendar dispatch.
+      throw new ElizaError(
+        "The source note could not be read. Restore Notes access and review the calendar draft.",
+        {
+          code: "CALENDAR_NOTE_SOURCE_CONFLICT",
+          cause: error,
+          severity: "ephemeral",
+        },
+      );
+    }
+    const note = snapshot.notes.find(
+      (candidate) => candidate.id === reference.noteId,
+    );
+    if (
+      !note ||
+      !this.eventRuntime ||
+      reference.agentId !== String(this.eventRuntime.agentId) ||
+      this.sourceReference(note).contentHash !== reference.contentHash
+    ) {
+      throw new ElizaError(
+        "The source note changed or is unavailable. Read it again and reconcile the calendar draft before creating the event.",
+        {
+          code: "CALENDAR_NOTE_SOURCE_CONFLICT",
+          severity: "ephemeral",
+          context: { noteId: reference.noteId },
+        },
+      );
+    }
+  }
+
+  getNoteByLookup(
+    selector: NoteLookupSelector,
+    value: string,
+    snapshot: NotesSnapshot = this.snapshot(),
+  ): StickyNote {
+    const notes = snapshot.notes;
     const note = notes[resolveNoteIndex(notes, selector, value)];
     if (!note) {
       throw new ElizaError("Resolved sticky note was missing.", {
@@ -278,6 +405,15 @@ export class NotesService extends Service {
   findNotesByQuery(value: string): StickyNote[] {
     const notes = this.snapshot().notes;
     return queryMatches(notes, value).map(({ note }) => note);
+  }
+
+  findNotesNamedInText(
+    text: string,
+    snapshot: NotesSnapshot = this.snapshot(),
+  ): StickyNote[] {
+    return snapshot.notes.filter((note) =>
+      titleAppearsAsNamedPhrase(text, note.title),
+    );
   }
 
   async createNoteWithCommit(inputValue: unknown): Promise<{
@@ -339,6 +475,7 @@ export class NotesService extends Service {
   async updateNoteWithCommit(
     idValue: unknown,
     patchValue: unknown,
+    expectedRevision?: unknown,
   ): Promise<{
     value: StickyNote;
     snapshot: NotesSnapshot;
@@ -346,9 +483,11 @@ export class NotesService extends Service {
   }> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
+    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
     const updatedAt = this.now().toISOString();
     let consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
+      assertEditRevision(draft.revision, revision);
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
@@ -380,14 +519,21 @@ export class NotesService extends Service {
     };
   }
 
-  async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
-    return (await this.updateNoteWithCommit(idValue, patchValue)).value;
+  async updateNote(
+    idValue: unknown,
+    patchValue: unknown,
+    expectedRevision?: unknown,
+  ): Promise<StickyNote> {
+    return (
+      await this.updateNoteWithCommit(idValue, patchValue, expectedRevision)
+    ).value;
   }
 
   async updateNoteByLookupWithCommit(
     selector: NoteLookupSelector,
     value: string,
     patchValue: unknown,
+    expectedRevision?: unknown,
   ): Promise<{
     value: StickyNote;
     snapshot: NotesSnapshot;
@@ -395,9 +541,11 @@ export class NotesService extends Service {
     consolidatedIds: string[];
   }> {
     const patch = parseUpdateNoteInput(patchValue);
+    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
     const updatedAt = this.now().toISOString();
     const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
+      assertEditRevision(draft.revision, revision);
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
       if (!existing) {

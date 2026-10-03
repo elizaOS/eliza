@@ -177,10 +177,16 @@ export async function settleStoppedAgentComputeInTransaction(
   const meteredMicros = moneyToMicros(meter.amount.toFixed(6), "meteredAmount");
   // Failed activation does not earn an activation minimum. Successful runtime
   // retains its once-per-activation remainder across hourly reservations.
+  // A short confirmed running interval can round below one microdollar.
+  // Its meter state still proves runtime for the accepted activation minimum.
+  const hadRunningInterval = meter.segments.some(
+    (segment) =>
+      segment.state === "running" && moneyToMicros(segment.ratePerHour, "ratePerHour") > 0n,
+  );
   const minimumMicros =
     window.runtime_ready_at &&
     cutoff > window.period_start &&
-    (receipt.startedAtMs || meteredMicros > 0n)
+    (receipt.startedAtMs || hadRunningInterval)
       ? moneyToMicros(window.minimum_charge_remaining, "minimumChargeRemaining")
       : 0n;
   const actualMicros = meteredMicros > minimumMicros ? meteredMicros : minimumMicros;

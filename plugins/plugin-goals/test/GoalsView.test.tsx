@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-
 /**
  * GoalsView is the GUI data wrapper over the read-only goals endpoint
  * served by the personal-assistant routes:
@@ -15,7 +14,7 @@
  *
  * External-API contract: the wire shape is mirrored verbatim from the PA
  * `/api/lifeops/goals` response (LifeOpsGoalRecord = { goal, links } from
- * @elizaos/shared); the fixtures below match that shape field-for-field.
+ * @elizaos/core); the fixtures below match that shape field-for-field.
  */
 
 import {
@@ -26,6 +25,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  type GoalsFetchers,
+  GoalsView,
+} from "../src/components/goals/GoalsView.tsx";
 
 // `@elizaos/ui` is the giant renderer barrel; GoalsView only touches
 // `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
@@ -37,16 +40,9 @@ vi.mock("@elizaos/ui/api", () => ({
     sendChatMessage,
   },
 }));
-
-import {
-  type GoalsFetchers,
-  GoalsView,
-} from "../src/components/goals/GoalsView.tsx";
-
 // ---------------------------------------------------------------------------
 // Wire fixtures — mirror { goals: LifeOpsGoalRecord[] } exactly.
 // ---------------------------------------------------------------------------
-
 function goalRecord(
   overrides: {
     id?: string;
@@ -100,26 +96,22 @@ function goalRecord(
     })),
   };
 }
-
 function makeFetchers(overrides: Partial<GoalsFetchers> = {}): GoalsFetchers {
   return {
     fetchGoals: async () => ({ goals: [goalRecord()] }),
     ...overrides,
   };
 }
-
 function agent(agentId: string): HTMLElement {
   const el = document.querySelector(`[data-agent-id="${agentId}"]`);
   if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
   return el as HTMLElement;
 }
-
 function queryAgent(agentId: string): HTMLElement | null {
   return document.querySelector(
     `[data-agent-id="${agentId}"]`,
   ) as HTMLElement | null;
 }
-
 async function selectStatus(label: string): Promise<void> {
   const option = await screen.findByRole<HTMLOptionElement>("option", {
     name: label,
@@ -128,19 +120,16 @@ async function selectStatus(label: string): Promise<void> {
     target: { value: option.value },
   });
 }
-
 afterEach(() => {
   cleanup();
   sendChatMessage.mockClear();
 });
-
 describe("GoalsView — spatial GUI wrapper", () => {
   it("shows the loading line while the first fetch is in flight", () => {
     const never = new Promise<never>(() => {});
     render(<GoalsView fetchers={makeFetchers({ fetchGoals: () => never })} />);
     expect(screen.getByText("Loading goals")).toBeTruthy();
   });
-
   it("renders the populated list grouped by status with real fields", async () => {
     render(
       <GoalsView
@@ -176,7 +165,6 @@ describe("GoalsView — spatial GUI wrapper", () => {
     // The compact status filter is addressable by the agent surface.
     expect(agent("goal-status-filter")).toBeTruthy();
   });
-
   it("shows the empty state when zero goals exist (no fabricated goals)", async () => {
     render(
       <GoalsView
@@ -191,7 +179,6 @@ describe("GoalsView — spatial GUI wrapper", () => {
     });
     expect(queryAgent("filter:active")).toBeNull();
   });
-
   it("routes the set-a-goal affordance through the assistant chat", async () => {
     render(
       <GoalsView
@@ -207,7 +194,6 @@ describe("GoalsView — spatial GUI wrapper", () => {
     fireEvent.click(agent("new"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
-
   it("shows the error state with a Retry that refetches into the populated list", async () => {
     let attempt = 0;
     const fetchGoals = async () => {
@@ -221,7 +207,6 @@ describe("GoalsView — spatial GUI wrapper", () => {
     fireEvent.click(agent("retry"));
     await screen.findByText("Run a half marathon");
   });
-
   it("quietly refetches on the background poll (no manual refresh control)", async () => {
     let calls = 0;
     const fetchGoals = async () => {
@@ -235,7 +220,6 @@ describe("GoalsView — spatial GUI wrapper", () => {
         expect(screen.getByText("pass 1")).toBeTruthy();
       });
       expect(calls).toBe(1);
-
       // One poll tick → exactly one more silent refetch, no loading flash.
       await vi.advanceTimersByTimeAsync(20000);
       expect(calls).toBe(2);
@@ -247,7 +231,6 @@ describe("GoalsView — spatial GUI wrapper", () => {
       vi.useRealTimers();
     }
   });
-
   it("narrows the visible groups when a status filter chip is toggled", async () => {
     render(
       <GoalsView
@@ -267,7 +250,6 @@ describe("GoalsView — spatial GUI wrapper", () => {
     );
     await screen.findByText("Run a half marathon");
     expect(screen.getByText("Learn Spanish")).toBeTruthy();
-
     // Select "Paused": only the paused group should remain.
     await selectStatus("Paused");
     await waitFor(() =>

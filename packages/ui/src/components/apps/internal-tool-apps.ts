@@ -165,7 +165,7 @@ const INTERNAL_TOOL_VIEW_DECLARATIONS: readonly InternalToolViewDeclaration[] =
       pinnable: true,
     },
     {
-      name: "@elizaos/plugin-task-coordinator",
+      name: "@elizaos/plugin-agent-orchestrator",
       displayName: "Automations",
       description:
         "Create, inspect, and manage workflows, triggers, and scheduled items.",

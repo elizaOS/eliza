@@ -5,10 +5,10 @@
 
 import {
   describeCalls,
+  scenario,
   successfulActionData,
   toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 
 const MAPS_SHARE = "MAPS_SHARE";
 const LATITUDE = 37.7749;

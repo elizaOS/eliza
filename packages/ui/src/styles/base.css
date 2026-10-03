@@ -20,6 +20,10 @@
   --brand-blue: rgba(0, 0, 0, 0.6);
   /* Retained for wallpaper/content assets; routine product chrome is neutral. */
   --brand-orange: #ff6a1f;
+  --accent-action: var(--brand-orange);
+  --accent-action-foreground: #000000;
+  --accent-action-hover: #c2410c;
+  --accent-action-hover-foreground: #ffffff;
   /* True black canvas. A warm-tinted near-black (#140c07) was tried here and
      read as brown on OLED at device brightness (owner-reverted 2026-07-07).
      Warmth belongs in accents/gradients, never the base surface token. */

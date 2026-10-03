@@ -1,6 +1,6 @@
-// Wires hosted Eliza agent settings behavior for cloud runtime services.
+/** Builds hosted runtime settings with a shared embedding model and database width. */
 import { createHash } from "node:crypto";
-import type { AgentRuntime, Character } from "@elizaos/core";
+import { type AgentRuntime, type Character, ElizaError } from "@elizaos/core";
 import { getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";
 import { DEFAULT_IMAGE_MODEL } from "../../models";
 import { buildElevenLabsSettings, getDefaultModels, getElizaCloudApiUrl } from "../config";
@@ -73,6 +73,31 @@ export function buildRuntimeSettings(context: UserContext): Record<string, strin
   );
 }
 
+/** Resolve once by the same precedence for provider settings, adapter setup, and cache metadata. */
+export function resolveHostedEmbeddingModel(character: Character): string {
+  for (const key of ["OPENAI_EMBEDDING_MODEL", "ELIZAOS_CLOUD_EMBEDDING_MODEL"] as const) {
+    const value = character.settings?.[key];
+    if (value === undefined || value === null || value === "") continue;
+    if (typeof value !== "string" || !value.trim()) {
+      throw new ElizaError("Configure the embedding model as a non-empty model identifier", {
+        code: "EMBEDDING_PROVIDER_CONFIGURATION_INVALID",
+        context: { setting: key },
+      });
+    }
+    return value.trim();
+  }
+  const model = getDefaultModels().embedding.trim();
+  if (!model) {
+    throw new ElizaError(
+      "Configure ELIZAOS_CLOUD_EMBEDDING_MODEL as a non-empty model identifier",
+      {
+        code: "EMBEDDING_PROVIDER_CONFIGURATION_INVALID",
+      },
+    );
+  }
+  return model;
+}
+
 export function buildSettings(
   character: Character,
   context: UserContext,
@@ -91,15 +116,14 @@ export function buildSettings(
   const getSetting = (key: string, fallback: string) =>
     (charSettings[key] as string) || process.env[key] || fallback;
 
-  const embeddingModel =
-    (charSettings.OPENAI_EMBEDDING_MODEL as string) ||
-    (charSettings.ELIZAOS_CLOUD_EMBEDDING_MODEL as string);
+  const embeddingModel = resolveHostedEmbeddingModel(character);
   const embeddingDimension = getStaticEmbeddingDimension(embeddingModel);
 
   const settings = {
     ...charSettings,
     POSTGRES_URL: process.env.DATABASE_URL!,
     DATABASE_URL: process.env.DATABASE_URL!,
+    ELIZAOS_CLOUD_EMBEDDING_MODEL: embeddingModel,
     EMBEDDING_DIMENSION: String(embeddingDimension),
     ELIZAOS_CLOUD_BASE_URL: getElizaCloudApiUrl(),
     ELIZAOS_CLOUD_NANO_MODEL:

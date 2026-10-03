@@ -15,6 +15,101 @@ import {
 
 const ENTRIES_KEY = "__eliza_record_entries";
 
+describe("native provider tool-call boundary", () => {
+  it("restores strict optional placeholders inside arrays without erasing meaningful nulls", () => {
+    const normalized = normalizeNativeToolsForCall([
+      {
+        name: "PATCH",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          required: ["rows"],
+          properties: {
+            rows: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["required"],
+                properties: {
+                  optional: { type: "string" },
+                  nullable: { anyOf: [{ type: "string" }, { type: "null" }] },
+                  required: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+    const input = {
+      rows: [
+        { optional: null, nullable: null, required: null },
+        { optional: "retained", nullable: "retained", required: "present" },
+      ],
+    };
+    const restored = restoreRecordArgToolCalls(
+      [{ toolCallId: "optional-1", toolName: "PATCH", input }],
+      normalized.recordArgTransformsByTool
+    );
+    expect(restored?.[0].arguments).toEqual({
+      rows: [
+        { nullable: null, required: null },
+        { optional: "retained", nullable: "retained", required: "present" },
+      ],
+    });
+    expect(input.rows[0]).toHaveProperty("optional", null);
+    const rows = propOf(schemaOf(normalized.tools, "PATCH"), "rows");
+    expect(propOf(rows.items as Record<string, unknown>, "optional")).toEqual({
+      anyOf: [{ type: "string" }, { type: "null" }],
+    });
+  });
+
+  it.each([
+    { calls: null },
+    { calls: [null] },
+    { calls: [{ toolName: "LOOKUP", input: {} }] },
+    { calls: [{ toolCallId: "call-1", input: {} }] },
+    { calls: [{ toolCallId: "call-1", toolName: "LOOKUP", input: 42 }] },
+  ])("rejects malformed results without fabricating call identity", ({ calls }) => {
+    expect(() => restoreRecordArgToolCalls(calls, {})).toThrow(TypeError);
+  });
+
+  it("rejects SDK-invalid calls and preserves their validation error", () => {
+    const error = new Error("SDK schema validation failed");
+    expect(() =>
+      restoreRecordArgToolCalls(
+        [
+          {
+            toolCallId: "rejected-1",
+            toolName: "LOOKUP",
+            input: {},
+            invalid: true,
+            error,
+          },
+        ],
+        {}
+      )
+    ).toThrow(expect.objectContaining({ cause: error }));
+  });
+
+  it("converts protocol JSON arguments without dropping nested values", () => {
+    const argumentsValue = { query: "complete λ雪", nested: { values: [0, false, null] } };
+    expect(
+      restoreRecordArgToolCalls(
+        [
+          {
+            id: "wire-1",
+            type: "function",
+            function: { name: "LOOKUP", arguments: JSON.stringify(argumentsValue) },
+          },
+        ],
+        {}
+      )
+    ).toEqual([{ id: "wire-1", name: "LOOKUP", arguments: argumentsValue }]);
+  });
+});
+
 /** Read the closed schema back out of the AI SDK `jsonSchema()` wrapper. */
 function schemaOf(toolSet: unknown, name: string): Record<string, unknown> {
   const entry = (toolSet as Record<string, { inputSchema: { jsonSchema: unknown } }>)[name];
@@ -139,8 +234,9 @@ describe("#13111 strict-safe record/map tool args", () => {
       restoreRecordArgToolCalls(
         [
           {
-            toolName: "save_contact",
-            input: {
+            id: "call-test",
+            name: "save_contact",
+            arguments: {
               attributes: {
                 [ENTRIES_KEY]: [
                   { key: "nickname", value: "ally" },
@@ -158,8 +254,9 @@ describe("#13111 strict-safe record/map tool args", () => {
       )
     ).toEqual([
       {
-        toolName: "save_contact",
-        input: {
+        id: "call-test",
+        name: "save_contact",
+        arguments: {
           attributes: {
             nickname: "ally",
             score: 42,
@@ -194,8 +291,9 @@ describe("#13111 strict-safe record/map tool args", () => {
       restoreRecordArgToolCalls(
         [
           {
-            toolName: "save_batches",
-            input: {
+            id: "call-test",
+            name: "save_batches",
+            arguments: {
               batches: [
                 { [ENTRIES_KEY]: [{ key: "a", value: "one" }] },
                 { [ENTRIES_KEY]: [{ key: "b", value: "two" }] },
@@ -207,8 +305,9 @@ describe("#13111 strict-safe record/map tool args", () => {
       )
     ).toEqual([
       {
-        toolName: "save_batches",
-        input: {
+        id: "call-test",
+        name: "save_batches",
+        arguments: {
           batches: [{ a: "one" }, { b: "two" }],
         },
       },
@@ -233,8 +332,9 @@ describe("#13111 strict-safe record/map tool args", () => {
       restoreRecordArgToolCalls(
         [
           {
-            toolName: "save_inventory",
-            input: {
+            id: "call-test",
+            name: "save_inventory",
+            arguments: {
               items: {
                 [ENTRIES_KEY]: [{ key: "sku-1", value: "in-stock" }],
               },
@@ -245,8 +345,9 @@ describe("#13111 strict-safe record/map tool args", () => {
       )
     ).toEqual([
       {
-        toolName: "save_inventory",
-        input: {
+        id: "call-test",
+        name: "save_inventory",
+        arguments: {
           items: {
             "sku-1": "in-stock",
           },

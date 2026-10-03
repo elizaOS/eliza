@@ -1,6 +1,6 @@
 // HARDWARE VERIFIED on Apple M4 Max (Metal runtime JIT): 8/8 PASS against the
 // fixture harness. Source-level verified against the QJL CPU reference at
-// packages/native-plugins/qjl-cpu/src/qjl_score_ref.c (W1-A's authoritative
+// plugins/plugin-local-inference/native/qjl-cpu/src/qjl_score_ref.c (W1-A's authoritative
 // CPU side). The block layout (`block_qjl1_256`) and score formula
 // (||k|| * sqrt(pi/2)/proj_dim * sum_j sign(j)*q_sketch[j]) are bit-identical.
 //

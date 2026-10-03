@@ -26,7 +26,7 @@ import {
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { executeRawSql } from "../db/sql.ts";
 import { goalsPlugin } from "../plugin.ts";

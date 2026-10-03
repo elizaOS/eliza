@@ -576,7 +576,7 @@ function writePhraseSection(
 
 /**
  * Write a voice preset in the v2 (additive) layout. Used by the OmniVoice
- * freeze pipeline (`freeze-voice.mjs`) and other producers that need to
+ * freeze pipeline (`freeze-voice.ts`) and other producers that need to
  * persist `refAudioTokens` / `refText` / `instruct` alongside the v1
  * embedding + phrase-seed sections.
  *

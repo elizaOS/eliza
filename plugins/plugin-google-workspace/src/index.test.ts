@@ -5,20 +5,22 @@
  * are stubbed via fake client factories and a stubbed `fetch`; no live Google
  * API is contacted.
  */
-import type {
-  ConnectorAccount,
-  ConnectorAccountPatch,
-  ConnectorAccountStorage,
-  IAgentRuntime,
+
+import {
+  type ConnectorAccount,
+  type ConnectorAccountPatch,
+  type ConnectorAccountStorage,
+  getConnectorAccountManager,
+  type IAgentRuntime,
 } from "@elizaos/core";
-import { getConnectorAccountManager } from "@elizaos/core";
-import { getConnectorAccountCatalogEntry } from "@elizaos/shared/connector-account-catalog";
+import { getConnectorAccountCatalogEntry } from "@elizaos/core/connector-account-catalog";
+import { OAuth2Client as GoogleIdTokenVerifier } from "google-auth-library";
 import { Auth } from "googleapis";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { OAuth2Client } = Auth;
 const TEST_OIDC_NONCE = "test-oidc-nonce";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
   createGoogleConnectorAccountProvider,
   DefaultGoogleCredentialResolver,
@@ -40,21 +42,17 @@ import googlePlugin, {
 function expectIncrementalGrantingDisabled(url: URL): void {
   expect(url.searchParams.get("include_granted_scopes")).toBe("false");
 }
-
 describe("google plugin", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
-
   it("registers the Google connector account provider on init", async () => {
     const runtime = {
       getService: vi.fn(() => null),
       getSetting: vi.fn(() => undefined),
     } as IAgentRuntime;
-
     await googlePlugin.init?.({}, runtime);
-
     expect(getConnectorAccountManager(runtime).getProvider("google")).toEqual(
       expect.objectContaining({
         provider: "google",
@@ -63,7 +61,6 @@ describe("google plugin", () => {
       })
     );
   });
-
   it("declares google-chat as a passive connector source", () => {
     // Core's agent-event-bridge only mints user notifications for sources the
     // registry classifies as passive; without this declaration Google Chat
@@ -76,10 +73,8 @@ describe("google plugin", () => {
       }),
     ]);
   });
-
   it("derives OAuth scopes only from selected capabilities", () => {
     const scopes = scopesForGoogleCapabilities(["gmail.read", "calendar.write", "meet.create"]);
-
     expect(scopes).toEqual([
       GOOGLE_OAUTH_SCOPES.profile.openid,
       GOOGLE_OAUTH_SCOPES.profile.email,
@@ -91,7 +86,6 @@ describe("google plugin", () => {
     expect(scopes).not.toContain(GOOGLE_OAUTH_SCOPES.drive.write);
     expect(scopes).not.toContain(GOOGLE_OAUTH_SCOPES.meet.read);
   });
-
   it("keeps provider capabilities aligned with the shared connector declaration", () => {
     expect(
       getConnectorAccountCatalogEntry("google")?.oauthCapabilities?.map(
@@ -99,12 +93,10 @@ describe("google plugin", () => {
       )
     ).toEqual(GOOGLE_CAPABILITIES);
   });
-
   it("normalizes capability input and preserves opt-in OAuth metadata without incremental grants", () => {
     const config = getGoogleOAuthProviderConfig(
       normalizeGoogleCapabilities(["drive.read", "drive.read", "meet.read", "unknown"])
     );
-
     expect(config.provider).toBe("google");
     expect(config.capabilities).toEqual(["drive.read", "meet.read"]);
     expect(config.scopes).toContain(GOOGLE_OAUTH_SCOPES.drive.read);
@@ -112,7 +104,6 @@ describe("google plugin", () => {
     expect(config.scopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.send);
     expect(config.authorizationParams.include_granted_scopes).toBe("false");
   });
-
   it("rejects unknown connector OAuth capabilities instead of widening access", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -124,7 +115,6 @@ describe("google plugin", () => {
       getService: () => null,
     } as never;
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     await expect(
       provider.startOAuth?.(
         {
@@ -144,7 +134,6 @@ describe("google plugin", () => {
       )
     ).rejects.toThrow("Google OAuth capability or scope is not recognized: google.calendar.read");
   });
-
   it("rejects identity-only connector OAuth requests with no usable capability", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -156,7 +145,6 @@ describe("google plugin", () => {
       getService: () => null,
     } as never;
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     await expect(
       provider.startOAuth?.(
         {
@@ -182,7 +170,6 @@ describe("google plugin", () => {
       "Google OAuth requires at least one Gmail, Calendar, Drive, or Meet capability."
     );
   });
-
   it.each([
     {
       label: "omitted scopes",
@@ -203,7 +190,6 @@ describe("google plugin", () => {
       getService: () => null,
     } as never;
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     await expect(
       provider.startOAuth?.(
         {
@@ -225,7 +211,6 @@ describe("google plugin", () => {
       "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection."
     );
   });
-
   it("defaults re-auth with accountId and omitted scopes to the account's recorded granted capabilities (#18543)", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -243,7 +228,6 @@ describe("google plugin", () => {
       role: "OWNER",
       metadata: { grantedCapabilities: ["gmail.read", "calendar.read"] },
     }));
-
     const result = await provider.startOAuth?.(
       {
         provider: "google",
@@ -259,7 +243,6 @@ describe("google plugin", () => {
       },
       { getAccount } as never
     );
-
     expect(getAccount).toHaveBeenCalledWith("google", "acct-reauth-1");
     const url = new URL(result?.authUrl ?? "");
     expectIncrementalGrantingDisabled(url);
@@ -284,7 +267,6 @@ describe("google plugin", () => {
     // manager persists it (result.redirectUri ?? flow.redirectUri).
     expect(result?.redirectUri).toBe("http://localhost:31437/api/connectors/google/oauth/callback");
   });
-
   it("keeps failing closed when the re-auth accountId is unknown", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -296,7 +278,6 @@ describe("google plugin", () => {
       getService: () => null,
     } as never;
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     await expect(
       provider.startOAuth?.(
         {
@@ -315,7 +296,6 @@ describe("google plugin", () => {
       )
     ).rejects.toThrow("Google OAuth cannot reauthorize a connector account that no longer exists.");
   });
-
   it("keeps failing closed when the account has no recorded granted capabilities", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -327,7 +307,6 @@ describe("google plugin", () => {
       getService: () => null,
     } as never;
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     await expect(
       provider.startOAuth?.(
         {
@@ -355,7 +334,6 @@ describe("google plugin", () => {
       "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection."
     );
   });
-
   it("lets explicit scopes win while retaining the stored reauthorization role", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -375,7 +353,6 @@ describe("google plugin", () => {
         grantedCapabilities: ["gmail.read", "gmail.send", "calendar.read", "drive.read"],
       },
     }));
-
     const result = await provider.startOAuth?.(
       {
         provider: "google",
@@ -392,7 +369,6 @@ describe("google plugin", () => {
       },
       { getAccount } as never
     );
-
     expect(getAccount).toHaveBeenCalledWith("google", "acct-reauth-2");
     expect(result?.metadata).toMatchObject({ requestedRole: "TEAM" });
     const url = new URL(result?.authUrl ?? "");
@@ -404,7 +380,6 @@ describe("google plugin", () => {
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.send);
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.drive.read);
   });
-
   it("derives a least-privilege connector OAuth URL from gmail.read and calendar.read", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -416,7 +391,6 @@ describe("google plugin", () => {
       getService: () => null,
     } as never;
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     const result = await provider.startOAuth?.(
       {
         provider: "google",
@@ -438,7 +412,6 @@ describe("google plugin", () => {
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
-
     expect(requestedScopes).toEqual(
       new Set([
         GOOGLE_OAUTH_SCOPES.profile.openid,
@@ -456,7 +429,6 @@ describe("google plugin", () => {
       requestedCapabilities: ["gmail.read", "calendar.read"],
     });
   });
-
   it("derives a least-privilege connector OAuth URL from calendar.read", async () => {
     const runtime = {
       getSetting: (key: string) =>
@@ -468,7 +440,6 @@ describe("google plugin", () => {
       getService: () => null,
     } as never;
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     const result = await provider.startOAuth?.(
       {
         provider: "google",
@@ -490,7 +461,6 @@ describe("google plugin", () => {
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
-
     expect(requestedScopes).toEqual(
       new Set([
         GOOGLE_OAUTH_SCOPES.profile.openid,
@@ -504,22 +474,18 @@ describe("google plugin", () => {
       requestedCapabilities: ["calendar.read"],
     });
   });
-
   it("keeps account auth resolution explicit", async () => {
     const service = new GoogleWorkspaceService();
     const metadata = service.getOAuthProviderMetadata();
-
     expect(metadata.provider).toBe("google");
     expect(metadata.capabilities).toContain("meet.read");
     await expect(
       service.searchMessages({ accountId: "acct_google_1", query: "from:example" })
     ).rejects.toThrow("account acct_google_1");
   });
-
   it("has a clean account-scoped Meet surface", () => {
     const service = new GoogleWorkspaceService();
     const methods = GOOGLE_MEET_API_SURFACE.map((entry) => entry.method);
-
     expect(methods).toEqual([
       "createMeeting",
       "getMeeting",
@@ -541,7 +507,6 @@ describe("google plugin", () => {
     expect("getCurrentMeeting" in service).toBe(false);
     expect(GoogleMeetStatus.WAITING).toBe("waiting");
   });
-
   it("resolves OAuth clients from connector credential refs and caches by credential version", async () => {
     const credentialUpdatedAt = new Date("2026-05-07T12:00:00.000Z").toISOString();
     const storage = createCredentialStorage({
@@ -550,7 +515,7 @@ describe("google plugin", () => {
           credentialType: "oauth.access_token",
           vaultRef: "connector.agent.google.acct_google_1.access",
           updatedAt: credentialUpdatedAt,
-          expiresAt: Date.now() + 3600_000,
+          expiresAt: Date.now() + 3600000,
         },
         {
           credentialType: "oauth.refresh_token",
@@ -573,7 +538,6 @@ describe("google plugin", () => {
       clientSecret: "google-secret",
       redirectUri: "http://localhost:31437/api/connectors/google/oauth/callback",
     });
-
     const request = {
       provider: "google" as const,
       accountId: "acct_google_1",
@@ -581,10 +545,8 @@ describe("google plugin", () => {
       scopes: scopesForGoogleCapabilities(["gmail.read"]),
       reason: "unit-test",
     };
-
     const first = await resolver.getAuthClient(request);
     const second = await resolver.getAuthClient(request);
-
     expect(first).toBeInstanceOf(OAuth2Client);
     expect(first).toBe(second);
     expect(first.credentials).toMatchObject({
@@ -594,7 +556,6 @@ describe("google plugin", () => {
     });
     expect(credentialStore.get).toHaveBeenCalledTimes(2);
   });
-
   it("resolves OAuth clients from account metadata credential refs", async () => {
     const storage = createCredentialStorage({
       records: [],
@@ -613,7 +574,7 @@ describe("google plugin", () => {
         JSON.stringify({
           access_token: "metadata-ref-access",
           refresh_token: "metadata-ref-refresh",
-          expiry_date: Date.now() + 3600_000,
+          expiry_date: Date.now() + 3600000,
         })
       ),
     };
@@ -623,7 +584,6 @@ describe("google plugin", () => {
       clientId: "google-client",
       clientSecret: "google-secret",
     });
-
     const client = await resolver.getAuthClient({
       provider: "google",
       accountId: "acct_google_1",
@@ -631,7 +591,6 @@ describe("google plugin", () => {
       scopes: scopesForGoogleCapabilities(["gmail.read"]),
       reason: "unit-test",
     });
-
     expect(client.credentials).toMatchObject({
       access_token: "metadata-ref-access",
       refresh_token: "metadata-ref-refresh",
@@ -641,7 +600,6 @@ describe("google plugin", () => {
       expect.objectContaining({ reveal: true })
     );
   });
-
   it("preserves nested token precedence and scopes through the resolver boundary", async () => {
     const storage = createCredentialStorage({
       records: [
@@ -664,7 +622,6 @@ describe("google plugin", () => {
       clientId: "google-client",
       clientSecret: "google-secret",
     });
-
     const client = await resolver.getAuthClient({
       provider: "google",
       accountId: "acct_google_1",
@@ -672,14 +629,12 @@ describe("google plugin", () => {
       scopes: scopesForGoogleCapabilities(["gmail.read"]),
       reason: "unit-test",
     });
-
     expect(client.credentials).toMatchObject({
       access_token: "outer-access",
       refresh_token: "nested-refresh",
       scope: "gmail.read drive.readonly",
     });
   });
-
   it("does not keep unsafe OAuth client cache entries when no credential version is exposed", async () => {
     const storage = createCredentialStorage({
       records: [
@@ -688,7 +643,7 @@ describe("google plugin", () => {
           value: JSON.stringify({
             access_token: "access-token",
             refresh_token: "refresh-token",
-            expiry_date: Date.now() + 3600_000,
+            expiry_date: Date.now() + 3600000,
           }),
         },
       ],
@@ -705,14 +660,11 @@ describe("google plugin", () => {
       scopes: scopesForGoogleCapabilities(["calendar.read"]),
       reason: "unit-test",
     };
-
     const first = await resolver.getAuthClient(request);
     const second = await resolver.getAuthClient(request);
-
     expect(first).not.toBe(second);
     expect(first.credentials.refresh_token).toBe("refresh-token");
   });
-
   it("does not resolve OAuth clients from token-shaped account metadata", async () => {
     const storage = createCredentialStorage({
       records: [],
@@ -728,7 +680,6 @@ describe("google plugin", () => {
       clientId: "google-client",
       clientSecret: "google-secret",
     });
-
     await expect(
       resolver.getAuthClient({
         provider: "google",
@@ -739,7 +690,6 @@ describe("google plugin", () => {
       })
     ).rejects.toThrow("credential refs");
   });
-
   it("persists OAuth token material as vault-backed credential refs during callback", async () => {
     const vault = new Map<string, string>();
     const setCredentialRef = vi.fn(async () => undefined);
@@ -791,7 +741,6 @@ describe("google plugin", () => {
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
-
     const provider = createGoogleConnectorAccountProvider(runtime);
     const result = await provider.completeOAuth?.(
       {
@@ -811,7 +760,6 @@ describe("google plugin", () => {
       },
       manager as never
     );
-
     const metadata = (result?.account as ConnectorAccount)?.metadata as Record<string, unknown>;
     const account = result?.account as ConnectorAccount;
     expect(account.id).toMatch(/^acct_google_[a-f0-9]{32}$/u);
@@ -835,7 +783,6 @@ describe("google plugin", () => {
       })
     );
   });
-
   it("sanitizes provider-added scopes without rejecting a valid granted capability", async () => {
     const vault = new Map<string, string>();
     const runtime = {
@@ -894,7 +841,6 @@ describe("google plugin", () => {
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
-
     const result = await provider.completeOAuth?.(
       {
         provider: "google",
@@ -918,7 +864,6 @@ describe("google plugin", () => {
       },
       manager as never
     );
-
     const account = result?.account as ConnectorAccount;
     const metadata = account.metadata as Record<string, unknown>;
     expect(account.purpose).toEqual(["messaging"]);
@@ -933,7 +878,6 @@ describe("google plugin", () => {
     );
     expect(vault.get(credentialRef?.vaultRef ?? "")).toContain(providerAddedScope);
   });
-
   it("does not record or re-request a compound capability from a partial provider grant", async () => {
     const vault = new Map<string, string>();
     const runtime = {
@@ -994,7 +938,6 @@ describe("google plugin", () => {
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
-
     const result = await provider.completeOAuth?.(
       {
         provider: "google",
@@ -1018,13 +961,11 @@ describe("google plugin", () => {
       },
       manager as never
     );
-
     const account = result?.account as ConnectorAccount;
     const metadata = account.metadata as Record<string, unknown>;
     expect(metadata.grantedCapabilities).toEqual(["gmail.read"]);
     expect(metadata.grantedCapabilities).not.toContain("gmail.manage");
     expect(metadata.grantedScopes).toEqual(returnedScopes);
-
     const reauthResult = await provider.startOAuth?.(
       {
         provider: "google",
@@ -1049,7 +990,6 @@ describe("google plugin", () => {
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.manage);
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.settings);
   });
-
   it("fails an OAuth callback that grants identity but no connector capability", async () => {
     const runtime = {
       agentId: "agent-1",
@@ -1094,7 +1034,6 @@ describe("google plugin", () => {
       })
     );
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     await expect(
       provider.completeOAuth?.(
         {
@@ -1122,7 +1061,6 @@ describe("google plugin", () => {
     );
     expect(manager.upsertAccount).not.toHaveBeenCalled();
   });
-
   it.each([
     {
       label: "rejects a non-string provider scope field",
@@ -1183,7 +1121,6 @@ describe("google plugin", () => {
       })
     );
     const provider = createGoogleConnectorAccountProvider(runtime);
-
     await expect(
       provider.completeOAuth?.(
         {
@@ -1206,7 +1143,6 @@ describe("google plugin", () => {
     ).rejects.toThrow(expectedMessage);
     expect(manager.upsertAccount).not.toHaveBeenCalled();
   });
-
   it("fails OAuth callback when no durable credential writer is available", async () => {
     const runtime = {
       agentId: "agent-1",
@@ -1248,7 +1184,6 @@ describe("google plugin", () => {
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
-
     const provider = createGoogleConnectorAccountProvider(runtime);
     const manager = createOAuthCallbackManager(
       "google",
@@ -1276,7 +1211,6 @@ describe("google plugin", () => {
       )
     ).rejects.toThrow(/durable connector credential store|vault writer/i);
   });
-
   it("uses a fake Gmail client with selected Gmail read/send scopes", async () => {
     const fakeGmail = {
       users: {
@@ -1305,7 +1239,6 @@ describe("google plugin", () => {
       gmail: vi.fn(async () => fakeGmail),
     } as GoogleApiClientFactory;
     const client = new GoogleGmailClient(factory);
-
     const results = await client.searchMessages({
       accountId: "acct_google_1",
       query: "from:ada",
@@ -1317,7 +1250,6 @@ describe("google plugin", () => {
       subject: "Status",
       text: "Done",
     });
-
     expect(factory.gmail).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ accountId: "acct_google_1" }),
@@ -1344,7 +1276,6 @@ describe("google plugin", () => {
     expect(results[0]?.from).toEqual({ name: "Ada", email: "ada@example.com" });
     expect(sent).toEqual({ id: "sent_1", threadId: "thread_2" });
   });
-
   it("exposes rich Gmail management methods for LifeOps delegation", async () => {
     const bodyText = Buffer.from("Please reply today", "utf8").toString("base64url");
     const fakeGmail = {
@@ -1395,7 +1326,6 @@ describe("google plugin", () => {
       gmail: vi.fn(async () => fakeGmail),
     } as GoogleApiClientFactory;
     const client = new GoogleGmailClient(factory);
-
     await expect(
       client.searchGmailMessages({
         accountId: "acct_google_1",
@@ -1462,7 +1392,6 @@ describe("google plugin", () => {
       })
     ).resolves.toEqual({ filterId: "filter_1", trashed: true });
     await client.trashGmailThread({ accountId: "acct_google_1", threadId: "thread_1" });
-
     expect(fakeGmail.users.messages.batchModify).toHaveBeenCalledWith({
       userId: "me",
       requestBody: {
@@ -1483,7 +1412,6 @@ describe("google plugin", () => {
       id: "thread_1",
     });
   });
-
   it("rejects hostile Gmail result limits before listing messages", async () => {
     const fakeGmail = {
       users: {
@@ -1497,7 +1425,6 @@ describe("google plugin", () => {
     };
     const factory = { gmail: vi.fn(async () => fakeGmail) } as GoogleApiClientFactory;
     const client = new GoogleGmailClient(factory);
-
     await expect(
       client.searchGmailMessages({
         accountId: "acct_google_1",
@@ -1514,7 +1441,6 @@ describe("google plugin", () => {
     ).rejects.toMatchObject({ code: "GOOGLE_GMAIL_LIMIT_INVALID" });
     expect(fakeGmail.users.messages.list).not.toHaveBeenCalled();
   });
-
   it("escapes Drive folder IDs and preserves explicit trashed predicates", async () => {
     const fakeDrive = {
       files: {
@@ -1523,7 +1449,6 @@ describe("google plugin", () => {
     };
     const factory = { drive: vi.fn(async () => fakeDrive) } as GoogleApiClientFactory;
     const client = new GoogleDriveClient(factory);
-
     await client.listDriveFiles({
       accountId: "acct_google_1",
       folderId: "root' OR trashed = true OR 'x",
@@ -1534,7 +1459,6 @@ describe("google plugin", () => {
       query: "name contains 'Plan' and trashed = true",
       maxResults: 1.9,
     });
-
     expect(fakeDrive.files.list).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -1550,7 +1474,6 @@ describe("google plugin", () => {
       })
     );
   });
-
   it("uses fake Calendar, Drive, and Meet clients with narrow capabilities", async () => {
     const fakeCalendar = {
       calendarList: {
@@ -1682,11 +1605,9 @@ describe("google plugin", () => {
       sheets: vi.fn(async () => fakeSheets),
       meet: vi.fn(async () => fakeMeet),
     } as GoogleApiClientFactory;
-
     const calendarClient = new GoogleCalendarClient(factory);
     const driveClient = new GoogleDriveClient(factory);
     const meetClient = new GoogleMeetClient(factory);
-
     await expect(calendarClient.listCalendars({ accountId: "acct_google_1" })).resolves.toEqual([
       {
         calendarId: "primary",
@@ -1791,7 +1712,6 @@ describe("google plugin", () => {
       accessType: "TRUSTED",
       status: GoogleMeetStatus.WAITING,
     });
-
     expect(fakeCalendar.calendarList.list).toHaveBeenCalledWith({
       minAccessRole: "reader",
       showDeleted: false,
@@ -1902,7 +1822,6 @@ describe("google plugin", () => {
       "meet.createMeeting"
     );
   });
-
   it("passes RFC 5545 recurrence through create/patch and maps it on readback", async () => {
     const fakeCalendar = {
       events: {
@@ -1943,7 +1862,6 @@ describe("google plugin", () => {
       calendar: vi.fn(async () => fakeCalendar),
     } as unknown as GoogleApiClientFactory;
     const client = new GoogleCalendarClient(factory);
-
     // create: recurrence lines land in the insert requestBody and readback
     // exposes them first-class + in metadata.
     const created = await client.createEvent({
@@ -1966,7 +1884,6 @@ describe("google plugin", () => {
     expect(created.metadata).toMatchObject({
       recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
     });
-
     // patch: recurrence replacement flows through; omitting it leaves the
     // requestBody untouched (no accidental recurrence clears).
     await client.updateEvent({
@@ -1980,14 +1897,12 @@ describe("google plugin", () => {
         requestBody: { recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"] },
       })
     );
-
     // flattened instances keep the series pointer first-class.
     const [instance] = await client.listEvents({ accountId: "acct_google_1" });
     expect(instance?.recurringEventId).toBe("series_master");
     expect(instance?.recurrence).toBeNull();
   });
 });
-
 interface TestCredentialRecord {
   credentialType: string;
   vaultRef?: string;
@@ -1995,7 +1910,6 @@ interface TestCredentialRecord {
   updatedAt?: string | number;
   expiresAt?: string | number;
 }
-
 function createCredentialStorage(options: {
   records: TestCredentialRecord[];
   metadata?: ConnectorAccount["metadata"];
@@ -2016,7 +1930,6 @@ function createCredentialStorage(options: {
     updatedAt: Date.now(),
     metadata: options.metadata ?? {},
   };
-
   return {
     async listAccounts(provider?: string) {
       return !provider || provider === "google" ? [account] : [];
@@ -2047,7 +1960,6 @@ function createCredentialStorage(options: {
     },
   };
 }
-
 function createVerifiedJwt(payload: Record<string, unknown>): string {
   const now = Math.floor(Date.now() / 1000);
   const verifiedPayload = {
@@ -2058,7 +1970,8 @@ function createVerifiedJwt(payload: Record<string, unknown>): string {
     nonce: TEST_OIDC_NONCE,
     ...payload,
   };
-  vi.spyOn(OAuth2Client.prototype, "verifyIdToken").mockResolvedValue({
+  // ID-token verification uses the direct dependency; API clients use googleapis' copy.
+  vi.spyOn(GoogleIdTokenVerifier.prototype, "verifyIdToken").mockResolvedValue({
     getPayload: () => verifiedPayload,
   } as never);
   return [
@@ -2067,7 +1980,6 @@ function createVerifiedJwt(payload: Record<string, unknown>): string {
     "sig",
   ].join(".");
 }
-
 function createOAuthCallbackManager(
   provider: string,
   durableAccountId: string,
@@ -2085,7 +1997,9 @@ function createOAuthCallbackManager(
     upsertAccount: vi.fn(
       async (
         providerId: string,
-        input: ConnectorAccountPatch & { provider?: string },
+        input: ConnectorAccountPatch & {
+          provider?: string;
+        },
         accountId?: string
       ): Promise<ConnectorAccount> => ({
         id: accountId ?? durableAccountId,

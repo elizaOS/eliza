@@ -1,49 +1,12 @@
-/**
- * Vitest config for the live-API lane (`*.live.test.ts`): resolves the
- * workspace `@elizaos/*` packages (core, plugin-sql) to source so a real
- * runtime can boot against the live Anthropic API.
- */
-import path from "node:path";
+/** Opt-in live provider lane using the shared workspace source resolver. */
 import { defineConfig } from "vitest/config";
-
-const elizaRoot = path.resolve(import.meta.dirname, "../..");
-const pluginSqlRoot = path.join(
-	elizaRoot,
-	"plugins",
-	"plugin-sql",
-	"typescript",
-);
-const coreSrc = path.join(elizaRoot, "packages", "core", "src");
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
 export default defineConfig({
-	resolve: {
-		alias: [
-			{
-				find: /^@elizaos\/core$/,
-				replacement: path.join(coreSrc, "index.node.ts"),
-			},
-			{ find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
-			{
-				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.node.ts"),
-			},
-			{
-				find: /^@elizaos\/plugin-sql\/schema$/,
-				replacement: path.join(pluginSqlRoot, "schema", "index.ts"),
-			},
-			{
-				find: /^@elizaos\/plugin-sql\/types$/,
-				replacement: path.join(pluginSqlRoot, "types.ts"),
-			},
-			{
-				find: /^@elizaos\/plugin-sql\/(.+)$/,
-				replacement: path.join(pluginSqlRoot, "$1"),
-			},
-		],
-	},
-	test: {
-		environment: "node",
-		include: ["__tests__/**/*.live.test.ts"],
-		exclude: ["**/node_modules/**", "**/dist/**"],
-	},
+  resolve: { alias: buildWorkspaceSourceAliases() },
+  test: {
+    environment: "node",
+    include: ["__tests__/**/*.live.test.ts"],
+    exclude: ["**/node_modules/**", "**/dist/**"],
+  },
 });

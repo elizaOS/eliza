@@ -5,8 +5,7 @@
  * Barrel-exported from components/index.ts for consumers outside the Settings
  * section registry.
  */
-
-import { ASR_PROVIDERS } from "@elizaos/shared";
+import { ASR_PROVIDERS } from "@elizaos/core/voice";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
@@ -49,7 +48,6 @@ import { useSettingsSave } from "./settings-control-primitives.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
-
 const MODEL_SIZES: Array<{
   id: NonNullable<SwabbleConfig["modelSize"]>;
   hintKey: string;
@@ -60,7 +58,6 @@ const MODEL_SIZES: Array<{
   { id: "medium", hintKey: "voiceconfigview.hintAccurate" },
   { id: "large", hintKey: "voiceconfigview.hintAccurate" },
 ];
-
 export function DesktopTalkModePanel() {
   const desktopRuntime = isElectrobunRuntime();
   const [loading, setLoading] = useState(desktopRuntime);
@@ -78,26 +75,30 @@ export function DesktopTalkModePanel() {
     enabled: false,
     speaking: false,
   });
-
   const refresh = useCallback(async () => {
     if (!desktopRuntime) {
       setLoading(false);
       return;
     }
-
     setLoading(true);
     setError(null);
     try {
       const [state, enabled, speaking] = await Promise.all([
-        invokeDesktopBridgeRequest<{ state: string }>({
+        invokeDesktopBridgeRequest<{
+          state: string;
+        }>({
           rpcMethod: "talkmodeGetState",
           ipcChannel: "talkmode:getState",
         }),
-        invokeDesktopBridgeRequest<{ enabled: boolean }>({
+        invokeDesktopBridgeRequest<{
+          enabled: boolean;
+        }>({
           rpcMethod: "talkmodeIsEnabled",
           ipcChannel: "talkmode:isEnabled",
         }),
-        invokeDesktopBridgeRequest<{ speaking: boolean }>({
+        invokeDesktopBridgeRequest<{
+          speaking: boolean;
+        }>({
           rpcMethod: "talkmodeIsSpeaking",
           ipcChannel: "talkmode:isSpeaking",
         }),
@@ -119,11 +120,9 @@ export function DesktopTalkModePanel() {
       setLoading(false);
     }
   }, [desktopRuntime, t]);
-
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
   const runAction = useCallback(
     async (
       id: string,
@@ -154,7 +153,6 @@ export function DesktopTalkModePanel() {
     },
     [refresh, t],
   );
-
   const { ref: refreshRef, agentProps: refreshAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "voice-talkmode-refresh",
@@ -254,7 +252,6 @@ export function DesktopTalkModePanel() {
           t("voiceconfigview.StoppedCurrentSpeechOutput"),
         ),
     });
-
   if (!desktopRuntime) {
     return (
       <Card variant="panel">
@@ -264,7 +261,6 @@ export function DesktopTalkModePanel() {
       </Card>
     );
   }
-
   return (
     <Card variant="panel">
       <CardHeader className="p-4 pb-0">
@@ -350,7 +346,6 @@ export function DesktopTalkModePanel() {
                     });
                     return;
                   }
-
                   const result = await invokeDesktopBridgeRequest<{
                     available: boolean;
                     reason?: string;
@@ -423,7 +418,6 @@ export function DesktopTalkModePanel() {
     </Card>
   );
 }
-
 function RemoveTriggerButton({
   trigger,
   onRemove,
@@ -455,7 +449,6 @@ function RemoveTriggerButton({
     </Button>
   );
 }
-
 function ModelSizeButton({
   id,
   active,
@@ -488,7 +481,6 @@ function ModelSizeButton({
     </Button>
   );
 }
-
 // Exported for tests (VoiceConfigView.audio-level-listener.test.tsx); only
 // VoiceConfigView renders it in production.
 export function WakeWordSection({
@@ -517,7 +509,6 @@ export function WakeWordSection({
     useState<NonNullable<SwabbleConfig["modelSize"]>>("base");
   const meterRef = useRef<HTMLDivElement | null>(null);
   const [enabled, setEnabled] = useState(false);
-
   useEffect(() => {
     void (async () => {
       try {
@@ -543,9 +534,10 @@ export function WakeWordSection({
       }
     })();
   }, [serverConfig]);
-
   useEffect(() => {
-    let handle: { remove: () => Promise<void> } | null = null;
+    let handle: {
+      remove: () => Promise<void>;
+    } | null = null;
     let cancelled = false;
     void (async () => {
       try {
@@ -578,7 +570,6 @@ export function WakeWordSection({
       if (handle) void handle.remove();
     };
   }, []);
-
   const buildConfig = useCallback(
     (): SwabbleConfig => ({
       triggers,
@@ -587,7 +578,6 @@ export function WakeWordSection({
     }),
     [triggers, postTriggerGap, modelSize],
   );
-
   const handleTriggersChange = useCallback(async (next: string[]) => {
     setTriggers(next);
     try {
@@ -596,7 +586,6 @@ export function WakeWordSection({
       // Ignore
     }
   }, []);
-
   // Propagate a character rename into the wake trigger, but only when the
   // trigger is still the name-derived default — never overwrite a phrase the
   // user typed themselves (issue #9880).
@@ -610,7 +599,6 @@ export function WakeWordSection({
       void handleTriggersChange([defaultTrigger]);
     }
   }, [defaultTrigger, triggers, handleTriggersChange]);
-
   const addTrigger = useCallback(
     (raw: string) => {
       const val = raw.trim().toLowerCase().replace(/,/g, "");
@@ -619,7 +607,6 @@ export function WakeWordSection({
     },
     [triggers, handleTriggersChange],
   );
-
   const removeTrigger = useCallback(
     (t: string) => {
       if (triggers.length <= 1) return;
@@ -627,7 +614,6 @@ export function WakeWordSection({
     },
     [triggers, handleTriggersChange],
   );
-
   const handlePostTriggerGapChange = useCallback(async (val: number) => {
     setPostTriggerGap(val);
     try {
@@ -638,7 +624,6 @@ export function WakeWordSection({
       // Ignore
     }
   }, []);
-
   const handleModelSizeChange = useCallback(
     async (size: NonNullable<SwabbleConfig["modelSize"]>) => {
       setModelSize(size);
@@ -650,7 +635,6 @@ export function WakeWordSection({
     },
     [],
   );
-
   const handleToggle = useCallback(async () => {
     try {
       if (enabled) {
@@ -666,7 +650,6 @@ export function WakeWordSection({
       // Ignore
     }
   }, [enabled, buildConfig]);
-
   const { ref: enableRef, agentProps: enableAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "voice-wakeword-enable",
@@ -707,7 +690,6 @@ export function WakeWordSection({
         }
       },
     });
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -841,7 +823,6 @@ export function WakeWordSection({
     </div>
   );
 }
-
 function AsrProviderButton({
   id,
   label,
@@ -876,7 +857,6 @@ function AsrProviderButton({
     </Button>
   );
 }
-
 /**
  * Advanced speech-to-text provider picker. Overrides the device default;
  * hidden until the AdvancedToggle is on.
@@ -892,7 +872,6 @@ function AsrAdvancedSection({
 }) {
   const t = useAppSelector((s) => s.t);
   const [localStatusBusy, setLocalStatusBusy] = useState(false);
-
   // A non-empty local-inference downloads list means the model bundle isn't
   // ready yet, so we show "downloading" rather than implying it's online.
   useEffect(() => {
@@ -917,7 +896,6 @@ function AsrAdvancedSection({
       cancelled = true;
     };
   }, [currentAsrProvider]);
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
@@ -964,7 +942,6 @@ function AsrAdvancedSection({
     </div>
   );
 }
-
 function TtsProviderButton({
   id,
   label,
@@ -999,7 +976,6 @@ function TtsProviderButton({
     </Button>
   );
 }
-
 function PremadeVoiceButton({
   voiceId,
   name,
@@ -1036,7 +1012,6 @@ function PremadeVoiceButton({
     </Button>
   );
 }
-
 export function VoiceConfigView() {
   const t = useAppSelector((s) => s.t);
   const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
@@ -1050,7 +1025,6 @@ export function VoiceConfigView() {
   const [dirty, setDirty] = useState(false);
   const [testing, setTesting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -1073,7 +1047,6 @@ export function VoiceConfigView() {
       setLoading(false);
     })();
   }, []);
-
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -1082,10 +1055,8 @@ export function VoiceConfigView() {
       }
     };
   }, []);
-
   const { defaults: providerDefaults } = useDefaultProviderPresets();
   const advancedEnabled = useAdvancedSettingsEnabled();
-
   const cloudVoiceAvailable = isCloudVoiceRunnable({
     connected: elizaCloudConnected,
     proxyAvailable: elizaCloudVoiceProxyAvailable,
@@ -1101,12 +1072,10 @@ export function VoiceConfigView() {
     cloudVoiceAvailable,
     elevenLabsKeyConfigured: hasElevenLabsApiKey,
   });
-
   // Falls back to the resolved device default until the user picks a provider.
   const currentProvider = voiceConfig.provider ?? resolvedTtsDefault;
   const currentAsrProvider: AsrProvider =
     voiceConfig.asr?.provider ?? providerDefaults.asr;
-
   // Human-readable label for the resolved default. Both Kokoro transports read
   // as "Kokoro"; the browser SpeechSynthesis fallback (`robot-voice`) reads as
   // "browser voice" since it is not one of the listed provider cards.
@@ -1139,17 +1108,14 @@ export function VoiceConfigView() {
     if (currentMode === "cloud") return cloudVoiceAvailable;
     return hasConfiguredApiKey(voiceConfig.elevenlabs?.apiKey);
   })();
-
   const handleProviderChange = useCallback((provider: VoiceProvider) => {
     setVoiceConfig((prev) => ({ ...prev, provider }));
     setDirty(true);
   }, []);
-
   const handleModeChange = useCallback((mode: VoiceMode) => {
     setVoiceConfig((prev) => ({ ...prev, mode }));
     setDirty(true);
   }, []);
-
   const handleApiKeyChange = useCallback((apiKey: string) => {
     setVoiceConfig((prev) => ({
       ...prev,
@@ -1157,7 +1123,6 @@ export function VoiceConfigView() {
     }));
     setDirty(true);
   }, []);
-
   const handleVoiceSelect = useCallback((voiceId: string) => {
     setVoiceConfig((prev) => ({
       ...prev,
@@ -1165,7 +1130,6 @@ export function VoiceConfigView() {
     }));
     setDirty(true);
   }, []);
-
   const handleAsrProviderChange = useCallback((provider: AsrProvider) => {
     setVoiceConfig((prev) => ({
       ...prev,
@@ -1173,9 +1137,7 @@ export function VoiceConfigView() {
     }));
     setDirty(true);
   }, []);
-
   const [apiKeyDraft, setApiKeyDraft] = useState("");
-
   const handleTestVoice = useCallback((previewUrl: string) => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -1187,7 +1149,6 @@ export function VoiceConfigView() {
     audio.onerror = () => setTesting(false);
     audio.play().catch(() => setTesting(false));
   }, []);
-
   const performSave = useCallback(async () => {
     const cfg = await client.getConfig();
     const messages = (cfg.messages ?? {}) as Record<string, unknown>;
@@ -1232,7 +1193,6 @@ export function VoiceConfigView() {
     if (!swabbleCfg && swabbleServerConfig) {
       swabbleCfg = swabbleServerConfig;
     }
-
     await client.updateConfig({
       messages: {
         ...messages,
@@ -1243,14 +1203,12 @@ export function VoiceConfigView() {
     dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
     setDirty(false);
   }, [currentMode, currentProvider, swabbleServerConfig, voiceConfig]);
-
   const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
     onSave: performSave,
     errorFallback: t("skillsview.failedToSave", {
       defaultValue: "Failed to save",
     }),
   });
-
   if (loading) {
     return (
       <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted ">
@@ -1258,12 +1216,10 @@ export function VoiceConfigView() {
       </div>
     );
   }
-
   const selectedVoiceId = voiceConfig.elevenlabs?.voiceId;
   const selectedPreset = PREMADE_VOICES.find(
     (p) => p.voiceId === selectedVoiceId,
   );
-
   return (
     <SettingsStack>
       <SettingsGroup

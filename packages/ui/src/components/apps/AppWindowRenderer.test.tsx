@@ -2,24 +2,21 @@
  * Verifies that a real registered overlay mounts through the app-window
  * renderer's generated agent surface and answers list/click interactions.
  */
-
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentButton } from "../../agent-surface";
+import { registerOverlayApp } from "../../apps/overlay-app-registry.js";
 import { invokeViewInteract } from "../views/view-interact-registry";
 import { AppWindowRenderer, OverlayAppSurface } from "./AppWindowRenderer";
-import { registerOverlayApp } from "./overlay-app-registry";
 
 const reportRendererDiagnostic = vi.hoisted(() => vi.fn());
 vi.mock("../../utils/renderer-diagnostics", () => ({
   reportRendererDiagnostic,
 }));
-
 afterEach(cleanup);
-
 describe("AppWindowRenderer agent bridge", () => {
   it("derives the overlay view id and drives its registered control", async () => {
     const onClick = vi.fn();
@@ -39,34 +36,30 @@ describe("AppWindowRenderer agent bridge", () => {
       onLaunch,
       onStop,
     });
-
     const rendered = render(<AppWindowRenderer slug="bridge-window-test" />);
     await screen.findByRole("button", { name: "Confirm" });
     await waitFor(() => expect(onLaunch).toHaveBeenCalledOnce());
-
     const marker = rendered.container.querySelector(
       '[data-agent-surface-view-id="bridge-window-test"]',
     );
     expect(marker?.getAttribute("data-agent-surface-kind")).toBe("overlay");
-
     const elements = (await invokeViewInteract(
       "bridge-window-test",
       "gui",
       "list-elements",
-    )) as Array<{ id: string }>;
+    )) as Array<{
+      id: string;
+    }>;
     expect(elements.map(({ id }) => id)).toContain("confirm");
-
     expect(
       await invokeViewInteract("bridge-window-test", "gui", "agent-click", {
         id: "confirm",
       }),
     ).toMatchObject({ ok: true, id: "confirm" });
     expect(onClick).toHaveBeenCalledOnce();
-
     rendered.unmount();
     await waitFor(() => expect(onStop).toHaveBeenCalledOnce());
   });
-
   it("waits for an in-flight launch before stopping an unmounted app", async () => {
     let finishLaunch: (() => void) | undefined;
     const launchBarrier = new Promise<void>((resolve) => {
@@ -84,7 +77,6 @@ describe("AppWindowRenderer agent bridge", () => {
       onLaunch,
       onStop,
     });
-
     const rendered = render(
       <AppWindowRenderer slug="bridge-lifecycle-barrier-test" />,
     );
@@ -92,11 +84,9 @@ describe("AppWindowRenderer agent bridge", () => {
     rendered.unmount();
     await Promise.resolve();
     expect(onStop).not.toHaveBeenCalled();
-
     finishLaunch?.();
     await waitFor(() => expect(onStop).toHaveBeenCalledOnce());
   });
-
   it("reports a rejected launch and still runs ordered teardown", async () => {
     reportRendererDiagnostic.mockClear();
     const failure = new Error("launch failed");
@@ -113,7 +103,6 @@ describe("AppWindowRenderer agent bridge", () => {
       },
       onStop,
     });
-
     const rendered = render(
       <AppWindowRenderer slug="bridge-lifecycle-failure-test" />,
     );
@@ -129,7 +118,6 @@ describe("AppWindowRenderer agent bridge", () => {
     rendered.unmount();
     await waitFor(() => expect(onStop).toHaveBeenCalledOnce());
   });
-
   it("serializes Strict Mode lifecycle replay without overlapping owners", async () => {
     const phases: string[] = [];
     const app = {
@@ -147,7 +135,6 @@ describe("AppWindowRenderer agent bridge", () => {
       },
     };
     registerOverlayApp(app);
-
     const rendered = render(
       <StrictMode>
         <OverlayAppSurface
@@ -159,7 +146,6 @@ describe("AppWindowRenderer agent bridge", () => {
       </StrictMode>,
     );
     await waitFor(() => expect(phases).toEqual(["launch", "stop", "launch"]));
-
     rendered.unmount();
     await waitFor(() =>
       expect(phases).toEqual(["launch", "stop", "launch", "stop"]),

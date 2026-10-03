@@ -7,7 +7,7 @@ fine-tune paths:
 Path A — Preset-based freeze (shipped in I6/Wave 2):
   Encode same reference audio once → persist as ELZ2 v2 preset.
   No weight training. Pure inference-time conditioning.
-  CLI: ``packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs``.
+  CLI: ``packages/app/scripts/omnivoice-fuse/freeze-voice.ts``.
 
 Path B — LM weight fine-tune (this script; W3-11):
   Train the Qwen3-0.6B backbone on (text prompt → audio token) pairs from
@@ -619,14 +619,14 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     #   2. A custom modeling_omnivoice.py (Qwen3 + audio embedding + MaskGIT
     #      training loop in torch).
     # These are post-Wave-3 deliverables. For Wave 3, the Path A preset-based
-    # freeze (I6/freeze-voice.mjs) IS the shipped OmniVoice same path.
+    # freeze (I6/freeze-voice.ts) IS the shipped OmniVoice same path.
     #
     # We document this gap explicitly so the user knows the decision.
     log.warning(
         "OmniVoice LM weight fine-tune (Path B) requires gguf2hf conversion "
         "tooling + custom modeling_omnivoice.py. These are post-Wave-3. "
         "For Wave 3, the shipped OmniVoice same path is the Path A preset "
-        "(packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs)."
+        "(packages/app/scripts/omnivoice-fuse/freeze-voice.ts)."
     )
     log.info("Running codec-tokenize + RTF eval only (no weight training this wave).")
 

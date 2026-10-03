@@ -45,7 +45,7 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseTcpPort } from "../../../scripts/lib/cli-numbers.mjs";
+import { parseTcpPort } from "../../../scripts/lib/cli-numbers.ts";
 
 async function loadDeps() {
   const [{ dockerNodesRepository }, { DockerSSHClient }, diskMgr] =

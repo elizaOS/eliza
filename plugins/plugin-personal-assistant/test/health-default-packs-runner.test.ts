@@ -2,16 +2,6 @@
 /**
  * Real-runner integration for plugin-health default packs (#8795).
  *
- * Before this test the default packs were only exercised by SHAPE asserts
- * (`plugins/plugin-health/src/__tests__/smoke.test.ts`) and a hand-written
- * SIMULATION that fabricated a phantom sleep-recap record
- * (`plugins/plugin-personal-assistant/test/default-packs.smoke.test.ts`).
- * Neither ever drove a real pack record through the actual scheduled-task
- * spine, so the gates each pack references were never evaluated by the
- * runner. That is exactly how the `sleep-recap` pack shipped referencing an
- * UNREGISTERED `personal_baseline_sufficient` gate kind: a runner-less test
- * cannot catch an unknown-gate skip.
- *
  * This file constructs the production `createScheduledTaskRunner` with the
  * real `registerBuiltInGates`, schedules the ACTUAL imported pack records
  * (`bedtimeDefaultPack` / `wakeUpDefaultPack` / `sleepRecapDefaultPack`),

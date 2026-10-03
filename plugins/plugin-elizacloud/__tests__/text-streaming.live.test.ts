@@ -379,9 +379,9 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
       result as TextStreamResult & {
         toolCalls: Promise<
           Array<{
-            toolCallId: string;
-            toolName: string;
-            input: JsonRecord;
+            id: string;
+            name: string;
+            arguments: JsonRecord;
           }>
         >;
       }
@@ -393,12 +393,12 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
     expect(providerCalls).toHaveLength(1);
     const reconstructed = toolCalls[0];
     const providerCall = providerCalls[0];
-    expect(reconstructed?.toolName).toBe(TOOL_NAME);
+    expect(reconstructed?.name).toBe(TOOL_NAME);
     expect(providerCall?.name).toBe(TOOL_NAME);
-    expect(canonicalJson(providerCall?.input)).toBe(canonicalJson(reconstructed?.input));
-    expect(reconstructed?.input.marker).toBe(expectedInput.marker);
-    expect(reconstructed?.input.payload).toBe(expectedInput.payload);
-    expect(Array.isArray(reconstructed?.input.sequence)).toBe(true);
+    expect(canonicalJson(providerCall?.input)).toBe(canonicalJson(reconstructed?.arguments));
+    expect(reconstructed?.arguments.marker).toBe(expectedInput.marker);
+    expect(reconstructed?.arguments.payload).toBe(expectedInput.payload);
+    expect(Array.isArray(reconstructed?.arguments.sequence)).toBe(true);
     expect(transcript.fragments.length).toBeGreaterThan(1);
     expect(finishReason).toBe("tool_calls");
     expect(requestModel).toBe(MODEL);
@@ -414,8 +414,8 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
         marker: input.marker,
       };
     };
-    const executionResult = executeSyntheticTool(reconstructed?.input ?? {});
-    expect(canonicalJson(executedInput)).toBe(canonicalJson(reconstructed?.input));
+    const executionResult = executeSyntheticTool(reconstructed?.arguments ?? {});
+    expect(canonicalJson(executedInput)).toBe(canonicalJson(reconstructed?.arguments));
     expect(executionResult).toEqual({
       accepted: true,
       marker: expectedInput.marker,
@@ -442,11 +442,12 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
       verdict: {
         terminalFinishReason: finishReason,
         providerMatchesPlugin:
-          canonicalJson(providerCall?.input) === canonicalJson(reconstructed?.input),
-        pluginMatchesExecuted: canonicalJson(reconstructed?.input) === canonicalJson(executedInput),
+          canonicalJson(providerCall?.input) === canonicalJson(reconstructed?.arguments),
+        pluginMatchesExecuted:
+          canonicalJson(reconstructed?.arguments) === canonicalJson(executedInput),
         endToEndInputEquality:
-          canonicalJson(providerCall?.input) === canonicalJson(reconstructed?.input) &&
-          canonicalJson(reconstructed?.input) === canonicalJson(executedInput),
+          canonicalJson(providerCall?.input) === canonicalJson(reconstructed?.arguments) &&
+          canonicalJson(reconstructed?.arguments) === canonicalJson(executedInput),
       },
     });
   }, 120_000);

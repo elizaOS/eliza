@@ -60,6 +60,9 @@ const CLOUD_FEATURES = [
 
 export function CloudOverviewSection() {
   const {
+    elizaCloudStatusLoading,
+    elizaCloudStatusUnavailable,
+    refreshCloudStatus,
     elizaCloudConnected,
     elizaCloudDisconnecting,
     elizaCloudLoginBusy,
@@ -69,6 +72,9 @@ export function CloudOverviewSection() {
     setActionNotice,
     t,
   } = useAppSelectorShallow((s) => ({
+    elizaCloudStatusLoading: s.elizaCloudStatusLoading,
+    elizaCloudStatusUnavailable: s.elizaCloudStatusUnavailable,
+    refreshCloudStatus: s.refreshCloudStatus,
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudDisconnecting: s.elizaCloudDisconnecting,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
@@ -78,6 +84,28 @@ export function CloudOverviewSection() {
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
+
+  const checkingAccount = elizaCloudStatusLoading && !elizaCloudConnected;
+  const unavailableAccount =
+    elizaCloudStatusUnavailable && !elizaCloudConnected;
+  const retryLabel = t("settings.cloudOverview.retryVerification", {
+    defaultValue: "Retry verification",
+  });
+  const handleRetry = useCallback(() => {
+    // error-policy:J1 Unexpected retry failures remain visible at the UI boundary.
+    void refreshCloudStatus().catch((error) => {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not verify Cloud account.",
+        "error",
+        5000,
+      );
+    });
+  }, [refreshCloudStatus, setActionNotice]);
+  const checkingLabel = t("settings.cloudOverview.checkingAccount", {
+    defaultValue: "Checking Cloud account...",
+  });
 
   const handleConnect = useCallback(() => {
     // Pre-open the popup synchronously while the click's user activation is
@@ -113,14 +141,23 @@ export function CloudOverviewSection() {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "cloud-connect",
     role: "button",
-    label: elizaCloudConnected ? "Open Eliza Cloud" : "Connect Eliza Cloud",
+    label: checkingAccount
+      ? checkingLabel
+      : elizaCloudConnected
+        ? "Open Eliza Cloud"
+        : unavailableAccount
+          ? retryLabel
+          : "Connect Eliza Cloud",
     group: "cloud",
     status: elizaCloudConnected ? "connected" : "available",
-    onActivate: elizaCloudLoginBusy
-      ? undefined
-      : elizaCloudConnected
-        ? handleOpenCloud
-        : handleConnect,
+    onActivate:
+      elizaCloudLoginBusy || checkingAccount
+        ? undefined
+        : elizaCloudConnected
+          ? handleOpenCloud
+          : unavailableAccount
+            ? handleRetry
+            : handleConnect,
   });
 
   return (
@@ -137,22 +174,32 @@ export function CloudOverviewSection() {
           <Button
             ref={ref}
             size="sm"
-            onClick={elizaCloudConnected ? handleOpenCloud : handleConnect}
-            disabled={elizaCloudLoginBusy}
+            onClick={
+              elizaCloudConnected
+                ? handleOpenCloud
+                : unavailableAccount
+                  ? handleRetry
+                  : handleConnect
+            }
+            disabled={elizaCloudLoginBusy || checkingAccount}
             {...agentProps}
           >
             <Cloud className="size-4" aria-hidden />
-            {elizaCloudLoginBusy
-              ? t("settings.cloudOverview.connecting", {
-                  defaultValue: "Connecting...",
-                })
-              : elizaCloudConnected
-                ? t("settings.cloudOverview.connectedCta", {
-                    defaultValue: "Open Cloud management",
+            {checkingAccount
+              ? checkingLabel
+              : elizaCloudLoginBusy
+                ? t("settings.cloudOverview.connecting", {
+                    defaultValue: "Connecting...",
                   })
-                : t("settings.cloudOverview.connectCta", {
-                    defaultValue: "Connect Cloud",
-                  })}
+                : elizaCloudConnected
+                  ? t("settings.cloudOverview.connectedCta", {
+                      defaultValue: "Open Cloud management",
+                    })
+                  : unavailableAccount
+                    ? retryLabel
+                    : t("settings.cloudOverview.connectCta", {
+                        defaultValue: "Connect Cloud",
+                      })}
           </Button>
         }
       >
@@ -164,24 +211,42 @@ export function CloudOverviewSection() {
         <SettingsRow
           icon={Rocket}
           label={
-            elizaCloudConnected
-              ? t("settings.cloudOverview.accountConnectedLabel", {
-                  defaultValue: "Cloud account is connected",
-                })
-              : t("settings.cloudOverview.accountDisconnectedLabel", {
-                  defaultValue: "No Cloud account connected",
-                })
+            checkingAccount
+              ? checkingLabel
+              : elizaCloudConnected
+                ? t("settings.cloudOverview.accountConnectedLabel", {
+                    defaultValue: "Cloud account is connected",
+                  })
+                : unavailableAccount
+                  ? t("settings.cloudOverview.verificationUnavailable", {
+                      defaultValue: "Cloud account verification unavailable",
+                    })
+                  : t("settings.cloudOverview.accountDisconnectedLabel", {
+                      defaultValue: "No Cloud account connected",
+                    })
           }
           description={
-            elizaCloudConnected
-              ? t("settings.cloudOverview.accountConnectedDescription", {
-                  defaultValue:
-                    "Cloud account features are available. Where the agent runs and which models answer chat are set in Models & Providers.",
+            checkingAccount
+              ? t("settings.cloudOverview.checkingAccountDescription", {
+                  defaultValue: "Verifying your connection to Eliza Cloud.",
                 })
-              : t("settings.cloudOverview.accountDisconnectedDescription", {
-                  defaultValue:
-                    "Cloud account features are unavailable until you connect. Where the agent runs and which models answer chat are set in Models & Providers.",
-                })
+              : elizaCloudConnected
+                ? t("settings.cloudOverview.accountConnectedDescription", {
+                    defaultValue:
+                      "Cloud account features are available. Where the agent runs and which models answer chat are set in Models & Providers.",
+                  })
+                : unavailableAccount
+                  ? t(
+                      "settings.cloudOverview.verificationUnavailableDescription",
+                      {
+                        defaultValue:
+                          "Could not verify your Cloud account. Retry to check your connection.",
+                      },
+                    )
+                  : t("settings.cloudOverview.accountDisconnectedDescription", {
+                      defaultValue:
+                        "Cloud account features are unavailable until you connect. Where the agent runs and which models answer chat are set in Models & Providers.",
+                    })
           }
         />
         {elizaCloudConnected ? (

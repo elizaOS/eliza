@@ -1,0 +1,24 @@
+diff --git a/scripts/build/deps/lolhtml.ts b/scripts/build/deps/lolhtml.ts
+index cba437d..7208a93 100644
+--- a/scripts/build/deps/lolhtml.ts
++++ b/scripts/build/deps/lolhtml.ts
+@@ -52,11 +52,16 @@ export const lolhtml: Dependency = {
+       spec.rustflags = ["-Cpanic=abort", "-Cdebuginfo=0", "-Cforce-unwind-tables=no", "-Copt-level=s"];
+     }
+ 
+-    // arm64-windows: cargo defaults to the host triple, but CI builds arm64
+-    // windows binaries on x64 runners. Explicit triple forces the cross-compile.
+-    // (x64-windows doesn't need this — host IS target.)
++    // Cross-compile targets: cargo defaults to the host triple, which is
++    // wrong for any non-host arch build. Explicit rustTarget forces it.
++    // (Native builds — host IS target — don't need this.)
+     if (cfg.windows && cfg.arm64) {
+       spec.rustTarget = "aarch64-pc-windows-msvc";
++    } else if (cfg.linux && cfg.riscv64) {
++      // Tier-2 prebuilt-std target; install via:
++      //   rustup target add riscv64gc-unknown-linux-musl
++      // build.sh stage 3 does this.
++      spec.rustTarget = `riscv64gc-unknown-linux-${cfg.abi}`;
+     }
+ 
+     // Android: always a cross-compile. Static lib only, so cargo needs ar

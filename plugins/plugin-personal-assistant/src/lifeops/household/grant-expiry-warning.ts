@@ -7,13 +7,13 @@
  * the grant it describes.
  */
 import crypto from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import type {
   ScheduledTask,
   ScheduledTaskRunnerHandle,
   ScheduledTaskStatus,
   TaskGateRegistry,
 } from "@elizaos/plugin-scheduling";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import type { HouseholdCoordinationRepository } from "./repository.js";
 import {
   type HouseholdAccessGrant,

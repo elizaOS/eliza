@@ -1,7 +1,7 @@
 /** Verifies the AppModeEntryRoute gate — auth gating, the chat-floor routing table (any agents → the same-origin chat app with ZERO pairing traffic), and the rowless personal-entry path (zero sandbox rows → the authenticated personal identity completes Dedicated activation or reconciliation before chat mounts; /join is the resolution-failure fallback) — through the package's configured test harness (jsdom, real render, real ElizaClient, hand-rolled Cloud transport; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";

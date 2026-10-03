@@ -1,11 +1,14 @@
-// Drives repo automation audit capability router plugin surface with explicit CLI and CI behavior.
+/**
+ * Checks that kernel and host plugin fields have explicit remote-capability
+ * classifications and that endpoint conformance covers the published RPC wire.
+ */
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 const pluginFile = "packages/core/src/types/plugin.ts";
 const capabilityFile = "packages/core/src/capabilities/index.ts";
 const conformanceFile =
-  "packages/agent/src/services/remote-capability-endpoint-conformance.ts";
+  "packages/agent/scripts/lib/remote-capability-endpoint-conformance.ts";
 const fixtureServerFile =
   "packages/agent/scripts/capability-router-fixture-server.ts";
 const liveReportValidatorFile =
@@ -41,14 +44,13 @@ const localOnly = new Set([
   "mode",
   "remote",
   "adapter",
+  // Database admission is evaluated by the host loading the plugin. Remote
+  // workers own their storage backend; this is not a mirrored RPC capability.
+  "databaseBackends",
   "tests",
   "dependencies",
   "testDependencies",
   "autoEnable",
-  // Pre-LLM shortcut gate (#8791): registered into the runtime ShortcutRegistry,
-  // not exposed over the capability-router remote boundary (RemotePluginModuleManifest
-  // has no shortcuts key and no remote-manifest builder reads it).
-  "shortcuts",
   // Pre-action dispatch hooks drained at the top of the chat loop; registered
   // into the runtime ChatPreHandlerRegistry in-process, never mirrored over the
   // remote wire (no manifest key, no builder reads it).
@@ -79,7 +81,10 @@ const localOnly = new Set([
 const remoteManifestKeys = new Set(
   readTypeMembers(capabilityFile, "RemotePluginModuleManifest"),
 );
-const pluginKeys = readInterfaceMembers(pluginFile, "Plugin");
+const pluginKeys = [
+  ...readInterfaceMembers(pluginFile, "Plugin"),
+  ...readInterfaceMembers("packages/core/src/api/http-plugin.ts", "HttpPlugin"),
+];
 const failures: string[] = [];
 
 for (const key of pluginKeys) {

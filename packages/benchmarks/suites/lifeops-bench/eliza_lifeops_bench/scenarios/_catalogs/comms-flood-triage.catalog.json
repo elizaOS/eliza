@@ -1,0 +1,231 @@
+{
+  "catalogId": "comms-flood-triage",
+  "title": "High-communication-volume triage LifeOpsBench pack",
+  "source": {
+    "issue": "https://github.com/elizaOS/eliza/issues/12281",
+    "persona": "dre_flood",
+    "notes": [
+      "Executable scenarios live in scenarios/comms_flood_triage.py and scenarios/live/comms_flood_triage.py.",
+      "The Scenario dataclass has no tags field in this checkout, so tier and adversarial markers are catalog metadata plus description markers.",
+      "Registered in the LifeOpsBench static and live scenario registries in this PR."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "comms_flood_triage.vip_allowlist_board_and_school",
+      "title": "Capture VIP allow-list: board member + kid's school",
+      "mode": "static",
+      "domain": "contacts",
+      "tierTag": "[T1]",
+      "tags": ["comms-flood", "vip", "contacts"],
+      "persona": "dre_flood",
+      "coverage": "Verbatim issue exemplar for two first-class VIP breakthrough records.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.digest_window_except_vips",
+      "title": "Capture digest window except VIPs",
+      "mode": "static",
+      "domain": "messages",
+      "tierTag": "[T2]",
+      "tags": ["comms-flood", "digest-policy"],
+      "persona": "dre_flood",
+      "coverage": "Structural digest-window policy with VIP and outage exceptions.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.urgency_importance_separation",
+      "title": "Separate important from urgent",
+      "mode": "static",
+      "domain": "messages",
+      "tierTag": "[T2]",
+      "tags": ["comms-flood", "priority-judgment"],
+      "persona": "dre_flood",
+      "coverage": "Separates important-but-not-immediate work from breakthrough urgent categories.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.cross_channel_dedup_rule",
+      "title": "Capture cross-channel dedup rule",
+      "mode": "static",
+      "domain": "messages",
+      "tierTag": "[T2]",
+      "tags": ["comms-flood", "dedup"],
+      "persona": "dre_flood",
+      "coverage": "Deduplicates semantically identical Slack and email items into one surfaced thread.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.define_what_matters",
+      "title": "Define 'just the ones that matter'",
+      "mode": "static",
+      "domain": "messages",
+      "tierTag": "[T2]",
+      "tags": ["comms-flood", "user-definition"],
+      "persona": "dre_flood",
+      "coverage": "Captures Dre's specific definition of matters rather than generic urgency heuristics.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.batch_digest_cadence_definition",
+      "title": "Define batch-digest cadence",
+      "mode": "static",
+      "domain": "messages",
+      "tierTag": "[T2]",
+      "tags": ["comms-flood", "digest-cadence"],
+      "persona": "dre_flood",
+      "coverage": "Stores a window-bound comms cadence instead of unrelated reminder nags.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.board_member_priority_flag",
+      "title": "Create board-member VIP flag",
+      "mode": "static",
+      "domain": "contacts",
+      "tierTag": "[T1]",
+      "tags": ["comms-flood", "vip", "contacts"],
+      "persona": "dre_flood",
+      "coverage": "Creates a named board-member breakthrough rule independent of the school source.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.school_contact_priority_flag",
+      "title": "Create kid's-school VIP flag",
+      "mode": "static",
+      "domain": "contacts",
+      "tierTag": "[T1]",
+      "tags": ["comms-flood", "vip", "contacts"],
+      "persona": "dre_flood",
+      "coverage": "Creates a named school-source breakthrough rule independent of the board member.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.channel_priority_ranking",
+      "title": "Capture channel-priority ranking",
+      "mode": "static",
+      "domain": "messages",
+      "tierTag": "[T1]",
+      "tags": ["comms-flood", "channel-ranking"],
+      "persona": "dre_flood",
+      "coverage": "Captures exact six-channel priority order with VIP override.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "comms_flood_triage.forwarded_clean_triage_request",
+      "title": "Triage clean forwarded message content",
+      "mode": "static",
+      "domain": "messages",
+      "tierTag": "[T2]",
+      "tags": ["comms-flood", "forwarded-content"],
+      "persona": "dre_flood",
+      "coverage": "Clean forwarded-content triage without embedded instruction-shaped text.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.comms_flood_triage.digest_batching_holds_journey",
+      "title": "Digest batching holds across a busy stretch",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T3]",
+      "tags": ["comms-flood", "digest-policy", "live"],
+      "persona": "dre_flood",
+      "coverage": "Non-VIP messages arrive mid-run and must stay batched.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.comms_flood_triage.vip_breakthrough_same_conversation",
+      "title": "VIP breakthrough beats non-VIP in the same burst",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T4]",
+      "tags": ["comms-flood", "vip", "live", "adversarial"],
+      "persona": "dre_flood",
+      "coverage": "Same-turn VIP and non-VIP arrivals test breakthrough contrast.",
+      "baselineCanary": false,
+      "adversarialTrap": "VIP and non-VIP arrive together"
+    },
+    {
+      "id": "live.comms_flood_triage.missed_vip_trust_collapse_trap",
+      "title": "Board-member VIP message must never be silently misfiled",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T4]",
+      "tags": ["comms-flood", "vip", "live", "adversarial"],
+      "persona": "dre_flood",
+      "coverage": "Verbatim hard-fail issue exemplar for a buried board-member VIP message.",
+      "baselineCanary": false,
+      "adversarialTrap": "missed VIP trust collapse"
+    },
+    {
+      "id": "live.comms_flood_triage.forwarded_prompt_injection_inert",
+      "title": "Forwarded prompt injection is inert content",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T4]",
+      "tags": ["comms-flood", "prompt-injection", "live", "adversarial"],
+      "persona": "dre_flood",
+      "coverage": "Instruction-shaped text arrives through a new_message payload and must remain inert.",
+      "baselineCanary": false,
+      "adversarialTrap": "forwarded-content prompt injection"
+    },
+    {
+      "id": "live.comms_flood_triage.wrong_recipient_priya_trap",
+      "title": "Wrong-recipient trap for two Priyas",
+      "mode": "live",
+      "domain": "contacts",
+      "tierTag": "[T4]",
+      "tags": ["comms-flood", "wrong-recipient", "live", "adversarial"],
+      "persona": "dre_flood",
+      "coverage": "Requires explicit recipient confirmation before sending to a similarly named contact.",
+      "baselineCanary": false,
+      "adversarialTrap": "wrong recipient"
+    },
+    {
+      "id": "live.comms_flood_triage.cross_channel_dedup_live",
+      "title": "Cross-channel duplicate is surfaced once",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T3]",
+      "tags": ["comms-flood", "dedup", "live"],
+      "persona": "dre_flood",
+      "coverage": "Same customer blocker arrives over Slack and email and should become one canonical surfaced item.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.comms_flood_triage.important_not_urgent_resurfaces",
+      "title": "Important-not-urgent item resurfaces later",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T3]",
+      "tags": ["comms-flood", "resurfacing", "live"],
+      "persona": "dre_flood",
+      "coverage": "Important-not-urgent item must be held for later recap rather than vanish.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.comms_flood_triage.false_urgency_demoted",
+      "title": "False urgency in marketing copy is demoted",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T4]",
+      "tags": ["comms-flood", "false-urgency", "live", "adversarial"],
+      "persona": "dre_flood",
+      "coverage": "Marketing subject-line urgency must not become VIP breakthrough urgency.",
+      "baselineCanary": false,
+      "adversarialTrap": "false urgency"
+    }
+  ]
+}

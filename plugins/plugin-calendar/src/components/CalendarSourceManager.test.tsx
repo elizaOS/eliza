@@ -6,11 +6,11 @@
  * ICS subscription create/remove against a spied calendar client.
  */
 
-import type {
-  LifeOpsCalendarSourceHealth,
-  LifeOpsCalendarSummary,
-  LifeOpsIcsCalendarSource,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarSourceHealth,
+  type LifeOpsCalendarSummary,
+  type LifeOpsIcsCalendarSource,
+} from "@elizaos/core/contracts/calendar";
 import {
   cleanup,
   fireEvent,
@@ -68,9 +68,8 @@ vi.mock("@elizaos/ui/state", () => ({
     selector(appValue),
 }));
 
-// The component imports `../api/client-calendar.js` for its side effect, which
-// augments `ElizaClient.prototype`; provide a throwaway class so that import
-// resolves while tests exercise the spied `client` object.
+// Give the explicit Calendar client installer a prototype target while
+// these component tests exercise the spied transport client.
 vi.mock("@elizaos/ui", () => ({
   ElizaClient: class {},
 }));

@@ -1,7 +1,7 @@
 /**
  * Translation harness — extractor regression tests.
  *
- * Covers `scripts/translate-action-examples.mjs`'s `extractFromActionFile`
+ * Covers `scripts/translate-action-examples.ts`'s `extractFromActionFile`
  * via fixture files in `test/fixtures/translate-action-examples/`. The
  * companion `translation-harness.test.ts` covers the registered packs;
  * this file covers the AST-level extraction strategies the bulk-translation
@@ -27,9 +27,8 @@ const fixtureDir = path.resolve(here, "fixtures", "translate-action-examples");
 const elizaRoot = path.resolve(here, "..", "..", "..");
 const scriptPath = path.resolve(
   here,
-  "..",
-  "scripts",
-  "translate-action-examples.mjs",
+  "../../../packages/scripts/plugins/plugin-personal-assistant",
+  "translate-action-examples.ts",
 );
 
 function locateBun(): string {

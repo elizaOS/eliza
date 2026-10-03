@@ -19,10 +19,10 @@ import {
 } from "@elizaos/plugin-computeruse";
 import {
   describeCalls,
+  scenario,
   successfulActionData,
   toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 
 process.env.COMPUTER_USE_ENABLED = "1";
 

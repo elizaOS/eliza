@@ -1,0 +1,7 @@
+# The workstation uses NetworkManager; do not wait for networkd as well.
+disable systemd-networkd.service
+disable systemd-networkd.socket
+disable systemd-networkd-wait-online.service
+enable NetworkManager.service
+enable NetworkManager-wait-online.service
+enable systemd-resolved.service

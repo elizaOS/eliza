@@ -6,6 +6,10 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import {
+  fingerprintWireRequest,
+  type WireRequestShape,
+} from "./cerebras-chat-flow-experiment.ts";
 import { sourceRevisionEvidence } from "./cerebras-chat-flow-latency.ts";
 
 function object(value: unknown): Record<string, unknown> {
@@ -88,6 +92,111 @@ export function validateReplayStream(raw: string): {
   };
 }
 
+export interface ReplayStreamTelemetry {
+  firstTokenMs: number | null;
+  firstVisibleTextMs: number | null;
+  firstReasoningMs: number | null;
+  usage: {
+    inputTokens: number | null;
+    cachedInputTokens: number | null;
+    freshInputTokens: number | null;
+    outputTokens: number | null;
+    reasoningTokens: number | null;
+  } | null;
+  providerTimeInfo: unknown;
+  parseErrors: number;
+}
+
+/** Streaming observation only; validateReplayStream remains the completion authority. */
+export function createReplayStreamTelemetry() {
+  const evidence: ReplayStreamTelemetry = {
+    firstTokenMs: null,
+    firstVisibleTextMs: null,
+    firstReasoningMs: null,
+    usage: null,
+    providerTimeInfo: null,
+    parseErrors: 0,
+  };
+  let pending = "";
+  const record = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const count = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? value
+      : null;
+  const present = (value: unknown) =>
+    typeof value === "string" && value.length > 0;
+  const consume = (block: string, elapsedMs: number) => {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!data || data === "[DONE]") return;
+    let event: Record<string, unknown>;
+    try {
+      event = record(JSON.parse(data));
+    } catch {
+      evidence.parseErrors++;
+      return;
+    }
+    for (const choice of Array.isArray(event.choices) ? event.choices : []) {
+      const delta = record(record(choice).delta);
+      const visible = present(delta.content);
+      const reasoning =
+        present(delta.reasoning_content) || present(delta.reasoning);
+      const tool =
+        (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) ||
+        Object.keys(record(delta.function_call)).length > 0;
+      if (visible && evidence.firstVisibleTextMs === null)
+        evidence.firstVisibleTextMs = elapsedMs;
+      if (reasoning && evidence.firstReasoningMs === null)
+        evidence.firstReasoningMs = elapsedMs;
+      if ((visible || reasoning || tool) && evidence.firstTokenMs === null)
+        evidence.firstTokenMs = elapsedMs;
+    }
+    if (event.usage != null) {
+      const usage = record(event.usage);
+      const inputTokens = count(usage.prompt_tokens ?? usage.input_tokens);
+      const cachedInputTokens = count(
+        record(usage.prompt_tokens_details ?? usage.input_tokens_details)
+          .cached_tokens,
+      );
+      evidence.usage = {
+        inputTokens,
+        cachedInputTokens,
+        freshInputTokens:
+          inputTokens !== null &&
+          cachedInputTokens !== null &&
+          cachedInputTokens <= inputTokens
+            ? inputTokens - cachedInputTokens
+            : null,
+        outputTokens: count(usage.completion_tokens ?? usage.output_tokens),
+        reasoningTokens: count(
+          record(usage.completion_tokens_details ?? usage.output_tokens_details)
+            .reasoning_tokens,
+        ),
+      };
+    }
+    if (event.time_info != null) evidence.providerTimeInfo = event.time_info;
+  };
+  return {
+    evidence,
+    push(text: string, elapsedMs: number, finished = false) {
+      pending += text;
+      const blocks = pending.split(/\r?\n\r?\n/);
+      pending = blocks.pop() ?? "";
+      for (const block of blocks) consume(block, elapsedMs);
+      if (finished && pending) {
+        consume(pending, elapsedMs);
+        pending = "";
+      }
+    },
+  };
+}
+
 export interface ReplayAttempt {
   index: number;
   order: number;
@@ -95,6 +204,8 @@ export interface ReplayAttempt {
   attempt: number;
   originalContext: Record<string, unknown>;
   request: Record<string, unknown>;
+  requestShape?: WireRequestShape;
+  streamTelemetry?: ReplayStreamTelemetry;
   outcome?: "dispatching" | "response" | "transport-error";
   status?: number;
   headersMs?: number;
@@ -117,6 +228,13 @@ export async function captureReplayAttempt(options: {
   row.outcome = "dispatching";
   row.responseComplete = false;
   row.rawResponse = "";
+  const requestBody = JSON.stringify(row.request);
+  row.requestShape = fingerprintWireRequest(
+    requestBody,
+    rows.length ? JSON.stringify(rows[rows.length - 1]?.request) : undefined,
+  );
+  const telemetry = createReplayStreamTelemetry();
+  row.streamTelemetry = telemetry.evidence;
   rows.push(row);
   await persist();
   const startedAt = performance.now();
@@ -130,7 +248,7 @@ export async function captureReplayAttempt(options: {
         Authorization: `Bearer ${options.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(row.request),
+      body: requestBody,
     });
     row.headersMs = performance.now() - startedAt;
     row.status = response.status;
@@ -141,13 +259,17 @@ export async function captureReplayAttempt(options: {
           const { done, value } = await reader.read();
           if (done) break;
           chunks.push(value);
-          row.rawResponse += decoder.decode(value, { stream: true });
+          const text = decoder.decode(value, { stream: true });
+          row.rawResponse += text;
+          telemetry.push(text, performance.now() - startedAt);
         }
       } finally {
         reader.releaseLock();
       }
     }
-    row.rawResponse += decoder.decode();
+    const finalText = decoder.decode();
+    row.rawResponse += finalText;
+    telemetry.push(finalText, performance.now() - startedAt, true);
     row.responseComplete = true;
     row.outcome = "response";
     row.totalMs = performance.now() - startedAt;

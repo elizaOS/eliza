@@ -1,110 +1,35 @@
 # @elizaos/capacitor-system
 
-Android system-role status bridge for elizaOS.
+A Capacitor plugin that bridges Android system-role status and device-settings control
+into the elizaOS mobile runtime.
 
-A [Capacitor](https://capacitorjs.com/) plugin that exposes Android system roles (home launcher, default dialer, SMS app, assistant), screen brightness, and audio-volume controls to TypeScript code running inside an elizaOS-based Android app.
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-## What it does
+## Development
 
-On **Android**, the plugin lets TypeScript code:
-
-- Query which Android system roles the app currently holds (home, dialer, SMS, voice assistant).
-- Request a system role via the standard Android role-request dialog.
-- Read and write screen brightness (requires WRITE_SETTINGS permission).
-- Read and set per-stream audio volume (music, ring, alarm, notification, system, voice call).
-- Open standard Android settings screens (main settings, Wi-Fi, display, sound, WRITE_SETTINGS permission grant).
-
-On **web/browser**, `getStatus()` and `getDeviceSettings()` return safe fallback values. All other methods throw a descriptive error.
-
-## Installation
-
-This package is part of the elizaOS monorepo. In a standalone Capacitor project, install it as you would any Capacitor plugin:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-npm install @elizaos/capacitor-system
-npx cap sync android
+bun run --cwd plugins/plugin-native-system build  # build
+bun run --cwd plugins/plugin-native-system test   # tests
 ```
 
-## Usage
+## Android device verification
 
-```typescript
-import { System } from "@elizaos/capacitor-system";
+From the repository root, run `node packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-system --system-controls` on an isolated stock emulator without the user app. This verifies real brightness and music-volume changes, clamping, permission denial/revocation, and restoration against Android settings and AudioManager. A second instrumentation process verifies recovery of persisted original settings after the first process exits with changes outstanding. Reports include bridge receipts and native observations. Home/SMS/assistant role flows and physical-device behavior require separate coverage.
 
-// Check which roles the app holds
-const status = await System.getStatus();
-console.log(status.packageName, status.roles);
+The installed-app hosted lane (`ELIZA_ANDROID_BACKEND=host node
+packages/app/scripts/android-e2e.ts --serial <emulator> --build --skip-local-chat
+--host-emulator-probes --start-host-agent --no-emulator-boot`) checks all five
+settings intents against actual Android screens, including an existing Wi-Fi task
+covered by Sound settings. It also verifies invalid roles, dialer-picker cancellation,
+grant and already-held results, restores the original phone app, and reattaches to
+the app after permission revocation. The role tests use a separate session. This lane
+requires an isolated stock emulator and exports native screenshots and observations.
 
-// Request the default SMS role
-const result = await System.requestRole({ role: "sms" });
-if (result.held) {
-  console.log("App is now the default SMS handler");
-}
-
-// Read device settings
-const settings = await System.getDeviceSettings();
-console.log("Brightness:", settings.brightness);
-console.log("Can write settings:", settings.canWriteSettings);
-
-// Set screen brightness (requires WRITE_SETTINGS permission)
-if (!settings.canWriteSettings) {
-  await System.openWriteSettings(); // redirect user to grant permission
-} else {
-  await System.setScreenBrightness({ brightness: 0.5 });
-}
-
-// Set music volume
-await System.setVolume({ stream: "music", volume: 10, showUi: true });
-```
-
-## Android roles
-
-| Role name | Android constant | What it controls |
-|-----------|-----------------|------------------|
-| `home` | `ROLE_HOME` | Default launcher / home screen |
-| `dialer` | `ROLE_DIALER` | Default phone/dialer app |
-| `sms` | `ROLE_SMS` | Default SMS messaging app |
-| `assistant` | `ROLE_ASSISTANT` | Default voice assistant |
-
-Role queries and requests require **Android 10 (API 29+)**. On older devices, `getStatus()` returns an empty roles array; `requestRole()` rejects.
-
-## Permissions
-
-The plugin declares these permissions in its `AndroidManifest.xml`. They are merged into the host app automatically via Capacitor:
-
-| Permission | Required for |
-|------------|-------------|
-| `MODIFY_AUDIO_SETTINGS` | `setVolume` |
-| `WRITE_SETTINGS` | `setScreenBrightness` |
-
-`WRITE_SETTINGS` is a special system permission that cannot be granted via the standard permission dialog. Direct the user to grant it:
-
-```typescript
-await System.openWriteSettings();
-```
-
-## API
-
-Full TypeScript types are exported from the package root. See `src/definitions.ts` for the complete interface.
-
-```typescript
-interface SystemPlugin {
-  getStatus(): Promise<SystemStatus>;
-  requestRole(options: { role: AndroidRoleName }): Promise<AndroidRoleRequestResult>;
-  openSettings(): Promise<void>;
-  openNetworkSettings(): Promise<void>;
-  openWriteSettings(): Promise<void>;
-  openDisplaySettings(): Promise<void>;
-  openSoundSettings(): Promise<void>;
-  getDeviceSettings(): Promise<DeviceSettingsStatus>;
-  setScreenBrightness(options: { brightness: number }): Promise<DeviceSettingsStatus>;
-  setVolume(options: { stream: SystemVolumeStream; volume: number; showUi?: boolean }): Promise<SystemVolumeStatus>;
-}
-```
-
-## Building
-
-```bash
-bun run --cwd plugins/plugin-native-system build
-```
-
-The Android library is built by Gradle as part of the host Capacitor Android project (`npx cap build android`).
+The baseline native-plugin runner also verifies flashlight input rejection before
+permissions, actual camera permission denial/grant, and torch on/off against
+CameraManager callbacks when the emulator exposes flash hardware. It exports
+native dialog screenshots, capabilities and receipts, then restores the torch and
+removes the test package. A device without flash must reject explicitly; emulator
+callbacks do not certify physical light output.

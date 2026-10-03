@@ -9,10 +9,12 @@ import {
   type CreateLifeOpsCalendarEventRequest,
   LIFEOPS_CALENDAR_WINDOW_PRESETS,
   type LifeOpsCalendarEvent,
+  type LifeOpsNextCalendarEventContext,
+} from "@elizaos/core/contracts/calendar";
+import {
   type LifeOpsConnectorGrant,
   type LifeOpsGmailMessageSummary,
-  type LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
   GOOGLE_GMAIL_READ_SCOPE,
@@ -24,7 +26,6 @@ import {
   normalizeGoogleCapabilities,
   normalizeIsoString,
   normalizeOptionalBoolean,
-  normalizeOptionalIsoString,
   normalizeOptionalMinutes,
   normalizeOptionalString,
   normalizeValidTimeZone,
@@ -87,6 +88,7 @@ export function normalizeCalendarDateTimeInTimeZone(
   value: unknown,
   field: string,
   timeZone: string,
+  disambiguation: "compatible" | "reject" = "compatible",
 ): string | undefined {
   if (value === undefined || value === null || value === "") {
     return undefined;
@@ -101,15 +103,34 @@ export function normalizeCalendarDateTimeInTimeZone(
     /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/,
   );
   if (localMatch) {
-    const localized = buildUtcDateFromLocalParts(timeZone, {
+    let date = {
       year: Number(localMatch[1]),
       month: Number(localMatch[2]),
       day: Number(localMatch[3]),
-      hour: Number(localMatch[4] ?? "0"),
-      minute: Number(localMatch[5] ?? "0"),
-      second: Number(localMatch[6] ?? "0"),
-    });
-    localized.setUTCMilliseconds(Number((localMatch[7] ?? "0").padEnd(3, "0")));
+    };
+    let hour = Number(localMatch[4] ?? "0");
+    const minute = Number(localMatch[5] ?? "0");
+    const second = Number(localMatch[6] ?? "0");
+    const millisecond = Number((localMatch[7] ?? "0").padEnd(3, "0"));
+    // ISO 24:00 denotes the following civil midnight, even across a DST change.
+    if (hour === 24 && minute === 0 && second === 0 && millisecond === 0) {
+      date = addDaysToLocalDate(date, 1);
+      hour = 0;
+    }
+    if (hour > 23 || minute > 59 || second > 59) {
+      fail(400, `${field} must be a valid ISO datetime`);
+    }
+    const localized = buildUtcDateFromLocalParts(
+      timeZone,
+      {
+        ...date,
+        hour,
+        minute,
+        second,
+      },
+      disambiguation,
+    );
+    localized.setUTCMilliseconds(millisecond);
     return localized.toISOString();
   }
 
@@ -122,13 +143,15 @@ export function resolveCalendarWindow(args: {
   requestedTimeMin?: string;
   requestedTimeMax?: string;
 }): { timeMin: string; timeMax: string } {
-  const explicitTimeMin = normalizeOptionalIsoString(
+  const explicitTimeMin = normalizeCalendarDateTimeInTimeZone(
     args.requestedTimeMin,
     "timeMin",
+    args.timeZone,
   );
-  const explicitTimeMax = normalizeOptionalIsoString(
+  const explicitTimeMax = normalizeCalendarDateTimeInTimeZone(
     args.requestedTimeMax,
     "timeMax",
+    args.timeZone,
   );
 
   if (explicitTimeMin && explicitTimeMax) {
@@ -410,13 +433,18 @@ export function resolveCalendarEventRange(
     request.startAt,
     "startAt",
     timeZone,
+    "reject",
   );
   if (!startAt) {
     fail(400, "startAt is required when windowPreset is not provided");
   }
   const endAt =
-    normalizeCalendarDateTimeInTimeZone(request.endAt, "endAt", timeZone) ??
-    addMinutes(new Date(startAt), durationMinutes).toISOString();
+    normalizeCalendarDateTimeInTimeZone(
+      request.endAt,
+      "endAt",
+      timeZone,
+      "reject",
+    ) ?? addMinutes(new Date(startAt), durationMinutes).toISOString();
   if (Date.parse(endAt) <= Date.parse(startAt)) {
     fail(400, "endAt must be later than startAt");
   }
@@ -448,7 +476,7 @@ export function buildNextCalendarEventContext(
   linkedMailError: string | null = null,
 ): Omit<
   LifeOpsNextCalendarEventContext,
-  "calendarFeedState" | "calendarSources"
+  "calendarFeedState" | "calendarSources" | "readScope"
 > {
   if (!event) {
     return {

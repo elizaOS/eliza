@@ -1,7 +1,7 @@
 /**
  * Agent provisioning: migrations, agent/entity/room setup, embedding dimension.
  * Runs once at deploy/daemon boot; not part of runtime.initialize().
- * Export from node entry point only (not browser/edge).
+ * Exported through the core Node/Bun entry point.
  *
  * WHY this module exists:
  * - Keeps the runtime a lean request handler; heavy one-time setup lives here.
@@ -10,10 +10,12 @@
  */
 
 import { createLogger } from "./logger";
-import type { Agent, Character, JsonValue, UUID } from "./types";
-import { ChannelType } from "./types";
+import type { Agent, Character } from "./types/agent.js";
 import type { IDatabaseAdapter } from "./types/database";
+import type { JsonValue, UUID } from "./types/primitives.js";
+import { ChannelType } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime";
+import { isExactTrueEnvFlag } from "./utils/env";
 
 const logger = createLogger({ namespace: "provisioning", level: "info" });
 
@@ -86,11 +88,10 @@ export async function runPluginMigrations(
 		return;
 	}
 
-	const isProduction =
-		typeof process !== "undefined" && process.env.NODE_ENV === "production";
-	const forceDestructive =
-		typeof process !== "undefined" &&
-		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+	const isProduction = process.env.NODE_ENV === "production";
+	const forceDestructive = isExactTrueEnvFlag(
+		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
+	);
 
 	await adapter.runPluginMigrations(pluginsWithSchemas, {
 		verbose: !isProduction,

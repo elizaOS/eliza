@@ -703,7 +703,7 @@ def test_metadata_transport_failure_cannot_start_uploads(
             if "blobs" in parse_qs(urlsplit(self.path).query):
                 self.respond(401, {"error": "metadata credentials expired"})
             else:
-                self.respond(200, {"id": "fixture/training", "sha": "a" * 40, "siblings": []})
+                self.respond(200, {"id": "fixture/training", "sha": "a" * 40, "siblings": [], "private": True})
 
         def do_POST(self):
             requests.append(("POST", self.path))
@@ -736,6 +736,146 @@ def test_metadata_transport_failure_cannot_start_uploads(
                 ], "fixture/training", public=False)
         assert failure.value.response.status_code == 401
         assert not [request for request in requests if request[0] == "POST"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.mark.parametrize("visibility", [True, False, None, "true"])
+@pytest.mark.parametrize("pointer_only", [True, False])
+def test_private_dataset_requires_confirmed_visibility(
+    publish_dataset, monkeypatch, tmp_path, visibility, pointer_only
+):
+    """The real publisher gates both upload paths using the external Hub response."""
+    monkeypatch.setenv("HF_TOKEN", "hf_fixture")
+    source = tmp_path / "train.jsonl"
+    source.write_text("hello\n")
+    spec = publish_dataset.DatasetSpec(
+        name="fixture",
+        files=() if pointer_only else (source,),
+        path_in_repo={} if pointer_only else {source: "train.jsonl"},
+        card="# Fixture",
+        is_pointer_only=pointer_only,
+    )
+    api = MagicMock()
+    api.repo_info.return_value = SimpleNamespace(private=visibility, siblings=[])
+    with patch("huggingface_hub.HfApi", return_value=api):
+        result = publish_dataset.publish(spec, "fixture/private", public=False)
+    assert result == (0 if visibility is True else 2)
+    api.create_repo.assert_not_called()
+    assert api.upload_file.call_count == int(visibility is True and pointer_only)
+    assert api.create_commit.call_count == int(visibility is True and not pointer_only)
+
+
+@pytest.mark.parametrize("visibility", [True, False, None])
+def test_private_dataset_creation_is_rechecked(
+    publish_dataset, monkeypatch, visibility
+):
+    import httpx
+    from huggingface_hub.errors import RepositoryNotFoundError
+
+    monkeypatch.setenv("HF_TOKEN", "hf_fixture")
+    api = MagicMock()
+    api.repo_info.side_effect = [
+        RepositoryNotFoundError(
+            "missing",
+            response=httpx.Response(
+                404, request=httpx.Request("GET", "https://fixture.invalid")
+            ),
+        ),
+        SimpleNamespace(private=visibility),
+    ]
+    spec = publish_dataset._spec_abliteration()
+    with patch("huggingface_hub.HfApi", return_value=api):
+        result = publish_dataset.publish(spec, "fixture/private", public=False)
+    assert result == (0 if visibility is True else 2)
+    api.create_repo.assert_called_once_with(
+        repo_id="fixture/private", repo_type="dataset", private=True, exist_ok=False
+    )
+    assert api.upload_file.call_count == int(visibility is True)
+    api.create_commit.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_dataset_lookup_denial_does_not_create_or_upload(
+    publish_dataset, monkeypatch, status
+):
+    import httpx
+    from huggingface_hub.errors import RepositoryNotFoundError
+
+    monkeypatch.setenv("HF_TOKEN", "hf_fixture")
+    api = MagicMock()
+    api.repo_info.side_effect = RepositoryNotFoundError(
+        "denied",
+        response=httpx.Response(
+            status, request=httpx.Request("GET", "https://fixture.invalid")
+        ),
+    )
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        pytest.raises(RepositoryNotFoundError),
+    ):
+        publish_dataset.publish(
+            publish_dataset._spec_abliteration(), "fixture/private", public=False
+        )
+    api.create_repo.assert_not_called()
+    api.upload_file.assert_not_called()
+    api.create_commit.assert_not_called()
+
+
+@pytest.mark.parametrize("visibility", [False, None])
+def test_private_dataset_refuses_public_or_unknown_hub_response(
+    publish_dataset, monkeypatch, visibility
+):
+    """Exercise real Hub decoding over loopback and observe zero remote writes."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    import huggingface_hub
+
+    writes = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = {"id": "fixture/private", "sha": "a" * 40, "siblings": []}
+            if visibility is not None:
+                body["private"] = visibility
+            payload = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_POST(self):
+            writes.append(self.path)
+            self.send_error(400)
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client_type = huggingface_hub.HfApi
+    monkeypatch.setattr(
+        huggingface_hub,
+        "HfApi",
+        lambda **kwargs: client_type(
+            endpoint=f"http://127.0.0.1:{server.server_port}", **kwargs
+        ),
+    )
+    monkeypatch.setenv("HF_TOKEN", "hf_local_fixture")
+    try:
+        assert (
+            publish_dataset.publish(
+                publish_dataset._spec_abliteration(), "fixture/private", public=False
+            )
+            == 2
+        )
+        assert writes == []
     finally:
         server.shutdown()
         server.server_close()

@@ -7,7 +7,7 @@
  * calling back to the parent (see skill callback bridge in send-to-agent.ts
  * via the child→parent USE_SKILL skill callback bridge).
  *
- * Source of truth is the AGENT_SKILLS_SERVICE (`@elizaos/plugin-agent-skills`).
+ * Reads an optional AGENT_SKILLS_SERVICE supplied by the parent host.
  *
  * @module services/skill-manifest
  */
@@ -26,9 +26,7 @@ export interface ManifestSkillEntry {
 }
 
 /**
- * Minimal shape of the AgentSkillsService surface we depend on. We avoid a
- * type-level import because plugin-agent-orchestrator must not have a hard
- * dependency on @elizaos/plugin-agent-skills (it is optional at runtime).
+ * Structural contract for the optional host-provided skills service.
  */
 interface SkillsServiceShape {
   getEligibleSkills: () => Promise<

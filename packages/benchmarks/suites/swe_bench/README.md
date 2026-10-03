@@ -1,0 +1,58 @@
+# SWE-bench
+
+Software engineering benchmark (Lite / Verified / Full / Multilingual): generates unified-diff patches for real GitHub issues and evaluates them with the official SWE-bench Docker harness.
+
+## Development
+
+Use a Python environment matching `pyproject.toml` and install the required dependencies.
+
+No compilation or wheel build is required to run this suite from source.
+
+Test from the repository root:
+
+```bash
+PYTHONPATH=packages python -m pytest packages/benchmarks/suites/swe_bench/tests
+```
+
+## Execution modes and evidence
+
+The default lane generates a patch through a harness bridge. To exercise Eliza's
+production message loop and READ/WRITE/EDIT/SHELL tools in an isolated task checkout:
+
+```bash
+PYTHONPATH=packages python -m benchmarks.swe_bench.cli --variant verified \
+  --harness eliza --execution-mode native_direct --provider cerebras \
+  --model MODEL --max-instances 1 \
+  --workspace test-results/swe-native/workspaces --output test-results/swe-native
+```
+
+Install the pinned Python dependencies first. Supply credentials for the selected
+provider; `native_direct` also accepts `openai` or `openai-compatible` using
+`OPENAI_API_KEY` and `OPENAI_BASE_URL`. Runtime state and full CLI logs are retained
+under the output directory. Native mode is experimental until live integration
+and official Docker evaluation pass; CLI completion alone is not issue resolution.
+The timeout covers the native process, including runtime boot. The legacy
+`--max-steps` flag does not override the production runtime's planning policy.
+
+`--no-docker` validates diff structure only and cannot publish a resolution score.
+Mocks, gold-patch calibration, and evaluator-feedback repairs are non-publishable.
+Repairs are disabled by default; an explicit `SWE_BENCH_REPAIR_ATTEMPTS` is for
+adaptive evaluator diagnostics only, not pass@1 comparison. Official evaluation
+logs and predictions are retained under `evaluator/`.
+
+The legacy `--orchestrated` option is a Python-managed provider matrix. It does
+not establish Eliza TASKS/ACP orchestration, and its score publication is disabled.
+A genuine orchestration lane must record parent TASKS calls, child session and
+workspace identities, completion/cancellation receipts, and the independently
+graded child diff. Lifecycle decision tests alone do not satisfy that contract.
+[Datacurve DeepSWE](https://github.com/datacurve-ai/deep-swe) is a separate
+long-horizon benchmark using Harbor-format tasks and the Pier runner. It is not
+executed by this SWE-bench CLI. Its isolated verifier must grade committed agent
+changes in a pristine environment; keep tests and reference solutions out of the
+agent workspace. Agentica DeepSWE-Preview is a different project: a coding model.
+
+Each native attempt uses a fresh trace identifier and receipt directory. Before
+official grading, its recorded task trajectory must match the complete prompt
+and context, contain a tool stage, and have a finished status and end timestamp.
+Missing, malformed, ambiguous, or unfinished trajectories fail the attempt; a
+generated patch remains available as diagnostic evidence, never a resolution score.

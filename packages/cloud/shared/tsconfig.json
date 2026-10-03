@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "lib": ["esnext", "dom"],
     "module": "esnext",
@@ -24,30 +25,11 @@
       "@/lib/*": ["./src/lib/*"],
       "@/types": ["./src/types/index.ts"],
       "@/types/*": ["./src/types/*"],
-      "@elizaos/cloud-routing": ["../routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../routing/src/*"],
-      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
-      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
-      "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
-      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
-      "@elizaos/logger": ["../../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../../logger/src/*"],
-      "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../../packages/shared/src/*"],
-      "@elizaos/plugin-cloud-apps": ["../../../plugins/plugin-cloud-apps/src/index.ts"],
-      "@elizaos/plugin-cloud-apps/*": ["../../../plugins/plugin-cloud-apps/src/*"],
-      "@elizaos/plugin-doordash": ["../../../plugins/plugin-doordash/src/index.ts"],
-      "@elizaos/plugin-doordash/*": ["../../../plugins/plugin-doordash/src/*"],
       "@elizaos/plugin-elizacloud": ["../../../plugins/plugin-elizacloud/src/index.ts"],
-      "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"],
-      "@elizaos/plugin-scheduling/edge": ["../../../plugins/plugin-scheduling/src/edge.ts"],
-      "@elizaos/plugin-todos/edge": ["../../../plugins/plugin-todos/src/edge.ts"],
-      "@elizaos/plugin-web-search/edge": ["../../../plugins/plugin-web-search/src/edge.ts"],
-      "drizzle-orm": ["../../../node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"]
+      "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
@@ -55,6 +37,7 @@
     "node_modules",
     "dist",
     "**/*.test.ts",
-    "src/lib/services/eliza-sandbox/test-support/**"
+    "src/lib/services/eliza-sandbox/test-support/**",
+    "src/db/repositories/test-support/**"
   ]
 }

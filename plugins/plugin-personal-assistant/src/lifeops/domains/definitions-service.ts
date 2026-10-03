@@ -1,3 +1,4 @@
+import { requestReminderWake } from "../reminder-wake.js";
 /**
  * Task-definition domain for LifeOps: CRUD over LifeOps task definitions and
  * their occurrences (the recurring reminders/check-ins/routines the scheduler
@@ -33,6 +34,7 @@ import {
   type DefinitionCreationContext,
   definitionCreationIdentity,
 } from "../definition-creation-identity.js";
+import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -167,6 +169,77 @@ export class DefinitionsDomain {
     }));
   }
 
+  /** Owner reminder read-model; retains occurrence/attempt identity for existing verbs. */
+  async listReminders() {
+    const definitions = (
+      await listCallerDefinitions(this.ctx.repository, this.ctx, {
+        activeOnly: false,
+      })
+    ).filter(
+      (definition) =>
+        resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS",
+    );
+    const occurrences = await this.ctx.repository.listOccurrencesForDefinitions(
+      this.ctx.agentId(),
+      definitions.map((definition) => definition.id),
+    );
+    const occurrencesByDefinition = new Map<string, LifeOpsOccurrence[]>();
+    for (const row of occurrences) {
+      const list = occurrencesByDefinition.get(row.definitionId) ?? [];
+      list.push(row);
+      occurrencesByDefinition.set(row.definitionId, list);
+    }
+    const now = Date.now();
+    const views = definitions.map((definition) => {
+      const rows = occurrencesByDefinition.get(definition.id) ?? [];
+      const pending = rows
+        .filter(
+          (row) =>
+            !["completed", "skipped", "expired", "muted"].includes(row.state),
+        )
+        .sort(
+          (a, b) =>
+            Date.parse(
+              a.snoozedUntil ?? a.dueAt ?? a.scheduledAt ?? a.createdAt,
+            ) -
+            Date.parse(
+              b.snoozedUntil ?? b.dueAt ?? b.scheduledAt ?? b.createdAt,
+            ),
+        );
+      const occurrence =
+        pending.find(
+          (row) =>
+            Date.parse(
+              row.snoozedUntil ?? row.dueAt ?? row.scheduledAt ?? row.createdAt,
+            ) >= now,
+        ) ??
+        pending[0] ??
+        rows.sort(
+          (a, b) =>
+            Date.parse(b.dueAt ?? b.scheduledAt ?? b.createdAt) -
+            Date.parse(a.dueAt ?? a.scheduledAt ?? a.createdAt),
+        )[0];
+      return {
+        definition,
+        occurrence: occurrence ?? null,
+      };
+    });
+    const attempts =
+      await this.ctx.repository.listLatestReminderAttemptsForOccurrences(
+        this.ctx.agentId(),
+        views.flatMap(({ occurrence }) => (occurrence ? [occurrence.id] : [])),
+      );
+    const latestByOccurrence = new Map(
+      attempts.map((attempt) => [attempt.ownerId, attempt]),
+    );
+    return views.map((view) => ({
+      ...view,
+      latestAttempt: view.occurrence
+        ? (latestByOccurrence.get(view.occurrence.id) ?? null)
+        : null,
+    }));
+  }
+
   async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
     return this.deps.getDefinitionRecord(definitionId);
   }
@@ -179,10 +252,19 @@ export class DefinitionsDomain {
       this.ctx,
       { activeOnly: false },
     );
+    const reminderDefinitionIds = new Set(
+      definitions
+        .filter(
+          (definition) =>
+            resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS",
+        )
+        .map((definition) => definition.id),
+    );
     const unscheduled: LifeOpsTodoView[] = definitions
       .filter(
         (definition) =>
           definition.subjectType === "owner" &&
+          !reminderDefinitionIds.has(definition.id) &&
           definition.kind === "task" &&
           definition.cadence.kind === "unscheduled" &&
           ["active", "completed"].includes(definition.status),
@@ -196,21 +278,25 @@ export class DefinitionsDomain {
         progress: null,
       }));
     return [
-      ...occurrences.map(
-        (occurrence): LifeOpsTodoView => ({
-          id: occurrence.id,
-          targetKind: "occurrence",
-          title: occurrence.title,
-          status:
-            occurrence.state === "completed"
-              ? "completed"
-              : occurrence.state === "snoozed"
-                ? "in_progress"
-                : "pending",
-          dueDate: occurrence.dueAt,
-          progress: occurrence.progress,
-        }),
-      ),
+      ...occurrences
+        .filter(
+          (occurrence) => !reminderDefinitionIds.has(occurrence.definitionId),
+        )
+        .map(
+          (occurrence): LifeOpsTodoView => ({
+            id: occurrence.id,
+            targetKind: "occurrence",
+            title: occurrence.title,
+            status:
+              occurrence.state === "completed"
+                ? "completed"
+                : occurrence.state === "snoozed"
+                  ? "in_progress"
+                  : "pending",
+            dueDate: occurrence.dueAt,
+            progress: occurrence.progress,
+          }),
+        ),
       ...unscheduled,
     ];
   }
@@ -388,6 +474,8 @@ export class DefinitionsDomain {
         definition,
         operationKey,
       );
+    if (reminderPlan?.steps.length)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return {
       idempotency: { key: operationKey, replayed: false },
       definition,
@@ -616,6 +704,8 @@ export class DefinitionsDomain {
       this.ctx.agentId(),
       nextDefinition.id,
     );
+    if (reminderPlan?.steps.length)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return {
       definition: nextDefinition,
       reminderPlan,
@@ -1093,6 +1183,10 @@ export class DefinitionsDomain {
         { occurrenceId: updatedOccurrence.id },
       );
     }
+    // Ask the existing worker to reconcile the committed snooze against its
+    // effective plan, rather than reproducing preference/offset policy here.
+    if (definition.reminderPlanId)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return view;
   }
 }

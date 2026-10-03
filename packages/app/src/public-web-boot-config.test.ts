@@ -8,7 +8,11 @@ const state = vi.hoisted(() => ({
   config: {
     cloudApiBase: "https://eliza.app",
     marker: "preserved",
-  } as { cloudApiBase: string; marker: string },
+  } as {
+    cloudApiBase: string;
+    marker: string;
+    applicationBillingSlot?: string;
+  },
   setCalls: [] as Array<Record<string, unknown>>,
 }));
 
@@ -63,5 +67,13 @@ describe("seedPublicWebBootConfig", () => {
 
     expect(state.setCalls).toHaveLength(0);
     expect(state.config.marker).toBe("preserved");
+  });
+
+  it("replaces a prior product selection even when the Cloud base is unchanged", () => {
+    state.config.applicationBillingSlot = "old-product";
+    seedPublicWebBootConfig({ VITE_ELIZA_APPLICATION_SLOT: "current-product" });
+    expect(state.config.applicationBillingSlot).toBe("current-product");
+    seedPublicWebBootConfig({});
+    expect(state.config.applicationBillingSlot).toBeUndefined();
   });
 });

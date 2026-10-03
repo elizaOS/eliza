@@ -9,14 +9,14 @@ import {
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import type {
-  LifeOpsAuditEvent,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsReminderPlan,
-} from "@elizaos/shared";
+import {
+  type LifeOpsAuditEvent,
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsReminderPlan,
+} from "@elizaos/core/contracts/personal-assistant";
 import { fail } from "../internal/errors.js";
 import {
   disconnectedGoogleStatus,

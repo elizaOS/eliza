@@ -13,9 +13,9 @@
  *     never drain the same job — the same exactly-once claim the provisioning
  *     worker relies on.
  *   - **Execute**: per item, the drain checks the tenant-scoped
- *     content-addressed done-marker (`pii:<sha256(content)>:v<ruleset>`,
- *     `piiScrubMarkersRepository` — the SAME key shape as the LOCAL lane in
- *     `packages/core/src/security/pii-scrub-markers.ts`), skips if present,
+ *     done-marker (core's content/ruleset key, plus hashed candidate/context
+ *     inputs for partial inspection), skips only a matching declaration or
+ *     a full-content inspection of the same content/ruleset,
  *     otherwise runs the injected {@link PiiScrubItemExecutor} and writes the
  *     marker ONLY on success. Crash-and-rerun resumes with zero cursor state:
  *     restart loses only in-flight items, every marked item skips.
@@ -48,13 +48,13 @@
  * sibling slices of #14808).
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, hashScrubContent, scrubMarkerKey } from "@elizaos/core";
 import { type Job, jobsRepository } from "../../db/repositories/jobs";
+import { piiScrubMarkersRepository } from "../../db/repositories/pii-scrub-markers";
 import {
-  hashPiiScrubContent,
-  piiScrubMarkerKey,
-  piiScrubMarkersRepository,
-} from "../../db/repositories/pii-scrub-markers";
+  PII_SCRUB_INSPECTION_SCOPES,
+  type PiiScrubInspectionScope,
+} from "../../db/schemas/pii-scrub-markers";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import type { PiiScrubItemExecutor } from "./pii-scrub-executor";
@@ -107,7 +107,17 @@ export interface PiiScrubJobData {
   rulesetVersion: string;
   /** Optional pipeline-stage label for observability. */
   stage?: string;
+  /** Required inspection depth; absent means `declared_candidates` (pre-scope rows). */
+  inspectionScope?: PiiScrubInspectionScope;
   items: PiiScrubJobItem[];
+}
+
+export { PII_SCRUB_INSPECTION_SCOPES, type PiiScrubInspectionScope };
+
+function isInspectionScope(value: unknown): value is PiiScrubInspectionScope {
+  return (
+    typeof value === "string" && (PII_SCRUB_INSPECTION_SCOPES as readonly string[]).includes(value)
+  );
 }
 
 /** The `jobs.result` progress record — advances while the drain runs. */
@@ -173,6 +183,7 @@ function isPiiScrubJobData(value: unknown): value is PiiScrubJobData {
     typeof v.rulesetVersion === "string" &&
     v.rulesetVersion.length > 0 &&
     (v.stage === undefined || typeof v.stage === "string") &&
+    (v.inspectionScope === undefined || isInspectionScope(v.inspectionScope)) &&
     Array.isArray(v.items) &&
     v.items.length > 0 &&
     v.items.every(isPiiScrubJobItem)
@@ -207,6 +218,7 @@ export interface EnqueuePiiScrubBatchParams {
   userId: string;
   rulesetVersion: string;
   stage?: string;
+  inspectionScope?: PiiScrubInspectionScope;
   items: PiiScrubJobItem[];
   maxAttempts?: number;
 }
@@ -225,6 +237,11 @@ function validateEnqueueParams(params: EnqueuePiiScrubBatchParams): void {
   ) {
     throw new PiiScrubJobDataError(
       `rulesetVersion must be a non-empty string of at most ${PII_SCRUB_MAX_RULESET_VERSION_LENGTH} characters`,
+    );
+  }
+  if (params.inspectionScope !== undefined && !isInspectionScope(params.inspectionScope)) {
+    throw new PiiScrubJobDataError(
+      `inspectionScope must be one of ${PII_SCRUB_INSPECTION_SCOPES.join(", ")}`,
     );
   }
   if (!Array.isArray(params.items) || params.items.length === 0) {
@@ -267,6 +284,7 @@ export async function enqueuePiiScrubBatch(params: EnqueuePiiScrubBatchParams): 
     userId: params.userId,
     rulesetVersion: params.rulesetVersion,
     ...(params.stage ? { stage: params.stage } : {}),
+    inspectionScope: params.inspectionScope ?? "declared_candidates",
     items: params.items,
   };
 
@@ -288,6 +306,7 @@ export async function enqueuePiiScrubBatch(params: EnqueuePiiScrubBatchParams): 
     items: params.items.length,
     rulesetVersion: params.rulesetVersion,
     stage: params.stage,
+    inspectionScope: data.inspectionScope,
   });
 
   return job;
@@ -300,6 +319,11 @@ export async function enqueuePiiScrubBatch(params: EnqueuePiiScrubBatchParams): 
 export interface PiiScrubJobDto {
   id: string;
   status: string;
+  /**
+   * Inspection depth the job ran under. A completed job is an inspection
+   * record, never a release authorization for training export.
+   */
+  inspectionScope: PiiScrubInspectionScope;
   attempts: number;
   maxAttempts: number;
   /** Null until the first drain pass writes progress. */
@@ -323,10 +347,16 @@ function isPiiScrubJobProgress(value: unknown): value is PiiScrubJobProgress {
   );
 }
 
+function jobInspectionScope(job: Job): PiiScrubInspectionScope {
+  const scope = (job.data as { inspectionScope?: unknown } | null)?.inspectionScope;
+  return isInspectionScope(scope) ? scope : "declared_candidates";
+}
+
 export function toPiiScrubJobDto(job: Job): PiiScrubJobDto {
   return {
     id: job.id,
     status: job.status,
+    inspectionScope: jobInspectionScope(job),
     attempts: job.attempts,
     maxAttempts: job.max_attempts,
     progress: isPiiScrubJobProgress(job.result) ? job.result : null,
@@ -538,6 +568,7 @@ async function executePiiScrubJob(
     ...(data.stage ? { stage: data.stage } : {}),
   };
   const failedItemRefs: string[] = [];
+  const inspectionScope = data.inspectionScope ?? "declared_candidates";
 
   logger.info(`${LOG} Executing pii_scrub job`, {
     jobId: job.id,
@@ -553,12 +584,25 @@ async function executePiiScrubJob(
       return { kind: "budget-exhausted", progress, retrySnapshot };
     }
 
-    const contentHash = hashPiiScrubContent(item.content);
-    const markerKey = piiScrubMarkerKey(contentHash, data.rulesetVersion);
+    const contentHash = hashScrubContent(item.content);
+    const fullInspectionKey = scrubMarkerKey(contentHash, data.rulesetVersion);
+    // Partial inspection proves only the supplied candidates/context. Never
+    // reuse an old content-only partial marker for a different declaration.
+    // Hash these inputs so marker rows retain no raw candidate or context PII.
+    const markerKey =
+      inspectionScope === "server_discovery"
+        ? fullInspectionKey
+        : `${fullInspectionKey}:declared:${hashScrubContent(JSON.stringify([item.candidateSpans ?? [], item.contextPack ?? null]))}`;
 
-    // Idempotent resume: a marker means THIS org already scrubbed THIS exact
-    // content under THIS ruleset — zero executor calls, zero duplicate writes.
-    if (await piiScrubMarkersRepository.isDone(job.organization_id, markerKey)) {
+    const fullyInspected = await piiScrubMarkersRepository.isDone(
+      job.organization_id,
+      fullInspectionKey,
+      "server_discovery",
+    );
+    const sameDeclarationInspected =
+      inspectionScope === "declared_candidates" &&
+      (await piiScrubMarkersRepository.isDone(job.organization_id, markerKey, inspectionScope));
+    if (fullyInspected || sameDeclarationInspected) {
       progress.itemsSkipped++;
       progress.lastItemRef = item.itemRef;
       await writeProgress(job.id, progress);
@@ -574,6 +618,7 @@ async function executePiiScrubJob(
         candidateSpans: item.candidateSpans ?? [],
         contextPack: item.contextPack,
         rulesetVersion: data.rulesetVersion,
+        inspectionScope,
       });
 
       // Success: write the done-marker. A lost unique-key race means a
@@ -586,6 +631,8 @@ async function executePiiScrubJob(
         ruleset_version: data.rulesetVersion,
         model_id: outcome.modelId,
         tier0_only: outcome.tier0Only,
+        inspection_scope: outcome.inspectionScope,
+        candidate_count: item.candidateSpans?.length ?? 0,
         job_id: job.id,
       });
       if (created.created) {

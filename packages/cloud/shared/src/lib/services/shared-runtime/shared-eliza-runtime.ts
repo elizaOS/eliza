@@ -12,18 +12,14 @@ import {
   type AgentNotification,
   AgentRuntime,
   assertModelOutputComplete,
-  basicProviders,
-  basicServices,
   ChannelType,
   CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
   ElizaError,
   type GenerateTextParams,
-  generateMediaAction,
   type IAgentRuntime,
   IMediaGenerationService,
   type InferenceTurnSummary,
-  InMemoryDatabaseAdapter,
   type MediaGenerationRequest,
   type Memory,
   ModelType,
@@ -38,15 +34,17 @@ import {
   type ToolChoice,
   type ToolDefinition,
   type UUID,
-} from "@elizaos/core/edge";
-import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
-import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
+} from "@elizaos/core";
+import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog";
+import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
+import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
+import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
 import {
   createWebSearchEdgePlugin,
   webSearchEdgeAction,
   webSearchEdgePlugin,
-} from "@elizaos/plugin-web-search/edge";
-import type { AgentCapabilityTransport } from "@elizaos/shared";
+} from "@elizaos/plugin-web-search";
 import {
   generateText,
   type JSONSchema7,
@@ -256,19 +254,12 @@ function sharedMediaPlugin(media: SharedMediaGenerationPort): Plugin {
   };
 }
 
-const sharedSystemLifecyclePlugin: Plugin = {
-  name: "shared-system-lifecycle",
-  description: "Action-free message lifecycle plumbing for server-authenticated system turns.",
-  providers: basicProviders,
-  services: basicServices,
-};
-
 function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
   actionsEnabled: boolean;
   webSearchEnabled: boolean;
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
   webSearchPlugin?: Plugin;
@@ -285,6 +276,7 @@ function createRuntime(options: {
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
     transport: options.transport,
   });
+  const assistant = createAssistantPlugin();
   return new AgentRuntime({
     agentId: options.agentId ?? stringToUuid(options.agentKey),
     character: {
@@ -307,7 +299,7 @@ function createRuntime(options: {
     adapter: options.adapter,
     plugins: [
       options.modelPlugin,
-      ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
+      { ...assistant, actions: options.actionsEnabled ? assistant.actions : [] },
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
       ...(options.webSearchEnabled ? [options.webSearchPlugin ?? webSearchEdgePlugin] : []),
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
@@ -315,13 +307,6 @@ function createRuntime(options: {
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
     ],
     logLevel: "error",
-    disableBasicCapabilities: !options.actionsEnabled,
-    actionPlanning: options.actionsEnabled,
-    checkShouldRespond: true,
-    enableAutonomy: false,
-    enableDocuments: false,
-    enableRelationships: false,
-    enableTrajectories: false,
   });
 }
 
@@ -338,7 +323,10 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
       agentKey: "shared-runtime-kernel-prewarm",
       actionsEnabled: true,
       webSearchEnabled: true,
-      adapter: new InMemoryDatabaseAdapter(),
+      adapter: SQLiteDatabaseAdapter.create(
+        ":memory:",
+        stringToUuid("shared-runtime-kernel-prewarm"),
+      ),
       character: {
         name: "Shared Eliza",
         system: "Shared runtime initialization prewarm.",
@@ -607,7 +595,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const trustedRoomKey = input.execution.roomKey.trim();
   await ensureEdgeStreamingContext();
   timing.markEdgeContextReady();
-  const adapter = new InMemoryDatabaseAdapter();
+  const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
   let providerDispatched = false;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
@@ -795,7 +784,6 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       : undefined;
   const mediaPlugin =
     actionsEnabled && input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
-  const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
   const userEntityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
   const lifecycleEntityId = stringToUuid(`${input.agentKey}:system-lifecycle`);

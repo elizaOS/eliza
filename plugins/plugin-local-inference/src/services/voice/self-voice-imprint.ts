@@ -22,7 +22,7 @@
  * MUST fail open (treat as not-self), never as self-voice.
  */
 
-import { AGENT_SELF_VOICE_IMPRINT_THRESHOLD } from "@elizaos/shared/voice/respond-gate";
+import { AGENT_SELF_VOICE_IMPRINT_THRESHOLD } from "@elizaos/core/voice/respond-gate";
 import { averageEmbeddings, type SpeakerEncoder } from "./speaker/encoder";
 import {
 	SPEAKER_GGML_MIN_SAMPLES,

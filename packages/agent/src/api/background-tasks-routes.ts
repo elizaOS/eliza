@@ -8,7 +8,7 @@
  */
 import type http from "node:http";
 import { ServiceType } from "@elizaos/core";
-import { BackgroundTaskRunCoordinator } from "@elizaos/shared/host-use-cases";
+import { BackgroundTaskRunCoordinator } from "../host-use-cases.js";
 
 interface TaskServiceLike {
   runDueTasks(): Promise<void>;

@@ -13,7 +13,7 @@
  * and are persisted for an inbox history rather than streamed as conversation.
  */
 
-import type { JsonValue, UUID } from "./primitives.ts";
+import type { JsonValue, UUID } from "./primitives.js";
 
 /**
  * Delivery urgency. Drives OS urgency/sound and whether a focused client also

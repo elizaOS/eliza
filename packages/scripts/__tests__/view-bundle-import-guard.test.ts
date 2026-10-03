@@ -14,7 +14,7 @@ import {
   hostExternalSpecifiersFromSources,
   validateViewBundles,
   viewOutputEntryKind,
-} from "../view-bundle-import-guard.mjs";
+} from "../view-bundle-import-guard.ts";
 
 const tempDirs: string[] = [];
 
@@ -43,7 +43,7 @@ function fixture() {
         vite: "^8.0.0",
       },
       scripts: {
-        "build:views": "bunx --bun vite build --config vite.config.views.ts",
+        "build:views": "vite build --config vite.config.views.ts",
       },
     },
   };
@@ -113,6 +113,10 @@ describe("view bundle import guard", () => {
       "export {};\n",
     );
     fs.writeFileSync(path.join(bundleDir, "styles.css"), "body {}\n");
+    fs.writeFileSync(
+      path.join(bundleDir, "bundle.js.assets.json"),
+      JSON.stringify({ version: 1, files: ["bundle.js"] }),
+    );
 
     const result = await validateViewBundles({
       ...options,
@@ -376,7 +380,7 @@ describe("view bundle import guard", () => {
         `
           function importCoreViewCompat() { return {}; }
           const HOST_EXTERNAL_IMPORTERS = {
-            "@elizaos/app-core": importCoreViewCompat,
+            "@elizaos/app": importCoreViewCompat,
           };
           export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
         `,
@@ -406,6 +410,71 @@ describe("view bundle import guard", () => {
         [registration],
       ),
     ).toThrow("mismatched relative specifier");
+  });
+
+  test("accepts optional named importer scope arguments without accepting required arguments", () => {
+    const loader = (parameters: string) => `
+      async function importUiRootCompat(${parameters}) { return {}; }
+      const HOST_EXTERNAL_IMPORTERS = { "@elizaos/ui": importUiRootCompat };
+      function resolveHostExternal(specifier) { return HOST_EXTERNAL_IMPORTERS[specifier]; }
+      function importHostExternalForScope(specifier, scope) {
+        return resolveHostExternal(specifier)(scope);
+      }
+      export const hostImport = (specifier) => importHostExternalForScope(specifier, null);
+    `;
+    for (const parameters of ["", "scope = null", "scope?: unknown"]) {
+      expect(hostExternalSpecifiersFromSources(loader(parameters), [])).toEqual(
+        new Set(["@elizaos/ui"]),
+      );
+    }
+    for (const parameters of [
+      "scope",
+      "scope: unknown",
+      "scope = null, required: unknown",
+      "...scopes: unknown[]",
+      "{ scope }?: { scope?: unknown }",
+      "[scope]?: unknown[]",
+      "{ scope } = {}",
+      "[scope] = []",
+    ]) {
+      expect(() =>
+        hostExternalSpecifiersFromSources(loader(parameters), []),
+      ).toThrow("expected callable importer");
+    }
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        `
+      const HOST_EXTERNAL_IMPORTERS = { react: (scope = null) => import("react") };
+      export function hostImport(specifier) { return HOST_EXTERNAL_IMPORTERS[specifier](); }
+    `,
+        [],
+      ),
+    ).toThrow("may not require arguments");
+  });
+
+  test("requires scoped importer lookup to be called, not hidden in an unused closure", () => {
+    const loader = (body: string) => `
+      const HOST_EXTERNAL_IMPORTERS = { react: () => import("react") };
+      function importHostExternalForScope(specifier, scope) {
+        return HOST_EXTERNAL_IMPORTERS[specifier](scope);
+      }
+      export function hostImport(specifier) { ${body} }
+    `;
+    expect(
+      hostExternalSpecifiersFromSources(
+        loader("return importHostExternalForScope(specifier, null);"),
+        [],
+      ),
+    ).toEqual(new Set(["react"]));
+    for (const body of [
+      "return () => importHostExternalForScope(specifier, null);",
+      "const unused = () => importHostExternalForScope(specifier, null); return {};",
+      "const importHostExternalForScope = () => ({}); return importHostExternalForScope(specifier, null);",
+    ]) {
+      expect(() => hostExternalSpecifiersFromSources(loader(body), [])).toThrow(
+        "not consumed by the exported hostImport call path",
+      );
+    }
   });
 
   test("rejects shadowed, non-callable, dead-branch, and mismatched registrations", () => {

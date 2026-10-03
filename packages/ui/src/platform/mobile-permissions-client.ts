@@ -2,13 +2,14 @@
  * Mobile permission client: maps the shared permission registry to the Capacitor
  * permission plugins and reports normalized states.
  */
+
 import type {
   IPermissionsRegistry,
   PermissionFeatureRef,
   PermissionId,
   PermissionState,
   PermissionStatus,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/core/contracts/permissions";
 import {
   type AppBlockerPermissionResult,
   type AppBlockerPluginLike,
@@ -78,13 +79,11 @@ type MobilePermissionId = Extract<
   | "local-network"
   | "battery-optimization"
 >;
-
 type PermissionClientLike = {
   getPermission(id: PermissionId): Promise<PermissionState>;
   requestPermission(id: PermissionId): Promise<PermissionState>;
   openPermissionSettings(id: PermissionId): Promise<void>;
 };
-
 const MOBILE_PERMISSION_IDS = new Set<PermissionId>([
   "calendar",
   "health",
@@ -108,7 +107,6 @@ const MOBILE_PERMISSION_IDS = new Set<PermissionId>([
   "local-network",
   "battery-optimization",
 ]);
-
 interface NativePermissionPlugins {
   appBlocker?: AppBlockerPluginLike;
   camera?: CameraPluginLike;
@@ -123,12 +121,10 @@ interface NativePermissionPlugins {
   system?: SystemPluginLike;
   talkMode?: TalkModePluginLike;
 }
-
 function currentMobilePlatform(): PermissionState["platform"] {
   if (platform === "ios" || platform === "android") return platform;
   return "web";
 }
-
 function defaultMobileState(
   id: PermissionId,
   status: PermissionStatus = "not-applicable",
@@ -150,7 +146,6 @@ function defaultMobileState(
       : {}),
   };
 }
-
 type PromptLikePermissionState =
   | "granted"
   | "denied"
@@ -160,7 +155,6 @@ type PromptLikePermissionState =
   | "not_supported"
   | undefined
   | null;
-
 function statusFromPromptLike(
   value: PromptLikePermissionState,
 ): PermissionStatus {
@@ -170,7 +164,6 @@ function statusFromPromptLike(
   if (value === "not_supported") return "not-applicable";
   return "not-determined";
 }
-
 function canRequestPromptLike(value: PromptLikePermissionState): boolean {
   return (
     value === "prompt" ||
@@ -179,7 +172,6 @@ function canRequestPromptLike(value: PromptLikePermissionState): boolean {
     value === null
   );
 }
-
 function stateFromPromptLike(
   id: PermissionId,
   value: PromptLikePermissionState,
@@ -196,7 +188,6 @@ function stateFromPromptLike(
         : reason,
   });
 }
-
 function stateFromCamera(
   id: Extract<MobilePermissionId, "camera" | "microphone" | "photos">,
   permissions: CameraPermissionStatus,
@@ -207,7 +198,6 @@ function stateFromCamera(
   }
   return stateFromPromptLike(id, permissions.photos);
 }
-
 function stateFromTalkMode(
   id: Extract<MobilePermissionId, "microphone" | "speech-recognition">,
   permissions: TalkModePermissionStatus,
@@ -217,7 +207,6 @@ function stateFromTalkMode(
   }
   return stateFromPromptLike(id, permissions.microphone);
 }
-
 function stateFromLocation(
   id: Extract<MobilePermissionId, "location" | "wifi">,
   permissions: LocationPermissionStatus,
@@ -230,7 +219,6 @@ function stateFromLocation(
         : undefined;
   return stateFromPromptLike(id, permissions.location, reason);
 }
-
 async function verifyForegroundLocationRead(
   state: PermissionState,
   locationPlugin: LocationPluginLike,
@@ -241,12 +229,11 @@ async function verifyForegroundLocationRead(
   ) {
     return state;
   }
-
   try {
     await locationPlugin.getCurrentPosition({
       accuracy: "medium",
-      maxAge: 300_000,
-      timeout: 10_000,
+      maxAge: 300000,
+      timeout: 10000,
     });
     return state;
   } catch {
@@ -259,7 +246,6 @@ async function verifyForegroundLocationRead(
     };
   }
 }
-
 function stateFromScreenCapture(
   permissions: ScreenCapturePermissionStatus,
 ): PermissionState {
@@ -271,23 +257,19 @@ function stateFromScreenCapture(
       : undefined,
   );
 }
-
 function stateFromContacts(
   permissions: ContactsPermissionStatus,
 ): PermissionState {
   return stateFromPromptLike("contacts", permissions.contacts);
 }
-
 function stateFromPhone(permissions: PhonePermissionStatus): PermissionState {
   return stateFromPromptLike("phone", permissions.phone);
 }
-
 function stateFromMessages(
   permissions: MessagesPermissionStatus,
 ): PermissionState {
   return stateFromPromptLike("messages", permissions.sms);
 }
-
 function stateFromAppBlocker(
   id: Extract<MobilePermissionId, "app-blocking" | "overlay">,
   permissions: AppBlockerPermissionResult,
@@ -297,7 +279,6 @@ function stateFromAppBlocker(
     reason: permissions.reason,
   });
 }
-
 function stateFromWriteSettings(
   status: Awaited<
     ReturnType<NonNullable<SystemPluginLike["getDeviceSettings"]>>
@@ -314,13 +295,11 @@ function stateFromWriteSettings(
     },
   );
 }
-
 function normalizeMobileSignalsStatus(
   status: MobileSignalsPermissionStatus["status"],
 ): PermissionStatus {
   return status;
 }
-
 function statusFromSetupAction(
   action: MobileSignalsSetupAction | null,
 ): PermissionStatus {
@@ -329,7 +308,6 @@ function statusFromSetupAction(
   if (action.status === "unavailable") return "not-applicable";
   return "not-determined";
 }
-
 function findSetupAction(
   permissions: MobileSignalsPermissionStatus,
   ids: readonly MobileSignalsSetupAction["id"][],
@@ -338,7 +316,6 @@ function findSetupAction(
     permissions.setupActions.find((action) => ids.includes(action.id)) ?? null
   );
 }
-
 function restrictedReasonForScreenTime(
   screenTime: MobileSignalsScreenTimeStatus,
 ): PermissionState["restrictedReason"] {
@@ -351,7 +328,6 @@ function restrictedReasonForScreenTime(
   }
   return "os_policy";
 }
-
 function stateFromScreenTime(
   permissions: MobileSignalsPermissionStatus,
 ): PermissionState {
@@ -365,28 +341,24 @@ function stateFromScreenTime(
     screenTime.reportAvailable ||
     screenTime.coarseSummaryAvailable ||
     screenTime.thresholdEventsAvailable;
-
   if (authorizationStatus === "approved" && hasUsableCapability) {
     return defaultMobileState("screentime", "granted", {
       canRequest: false,
       reason: screenTime.reason ?? action?.reason ?? undefined,
     });
   }
-
   if (authorizationStatus === "denied") {
     return defaultMobileState("screentime", "denied", {
       canRequest: screenTime.authorization.canRequest,
       reason: screenTime.reason ?? action?.reason ?? undefined,
     });
   }
-
   if (authorizationStatus === "not-determined") {
     return defaultMobileState("screentime", "not-determined", {
       canRequest: screenTime.authorization.canRequest,
       reason: screenTime.reason ?? action?.reason ?? undefined,
     });
   }
-
   return defaultMobileState(
     "screentime",
     screenTime.supported ? "restricted" : "not-applicable",
@@ -399,7 +371,6 @@ function stateFromScreenTime(
     },
   );
 }
-
 function stateFromHealth(
   permissions: MobileSignalsPermissionStatus,
 ): PermissionState {
@@ -412,7 +383,6 @@ function stateFromHealth(
     },
   );
 }
-
 function stateFromNotifications(
   permissions: MobileSignalsPermissionStatus,
 ): PermissionState {
@@ -422,7 +392,6 @@ function stateFromNotifications(
     reason: action?.reason ?? undefined,
   });
 }
-
 function stateFromUsageAccess(
   permissions: MobileSignalsPermissionStatus,
 ): PermissionState {
@@ -438,7 +407,6 @@ function stateFromUsageAccess(
     reason: action?.reason ?? permissions.screenTime.reason ?? undefined,
   });
 }
-
 function stateFromSetupAction(
   id: Extract<MobilePermissionId, "battery-optimization" | "local-network">,
   permissions: MobileSignalsPermissionStatus,
@@ -450,7 +418,6 @@ function stateFromSetupAction(
     reason: action?.reason ?? undefined,
   });
 }
-
 function stateFromPushNotifications(
   permissions: PushNotificationPermissionStatus,
 ): PermissionState {
@@ -472,7 +439,6 @@ function stateFromPushNotifications(
       return defaultMobileState("notifications");
   }
 }
-
 function stateFromAppleCalendar(
   permissions: AppleCalendarPermissionStatus,
 ): PermissionState {
@@ -492,7 +458,6 @@ function stateFromAppleCalendar(
     restrictedReason: status === "restricted" ? "os_policy" : undefined,
   });
 }
-
 function stateFromMobileSignals(
   id: MobilePermissionId,
   permissions: MobileSignalsPermissionStatus,
@@ -514,7 +479,6 @@ function stateFromMobileSignals(
   }
   return defaultMobileState(id);
 }
-
 function mobileSettingsTargetFor(
   id: PermissionId,
 ): MobileSignalsSettingsTarget {
@@ -530,11 +494,9 @@ function mobileSettingsTargetFor(
   if (id === "write-settings") return "deviceSettings";
   return "app";
 }
-
 function isMobilePermissionId(id: PermissionId): id is MobilePermissionId {
   return MOBILE_PERMISSION_IDS.has(id);
 }
-
 export async function openMobilePermissionSettings(
   id: PermissionId,
   plugin: MobileSignalsPluginLike = getMobileSignalsPlugin(),
@@ -569,7 +531,6 @@ export async function openMobilePermissionSettings(
   if (typeof plugin.openSettings !== "function") return;
   return plugin.openSettings({ target: mobileSettingsTargetFor(id) });
 }
-
 export function createMobileSignalsPermissionsRegistry(
   plugin: MobileSignalsPluginLike = getMobileSignalsPlugin(),
   fallbackClient?: PermissionClientLike,
@@ -591,20 +552,17 @@ export function createMobileSignalsPermissionsRegistry(
     system: nativePlugins.system ?? getSystemPlugin(),
     talkMode: nativePlugins.talkMode ?? getTalkModePlugin(),
   };
-
   const notify = () => {
     const snapshot = Array.from(states.values());
     for (const subscriber of subscribers) {
       subscriber(snapshot);
     }
   };
-
   const commit = (state: PermissionState) => {
     states.set(state.id, state);
     notify();
     return state;
   };
-
   const checkMobilePermission = async (id: MobilePermissionId) => {
     if (id === "calendar") {
       if (typeof appleCalendarPlugin.checkPermissions !== "function") {
@@ -731,14 +689,12 @@ export function createMobileSignalsPermissionsRegistry(
     const permissions = await plugin.checkPermissions();
     return commit(stateFromMobileSignals(id, permissions));
   };
-
   const checkFallback = async (id: PermissionId) => {
     if (fallbackClient) {
       return commit(await fallbackClient.getPermission(id));
     }
     return commit(defaultMobileState(id));
   };
-
   return {
     get(id) {
       return (
@@ -754,7 +710,6 @@ export function createMobileSignalsPermissionsRegistry(
     },
     async request(id, opts) {
       const lastRequested = Date.now();
-
       if (!isMobilePermissionId(id)) {
         if (fallbackClient) {
           const next = await fallbackClient.requestPermission(id);
@@ -769,7 +724,6 @@ export function createMobileSignalsPermissionsRegistry(
         }
         return commit(defaultMobileState(id, "not-applicable"));
       }
-
       let requestedState: PermissionState | null = null;
       if (id === "calendar") {
         const current = await checkMobilePermission(id);
@@ -957,7 +911,6 @@ export function createMobileSignalsPermissionsRegistry(
       } else if (typeof plugin.requestPermissions === "function") {
         await plugin.requestPermissions({ target: "health" });
       }
-
       let next = requestedState ?? (await checkMobilePermission(id));
       if (id === "notifications" && next.status === "granted") {
         try {

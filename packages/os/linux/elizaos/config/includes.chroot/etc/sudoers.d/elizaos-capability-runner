@@ -1,0 +1,6 @@
+Cmnd_Alias ELIZAOS_CAPABILITIES = /usr/local/lib/elizaos/capability-runner root-status, \
+    /usr/local/lib/elizaos/capability-runner service *, \
+    /usr/local/lib/elizaos/capability-runner package *, \
+    /usr/local/lib/elizaos/capability-runner network *, \
+    /usr/local/lib/elizaos/capability-runner power *
+%sudo ALL=(root) NOPASSWD: ELIZAOS_CAPABILITIES

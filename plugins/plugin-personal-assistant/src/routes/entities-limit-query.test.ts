@@ -16,7 +16,7 @@ const kg = vi.hoisted(() => {
   return { list };
 });
 
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/plugin-relationships", () => ({
   resolveKnowledgeGraphService: () => ({
     getEntityStore: () => ({
       list: kg.list,

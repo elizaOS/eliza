@@ -15,13 +15,17 @@ import {
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
 import { CalendarServiceError } from "../src/internal/errors.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000501";
 const ENTITY_ID = "00000000-0000-0000-0000-000000000502";
@@ -72,23 +76,7 @@ function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
     events,
     source: "synced",
     state: "complete",
-    sources: [
-      {
-        key: {
-          provider: "google",
-          side: "owner",
-          grantId: "connector-account:calendar-owner",
-          connectorAccountId: "calendar-owner",
-          calendarId: "primary",
-        },
-        summary: "Primary",
-        accessRole: "owner",
-        visibility: "details",
-        status: "fresh",
-        syncedAt: FEED_SYNCED_AT,
-        error: null,
-      },
-    ],
+    sources: freshCalendarSources([...events, EVENT, ELIZA_EVENT]),
     timeMin: "2026-07-27T00:00:00.000Z",
     timeMax: "2026-08-03T00:00:00.000Z",
     syncedAt: FEED_SYNCED_AT,
@@ -115,21 +103,40 @@ function requireOrderedCalendarWindow(
   }
 }
 
-function message(text: string): Memory {
+function message(
+  text: string,
+  createdAt = Date.parse("2026-07-27T11:55:00.000Z"),
+): Memory {
   return {
     id: MESSAGE_ID,
     agentId: AGENT_ID,
     entityId: ENTITY_ID,
     roomId: ROOM_ID,
-    createdAt: Date.parse("2026-07-27T11:55:00.000Z"),
+    createdAt,
     content: { text, source: "test" },
   } as Memory;
 }
 
-function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
+function deps(
+  overrides: Partial<CalendarActionDeps> = {},
+  destination = EVENT,
+): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              grantId: destination.grantId,
+              calendarId: destination.calendarId,
+              startAt: EVENT.startAt,
+              endAt: EVENT.endAt,
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     // Deterministic presentation fixture, not evidence of a live model reply.
     renderGroundedReply: async ({ fallback }) => ({
@@ -148,6 +155,13 @@ function runtime(
   return {
     actions: [action],
     agentId: AGENT_ID,
+    getRoom: vi.fn(async () => ({ worldId: "world-id" })),
+    getWorld: vi.fn(async () => ({
+      metadata: {
+        roles: { [ENTITY_ID]: "OWNER" },
+        roleSources: { [ENTITY_ID]: "manual" },
+      },
+    })),
     logger: {
       debug: vi.fn(),
       info: vi.fn(),
@@ -156,7 +170,14 @@ function runtime(
     },
     reportError,
     getService: (serviceType: string) =>
-      serviceType === "calendar" ? service : null,
+      serviceType === "calendar"
+        ? {
+            listCalendars: vi.fn(async () =>
+              calendarSummariesForEvents([EVENT, ELIZA_EVENT]),
+            ),
+            ...service,
+          }
+        : null,
   } as unknown as IAgentRuntime;
 }
 
@@ -232,7 +253,57 @@ function expectInternalHandoff(
   }
 }
 
+/** Settled mutations hand verified facts to the normal response model. */
+function expectVerifiedHandoff(
+  delivered: Content[],
+  result: Awaited<ReturnType<typeof execute>>,
+): void {
+  expectInternalHandoff(delivered, result);
+  expect(result.modelReplyRequired).toBe(true);
+  expect(result.effectReceipts).toHaveLength(1);
+  expect(result.effectReceipts?.[0]?.outcome).toBe("applied");
+  expect(result.data?.replyContext).toMatchObject({
+    domain: "calendar",
+    facts: expect.any(String),
+  });
+  expect(result).not.toHaveProperty("replyFailure");
+}
+
 describe("CALENDAR effect receipt settlement", () => {
+  it.each([
+    ["feed", undefined, false],
+    ["feed", true, true],
+    ["search_events", undefined, true],
+    ["search_events", false, false],
+  ] as const)(
+    "%s honors hidden-calendar scope %s (resolved %s)",
+    async (subaction, includeHiddenCalendars, expected) => {
+      const getCalendarFeed = vi.fn(async () => feed());
+      const result = await execute({
+        action: createCalendarActionRunner(deps()),
+        service: { getCalendarFeed },
+        actor: message("Read the requested calendar window."),
+        delivered: [],
+        parameters: {
+          subaction,
+          ...(subaction === "search_events" ? { query: "School pickup" } : {}),
+          details: {
+            ...(includeHiddenCalendars === undefined
+              ? {}
+              : { includeHiddenCalendars }),
+            timeMin: "2026-07-27T00:00:00.000Z",
+            timeMax: "2026-08-03T00:00:00.000Z",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(getCalendarFeed).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({ includeHiddenCalendars: expected }),
+      );
+    },
+  );
+
   it.each(["Unknown", "None", "n/a", "location_missing"])(
     "searches for the literal detail query %s",
     async (title) => {
@@ -298,8 +369,10 @@ describe("CALENDAR effect receipt settlement", () => {
       expectInternalHandoff(delivered, result);
       expect(result.data?.replyContext).toMatchObject({
         scenario: "feed_results",
-        context: { events: [EVENT] },
+        context: { label: expect.any(String) },
       });
+      expect(result.data?.events).toEqual([EVENT]);
+      expect(result.data?.replyContext).not.toHaveProperty("context.events");
       expect(renderGroundedReply).not.toHaveBeenCalled();
     },
   );
@@ -320,7 +393,9 @@ describe("CALENDAR effect receipt settlement", () => {
         throw providerError;
       });
       const service = {
-        getCalendarFeed: vi.fn(async () => feed([ELIZA_EVENT])),
+        getCalendarFeed: vi.fn(async () =>
+          feed(subaction === "create_event" ? [] : [ELIZA_EVENT]),
+        ),
         getConditionalCalendarMutationTarget: vi.fn(async () => ELIZA_EVENT),
         prepareCalendarEventCreate: vi.fn(
           async (_url: URL, request: Record<string, unknown>) => ({
@@ -340,12 +415,23 @@ describe("CALENDAR effect receipt settlement", () => {
         })),
         deleteCalendarEvent: vi.fn(async () => undefined),
       };
-      const action = createCalendarActionRunner(deps({ renderGroundedReply }));
+      const actionDeps = deps({ renderGroundedReply });
+      if (subaction === "update_event") {
+        actionDeps.runJsonModel = vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Updated title" },
+        }));
+      }
+      const action = createCalendarActionRunner(actionDeps);
       const delivered: Content[] = [];
       const result = await execute({
         action,
         service,
-        actor: message("Use the requested calendar operation."),
+        actor: message(
+          subaction === "update_event"
+            ? "Rename the event to Updated title."
+            : "Use the requested calendar operation.",
+        ),
         delivered,
         parameters: {
           subaction,
@@ -359,8 +445,8 @@ describe("CALENDAR effect receipt settlement", () => {
                 }
               : subaction === "create_event"
                 ? {
-                    startAt: ELIZA_EVENT.startAt,
-                    endAt: ELIZA_EVENT.endAt,
+                    start: ELIZA_EVENT.startAt,
+                    end: ELIZA_EVENT.endAt,
                     timeZone: "UTC",
                   }
                 : {
@@ -381,7 +467,7 @@ describe("CALENDAR effect receipt settlement", () => {
           subaction === "feed" ? "feed_results" : `${subaction}_completed`,
         context:
           subaction === "feed"
-            ? { events: [ELIZA_EVENT] }
+            ? { label: expect.any(String) }
             : {
                 event:
                   subaction === "update_event"
@@ -389,6 +475,10 @@ describe("CALENDAR effect receipt settlement", () => {
                     : ELIZA_EVENT,
               },
       });
+      if (subaction === "feed") {
+        expect(result.data?.events).toEqual([ELIZA_EVENT]);
+        expect(result.data?.replyContext).not.toHaveProperty("context.events");
+      }
       expect(renderGroundedReply).not.toHaveBeenCalled();
       expect(service.createCalendarEvent).toHaveBeenCalledTimes(
         subaction === "create_event" ? 1 : 0,
@@ -437,7 +527,7 @@ describe("CALENDAR effect receipt settlement", () => {
           domain: "calendar",
           intent: "What is on my calendar this week?",
           scenario: "feed_results",
-          context: { events: [EVENT] },
+          context: { label: expect.any(String) },
         },
       },
       effectReceipts: [
@@ -465,7 +555,9 @@ describe("CALENDAR effect receipt settlement", () => {
       text: "Approval request calendar-approval-request-1 is ready.",
     };
     const schedule = vi.fn(async () => approval);
-    const getCalendarFeed = vi.fn(async () => feed([]));
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _options: Record<string, unknown>) => feed([]),
+    );
     const prepareCalendarEventCreate = vi.fn(
       async (_url: URL, request: Record<string, unknown>) => ({
         ...request,
@@ -501,8 +593,8 @@ describe("CALENDAR effect receipt settlement", () => {
         title: "School pickup",
         details: {
           calendarId: "  Default  ",
-          startAt: "2026-07-28T22:00:00.000Z",
-          endAt: "2026-07-28T22:30:00.000Z",
+          start: "2026-07-28T22:00:00.000Z",
+          end: "2026-07-28T22:30:00.000Z",
           timeZone: "UTC",
         },
       },
@@ -512,11 +604,20 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(schedule, JSON.stringify(result)).toHaveBeenCalledOnce();
     expect(getCalendarFeed).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ calendarId: undefined }),
+      expect.objectContaining({
+        includeHiddenCalendars: true,
+        forceSync: true,
+      }),
     );
+    for (const key of ["grantId", "calendarId", "mode", "side"]) {
+      expect(getCalendarFeed.mock.calls[0]?.[1]).not.toHaveProperty(key);
+    }
     expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ calendarId: undefined }),
+      expect.objectContaining({
+        grantId: EVENT.grantId,
+        calendarId: EVENT.calendarId,
+      }),
     );
     expect(result.effectReceipts, JSON.stringify(result)).toEqual([
       expect.objectContaining({
@@ -562,13 +663,16 @@ describe("CALENDAR effect receipt settlement", () => {
       createCalendarEvent,
     };
     const action = createCalendarActionRunner(
-      deps({
-        mutationGateway: {
-          schedule,
-          modify: vi.fn(),
-          cancel: vi.fn(),
+      deps(
+        {
+          mutationGateway: {
+            schedule,
+            modify: vi.fn(),
+            cancel: vi.fn(),
+          },
         },
-      }),
+        ELIZA_EVENT,
+      ),
     );
     const delivered: Content[] = [];
 
@@ -580,8 +684,8 @@ describe("CALENDAR effect receipt settlement", () => {
         subaction: "create_event",
         title: "Eat a sandwich",
         details: {
-          startAt: ELIZA_EVENT.startAt,
-          endAt: ELIZA_EVENT.endAt,
+          start: ELIZA_EVENT.startAt,
+          end: ELIZA_EVENT.endAt,
           timeZone: "UTC",
         },
       },
@@ -624,12 +728,16 @@ describe("CALENDAR effect receipt settlement", () => {
         }
         return {
           rawResponse: JSON.stringify({
+            grantId: ELIZA_EVENT.grantId,
+            calendarId: ELIZA_EVENT.calendarId,
             title: "Full QA Event",
             startAt: "2026-09-05T16:00:00-04:00",
             durationMinutes: 30,
             timeZone: "America/New_York",
           }),
           parsed: {
+            grantId: ELIZA_EVENT.grantId,
+            calendarId: ELIZA_EVENT.calendarId,
             title: "Full QA Event",
             startAt: "2026-09-05T16:00:00-04:00",
             durationMinutes: 30,
@@ -667,12 +775,13 @@ describe("CALENDAR effect receipt settlement", () => {
         service,
         actor: message(
           "Create a calendar event titled Full QA Event tomorrow at 4 PM for 30 minutes.",
+          Date.now(),
         ),
         parameters: {
           subaction: "create_event",
           title: "Full QA Event",
           details: {
-            startAt: "tomorrow at 4 PM",
+            start: "tomorrow at 4 PM",
             durationMinutes: 30,
             timeZone: "America/New_York",
           },
@@ -718,6 +827,10 @@ describe("CALENDAR effect receipt settlement", () => {
     };
     const action = createCalendarActionRunner(
       deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Eat two sandwiches" },
+        })),
         mutationGateway: {
           schedule: vi.fn(),
           modify,
@@ -786,7 +899,14 @@ describe("CALENDAR effect receipt settlement", () => {
       getConditionalCalendarMutationTarget,
       updateCalendarEvent,
     };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Eat two sandwiches" },
+        })),
+      }),
+    );
     const delivered: Content[] = [];
 
     const result = await execute({
@@ -947,15 +1067,18 @@ describe("CALENDAR effect receipt settlement", () => {
       success: true,
       data: { approvalRequired: false, deleted: true },
     });
-    expectInternalHandoff(delivered, result);
+    // The user's words name the deleted title, so the receipt is self-verified.
+    expectVerifiedHandoff(delivered, result);
+    expect((result.data?.replyContext as { facts: string })?.facts).toMatch(
+      /^Deleted “Eat a sandwich” \(tomorrow, Tuesday, Jul 28(?:, 2026)? at 10pm UTC\) from your calendar\.$/,
+    );
   });
 
   it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
     // The fixture's extraction says "tomorrow" is Aug 5, which is only
-    // coherent when today is Aug 4 in the event's zone. The stated-day guard
-    // now enforces exactly that coherence at the create boundary, so an
-    // unpinned clock would (correctly) snap the fixture's date to the real
-    // tomorrow and the assertion would drift with the wall clock.
+    // coherent when the request was authored on Aug 4 in the event's zone.
+    // Keep the fixture's authored and processing clocks consistent here;
+    // delayed-message coverage separately proves request-time interpretation.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-04T19:00:00.000Z"));
     try {
@@ -968,23 +1091,25 @@ describe("CALENDAR effect receipt settlement", () => {
         replayed: false,
         text: "Approval request calendar-timezone-approval is ready.",
       };
-      let extractionPrompt = "";
       const runJsonModel = vi.fn(async (args: { prompt: string }) => {
         if (!args.prompt.includes("Extract calendar event creation fields")) {
           return null;
         }
-        extractionPrompt = args.prompt;
         return {
           rawResponse: JSON.stringify({
+            grantId: EVENT.grantId,
+            calendarId: EVENT.calendarId,
             title: "Demo",
-            startAt: "2026-08-05T09:00:00-07:00",
-            endAt: "2026-08-05T10:00:00-07:00",
+            startAt: "2026-08-05T09:00:00",
+            endAt: "2026-08-05T10:00:00",
             timeZone: "America/Los_Angeles",
           }),
           parsed: {
+            grantId: EVENT.grantId,
+            calendarId: EVENT.calendarId,
             title: "Demo",
-            startAt: "2026-08-05T09:00:00-07:00",
-            endAt: "2026-08-05T10:00:00-07:00",
+            startAt: "2026-08-05T09:00:00",
+            endAt: "2026-08-05T10:00:00",
             timeZone: "America/Los_Angeles",
           },
         };
@@ -1016,13 +1141,13 @@ describe("CALENDAR effect receipt settlement", () => {
       const result = await execute({
         action,
         service,
-        actor: message("Add demo tomorrow at 9am."),
+        actor: message("Add demo tomorrow at 9am.", Date.now()),
         parameters: {
           subaction: "create_event",
           title: "Demo",
           details: {
-            startAt: "2026-08-05T09:00:00Z",
-            endAt: "2026-08-05T10:00:00Z",
+            start: "2026-08-05T09:00:00Z",
+            end: "2026-08-05T10:00:00Z",
             timeZone: "America/Los_Angeles",
           },
         },
@@ -1030,9 +1155,6 @@ describe("CALENDAR effect receipt settlement", () => {
       });
 
       expect(result.success, JSON.stringify(result)).toBe(true);
-      expect(extractionPrompt).toContain(
-        "for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z",
-      );
       expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
         expect.any(URL),
         expect.objectContaining({
@@ -1091,8 +1213,8 @@ describe("CALENDAR effect receipt settlement", () => {
         subaction: "create_event",
         title: "School pickup",
         details: {
-          startAt: "2026-07-28T22:00:00.000Z",
-          endAt: "2026-07-28T22:30:00.000Z",
+          start: "2026-07-28T22:00:00.000Z",
+          end: "2026-07-28T22:30:00.000Z",
           timeZone: "UTC",
         },
       },
@@ -1228,7 +1350,6 @@ describe("CALENDAR effect receipt settlement", () => {
       parameters: {
         subaction: "feed",
         details: {
-          mode: "read",
           side: "owner",
           grantId: "primary",
           calendarId: "default",
@@ -1362,9 +1483,8 @@ describe("CALENDAR effect receipt settlement", () => {
       parameters: {
         subaction: "feed",
         details: {
-          calendar_id: ",calendar_id:",
+          calendarId: ",calendarId:",
           grantId: "grantId",
-          mode: "mode",
           side: "side",
           timeZone: "timeZone",
         },
@@ -1378,11 +1498,41 @@ describe("CALENDAR effect receipt settlement", () => {
       expect.objectContaining({
         calendarId: undefined,
         grantId: undefined,
-        mode: undefined,
         side: undefined,
       }),
     );
   });
+
+  it.each(["school fundraiser", "orchid exhibition"])(
+    "grounds an empty search once for %s",
+    async (query) => {
+      const runTextModel = vi.fn(
+        async () => '{"matchIds":[],"reason":"Different subject"}',
+      );
+      const action = createCalendarActionRunner(deps({ runTextModel }));
+      const result = await execute({
+        action,
+        service: { getCalendarFeed: vi.fn(async () => feed()) },
+        actor: message(`find ${query}`),
+        parameters: {
+          subaction: "search_events",
+          query,
+          details: {
+            timeMin: "2026-07-27T00:00:00Z",
+            timeMax: "2026-08-03T00:00:00Z",
+          },
+        },
+        delivered: [],
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(runTextModel).toHaveBeenCalledTimes(1);
+      expect(result.data?.replyContext).toMatchObject({
+        scenario: "search_results",
+        facts: expect.stringContaining("No calendar events matched"),
+      });
+    },
+  );
 
   it("preserves a search query literally equal to its field name", async () => {
     const action = createCalendarActionRunner(deps());
@@ -1402,8 +1552,10 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(result.data?.replyContext).toMatchObject({
       scenario: "search_results",
       facts: expect.stringContaining('"query"'),
-      context: { query: "query", queries: ["query"] },
+      context: { label: expect.any(String) },
     });
+    expect(result.data).toMatchObject({ query: "query", queries: ["query"] });
+    expect(result.data?.replyContext).not.toHaveProperty("context.queries");
   });
 
   it("preserves event content literally equal to its field names", async () => {
@@ -1444,8 +1596,8 @@ describe("CALENDAR effect receipt settlement", () => {
         details: {
           title: "title",
           location: "location",
-          startAt: ELIZA_EVENT.startAt,
-          endAt: ELIZA_EVENT.endAt,
+          start: ELIZA_EVENT.startAt,
+          end: ELIZA_EVENT.endAt,
           timeZone: "UTC",
         },
       },
@@ -1478,7 +1630,7 @@ describe("CALENDAR effect receipt settlement", () => {
       actor: message("whats on my calendar tomorrow"),
       parameters: {
         subaction: "feed",
-        details: { mode: "definitely-junk", timeZone: "UTC" },
+        details: { grantId: "definitely-junk", timeZone: "UTC" },
       },
       delivered: [],
       reportError,
@@ -1503,9 +1655,319 @@ describe("CALENDAR effect receipt settlement", () => {
         status: 400,
         code: "CALENDAR_SERVICE_400",
         detail: "mode must be one of: local, remote, cloud_managed",
-        mode: "definitely-junk",
+        grantId: "definitely-junk",
         timeZone: "UTC",
       }),
     );
+  });
+});
+
+describe("planner-supplied event ids the connector cannot resolve", () => {
+  // Live 2026-09-14: the planner invented eventId "primary-00024" beside
+  // query "barber appointment"; the connector lookup failed with "Google
+  // Calendar is not connected" and the move was refused.
+  const notConnected = () => {
+    throw new CalendarServiceError(
+      409,
+      "Google Calendar is not connected.",
+      "CALENDAR_SERVICE_409",
+    );
+  };
+
+  it("preserves a target lookup failure without updating a different event", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      startAt: "2026-07-28T23:00:00.000Z",
+      endAt: "2026-07-28T23:30:00.000Z",
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const getConditionalCalendarMutationTarget = vi.fn(notConnected);
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = {
+      getCalendarFeed,
+      getConditionalCalendarMutationTarget,
+      updateCalendarEvent,
+    };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("move my sandwich to 7pm"),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        details: { eventId: "primary-00024", start: "2026-07-28T19:00:00" },
+      },
+      delivered: [],
+    });
+
+    expect(getConditionalCalendarMutationTarget).toHaveBeenCalledOnce();
+    expect(result.success).toBe(false);
+    expect(getCalendarFeed).not.toHaveBeenCalled();
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("preserves a target lookup failure without deleting a different event", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const getConditionalCalendarMutationTarget = vi.fn(notConnected);
+    const deleteCalendarEvent = vi.fn(async () => undefined);
+    const service = {
+      getCalendarFeed,
+      getConditionalCalendarMutationTarget,
+      deleteCalendarEvent,
+    };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("cancel my sandwich"),
+      parameters: {
+        subaction: "delete_event",
+        query: "Eat a sandwich",
+        details: { eventId: "primary-00024" },
+      },
+      delivered: [],
+    });
+
+    expect(getConditionalCalendarMutationTarget).toHaveBeenCalledOnce();
+    expect(result.success).toBe(false);
+    expect(getCalendarFeed).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("still fails when a rejected event id comes without any title to fall back on", async () => {
+    const getConditionalCalendarMutationTarget = vi.fn(notConnected);
+    const updateCalendarEvent = vi.fn();
+    const service = {
+      getConditionalCalendarMutationTarget,
+      updateCalendarEvent,
+    };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("move it to 7pm"),
+      parameters: {
+        subaction: "update_event",
+        details: { eventId: "primary-00024", start: "2026-07-28T19:00:00" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success).toBe(false);
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("planner debris on a plain move", () => {
+  // Live 2026-09-14: "move my tailor appointment to friday at 4pm" arrived
+  // with recurrence RRULE:FREQ=WEEKLY;BYDAY=FR, location "primary" and
+  // description "Tailor Appointment"; the built-in calendar refused the
+  // recurrence and the whole move failed.
+  it("preserves explicit location and description while rejecting an unrequested recurrence", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      location: "primary",
+      description: "Eat a sandwich",
+      startAt: "2026-07-28T23:00:00.000Z",
+      endAt: "2026-07-28T23:30:00.000Z",
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = { getCalendarFeed, updateCalendarEvent };
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: {
+            startAt: "2026-07-28T19:00:00",
+            endAt: "2026-07-28T19:30:00",
+            location: "primary",
+            description: "Eat a sandwich",
+          },
+        })),
+      }),
+    );
+
+    const result = await execute({
+      action,
+      service,
+      actor: message(
+        "Move eat a sandwich to 7pm, set the location to primary and the description to Eat a sandwich, just once.",
+      ),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        details: {
+          start: "2026-07-28T19:00:00",
+          end: "2026-07-28T19:30:00",
+          recurrence: "RRULE:FREQ=WEEKLY;BYDAY=TU",
+          location: "primary",
+          description: "Eat a sandwich",
+        },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    const request = updateCalendarEvent.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.eventId).toBe(ELIZA_EVENT.externalId);
+    expect(request.recurrence).toBeUndefined();
+    expect(request.location).toBe("primary");
+    expect(request.description).toBe("Eat a sandwich");
+  });
+
+  it("keeps a recurrence the user asked for on an update", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = { getCalendarFeed, updateCalendarEvent };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("make my sandwich repeat every week"),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        details: { recurrence: "RRULE:FREQ=WEEKLY;BYDAY=TU" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    const request = updateCalendarEvent.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=TU"]);
+  });
+});
+
+describe("mutations the planner sent without any target", () => {
+  // Live 2026-09-14: "move my chiropractor appointment to friday at 4pm"
+  // arrived as {action: "update_event"} and the turn spent two more rounds
+  // searching before the move applied.
+  it("resolves an update target from the user's own words", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      startAt: "2026-07-28T23:00:00.000Z",
+      endAt: "2026-07-28T23:30:00.000Z",
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = { getCalendarFeed, updateCalendarEvent };
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: JSON.stringify({ startAt: "2026-07-28T19:00:00" }),
+          parsed: { startAt: "2026-07-28T19:00:00" },
+        })),
+      }),
+    );
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("move eat a sandwich to 7pm"),
+      parameters: {
+        subaction: "update_event",
+        details: { start: "2026-07-28T19:00:00" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(updateCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ eventId: ELIZA_EVENT.externalId }),
+    );
+  });
+
+  it("resolves a delete target from the user's own words", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const deleteCalendarEvent = vi.fn(async () => undefined);
+    const service = { getCalendarFeed, deleteCalendarEvent };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("delete eat a sandwich from my calendar"),
+      parameters: { subaction: "delete_event" },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ eventId: ELIZA_EVENT.externalId }),
+    );
+  });
+
+  it("still asks when the words name no event", async () => {
+    const getCalendarFeed = vi.fn(async () => feed([ELIZA_EVENT]));
+    const updateCalendarEvent = vi.fn();
+    const service = { getCalendarFeed, updateCalendarEvent };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("move it to 7pm"),
+      parameters: {
+        subaction: "update_event",
+        details: { start: "2026-07-28T19:00:00" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "CALENDAR_TARGET_UNRESOLVED" });
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
   });
 });

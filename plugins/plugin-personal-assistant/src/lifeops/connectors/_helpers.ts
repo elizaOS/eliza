@@ -8,8 +8,9 @@
  *   - {@link DispatchResult}  — typed success / failure for `send`.
  */
 
+import { formatError } from "@elizaos/core";
+import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
 import type { DispatchReceipt } from "@elizaos/plugin-scheduling";
-import { formatError, LifeOpsServiceError } from "@elizaos/shared";
 import type { ConnectorStatus, DispatchResult } from "./contract.js";
 
 export type LegacyConnectorStatus = {

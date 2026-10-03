@@ -1,21 +1,19 @@
 <div align="center">
-  <img src="packages/shared/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
+  <img src="packages/ui/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
   <h1>elizaOS</h1>
   <p><strong>Your agentic operating system.</strong></p>
   <p>
     <a href="https://eliza.app">Eliza</a> ·
     <a href="https://cloud.eliza.app">Eliza Cloud</a> ·
     <a href="https://os.eliza.app">elizaOS downloads</a> ·
-    <a href="https://docs.elizaos.ai/">Documentation</a> ·
-    <a href="packages/registry">App catalog</a>
+    <a href="https://docs.elizaos.ai/">Documentation</a>
   </p>
 </div>
 
 elizaOS is an open-source TypeScript framework and product stack for autonomous
 AI agents. This monorepo contains the core runtime, the Eliza app, the CLI,
-cloud services, native bridges, and first-party plugins. The bootable Linux and
-Android distributions live in the separate
-[`elizaOS/os`](https://github.com/elizaOS/os) repository.
+cloud services, native bridges, and first-party plugins. Linux and Android
+distribution tooling lives in [`packages/os`](packages/os/README.md).
 
 ## Choose a starting point
 
@@ -23,9 +21,9 @@ Android distributions live in the separate
 | --- | --- |
 | Use Eliza | [Open the web app](https://cloud.eliza.app), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
 | Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
-| Build an agent or plugin | Install the [`elizaos`](#build-with-elizaos) CLI and read the [developer docs](https://docs.elizaos.ai/) |
-| Contribute | Read [CONTRIBUTING.md](CONTRIBUTING.md) and the repository guide in [AGENTS.md](AGENTS.md) |
-| Run a whole device as elizaOS | Use the installers and target guides in [`elizaOS/os`](https://github.com/elizaOS/os) |
+| Build an agent or plugin | Start with [the runtime](#build-an-agent) and the [developer docs](https://docs.elizaos.ai/) |
+| Contribute | Read the repository guide in [AGENTS.md](AGENTS.md) |
+| Run a whole device as elizaOS | Start with the build requirements and target guides in [`packages/os`](packages/os/README.md) |
 
 ## Run Eliza from source
 
@@ -43,20 +41,34 @@ bun run dev
 build prerequisites, and builds or verifies the staged desktop
 `libelizainference`. The embedding GGUF remains runtime-managed and downloads
 automatically during local-inference warmup. Fetch archived artifact fixtures explicitly with
-`bun run fetch:archive-artifacts` when needed.
+`bun packages/scripts/fetch-archive-artifacts.ts` when needed.
 
 Common repository commands:
 
 ```bash
+bun run start       # run the standalone agent host
 bun run build       # build the workspace with Turbo
-bun run verify      # package parity, dependency, type, lint, and audit gates
+bun run verify      # dependency, type, lint, and audit gates
 bun run test        # repository unit/integration test lane
 bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks
 ```
 
-See [AGENTS.md](AGENTS.md) for package scoping, shared development servers, and
-the evidence required before a change is considered complete.
+Package build/test commands are in each package's README. Use
+`bun run --cwd <package> <script>` to scope a command.
+
+## Benchmark
+
+Use Python 3.11+ and install the dependencies required by the selected suite, then run from
+the repository root:
+
+```bash
+PYTHONPATH=packages python3 -m benchmarks.orchestrator list-benchmarks
+PYTHONPATH=packages python3 -m benchmarks.orchestrator run --benchmarks <id> --provider <provider> --model <model>
+```
+
+See [benchmarks](packages/benchmarks/README.md) for setup. Live benchmarks require
+the selected provider's credentials and may incur usage costs.
 
 ## What is in the stack?
 
@@ -83,15 +95,13 @@ document the exact support and setup for each capability.
 The framework is model-agnostic and extended through plugins:
 
 - [`@elizaos/core`](packages/core) defines `AgentRuntime`, the canonical types,
-  the message loop, memory and state primitives, and plugin contracts.
+  authorization, memory and state primitives, and plugin contracts.
 - [`@elizaos/agent`](packages/agent) assembles a standalone agent and HTTP
   backend around the core runtime.
-- [`@elizaos/app-core`](packages/app-core) provides shared application hosting,
+- [`@elizaos/app`](packages/app) provides shared application hosting,
   API, and platform orchestration for Eliza app targets.
 - [`@elizaos/ui`](packages/ui) contains the shared React UI used by app
   surfaces.
-- [`elizaos`](packages/elizaos) is the project and plugin scaffolding, upgrade,
-  and deployment CLI.
 
 A plugin exports a `Plugin` object. Plugins can register actions, providers,
 evaluators, services, model handlers, routes, events, tests, and app views. See
@@ -124,21 +134,9 @@ bootable Linux and AOSP distributions, installers, release manifests, and OS
 toolchains. This monorepo retains the Eliza application shells and native
 runtime bridges used by desktop, iOS, Android, and device integrations.
 
-## Build with `elizaos`
+## Build an agent
 
-The beta CLI published from this branch uses the unscoped `elizaos` package:
-
-```bash
-bun add --global elizaos@beta
-elizaos create my-project --template project
-elizaos create plugin-example --template plugin
-```
-
-Projects are deployable workspaces; plugins are reusable capability packages.
-The packaged templates and their scaffold contracts live in
-`packages/elizaos/templates/`.
-
-To embed the runtime directly without the CLI or application host, import
+To embed the runtime directly without an application host, import
 `@elizaos/core`. The scenario runner provides executable integration coverage
 against a real runtime and, when configured, live models.
 
@@ -147,29 +145,28 @@ against a real runtime and, when configured, live models.
 ```text
 packages/        runtime, hosts, UI, CLI, docs, cloud, native code, and tooling
 plugins/         first-party model, connector, domain, app, and device plugins
-scripts/         repository-wide checks, test orchestration, and release tools
+packages/scripts/ repository-wide checks, test orchestration, and release tools
 patches/         dependency patches applied during installation
 ```
 
 Every maintained package or plugin should explain its public surface, scripts,
 configuration, and local constraints in its own `README.md` and paired
-`CLAUDE.md` / `AGENTS.md`. Read the nearest package guide before making changes.
+`AGENTS.md`. Read the nearest package guide before making changes.
 
 ## Contributing
 
-Open an issue before a non-trivial change and submit work through a pull request
-against `develop`. [CONTRIBUTING.md](CONTRIBUTING.md) defines the coordination,
-testing, synchronization, and human-verifiable evidence requirements.
+elizaOS focuses on its first-party runtime, applications, and maintained integrations.
+We no longer accept third-party plugins or registry items, including new listings,
+listing updates, and registry submission tooling. Related issues and pull requests
+will be closed as out of scope.
 
-- [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
-- [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
-- [Agent Work Item](.github/ISSUE_TEMPLATE/agent_work_item.md)
-- [Windows setup](WINDOWS.md)
-- [Security policy](SECURITY.md)
-- [Security architecture documentation](packages/docs/security.md)
+Submit changes through a pull request against `develop`; follow
+[AGENTS.md](AGENTS.md) and the owning package's guide. Include verification of
+the changed behavior.
 
-Report vulnerabilities privately through the [security policy](SECURITY.md),
-not a public issue.
+Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/elizaOS/eliza/security/advisories/new)
+or `security@elizalabs.ai`.
 
 ## License
 

@@ -1,142 +1,101 @@
 # @elizaos/capacitor-camera
 
-Capacitor plugin for camera preview, photo capture, and video recording. Works across web (via the `MediaDevices` API), iOS (via AVFoundation), and Android (via Camera2).
+Capacitor plugin that gives Eliza agents camera preview, photo capture, and video
+recording across web, iOS, and Android.
 
-## What it does
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-- **Live preview** — stream a camera feed into any DOM element with configurable resolution, frame rate, and mirror mode.
-- **Photo capture** — snapshot a JPEG, PNG, or WebP image as base64 from the active preview, with optional resize and quality control.
-- **Video recording** — record video with optional audio, configurable bitrate, and automatic stop on max duration or file size.
-- **Camera control** — zoom, focus point, exposure point, flash/torch mode, white balance.
-- **Device enumeration** — list available cameras with capabilities (direction, zoom range, resolutions, frame rates).
-- **Permissions** — check and request camera + microphone permissions.
-- **Events** — subscribe to `frame`, `error`, and `recordingState` events.
+## Development
 
-## Installation
-
-This is a Capacitor plugin. Add it to a Capacitor project:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-npm install @elizaos/capacitor-camera
-npx cap sync
+bun run --cwd plugins/plugin-native-camera build  # build
+bun run --cwd plugins/plugin-native-camera test   # tests
 ```
 
-### iOS
+Android uses CameraX 1.5.3. Recording start waits for Start, and Stop waits for
+Finalize with actual dimensions, duration, bytes and output URI. Automatic size
+and duration stops remain retrievable. Concurrent finalization cannot start a
+competing recording. Gallery output requires Android 10+; microphone denial is an
+explicit failure. Quality, bitrate and frame rate are validated per recording;
+actual device capabilities determine output. Stop recording before switching.
 
-The plugin uses `AVFoundation`, `Photos`, and `UIKit`. Add the following keys to `Info.plist`:
+Preview cancellation owns pending provider/permission callbacks. Frame events
+sample completed captures at approximately 2 Hz and stop with camera inactivity;
+they are notifications, not image buffers or proof of display. Device acceptance
+uses a fresh isolated ai.eliza.plugins.camera.test APK and actual CameraX,
+MediaStore, readable video and the microphone-denial dialog.
 
-```xml
-<key>NSCameraUsageDescription</key>
-<string>Camera access is required for photo and video capture.</string>
-<key>NSMicrophoneUsageDescription</key>
-<string>Microphone access is required for video recording with audio.</string>
-<key>NSPhotoLibraryAddUsageDescription</key>
-<string>Photo library access is required to save captured media.</string>
-```
+Android direct zoom, focus and exposure controls require an active preview and
+validate numeric inputs. Zoom uses device-supported ratios; metering runs on the
+main thread and awaits CameraX completion. Cancellation rejects without changing
+cached settings. Device tests inspect Camera2 zoom and metering regions, exercise cancellation,
+and do not certify optical focus quality on a physical camera.
 
-Minimum deployment target: iOS 15.0.
+Android settings batches reject unknown keys, malformed values and numeric
+overflow before changing cached or native state. This boundary validation does
+not certify that all valid settings are applied; full batch completion and
+concurrent batch effects still require native verification.
 
-### Android
+White-balance presets require an active Android preview and device support.
+Their promises settle from native Camera2 capture completion; confirmed presets
+are restored across preview restart, camera switch and video rebind. Tests verify
+completed AWB metadata and cancellation, not physical color accuracy. Queued
+camera switches settle in order; stopping preview cancels remaining switches.
 
-Add the following permissions to `AndroidManifest.xml`:
+Exposure compensation requires an active, ready preview and device support.
+EV is rounded to the nearest native step; getSettings reports the applied EV.
+Out-of-range requests reject before batch mutation. The original confirmed
+request is retained for rebinds, avoiding drift across cameras with different
+steps. Device tests check completed AE indices, mixed-batch rejection and cancellation.
 
-```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-```
+Android settings-batch zoom uses the same supported ratio range as setZoom and
+waits for native completion before reporting success or caching the ratio.
+Unsupported mixed batches reject before mutation. Confirmed zoom is restored
+before preview restart, camera switch and recording rebind complete. Device tests
+check completed crop/zoom metadata, cancellation and retained white balance/EV.
 
-## Usage
+Android flash settings require an active preview. Cameras without a flash unit
+reject non-off modes before mixed-batch mutation. Torch completion and a native
+capture-options receipt precede confirmation; rebinds restore confirmed flash
+policy. Device tests inspect flash/AE metadata, torch state and cancellation.
+Physical flash output and automatic scene decisions need hardware qualification.
 
-```typescript
-import { Camera } from "@elizaos/capacitor-camera";
+Android focus modes apply supported Camera2 AF policies and wait for completed
+capture options. Manual mode retains the observed lens distance; auto selects
+and triggers single-shot AF at the center, and continuous selects continuous
+picture AF. Mode changes cancel previous metering, releasing single-shot locks.
+Point focus exits manual lock and reports auto. Confirmed policies
+survive rebinds; manual distances belong to each camera and fixed-focus defaults
+adapt to device support. Native metadata tests do not certify physical sharpness
+or lens calibration.
 
-// Check and request permissions
-const status = await Camera.checkPermissions();
-if (status.camera !== "granted") {
-  await Camera.requestPermissions();
-}
+Android exposure mode, ISO and shutter speed require a ready preview. Manual
+mode uses the current observed sensor values for omitted fields; specifying ISO
+or shutter speed selects manual mode. Device ranges and incompatible automatic
+flash/nonzero EV combinations reject before batch mutation. Continuous mode
+releases manual control; auto waits for convergence and locks exposure. Settings
+report completed sensor values, including hardware quantization. Focus changes
+retain sensor options, and rebinds restore confirmed exposure. Exposure-point
+metering returns to continuous exposure. Device tests check sensor metadata,
+lifecycle retention and cancellation; physical exposure quality remains unqualified.
 
-// List available cameras
-const { devices } = await Camera.getDevices();
+Android photo options validate before capture: supported formats, finite quality
+from 0 to 100, positive integer dimensions, Boolean flags and known fields.
+Either dimension can be supplied; the omitted dimension keeps the oriented
+source size. Impossible bitmap byte counts reject explicitly. Requested EXIF
+contains source-capture metadata, so its orientation/dimensions can precede
+output transforms. Device tests decode JPEG, PNG and WebP, verify manual ISO and
+shutter in source EXIF, and check dimensions and malformed-option rejection.
 
-// Start a preview in a DOM element
-const container = document.getElementById("camera-container");
-const result = await Camera.startPreview({
-  element: container,
-  direction: "back",
-  resolution: { width: 1920, height: 1080 },
-  frameRate: 30,
-});
-
-// Capture a photo
-const photo = await Camera.capturePhoto({ quality: 90, format: "jpeg" });
-// photo.base64 contains the image data
-
-// Record video
-await Camera.startRecording({ audio: true, quality: "high", maxDuration: 60 });
-// ... later ...
-const video = await Camera.stopRecording();
-// video.path is a blob: URL on web, or a file path on native
-
-// Stop preview and release camera
-await Camera.stopPreview();
-```
-
-### Camera settings
-
-```typescript
-// Zoom (1.0 = no zoom)
-await Camera.setZoom({ zoom: 2.0 });
-
-// Manual focus / exposure (normalized 0–1 coordinates)
-await Camera.setFocusPoint({ x: 0.5, y: 0.5 });
-await Camera.setExposurePoint({ x: 0.5, y: 0.5 });
-
-// Batch settings update
-await Camera.setSettings({
-  settings: {
-    flash: "auto",
-    whiteBalance: "daylight",
-    focusMode: "continuous",
-  },
-});
-```
-
-### Events
-
-```typescript
-const frameHandle = await Camera.addListener("frame", (event) => {
-  console.log(event.timestamp, event.width, event.height);
-});
-
-const stateHandle = await Camera.addListener("recordingState", (state) => {
-  console.log(state.isRecording, state.duration, state.fileSize);
-});
-
-// Clean up
-await Camera.removeAllListeners();
-```
-
-## API
-
-Full TypeScript definitions are in `src/definitions.ts`. Key types:
-
-| Type | Description |
-|---|---|
-| `CameraDevice` | Device info: id, label, direction, capabilities |
-| `CameraPreviewOptions` | Options for `startPreview` |
-| `PhotoCaptureOptions` | Options for `capturePhoto` (quality, format, size, gallery save) |
-| `PhotoResult` | base64 image, format, dimensions, optional EXIF |
-| `VideoCaptureOptions` | Options for `startRecording` (quality, duration, size, audio, bitrate) |
-| `VideoResult` | Path (blob URL or file path), duration, dimensions, file size, mime type |
-| `CameraSettings` | flash, zoom, focusMode, exposureMode, exposureCompensation, whiteBalance |
-| `CameraPermissionStatus` | camera / microphone: `"granted"` \| `"denied"` \| `"prompt"`; photos additionally allows `"limited"` |
-
-## Platform notes
-
-- **Web:** Flash/torch is not controllable via the `MediaDevices` API on most desktop browsers. Manual focus and exposure require the browser/device to report `"manual"` capability. Video is recorded as a `blob:` URL using `MediaRecorder`; preferred codec order is `vp9+opus` → `vp8+opus` → `webm` → `mp4`.
-- **iOS:** AVFoundation-backed. Requires iOS 15.0+, Swift 5.9.
-- **Android:** Camera2 API-backed.
-- **Node (Electrobun desktop):** Supported via Electrobun native modules.
-
+Gallery photos return the saved URI only after the encoded bytes are written.
+Android 10+ keeps entries pending until publication and removes incomplete
+entries on failure. Save failures reject with GALLERY_WRITE_FAILED; failed
+cleanup retains the affected URI and diagnostic details. Older Android versions
+request storage permission before capture and return a file URI. Device tests
+read actual MediaStore images and compare exact bytes; a separate private provider
+fixture checks write/publication/cleanup failures. Injected failures also run
+through the real camera and WebView promise using the test activity's resolver;
+these are not real MediaStore outages. Legacy storage behavior still needs
+device qualification.

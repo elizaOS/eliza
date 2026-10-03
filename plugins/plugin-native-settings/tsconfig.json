@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -16,11 +17,7 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "types": ["node", "bun"],
-    "paths": {
-      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
-      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
-      "@elizaos/capacitor-system": ["../plugin-native-system/src/index.ts"]
-    }
+    "paths": {}
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": [

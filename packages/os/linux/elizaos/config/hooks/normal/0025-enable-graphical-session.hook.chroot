@@ -1,0 +1,25 @@
+#!/bin/sh
+# Make a real Debian GNOME/Xorg desktop the default GUI. The elizaOS app is a
+# session service: its resting surface is the persistent bottom pill while the
+# desktop, taskbar, windows, and agent-opened tools remain usable.
+set -eu
+
+log() { echo "[0025-desktop] $*"; }
+
+if [ ! -x /usr/sbin/gdm3 ] || [ ! -x /usr/bin/gnome-shell ]; then
+    systemctl set-default multi-user.target
+    log "GUI profile absent; keeping multi-user.target"
+    exit 0
+fi
+
+systemctl set-default graphical.target
+
+# Debian normally owns the display-manager alias during package installation.
+# Enable gdm explicitly as well so a live-build policy-rc.d environment cannot
+# leave the image with graphical.target but no login session.
+systemctl unmask gdm3.service display-manager.service 2>/dev/null || true
+systemctl enable gdm3.service
+
+chmod 0755 /usr/local/lib/elizaos/start-launcher
+
+log "desktop boot chain wired: graphical.target -> gdm3 -> GNOME/Xorg + elizaOS pill"

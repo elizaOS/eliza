@@ -1,6 +1,6 @@
 /** Formats every affected event for model-visible bulk calendar approvals. */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 
 export function formatBulkReschedulePreviewLines(

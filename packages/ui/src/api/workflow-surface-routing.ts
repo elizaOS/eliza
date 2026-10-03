@@ -21,7 +21,7 @@
  * tasks (`plugin-scheduling`) run on-device and are intentionally NOT routed.
  */
 
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { loadAgentProfileRegistry } from "../state/agent-profiles";

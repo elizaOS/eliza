@@ -3,7 +3,7 @@
  * postMessage from the GitHub callback window and dispatches it as a LifeOps
  * github-callback event so the connect flow can complete.
  */
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
 import {
   dispatchLifeOpsGithubCallback,
   type LifeOpsGithubCallbackDetail,

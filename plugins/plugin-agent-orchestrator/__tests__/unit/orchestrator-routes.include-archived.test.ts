@@ -3,17 +3,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/core/client-public", () => ({
-  resolveAliasedEnvValue: (key: string) => process.env[key],
-  isTruthyEnvValue: () => false,
-  isElizaSettingsDebugEnabled: () => false,
-  sanitizeForSettingsDebug: (value: unknown) => value,
-  settingsDebugCloudSummary: () => ({}),
-  sanitizeSpeechText: (value: string) => value,
-  formatError: (error: unknown) =>
-    error instanceof Error ? error.message : String(error),
-}));
-
 vi.mock("../../src/services/orchestrator-task-service.js", () => ({
   OrchestratorTaskService: class OrchestratorTaskService {},
   RecoveryConflictError: class RecoveryConflictError extends Error {},

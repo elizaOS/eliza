@@ -10,20 +10,18 @@
  * `client-local-inference.ts`.
  */
 
+import type { NetworkPolicyPreferences } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 import type {
-  NetworkPolicyPreferences,
   VoiceModelId,
   VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { ElizaClient } from "./client-base";
-
 export interface VoiceModelInstallationView {
   readonly id: VoiceModelId;
   readonly installedVersion: string | null;
   readonly pinned: boolean;
   readonly lastError: string | null;
 }
-
 export interface VoiceModelCheckStatus {
   readonly id: VoiceModelId;
   readonly installedVersion: string | null;
@@ -38,16 +36,13 @@ export interface VoiceModelCheckStatus {
     | "bundle-incompatible"
     | "update-available";
 }
-
 export interface VoiceModelsListResponse {
   readonly installations: ReadonlyArray<VoiceModelInstallationView>;
 }
-
 export interface VoiceModelsCheckResponse {
   readonly lastCheckedAt: string;
   readonly statuses: ReadonlyArray<VoiceModelCheckStatus>;
 }
-
 export interface VoiceModelsUpdateResponse {
   readonly ok: true;
   readonly id: VoiceModelId;
@@ -56,26 +51,18 @@ export interface VoiceModelsUpdateResponse {
   readonly sha256: string;
   readonly sizeBytes: number;
 }
-
 export interface VoiceModelsPinResponse {
   readonly ok: true;
   readonly id: VoiceModelId;
   readonly pinned: boolean;
 }
-
 export interface VoiceModelsPreferencesResponse {
   readonly preferences: NetworkPolicyPreferences;
-  // #12087 Item 25: the per-endpoint `isOwner` flag was dropped from the UI
-  // contract — owner-tier gating now flows through the canonical `useRole()`
-  // context, not a flag threaded from this endpoint. The server may still send
-  // it for older clients; the UI no longer reads it.
 }
-
 export interface VoiceModelsSetPreferencesResponse {
   readonly ok: true;
   readonly preferences: NetworkPolicyPreferences;
 }
-
 declare module "./client-base" {
   interface ElizaClient {
     listVoiceModels(): Promise<VoiceModelsListResponse>;
@@ -95,11 +82,9 @@ declare module "./client-base" {
     ): Promise<VoiceModelsSetPreferencesResponse>;
   }
 }
-
 ElizaClient.prototype.listVoiceModels = async function (this: ElizaClient) {
   return this.fetch("/api/local-inference/voice-models");
 };
-
 ElizaClient.prototype.checkVoiceModelUpdates = async function (
   this: ElizaClient,
   options,
@@ -107,7 +92,6 @@ ElizaClient.prototype.checkVoiceModelUpdates = async function (
   const query = options?.force ? "?force=1" : "";
   return this.fetch(`/api/local-inference/voice-models/check${query}`);
 };
-
 ElizaClient.prototype.triggerVoiceModelUpdate = async function (
   this: ElizaClient,
   id: VoiceModelId,
@@ -117,7 +101,6 @@ ElizaClient.prototype.triggerVoiceModelUpdate = async function (
     { method: "POST", body: JSON.stringify({}) },
   );
 };
-
 ElizaClient.prototype.pinVoiceModel = async function (
   this: ElizaClient,
   id: VoiceModelId,
@@ -128,13 +111,11 @@ ElizaClient.prototype.pinVoiceModel = async function (
     { method: "POST", body: JSON.stringify({ pinned }) },
   );
 };
-
 ElizaClient.prototype.getVoiceModelPreferences = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/voice-models/preferences");
 };
-
 ElizaClient.prototype.setVoiceModelPreferences = async function (
   this: ElizaClient,
   patch: Partial<NetworkPolicyPreferences>,

@@ -1,26 +1,13 @@
 /**
  * Group N — App compliance-review gate (#10732, live e2e).
  *
- * Exercises the automated binary allow/ban review gate and its enforcement:
+ * Exercises automated allow/ban review and the independent retirement of
+ * creator monetization. Review status remains observable, but no status may
+ * reopen the retired monetization endpoint: authenticated attempts return
+ * HTTP 410 with the typed creator_monetization_retired refusal.
  *
- *   POST /api/v1/apps/:id/review         — submit for automated review
- *   GET  /api/v1/apps/:id/review         — current review status + latest decision
- *   PUT  /api/v1/apps/:id/monetization   — 403 unless review_status = approved
- *   POST /api/v1/apps/:id/charges        — 403 unless review_status = approved
- *
- * Route handlers under test:
- *   packages/cloud/api/v1/apps/[id]/review/route.ts
- *   packages/cloud/api/v1/apps/[id]/monetization/route.ts
- *   packages/cloud/api/v1/apps/[id]/charges/route.ts
- * Gate logic:
- *   packages/cloud/shared/src/lib/services/app-review.ts
- *
- * Deterministic assertions (no model needed): draft apps are blocked, and a
- * prohibited listing is banned by the keyword pre-filter. The live-model
- * "clean listing → approved → monetize" path runs only when a provider key is
- * present (`hasReviewModel()`) and reports as a counted, named skip otherwise;
- * the always-available proof that the gate opens on approval uses a direct DB
- * approval.
+ * The live classifier case runs only when a provider key is available.
+ * Deterministic cases cover draft, rejected, and directly approved apps.
  *
  * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
  * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
@@ -37,7 +24,6 @@ import {
 import { approveAppInDb, hasReviewModel } from "./_helpers/review";
 
 const MAX_COLD_ADMISSION_ATTEMPTS = 3;
-const MAX_ASYNC_CACHE_PROJECTION_ATTEMPTS = 5;
 
 async function submitReviewAfterColdAdmission(
   appId: string,
@@ -81,40 +67,16 @@ async function submitReviewAfterColdAdmission(
   throw new Error("Cold admission retry loop exited without a response");
 }
 
-async function enableMonetizationAfterCacheProjection(
-  appId: string,
-): Promise<Response> {
-  for (
-    let attempt = 1;
-    attempt <= MAX_ASYNC_CACHE_PROJECTION_ATTEMPTS;
-    attempt += 1
-  ) {
-    const response = await api.put(
-      `/api/v1/apps/${appId}/monetization`,
-      { monetizationEnabled: true },
-      { headers: bearerHeaders() },
-    );
-    if (response.status !== 403) {
-      return response;
-    }
-
-    const body = (await response.clone().json()) as {
-      success?: boolean;
-      error?: string;
-      review_status?: string;
-    };
-    expect(body.success).toBe(false);
-    expect(body.error).toBe(
-      "App must pass compliance review before monetization can be enabled. Submit it for review and reach 'approved' status first.",
-    );
-    expect(body.review_status).toBe("draft");
-
-    if (attempt < MAX_ASYNC_CACHE_PROJECTION_ATTEMPTS) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-
-  throw new Error("Async app-cache projection did not become visible");
+async function expectMonetizationRetired(response: Response): Promise<void> {
+  expect(response.status).toBe(410);
+  expect(await response.json()).toMatchObject({
+    success: false,
+    code: "creator_monetization_retired",
+    details: {
+      capability: "app_monetization",
+      statement: "/api/v1/earnings/statement",
+    },
+  });
 }
 
 const serverReachable = await isServerReachable();
@@ -193,7 +155,7 @@ describeE2E("App compliance-review gate", () => {
     expect(body.review_status).toBe("draft");
   });
 
-  test("draft app CANNOT enable monetization (403)", async () => {
+  test("draft app cannot enable retired monetization", async () => {
     const appId = await createApp(
       "Unreviewed Monetizer",
       "wants to monetize before review",
@@ -203,25 +165,7 @@ describeE2E("App compliance-review gate", () => {
       { monetizationEnabled: true },
       { headers: bearerHeaders() },
     );
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as {
-      review_status?: string;
-      error?: string;
-    };
-    expect(body.review_status).toBe("draft");
-  });
-
-  test("draft app CANNOT create a charge (403)", async () => {
-    const appId = await createApp(
-      "Unreviewed Charger",
-      "wants to charge before review",
-    );
-    const res = await api.post(
-      `/api/v1/apps/${appId}/charges`,
-      { amount: 5 },
-      { headers: bearerHeaders() },
-    );
-    expect(res.status).toBe(403);
+    await expectMonetizationRetired(res);
   });
 
   test("prohibited listing is BANNED by the pre-filter (no model needed)", async () => {
@@ -253,51 +197,37 @@ describeE2E("App compliance-review gate", () => {
       { monetizationEnabled: true },
       { headers: bearerHeaders() },
     );
-    expect(mon.status).toBe(403);
+    await expectMonetizationRetired(mon);
   });
 
-  test("approval opens the gate: approved app CAN monetize and charge", async () => {
+  test("approval cannot reopen retired creator monetization", async () => {
     const appId = await createApp(
       "Recipe Finder",
       "Find dinner recipes from your pantry.",
     );
 
-    // Deterministic proof the gate keys off review_status: approve directly.
+    // Prove retirement also applies to an approved app.
     await approveAppInDb(appId);
 
-    // approveAppInDb writes Postgres directly, bypassing appsService's
-    // invalidate-on-mutation — so the app row cached at creation (getById, TTL
-    // 300s) still reads `draft` and the monetization gate 403s for up to 5 min
-    // against a Redis-backed staging Worker. A benign API PATCH goes through
-    // appsService.update → invalidateCache, evicting the stale row. (Safe:
-    // review_content_hash is null so the material-change re-gate is skipped.
-    // The REAL review path self-invalidates as of the app-review fix.)
+    // Evict the creation-time cache after the direct database approval.
     const bust = await api.patch(
       `/api/v1/apps/${appId}`,
       { logo_url: "https://example.com/logo.png" },
       { headers: bearerHeaders() },
     );
     expect(bust.status).toBe(200);
+    const review = await api.get(`/api/v1/apps/${appId}/review`, {
+      headers: bearerHeaders(),
+    });
+    expect(review.status).toBe(200);
+    expect(await review.json()).toMatchObject({ review_status: "approved" });
 
     const mon = await api.put(
       `/api/v1/apps/${appId}/monetization`,
       { monetizationEnabled: true, purchaseSharePercentage: 20 },
       { headers: bearerHeaders() },
     );
-    expect(mon.status).toBe(200);
-
-    const charge = await api.post(
-      `/api/v1/apps/${appId}/charges`,
-      { amount: 5, description: "unlock premium recipes" },
-      { headers: bearerHeaders() },
-    );
-    expect(charge.status).toBe(200);
-    const chargeBody = (await charge.json()) as {
-      success?: boolean;
-      charge?: { status?: string };
-    };
-    expect(chargeBody.success).toBe(true);
-    expect(chargeBody.charge?.status).toBe("requested");
+    await expectMonetizationRetired(mon);
   });
 
   // Loud, counted skip when no review-model provider key is present.
@@ -320,9 +250,12 @@ describeE2E("App compliance-review gate", () => {
       expect(body.review?.disposition).toBe("allow");
       expect(body.review?.review_status).toBe("approved");
 
-      // The gate is now open for a real (model-approved) app.
-      const mon = await enableMonetizationAfterCacheProjection(appId);
-      expect(mon.status).toBe(200);
+      const mon = await api.put(
+        `/api/v1/apps/${appId}/monetization`,
+        { monetizationEnabled: true },
+        { headers: bearerHeaders() },
+      );
+      await expectMonetizationRetired(mon);
     },
   );
 });

@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { ModelType } from "@elizaos/core";
 import { expect, it } from "vitest";
-import { buildLiveHarness } from "../../../../packages/app-core/test/helpers/live-agent-test.js";
+import { buildLiveHarness } from "../../../../packages/app/test/helpers/live-agent-test.js";
 import { Brain } from "../actor/brain.js";
 import { Cascade } from "../actor/cascade.js";
 import type { DisplayCapture } from "../platform/capture.js";

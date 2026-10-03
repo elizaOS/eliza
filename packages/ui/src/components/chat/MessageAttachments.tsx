@@ -11,6 +11,7 @@
  * See the "Files / attachments" note in this package's CLAUDE.md — don't add a
  * second attachment download path or URL guard; reuse the ones referenced here.
  */
+
 import {
   Box,
   Code2,
@@ -31,7 +32,7 @@ import type {
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { resolveApiUrl } from "../../utils/asset-url";
+import { resolveApiUrl } from "../../utils/asset-url.js";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import { RedactedBadge } from "../RedactedBadge";
 import {
@@ -49,7 +50,6 @@ import { CodeBlock } from "../ui/code-block";
 import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
 
 const ABSOLUTE_URL = /^(?:https?:|data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i;
-
 /**
  * Resolve an attachment URL for rendering. Absolute URLs (http(s), data:,
  * blob:, custom schemes) pass through untouched; an app-relative `/api/...`
@@ -63,7 +63,6 @@ export function resolveAttachmentUrl(url: string): string {
   if (trimmed.startsWith("/")) return resolveApiUrl(trimmed);
   return trimmed;
 }
-
 /**
  * A `data:` URL for a benign, non-executable inline text payload — the
  * `text/markdown` a large clipboard paste becomes (`pastedTextToAttachment`) or
@@ -82,16 +81,13 @@ export function resolveAttachmentUrl(url: string): string {
  * never covers the script-capable `data:text/html`).
  */
 const BENIGN_INLINE_TEXT_DATA_URL = /^data:text\/(?:markdown|csv)(?:[;,])/i;
-
 function isBenignInlineTextDataUrl(url: string): boolean {
   return BENIGN_INLINE_TEXT_DATA_URL.test(url.trim());
 }
-
 const IMAGE_EXT = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)(?:[?#]|$)/i;
 const VIDEO_EXT = /\.(?:mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i;
 const AUDIO_EXT = /\.(?:mp3|wav|ogg|oga|m4a|aac|flac|opus)(?:[?#]|$)/i;
 const DOC_EXT = /\.(?:pdf|docx?|pptx?|xlsx?|txt|csv|md|json)(?:[?#]|$)/i;
-
 /**
  * Resolve the effective media kind. Prefer the explicit `contentType`, then the
  * MIME type, then fall back to extension / data-URL sniffing so attachments
@@ -116,10 +112,8 @@ function resolveKind(att: MessageAttachment): MessageAttachmentContentType {
   if (DOC_EXT.test(u) || u.startsWith("data:application/")) return "document";
   return "link";
 }
-
 /** A `.pdf` URL (ignoring any `?query` / `#hash`). */
 const PDF_EXT = /\.pdf(?:[?#]|$)/i;
-
 /**
  * Text/code extensions we can preview inline with {@link CodeBlock}, mapped to a
  * coarse language hint. Keep this list aligned with the regex used for kind
@@ -175,12 +169,10 @@ const CODE_EXT_LANGUAGE: Record<string, string> = {
   zsh: "shell",
   sql: "sql",
 };
-
 const CODE_EXT = new RegExp(
   `\\.(?:${Object.keys(CODE_EXT_LANGUAGE).join("|")})(?:[?#]|$)`,
   "i",
 );
-
 /**
  * Fine-grained preview kind, derived at read time from the attachment's
  * `contentType` + MIME + URL extension (and whether it carries extracted
@@ -191,10 +183,8 @@ const CODE_EXT = new RegExp(
  *   - `"file"` → generic download/open card (the previous default)
  */
 export type AttachmentPreviewKind = "pdf" | "model3d" | "code" | "file";
-
 /** glTF binary/text 3D model extensions. */
 const MODEL3D_EXT = /\.(?:glb|gltf)(?:[?#]|$)/i;
-
 /** The lower-cased path of an attachment URL (no query/hash), or "" for data: URLs. */
 function attachmentPath(url: string): string {
   const u = url.trim().toLowerCase();
@@ -207,7 +197,6 @@ function attachmentPath(url: string): string {
     return u.split(/[?#]/)[0] ?? u;
   }
 }
-
 /**
  * Derive the inline-preview kind for a document/link attachment. Only called
  * once an attachment has resolved to a non-media kind (not image/audio/video);
@@ -220,7 +209,6 @@ export function attachmentPreviewKind(
   const mime = (att.mimeType ?? "").toLowerCase();
   const url = att.url ?? "";
   const path = attachmentPath(url);
-
   // PDF: explicit MIME, a .pdf URL, or a data:application/pdf payload.
   if (
     mime === "application/pdf" ||
@@ -229,7 +217,6 @@ export function attachmentPreviewKind(
   ) {
     return "pdf";
   }
-
   // 3D model: a model/* MIME, a .glb/.gltf URL, or a data:model/* payload.
   // Checked before text/code so a .gltf (JSON) with extracted text still
   // previews as a model, not as code.
@@ -240,7 +227,6 @@ export function attachmentPreviewKind(
   ) {
     return "model3d";
   }
-
   // Text/code: a text-* MIME, application/json (an uploadable text document), a
   // known code/text extension, an inline text data: URL, or an attachment that
   // already carries extracted text.
@@ -253,10 +239,8 @@ export function attachmentPreviewKind(
   ) {
     return "code";
   }
-
   return "file";
 }
-
 /** Best-effort language hint for {@link CodeBlock}, from MIME then extension. */
 function codeLanguageHint(att: MessageAttachment): string {
   const mime = (att.mimeType ?? "").toLowerCase();
@@ -268,7 +252,6 @@ function codeLanguageHint(att: MessageAttachment): string {
   const ext = path.split(".").at(-1) ?? "";
   return CODE_EXT_LANGUAGE[ext] ?? "text";
 }
-
 /**
  * A transcript attachment: a saved transcript record (carries `transcriptId`)
  * or, for older attachments produced before the link existed, a markdown
@@ -281,7 +264,6 @@ function isTranscriptAttachment(att: MessageAttachment): boolean {
   const title = att.title?.trim() ?? "";
   return mime === "text/markdown" && /transcript/i.test(title);
 }
-
 function attachmentLabel(att: MessageAttachment): string {
   if (att.title?.trim()) return att.title.trim();
   try {
@@ -295,7 +277,6 @@ function attachmentLabel(att: MessageAttachment): string {
   }
   return "attachment";
 }
-
 function downloadName(att: MessageAttachment, kind: string): string {
   const label = attachmentLabel(att);
   if (label !== "attachment") return label;
@@ -315,7 +296,6 @@ function downloadName(att: MessageAttachment, kind: string): string {
                 : "bin";
   return `${att.id || "attachment"}.${ext}`;
 }
-
 /** A neutral circular control button (download / expand). Orange-free per brand. */
 function TileButton({
   label,
@@ -363,7 +343,6 @@ function TileButton({
     </Button>
   );
 }
-
 function ImageTile({
   att,
   src,
@@ -421,7 +400,6 @@ function ImageTile({
     </Card>
   );
 }
-
 /**
  * Small inline notice shown under an attachment tile when the server's
  * enrichment pass could not extract text/description (e.g. a transcription
@@ -439,7 +417,6 @@ function NotProcessedNotice({ reason }: { reason: string }): React.JSX.Element {
     </div>
   );
 }
-
 function FileTile({
   att,
   src,
@@ -487,7 +464,6 @@ function FileTile({
     </Attachment>
   );
 }
-
 /**
  * Whether a (scheme-safe) URL can be inlined in an `<iframe>`. We only inline a
  * served same-origin / app URL (`/api/...`, http(s), blob:); a `data:` URL is
@@ -500,7 +476,6 @@ function isInlineablePdfUrl(rawUrl: string): boolean {
   if (u.startsWith("data:")) return false;
   return true;
 }
-
 /**
  * Inline PDF preview. When the served URL is inlinable, render the browser's
  * native PDF viewer inside a sandboxed `<iframe>` under a header with the
@@ -521,7 +496,6 @@ function PdfTile({
   const openLabel = t("messageattachments.openPdf");
   const downloadLabel = t("messageattachments.download");
   const frameTitle = t("messageattachments.pdfPreviewTitle", { name: label });
-
   if (!inlineable) {
     // data: / non-inlinable safe URL → download card, no iframe.
     return (
@@ -553,7 +527,6 @@ function PdfTile({
       </Button>
     );
   }
-
   return (
     <Card
       asChild
@@ -605,7 +578,6 @@ function PdfTile({
     </Card>
   );
 }
-
 /** Whether a (scheme-safe) model URL can be inlined in the WebGL viewer. */
 function isInlineableModelUrl(rawUrl: string): boolean {
   const u = rawUrl.trim().toLowerCase();
@@ -615,9 +587,7 @@ function isInlineableModelUrl(rawUrl: string): boolean {
   if (u.startsWith("data:")) return false;
   return true;
 }
-
 type Model3dStatus = "loading" | "ready" | "error" | "unsupported";
-
 /**
  * Inline 3D model preview (#8876). For an inlinable, scheme-safe `.glb`/`.gltf`
  * URL, lazily loads three.js + GLTFLoader, auto-frames the model to its bounding
@@ -641,12 +611,10 @@ function Model3dTile({
   const [status, setStatus] = React.useState<Model3dStatus>(
     inlineable ? "loading" : "unsupported",
   );
-
   React.useEffect(() => {
     if (!inlineable) return;
     const mount = mountRef.current;
     if (!mount) return;
-
     // WebGL capability probe — bail to the download fallback when unavailable
     // (jsdom, headless without GL) rather than throwing.
     const probe = document.createElement("canvas");
@@ -655,11 +623,9 @@ function Model3dTile({
       setStatus("unsupported");
       return;
     }
-
     let disposed = false;
     let frame = 0;
     let renderer: import("three").WebGLRenderer | null = null;
-
     (async () => {
       try {
         const THREE = await import("three");
@@ -670,7 +636,6 @@ function Model3dTile({
         const host = mountRef.current;
         const width = host.clientWidth || 320;
         const height = 288;
-
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(
           45,
@@ -688,19 +653,16 @@ function Model3dTile({
           Math.min(globalThis.devicePixelRatio || 1, 2),
         );
         host.appendChild(activeRenderer.domElement);
-
         scene.add(new THREE.AmbientLight(0xffffff, 0.9));
         const key = new THREE.DirectionalLight(0xffffff, 1.1);
         key.position.set(3, 5, 4);
         scene.add(key);
-
         const gltf = await new GLTFLoader().loadAsync(src);
         if (disposed) {
           activeRenderer.dispose?.();
           return;
         }
         const model = gltf.scene;
-
         // Auto-frame: center the model and pull the camera back to fit it.
         const box = new THREE.Box3().setFromObject(model);
         const center = box.getCenter(new THREE.Vector3());
@@ -711,7 +673,6 @@ function Model3dTile({
         camera.position.set(0, radius * 0.4, dist * 1.5);
         camera.lookAt(0, 0, 0);
         scene.add(model);
-
         const animate = () => {
           if (disposed) return;
           model.rotation.y += 0.01;
@@ -725,7 +686,6 @@ function Model3dTile({
         if (!disposed) setStatus("error");
       }
     })();
-
     return () => {
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
@@ -737,10 +697,8 @@ function Model3dTile({
       }
     };
   }, [inlineable, src]);
-
   const downloadLabel = t("messageattachments.download");
   const showFallbackBody = status === "unsupported" || status === "error";
-
   return (
     <Card
       asChild
@@ -809,7 +767,6 @@ function Model3dTile({
     </Card>
   );
 }
-
 /**
  * Inline text/code preview using the {@link CodeBlock} primitive. Renders the
  * attachment's extracted `att.text` (scrollable, capped height, with a copy
@@ -827,7 +784,6 @@ function CodeTile({
 }): React.JSX.Element {
   const label = attachmentLabel(att);
   const text = typeof att.text === "string" ? att.text : "";
-
   if (!text.trim()) {
     // No inline content available → download/open card (no fetch in v1).
     return (
@@ -859,7 +815,6 @@ function CodeTile({
       </Button>
     );
   }
-
   const language = codeLanguageHint(att);
   return (
     <Card
@@ -910,7 +865,6 @@ function CodeTile({
     </Card>
   );
 }
-
 /**
  * A non-clickable fallback card for an attachment whose URL fails the scheme
  * allowlist ({@link isSafeAttachmentUrl}) — e.g. a `javascript:` / `file:` /
@@ -942,7 +896,6 @@ function UnsafeAttachmentTile({
     </Attachment>
   );
 }
-
 /** A transcript tile — tap to open the maximized, editable transcript viewer. */
 function TranscriptTile({
   att,
@@ -976,7 +929,6 @@ function TranscriptTile({
     </Attachment>
   );
 }
-
 function Lightbox({
   src,
   alt,
@@ -995,9 +947,7 @@ function Lightbox({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
   if (typeof document === "undefined") return null;
-
   return createPortal(
     <div
       role="dialog"
@@ -1008,7 +958,7 @@ function Lightbox({
       style={{ zIndex: Z_SHELL_OVERLAY + 10 }}
     >
       {/* Full-screen backdrop is a real button so click + keyboard both close;
-          the image and controls sit above it as siblings. */}
+            the image and controls sit above it as siblings. */}
       <Button
         variant="ghost"
         aria-label="Close preview"
@@ -1036,12 +986,10 @@ function Lightbox({
     document.body,
   );
 }
-
 export interface MessageAttachmentsProps {
   attachments: MessageAttachment[] | undefined;
   className?: string;
 }
-
 /**
  * Renders the media attached to a chat message — both user uploads and
  * agent-generated media. Images open a full-screen lightbox; audio and video
@@ -1063,9 +1011,7 @@ export function MessageAttachments({
   const [transcript, setTranscript] = React.useState<MessageAttachment | null>(
     null,
   );
-
   if (!attachments || attachments.length === 0) return null;
-
   return (
     <div
       data-testid="message-attachments"

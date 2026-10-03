@@ -15,23 +15,39 @@
  *
  * No access context means the single-owner local boundary: served unchanged.
  */
-import type { AccessContext, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+
 import {
+  type AccessContext,
+  type IAgentRuntime,
+  type Memory,
   parseArtifactShareGrants,
   resolveArtifactDisclosure,
+  type UUID,
 } from "@elizaos/core";
-import type { MeetingSession } from "@elizaos/shared";
-import type { TranscriptScope } from "@elizaos/shared/transcripts";
-import { normalizeTranscriptScope } from "@elizaos/shared/transcripts";
+import { type MeetingSession } from "@elizaos/core/meetings";
+import {
+  normalizeTranscriptScope,
+  type TranscriptScope,
+} from "@elizaos/core/transcripts";
 
 function transcriptScopeFromRow(row: Memory): TranscriptScope {
-  const raw = (row.content as { transcript?: unknown } | undefined)?.transcript;
+  const raw = (
+    row.content as
+      | {
+          transcript?: unknown;
+        }
+      | undefined
+  )?.transcript;
   if (typeof raw !== "string") return "owner-private";
   try {
     const parsed: unknown = JSON.parse(raw);
     return normalizeTranscriptScope(
       parsed && typeof parsed === "object"
-        ? (parsed as { scope?: unknown }).scope
+        ? (
+            parsed as {
+              scope?: unknown;
+            }
+          ).scope
         : undefined,
     );
   } catch {
@@ -40,7 +56,6 @@ function transcriptScopeFromRow(row: Memory): TranscriptScope {
     return "owner-private";
   }
 }
-
 /**
  * Select the session DTO for one viewer. Reads the linked transcript row and
  * applies the canonical disclosure decision; a missing row withholds the

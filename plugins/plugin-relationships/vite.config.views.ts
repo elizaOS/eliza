@@ -9,5 +9,4 @@ export default createViewBundleConfig({
   entry: "./src/components/relationships/relationships-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "RelationshipsView",
-  additionalExternals: ["@elizaos/agent", "@elizaos/app-core"],
 });

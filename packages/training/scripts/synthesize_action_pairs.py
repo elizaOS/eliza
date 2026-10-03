@@ -49,6 +49,7 @@ from lib.eliza_record import (  # noqa: E402
     build,
     stable_id,
 )
+from lib.jsonl import write_jsonl  # noqa: E402
 from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 REGISTRY_PATH = ROOT / "data" / "prompts" / "registry-v2.json"
@@ -2526,15 +2527,6 @@ INLINE_ACTION_GENERATORS: dict[str, Any] = {
     "dataset-generator.should_respond": gen_dataset_generator_should_respond,
 }
 
-
-def write_jsonl(records: Iterable[dict], path: Path) -> int:
-    n = 0
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
-            n += 1
-    return n
 
 
 def main() -> int:

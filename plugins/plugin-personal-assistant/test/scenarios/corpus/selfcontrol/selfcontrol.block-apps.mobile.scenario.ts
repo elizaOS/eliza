@@ -1,7 +1,6 @@
 /** Scenario fixture for selfcontrol block apps mobile; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { callPayloadBlob } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { callPayloadBlob, scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -13,7 +12,7 @@ export default scenario({
     "A phone app-block request currently routes into the blocker permission check instead of a mobile-only enforcement path.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

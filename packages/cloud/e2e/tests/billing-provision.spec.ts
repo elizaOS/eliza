@@ -1,30 +1,16 @@
 /** Covers the billing provision cloud E2E flow using Playwright against the real local stack with mock-backed external services. */
 import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
+import { sql } from "drizzle-orm";
+import {
   createCloudAgent,
   listActiveBillingResources,
   pollSandboxStatus,
   startAgentProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
-
-/**
- * Billing contract for dedicated (non-shared) agents.
- *
- * Grounded on real source:
- *   • AGENT_PRICING.RUNNING_HOURLY_RATE = 0.01 and AGENT_PRICING.MINIMUM_DEPOSIT
- *     = 0.1 — packages/cloud/shared/src/lib/constants/agent-pricing.ts:16,32.
- *   • The active-billing reader reports a running dedicated agent as
- *     resourceType "agent_sandbox" / billingInterval "hour" / unitPrice
- *     RUNNING_HOURLY_RATE — active-billing.ts:164-197.
- *   • The hourly cron (/api/cron/agent-billing) deducts exactly hourlyCost from
- *     organizations.credit_balance and stamps last_billed_at — the SQL
- *     `credit_balance - hourlyCost` + `last_billed_at: now` in
- *     packages/cloud/shared/src/db/repositories/agent-billing.ts:215,256.
- *   • The provision route 402s below MINIMUM_DEPOSIT with requiredBalance /
- *     currentBalance and never enqueues a job — provision/route.ts:151-171,
- *     gated by checkAgentCreditGate (agent-billing-gate.ts:37, balance <=
- *     MINIMUM_DEPOSIT).
- */
 
 const CRON_SECRET = "test-cron-secret";
 const RUNNING_HOURLY_RATE = 0.01;
@@ -55,7 +41,7 @@ async function setOrgBalance(
 }
 
 test.describe("billing — provision lifecycle", () => {
-  test("running dedicated agent is billed exactly the hourly rate", async ({
+  test("running dedicated agent settles accrued usage at the hourly rate", async ({
     stack,
     seededUser,
   }) => {
@@ -103,10 +89,29 @@ test.describe("billing — provision lifecycle", () => {
       status: "running",
     });
 
+    const { dbWrite } = await import("@elizaos/cloud-shared/db/helpers");
+    // The mock worker provisions an unreserved sandbox. Seed one earlier
+    // running hour without rewriting the immutable transitions from provision;
+    // the real cron must meter those transitions and debit the matching amount.
+    await dbWrite.transaction(async (tx) => {
+      const aged = await tx.execute(sql`UPDATE agent_sandboxes
+        SET last_billed_at=(SELECT min(effective_at) - interval '1 hour'
+          FROM compute_billing_rate_segments
+          WHERE workload_id=${sandboxId} AND organization_id=${seededUser.organizationId})
+        WHERE id=${sandboxId} AND organization_id=${seededUser.organizationId}
+        RETURNING id`);
+      expect(aged.rows).toHaveLength(1);
+      await tx.execute(sql`INSERT INTO compute_billing_rate_segments
+        (organization_id, workload_kind, workload_id, lifecycle_revision,
+         billing_state, rate_per_hour, effective_at)
+        SELECT organization_id, 'agent', id, lifecycle_revision, 'running',
+          ${RUNNING_HOURLY_RATE}, last_billed_at
+        FROM agent_sandboxes WHERE id=${sandboxId}
+          AND organization_id=${seededUser.organizationId}`);
+    });
     const balanceBefore = await readOrgBalance(seededUser.organizationId);
 
-    // Run the hourly billing cron (CRON_SECRET-protected). last_billed_at is
-    // NULL after provisioning, so this first run bills the running agent.
+    // Exercise the actual protected cron, credit debit, and receipt writer.
     const cronRes = await fetch(`${stack.urls.api}/api/cron/agent-billing`, {
       method: "POST",
       headers: {
@@ -126,9 +131,39 @@ test.describe("billing — provision lifecycle", () => {
     expect(cronBody.data?.sandboxesBilled).toBeGreaterThanOrEqual(1);
 
     const balanceAfter = await readOrgBalance(seededUser.organizationId);
-    // Decreased by exactly the running hourly rate (numeric(12,6) precision).
+    const receipts = await dbWrite.execute<{
+      amount: string;
+      credit_transaction_id: string;
+      rate_segments: Array<{
+        state: string;
+        ratePerHour: string;
+        startedAt: string;
+        endedAt: string;
+      }>;
+    }>(sql`SELECT amount, credit_transaction_id, rate_segments FROM agent_billing_records
+      WHERE sandbox_id=${sandboxId} AND organization_id=${seededUser.organizationId}`);
+    expect(receipts.rows).toHaveLength(1);
+    const receipt = receipts.rows[0];
+    if (!receipt) throw new Error("Missing billing receipt");
+    expect(receipt.credit_transaction_id).toBeTruthy();
+    let runningMs = 0;
+    for (const segment of receipt.rate_segments) {
+      if (segment.state === "running") {
+        expect(Number(segment.ratePerHour)).toBe(RUNNING_HOURLY_RATE);
+        runningMs +=
+          new Date(segment.endedAt).getTime() -
+          new Date(segment.startedAt).getTime();
+      } else {
+        expect(Number(segment.ratePerHour)).toBe(0);
+      }
+    }
+    expect(runningMs).toBeGreaterThanOrEqual(3_600_000);
+    const meteredAmount = Number(
+      ((runningMs / 3_600_000) * RUNNING_HOURLY_RATE).toFixed(6),
+    );
+    expect(Number(receipt.amount)).toBe(meteredAmount);
     expect(Number((balanceBefore - balanceAfter).toFixed(6))).toBe(
-      RUNNING_HOURLY_RATE,
+      meteredAmount,
     );
 
     const { agentSandboxesRepository } = await import(
@@ -170,7 +205,11 @@ test.describe("billing — provision lifecycle", () => {
       `${stack.urls.api}/api/v1/eliza/agents/${sandboxId}/provision`,
       {
         method: "POST",
-        headers: { Authorization: `Bearer ${seededUser.apiKey}` },
+        headers: {
+          Authorization: `Bearer ${seededUser.apiKey}`,
+          [DEDICATED_COMPUTE_PRICE_HEADER]:
+            getDedicatedComputePriceAcceptance(),
+        },
       },
     );
     expect(

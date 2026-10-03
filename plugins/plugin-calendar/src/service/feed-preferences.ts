@@ -8,11 +8,11 @@
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsCalendarProvider,
-  LifeOpsCalendarSourceKey,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarProvider,
+  type LifeOpsCalendarSourceKey,
+} from "@elizaos/core/contracts/calendar";
+import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   executeRawSqlTx,

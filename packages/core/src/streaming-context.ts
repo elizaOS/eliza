@@ -1,8 +1,10 @@
 /**
  * Propagates per-turn stream callbacks and cancellation through model and
- * action execution, using AsyncLocalStorage when available and a stack elsewhere.
+ * action execution, using Node AsyncLocalStorage.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+import { getAmbientSingleton, setAmbientSingleton } from "./ambient-context";
 import { ElizaError } from "./errors";
 import type { StreamChunkCallback } from "./types/components";
 import type {
@@ -12,7 +14,7 @@ import type {
 	StreamingToolCallPayload,
 	StreamingToolResultPayload,
 } from "./types/streaming";
-import { StackContextManager } from "./utils/stack-context-manager";
+import { AsyncContextManager } from "./utils/async-context-manager";
 
 /** Trusted execution policy, bound to an actor and incoming turn, never tool arguments. */
 export interface TurnActionConstraint {
@@ -86,7 +88,7 @@ export async function emitStreamingHook<K extends keyof StreamingHookPayloads>(
 
 /**
  * Interface for streaming context managers.
- * Different implementations exist for Node.js (AsyncLocalStorage) and Browser (Stack).
+ * AsyncLocalStorage isolates concurrent turns across asynchronous work.
  */
 export interface IStreamingContextManager {
 	/**
@@ -102,48 +104,22 @@ export interface IStreamingContextManager {
 	active(): StreamingContext | undefined;
 }
 
-// Global singleton - auto-configured on first access
-let globalContextManager: IStreamingContextManager | null = null;
+const STREAMING_CONTEXT_MANAGER_KEY = Symbol.for(
+	"elizaos.streamingContextManager",
+);
 
-function isNodeEnvironment(): boolean {
-	return (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
-	);
-}
-
-// Initialize synchronously to avoid the race where early calls use the
-// StackContextManager fallback (which doesn't propagate through async/await).
 function initContextManagerSync(): IStreamingContextManager {
-	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
-		try {
-			const { AsyncLocalStorage } = process.getBuiltinModule(
-				"node:async_hooks",
-			) as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<StreamingContext | undefined>();
-			return {
-				run<T>(context: StreamingContext | undefined, fn: () => T): T {
-					return storage.run(context, fn);
-				},
-				active(): StreamingContext | undefined {
-					return storage.getStore();
-				},
-			} as IStreamingContextManager;
-		} catch {
-			// error-policy:J4 AsyncLocalStorage is optional in constrained
-			// runtimes; the stack manager is the explicit degraded implementation.
-			// AsyncLocalStorage unavailable — fall back to stack
-		}
-	}
-	return new StackContextManager<StreamingContext | undefined>();
+	return new AsyncContextManager<StreamingContext | undefined>();
 }
 
 function getOrCreateContextManager(): IStreamingContextManager {
-	if (!globalContextManager) {
-		globalContextManager = initContextManagerSync();
-	}
-	return globalContextManager;
+	// The shared global slot is the single source of truth (no module-local
+	// cache): under a duplicated core bundle every copy must observe the same
+	// manager, and `setStreamingContextManager` must be visible everywhere.
+	return getAmbientSingleton(
+		STREAMING_CONTEXT_MANAGER_KEY,
+		initContextManagerSync,
+	);
 }
 
 /**
@@ -155,7 +131,7 @@ function getOrCreateContextManager(): IStreamingContextManager {
 export function setStreamingContextManager(
 	manager: IStreamingContextManager,
 ): void {
-	globalContextManager = manager;
+	setAmbientSingleton(STREAMING_CONTEXT_MANAGER_KEY, manager);
 }
 
 /**
@@ -318,54 +294,39 @@ export function getStreamingContext(): StreamingContext | undefined {
 // The same provider chunk is often forwarded from useModel's textStream loop *and* from
 // DefaultMessageService. Without a turn-scoped marker, pipeline hooks would run twice per
 // token (inflated metrics, duplicate side effects). Node uses AsyncLocalStorage depth so
-// nested async work stays scoped; non-Node has no ALS store and returns depth 0 (no skip).
+// nested async work stays scoped.
 // See docs/PIPELINE_HOOKS.md § "Stream hook dedupe (Node)".
 
-let modelStreamChunkDeliveryDepthStorage:
-	| import("node:async_hooks").AsyncLocalStorage<number>
-	| null = null;
-let modelStreamChunkDeliveryStorageInitialized = false;
+// Shared across duplicated core bundles for the same reason as the streaming
+// context manager: `useModel` and `DefaultMessageService` may come from
+// different copies and must observe the same delivery depth.
+const MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY = Symbol.for(
+	"elizaos.modelStreamChunkDeliveryDepth",
+);
 
-function getModelStreamChunkDeliveryStorage():
-	| import("node:async_hooks").AsyncLocalStorage<number>
-	| null {
-	if (!modelStreamChunkDeliveryStorageInitialized) {
-		modelStreamChunkDeliveryStorageInitialized = true;
-		if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
-			try {
-				const { AsyncLocalStorage } = process.getBuiltinModule(
-					"node:async_hooks",
-				) as typeof import("node:async_hooks");
-				modelStreamChunkDeliveryDepthStorage = new AsyncLocalStorage();
-			} catch {
-				// error-policy:J4 Stream-deduplication storage is optional outside
-				// Node; null explicitly disables nested-delivery tracking.
-				modelStreamChunkDeliveryDepthStorage = null;
-			}
-		}
-	}
-	return modelStreamChunkDeliveryDepthStorage;
+function modelStreamChunkDeliveryDepthStorage(): AsyncLocalStorage<number> {
+	return getAmbientSingleton(
+		MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY,
+		() => new AsyncLocalStorage<number>(),
+	);
 }
 
 /**
  * While `> 0`, the runtime is inside `useModel`'s delivery of one `textStream` chunk to
  * `paramsChunk` / `ctxChunk` (after `model_stream_chunk` with `source: "use_model"`).
  * `DefaultMessageService` skips its own `model_stream_chunk` (`source: "message_service"`) in
- * this window so the same raw token is not processed twice. Non-Node environments return `0`.
+ * this window so the same raw token is not processed twice.
  */
 export function getModelStreamChunkDeliveryDepth(): number {
-	const s = getModelStreamChunkDeliveryStorage();
-	return s?.getStore() ?? 0;
+	const s = modelStreamChunkDeliveryDepthStorage();
+	return s.getStore() ?? 0;
 }
 
 /** Wrap `paramsChunk` / `ctxChunk` invocations from `useModel`'s stream loop. */
 export function runInsideModelStreamChunkDelivery<T>(
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	const s = getModelStreamChunkDeliveryStorage();
-	if (!s) {
-		return fn();
-	}
+	const s = modelStreamChunkDeliveryDepthStorage();
 	const parent = s.getStore() ?? 0;
 	return s.run(parent + 1, fn);
 }

@@ -9,10 +9,9 @@
  * path instead of hand-building the URL twice.
  */
 
-import { normalizeCloudSiteUrl } from "@elizaos/shared/elizacloud";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import { getBootConfig } from "../config/boot-config";
 import { openExternalUrl } from "../utils/openExternalUrl";
-
 /** The canonical hosted add-funds / credits console URL. */
 export function cloudBillingConsoleUrl(cloudApiBase?: string): string {
   const cloudAppOrigin = normalizeCloudSiteUrl(
@@ -20,7 +19,6 @@ export function cloudBillingConsoleUrl(cloudApiBase?: string): string {
   );
   return `${cloudAppOrigin}/cloud/billing`;
 }
-
 /** Open the billing console on the current platform. */
 export function openCloudBillingConsole(
   cloudApiBase?: string,

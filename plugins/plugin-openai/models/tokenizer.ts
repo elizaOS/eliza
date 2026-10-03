@@ -1,5 +1,5 @@
 /**
- * `TEXT_TOKENIZER_ENCODE`/`DECODE` handlers backed by js-tiktoken: they validate
+ * `TEXT_TOKENIZER_ENCODE`/`DECODE` handlers backed by exact BPE tokenization: they validate
  * params and delegate to the offline tokenization helpers, never hitting the
  * network.
  */

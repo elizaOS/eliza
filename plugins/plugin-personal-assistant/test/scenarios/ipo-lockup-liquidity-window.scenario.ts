@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): Lockup window plan grounds in seeded liquidity state; no trade is authorized.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -13,7 +13,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "money", "legal", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -1,0 +1,29 @@
+# amd64 kernel, bootloader, and CPU microcode.
+#
+# Gated by `#if ARCHITECTURES amd64`: live-build's Expand_packagelist reads
+# this whole .list.chroot file on every build, but only emits the packages
+# below when LB_ARCHITECTURES contains `amd64`. On other arches the block is
+# skipped. Conditionals cannot be nested.
+#if ARCHITECTURES amd64
+linux-image-amd64
+grub-efi-amd64-bin
+grub-efi-amd64-signed
+grub-pc-bin
+shim-signed
+intel-microcode
+amd64-microcode
+
+# Curated laptop/desktop firmware. live-build's automatic firmware sweep is
+# intentionally disabled because it also installs unrelated device drivers.
+firmware-linux
+firmware-intel-graphics
+firmware-intel-sound
+firmware-sof-signed
+firmware-iwlwifi
+firmware-atheros
+firmware-realtek
+firmware-brcm80211
+firmware-mediatek
+firmware-libertas
+firmware-nvidia-graphics
+#endif

@@ -1,0 +1,30 @@
+id: swap_sol_bonk
+level: 1
+name: SOL to BONK Swap
+description: 'Level 1 protocol interaction: SOL to BONK Swap'
+category: swap
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 10.0
+    tokens:
+      USDC: 1000
+      BONK: 10000000
+  pools:
+  - type: orca_whirlpool
+    token_a: SOL
+    token_b: BONK
+    liquidity: 1000000
+    price: 1.0
+tasks:
+- id: task_swap_sol_bonk
+  type: swap
+  parameters:
+    from: SOL
+    to: BONK
+    amount: 0.1
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

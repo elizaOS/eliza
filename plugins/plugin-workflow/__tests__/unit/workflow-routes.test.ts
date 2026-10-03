@@ -8,7 +8,7 @@ import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../../src/services/embedded-work
 import { WORKFLOW_SERVICE_TYPE } from '../../src/services/workflow-service';
 
 describe('native workflow routes', () => {
-  test('reports the elizaOS Cloud-owned smthrs runtime contract', async () => {
+  test('reports embedded execution without claiming cloud connection or local model inference', async () => {
     let response: unknown;
     const runtime = {
       agentId: '00000000-0000-4000-8000-000000000001',
@@ -29,14 +29,22 @@ describe('native workflow routes', () => {
     });
 
     expect(response).toEqual({
-      mode: 'cloud',
-      host: 'eliza-cloud',
+      mode: 'local',
+      host: 'eliza://workflow',
       status: 'ready',
-      cloudConnected: true,
-      localEnabled: false,
-      platform: 'cloud',
-      cloudHealth: 'healthy',
+      cloudConnected: false,
+      localEnabled: true,
+      platform: 'runtime',
+      executionLocation: 'agent-runtime',
+      cloudHealth: 'unknown',
       engine: 'smthrs',
+      manualSubmissionProtocol: 1,
+      approvalReceiptProtocol: 1,
+      approvalPresentationProtocol: 1,
+      metadataMutationProtocol: 1,
+      lifecycleMutationProtocol: 1,
+      typedAuthoringProtocol: 1,
+      hostedDigestProtocol: 1,
     });
   });
 

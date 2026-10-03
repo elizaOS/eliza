@@ -10,7 +10,7 @@
  * session token through the same store, so there is one cloud-token channel.
  */
 
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { getBootConfig } from "../../../config/boot-config";
 
 /** Fallback direct-cloud origin used when boot config carries no `cloudApiBase`. */

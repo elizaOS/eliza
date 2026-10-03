@@ -10,7 +10,7 @@
  * where the skeleton can't express a constraint (the `contexts` array is an
  * array whose *elements* are drawn from a fixed enum), an explicit GBNF
  * `grammar` string. The local llama-server engine (W4,
- * `packages/app-core/src/services/local-inference/structured-output.ts`)
+ * `packages/app/src/services/local-inference/structured-output.ts`)
  * consumes either: `grammar` wins, else it compiles the skeleton to a lazy
  * GBNF. Cloud adapters ignore both — `responseSchema` / `tools` carry the
  * equivalent (unforced) contract for them, so there is no fallback branch here.
@@ -47,7 +47,6 @@ import type {
 	SpanSamplerOverride,
 	SpanSamplerPlan,
 } from "../types/model.js";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./builtin-field-evaluators.js";
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -954,11 +953,7 @@ export function buildResponseGrammar(
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
 	const suppliedFields = runtime.responseHandlerFields ?? [];
-	const baseFields = sortFields(
-		suppliedFields.length > 0
-			? suppliedFields
-			: BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
-	);
+	const baseFields = sortFields(suppliedFields);
 	const fields = baseFields;
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(

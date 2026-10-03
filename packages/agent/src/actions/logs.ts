@@ -7,19 +7,18 @@
  *   set_level → in-process per-room override on `runtime.logLevelOverrides`
  */
 
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-} from "@elizaos/core";
-import { elizaLogger, logger } from "@elizaos/core";
 import {
+  type Action,
+  type ActionResult,
   createSelfApiRequestHeaders,
-  resolveServerOnlyPort,
-} from "@elizaos/shared";
+  elizaLogger,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+} from "@elizaos/core";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
 
 const LOGS_OPS = ["search", "delete", "set_level"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];
@@ -78,7 +77,7 @@ type RuntimeWithOverrides = IAgentRuntime & {
 };
 
 function getApiBase(): string {
-  return `http://localhost:${resolveServerOnlyPort(process.env)}`;
+  return resolveSelfApiBaseUrl(process.env);
 }
 
 function parseSince(since: string | undefined): number | undefined {

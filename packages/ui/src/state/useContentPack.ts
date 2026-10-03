@@ -10,7 +10,7 @@
  * - The color-scheme cleanup callback that pack activation registers.
  */
 
-import type { ResolvedContentPack } from "@elizaos/shared";
+import type { ResolvedContentPack } from "@elizaos/core/contracts/content-pack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyColorScheme,
@@ -32,7 +32,6 @@ function supportsDirectoryUpload(): boolean {
   };
   return "webkitdirectory" in input;
 }
-
 function isSafeContentPackUrl(value: string): boolean {
   try {
     const u = new URL(value);
@@ -43,7 +42,6 @@ function isSafeContentPackUrl(value: string): boolean {
     return false;
   }
 }
-
 export interface UseContentPackResult {
   activePack: ResolvedContentPack | null;
   loadedPacks: ResolvedContentPack[];
@@ -57,7 +55,6 @@ export interface UseContentPackResult {
   loadFromFiles: (files: File[]) => Promise<void>;
   isSafeContentPackUrl: (value: string) => boolean;
 }
-
 export function useContentPack(): UseContentPackResult {
   const {
     setState,
@@ -80,7 +77,6 @@ export function useContentPack(): UseContentPackResult {
     firstRunName: s.firstRunName,
     firstRunStyle: s.firstRunStyle,
   }));
-
   const [loadedPacks, setLoadedPacks] = useState<ResolvedContentPack[]>([]);
   const [error, setError] = useState<string | null>(null);
   const colorSchemeCleanupRef = useRef<(() => void) | null>(null);
@@ -97,11 +93,9 @@ export function useContentPack(): UseContentPackResult {
   } | null>(null);
   const rehydratedRef = useRef(false);
   const canPickDirectory = useMemo(() => supportsDirectoryUpload(), []);
-
   useEffect(() => {
     loadedPacksRef.current = loadedPacks;
   }, [loadedPacks]);
-
   useEffect(() => {
     return () => {
       urlLoadControllerRef.current?.abort();
@@ -111,19 +105,15 @@ export function useContentPack(): UseContentPackResult {
       }
     };
   }, []);
-
   useEffect(() => {
     if (rehydratedRef.current) return;
     rehydratedRef.current = true;
-
     if (!activePackId) return;
-
     const persistedUrl = loadPersistedActivePackUrl();
     if (!persistedUrl || !isSafeContentPackUrl(persistedUrl)) {
       if (persistedUrl) savePersistedActivePackUrl(null);
       return;
     }
-
     urlLoadControllerRef.current?.abort();
     const controller = new AbortController();
     urlLoadControllerRef.current = controller;
@@ -145,12 +135,10 @@ export function useContentPack(): UseContentPackResult {
           urlLoadControllerRef.current = null;
         }
       });
-
     return () => {
       controller.abort();
     };
   }, [activePackId, setState]);
-
   const activate = useCallback(
     (pack: ResolvedContentPack) => {
       if (baselineRef.current == null) {
@@ -164,7 +152,6 @@ export function useContentPack(): UseContentPackResult {
           firstRunStyle,
         };
       }
-
       setState("activePackId", pack.manifest.id);
       savePersistedActivePackUrl(
         pack.source.kind === "url" ? pack.source.url : null,
@@ -195,25 +182,21 @@ export function useContentPack(): UseContentPackResult {
       setState,
     ],
   );
-
   const deactivate = useCallback(() => {
     const activePack = activePackId
       ? (loadedPacksRef.current.find((p) => p.manifest.id === activePackId) ??
         null)
       : null;
-
     if (activePack?.source.kind === "file") {
       releaseLoadedContentPack(activePack);
       setLoadedPacks((prev) =>
         prev.filter((p) => p.manifest.id !== activePack.manifest.id),
       );
     }
-
     setState("activePackId", null);
     savePersistedActivePackUrl(null);
     colorSchemeCleanupRef.current?.();
     colorSchemeCleanupRef.current = null;
-
     const baseline = baselineRef.current;
     if (baseline) {
       setState("selectedVrmIndex", baseline.selectedVrmIndex);
@@ -227,7 +210,6 @@ export function useContentPack(): UseContentPackResult {
     }
     setError(null);
   }, [activePackId, setState]);
-
   const toggle = useCallback(
     (pack: ResolvedContentPack) => {
       if (activePackId === pack.manifest.id) {
@@ -238,7 +220,6 @@ export function useContentPack(): UseContentPackResult {
     },
     [activePackId, activate, deactivate],
   );
-
   const loadFromUrl = useCallback(
     async (url: string) => {
       const trimmed = url.trim();
@@ -247,7 +228,6 @@ export function useContentPack(): UseContentPackResult {
         setError("Pack URL must be an http(s) URL");
         return;
       }
-
       urlLoadControllerRef.current?.abort();
       const controller = new AbortController();
       urlLoadControllerRef.current = controller;
@@ -274,7 +254,6 @@ export function useContentPack(): UseContentPackResult {
     },
     [activate],
   );
-
   const loadFromFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;
@@ -296,7 +275,6 @@ export function useContentPack(): UseContentPackResult {
     },
     [activate],
   );
-
   const activePack = useMemo(
     () =>
       activePackId
@@ -304,7 +282,6 @@ export function useContentPack(): UseContentPackResult {
         : null,
     [activePackId, loadedPacks],
   );
-
   return {
     activePack,
     loadedPacks,

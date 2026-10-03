@@ -153,7 +153,7 @@ describe("first-run config validation", () => {
     const morningBrief = pack.find((p) => p.metadata?.slot === "morningBrief");
     expect(morningBrief?.trigger.kind).toBe("relative_to_anchor");
     if (morningBrief?.trigger.kind === "relative_to_anchor") {
-      expect(morningBrief.trigger.anchorKey).toBe("wake.confirmed");
+      expect(morningBrief.trigger.anchorKey).toBe("dossier.owner_activity");
     }
     // The weekly-review starter ships PAUSED: a manual trigger means it exists
     // and is owner-visible but never fires on its own.
@@ -292,45 +292,30 @@ describe("first-run config validation", () => {
     expect(result.warning).toMatch(/not registered/i);
   });
 
-  it("seedDefaultPackOnBoot seeds on an already-initialized runtime that never ran first-run", async () => {
+  it("does not seed or mark defaults before owner setup, including interrupted setup", async () => {
     const runtime = createMinimalRuntimeStub();
     const tasks = new Map<string, ScheduledTask>();
     const service = new FirstRunService(runtime, {
       runner: makeTrackingRunner(tasks),
     });
-
-    // No first-run was ever performed (the lifecycle store is `pending`),
-    // yet boot seeding still materializes the full default pack.
-    const result = await service.seedDefaultPackOnBoot();
-    expect(result.seeded.length).toBe(6);
-    expect(result.skipped.length).toBe(0);
+    expect(await service.seedDefaultPackOnBoot()).toEqual({
+      seeded: [],
+      skipped: [],
+    });
+    await service.runDefaultsPath({});
+    expect(await service.seedDefaultPackOnBoot()).toEqual({
+      seeded: [],
+      skipped: [],
+    });
+    expect(tasks.size).toBe(0);
+    await service.runDefaultsPath({ wakeTime: "07:00" });
     expect(tasks.size).toBe(6);
-
-    const slots = new Set(
-      [...tasks.values()].map((t) => t.metadata?.slot as string),
-    );
-    expect(slots).toEqual(
-      new Set([
-        "gm",
-        "gn",
-        "checkin",
-        "morningBrief",
-        "weeklyReview",
-        "localBackup",
-      ]),
-    );
-
-    // The weekly-review starter stays paused (manual trigger, never fires
-    // on its own).
-    const weekly = [...tasks.values()].find(
-      (t) => t.metadata?.slot === "weeklyReview",
-    );
-    expect(weekly?.trigger.kind).toBe("manual");
-    expect(weekly?.metadata?.pausedByDefault).toBe(true);
+    expect((await service.seedDefaultPackOnBoot()).seeded).toEqual([]);
   });
 
   it("seedDefaultPackOnBoot is idempotent across two boots — no duplicates", async () => {
     const runtime = createMinimalRuntimeStub();
+    await createFirstRunStateStore(runtime).complete();
     const tasks = new Map<string, ScheduledTask>();
 
     const first = await new FirstRunService(runtime, {
@@ -350,6 +335,7 @@ describe("first-run config validation", () => {
 
   it("seedDefaultPackOnBoot respects user deletion — a deleted default is not recreated", async () => {
     const runtime = createMinimalRuntimeStub();
+    await createFirstRunStateStore(runtime).complete();
     const tasks = new Map<string, ScheduledTask>();
 
     await new FirstRunService(runtime, {

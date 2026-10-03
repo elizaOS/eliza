@@ -75,10 +75,6 @@ export const LazyStreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
   "StreamView",
 );
-export const LazyPendantTranscriptView = lazyNamedView(
-  () => import("./components/pages/PendantTranscriptView"),
-  "PendantTranscriptView",
-);
 export const LazyDatabasePageView = lazyNamedView(
   () => import("./components/pages/DatabasePageView"),
   "DatabasePageView",

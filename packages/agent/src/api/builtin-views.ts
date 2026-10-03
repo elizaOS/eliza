@@ -89,14 +89,14 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "chat",
     viewKind: "system",
-    label: "Messages",
+    label: "Home",
     description:
-      "Conversations with your agent, inbound messages from every connector",
+      "Home screen with the app launcher and conversations with your agent",
     icon: "MessageSquare",
     heroImagePath: "assets/view-heroes/chat.png",
     path: "/chat",
     order: 1,
-    tags: ["messaging", "conversation", "agent"],
+    tags: ["home", "launcher", "conversation", "agent"],
     responseContext: { primaryContext: "general" },
     anticipatoryIntent:
       "Offer to pick up the most recent thread or surface anything the user left unfinished, and ask what they want to work on next.",
@@ -115,6 +115,13 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["browser", "web", "internet", "research", "tabs"],
     responseContext: { primaryContext: "browser" },
     relatedActions: ["BROWSER"],
+    capabilities: [
+      {
+        id: "browser-command",
+        description:
+          "Control the requesting client's native browser using typed commands and snapshot-bound element references.",
+      },
+    ],
     visibleInManager: false,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
@@ -390,19 +397,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       primaryContext: "media",
       secondaryContexts: ["system"],
     },
-    visibleInManager: false,
-    desktopTabEnabled: true,
-  },
-  {
-    id: "pendant-transcript",
-    viewKind: "system",
-    label: "Pendant transcript",
-    description: "Live pendant voice transcript",
-    icon: "AudioLines",
-    path: "/pendant/transcript",
-    order: 75,
-    tags: ["pendant", "transcript", "voice"],
-    responseContext: { primaryContext: "documents" },
     visibleInManager: false,
     desktopTabEnabled: true,
   },

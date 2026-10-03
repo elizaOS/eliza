@@ -9,7 +9,7 @@
  * affordance for reauth-required accounts (#19884).
  */
 
-import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/shared/connector-account-catalog";
+import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/connector-account-catalog";
 import { KeyRound, RefreshCw, Star, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {
@@ -45,7 +45,6 @@ import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { ConnectorAccountPrivacySelector } from "./ConnectorAccountPrivacySelector";
 import { ConnectorAccountPurposeSelector } from "./ConnectorAccountPurposeSelector";
-
 export interface ConnectorAccountCardProps {
   account: ConnectorAccountRecord;
   isDefault?: boolean;
@@ -72,15 +71,12 @@ export interface ConnectorAccountCardProps {
   onReconnect?: () => void;
   reconnectBusy?: boolean;
 }
-
 /** Status label only — the tone comes from the shared capability vocabulary
  * (`presentConnectorAccountStatus`) so Connections and Permissions agree. */
 interface StatusInfo {
   label: string;
 }
-
 type TranslateFn = TranslationContextValue["t"];
-
 function formatRelativeTime(
   epochMs: number | undefined,
   t: TranslateFn,
@@ -88,26 +84,25 @@ function formatRelativeTime(
   if (!epochMs)
     return t("connectoraccount.sync.never", { defaultValue: "Never synced" });
   const diff = Date.now() - epochMs;
-  if (diff < 60_000)
+  if (diff < 60000)
     return t("connectoraccount.sync.justNow", {
       defaultValue: "Synced just now",
     });
-  if (diff < 3_600_000)
+  if (diff < 3600000)
     return t("connectoraccount.sync.minutes", {
-      minutes: Math.floor(diff / 60_000),
+      minutes: Math.floor(diff / 60000),
       defaultValue: "Synced {{minutes}}m ago",
     });
-  if (diff < 86_400_000)
+  if (diff < 86400000)
     return t("connectoraccount.sync.hours", {
-      hours: Math.floor(diff / 3_600_000),
+      hours: Math.floor(diff / 3600000),
       defaultValue: "Synced {{hours}}h ago",
     });
   return t("connectoraccount.sync.days", {
-    days: Math.floor(diff / 86_400_000),
+    days: Math.floor(diff / 86400000),
     defaultValue: "Synced {{days}}d ago",
   });
 }
-
 function deriveStatus(
   status: ConnectorAccountStatus | undefined,
   t: TranslateFn,
@@ -149,7 +144,6 @@ function deriveStatus(
       };
   }
 }
-
 function initials(label: string): string {
   const trimmed = label.trim();
   if (!trimmed) return "?";
@@ -159,7 +153,6 @@ function initials(label: string): string {
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
 }
-
 export function ConnectorAccountCard({
   account,
   isDefault = account.isDefault === true,
@@ -195,11 +188,9 @@ export function ConnectorAccountCard({
     statusPresentation.needsReconnect && Boolean(onReconnect);
   const displayHandle = account.handle ?? account.externalId ?? null;
   const enabled = account.enabled !== false;
-
   const handleDelete = () => {
     void deleteModal.submit(() => Promise.resolve(onDelete()));
   };
-
   const handleMakeDefault = useCallback(async () => {
     setDefaultBusy(true);
     try {
@@ -208,7 +199,6 @@ export function ConnectorAccountCard({
       setDefaultBusy(false);
     }
   }, [onMakeDefault]);
-
   return (
     <Card
       border={selected ? "strong" : "subtle"}

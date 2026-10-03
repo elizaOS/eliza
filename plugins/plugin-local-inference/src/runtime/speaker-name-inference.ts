@@ -2,10 +2,9 @@
  * Compatibility export for the shared speaker-name inference policy.
  *
  * Runtime and action consumers historically imported this plugin-local path;
- * the implementation now lives in @elizaos/shared so meeting capture and the
+ * the implementation now lives in @elizaos/core so meeting capture and the
  * voice-profile owner evaluate the same dependency-free policy.
  */
-
 export {
 	type ExistingSpeakerEntity,
 	type InferSpeakerNameInput,
@@ -20,4 +19,4 @@ export {
 	type SpeakerNameReasonCode,
 	type SpeakerNameResolution,
 	type SpeakerNameVoiceTurnBindingPlan,
-} from "@elizaos/shared";
+} from "@elizaos/core/speaker-name-inference";

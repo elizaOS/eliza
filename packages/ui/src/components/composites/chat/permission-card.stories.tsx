@@ -2,12 +2,12 @@
  * Storybook states for the Permission Card chat composite used by shared
  * conversation and composer surfaces.
  */
-import type { PermissionState } from "@elizaos/shared";
+
+import type { PermissionState } from "@elizaos/core/contracts/permissions";
 import type { Meta, StoryObj } from "@storybook/react";
 import { PermissionCard } from "./permission-card";
 
 const NOW = 1780000000000;
-
 function stateFor(overrides: Partial<PermissionState>): PermissionState {
   return {
     id: "reminders",
@@ -18,7 +18,6 @@ function stateFor(overrides: Partial<PermissionState>): PermissionState {
     ...overrides,
   };
 }
-
 const meta = {
   title: "Composites/Chat/PermissionCard",
   component: PermissionCard,
@@ -50,13 +49,10 @@ const meta = {
     feature: "reminders.create.add_reminder",
   },
 } satisfies Meta<typeof PermissionCard>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 /** Fresh request — no registry wired, so the grant button stays inert. */
 export const Default: Story = {};
-
 /** Offers a fallback (use the internal reminder) alongside the grant button. */
 export const WithFallback: Story = {
   args: {
@@ -64,7 +60,6 @@ export const WithFallback: Story = {
     fallbackLabel: "Use internal reminder",
   },
 };
-
 /** Already denied and can't be re-prompted — surfaces "Open System Settings". */
 export const Denied: Story = {
   args: {
@@ -79,7 +74,6 @@ export const Denied: Story = {
     }),
   },
 };
-
 /** Restricted by a missing entitlement — primary action is a disabled "Coming soon". */
 export const ComingSoon: Story = {
   args: {
@@ -94,7 +88,6 @@ export const ComingSoon: Story = {
     }),
   },
 };
-
 /** Not available on this platform — primary action is disabled "Unavailable". */
 export const Unavailable: Story = {
   args: {

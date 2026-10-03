@@ -9,7 +9,6 @@ import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/sourc
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const coreSrcRoot = path.resolve(__dirname, "../../packages/core/src");
-const loggerSrcRoot = path.resolve(__dirname, "../../packages/logger/src");
 const cloudRoutingSrcRoot = path.resolve(
   __dirname,
   "../../packages/cloud/routing/src",
@@ -31,7 +30,7 @@ export default defineConfig({
     alias: [
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrcRoot, "index.node.ts"),
+        replacement: path.join(coreSrcRoot, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/(.*)$/,
@@ -46,27 +45,10 @@ export default defineConfig({
         find: /^@elizaos\/cloud-routing$/,
         replacement: path.join(cloudRoutingSrcRoot, "index.ts"),
       },
-      {
-        find: /^@elizaos\/logger$/,
-        replacement: path.join(loggerSrcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/logger\/(.*)$/,
-        replacement: path.join(loggerSrcRoot, "$1"),
-      },
       ...buildWorkspaceSourceAliases(),
     ],
   },
   test: {
-    // The core alias above resolves to source, whose i18n barrel imports the
-    // git-ignored generated keyword module. Materialize it here so the declared
-    // package lane works on a checkout that has not built core.
-    globalSetup: [
-      path.resolve(
-        __dirname,
-        "../../packages/scripts/vitest/generated-sources.setup.ts",
-      ),
-    ],
     testTimeout: 90_000,
     hookTimeout: 30_000,
     environment: "node",

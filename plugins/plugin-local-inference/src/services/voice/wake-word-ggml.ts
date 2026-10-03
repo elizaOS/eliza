@@ -1,7 +1,7 @@
 /**
  * Wake-word detection — native runtime binding.
  *
- * Loads the standalone `packages/native/plugins/wakeword-cpp/`
+ * Loads the standalone `plugins/plugin-local-inference/native/wakeword-cpp/`
  * library directly via `bun:ffi` and exposes the `WakeWordModel`
  * interface as `OpenWakeWordGgmlModel`. The sibling `./wake-word.ts`
  * is the fused-`libelizainference` path (`GgmlWakeWordModel`, the
@@ -17,11 +17,11 @@
  * → embedding CNN → classifier head) — no ggml link, no SIMD; a
  * laptop CPU runs it under 1 % of real time. ABI parity with the
  * upstream openWakeWord ONNX graphs is gated by
- * `packages/native/plugins/wakeword-cpp/test/wakeword_parity_test.py`.
+ * `plugins/plugin-local-inference/native/wakeword-cpp/test/wakeword_parity_test.py`.
  *
  * Three GGUFs back one session, mirroring openWakeWord's three ONNX
  * graphs (the C library is the single source of truth on shapes —
- * see `packages/native/plugins/wakeword-cpp/include/wakeword/wakeword.h`):
+ * see `plugins/plugin-local-inference/native/wakeword-cpp/include/wakeword/wakeword.h`):
  *
  *   1. melspec    — 16 kHz PCM → 32-bin log-mel frames.
  *   2. embedding  — 20-Conv2D CNN over a 76-mel-frame sliding window

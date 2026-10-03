@@ -5,7 +5,6 @@
  * fs directly. Unlike the pre-auth media *serve* route (the sha256 is the
  * capability), these privileged operations are auth-gated (PrivateRoute).
  */
-
 import {
   type IAgentRuntime,
   type IFileStorageService,
@@ -13,6 +12,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+
 import { selectFilesForViewer } from "./files-disclosure.ts";
 
 function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {
@@ -20,7 +20,6 @@ function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {
     runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES) ?? null
   );
 }
-
 /**
  * GET /api/files — list stored files (newest first), selected per viewer
  * (#14778): the single-owner boundary and OWNER/ADMIN-rank viewers see the
@@ -50,7 +49,6 @@ export const filesListRoute: Route = {
     return { status: 200, body };
   },
 };
-
 /** DELETE /api/files/:filename — delete one stored file (reference-unaware). */
 export const fileDeleteRoute: Route = {
   type: "DELETE",
@@ -70,5 +68,4 @@ export const fileDeleteRoute: Route = {
     };
   },
 };
-
 export const filesRoutes: Route[] = [filesListRoute, fileDeleteRoute];

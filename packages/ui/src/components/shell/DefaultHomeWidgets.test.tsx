@@ -18,6 +18,7 @@ const { weatherState } = vi.hoisted(() => ({
     temp: 68 as number | null,
     unit: "°F",
     condition: "Clear",
+    failure: null as string | null,
     kind: "clear" as const,
     requestLocation: (() => {}) as () => void,
   },
@@ -35,6 +36,7 @@ beforeEach(() => {
     temp: 68,
     unit: "°F",
     condition: "Clear",
+    failure: null as string | null,
     kind: "clear",
     requestLocation: () => {},
   });
@@ -126,6 +128,21 @@ describe("DefaultHomeWidgets", () => {
       vi.advanceTimersByTime(1);
     });
     expect(screen.getByTestId("home-time-widget")).toBeTruthy();
+  });
+
+  it("shows the location timeout as retryable, not a permission request", () => {
+    const retry = vi.fn();
+    Object.assign(weatherState, {
+      status: "unavailable",
+      failure: "location-timeout",
+      requestLocation: retry,
+    });
+    render(<DefaultHomeWidgets />);
+    const button = screen.getByRole("button", { name: "Retry weather" });
+    expect(button.textContent).toContain("Location timed out");
+    expect(button.textContent).not.toContain("enable location");
+    fireEvent.click(button);
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it("unavailable weather is a tappable tile that requests location (#14345)", () => {

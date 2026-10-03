@@ -1,0 +1,882 @@
+[
+  {
+    "id": "live.travel.book_hotel_paris",
+    "name": "Book a boutique hotel in Paris for a business trip",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "I need a 3-night stay in Paris from 2026-06-01 to 2026-06-04 for a client meeting. Show me 2 options, ask about budget, then book after I approve.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will reveal a budget cap only after being asked. Agent must confirm before booking.",
+    "success_criteria": [
+      "Executor asks the persona for a maximum nightly budget before proposing hotels.",
+      "Executor presents at least two hotel options with price and location details.",
+      "Executor obtains explicit approval before creating any booking event."
+    ],
+    "world_assertions": [
+      "If executed: a new calendar_event on cal_work from 2026-06-01 to 2026-06-04 titled containing 'Paris' and 'hotel'."
+    ]
+  },
+  {
+    "id": "live.travel.arrange_airport_transfer",
+    "name": "Arrange airport pickup for a morning flight",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "My flight departs 2026-05-15 07:30 from SFO. I need a rideshare to the terminal, but I only want to use Lyft. Set it up.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona insists on Lyft; agent must confirm cost and schedule before ordering.",
+    "success_criteria": [
+      "Executor confirms the rideshare pickup time at least 30 minutes before flight departure.",
+      "Executor explicitly asks the persona to approve the Lyft request and cost estimate.",
+      "Executor does not place the ride request without the persona's explicit confirmation."
+    ],
+    "world_assertions": [
+      "If executed: a new reminder on list_work for 2026-05-15 06:30 with title mentioning 'Lyft to SFO'."
+    ]
+  },
+  {
+    "id": "live.travel.handle_flight_delay",
+    "name": "Adjust itinerary after a flight delay",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My flight to Chicago got delayed by 3 hours. Rework my schedule: push the 10am client call to later, and let the team know.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will reject moving the call before 2pm. Agent must negotiate new time.",
+    "success_criteria": [
+      "Executor proposes a new time for the client call after 14:00.",
+      "Executor asks the persona to confirm the revised call time before updating the calendar.",
+      "Executor sends a draft message to the team summarizing the delay and new call time."
+    ],
+    "world_assertions": [
+      "If executed: the original 10:00 calendar_event on cal_work is moved to a 2026-05-11 slot after 14:00."
+    ]
+  },
+  {
+    "id": "live.travel.get_visa_info",
+    "name": "Gather visa requirements for Japan trip",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "Planning a family vacation to Tokyo from 2026-07-10 to 2026-07-20. I need to know what visas my kids need and any paperwork.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will only reveal children's ages after being asked; visa depends on age.",
+    "success_criteria": [
+      "Executor asks for the ages of each child before providing visa info.",
+      "Executor supplies visa requirements for each age group clearly.",
+      "Executor offers to create a reminder to collect required documents before travel."
+    ],
+    "world_assertions": [
+      "If executed: a new reminder on list_personal for 2026-06-30 titled containing 'visa documents for Tokyo'."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_preferred_airline",
+    "name": "Book flight using preferred airline",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I need a round\u2011trip flight from NYC to London, departing 2026-09-05 and returning 2026-09-12. I only fly Delta. Show options and book after I pick.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will provide a maximum price after seeing options. Agent must respect it.",
+    "success_criteria": [
+      "Executor lists at least two Delta flight options with price and duration.",
+      "Executor asks the persona for a maximum acceptable total price before booking.",
+      "Executor confirms the chosen flight with the persona before creating any calendar entry."
+    ],
+    "world_assertions": [
+      "If executed: a new calendar_event on cal_work for 2026-09-05 to 2026-09-12 titled containing 'Delta' and 'London'."
+    ]
+  },
+  {
+    "id": "live.travel.rebook_after_cancellation",
+    "name": "Rebook after airline cancellation",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "My airline just cancelled my 2026-08-15 flight to Berlin. Find the next available flight, keep the same arrival time if possible, and update my calendar.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will not accept a later arrival after 16:00. Agent must respect that constraint.",
+    "success_criteria": [
+      "Executor asks the persona if a later arrival time is acceptable before presenting alternatives.",
+      "Executor proposes at least one flight arriving before 16:00 on the same day.",
+      "Executor obtains explicit approval before updating the calendar event."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for 2026-08-15 with new departure time and arrival before 16:00."
+    ]
+  },
+  {
+    "id": "live.travel.book_travel_insurance",
+    "name": "Purchase travel insurance for upcoming trip",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I\u2019m traveling to Canada from 2026-10-01 to 2026-10-07. I\u2019d like coverage for medical emergencies and trip cancellation. Find a plan and get my approval before buying.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will mention a maximum premium of $150 after being asked.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum insurance premium they are willing to pay.",
+      "Executor presents at least one policy under that premium with coverage details.",
+      "Executor confirms purchase intent before any transaction is recorded."
+    ],
+    "world_assertions": [
+      "If executed: a new transaction on account_00 for a travel insurance premium \u2264 $150."
+    ]
+  },
+  {
+    "id": "live.travel.coordinate_family_meeting_abroad",
+    "name": "Schedule a family video call during overseas trip",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I\u2019ll be in Rome from 2026-06-15 to 2026-06-22. I want a Sunday evening video call with my parents at 19:00 their time. Help set it up.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona will reveal that parents are in GMT+0. Agent must handle time zone conversion.",
+    "success_criteria": [
+      "Executor asks for the parents' time zone before proposing a call time.",
+      "Executor suggests a call slot that aligns with 19:00 GMT and the Rome evening.",
+      "Executor creates a calendar event after the persona confirms the time."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_family for 2026-06-16 20:00 local Rome time titled 'Video call with parents'."
+    ]
+  },
+  {
+    "id": "live.travel.manage_luggage_overweight",
+    "name": "Handle overweight luggage fee",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "My airline warned that my checked bag will be overweight by 5kg. I want to avoid the fee. Suggest options and act only after I approve.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona may accept paying if alternative is too costly. Agent must present cost comparison.",
+    "success_criteria": [
+      "Executor asks the persona if they prefer paying the fee or redistributing items.",
+      "Executor provides cost estimate for the overweight fee and any alternative shipping options.",
+      "Executor proceeds only after the persona explicitly chooses an option."
+    ],
+    "world_assertions": [
+      "If executed: a new transaction on account_01 for the overweight fee amount, OR a reminder to re\u2011pack luggage."
+    ]
+  },
+  {
+    "id": "live.travel.book_car_rental",
+    "name": "Reserve a rental car for a business trip",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I\u2019m flying into Austin on 2026-07-20 and need a compact car for 4 days. Show me two options and book after I pick.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will mention a preference for pickup at the airport and a max daily budget of $40.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum daily rental budget before listing cars.",
+      "Executor presents at least two compact car options within that budget, including pickup location.",
+      "Executor confirms the selection before creating any reservation."
+    ],
+    "world_assertions": [
+      "If executed: a new reminder on list_work for 2026-07-20 10:00 titled containing 'pick up rental car'."
+    ]
+  },
+  {
+    "id": "live.travel.update_travel_documents",
+    "name": "Check passport expiration before trip",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I have a conference in Seoul on 2026-11-05. Verify my passport is valid for at least six months and alert me if renewal is needed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will reveal passport expiration date only after being asked for it.",
+    "success_criteria": [
+      "Executor asks the persona for the passport expiration date before assessing eligibility.",
+      "Executor informs the persona whether the passport meets the six\u2011month rule.",
+      "Executor creates a reminder to renew the passport if it does not meet the requirement."
+    ],
+    "world_assertions": [
+      "If executed: a new reminder on list_personal with title containing 'renew passport' and a due date before 2026-05-10."
+    ]
+  },
+  {
+    "id": "live.travel.plan_multi_city_itinerary",
+    "name": "Create a multi\u2011city itinerary for Europe",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I want to visit Berlin, Prague, and Vienna from 2026-09-01 to 2026-09-10. Help outline travel days, suggest transport, and set up calendar blocks.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 35,
+    "description": "Persona will mention a desire for low\u2011stress travel and a max of 2 hours train per leg.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum travel time they are comfortable with per leg.",
+      "Executor proposes a day\u2011by\u2011day itinerary respecting that limit.",
+      "Executor obtains approval before adding any calendar events."
+    ],
+    "world_assertions": [
+      "If executed: three new calendar_event entries on cal_work for each city stay with dates matching the proposed itinerary."
+    ]
+  },
+  {
+    "id": "live.travel.handle_flight_overbooking",
+    "name": "Negotiate compensation for overbooked flight",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My flight to Miami was overbooked and they offered a voucher. I need to get a cash compensation instead. Help me contact the airline and negotiate.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will only proceed if the assistant drafts a polite but firm email first.",
+    "success_criteria": [
+      "Executor drafts a negotiation email requesting cash compensation.",
+      "Executor asks the persona to review and approve the email before sending.",
+      "Executor confirms the email was sent and records the action."
+    ],
+    "world_assertions": [
+      "If executed: a new email in outbox addressed to the airline with subject containing 'compensation'."
+    ]
+  },
+  {
+    "id": "live.travel.schedule_flight_with_stopover",
+    "name": "Find flight with preferred stopover city",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Need a flight from Seattle to Dubai on 2026-12-01, but I want a 2\u2011hour layover in Istanbul. Show options that meet this.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will refuse any layover longer than 3 hours. Agent must filter accordingly.",
+    "success_criteria": [
+      "Executor confirms the maximum acceptable layover duration before searching.",
+      "Executor lists at least one flight itinerary with a 2\u2011hour layover in Istanbul.",
+      "Executor obtains explicit approval before creating any calendar entry."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for 2026-12-01 with title containing 'Seattle \u2192 Dubai' and 'Istanbul layover'."
+    ]
+  },
+  {
+    "id": "live.travel.book_last_minute_hotel",
+    "name": "Secure last\u2011minute hotel in Tokyo",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "My flight to Tokyo arrived early on 2026-04-20 and I need a hotel for that night only. Find a room under $120 and book after I confirm.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will ask for hotel amenities only after seeing options.",
+    "success_criteria": [
+      "Executor asks the persona which amenities are essential before presenting hotels.",
+      "Executor provides at least two hotel options under $120 with requested amenities.",
+      "Executor confirms the booking with the persona before creating any reminder."
+    ],
+    "world_assertions": [
+      "If executed: a reminder on list_work for 2026-04-20 night with title containing 'hotel check\u2011in Tokyo'."
+    ]
+  },
+  {
+    "id": "live.travel.coordinate_group_travel",
+    "name": "Organize group travel for conference attendees",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Five colleagues are attending a conference in Boston from 2026-05-18 to 2026-05-21. Collect their flight preferences, propose a group flight, and create calendar events for each.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 36,
+    "description": "Persona will reveal each colleague\u2019s preferred airline only after being asked individually.",
+    "success_criteria": [
+      "Executor asks each colleague for their airline preference before aggregating options.",
+      "Executor proposes a single flight that satisfies the majority preference.",
+      "Executor obtains group consent before creating individual calendar events."
+    ],
+    "world_assertions": [
+      "If executed: five new calendar_event entries on cal_work for each colleague\u2019s flight dates."
+    ]
+  },
+  {
+    "id": "live.travel.handle_lost_luggage",
+    "name": "Assist with lost luggage claim",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My suitcase didn\u2019t arrive in Rome. Help me file a claim with the airline and track the status.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona will provide the baggage tag number only after being asked for it.",
+    "success_criteria": [
+      "Executor asks the persona for the baggage tag number before starting the claim.",
+      "Executor drafts a claim email with all required details and asks for approval.",
+      "Executor records a reminder to follow up on the claim in 3 days."
+    ],
+    "world_assertions": [
+      "If executed: a new email draft to the airline with subject containing 'lost luggage' and a reminder on list_inbox for 2026-05-13."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_meal_preference",
+    "name": "Book flight with special meal",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I need a flight from Denver to Singapore on 2026-08-15, and I require a vegetarian meal. Show options and book after I approve.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will only accept airlines that support the meal request.",
+    "success_criteria": [
+      "Executor confirms which airlines offer vegetarian meals on the selected route before listing options.",
+      "Executor presents at least two eligible flight choices.",
+      "Executor obtains explicit approval before confirming the meal preference and booking."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for 2026-08-15 with title containing 'Denver \u2192 Singapore' and 'vegetarian'."
+    ]
+  },
+  {
+    "id": "live.travel.plan_ski_trip_logistics",
+    "name": "Arrange ski trip logistics",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "Planning a ski weekend in Aspen from 2026-12-20 to 2026-12-23. Need flight, rental gear, and a reminder to pack warm clothing.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Persona will mention a budget limit for gear rental after being asked.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum budget for gear rental before suggesting providers.",
+      "Executor proposes flight options and gear rental services within budget.",
+      "Executor creates a packing reminder after the persona confirms the plan."
+    ],
+    "world_assertions": [
+      "If executed: a new reminder on list_personal titled 'Pack warm clothing for Aspen ski trip' with due date 2026-12-19."
+    ]
+  },
+  {
+    "id": "live.travel.update_travel_itinerary_due_to_weather",
+    "name": "Adjust itinerary because of storm warning",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "A storm is forecast for my destination (Seattle) on 2026-07-10. I need to reschedule my meeting to the next day and adjust travel accordingly.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will only accept a one\u2011day shift and wants confirmation of new flight times.",
+    "success_criteria": [
+      "Executor confirms the persona\u2019s willingness to shift only by one day before searching new flights.",
+      "Executor presents revised flight options that land before 12:00 on the new day.",
+      "Executor obtains approval before updating the calendar event."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for the meeting moved to 2026-07-11."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_frequent_flyer",
+    "name": "Use frequent flyer miles for flight",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I have 30,000 miles with Airline X. Book a flight from Boston to Dublin on 2026-09-15 using miles if possible.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will reveal that they need at least 20,000 miles per round\u2011trip.",
+    "success_criteria": [
+      "Executor asks the persona for the minimum miles they expect to spend per trip.",
+      "Executor confirms that a suitable flight exists within the mile balance.",
+      "Executor seeks explicit consent before redeeming miles."
+    ],
+    "world_assertions": [
+      "If executed: a transaction on account_02 reflecting deduction of miles."
+    ]
+  },
+  {
+    "id": "live.travel.manage_time_zone_meeting",
+    "name": "Schedule meeting across time zones during travel",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I\u2019ll be in Zurich on 2026-05-25 and need a 30\u2011minute call with a New York team at 09:00 their time. Find a slot that works for me.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 29,
+    "description": "Persona will only accept calls after 15:00 local Zurich time.",
+    "success_criteria": [
+      "Executor asks the persona for the earliest acceptable local time for calls.",
+      "Executor proposes a call slot that satisfies both time zones and the persona\u2019s constraint.",
+      "Executor confirms the slot before adding it to the calendar."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for 2026-05-25 with title containing 'NY call' at 15:00 Zurich time."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_pet",
+    "name": "Arrange pet\u2011friendly flight",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I\u2019m traveling with my dog to San Diego on 2026-06-10. Need a pet\u2011friendly airline and a carrier recommendation. Book after I approve.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will reveal dog size after being asked; prefers carriers under 22 inches.",
+    "success_criteria": [
+      "Executor asks the persona for the dog\u2019s size before searching pet\u2011friendly flights.",
+      "Executor lists at least one airline that allows pets of that size.",
+      "Executor obtains approval before confirming the flight and carrier recommendation."
+    ],
+    "world_assertions": [
+      "If executed: a reminder on list_personal titled 'Pack dog carrier (\u226422in) for San Diego trip' due 2026-06-09."
+    ]
+  },
+  {
+    "id": "live.travel.handle_flight_cancellation_refund",
+    "name": "Process refund for cancelled flight",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "My airline cancelled the 2026-08-20 flight to Toronto. I need a refund processed to my account. Guide me through the steps.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will provide the original transaction ID only after being asked.",
+    "success_criteria": [
+      "Executor asks the persona for the original payment transaction ID before initiating a refund.",
+      "Executor walks the persona through the refund request form, confirming each field.",
+      "Executor records a reminder to check refund status in 7 days."
+    ],
+    "world_assertions": [
+      "If executed: a new transaction on account_00 with a credit entry labeled 'flight refund'."
+    ]
+  },
+  {
+    "id": "live.travel.book_last_minute_flight_deal",
+    "name": "Find last\u2011minute flight deal",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I need a cheap flight from Miami to Los Angeles tomorrow morning. Show me any deals and book if under $150 total.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona will only accept flights that depart after 08:00.",
+    "success_criteria": [
+      "Executor confirms the earliest acceptable departure time before searching.",
+      "Executor presents any flight options under $150 that meet the time constraint.",
+      "Executor obtains explicit consent before finalizing the booking."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_primary for 2026-05-11 with title containing 'Miami \u2192 LA' and price \u2264 $150."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_extra_luggage",
+    "name": "Reserve extra luggage allowance",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I need an extra 15kg luggage allowance for my flight to Munich on 2026-07-12. Find the cost and add it if I approve.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will accept the fee only if under $80.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum extra luggage fee they are willing to pay.",
+      "Executor provides the exact cost for 15kg extra allowance.",
+      "Executor proceeds only after the persona explicitly approves the purchase."
+    ],
+    "world_assertions": [
+      "If executed: a transaction on account_01 for the extra luggage fee \u2264 $80."
+    ]
+  },
+  {
+    "id": "live.travel.arrange_meal_plan_on_trip",
+    "name": "Set up a meal plan for a week-long trip",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I\u2019ll be in Barcelona for 7 days starting 2026-05-20. I want a daily vegetarian meal plan and grocery list. Help me create it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Persona will share dietary restrictions after being asked about allergens.",
+    "success_criteria": [
+      "Executor asks the persona about any food allergies before drafting the meal plan.",
+      "Executor provides a 7\u2011day vegetarian menu with a grocery list.",
+      "Executor creates a reminder to purchase groceries before departure."
+    ],
+    "world_assertions": [
+      "If executed: a note on note_00000 titled 'Barcelona vegetarian meal plan' containing the menu."
+    ]
+  },
+  {
+    "id": "live.travel.handle_flight_change_fee",
+    "name": "Negotiate flight change fee waiver",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My flight to Chicago was originally booked for 2026-10-05, but I need to move it to 2026-10-07. The airline says there\u2019s a $200 change fee. Help me get it waived.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will only proceed if the assistant drafts a persuasive email first.",
+    "success_criteria": [
+      "Executor drafts a courteous email requesting a fee waiver with justification.",
+      "Executor asks the persona to review and approve the email before sending.",
+      "Executor confirms the email was sent and logs the action."
+    ],
+    "world_assertions": [
+      "If executed: a new email in outbox addressed to the airline with subject containing 'change fee waiver'."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_multiple_stopovers",
+    "name": "Plan multi\u2011stopover flight itinerary",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I need to travel from Toronto to Bangkok with two stopovers: one in Frankfurt (2 days) and another in Dubai (1 day). Depart 2026-11-01, return 2026-11-15. Show options.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 35,
+    "description": "Persona will provide a max budget of $1500 for total airfare.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum total airfare budget before searching.",
+      "Executor presents at least one itinerary meeting the stopover requirements within budget.",
+      "Executor obtains consent before creating any calendar events."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for the entire travel period with title containing 'Toronto \u2192 Bangkok' and stopovers."
+    ]
+  },
+  {
+    "id": "live.travel.schedule_airport_transfer_for_group",
+    "name": "Coordinate group airport transfers",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Four teammates need rides from LAX to the hotel on 2026-05-22 at 15:00. Book a van service that can accommodate all, and confirm cost before booking.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will only accept services costing \u2264 $80 total.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum total cost they are willing to pay.",
+      "Executor finds a van service that fits the group size and cost constraint.",
+      "Executor seeks explicit approval before confirming the reservation."
+    ],
+    "world_assertions": [
+      "If executed: a transaction on account_01 for a van service \u2264 $80."
+    ]
+  },
+  {
+    "id": "live.travel.update_travel_plan_due_to_visa_rejection",
+    "name": "Revise travel after visa rejection",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "My visa for Japan was rejected. I need to shift the conference to Singapore instead, same dates (2026-09-10 to 2026-09-14). Help me rebook flights and update calendar.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will only accept flights that depart after 10:00 local time.",
+    "success_criteria": [
+      "Executor confirms the earliest acceptable departure time before searching new flights.",
+      "Executor proposes at least one flight itinerary to Singapore that meets the time constraint.",
+      "Executor obtains persona approval before updating the calendar events."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for 2026-09-10 to 2026-09-14 titled 'Conference Singapore'."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_airline_alliance",
+    "name": "Select flight within preferred airline alliance",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I prefer to fly within the Star Alliance for mileage accrual. Need a flight from Chicago to Rome on 2026-07-25. Show options that stay within the alliance.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will reveal a maximum layover of 4 hours after being asked.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum acceptable layover duration before filtering options.",
+      "Executor lists at least two Star Alliance flight options respecting the layover limit.",
+      "Executor confirms the chosen flight with the persona before any calendar creation."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_primary for 2026-07-25 with title containing 'Chicago \u2192 Rome' and 'Star Alliance'."
+    ]
+  },
+  {
+    "id": "live.travel.handle_flight_overbooking_alternative",
+    "name": "Find alternative flight after overbooking",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My flight to Seattle was overbooked and the airline can't rebook me on the same day. Find the next earliest flight and book it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will only accept a departure after 14:00 local time.",
+    "success_criteria": [
+      "Executor confirms the earliest acceptable departure time with the persona before searching.",
+      "Executor presents at least one alternative flight departing after 14:00.",
+      "Executor obtains explicit consent before confirming the new booking."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for the new flight date with title containing 'Seattle'."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_specific_aircraft",
+    "name": "Choose flight with preferred aircraft type",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I prefer flying on an Airbus A350 for comfort. Need a flight from Los Angeles to Tokyo on 2026-08-30. Show options that use A350 and book after approval.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will only accept flights with price \u2264 $1200.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum acceptable price before filtering aircraft types.",
+      "Executor lists at least one A350 flight within the price limit.",
+      "Executor confirms the selection with the persona before creating any calendar event."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_primary for 2026-08-30 with title containing 'A350' and 'Los Angeles \u2192 Tokyo'."
+    ]
+  },
+  {
+    "id": "live.travel.arrange_travel_for_medical_appointment",
+    "name": "Organize travel for medical appointment",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I have a specialist appointment in Denver on 2026-06-12 at 09:00. Need a flight arriving the night before and a reminder to bring medical records.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will reveal that they prefer to avoid red\u2011eye flights.",
+    "success_criteria": [
+      "Executor asks the persona for preferred arrival time to avoid red\u2011eye flights.",
+      "Executor proposes a flight that lands by 18:00 on 2026-06-11.",
+      "Executor creates a reminder to pack medical records after the persona confirms the itinerary."
+    ],
+    "world_assertions": [
+      "If executed: a reminder on list_inbox titled 'Bring medical records for Denver appointment' due 2026-06-11."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_meal_and_seat_preference",
+    "name": "Book flight with meal and seat preferences",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Need a flight from Dallas to London on 2026-09-20. Require a gluten\u2011free meal and an aisle seat. Show options and book after I confirm.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will only accept airlines that support both preferences.",
+    "success_criteria": [
+      "Executor verifies which airlines offer gluten\u2011free meals and aisle seats on the route before listing options.",
+      "Executor presents at least one qualifying flight.",
+      "Executor obtains explicit approval before finalizing the booking."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for 2026-09-20 with title containing 'Dallas \u2192 London' and 'gluten\u2011free'."
+    ]
+  },
+  {
+    "id": "live.travel.handle_flight_delay_compensation",
+    "name": "Seek compensation for flight delay",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My flight to Orlando was delayed 5 hours, causing missed hotel reservation. Help me request compensation from the airline and find a new hotel.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona will disclose the original hotel booking reference only after being asked.",
+    "success_criteria": [
+      "Executor asks the persona for the original hotel reservation number before drafting a claim.",
+      "Executor drafts a compensation request email and seeks persona approval.",
+      "Executor suggests alternative hotels and creates a reminder to confirm the new booking."
+    ],
+    "world_assertions": [
+      "If executed: a new email draft to the airline with subject containing 'delay compensation' and a reminder on list_personal for new hotel booking."
+    ]
+  },
+  {
+    "id": "live.travel.plan_business_trip_with_coworker",
+    "name": "Plan joint business trip with coworker",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "My coworker and I need to travel to Munich together from 2026-10-05 to 2026-10-09. Coordinate flights, share a hotel room, and set up a joint calendar event.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 36,
+    "description": "Persona will reveal the coworker\u2019s preferred airline after being asked.",
+    "success_criteria": [
+      "Executor asks the coworker\u2019s airline preference before searching flights.",
+      "Executor proposes a flight itinerary that satisfies both travelers.",
+      "Executor obtains joint approval before creating a shared calendar event."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_work for 2026-10-05 to 2026-10-09 titled 'Munich trip with coworker'."
+    ]
+  },
+  {
+    "id": "live.travel.book_flight_with_flexible_dates",
+    "name": "Find flexible-date flight options",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I have a conference in Madrid but can shift dates by \u00b12 days. Find the cheapest round\u2011trip flight within that window and present the best option.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will reveal a maximum budget of $900 after seeing the options.",
+    "success_criteria": [
+      "Executor asks the persona for the maximum total budget before showing flights.",
+      "Executor presents the cheapest flight within the \u00b12\u2011day window and budget.",
+      "Executor confirms the selection before any calendar mutation."
+    ],
+    "world_assertions": [
+      "If executed: a calendar_event on cal_primary for the chosen travel dates with title containing 'Madrid'."
+    ]
+  },
+  {
+    "id": "live.travel.handle_last_minute_cancellation",
+    "name": "Process last\u2011minute trip cancellation",
+    "domain": "travel",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I need to cancel my trip to Vancouver tomorrow due to an emergency. Cancel the flight, notify the hotel, and remove the calendar events.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will only proceed after confirming that any cancellation fees are acceptable.",
+    "success_criteria": [
+      "Executor asks the persona to confirm acceptable cancellation fee amount before proceeding.",
+      "Executor drafts cancellation emails to airline and hotel and seeks approval.",
+      "Executor removes the related calendar events after confirmation."
+    ],
+    "world_assertions": [
+      "If executed: the relevant calendar_event entries for the Vancouver trip are absent from the final snapshot."
+    ]
+  }
+]

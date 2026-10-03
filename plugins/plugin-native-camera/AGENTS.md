@@ -2,125 +2,90 @@
 
 Capacitor plugin that gives Eliza agents camera preview, photo capture, and video recording across web, iOS, and Android.
 
-## Purpose / role
+Build, test, and setup: [README.md](README.md).
 
-This package is a [Capacitor](https://capacitorjs.com/) plugin, not a standard elizaOS runtime plugin. It exposes a unified `Camera` object backed by platform-native implementations (Swift on iOS, Kotlin on Android) and a `CameraWeb` fallback that uses the browser's `MediaDevices` API. It is loaded by registering it with `@capacitor/core` under the plugin name `"ElizaCamera"`. It does not export an elizaOS `Plugin` object and is not auto-enabled by the elizaOS runtime — consuming apps must wire it up via Capacitor's plugin registry.
+Android uses CameraX 1.5.3. Recording start waits for Start, and Stop waits for
+Finalize with actual dimensions, duration, bytes and output URI. Automatic size
+and duration stops remain retrievable. Concurrent finalization cannot start a
+competing recording. Gallery output requires Android 10+; microphone denial is an
+explicit failure. Quality, bitrate and frame rate are validated per recording;
+actual device capabilities determine output. Stop recording before switching.
 
-## Plugin surface
+Preview cancellation owns pending provider/permission callbacks. Frame events
+sample completed captures at approximately 2 Hz and stop with camera inactivity;
+they are notifications, not image buffers or proof of display. Device acceptance
+uses a fresh isolated ai.eliza.plugins.camera.test APK and actual CameraX,
+MediaStore, readable video and the microphone-denial dialog.
 
-This is a Capacitor plugin, not an elizaOS action/provider/evaluator plugin. The exported API surface is:
+Android direct zoom, focus and exposure controls require an active preview and
+validate numeric inputs. Zoom uses device-supported ratios; metering runs on the
+main thread and awaits CameraX completion. Cancellation rejects without changing
+cached settings. Device tests inspect Camera2 zoom and metering regions, exercise cancellation,
+and do not certify optical focus quality on a physical camera.
 
-| Export | File | Description |
-|---|---|---|
-| `Camera` | `src/index.ts` | Capacitor plugin instance (registered as `"ElizaCamera"`) |
-| `CameraWeb` | `src/web.ts` | Web fallback implementation (`WebPlugin` subclass) |
-| All types | `src/definitions.ts` | TypeScript interfaces and types for the full plugin API |
+Android settings batches reject unknown keys, malformed values and numeric
+overflow before changing cached or native state. This boundary validation does
+not certify that all valid settings are applied; full batch completion and
+concurrent batch effects still require native verification.
 
-### `CameraPlugin` interface methods (from `src/definitions.ts`)
+White-balance presets require an active Android preview and device support.
+Their promises settle from native Camera2 capture completion; confirmed presets
+are restored across preview restart, camera switch and video rebind. Tests verify
+completed AWB metadata and cancellation, not physical color accuracy. Queued
+camera switches settle in order; stopping preview cancels remaining switches.
 
-| Method | Description |
-|---|---|
-| `getDevices()` | List available camera devices with capabilities |
-| `startPreview(options)` | Start live preview into a DOM element |
-| `stopPreview()` | Stop preview and release camera resources |
-| `switchCamera(options)` | Switch to a different camera device or direction |
-| `capturePhoto(options?)` | Capture a still photo as base64 from the active preview |
-| `startRecording(options?)` | Start video recording (with optional audio, bitrate, duration/size limits) |
-| `stopRecording()` | Stop recording and return a `VideoResult` with blob URL and metadata |
-| `getRecordingState()` | Poll current recording duration and file size |
-| `getSettings()` | Read current camera settings (flash, zoom, focus, exposure, white balance) |
-| `setSettings(options)` | Apply partial `CameraSettings` update |
-| `setZoom(options)` | Set zoom level (1.0 = no zoom; clamped to device max) |
-| `setFocusPoint(options)` | Set manual focus point (x, y normalized 0–1) |
-| `setExposurePoint(options)` | Set manual exposure point (x, y normalized 0–1) |
-| `checkPermissions()` | Read current permission state without prompting |
-| `requestPermissions()` | Trigger OS permission dialogs for camera + microphone |
+Exposure compensation requires an active, ready preview and device support.
+EV is rounded to the nearest native step; getSettings reports the applied EV.
+Out-of-range requests reject before batch mutation. The original confirmed
+request is retained for rebinds, avoiding drift across cameras with different
+steps. Device tests check completed AE indices, mixed-batch rejection and cancellation.
 
-### Events (via `addListener`)
+Android settings-batch zoom uses the same supported ratio range as setZoom and
+waits for native completion before reporting success or caching the ratio.
+Unsupported mixed batches reject before mutation. Confirmed zoom is restored
+before preview restart, camera switch and recording rebind complete. Device tests
+check completed crop/zoom metadata, cancellation and retained white balance/EV.
 
-| Event name | Payload type | Fired when |
-|---|---|---|
-| `"frame"` | `CameraFrameEvent` | Each video frame (timestamp, width, height) |
-| `"error"` | `CameraErrorEvent` | Recording or stream error (code + message) |
-| `"recordingState"` | `VideoRecordingState` | Recording started, periodic update, or stopped |
+Android flash settings require an active preview. Cameras without a flash unit
+reject non-off modes before mixed-batch mutation. Torch completion and a native
+capture-options receipt precede confirmation; rebinds restore confirmed flash
+policy. Device tests inspect flash/AE metadata, torch state and cancellation.
+Physical flash output and automatic scene decisions need hardware qualification.
 
-## Layout
+Android focus modes apply supported Camera2 AF policies and wait for completed
+capture options. Manual mode retains the observed lens distance; auto selects
+and triggers single-shot AF at the center, and continuous selects continuous
+picture AF. Mode changes cancel previous metering, releasing single-shot locks.
+Point focus exits manual lock and reports auto. Confirmed policies
+survive rebinds; manual distances belong to each camera and fixed-focus defaults
+adapt to device support. Native metadata tests do not certify physical sharpness
+or lens calibration.
 
-```
-plugins/plugin-native-camera/
-  src/
-    index.ts          — Registers the Capacitor plugin; exports `Camera` and all types
-    definitions.ts    — All TypeScript interfaces (CameraPlugin, CameraDevice, PhotoResult, VideoResult, CameraSettings, ...)
-    web.ts            — CameraWeb: MediaDevices API implementation for browser runtime
-    web.test.ts       — Vitest unit tests for the CameraWeb implementation
-  ios/
-    Sources/CameraPlugin/
-      CameraPlugin.swift   — AVFoundation-based native iOS implementation
-  android/
-    src/main/java/ai/eliza/plugins/camera/
-      CameraPlugin.kt      — Camera2 API-based native Android implementation
-    src/main/AndroidManifest.xml
-  ElizaosCapacitorCamera.podspec  — CocoaPods spec for iOS distribution
-  rollup.config.mjs               — Bundles dist/plugin.js (IIFE) and dist/plugin.cjs.js
-  vitest.config.ts                — Vitest configuration for unit tests
-  tsconfig.json
-```
+Android exposure mode, ISO and shutter speed require a ready preview. Manual
+mode uses the current observed sensor values for omitted fields; specifying ISO
+or shutter speed selects manual mode. Device ranges and incompatible automatic
+flash/nonzero EV combinations reject before batch mutation. Continuous mode
+releases manual control; auto waits for convergence and locks exposure. Settings
+report completed sensor values, including hardware quantization. Focus changes
+retain sensor options, and rebinds restore confirmed exposure. Exposure-point
+metering returns to continuous exposure. Device tests check sensor metadata,
+lifecycle retention and cancellation; physical exposure quality remains unqualified.
 
-## Commands
+Android photo options validate before capture: supported formats, finite quality
+from 0 to 100, positive integer dimensions, Boolean flags and known fields.
+Either dimension can be supplied; the omitted dimension keeps the oriented
+source size. Impossible bitmap byte counts reject explicitly. Requested EXIF
+contains source-capture metadata, so its orientation/dimensions can precede
+output transforms. Device tests decode JPEG, PNG and WebP, verify manual ISO and
+shutter in source EXIF, and check dimensions and malformed-option rejection.
 
-Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
-
-```bash
-bun run --cwd plugins/plugin-native-camera clean           # remove build output
-bun run --cwd plugins/plugin-native-camera build           # build package artifacts
-bun run --cwd plugins/plugin-native-camera typecheck       # TypeScript typecheck
-bun run --cwd plugins/plugin-native-camera lint            # mutating Biome check
-bun run --cwd plugins/plugin-native-camera lint:check      # read-only Biome check
-bun run --cwd plugins/plugin-native-camera format          # write formatting
-bun run --cwd plugins/plugin-native-camera format:check    # read-only formatting check
-bun run --cwd plugins/plugin-native-camera test            # run package tests
-bun run --cwd plugins/plugin-native-camera prepublishOnly  # publish-time build hook
-bun run --cwd plugins/plugin-native-camera watch           # watch TypeScript sources
-bun run --cwd plugins/plugin-native-camera build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
-```
-
-## Config / env vars
-
-This plugin reads no environment variables and has no elizaOS config keys. Camera and microphone permission state is managed by the OS; call `checkPermissions()` / `requestPermissions()` at runtime.
-
-Capacitor plugin registration name: `"ElizaCamera"` (used internally by `@capacitor/core`).
-
-## How to extend
-
-### Add a new method to the plugin API
-
-1. Declare the method signature in `src/definitions.ts` on the `CameraPlugin` interface.
-2. Implement it in `src/web.ts` on `CameraWeb` (browser path).
-3. Implement it in `ios/Sources/CameraPlugin/CameraPlugin.swift` (iOS).
-4. Implement it in `android/src/main/java/ai/eliza/plugins/camera/CameraPlugin.kt` (Android).
-5. Re-export any new types from `src/index.ts` if needed (it re-exports everything from `definitions.ts`).
-
-### Add a new event
-
-1. Add an `addListener` overload to `CameraPlugin` in `src/definitions.ts` with the new event name and payload type.
-2. Call `this.notifyListeners("eventName", payload)` in `CameraWeb` (web) and the equivalent Capacitor bridge call in the native implementations.
-
-## Conventions / gotchas
-
-- **Not an elizaOS runtime plugin.** There is no `Plugin` object with actions/providers/services. Capacitor plugins are loaded by the Capacitor runtime, not the elizaOS plugin loader.
-- **Web permission flow.** `startPreview()` calls `getUserMedia()` directly, which triggers the browser/OS dialog implicitly. Native permission probing is handled outside this Capacitor web fallback.
-- **Web flash/torch.** The `MediaDevices` API does not expose torch control on web. `hasFlash` is inferred from `MediaTrackCapabilities.torch`; it will always be `false` on most desktop browsers.
-- **Video mime type selection.** `CameraWeb` tries `video/webm;codecs=vp9,opus` → `vp8,opus` → `video/webm` → `video/mp4` in order. `stopRecording()` returns a `blob:` URL, not a file path.
-- **Manual focus/exposure on web.** `setFocusPoint` and `setExposurePoint` throw if the device does not report `"manual"` in its `focusMode`/`exposureMode` capabilities — which is the case for most desktop webcams.
-- **Build output.** `tsc` compiles to `dist/esm/`; rollup then bundles into `dist/plugin.js` (IIFE for browser script tag) and `dist/plugin.cjs.js` (CJS). The `exports` field in `package.json` points bun/dev builds directly at `src/index.ts`.
-- **iOS deployment target:** iOS 15.0+, Swift 5.9. Depends on `AVFoundation`, `Photos`, and `UIKit`.
-- **Android:** Kotlin implementation under `ai.eliza.plugins.camera`. Camera enumeration is read via `CameraDeviceReader` and covered by an **instrumented test** (`android/src/androidTest/.../CameraDeviceReaderInstrumentedTest.kt`) run on a real device/emulator via `./gradlew :elizaos-capacitor-camera:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967); `getDevices` delegates to the reader (JS shape unchanged).
-- See root `CLAUDE.md` for repo-wide conventions (logger, ESM, naming, architecture rules).
-
-## Verification
-
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
-the package's relevant build, typecheck, lint, and test commands, then exercise
-the real integration boundary changed by the work. Inspect the produced domain
-artifacts and failure behavior; do not substitute mocked success for the system
-under test.
+Gallery photos return the saved URI only after the encoded bytes are written.
+Android 10+ keeps entries pending until publication and removes incomplete
+entries on failure. Save failures reject with GALLERY_WRITE_FAILED; failed
+cleanup retains the affected URI and diagnostic details. Older Android versions
+request storage permission before capture and return a file URI. Device tests
+read actual MediaStore images and compare exact bytes; a separate private provider
+fixture checks write/publication/cleanup failures. Injected failures also run
+through the real camera and WebView promise using the test activity's resolver;
+these are not real MediaStore outages. Legacy storage behavior still needs
+device qualification.

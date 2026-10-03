@@ -27,6 +27,7 @@ interface ReportedElement {
 
 export function buildPayload(registry: ViewAgentRegistry): {
   viewId: string;
+  installationId?: string;
   viewType: "gui" | "tui" | "xr";
   elements: ReportedElement[];
 } {
@@ -39,7 +40,12 @@ export function buildPayload(registry: ViewAgentRegistry): {
     ...(!e.sensitive && typeof e.value === "string" ? { value: e.value } : {}),
     ...(e.focused ? { focused: true } : {}),
   }));
-  return { viewId: snap.viewId, viewType: snap.viewType, elements };
+  return {
+    viewId: snap.viewId,
+    viewType: snap.viewType,
+    installationId: registry.installationId,
+    elements,
+  };
 }
 
 /**
@@ -60,24 +66,20 @@ export function useAgentSurfaceElementReporter(
     let cancelled = false;
 
     const flush = () => {
-      const { viewId, viewType, elements } = buildPayload(registry);
-      // Nothing addressable yet (e.g. before any useAgentElement mounts, or a
-      // non-instrumented view) → skip the POST. Navigation clears server-side
-      // elements on view switch, so we never need to push an empty snapshot.
-      if (elements.length === 0) return;
+      const { viewId, viewType, installationId, elements } =
+        buildPayload(registry);
+      // Empty snapshots clear controls removed from a still-mounted view.
+      // Unbound/static previews have no runtime installation to report into.
+      if (!installationId || cancelled) return;
       void (async () => {
         try {
-          const [
-            { fetchWithCsrf },
-            { getWindowNavigationPath },
-            { resolveApiUrl },
-          ] = await Promise.all([
-            import("../api/csrf-client"),
+          const [{ client }, { getWindowNavigationPath }] = await Promise.all([
+            import("../api"),
             import("../navigation"),
-            import("../utils/asset-url"),
           ]);
-          await fetchWithCsrf(
-            resolveApiUrl(`/api/views/${encodeURIComponent(viewId)}/elements`),
+          if (cancelled) return;
+          await client.fetch(
+            `/api/views/${encodeURIComponent(viewId)}/elements`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -85,6 +87,8 @@ export function useAgentSurfaceElementReporter(
               // visible surface without promoting a retained/background view.
               body: JSON.stringify({
                 elements,
+                installationId,
+                clientId: client.clientId,
                 viewPath: getWindowNavigationPath(),
                 viewType,
               }),

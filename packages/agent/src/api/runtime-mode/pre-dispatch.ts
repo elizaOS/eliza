@@ -7,9 +7,9 @@
  * owner.
  *
  * Both the bare `@elizaos/agent` server (`api/server.ts` request dispatch) and
- * the `@elizaos/app-core` compat pipeline call these, so the mode contract
+ * the `@elizaos/app` compat pipeline call these, so the mode contract
  * holds no matter which host binds the port — the gate used to live only in
- * app-core, leaving `bun run start` (the bare agent) ungated.
+ * app, leaving `bun run start` (the bare agent) ungated.
  */
 
 import type http from "node:http";
@@ -19,18 +19,22 @@ import {
   type RouteModeRuntimeLike,
 } from "./route-mode-guard.ts";
 
+import type { RuntimeModeSnapshot } from "./runtime-mode.ts";
+
 export async function handleRuntimeModePreDispatch(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   runtime?: RouteModeRuntimeLike | null,
+  snapshot?: RuntimeModeSnapshot,
 ): Promise<boolean> {
-  const gate = applyRouteModeGuard(req, res, runtime);
+  const gate = applyRouteModeGuard(req, res, runtime, snapshot);
   return gate.handled;
 }
 
 export async function handleRuntimeModeRemoteForward(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  snapshot?: RuntimeModeSnapshot,
 ): Promise<boolean> {
-  return forwardRemoteCloudMutation(req, res);
+  return forwardRemoteCloudMutation(req, res, snapshot);
 }

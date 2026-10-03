@@ -7,7 +7,7 @@
  */
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
-import { resolvePlatform } from "@elizaos/shared";
+import { resolvePlatform } from "@elizaos/core/runtime-env";
 
 export const ORCHESTRATOR_TOOL_NAMES = [
   "sh",

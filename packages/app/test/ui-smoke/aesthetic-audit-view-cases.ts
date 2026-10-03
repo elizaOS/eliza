@@ -11,7 +11,6 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   tasks: "/apps/tasks",
   browser: "/browser",
   stream: "/stream",
-  "pendant-transcript": "/pendant/transcript",
   apps: "/apps",
   views: "/views",
   character: "/character",
@@ -28,7 +27,7 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   trajectories: "/apps/trajectories",
   transcripts: "/apps/transcripts",
   memories: "/apps/memories",
-  rolodex: "/rolodex",
+  rolodex: "/apps/relationships",
   runtime: "/apps/runtime",
   database: "/apps/database",
   desktop: "/desktop",
@@ -44,7 +43,7 @@ export interface AuditViewCase {
   path: string;
   viewType: "gui" | "tui";
   kind: "builtin" | "plugin";
-  fixtureState?: "cloud-signed-out";
+  fixtureState?: "cloud-signed-out" | "family-interview";
 }
 
 export function buildAuditViewCases(): AuditViewCase[] {
@@ -65,10 +64,20 @@ export function buildAuditViewCases(): AuditViewCase[] {
       viewType: "gui",
       kind: "builtin",
     },
+    {
+      id: "context-inspector",
+      slug: "builtin-context-inspector",
+      path: "/apps/context-inspector",
+      viewType: "gui",
+      kind: "builtin",
+    },
     ...VIEW_CASES.flatMap((view): AuditViewCase[] => {
       const base: AuditViewCase = {
         id: view.id,
-        slug: `plugin-${view.id}-${view.viewType}`,
+        slug:
+          view.id === "task-coordinator"
+            ? "plugin-agent-orchestrator-tasks-gui"
+            : `plugin-${view.id}-${view.viewType}`,
         path: view.path,
         viewType: view.viewType,
         kind: "plugin",
@@ -82,7 +91,16 @@ export function buildAuditViewCases(): AuditViewCase[] {
               fixtureState: "cloud-signed-out",
             },
           ]
-        : [base];
+        : view.id === "family-operations"
+          ? [
+              base,
+              {
+                ...base,
+                slug: "plugin-family-interview-gui",
+                fixtureState: "family-interview",
+              },
+            ]
+          : [base];
     }),
   ];
 }

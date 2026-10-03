@@ -1,5 +1,25 @@
 /** Provides linear boundary trimming for explicit character sets and whitespace. */
 
+export function trimStartCharacters(value: string, characters: string): string {
+	const accepted = new Set(characters);
+	let start = 0;
+	while (start < value.length) {
+		const codePoint = value.codePointAt(start);
+		if (codePoint === undefined) break;
+		const character = String.fromCodePoint(codePoint);
+		if (!accepted.has(character)) break;
+		start += character.length;
+	}
+	return start === 0 ? value : value.slice(start);
+}
+
+export function trimBoundaryCharacters(
+	value: string,
+	characters: string,
+): string {
+	return trimEndCharacters(trimStartCharacters(value, characters), characters);
+}
+
 export function trimEndCharacters(value: string, characters: string): string {
 	const accepted = new Set(characters);
 	let end = value.length;

@@ -1,7 +1,7 @@
 /**
  * Canonical metadata for the built-in settings sections: id, English label, and
  * top-level group. Pure data (no React, no icons) so non-renderer consumers —
- * notably app-core's `dev-route-catalog` parity test — can import it and assert
+ * notably app's `dev-route-catalog` parity test — can import it and assert
  * the QA catalog never drifts from the UI without pulling the renderer graph.
  *
  * The React registry (`settings-sections.ts`) reads this list and attaches the
@@ -141,7 +141,7 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
 ];
 
 /**
- * Built-in settings sections that intentionally stay out of the app-core route
+ * Built-in settings sections that intentionally stay out of the app route
  * catalog but still register in Settings. Action-side audits consume this list
  * so chat-write coverage for late-registered sections cannot drift silently.
  */

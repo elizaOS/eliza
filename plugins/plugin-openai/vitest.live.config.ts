@@ -20,12 +20,12 @@ export default defineConfig({
 		alias: [
 			{
 				find: /^@elizaos\/core$/,
-				replacement: path.join(coreSrc, "index.node.ts"),
+				replacement: path.join(coreSrc, "index.ts"),
 			},
 			{ find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
 			{
 				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.node.ts"),
+				replacement: path.join(pluginSqlRoot, "index.ts"),
 			},
 			{
 				find: /^@elizaos\/plugin-sql\/schema$/,

@@ -17,7 +17,13 @@ import {
   type MobilePushTokenRecord,
 } from "@/lib/mobile-push/types";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
+import {
+  hydrationSettledWithin,
+  SHARED_TURN_HYDRATION_WAIT_MS,
+} from "@/lib/services/shared-runtime/bounded-hydration";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
+import { parsePersonalSharedFallbackAccountState } from "@/lib/services/shared-runtime/personal-fallback-account-state";
+import { isCanonicalPersonalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-identity";
 import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
@@ -60,6 +66,7 @@ type ConversationRequest =
       transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedAccountState?: unknown;
     }
   | {
       operation: "stream";
@@ -82,6 +89,7 @@ type ConversationRequest =
       transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedAccountState?: unknown;
     }
   | {
       operation: "prewarm";
@@ -169,6 +177,17 @@ const HISTORY_ARCHIVE_PREFIX = "history-archive:";
 const HISTORY_ARCHIVE_BODY_PREFIX = "history-archive-body:";
 const HISTORY_ARCHIVE_CHUNK_BYTES = 256_000;
 const CUTOVER_SEAL_KEY = "personal-cutover-seal";
+/**
+ * Verified account behind a rowless Personal Shared room. Its id is a one-way
+ * hash of the account, so keep-warm learns the owning organization here to warm
+ * organization-scoped turn gates without a UUID repository lookup.
+ */
+const PERSONAL_OWNER_KEY = "personal-owner";
+
+interface StoredPersonalOwner {
+  organizationId: string;
+  userId: string;
+}
 const PROVISIONAL_CONVERGENCE_SEAL_KEY =
   "personal-provisional-convergence-seal";
 const PROVISIONAL_CONVERGENCE_RESERVATION_KEY =
@@ -357,6 +376,7 @@ export class SharedRuntimeConversation {
   private readonly pendingHistory = new Map<string, SharedTurnMessage[]>();
   private pendingHistoryCheckpoint: Promise<void> = Promise.resolve();
   private hydration: Promise<void> | undefined;
+  private personalOwnerRecord: StoredPersonalOwner | null | undefined;
   private prewarmReady = false;
   private prewarm: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
@@ -458,7 +478,23 @@ export class SharedRuntimeConversation {
         });
       this.state.waitUntil(this.hydration);
     }
+    // Join the in-flight hydration for a bounded time instead of failing the
+    // turn at once (#22552). Hydration errors are logged above and leave
+    // `conversation` unset, so they still surface as the retryable warming.
+    const hydration = this.hydration;
+    if (
+      hydration &&
+      (await hydrationSettledWithin(hydration, SHARED_TURN_HYDRATION_WAIT_MS))
+    ) {
+      // Re-read through a call: the hydration assigned the field meanwhile.
+      const hydrated = this.hydratedConversation();
+      if (hydrated) return hydrated;
+    }
     throw new ConversationCacheWarmingError();
+  }
+
+  private hydratedConversation(): StoredConversation | null | undefined {
+    return this.conversation;
   }
 
   /**
@@ -539,15 +575,25 @@ export class SharedRuntimeConversation {
       this.state.waitUntil(prewarm);
     }
 
-    const completion = this.prewarm ?? Promise.resolve();
+    const completion = (this.prewarm ?? Promise.resolve()).then(() =>
+      this.personalOwner(),
+    );
     let canceled = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode('{"success":'));
         void completion.then(
-          () => {
+          (owner) => {
             if (canceled) return;
-            controller.enqueue(new TextEncoder().encode("true}"));
+            // Keep-warm uses the verified owner to warm this identity's
+            // organization-scoped rate-limit gate.
+            controller.enqueue(
+              new TextEncoder().encode(
+                owner
+                  ? `true,"organizationId":${JSON.stringify(owner.organizationId)}}`
+                  : "true}",
+              ),
+            );
             controller.close();
           },
           (error) => {
@@ -610,6 +656,39 @@ export class SharedRuntimeConversation {
       .then(operation);
     this.alarmMutationQueue = current;
     await current;
+  }
+
+  private async personalOwner(): Promise<StoredPersonalOwner | null> {
+    if (this.personalOwnerRecord === undefined) {
+      this.personalOwnerRecord =
+        (await this.state.storage.get<StoredPersonalOwner>(
+          PERSONAL_OWNER_KEY,
+        )) ?? null;
+    }
+    return this.personalOwnerRecord;
+  }
+
+  /** Record the account behind a canonical personal identity once per change. */
+  private async rememberPersonalOwner(
+    agent: Pick<
+      SharedRuntimeAgent,
+      "id" | "organization_id" | "user_id" | "execution_tier"
+    >,
+  ): Promise<void> {
+    if (!isCanonicalPersonalSharedAgent(agent)) return;
+    const current = await this.personalOwner();
+    if (
+      current?.organizationId === agent.organization_id &&
+      current.userId === agent.user_id
+    ) {
+      return;
+    }
+    const owner: StoredPersonalOwner = {
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+    };
+    await this.state.storage.put(PERSONAL_OWNER_KEY, owner);
+    this.personalOwnerRecord = owner;
   }
 
   private async deletionTombstone(): Promise<StoredDeletionTombstone | null> {
@@ -1292,6 +1371,25 @@ export class SharedRuntimeConversation {
       );
     }
     const validatedChannel = channel ?? undefined;
+    const suppliedAccountState =
+      "trustedAccountState" in payload
+        ? payload.trustedAccountState
+        : undefined;
+    const accountState =
+      suppliedAccountState === undefined
+        ? undefined
+        : parsePersonalSharedFallbackAccountState(suppliedAccountState);
+    if (suppliedAccountState !== undefined && accountState === null) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid personal fallback account state",
+          code: "invalid_account_state",
+        },
+        { status: 400 },
+      );
+    }
+    const validatedAccountState = accountState ?? undefined;
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -1878,6 +1976,7 @@ export class SharedRuntimeConversation {
             ({ rehydrateCachedAgentDates }) =>
               rehydrateCachedAgentDates(payload.agent),
           );
+      if (personal) await this.rememberPersonalOwner(agent);
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
@@ -1897,6 +1996,9 @@ export class SharedRuntimeConversation {
           transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
+          ...(personal && validatedAccountState
+            ? { trustedAccountState: validatedAccountState }
+            : {}),
           mobilePushDispatch: personal
             ? async (message: MobilePushMessage) => {
                 this.enqueueMobilePush(message);
@@ -1915,6 +2017,9 @@ export class SharedRuntimeConversation {
         transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
         channel: validatedChannel,
+        ...(personal && validatedAccountState
+          ? { trustedAccountState: validatedAccountState }
+          : {}),
         mobilePushDispatch: personal
           ? async (message: MobilePushMessage) => {
               this.enqueueMobilePush(message);

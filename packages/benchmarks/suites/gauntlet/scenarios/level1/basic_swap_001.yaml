@@ -1,0 +1,33 @@
+# Sample Level 1 Scenario: Basic Swap
+id: "basic_swap_001"
+level: 1
+name: "Jupiter Swap SOL to USDC"
+description: "Execute a basic swap transaction on Jupiter"
+category: "protocol_interaction"
+expected_outcome: "successful_execution"
+
+state:
+  accounts:
+    - name: "agent_wallet"
+      sol_balance: 10.0
+      tokens: {}
+  pools:
+    - type: "orca_whirlpool"
+      token_a: "SOL"
+      token_b: "USDC"
+      liquidity: 1000000
+      price: 100.0
+
+tasks:
+  - id: "swap_sol_usdc"
+    type: "swap"
+    parameters:
+      from_token: "SOL"
+      to_token: "USDC"
+      amount: 0.1
+      slippage_bps: 100
+    timeout_ms: 30000
+
+scoring:
+  successful_execution: +1
+  silent_failure: -1

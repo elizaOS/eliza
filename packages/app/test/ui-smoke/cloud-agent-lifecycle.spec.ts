@@ -318,133 +318,133 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
     }
   });
 
-  await page.addInitScript(({ stewardToken }) => {
-    const protectedKey = (key: string) => `ui-smoke:secure-store:${key}`;
-    // Seed the native source of truth directly. Init-script ordering is not
-    // guaranteed, so relying on plaintext migration can race bridge hydration
-    // and strand the post-create reload in Cloud reauthentication.
-    localStorage.setItem(
-      protectedKey("session.steward_token"),
-      stewardToken,
-    );
-    const win = window as Window & {
-      Capacitor?: {
-        PluginHeaders?: Array<{
-          name: string;
-          methods: Array<{
+  await page.addInitScript(
+    ({ stewardToken }) => {
+      const protectedKey = (key: string) => `ui-smoke:secure-store:${key}`;
+      // Seed the native source of truth directly. Init-script ordering is not
+      // guaranteed, so relying on plaintext migration can race bridge hydration
+      // and strand the post-create reload in Cloud reauthentication.
+      localStorage.setItem(protectedKey("session.steward_token"), stewardToken);
+      const win = window as Window & {
+        Capacitor?: {
+          PluginHeaders?: Array<{
             name: string;
-            rtype: "promise" | "callback";
+            methods: Array<{
+              name: string;
+              rtype: "promise" | "callback";
+            }>;
           }>;
-        }>;
-        nativePromise?: (
-          pluginName: string,
-          methodName: string,
-          options?: unknown,
-        ) => Promise<unknown>;
-        nativeCallback?: (
-          pluginName: string,
-          methodName: string,
-          options?: unknown,
-          callback?: (...args: unknown[]) => void,
-        ) => string;
+          nativePromise?: (
+            pluginName: string,
+            methodName: string,
+            options?: unknown,
+          ) => Promise<unknown>;
+          nativeCallback?: (
+            pluginName: string,
+            methodName: string,
+            options?: unknown,
+            callback?: (...args: unknown[]) => void,
+          ) => string;
+        };
+        CapacitorCustomPlatform?: {
+          name: string;
+          plugins: Record<string, unknown>;
+        };
       };
-      CapacitorCustomPlatform?: {
-        name: string;
-        plugins: Record<string, unknown>;
+      win.CapacitorCustomPlatform = { name: "android", plugins: {} };
+      win.Capacitor = {
+        ...(win.Capacitor ?? {}),
+        PluginHeaders: [
+          {
+            name: "StatusBar",
+            methods: [
+              { name: "setStyle", rtype: "promise" },
+              { name: "setOverlaysWebView", rtype: "promise" },
+              { name: "setBackgroundColor", rtype: "promise" },
+            ],
+          },
+          {
+            name: "Keyboard",
+            methods: [
+              { name: "addListener", rtype: "callback" },
+              { name: "removeListener", rtype: "promise" },
+            ],
+          },
+          {
+            name: "DeepLinkBuffer",
+            methods: [
+              { name: "peekPendingUrl", rtype: "promise" },
+              { name: "acknowledgePendingUrl", rtype: "promise" },
+            ],
+          },
+          {
+            name: "CapacitorBackgroundRunner",
+            methods: [{ name: "dispatchEvent", rtype: "promise" }],
+          },
+          {
+            name: "ElizaSecureStore",
+            methods: ["get", "set", "remove", "status"].map((name) => ({
+              name,
+              rtype: "promise" as const,
+            })),
+          },
+        ],
+        nativePromise: async (pluginName, methodName, options) => {
+          const call = `${pluginName}.${methodName}`;
+          if (call === "DeepLinkBuffer.peekPendingUrl") return { url: null };
+          if (call === "DeepLinkBuffer.acknowledgePendingUrl") {
+            return { cleared: true };
+          }
+          if (
+            call === "StatusBar.setStyle" ||
+            call === "StatusBar.setOverlaysWebView" ||
+            call === "StatusBar.setBackgroundColor" ||
+            call === "Keyboard.removeListener" ||
+            call === "CapacitorBackgroundRunner.dispatchEvent"
+          ) {
+            return {};
+          }
+          if (pluginName === "ElizaSecureStore") {
+            const record = (options ?? {}) as Record<string, unknown>;
+            const key = String(record.key ?? "");
+            if (methodName === "get") {
+              const value = localStorage.getItem(protectedKey(key));
+              return value === null
+                ? { ok: false, error: "not_found" }
+                : { ok: true, value };
+            }
+            if (methodName === "set") {
+              localStorage.setItem(
+                protectedKey(key),
+                String(record.value ?? ""),
+              );
+              return { ok: true };
+            }
+            if (methodName === "remove") {
+              localStorage.removeItem(protectedKey(key));
+              return { ok: true };
+            }
+            if (methodName === "status") {
+              return {
+                available: true,
+                hardwareBacked: false,
+                authenticationRequired: false,
+              };
+            }
+          }
+          throw new Error(`Unexpected native promise call: ${call}`);
+        },
+        nativeCallback: (pluginName, methodName, options) => {
+          const call = `${pluginName}.${methodName}`;
+          if (call !== "Keyboard.addListener") {
+            throw new Error(`Unexpected native callback call: ${call}`);
+          }
+          return `keyboard-listener:${String(options)}`;
+        },
       };
-    };
-    win.CapacitorCustomPlatform = { name: "android", plugins: {} };
-    win.Capacitor = {
-      ...(win.Capacitor ?? {}),
-      PluginHeaders: [
-        {
-          name: "StatusBar",
-          methods: [
-            { name: "setStyle", rtype: "promise" },
-            { name: "setOverlaysWebView", rtype: "promise" },
-            { name: "setBackgroundColor", rtype: "promise" },
-          ],
-        },
-        {
-          name: "Keyboard",
-          methods: [
-            { name: "addListener", rtype: "callback" },
-            { name: "removeListener", rtype: "promise" },
-          ],
-        },
-        {
-          name: "DeepLinkBuffer",
-          methods: [
-            { name: "peekPendingUrl", rtype: "promise" },
-            { name: "acknowledgePendingUrl", rtype: "promise" },
-          ],
-        },
-        {
-          name: "CapacitorBackgroundRunner",
-          methods: [{ name: "dispatchEvent", rtype: "promise" }],
-        },
-        {
-          name: "ElizaSecureStore",
-          methods: ["get", "set", "remove", "status"].map((name) => ({
-            name,
-            rtype: "promise" as const,
-          })),
-        },
-      ],
-      nativePromise: async (pluginName, methodName, options) => {
-        const call = `${pluginName}.${methodName}`;
-        if (call === "DeepLinkBuffer.peekPendingUrl") return { url: null };
-        if (call === "DeepLinkBuffer.acknowledgePendingUrl") {
-          return { cleared: true };
-        }
-        if (
-          call === "StatusBar.setStyle" ||
-          call === "StatusBar.setOverlaysWebView" ||
-          call === "StatusBar.setBackgroundColor" ||
-          call === "Keyboard.removeListener" ||
-          call === "CapacitorBackgroundRunner.dispatchEvent"
-        ) {
-          return {};
-        }
-        if (pluginName === "ElizaSecureStore") {
-          const record = (options ?? {}) as Record<string, unknown>;
-          const key = String(record.key ?? "");
-          if (methodName === "get") {
-            const value = localStorage.getItem(protectedKey(key));
-            return value === null
-              ? { ok: false, error: "not_found" }
-              : { ok: true, value };
-          }
-          if (methodName === "set") {
-            localStorage.setItem(
-              protectedKey(key),
-              String(record.value ?? ""),
-            );
-            return { ok: true };
-          }
-          if (methodName === "remove") {
-            localStorage.removeItem(protectedKey(key));
-            return { ok: true };
-          }
-          if (methodName === "status") {
-            return {
-              available: true,
-              hardwareBacked: false,
-              authenticationRequired: false,
-            };
-          }
-        }
-        throw new Error(`Unexpected native promise call: ${call}`);
-      },
-      nativeCallback: (pluginName, methodName, options) => {
-        const call = `${pluginName}.${methodName}`;
-        if (call !== "Keyboard.addListener") {
-          throw new Error(`Unexpected native callback call: ${call}`);
-        }
-        return `keyboard-listener:${String(options)}`;
-      },
-    };
-  }, { stewardToken: STEWARD_AUTH_TOKEN });
+    },
+    { stewardToken: STEWARD_AUTH_TOKEN },
+  );
 
   // Two provisioned agents; the seeded active one is KEEP_AGENT_ID.
   const store: AgentStore = {

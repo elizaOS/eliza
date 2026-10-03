@@ -14,10 +14,10 @@
  *     to a typed `DispatchResult` and REFUSING an owner-/user-private item into a
  *     public room via the shared send wall.
  *
- * All three resolve items and enforce scope through `@elizaos/agent/api/document-access`
+ * All three resolve items and enforce scope through `@elizaos/plugin-assistant`
  * — the same wall the REST routes use — so the two surfaces cannot drift. They
  * live in `@elizaos/agent` (always-loaded) rather than the support-only
- * `@elizaos/plugin-documents` so they are genuinely global.
+ * `@elizaos/plugin-knowledge` so they are genuinely global.
  */
 import {
   type Action,
@@ -43,18 +43,16 @@ import {
   canSendDocumentToPublic,
   canSurfaceDocumentInRoom,
   type DocumentFilter,
+  type DocumentSearchMode,
+  type DocumentsServiceLike,
   documentMediaFormat,
   documentTags,
+  getDocumentsService,
   matchesDocumentFilter,
   type RouteActor,
   type RouteActorRole,
   roomIsPublicSurface,
-} from "../api/document-access.ts";
-import {
-  type DocumentSearchMode,
-  type DocumentsServiceLike,
-  getDocumentsService,
-} from "../api/documents-service-loader.ts";
+} from "@elizaos/plugin-assistant";
 
 type DispatchResult =
   | { ok: true; messageId?: string }

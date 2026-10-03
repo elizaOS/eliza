@@ -1,10 +1,15 @@
 name: Cloud Tests
 
-# Runs cloud's lint/typecheck/unit/integration/playwright suite when cloud-* packages or tests change.
-# Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
+# Cloud owns deterministic database, service and browser contracts.
+# Full branch callers delegate duplicate source checks to canonical CI.
 
 on:
   workflow_call:
+    inputs:
+      source_checks_in_canonical_ci:
+        description: The caller also requires canonical CI, which owns full workspace lint/typecheck
+        type: boolean
+        default: false
   workflow_dispatch:
 
 # Develop Full owns latest-tip cancellation for called runs.
@@ -27,10 +32,16 @@ jobs:
   lint-and-types:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
+    env:
+      # Match canonical source checks: one compiler fits the hosted runner,
+      # including the cloud API's larger declaration graph.
+      NODE_OPTIONS: --max-old-space-size=8192
+      RUN_TURBO_CONCURRENCY: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Lint and typecheck cloud workspaces
+        if: ${{ !inputs.source_checks_in_canonical_ci }}
         run: bun run verify:cloud
 
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
@@ -56,38 +67,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
-      # Guards the batch runner's output-flush contract: a failing batch must
-      # surface its diagnostic instead of being swallowed by a process.exit()
-      # that truncates buffered stdout (the #16062 silent exit-1 regression).
-      - name: Batch runner flush-integrity self-test
-        run: node packages/scripts/test-cloud-run-flush.self-test.mjs
-      - name: Batch runner helper self-test
-        run: node packages/scripts/test-cloud-run-helpers.self-test.mjs
-      - name: Batch runner shard execution self-test
-        run: node packages/scripts/test-cloud-run-shards.self-test.mjs
-      - name: Batch runner unit tests
-        run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
-      # Guards the wall-clock watchdog (#17245): a wedged child and its
-      # descendants must be terminated without stalling the remaining batches.
-      - name: Batch runner process-tree watchdog self-test
-        run: node packages/scripts/test-cloud-run-watchdog.self-test.mjs
-      # Guards the clean-install preflight (#16187): `bun run test:cloud` must
-      # build the missing @elizaos/core dist / generated keyword modules itself
-      # instead of dying in `Cannot find module` cascades after a frozen
-      # install that skipped lifecycle scripts.
-      - name: Batch runner clean-install preflight self-test
-        run: node packages/scripts/test-cloud-run-preflight.self-test.mjs
-      - name: Run cloud unit tests
+      - name: Run cloud integration tests
         run: bun run test:cloud
 
-      # The bun `test:cloud` lane skips suites that need the Vitest-only module
-      # mock API (`vi.mock` + `vi.importActual`) — see `SUPPORTS_VITEST_MOCK_API`.
-      # Run those under Vitest here so the direct-wallet payer/state-machine proof
-      # (33 tests, in-process PGlite) actually executes instead of vacuously
-      # skipping. Uses pglite://memory — no DB service required.
-      - name: Run cloud vitest-only suites
-        if: matrix.shard == 1
-        run: bun run --cwd packages/cloud/shared test:vitest
 
   integration-tests:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -123,12 +105,26 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts
-      - name: Run PostgreSQL lifecycle barrier tests
+      - name: Run generic app subscription PostgreSQL contracts
         env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+          APP_BILLING_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          APP_FUNDING_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          APP_DELIVERY_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
         run: >-
           bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
+          packages/cloud/shared/src/db/repositories/app-subscription-authority.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/app-billing-command.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-runtime.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-membership.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-application-slot.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/native-application-inference.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-import.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/app-billing-delivery.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/app-inference-funding.postgres.integration.test.ts
+          'packages/cloud/api/v1/apps/[id]/billing/admin/route.postgres.integration.test.ts'
+          'packages/cloud/api/v1/apps/[id]/billing/records.postgres.integration.test.ts'
+          'packages/cloud/api/v1/apps/[id]/billing/administrators.postgres.integration.test.ts'
+          'packages/cloud/api/v1/billing/application-slots/[slotKey]/route.postgres.integration.test.ts'
       - name: Run PostgreSQL replacement-attempt lock tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -136,40 +132,6 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandbox-replacement-account-deletion-locks.integration.test.ts
-      - name: Run PostgreSQL billing receipt deletion contention tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BILLING_CANCEL_DELETION_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/billing-cancel-account-deletion-concurrency.postgres.integration.test.ts
-      - name: Run PostgreSQL agent billing lease precision tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-billing-runs-postgres.integration.test.ts
-      - name: Run PostgreSQL backup catalogue contention tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BACKUP_CATALOG_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-catalog-postgres.integration.test.ts
-      - name: Run PostgreSQL restore authority lock tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_RESTORE_LOCK_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/agent-backup-restore-locks.integration.test.ts
-      - name: Run PostgreSQL restore-v3 candidate seal tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_RESTORE_V3_CANDIDATE_SEAL_TESTS: "1"
-        run: >-
-          bun test --conditions=eliza-source --config=/dev/null --isolate --timeout 120000
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-restore-v3-candidate-seal-authority-postgres.integration.test.ts
       - name: Run PostgreSQL backup admission migration tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -182,23 +144,7 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/agent-backup-admission-gc-authority.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-enrollment-postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
             packages/cloud/scripts/admin/migrate-with-diagnostics.concurrent-index-mode.postgres.test.ts
-      - name: Run PostgreSQL backup admission claim tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_CLAIM_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-claim-postgres.integration.test.ts
-      - name: Run PostgreSQL backup admission reservation tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_RESERVATION_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-reservation-postgres.integration.test.ts
       - name: Run PostgreSQL account deletion lock-order tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -213,15 +159,19 @@ jobs:
           test -n "${APPS_TENANT_DB_TEST_DSN:-}" &&
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/containers-project-intent-postgres.integration.test.ts
-      - name: Run PostgreSQL compute stop concurrency tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          COMPUTE_STOP_CONCURRENCY_REQUIRED: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/compute-stop-concurrency.integration.test.ts
       - name: Run cloud e2e tests
+        env:
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/cloud-api-e2e-wrangler
+          WRANGLER_LOG_SANITIZE: "true"
         run: bun run test:cloud:e2e
+      - name: Retain cloud API Worker diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-api-e2e-wrangler-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cloud-api-e2e-wrangler
+          retention-days: 7
+          if-no-files-found: warn
 
   # Full-stack Playwright lane (#18474). packages/cloud/e2e boots the real
   # mock-backed cloud stack (PGlite TCP bridge, Hetzner mock, container
@@ -252,10 +202,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Run blocking cloud stack specs
         run: >-
-          bun run cloud:e2e --
+          bun run --cwd packages/cloud/e2e test --
           'app-client-onboarding\.spec\.ts$'
           'app-client-handoff-success\.spec\.ts$'
           '(^|/)provision\.spec\.ts$'
@@ -268,8 +218,14 @@ jobs:
         with:
           name: cloud-stack-e2e-${{ github.run_attempt }}
           path: |
-            packages/cloud/e2e/test-results
+            test-results/cloud-e2e
             packages/cloud/e2e/.logs
           retention-days: 7
           include-hidden-files: true
           if-no-files-found: warn
+
+  agent-stability:
+    needs: [lint-and-types]
+    uses: ./.github/workflows/cloud-stability.yml
+    with:
+      real_model: false

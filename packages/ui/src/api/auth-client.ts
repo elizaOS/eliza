@@ -9,13 +9,13 @@
  */
 
 import type { RoleGateRole } from "@elizaos/core";
-import { getElizaApiToken } from "@elizaos/shared";
+import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
@@ -35,21 +35,17 @@ import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { isPasswordAuthTransportConfidential } from "./password-auth-transport-policy";
-
 // ── Shared response shapes ────────────────────────────────────────────────────
-
 export interface AuthIdentity {
   id: string;
   displayName: string;
   kind: "owner" | "machine";
 }
-
 export interface AuthSessionInfo {
   id: string;
   kind: "browser" | "machine" | "local";
   expiresAt: number | null;
 }
-
 export interface AuthSessionListEntry {
   id: string;
   kind: "browser" | "machine" | "local";
@@ -59,7 +55,6 @@ export interface AuthSessionListEntry {
   expiresAt: number | null;
   current: boolean;
 }
-
 export interface AuthAccessInfo {
   mode: "local" | "session" | "remote" | "bearer";
   passwordConfigured: boolean;
@@ -74,9 +69,7 @@ export interface AuthAccessInfo {
    */
   role?: RoleGateRole;
 }
-
 // ── Success / failure discriminated unions ────────────────────────────────────
-
 export type AuthSetupResult =
   | {
       ok: true;
@@ -96,7 +89,6 @@ export type AuthSetupResult =
         | "server_error";
       message: string;
     };
-
 export type AuthLoginResult =
   | {
       ok: true;
@@ -114,7 +106,6 @@ export type AuthLoginResult =
         | "server_error";
       message: string;
     };
-
 export type AuthMeResult =
   | {
       ok: true;
@@ -135,19 +126,30 @@ export type AuthMeResult =
       /** Server-directed pause before the next auth probe, when supplied. */
       retryAfterMs?: number;
     };
-
 export type AuthSessionsResult =
-  | { ok: true; sessions: AuthSessionListEntry[] }
-  | { ok: false; status: 401 | 503 };
-
+  | {
+      ok: true;
+      sessions: AuthSessionListEntry[];
+    }
+  | {
+      ok: false;
+      status: 401 | 503;
+    };
 export type AuthRevokeResult =
-  | { ok: true }
-  | { ok: false; status: 401 | 404 | 500 };
-
-export type AuthLogoutResult = { ok: true };
-
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      status: 401 | 404 | 500;
+    };
+export type AuthLogoutResult = {
+  ok: true;
+};
 export type AuthChangePasswordResult =
-  | { ok: true }
+  | {
+      ok: true;
+    }
   | {
       ok: false;
       status: 400 | 401 | 404 | 429 | 500;
@@ -160,9 +162,7 @@ export type AuthChangePasswordResult =
         | "server_error";
       message: string;
     };
-
 // ── API base helper ───────────────────────────────────────────────────────────
-
 /**
  * Resolves the base URL for auth calls. Reads from the same source as the
  * main ElizaClient so they stay in sync.
@@ -172,21 +172,17 @@ function authBase(): string {
   const apiBase = getBootConfig().apiBase;
   return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
 }
-
 function retryAfterMs(headers: Headers): number | undefined {
   const raw = headers.get("retry-after")?.trim();
   if (!raw) return undefined;
-
   const seconds = Number(raw);
   if (Number.isFinite(seconds) && seconds >= 0) {
     return Math.round(seconds * 1000);
   }
-
   const retryAt = Date.parse(raw);
   if (!Number.isFinite(retryAt)) return undefined;
   return Math.max(0, retryAt - Date.now());
 }
-
 async function resolvePairingFallback(
   base: string,
 ): Promise<AuthMeResult | null> {
@@ -215,9 +211,7 @@ async function resolvePairingFallback(
     },
   };
 }
-
 // ── Endpoint callers ──────────────────────────────────────────────────────────
-
 /**
  * POST /api/auth/setup — first-run owner identity creation.
  * Returns 409 if an owner identity already exists.
@@ -251,7 +245,6 @@ export async function authSetup(params: {
       message: err instanceof Error ? err.message : "Network error",
     };
   }
-
   if (res.ok) {
     const body = (await res.json()) as {
       identity: AuthIdentity;
@@ -261,7 +254,6 @@ export async function authSetup(params: {
     rememberCsrfTokenForUrl(base, body.csrfToken);
     return { ok: true, ...body };
   }
-
   const body = (await res.json().catch(() => ({}))) as {
     error?: string;
     reason?: string;
@@ -308,7 +300,6 @@ export async function authSetup(params: {
     message: `Unexpected error (${res.status})`,
   };
 }
-
 /**
  * POST /api/auth/login/password — password-based login.
  */
@@ -342,7 +333,6 @@ export async function authLoginPassword(params: {
       message: err instanceof Error ? err.message : "Network error",
     };
   }
-
   if (res.ok) {
     const body = (await res.json()) as {
       identity: AuthIdentity;
@@ -352,7 +342,6 @@ export async function authLoginPassword(params: {
     rememberCsrfTokenForUrl(base, body.csrfToken);
     return { ok: true, ...body };
   }
-
   if (res.status === 429) {
     return {
       ok: false,
@@ -374,7 +363,6 @@ export async function authLoginPassword(params: {
         : `Unexpected error (${res.status})`,
   };
 }
-
 /**
  * POST /api/auth/logout — destroys the current session.
  */
@@ -387,7 +375,6 @@ export async function authLogout(): Promise<AuthLogoutResult> {
   }
   return { ok: true };
 }
-
 /**
  * GET /api/auth/me — returns the current identity + session, or 401.
  *
@@ -495,7 +482,10 @@ export async function authMe(): Promise<AuthMeResult> {
             identity?: AuthIdentity;
             session?: AuthSessionInfo;
             access?: AuthAccessInfo;
-            unauthorized?: { reason: string; access: AuthAccessInfo };
+            unauthorized?: {
+              reason: string;
+              access: AuthAccessInfo;
+            };
           }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
     if (!requestIsCurrent()) return { ok: false, status: 503 };
     if (viaRpc) {
@@ -531,7 +521,6 @@ export async function authMe(): Promise<AuthMeResult> {
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
-
   // A native response or HTTP failure cannot continue under a new selection.
   if (!requestIsCurrent()) return { ok: false, status: 503 };
   let res: Response;
@@ -540,7 +529,6 @@ export async function authMe(): Promise<AuthMeResult> {
   } catch {
     return { ok: false, status: 503 };
   }
-
   if (!requestIsCurrent()) return { ok: false, status: 503 };
   if (res.ok) {
     const body = (await res.json()) as {
@@ -560,7 +548,6 @@ export async function authMe(): Promise<AuthMeResult> {
       },
     };
   }
-
   if (res.status === 401) {
     const body = (await res.json().catch(() => ({}))) as {
       code?: string;
@@ -600,7 +587,6 @@ export async function authMe(): Promise<AuthMeResult> {
         : { ok: false, status: 503 };
     }
     if (result.reason !== "server_error" || result.access) return result;
-
     // Some standalone deployments enforce auth in outer middleware before the
     // agent route can return its richer 401 body. The public status contract is
     // authoritative for the supported one-time pairing flow in that case.
@@ -609,7 +595,6 @@ export async function authMe(): Promise<AuthMeResult> {
       ? (pairing ?? result)
       : { ok: false, status: 503 };
   }
-
   if (res.status === 429) {
     return {
       ok: false,
@@ -618,10 +603,8 @@ export async function authMe(): Promise<AuthMeResult> {
       retryAfterMs: retryAfterMs(res.headers),
     };
   }
-
   return { ok: false, status: 503 };
 }
-
 /**
  * GET /api/auth/sessions — lists active sessions for the current identity.
  */
@@ -632,9 +615,10 @@ export async function authListSessions(): Promise<AuthSessionsResult> {
   } catch {
     return { ok: false, status: 401 };
   }
-
   if (res.ok) {
-    const body = (await res.json()) as { sessions: AuthSessionListEntry[] };
+    const body = (await res.json()) as {
+      sessions: AuthSessionListEntry[];
+    };
     return { ok: true, sessions: body.sessions };
   }
   return {
@@ -642,7 +626,6 @@ export async function authListSessions(): Promise<AuthSessionsResult> {
     status: res.status === 503 ? 503 : 401,
   };
 }
-
 /**
  * POST /api/auth/sessions/:id/revoke — revokes one session.
  */
@@ -658,13 +641,11 @@ export async function authRevokeSession(
   } catch {
     return { ok: false, status: 500 };
   }
-
   if (res.ok) return { ok: true };
   if (res.status === 404) return { ok: false, status: 404 };
   if (res.status === 401) return { ok: false, status: 401 };
   return { ok: false, status: 500 };
 }
-
 export async function authChangePassword(params: {
   currentPassword?: string;
   newPassword: string;
@@ -694,15 +675,12 @@ export async function authChangePassword(params: {
       message: err instanceof Error ? err.message : "Network error",
     };
   }
-
   if (res.ok) return { ok: true };
-
   const body = (await res.json().catch(() => ({}))) as {
     error?: string;
     reason?: string;
   };
   const reason = body.reason ?? body.error ?? "";
-
   if (res.status === 400 && reason === "weak_password") {
     return {
       ok: false,

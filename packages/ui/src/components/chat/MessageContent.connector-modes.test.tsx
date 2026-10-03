@@ -1,6 +1,5 @@
 /** Verifies connector-setup card — renders for each chat-set-up connector through the package's configured test harness. */
 // @vitest-environment jsdom
-
 /**
  * Auth-mode behavior for the `[CONFIG:<pluginId>]` connector-setup card: the
  * OAuth / API-key / local-bridge mode switch (projected from the shared
@@ -13,7 +12,7 @@
  * shows.
  */
 
-import type { PluginParamDef } from "@elizaos/shared";
+import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
 import {
   cleanup,
   fireEvent,
@@ -28,6 +27,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
+import { MessageContent } from "./MessageContent";
 
 const { clientMock, windowOpenMock } = vi.hoisted(() => ({
   clientMock: {
@@ -38,15 +38,12 @@ const { clientMock, windowOpenMock } = vi.hoisted(() => ({
   },
   windowOpenMock: vi.fn(),
 }));
-
 vi.mock("../../api/client", () => ({ client: clientMock }));
-
-import { MessageContent } from "./MessageContent";
-
 // ── fixtures ────────────────────────────────────────────────────────
-
 function param(
-  over: Partial<PluginParamDef> & { key: string },
+  over: Partial<PluginParamDef> & {
+    key: string;
+  },
 ): PluginParamDef {
   return {
     type: "string",
@@ -58,8 +55,11 @@ function param(
     ...over,
   };
 }
-
-function plugin(over: Partial<PluginInfo> & { id: string }): PluginInfo {
+function plugin(
+  over: Partial<PluginInfo> & {
+    id: string;
+  },
+): PluginInfo {
   return {
     name: over.id,
     description: "",
@@ -74,19 +74,19 @@ function plugin(over: Partial<PluginInfo> & { id: string }): PluginInfo {
     ...over,
   };
 }
-
 function assistant(text: string): ConversationMessage {
   return {
     id: "m-connector",
     role: "assistant",
     text,
-    timestamp: 1_700_000_000_000,
+    timestamp: 1700000000000,
   } as ConversationMessage;
 }
-
 function withApp(
   node: React.ReactElement,
-  opts: { elizaCloudConnected?: boolean } = {},
+  opts: {
+    elizaCloudConnected?: boolean;
+  } = {},
 ) {
   const t = (key: string, vars?: Record<string, unknown>) => {
     const template = String(vars?.defaultValue ?? key);
@@ -106,7 +106,6 @@ function withApp(
     <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
   );
 }
-
 beforeEach(() => {
   withFrozenClock();
   withSeededRandom();
@@ -117,15 +116,12 @@ beforeEach(() => {
   windowOpenMock.mockReset();
   vi.stubGlobal("open", windowOpenMock);
 });
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   __setAppValueForTests(null);
 });
-
 // ── per-connector render ────────────────────────────────────────────
-
 describe("connector-setup card — renders for each chat-set-up connector", () => {
   for (const id of ["discord", "telegram", "imessage", "wechat"]) {
     it(`renders the setup card for ${id}`, async () => {
@@ -139,9 +135,7 @@ describe("connector-setup card — renders for each chat-set-up connector", () =
     });
   }
 });
-
 // ── mode switch ─────────────────────────────────────────────────────
-
 describe("connector-setup card — auth-mode switch", () => {
   it("shows the OAuth + Bot Token + Desktop modes for Discord when cloud is connected", async () => {
     clientMock.getPlugins.mockResolvedValue({
@@ -151,7 +145,6 @@ describe("connector-setup card — auth-mode switch", () => {
       elizaCloudConnected: true,
     });
     await screen.findByText("Discord Configuration");
-
     // The cloud-managed OAuth gateway mode is offered only with cloud on.
     expect(
       screen.getByTestId("inline-plugin-config-mode-managed"),
@@ -159,7 +152,6 @@ describe("connector-setup card — auth-mode switch", () => {
     expect(screen.getByTestId("inline-plugin-config-mode-bot")).toBeTruthy();
     expect(screen.getByTestId("inline-plugin-config-mode-local")).toBeTruthy();
   });
-
   it("drops the cloud-only OAuth mode for Discord when cloud is NOT connected", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "discord", name: "Discord" })],
@@ -168,14 +160,12 @@ describe("connector-setup card — auth-mode switch", () => {
       elizaCloudConnected: false,
     });
     await screen.findByText("Discord Configuration");
-
     // Offering a sign-in that cannot succeed would be a fabricated affordance.
     expect(
       screen.queryByTestId("inline-plugin-config-mode-managed"),
     ).toBeNull();
     expect(screen.getByTestId("inline-plugin-config-mode-bot")).toBeTruthy();
   });
-
   it("defaults Discord to the Bot Token config mode (defaultPriority)", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "discord", name: "Discord" })],
@@ -185,7 +175,6 @@ describe("connector-setup card — auth-mode switch", () => {
       { elizaCloudConnected: true },
     );
     await screen.findByText("Discord Configuration");
-
     expect(
       screen
         .getByTestId("inline-plugin-config-mode-bot")
@@ -198,9 +187,7 @@ describe("connector-setup card — auth-mode switch", () => {
     expect(screen.queryByTestId("inline-plugin-config-oauth")).toBeNull();
   });
 });
-
 // ── OAuth hand-off ──────────────────────────────────────────────────
-
 describe("connector-setup card — OAuth sign-in", () => {
   it("switching to the OAuth mode reveals the Sign in button and hides the env form", async () => {
     clientMock.getPlugins.mockResolvedValue({
@@ -211,9 +198,7 @@ describe("connector-setup card — OAuth sign-in", () => {
       { elizaCloudConnected: true },
     );
     await screen.findByText("Discord Configuration");
-
     fireEvent.click(screen.getByTestId("inline-plugin-config-mode-managed"));
-
     expect(screen.getByTestId("inline-plugin-config-oauth-btn")).toBeTruthy();
     // OAuth mode owns the body — the env form is gone.
     expect(
@@ -222,7 +207,6 @@ describe("connector-setup card — OAuth sign-in", () => {
     // The visible fallback toggle away from OAuth is present.
     expect(screen.getByTestId("inline-plugin-config-use-apikey")).toBeTruthy();
   });
-
   it("Sign in opens the server-returned https authorization URL", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "discord", name: "Discord" })],
@@ -236,9 +220,7 @@ describe("connector-setup card — OAuth sign-in", () => {
     });
     await screen.findByText("Discord Configuration");
     fireEvent.click(screen.getByTestId("inline-plugin-config-mode-managed"));
-
     fireEvent.click(screen.getByTestId("inline-plugin-config-oauth-btn"));
-
     await waitFor(() => {
       expect(clientMock.startConnectorAccountOAuth).toHaveBeenCalledWith(
         "discord",
@@ -254,7 +236,6 @@ describe("connector-setup card — OAuth sign-in", () => {
       );
     });
   });
-
   it("a non-https authorization URL is rejected and surfaces an error (never opened)", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "discord", name: "Discord" })],
@@ -269,13 +250,10 @@ describe("connector-setup card — OAuth sign-in", () => {
     });
     await screen.findByText("Discord Configuration");
     fireEvent.click(screen.getByTestId("inline-plugin-config-mode-managed"));
-
     fireEvent.click(screen.getByTestId("inline-plugin-config-oauth-btn"));
-
     await screen.findByText("bad url");
     expect(windowOpenMock).not.toHaveBeenCalled();
   });
-
   it("the fallback toggle switches from OAuth to the API-key/config form", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "discord", name: "Discord" })],
@@ -287,9 +265,7 @@ describe("connector-setup card — OAuth sign-in", () => {
     await screen.findByText("Discord Configuration");
     fireEvent.click(screen.getByTestId("inline-plugin-config-mode-managed"));
     expect(screen.getByTestId("inline-plugin-config-oauth")).toBeTruthy();
-
     fireEvent.click(screen.getByTestId("inline-plugin-config-use-apikey"));
-
     // Back to the env form; OAuth block gone.
     expect(
       container.querySelector('input[data-config-key="TOKEN"]'),
@@ -297,9 +273,7 @@ describe("connector-setup card — OAuth sign-in", () => {
     expect(screen.queryByTestId("inline-plugin-config-oauth")).toBeNull();
   });
 });
-
 // ── Discord desktop one-click pairing ───────────────────────────────
-
 describe("connector-setup card — Discord desktop pairing", () => {
   it("the Desktop App mode offers a one-click authorize that calls authorizeDiscordLocal", async () => {
     clientMock.getPlugins.mockResolvedValue({
@@ -310,18 +284,14 @@ describe("connector-setup card — Discord desktop pairing", () => {
       elizaCloudConnected: true,
     });
     await screen.findByText("Discord Configuration");
-
     fireEvent.click(screen.getByTestId("inline-plugin-config-mode-local"));
     fireEvent.click(screen.getByTestId("inline-plugin-config-local-btn"));
-
     await waitFor(() => {
       expect(clientMock.authorizeDiscordLocal).toHaveBeenCalledTimes(1);
     });
   });
 });
-
 // ── collapse-on-connect with a mode switch present ──────────────────
-
 describe("connector-setup card — collapse-on-connect with modes", () => {
   it("a connected connector still mounts collapsed even with a mode switch", async () => {
     clientMock.getPlugins.mockResolvedValue({

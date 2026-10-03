@@ -4,7 +4,7 @@
  * never `remoteApiBase`); the UI mirrors only the fields it needs.
  *
  * Pairs with `useRuntimeMode()` in `../hooks/useRuntimeMode.ts`. The route
- * handler lives in `packages/app-core/src/api/runtime-mode-routes.ts`.
+ * handler lives in `packages/app/src/api/runtime-mode-routes.ts`.
  */
 
 import { getBootConfig } from "../config/boot-config";

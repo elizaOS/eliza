@@ -9,7 +9,7 @@
  * device gating that affects any documented profile fails this package's tests.
  *
  * Backend → auth-mode reach comes from the cross-runtime shared capability
- * contract also consumed by the app-core account bridge. When a device
+ * contract also consumed by the app account bridge. When a device
  * supports coding agents, every backend below is reachable on it; when
  * unsupported, none are.
  */
@@ -18,7 +18,7 @@ import {
   CODING_AGENT_BACKEND_PROVIDERS,
   CODING_AGENT_BACKENDS,
   type CodingAgentBackend,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/coding-agent-capabilities";
 import {
   classifyTerminalSupport,
   type OrchestratorTerminalSupport,

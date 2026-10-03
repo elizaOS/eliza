@@ -4,7 +4,10 @@
  * app balances, redeemable earnings).
  */
 
-import { ORGANIZATION_CREDIT_PRICING } from "@elizaos/cloud-shared/billing";
+import {
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
+  ORGANIZATION_CREDIT_PRICING,
+} from "@elizaos/cloud-shared/billing";
 import { count, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead } from "@/db/client";
@@ -171,7 +174,10 @@ app.get("/", async (c) => {
       })),
       pricing: {
         ...ORGANIZATION_CREDIT_PRICING,
-        minimumTopUp: 5.0,
+        // Advertised bounds mirror the enforced checkout contract (#22963):
+        // the summary must never restate an independent minimum.
+        minimumTopUp: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+        maximumTopUp: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
         x402Enabled: true,
       },
     };

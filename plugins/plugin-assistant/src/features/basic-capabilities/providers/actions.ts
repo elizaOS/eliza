@@ -1,0 +1,361 @@
+/**
+ * The ACTIONS provider for the basic-capabilities bundle: it injects the
+ * catalog of response actions available for the current turn into the prompt.
+ *
+ * For each registered action it runs the action's `validate` against the
+ * message plus the connector account-policy check, then keeps only survivors
+ * whose contexts match the turn's active routing contexts. Relationship
+ * follow-up reminders narrow the visible set down to generic chat actions plus
+ * follow-up-capable actions; grouped actions are collapsed for main chat and
+ * re-expanded — with their subactions and dynamic providers — when their
+ * context is engaged.
+ *
+ * The result surfaces `actionNames`, `actionsWithDescriptions`, and a
+ * `# Context Capabilities` block, and stashes the capability metadata under
+ * `CONTEXT_CAPABILITIES_STATE_KEY` for downstream context routing. Name/order
+ * randomization is seeded deterministically per (agent, room) so the catalog is
+ * stable within a conversation.
+ */
+
+import type {
+  Action,
+  AgentContext,
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "@elizaos/core";
+import {
+  buildDeterministicSeed,
+  CONTEXT_CAPABILITIES_STATE_KEY,
+  evaluateConnectorAccountPolicies,
+  FOLLOW_UP_CAPABLE_ACTION_TAG,
+  formatActionNames,
+  formatActions,
+  getActiveRoutingContextsForTurn,
+  getExplicitRoutingContexts,
+  isPageScopedRoutingContext,
+  resolveActionContexts,
+  resolveProviderContexts,
+  routingContextsOverlap,
+  shouldIncludeByContext,
+  shouldSurfaceContextCapabilities,
+} from "@elizaos/core";
+import { looksLikeRelationshipFollowUpReminder } from "./non-actionable-chatter.ts";
+
+const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
+const GENERAL_CONTEXT = "general";
+export function isFollowUpCapableAction(action: Pick<Action, "tags">): boolean {
+  return action.tags?.includes(FOLLOW_UP_CAPABLE_ACTION_TAG) ?? false;
+}
+type GroupedAction = Action & {
+  actionGroup?: {
+    contexts?: string[];
+  };
+};
+type ContextCapabilityItem = {
+  name: string;
+  description: string;
+  contexts: string[];
+  dynamic?: boolean;
+};
+type ContextCapabilityGroup = {
+  action: string;
+  contexts: string[];
+  actions: ContextCapabilityItem[];
+  providers: ContextCapabilityItem[];
+};
+type ContextCapabilityMetadata = {
+  activeContexts: string[];
+  explicitContexts: string[];
+  groups: ContextCapabilityGroup[];
+};
+function normalizeContextList(
+  contexts: readonly string[] | undefined,
+): string[] {
+  return [...new Set((contexts ?? []).map((context) => context.toLowerCase()))];
+}
+function getActionGroupContexts(action: Action): string[] {
+  const contexts = (action as GroupedAction).actionGroup?.contexts;
+  return normalizeContextList(contexts).filter(
+    (context) =>
+      context !== GENERAL_CONTEXT && !isPageScopedRoutingContext(context),
+  );
+}
+function isActionGroup(action: Action): boolean {
+  return getActionGroupContexts(action).length > 0;
+}
+function collapseGroupedActionsForMainChat(
+  actions: Action[],
+  activeContexts: string[],
+): Action[] {
+  if (activeContexts.some(isPageScopedRoutingContext)) {
+    return actions.filter((action) => !isActionGroup(action));
+  }
+  const groupedContexts = new Set<string>();
+  for (const action of actions) {
+    for (const context of getActionGroupContexts(action)) {
+      groupedContexts.add(context);
+    }
+  }
+  if (groupedContexts.size === 0) {
+    return actions;
+  }
+  return actions.filter((action) => {
+    if (isActionGroup(action)) {
+      return true;
+    }
+    return !normalizeContextList(resolveActionContexts(action)).some(
+      (context) => groupedContexts.has(context),
+    );
+  });
+}
+function renderCompleteDescription(item: {
+  description?: string;
+  descriptionCompressed?: string;
+}): string {
+  return item.description ?? "";
+}
+function actionCapabilityItem(action: Action): ContextCapabilityItem {
+  return {
+    name: action.name,
+    description:
+      renderCompleteDescription(action) || "No description available",
+    contexts: normalizeContextList(resolveActionContexts(action)),
+  };
+}
+function providerCapabilityItem(provider: Provider): ContextCapabilityItem {
+  return {
+    name: provider.name,
+    description:
+      renderCompleteDescription(provider) || "No description available",
+    contexts: normalizeContextList(resolveProviderContexts(provider)),
+    dynamic: provider.dynamic === true,
+  };
+}
+function formatCapabilityItems(
+  label: string,
+  items: ContextCapabilityItem[],
+): string | null {
+  if (items.length === 0) {
+    return null;
+  }
+  return `${label}[${items.length}]: ${items
+    .map((item) => `${item.name} - ${item.description}`)
+    .join("; ")}`;
+}
+function expandActionDescription(
+  action: Action,
+  group: ContextCapabilityGroup,
+): string {
+  const base = renderCompleteDescription(action) || "No description available";
+  const sections = [
+    formatCapabilityItems("subactions", group.actions),
+    formatCapabilityItems("providers", group.providers),
+  ].filter((section): section is string => Boolean(section));
+  return sections.length > 0 ? `${base} ${sections.join(" ")}` : base;
+}
+function buildContextCapabilityGroups(
+  visibleActions: Action[],
+  groupedActions: Action[],
+  providers: Provider[],
+  activeContexts: AgentContext[],
+): ContextCapabilityMetadata {
+  const explicitContexts = getExplicitRoutingContexts(activeContexts);
+  const metadata: ContextCapabilityMetadata = {
+    activeContexts: normalizeContextList(activeContexts),
+    explicitContexts: normalizeContextList(explicitContexts),
+    groups: [],
+  };
+  if (activeContexts.some(isPageScopedRoutingContext)) {
+    return metadata;
+  }
+  for (const action of groupedActions) {
+    const groupContexts = getActionGroupContexts(action) as AgentContext[];
+    if (!shouldSurfaceContextCapabilities(groupContexts, activeContexts)) {
+      continue;
+    }
+    const childActions = visibleActions
+      .filter((candidate) => candidate.name !== action.name)
+      .filter((candidate) => !isActionGroup(candidate))
+      .filter((candidate) =>
+        routingContextsOverlap(resolveActionContexts(candidate), groupContexts),
+      )
+      .map(actionCapabilityItem)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    const dynamicProviders = providers
+      .filter((provider) => provider.dynamic === true)
+      .filter((provider) =>
+        shouldIncludeByContext(
+          resolveProviderContexts(provider),
+          activeContexts,
+        ),
+      )
+      .filter((provider) =>
+        routingContextsOverlap(
+          resolveProviderContexts(provider),
+          groupContexts,
+        ),
+      )
+      .map(providerCapabilityItem)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    if (childActions.length === 0 && dynamicProviders.length === 0) {
+      continue;
+    }
+    metadata.groups.push({
+      action: action.name,
+      contexts: groupContexts,
+      actions: childActions,
+      providers: dynamicProviders,
+    });
+  }
+  return metadata;
+}
+function expandGroupedActionsForActiveContext(
+  actionsData: Action[],
+  visibleActions: Action[],
+  providers: Provider[],
+  activeContexts: AgentContext[],
+): {
+  actionsData: Action[];
+  contextCapabilities: ContextCapabilityMetadata;
+} {
+  const contextCapabilities = buildContextCapabilityGroups(
+    visibleActions,
+    actionsData.filter(isActionGroup),
+    providers,
+    activeContexts,
+  );
+  if (contextCapabilities.groups.length === 0) {
+    return { actionsData, contextCapabilities };
+  }
+  const groupsByActionName = new Map(
+    contextCapabilities.groups.map((group) => [group.action, group]),
+  );
+  return {
+    contextCapabilities,
+    actionsData: actionsData.map((action) => {
+      const group = groupsByActionName.get(action.name);
+      if (!group) {
+        return action;
+      }
+      return {
+        ...action,
+        descriptionCompressed: expandActionDescription(action, group),
+      };
+    }),
+  };
+}
+function formatContextCapabilities(
+  metadata: ContextCapabilityMetadata,
+): string {
+  if (metadata.groups.length === 0) {
+    return "";
+  }
+  const lines = [
+    "# Context Capabilities",
+    `active_contexts[${metadata.activeContexts.length}]: ${metadata.activeContexts.join(", ")}`,
+    `context_groups[${metadata.groups.length}]:`,
+  ];
+  for (const group of metadata.groups) {
+    lines.push(`- ${group.action}: contexts=${group.contexts.join("|")}`);
+    const subactions = formatCapabilityItems("subactions", group.actions);
+    if (subactions) {
+      lines.push(`  ${subactions}`);
+    }
+    const providers = formatCapabilityItems("providers", group.providers);
+    if (providers) {
+      lines.push(`  ${providers}`);
+    }
+  }
+  return lines.join("\n");
+}
+export const actionsProvider: Provider = {
+  name: "ACTIONS",
+  description: "Possible response actions",
+  position: -1,
+  contexts: ["general"],
+  contextGate: { anyOf: ["general"] },
+  cacheStable: true,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const activeContexts = getActiveRoutingContextsForTurn(state, message);
+    // Get actions that validate for this message
+    const actionPromises = runtime.actions.map(async (action: Action) => {
+      if (
+        !shouldIncludeByContext(resolveActionContexts(action), activeContexts)
+      ) {
+        return null;
+      }
+      const result = await action.validate(runtime, message, state);
+      if (!result) {
+        return null;
+      }
+      const accountPolicy = await evaluateConnectorAccountPolicies(
+        runtime,
+        action,
+        { message },
+      );
+      return accountPolicy.allowed ? action : null;
+    });
+    const resolvedActions = await Promise.all(actionPromises);
+    const relationshipFollowUpReminder =
+      looksLikeRelationshipFollowUpReminder(message);
+    const availableActions = resolvedActions.filter(Boolean) as Action[];
+    const hasContactFollowUpAction = availableActions.some(
+      isFollowUpCapableAction,
+    );
+    const visibleActions = availableActions.filter((action) => {
+      if (
+        relationshipFollowUpReminder &&
+        hasContactFollowUpAction &&
+        !GENERIC_CHAT_ACTIONS.has(action.name) &&
+        !isFollowUpCapableAction(action)
+      ) {
+        return false;
+      }
+      return true;
+    });
+    const collapsedActions = collapseGroupedActionsForMainChat(
+      visibleActions,
+      activeContexts,
+    );
+    const { actionsData, contextCapabilities } =
+      expandGroupedActionsForActiveContext(
+        collapsedActions,
+        visibleActions,
+        runtime.providers,
+        activeContexts,
+      );
+    const actionSeed = buildDeterministicSeed(
+      runtime.agentId,
+      message.roomId,
+      "ACTIONS",
+    );
+    // Format action-related texts
+    const actionNames = `Possible response actions: ${formatActionNames(actionsData, actionSeed)}`;
+    const actionsWithDescriptions =
+      actionsData.length > 0 ? formatActions(actionsData, actionSeed) : "";
+    const contextCapabilitiesText =
+      formatContextCapabilities(contextCapabilities);
+    const values = {
+      actionNames,
+      actionsWithDescriptions,
+      contextCapabilities: contextCapabilitiesText,
+      [CONTEXT_CAPABILITIES_STATE_KEY]: contextCapabilitiesText,
+    };
+    // Combine all text sections: action names, descriptions, and context capabilities
+    const text = [actionNames, actionsWithDescriptions, contextCapabilitiesText]
+      .filter(Boolean)
+      .join("\n\n");
+    return {
+      data: {
+        actionsData,
+        contextCapabilities,
+      },
+      values,
+      text,
+    };
+  },
+};

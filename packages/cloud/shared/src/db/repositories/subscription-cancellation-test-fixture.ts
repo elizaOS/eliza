@@ -1,6 +1,7 @@
 /** Seeds migrated primary cancellation authority and a pinned Stripe response for service and HTTP integration tests. Only unrelated identity columns are fixture-defined. */
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { applyAppBillingTestMigrations } from "./app-billing-test-migrations";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 export async function installCancellationTestSchema(execute: (query: string) => Promise<unknown>) {
   await execute(`CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean NOT NULL DEFAULT true,account_deletion_request_id uuid);
@@ -11,11 +12,13 @@ export async function installCancellationTestSchema(execute: (query: string) => 
     "0382_subscription_notice_intents.sql",
     "0383_subscription_cancellation_result.sql",
     "0384_subscription_cancellation_undo.sql",
+    "0397_subscription_checkout_contract.sql",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await execute(statement);
   }
+  await applyAppBillingTestMigrations(execute, true);
 }
 export async function seedCancellationTestAccount(
   queryOverride?: (text: string, values: unknown[]) => Promise<unknown>,

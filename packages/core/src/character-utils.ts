@@ -4,7 +4,7 @@ import {
 	MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
 	CHANNEL_SECRETS,
 } from "./constants/secrets";
-import type { Character } from "./types";
+import type { Character } from "./types/agent.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RE-EXPORTS FROM CONSTANTS

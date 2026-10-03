@@ -1,15 +1,4 @@
-/**
- * Unit tests for the built-in TaskGateRegistry.
- *
- * Regression coverage for the `personal_baseline_sufficient` gate (#8795):
- * plugin-health's `sleep-recap` default pack references this gate kind, but it
- * was never registered in `registerBuiltInGates`. The runner treats an
- * unregistered gate kind as a hard `deny` ("unknown gate kind: <kind>"), so the
- * pack could NEVER fire — every attempt skipped. These tests assert the gate
- * resolves and that driving the sleep-recap gate kinds through the registry
- * (the same lookup the runner performs) yields no "unknown gate kind" decision,
- * while still honoring the pack's min-sample contract.
- */
+/** Exercises built-in gate decisions and first-wins registration through the real registry. */
 
 import { describe, expect, it } from "vitest";
 
@@ -17,27 +6,7 @@ import {
   createTaskGateRegistry,
   registerBuiltInGates,
 } from "./gate-registry.js";
-import type {
-  GateDecision,
-  GateEvaluationContext,
-  ScheduledTask,
-} from "./types.js";
-
-/**
- * The exact lookup the runner performs in `evaluateGates` — an unregistered
- * kind resolves to a hard `deny`. Mirroring it here lets us prove the
- * permanent-skip path is closed without standing up the full runner.
- */
-function lookupGateDecision(
-  reg: ReturnType<typeof createTaskGateRegistry>,
-  kind: string,
-): GateDecision {
-  const contrib = reg.get(kind);
-  if (!contrib) {
-    return { kind: "deny", reason: `unknown gate kind: ${kind}` };
-  }
-  return { kind: "allow" };
-}
+import type { GateEvaluationContext, ScheduledTask } from "./types.js";
 
 function makeContext(
   task: ScheduledTask,
@@ -85,12 +54,6 @@ function sleepRecapTask(): ScheduledTask {
 }
 
 describe("registerBuiltInGates: personal_baseline_sufficient (#8795)", () => {
-  it("registers a resolvable personal_baseline_sufficient gate", () => {
-    const reg = createTaskGateRegistry();
-    registerBuiltInGates(reg);
-    expect(reg.get("personal_baseline_sufficient")).not.toBeNull();
-  });
-
   it("allows personal_baseline_sufficient when sample count meets minSamples", async () => {
     const reg = createTaskGateRegistry();
     registerBuiltInGates(reg);
@@ -128,29 +91,6 @@ describe("registerBuiltInGates: personal_baseline_sufficient (#8795)", () => {
       reason: "personal_baseline_sufficient: sample count unavailable",
     });
   });
-
-  it("does not yield an 'unknown gate kind' decision for any sleep-recap gate", () => {
-    const reg = createTaskGateRegistry();
-    registerBuiltInGates(reg);
-    const task = sleepRecapTask();
-    for (const gateRef of task.shouldFire?.gates ?? []) {
-      const decision = lookupGateDecision(reg, gateRef.kind);
-      expect(decision.kind).toBe("allow");
-      if (decision.kind === "deny") {
-        expect(decision.reason).not.toMatch(/unknown gate kind/);
-      }
-    }
-  });
-
-  it("still denies a genuinely unknown gate kind", () => {
-    const reg = createTaskGateRegistry();
-    registerBuiltInGates(reg);
-    const decision = lookupGateDecision(reg, "does_not_exist");
-    expect(decision).toEqual({
-      kind: "deny",
-      reason: "unknown gate kind: does_not_exist",
-    });
-  });
 });
 
 /**
@@ -161,21 +101,17 @@ describe("registerBuiltInGates: personal_baseline_sufficient (#8795)", () => {
 describe("registerBuiltInGates: no_recent_user_message_in fallback defers", () => {
   function pokeTask(minutes: number): ScheduledTask {
     return {
+      ...sleepRecapTask(),
       taskId: "t-poke",
       kind: "checkin",
       promptInstructions: "poke",
       trigger: { kind: "interval", everyMinutes: 60 },
-      priority: "low",
       shouldFire: {
         compose: "all",
         gates: [{ kind: "no_recent_user_message_in", params: { minutes } }],
       },
-      respectsGlobalPause: true,
-      state: { status: "scheduled", followupCount: 0 },
-      source: "default_pack",
       createdBy: "test",
-      ownerVisible: true,
-    } as ScheduledTask;
+    };
   }
 
   function contextWithActivity(
@@ -183,11 +119,9 @@ describe("registerBuiltInGates: no_recent_user_message_in fallback defers", () =
     recentlyActive: boolean,
   ): GateEvaluationContext {
     return {
-      task,
+      ...makeContext(task),
       nowIso: "2026-05-10T12:00:00.000Z",
-      ownerFacts: { timezone: "UTC" },
       activity: { hasSignalSince: () => recentlyActive },
-      subjectStore: { wasUpdatedSince: () => false },
     };
   }
 
@@ -198,10 +132,10 @@ describe("registerBuiltInGates: no_recent_user_message_in fallback defers", () =
     const decision = await reg
       .get("no_recent_user_message_in")
       ?.evaluate(task, contextWithActivity(task, true));
-    expect(decision?.kind).toBe("defer");
-    if (decision?.kind === "defer" && "offsetMinutes" in decision.until) {
-      expect(decision.until.offsetMinutes).toBe(30);
-    }
+    expect(decision).toMatchObject({
+      kind: "defer",
+      until: { offsetMinutes: 30 },
+    });
   });
 
   it("allows when the user has been quiet", async () => {
@@ -247,11 +181,11 @@ describe("registerBuiltInGates first-wins", () => {
 describe("weekday_only honors params.weekdays", () => {
   function weekdayTask(weekdays?: unknown): ScheduledTask {
     return {
+      ...sleepRecapTask(),
       taskId: "t-weekday",
       kind: "reminder",
       promptInstructions: "stretch",
       trigger: { kind: "cron", expression: "0 9 * * *", tz: "UTC" },
-      priority: "low",
       shouldFire: {
         compose: "all",
         gates: [
@@ -260,24 +194,7 @@ describe("weekday_only honors params.weekdays", () => {
             : { kind: "weekday_only", params: { weekdays } },
         ],
       },
-      respectsGlobalPause: true,
-      state: { status: "scheduled", followupCount: 0 },
-      source: "default_pack",
       createdBy: "test",
-      ownerVisible: true,
-    } as ScheduledTask;
-  }
-
-  function contextAt(
-    task: ScheduledTask,
-    nowIso: string,
-  ): GateEvaluationContext {
-    return {
-      task,
-      nowIso,
-      ownerFacts: { timezone: "UTC" },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
     };
   }
 
@@ -288,7 +205,9 @@ describe("weekday_only honors params.weekdays", () => {
   async function decide(task: ScheduledTask, nowIso: string) {
     const reg = createTaskGateRegistry();
     registerBuiltInGates(reg);
-    return reg.get("weekday_only")?.evaluate(task, contextAt(task, nowIso));
+    return reg
+      .get("weekday_only")
+      ?.evaluate(task, { ...makeContext(task), nowIso });
   }
 
   it("allows a listed day (Mon in [1,3,5])", async () => {
@@ -328,15 +247,6 @@ describe("weekday_only honors params.weekdays", () => {
 });
 
 describe("registerBuiltInGates: model_moment_check fallback (#14677)", () => {
-  it("registers a resolvable model_moment_check gate", () => {
-    const reg = createTaskGateRegistry();
-    registerBuiltInGates(reg);
-    expect(reg.get("model_moment_check")).not.toBeNull();
-    expect(lookupGateDecision(reg, "model_moment_check")).toEqual({
-      kind: "allow",
-    });
-  });
-
   it("allows by default — no judge available means no judgment, never a starved task", async () => {
     const reg = createTaskGateRegistry();
     registerBuiltInGates(reg);

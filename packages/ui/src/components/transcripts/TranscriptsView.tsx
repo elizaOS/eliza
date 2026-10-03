@@ -16,17 +16,17 @@ import {
   type MeetingJoinRequest,
   type MeetingPlatform,
   type MeetingSession,
-} from "@elizaos/shared";
-import type {
-  Transcript,
-  TranscriptCapturePrivacyState,
-  TranscriptConsentState,
-  TranscriptRetentionState,
-  TranscriptSharingState,
-  TranscriptStatus,
-  TranscriptSummary,
-} from "@elizaos/shared/transcripts";
-import { transcriptCapturePrivacyState } from "@elizaos/shared/transcripts";
+} from "@elizaos/core/meetings";
+import {
+  type Transcript,
+  type TranscriptCapturePrivacyState,
+  type TranscriptConsentState,
+  type TranscriptRetentionState,
+  type TranscriptSharingState,
+  type TranscriptStatus,
+  type TranscriptSummary,
+  transcriptCapturePrivacyState,
+} from "@elizaos/core/transcripts";
 import { AudioLines } from "lucide-react";
 import type * as React from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -49,14 +49,12 @@ import { LiveMeetingPane } from "./LiveMeetingPane";
 import { MeetingJoinBar } from "./MeetingJoinBar";
 import { meetingTranscriptMeta } from "./meeting-live";
 import { TranscriptPlayer } from "./TranscriptPlayer";
-
 /**
  * List-row projection. `source` + the server-computed `meeting` fields are
  * already part of {@link TranscriptSummary}; this alias documents the intent at
  * the view boundary without widening the contract.
  */
 export type MeetingAwareTranscriptSummary = TranscriptSummary;
-
 /** Look up the label for a summary's platform, only if it's a known platform. */
 function platformLabel(platform: string | undefined): string | null {
   if (!platform) return null;
@@ -64,7 +62,6 @@ function platformLabel(platform: string | undefined): string | null {
     ? MEETING_PLATFORM_LABELS[platform as MeetingPlatform]
     : null;
 }
-
 export interface TranscriptsViewProps {
   transcripts: MeetingAwareTranscriptSummary[];
   selectedId: string | null;
@@ -87,9 +84,7 @@ export interface TranscriptsViewProps {
   joiningMeeting?: boolean;
   meetingError?: string | null;
 }
-
 type ArtifactSharingKey = keyof TranscriptCapturePrivacyState["sharing"];
-
 const ARTIFACT_SHARING_CONTROLS: ReadonlyArray<{
   key: ArtifactSharingKey;
   label: string;
@@ -99,14 +94,12 @@ const ARTIFACT_SHARING_CONTROLS: ReadonlyArray<{
   { key: "sourceAudio", label: "Source audio" },
   { key: "artifacts", label: "Generated artifacts" },
 ];
-
 const MANAGEABLE_SHARING_STATES: readonly TranscriptSharingState[] = [
   "owner_private",
   "restricted",
   "shared",
   "disabled",
 ];
-
 export function ArtifactPrivacyControls({
   transcript,
   onUpdate,
@@ -206,21 +199,18 @@ export function ArtifactPrivacyControls({
     </Card>
   );
 }
-
 function formatDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
-
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
 }
-
 function agentSafeId(value: string): string {
   return (
     value
@@ -230,14 +220,12 @@ function agentSafeId(value: string): string {
       .slice(0, 80) || "item"
   );
 }
-
 const STATUS_LABEL: Record<TranscriptStatus, string> = {
   recording: "Recording",
   processing: "Processing",
   ready: "",
   failed: "Failed",
 };
-
 const CAPTURE_MODE_LABEL: Record<string, string> = {
   bot: "Bot",
   platform_import: "Platform import",
@@ -248,7 +236,6 @@ const CAPTURE_MODE_LABEL: Record<string, string> = {
   imported_artifact: "Imported artifact",
   unknown: "Unknown capture",
 };
-
 const CONSENT_LABEL: Record<TranscriptConsentState, string> = {
   not_required: "Not required",
   pending: "Pending",
@@ -257,14 +244,12 @@ const CONSENT_LABEL: Record<TranscriptConsentState, string> = {
   revoked: "Revoked",
   unknown: "Unknown",
 };
-
 const POLICY_LABEL: Record<string, string> = {
   allowed: "Allowed",
   org_blocked: "Org blocked",
   user_blocked: "User blocked",
   unknown: "Unknown",
 };
-
 const PERMISSION_LABEL: Record<string, string> = {
   prompt: "Prompt",
   granted: "Granted",
@@ -274,7 +259,6 @@ const PERMISSION_LABEL: Record<string, string> = {
   not_required: "Not required",
   unknown: "Unknown",
 };
-
 const RETENTION_LABEL: Record<TranscriptRetentionState, string> = {
   audio_retained: "Audio retained",
   audio_deleted_transcript_retained: "Audio deleted, transcript retained",
@@ -282,7 +266,6 @@ const RETENTION_LABEL: Record<TranscriptRetentionState, string> = {
   delete_pending: "Delete pending",
   unknown: "Unknown",
 };
-
 const SHARING_LABEL: Record<TranscriptSharingState, string> = {
   owner_private: "Private",
   restricted: "Restricted",
@@ -291,7 +274,6 @@ const SHARING_LABEL: Record<TranscriptSharingState, string> = {
   disabled: "Disabled",
   unknown: "Unknown",
 };
-
 /** Small accent dot + label shown on live meeting rows/headers. */
 function LiveIndicator({ testId }: { testId: string }): React.JSX.Element {
   return (
@@ -304,7 +286,6 @@ function LiveIndicator({ testId }: { testId: string }): React.JSX.Element {
     </span>
   );
 }
-
 function TranscriptRow({
   summary,
   active,
@@ -332,7 +313,6 @@ function TranscriptRow({
     description: "Select this recording in the Transcripts view",
     onActivate: () => onSelect(summary.id),
   });
-
   return (
     <Button
       ref={ref}
@@ -398,7 +378,6 @@ function TranscriptRow({
     </Button>
   );
 }
-
 /** Detail-pane header for a meeting record: platform badge + roster. */
 function MeetingDetailHeader({
   transcript,
@@ -430,7 +409,6 @@ function MeetingDetailHeader({
     </div>
   );
 }
-
 function MeetingCapturePrivacyStrip({
   transcript,
 }: {
@@ -439,7 +417,6 @@ function MeetingCapturePrivacyStrip({
   const state = transcriptCapturePrivacyState(transcript);
   const chips = capturePrivacyChips(state);
   if (chips.length === 0) return null;
-
   return (
     <div
       data-testid="meeting-capture-privacy-state"
@@ -462,11 +439,16 @@ function MeetingCapturePrivacyStrip({
     </div>
   );
 }
-
-function capturePrivacyChips(
-  state: TranscriptCapturePrivacyState,
-): Array<{ label: string; value: string; alert?: boolean }> {
-  const chips: Array<{ label: string; value: string; alert?: boolean }> = [];
+function capturePrivacyChips(state: TranscriptCapturePrivacyState): Array<{
+  label: string;
+  value: string;
+  alert?: boolean;
+}> {
+  const chips: Array<{
+    label: string;
+    value: string;
+    alert?: boolean;
+  }> = [];
   if (state.captureMode) {
     chips.push({
       label: "Capture",
@@ -530,7 +512,6 @@ function capturePrivacyChips(
   }
   return chips;
 }
-
 export function TranscriptsView({
   transcripts,
   selectedId,
@@ -560,7 +541,6 @@ export function TranscriptsView({
         error={meetingError}
       />
     ) : null;
-
   if (!error && !loading && transcripts.length === 0) {
     return (
       <ShellViewAgentSurface viewId="transcripts">
@@ -580,10 +560,8 @@ export function TranscriptsView({
       </ShellViewAgentSurface>
     );
   }
-
   const selectedIsLiveMeeting =
     selected?.source === "meeting" && selected.status === "recording";
-
   return (
     <ShellViewAgentSurface viewId="transcripts">
       <div

@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000004 Mon Sep 17 00:00:00 2001
+From: bun-riscv64 build <bun-riscv64@eliza.local>
+Date: Fri, 22 May 2026 00:00:00 +0000
+Subject: [PATCH] PlatformEnable: do not force wasm on riscv64 C_LOOP builds
+
+The pinned WebKit tree has a riscv64 default that unconditionally enables
+WebAssembly. That contradicts WebKit's C_LOOP feature conflict and pulls in
+wasm calling-convention headers that need JIT register types. Keep wasm
+available for future non-C_LOOP riscv64 builds, but do not override the
+CMake-disabled wasm setting for the publishable C_LOOP artifact.
+---
+ Source/WTF/wtf/PlatformEnable.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Source/WTF/wtf/PlatformEnable.h b/Source/WTF/wtf/PlatformEnable.h
+index 1111111..2222222 100644
+--- a/Source/WTF/wtf/PlatformEnable.h
++++ b/Source/WTF/wtf/PlatformEnable.h
+@@ -714,7 +714,7 @@
+ #undef ENABLE_JIT
+ #define ENABLE_JIT 0
+ #endif
+ 
+-#if CPU(RISCV64)
++#if CPU(RISCV64) && !ENABLE(C_LOOP)
+ #undef ENABLE_WEBASSEMBLY
+ #define ENABLE_WEBASSEMBLY 1
+ #undef ENABLE_WEBASSEMBLY_OMGJIT
+-- 
+2.43.0
+

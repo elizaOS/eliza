@@ -2,7 +2,7 @@
  * Exercises bounded preview output through the exported Gmail formatter and
  * audit redactor, including truthful omission diagnostics at small caps.
  */
-import type { LifeOpsGmailTriageFeed } from "@elizaos/shared";
+import { type LifeOpsGmailTriageFeed } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it } from "vitest";
 import { formatEmailTriage } from "./google/format-helpers.ts";
 import { redactSensitiveData } from "./redact-sensitive-data.ts";

@@ -8,6 +8,7 @@
  */
 
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
+import { type LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
 import type {
   GateEvaluationContext,
   ScheduledTask,
@@ -16,7 +17,6 @@ import {
   createTaskGateRegistry,
   registerBuiltInGates,
 } from "@elizaos/plugin-scheduling";
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import type { ActivityProfile } from "../../activity-profile/types.js";
 import {

@@ -2,9 +2,10 @@
  * Desktop permission client: queries/requests OS permissions through the
  * Electrobun bridge, conforming to the shared permissions-client shape.
  */
-import { logger } from "@elizaos/logger";
+
 import type { client as appClient } from "../api/client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { logger } from "../logger.ts";
 import type {
   PermissionsClientLike as ClientLike,
   PermissionsPatchState as PatchState,

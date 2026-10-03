@@ -44,6 +44,7 @@
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
+
 import type {
   AgentNotification,
   PendingUserAction,
@@ -1514,7 +1515,14 @@ export function NotificationsHomeCenter({
       const home = emptyGestureTargetRef?.current;
       if (home && target instanceof Node && !home.contains(target)) return;
       const center = centerRef.current;
-      if (target instanceof Node && center && !center.contains(target)) {
+      // A reduced-motion fold can remove its button before document bubbling.
+      // Preserve containment from dispatch, when that button was still inside.
+      if (
+        target instanceof Node &&
+        center &&
+        !center.contains(target) &&
+        !event.composedPath().includes(center)
+      ) {
         requestShadeCollapse();
       }
     };

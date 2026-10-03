@@ -3,7 +3,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/core/contracts/cloud-coding-containers";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CloudBridgeService } from "../services/cloud-bridge";
 import type { CloudContainerService } from "../services/cloud-container";

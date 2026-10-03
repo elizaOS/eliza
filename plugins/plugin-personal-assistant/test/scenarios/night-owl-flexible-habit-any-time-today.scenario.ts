@@ -7,7 +7,7 @@
  * Personas-as-data: the night-owl framing lives in the turn text, never in
  * `promptInstructions` (root AGENTS.md — one scheduler, structural fields only).
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

@@ -15,7 +15,7 @@ import {
   type UUID,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { getDeviceId } from "../lifeops/device-identity.js";
 import {
   contactEdgeId,

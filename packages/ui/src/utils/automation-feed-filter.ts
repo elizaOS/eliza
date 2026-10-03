@@ -6,6 +6,7 @@
 
 export const FEED_FILTERS = [
   "all",
+  "reminders",
   "prompts",
   "workflows",
   "active",
@@ -31,6 +32,8 @@ export interface FeedRowSummary {
 
 export function passesFilter(row: FeedRowSummary, filter: FeedFilter): boolean {
   switch (filter) {
+    case "reminders":
+      return false;
     case "all":
       return true;
     case "prompts":

@@ -11,8 +11,8 @@
  */
 
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
+import { TaskService } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TaskService } from "../../../../../../packages/core/src/services/task.ts";
 import {
   BLOCK_RULE_RECONCILE_INTERVAL_MS,
   BLOCK_RULE_RECONCILE_TASK_NAME,

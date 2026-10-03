@@ -20,12 +20,12 @@ import {
   getLiveActivityPlugin,
   type LiveActivityPluginLike,
 } from "@elizaos/ui/bridge";
+import { logger } from "@elizaos/ui/logger";
 import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,
   type VoiceCaptureHandle,
 } from "@elizaos/ui/voice";
-import appConfig from "../app.config";
 import {
   getKeyboardDictationBridge,
   type KeyboardDictationBridge,
@@ -70,9 +70,18 @@ const defaultDeps: KeyboardDictationDeps = {
 const SESSION_MAX_MS = 60_000;
 const OVERLAY_ID = "eliza-keyboard-dictation-overlay";
 const ACCENT = "#ff5800";
-const LOG_PREFIX = `[${appConfig.appName}]`;
 
 let activeSession: KeyboardDictationSession | null = null;
+// Native handoff storage is shared across sessions, including cancellation.
+let handoffWrites: Promise<unknown> = Promise.resolve();
+
+function enqueueHandoff<T>(operation: () => Promise<T>): Promise<T> {
+  const write = handoffWrites.then(operation);
+  // Each caller observes its own failure; a rejected write must not poison
+  // subsequent sessions' cleanup or publication.
+  handoffWrites = write.catch(() => undefined);
+  return write;
+}
 
 export function isKeyboardDictationSessionActive(): boolean {
   return activeSession !== null;
@@ -165,9 +174,9 @@ export function startKeyboardDictationSession(
     (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`);
   const source = params.get("source") ?? "ios-keyboard";
   const log = (message: string, ...rest: unknown[]) =>
-    console.log(
-      `${LOG_PREFIX} [KeyboardDictation] ${message} (source=${source} session=${sessionId})`,
-      ...rest,
+    logger.info(
+      { source, sessionId, details: rest },
+      `[KeyboardDictation] ${message}`,
     );
 
   const bridge = deps.getBridge();
@@ -175,6 +184,8 @@ export function startKeyboardDictationSession(
   const overlay = doc ? buildOverlay(doc) : null;
 
   let settled = false;
+  let terminalPending: "ready" | "error" | null = null;
+  let finishing = false;
   let capture: VoiceCaptureHandle | null = null;
   let liveActivityStart: Promise<{ activityId: string } | null> | null = null;
   let maxTimer: ReturnType<typeof setTimeout> | null = null;
@@ -183,18 +194,17 @@ export function startKeyboardDictationSession(
   const done = new Promise<KeyboardDictationOutcome>((resolve) => {
     resolveDone = resolve;
   });
-  // Bridge writes are serialized so a late `recording` can never overwrite the
-  // terminal `ready`/`error` record the keyboard is about to read.
-  let writeChain: Promise<unknown> = Promise.resolve();
-
   const liveActivity = deps.getLiveActivity();
   function startLiveActivity(): void {
     if (typeof liveActivity.start !== "function") return;
-    liveActivityStart = liveActivity
-      .start({
-        sessionTitleKind: "keyboard-dictation",
-        phase: "recording",
-      })
+    const start = liveActivity.start.bind(liveActivity);
+    liveActivityStart = Promise.resolve()
+      .then(() =>
+        start({
+          sessionTitleKind: "keyboard-dictation",
+          phase: "recording",
+        }),
+      )
       .then(
         (result) => result,
         (error: unknown) => {
@@ -226,14 +236,8 @@ export function startKeyboardDictationSession(
 
   function writeState(status: "recording" | "transcribing"): Promise<boolean> {
     if (!bridge) return Promise.resolve(false);
-    const write = writeChain.then(() =>
-      bridge.setDictationState({ status, sessionId }),
-    );
-    // error-policy:J5 the serialization accumulator only sequences later writes;
-    // this write's own rejection is observed by the `write.then(ok, err)` below.
-    writeChain = write.catch(() => undefined);
-    return write.then(
-      () => true,
+    return publishState({ status, sessionId }).then(
+      (saved) => saved && !settled,
       (error: unknown) => {
         fail(
           `Keyboard handoff unavailable: ${error instanceof Error ? error.message : String(error)}`,
@@ -244,58 +248,77 @@ export function startKeyboardDictationSession(
     );
   }
 
+  function publishState(
+    state: Parameters<KeyboardDictationBridge["setDictationState"]>[0],
+  ): Promise<boolean> {
+    return enqueueHandoff(async () => {
+      if (settled || !bridge) return false;
+      const receipt = await bridge.setDictationState(state);
+      if (receipt.saved !== true)
+        throw new Error("Native handoff was not saved");
+      return true;
+    });
+  }
+
   function teardown(): void {
     if (maxTimer) clearTimeout(maxTimer);
     maxTimer = null;
-    capture?.dispose();
+    try {
+      capture?.dispose();
+    } catch (error) {
+      log("Capture teardown failed", error);
+    }
     capture = null;
     endLiveActivity();
   }
 
   function settle(outcome: KeyboardDictationOutcome): void {
+    if (settled) return;
     settled = true;
-    activeSession = null;
+    if (activeSession === session) activeSession = null;
     teardown();
     resolveDone(outcome);
   }
 
-  function succeed(text: string): void {
-    if (settled) return;
-    if (!bridge) return;
-    writeChain = writeChain
-      .then(() =>
-        bridge.setDictationState({
+  function succeed(): void {
+    if (settled || terminalPending || !bridge) return;
+    terminalPending = "ready";
+    void (async () => {
+      // Final segments may arrive while a native write is in flight. Publish
+      // the complete transcript before settling, without competing writers.
+      while (!settled) {
+        const text = finalText;
+        const saved = await publishState({
           status: "ready",
           transcript: text,
           sessionId,
-        }),
-      )
-      .then(
-        () => {
-          log("Transcript published to the App Group");
-          if (overlay) {
-            overlay.status.textContent =
-              "Transcript ready — switch back to your keyboard to insert it.";
-            overlay.transcript.textContent = text;
-            overlay.doneButton.style.display = "none";
-            overlay.cancelButton.textContent = "Close";
-          }
-          settle("ready");
-        },
-        (error: unknown) => {
-          fail(
-            `Keyboard handoff failed: ${error instanceof Error ? error.message : String(error)}`,
-            { writeErrorRecord: false },
-          );
-        },
+        });
+        if (settled || !saved) return;
+        if (text !== finalText) continue;
+        log("Transcript published to the App Group");
+        if (overlay) {
+          overlay.status.textContent =
+            "Transcript ready — switch back to your keyboard to insert it.";
+          overlay.transcript.textContent = text;
+          overlay.doneButton.style.display = "none";
+          overlay.cancelButton.textContent = "Close";
+        }
+        settle("ready");
+      }
+    })().catch((error: unknown) => {
+      fail(
+        `Keyboard handoff failed: ${error instanceof Error ? error.message : String(error)}`,
+        { writeErrorRecord: false },
       );
+    });
   }
 
   function fail(
     message: string,
     { writeErrorRecord = true }: { writeErrorRecord?: boolean } = {},
   ): void {
-    if (settled) return;
+    if (settled || (terminalPending && writeErrorRecord)) return;
+    terminalPending = "error";
     log(`Dictation failed: ${message}`);
     if (overlay) {
       overlay.status.textContent = message;
@@ -304,14 +327,11 @@ export function startKeyboardDictationSession(
       overlay.cancelButton.textContent = "Close";
     }
     if (writeErrorRecord && bridge) {
-      writeChain = writeChain
-        .then(() =>
-          bridge.setDictationState({
-            status: "error",
-            errorMessage: message,
-            sessionId,
-          }),
-        )
+      void publishState({
+        status: "error",
+        errorMessage: message,
+        sessionId,
+      })
         .catch((error: unknown) => {
           // error-policy:J1 terminal boundary: the error state itself could not
           // be handed to the keyboard; the overlay above already shows it.
@@ -326,31 +346,39 @@ export function startKeyboardDictationSession(
   const session: KeyboardDictationSession = {
     done,
     finish: () => {
-      if (settled || !capture) return;
+      if (settled || terminalPending || finishing || !capture) return;
+      finishing = true;
+      const currentCapture = capture;
       if (overlay) overlay.status.textContent = "Transcribing…";
       void writeState("transcribing");
-      capture.stop().then(
-        () => {
-          // The final transcript segment lands via onTranscript before/at
-          // stop() resolution; if none arrived, the turn had no speech.
-          if (!settled && !finalText) {
-            fail("No speech detected. Try again.");
-          }
-        },
-        (error: unknown) => {
-          if (!settled) {
-            fail(
-              `Transcription failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        },
-      );
+      Promise.resolve()
+        .then(() => currentCapture.stop())
+        .then(
+          () => {
+            // The final transcript segment lands via onTranscript before/at
+            // stop() resolution; if none arrived, the turn had no speech.
+            if (!settled && !finalText) {
+              fail("No speech detected. Try again.");
+            }
+          },
+          (error: unknown) => {
+            if (!settled) {
+              fail(
+                `Transcription failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          },
+        );
     },
     cancel: () => {
       if (settled) return;
       log("Dictation cancelled");
       if (bridge) {
-        void bridge.clearDictationState().catch((error: unknown) => {
+        void enqueueHandoff(async () => {
+          const receipt = await bridge.clearDictationState();
+          if (receipt.cleared !== true)
+            throw new Error("Native handoff was not cleared");
+        }).catch((error: unknown) => {
           // error-policy:J6 best-effort cleanup; a stale record is discarded by
           // the keyboard's freshness window.
           log("Failed to clear handoff record on cancel", error);
@@ -386,38 +414,47 @@ export function startKeyboardDictationSession(
   log("Starting keyboard dictation session");
   startLiveActivity();
 
-  capture = deps.createCapture({
-    finalizeOnStop: true,
-    onTranscript: (segment) => {
-      if (settled) return;
-      if (!segment.final) {
-        if (overlay) overlay.transcript.textContent = segment.text;
-        return;
-      }
-      finalText = finalText ? `${finalText} ${segment.text}` : segment.text;
-      succeed(finalText);
-    },
-    onStateChange: (state, error) => {
-      if (settled) return;
-      if (state === "error") {
-        fail(
-          `Speech capture failed: ${error?.message ?? "unknown error"}. Check that voice input is available on this device.`,
-        );
-      }
-    },
-  });
+  try {
+    capture = deps.createCapture({
+      finalizeOnStop: true,
+      onTranscript: (segment) => {
+        if (settled || terminalPending === "error") return;
+        if (!segment.final) {
+          if (overlay) overlay.transcript.textContent = segment.text;
+          return;
+        }
+        finalText = finalText ? `${finalText} ${segment.text}` : segment.text;
+        succeed();
+      },
+      onStateChange: (state, error) => {
+        if (settled || terminalPending) return;
+        if (state === "error") {
+          fail(
+            `Speech capture failed: ${error?.message ?? "unknown error"}. Check that voice input is available on this device.`,
+          );
+        }
+      },
+    });
+  } catch (error) {
+    fail(
+      `Couldn't create recording: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return session;
+  }
 
-  void writeState("recording").then((ok) => {
-    if (!ok || settled || !capture) return;
+  void writeState("recording").then(async (ok) => {
+    if (!ok || settled || terminalPending || finishing || !capture) return;
     // error-policy:J1 session boundary — a failed start terminates the
     // dictation session through fail(), which records the error for the host
-    capture.start().catch((error: unknown) => {
+    try {
+      await capture.start();
+    } catch (error) {
       if (!settled) {
         fail(
           `Couldn't start recording: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-    });
+    }
   });
 
   maxTimer = setTimeout(() => {

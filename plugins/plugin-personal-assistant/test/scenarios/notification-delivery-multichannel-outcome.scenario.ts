@@ -7,11 +7,8 @@
  * telegram are genuinely attempted and resolve `blocked_connector` in the
  * credential-less runtime, and a `reminder_delivered` audit persists.
  */
-import type {
-  ScenarioCheckResult,
-  ScenarioContext,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioCheckResult, ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const REMINDER_TITLE = "Multi-channel meds reminder";
 
@@ -154,7 +151,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

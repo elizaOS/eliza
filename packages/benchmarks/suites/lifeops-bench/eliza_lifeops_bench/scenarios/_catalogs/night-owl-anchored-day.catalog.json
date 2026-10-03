@@ -1,0 +1,207 @@
+{
+  "catalogId": "night-owl-anchored-day",
+  "title": "Night-owl anchored-day LifeOpsBench pack",
+  "source": {
+    "issue": "https://github.com/elizaOS/eliza/issues/12278",
+    "persona": "noor_night",
+    "notes": [
+      "Executable scenarios live in scenarios/night_owl_anchored_day.py and scenarios/live/night_owl_anchored_day.py.",
+      "The Scenario dataclass has no tags field in this checkout, so tier markers are catalog metadata plus description markers.",
+      "Registered in the LifeOpsBench static and live scenario registries in this PR."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "nightowl.anchored.wake_relative_deploy_ping",
+      "title": "Wake-relative deploy reminder",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T1]",
+      "tags": ["night-owl", "wake-anchor"],
+      "persona": "noor_night",
+      "coverage": "Wake-time-relative reminder creation with no wall clock.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.wake_relative_morning_brief",
+      "title": "Anchor the morning brief to wake confirmation, not a clock time",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T1]",
+      "tags": ["night-owl", "wake-anchor", "verbatim-exemplar"],
+      "persona": "noor_night",
+      "coverage": "Verbatim issue exemplar for wake-confirmation anchored morning brief capture.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.decent_hour_definition",
+      "title": "Capture Noor's decent-hour definition",
+      "mode": "static",
+      "domain": "sleep",
+      "tierTag": "[T1]",
+      "tags": ["night-owl", "preference-window"],
+      "persona": "noor_night",
+      "coverage": "Defines decent hour in Noor's delayed day boundary.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.sleep_protection_quiet_window",
+      "title": "Protect Noor's sleep window",
+      "mode": "static",
+      "domain": "sleep",
+      "tierTag": "[T1]",
+      "tags": ["night-owl", "quiet-hours"],
+      "persona": "noor_night",
+      "coverage": "Captures 04:00-11:30 sleep-protection quiet hours.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.correct_assumed_9am_default",
+      "title": "Correct a 9am morning default",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "correction"],
+      "persona": "noor_night",
+      "coverage": "Corrects an assumed 9am default to Noor's morning anchor.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.morning_brief_first_hour_after_wake",
+      "title": "Morning brief means first hour after wake",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "wake-anchor"],
+      "persona": "noor_night",
+      "coverage": "Redefines morning brief as the first hour after wake.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.ambiguous_morning_uses_anchor",
+      "title": "Ambiguous morning resolves via Noor's anchor",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "ambiguity"],
+      "persona": "noor_night",
+      "coverage": "Resolves ambiguous 'morning' through the stored wake anchor.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.dedup_wake_anchored_reminders",
+      "title": "Deduplicate overlapping wake-anchored reminders",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "dedup"],
+      "persona": "noor_night",
+      "coverage": "Collapses two phrased wake-anchored vitamin reminders into one definition.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.local_wake_pattern_capture",
+      "title": "Capture local wake pattern without timezone overfitting",
+      "mode": "static",
+      "domain": "sleep",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "local-pattern"],
+      "persona": "noor_night",
+      "coverage": "Keeps an example 11:30 wake time anchor-relative rather than absolute.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "nightowl.anchored.multi_day_quiet_hours_consistency",
+      "title": "Quiet hours persist every day",
+      "mode": "static",
+      "domain": "sleep",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "quiet-hours"],
+      "persona": "noor_night",
+      "coverage": "Extends delayed quiet hours consistently across days.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.nightowl.wake_confirmation_fires_brief",
+      "title": "Wake confirmation immediately triggers the anchored morning brief",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T3]",
+      "tags": ["night-owl", "wake-anchor", "live", "verbatim-exemplar"],
+      "persona": "noor_night",
+      "coverage": "Verbatim issue exemplar where 'just woke up' fires the seeded brief in the same turn.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.nightowl.observed_wake_drift_adaptation",
+      "title": "Observed wake drift updates anchor estimate",
+      "mode": "live",
+      "domain": "sleep",
+      "tierTag": "[T3]",
+      "tags": ["night-owl", "drift", "live"],
+      "persona": "noor_night",
+      "coverage": "Adapts wake anchor from a week of reported wake-time drift.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.nightowl.disruption_does_not_interrupt_anchor_capture",
+      "title": "Disruption is parked while anchored routine capture finishes",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T3]",
+      "tags": ["night-owl", "disruption", "live"],
+      "persona": "noor_night",
+      "coverage": "Parks a mid-conversation new message while completing anchored routine capture.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.nightowl.end_of_her_evening_nudge",
+      "title": "End-of-evening nudge follows Noor's day boundary",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "day-boundary", "live"],
+      "persona": "noor_night",
+      "coverage": "Treats evening as pre-sleep in Noor's day, not midnight or 5pm.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.nightowl.contradiction_reconciles_anchor",
+      "title": "Earlier sleep this week updates rather than duplicates anchor",
+      "mode": "live",
+      "domain": "sleep",
+      "tierTag": "[T2]",
+      "tags": ["night-owl", "correction", "live"],
+      "persona": "noor_night",
+      "coverage": "Updates the wake/sleep anchor rather than layering conflicting rules.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.nightowl.reject_wall_clock_repair",
+      "title": "Wall-clock proposal rejection is repaired to anchor-relative",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T4]",
+      "tags": ["night-owl", "wall-clock-rejection", "live", "adversarial"],
+      "persona": "noor_night",
+      "coverage": "Repairs a mistaken 9am proposal into after-wake semantics.",
+      "baselineCanary": false,
+      "adversarialTrap": "wall-clock default rejection"
+    }
+  ]
+}

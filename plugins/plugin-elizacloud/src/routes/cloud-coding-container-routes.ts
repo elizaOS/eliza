@@ -1,10 +1,5 @@
 import type http from "node:http";
-import {
-  CLOUD_CONTAINER_SERVICE_TYPE,
-  PromoteVfsToCloudContainerRequestSchema,
-  RequestCodingAgentContainerRequestSchema,
-  SyncCloudCodingContainerRequestSchema,
-} from "@elizaos/shared";
+import { CLOUD_CONTAINER_SERVICE_TYPE, PromoteVfsToCloudContainerRequestSchema, RequestCodingAgentContainerRequestSchema, SyncCloudCodingContainerRequestSchema } from "@elizaos/core/contracts/cloud-coding-containers";
 import type {
   CloudCodingContainerService,
   PromoteVfsToCloudContainerRequest,

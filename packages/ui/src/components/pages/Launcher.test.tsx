@@ -8,13 +8,9 @@
 // glyph (never probing API heroes) for dedicated cloud agents.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client, type RegistryAppInfo } from "../../api";
+import { client } from "../../api";
 import { withBuiltinShellViews } from "../../hooks/useAvailableViews";
-import {
-  mergeViewCatalog,
-  type ViewEntry,
-  viewToEntry,
-} from "../../hooks/view-catalog";
+import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { readViewInteractions } from "../../view-telemetry";
 import { Launcher } from "./Launcher";
 import { curateLauncherPages } from "./launcher-curation";
@@ -345,48 +341,6 @@ describe("Launcher tile imagery (glyph-only)", () => {
     const visual = document.querySelector('[data-view-visual="automations"]');
     expect(visual?.querySelector('img[data-ionicon="time"]')).toBeTruthy();
     expect(visual?.querySelector('img[data-ionicon="apps"]')).toBeNull();
-  });
-
-  it("keeps loaded Finances distinct from catalog Hyperliquid", () => {
-    const enabledKinds = { developer: false, preview: false };
-    const entries = curateLauncherPages(
-      mergeViewCatalog({
-        views: [
-          {
-            id: "finances",
-            label: "Finances",
-            icon: "CircleDollarSign",
-            path: "/finances",
-            available: true,
-            pluginName: "@elizaos/plugin-finances",
-            viewKind: "release",
-          },
-        ],
-        catalog: [
-          {
-            name: "@elizaos/plugin-hyperliquid",
-            displayName: "Hyperliquid",
-            viewKind: "release",
-          } as RegistryAppInfo,
-        ],
-        installed: [],
-        activeModality: "gui",
-        enabledKinds,
-        visibilityScope: "routable",
-      }),
-      { isAosp: false, enabledKinds, cloudActive: false },
-    );
-
-    render(<Launcher entries={entries} onLaunch={() => {}} />);
-
-    const finances = document.querySelector('[data-view-visual="finances"]');
-    const hyperliquid = document.querySelector(
-      '[data-view-visual="@elizaos/plugin-hyperliquid"]',
-    );
-    expect(finances?.querySelector('img[data-ionicon="cash"]')).toBeTruthy();
-    expect(
-      hyperliquid?.querySelector('img[data-ionicon="trending-up"]'),
-    ).toBeTruthy();
   });
 
   it("renders the icon glyph when imageUrl is absent", () => {

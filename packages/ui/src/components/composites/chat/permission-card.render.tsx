@@ -3,18 +3,19 @@
  * returning null when the payload's permission id is unknown so callers can
  * inline-render permission prompts detected in message text without guarding.
  */
-import { isPermissionId } from "@elizaos/shared";
-import type * as React from "react";
 
+import { isPermissionId } from "@elizaos/core/contracts/permissions";
+import type * as React from "react";
 import { PermissionCard, type PermissionCardProps } from "./permission-card";
 import type { PermissionCardPayload } from "./permission-card.helpers";
-
 export function renderPermissionCardFromPayload(
   payload: PermissionCardPayload,
   opts: Omit<
     PermissionCardProps,
     "permission" | "reason" | "feature" | "fallbackOffered" | "fallbackLabel"
-  > & { key?: string } = {},
+  > & {
+    key?: string;
+  } = {},
 ): React.ReactElement | null {
   if (!isPermissionId(payload.permission)) return null;
   const { key, ...rest } = opts;

@@ -20,7 +20,7 @@ import {
   isRemoteControllerPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/core/contracts/remote-control";
 import { Hono } from "hono";
 import {
   deriveRemotePairingCodeVerifier,
@@ -29,16 +29,15 @@ import {
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const PAIRING_CODE_TTL_SECONDS = 5 * 60;
 const DEFAULT_GRANT_TTL_SECONDS = 8 * 60 * 60;
 const MIN_GRANT_TTL_SECONDS = 10 * 60;
 const MAX_GRANT_TTL_SECONDS = 24 * 60 * 60;
-
 function generatePairingCode(): string {
   // Rejection sampling avoids modulo bias in the human-entered code space.
-  const codeSpace = 1_000_000;
+  const codeSpace = 1000000;
   const acceptedRange = Math.floor(2 ** 32 / codeSpace) * codeSpace;
   const buf = new Uint32Array(1);
   let sample: number;
@@ -49,7 +48,6 @@ function generatePairingCode(): string {
   const n = sample % codeSpace;
   return n.toString().padStart(6, "0");
 }
-
 interface PairRequestBody {
   agentId?: unknown;
   hostId?: unknown;
@@ -58,13 +56,10 @@ interface PairRequestBody {
   sessionId?: unknown;
   code?: unknown;
 }
-
 const app = new Hono<AppEnv>();
-
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-
     const pairingSecret = c.env.REMOTE_PAIRING_HMAC_SECRET?.trim();
     if (
       !pairingSecret ||
@@ -79,7 +74,6 @@ app.post("/", async (c) => {
         503,
       );
     }
-
     let parsed: unknown;
     try {
       parsed = await c.req.json();
@@ -204,7 +198,6 @@ app.post("/", async (c) => {
         400,
       );
     }
-
     const code = generatePairingCode();
     const sessionId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_SECONDS * 1000);
@@ -284,7 +277,6 @@ app.post("/", async (c) => {
       });
       if (!session)
         return c.json({ success: false, error: "Host not found" }, 404);
-
       c.header(
         "Cache-Control",
         "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -320,7 +312,6 @@ app.post("/", async (c) => {
       code,
       expiresAt,
     );
-
     const session = await remoteSessionsRepository.createPendingForOwnedAgent({
       id: sessionId,
       organization_id: user.organization_id,
@@ -334,7 +325,6 @@ app.post("/", async (c) => {
     if (!session) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
-
     c.header(
       "Cache-Control",
       "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -356,5 +346,4 @@ app.post("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 export default app;

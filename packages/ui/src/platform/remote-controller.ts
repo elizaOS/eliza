@@ -3,7 +3,6 @@
  * process retains private signing/decryption keys; this module only forwards
  * public identity, encrypted commands, and opaque result envelopes.
  */
-
 import { Capacitor } from "@capacitor/core";
 import {
   type EncryptedRemoteControlEnvelope,
@@ -15,7 +14,7 @@ import {
   type RemoteJsonValue,
   type RemoteTargetPublicIdentity,
   type SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/core/contracts/remote-control";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
 interface NativeRemoteControllerPlugin {
@@ -25,16 +24,15 @@ interface NativeRemoteControllerPlugin {
     platform: string;
   }): Promise<RemoteControllerPublicIdentity>;
   createCommand(input: Record<string, unknown>): Promise<unknown>;
-  acknowledgeEnqueue(
-    input: Record<string, unknown>,
-  ): Promise<{ acknowledged: boolean }>;
+  acknowledgeEnqueue(input: Record<string, unknown>): Promise<{
+    acknowledged: boolean;
+  }>;
   openResult(input: Record<string, unknown>): Promise<unknown>;
   openStartReceipt(input: Record<string, unknown>): Promise<unknown>;
-  clearSessionState(
-    input: Record<string, unknown>,
-  ): Promise<{ cleared: boolean }>;
+  clearSessionState(input: Record<string, unknown>): Promise<{
+    cleared: boolean;
+  }>;
 }
-
 type NativeCommandResult = {
   commandId: string;
   expiresAt: number;
@@ -43,11 +41,9 @@ type NativeCommandResult = {
   recoveredPending: boolean;
   bindingDigest: string;
 };
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 function isNativeCommandResult(value: unknown): value is NativeCommandResult {
   return (
     isRecord(value) &&
@@ -59,10 +55,11 @@ function isNativeCommandResult(value: unknown): value is NativeCommandResult {
     typeof value.bindingDigest === "string"
   );
 }
-
-function isOpenedResult(
-  value: unknown,
-): value is { status: string; result?: RemoteJsonValue; errorCode?: string } {
+function isOpenedResult(value: unknown): value is {
+  status: string;
+  result?: RemoteJsonValue;
+  errorCode?: string;
+} {
   return (
     isRecord(value) &&
     ["completed", "rejected", "cancelled", "execution_ambiguous"].includes(
@@ -71,19 +68,17 @@ function isOpenedResult(
     (value.errorCode === undefined || typeof value.errorCode === "string")
   );
 }
-
-function isOpenedStartReceipt(
-  value: unknown,
-): value is { startedAt: number; executionId: string } {
+function isOpenedStartReceipt(value: unknown): value is {
+  startedAt: number;
+  executionId: string;
+} {
   return (
     isRecord(value) &&
     Number.isSafeInteger(value.startedAt) &&
     typeof value.executionId === "string"
   );
 }
-
 let cachedNativeRemoteController: NativeRemoteControllerPlugin | undefined;
-
 function nativeRemoteController(): NativeRemoteControllerPlugin {
   cachedNativeRemoteController ??=
     Capacitor.registerPlugin<NativeRemoteControllerPlugin>(
@@ -91,7 +86,6 @@ function nativeRemoteController(): NativeRemoteControllerPlugin {
     );
   return cachedNativeRemoteController;
 }
-
 function isNativeController(): boolean {
   const platform = Capacitor.getPlatform();
   return (
@@ -100,7 +94,6 @@ function isNativeController(): boolean {
     Capacitor.isPluginAvailable?.("RemoteControllerIdentity") === true
   );
 }
-
 function isUnsupportedNativeIOS(): boolean {
   return (
     Capacitor.isNativePlatform() &&
@@ -108,14 +101,12 @@ function isUnsupportedNativeIOS(): boolean {
     Capacitor.isPluginAvailable?.("RemoteControllerIdentity") !== true
   );
 }
-
 function desktopPlatform(): "macos" | "windows" | "linux" {
   const platform = navigator.platform.toLowerCase();
   if (platform.includes("win")) return "windows";
   if (platform.includes("linux")) return "linux";
   return "macos";
 }
-
 export async function getOrCreateRemoteControllerIdentity(input: {
   ownerId: string;
   displayName?: string;
@@ -164,7 +155,6 @@ export async function getOrCreateRemoteControllerIdentity(input: {
   }
   return identity;
 }
-
 export async function createRemoteCommand(input: {
   ownerId: string;
   grantId: string;
@@ -232,7 +222,6 @@ export async function createRemoteCommand(input: {
   if (!result) throw new Error("Secure remote command signing is unavailable.");
   return result;
 }
-
 export async function acknowledgeRemoteCommandEnqueue(input: {
   ownerId: string;
   controllerDeviceId: string;
@@ -252,7 +241,9 @@ export async function acknowledgeRemoteCommandEnqueue(input: {
     }
     return result.acknowledged;
   }
-  const result = await invokeDesktopBridgeRequest<{ acknowledged: boolean }>({
+  const result = await invokeDesktopBridgeRequest<{
+    acknowledged: boolean;
+  }>({
     rpcMethod: "remoteControllerAcknowledgeEnqueue",
     ipcChannel: "remoteController:acknowledgeEnqueue",
     params: input,
@@ -261,14 +252,17 @@ export async function acknowledgeRemoteCommandEnqueue(input: {
     throw new Error("Secure remote enqueue acknowledgement is unavailable.");
   return result.acknowledged;
 }
-
 export async function openRemoteCommandResult(input: {
   ownerId: string;
   controllerDeviceId: string;
   envelope: EncryptedRemoteControlEnvelope;
   command: SignedRemoteCommand;
   targetIdentity: RemoteTargetPublicIdentity;
-}): Promise<{ status: string; result?: RemoteJsonValue; errorCode?: string }> {
+}): Promise<{
+  status: string;
+  result?: RemoteJsonValue;
+  errorCode?: string;
+}> {
   if (isUnsupportedNativeIOS()) {
     throw new Error(
       "Secure mobile result decryption is unavailable until the native iOS plugin is installed.",
@@ -293,14 +287,16 @@ export async function openRemoteCommandResult(input: {
     throw new Error("Secure remote result decryption is unavailable.");
   return result;
 }
-
 export async function openRemoteCommandStartReceipt(input: {
   ownerId: string;
   controllerDeviceId: string;
   envelope: EncryptedRemoteControlEnvelope;
   command: SignedRemoteCommand;
   targetIdentity: RemoteTargetPublicIdentity;
-}): Promise<{ startedAt: number; executionId: string }> {
+}): Promise<{
+  startedAt: number;
+  executionId: string;
+}> {
   if (isUnsupportedNativeIOS()) {
     throw new Error(
       "Secure mobile start receipt verification is unavailable until the native iOS plugin is installed.",
@@ -327,7 +323,6 @@ export async function openRemoteCommandStartReceipt(input: {
   }
   return result;
 }
-
 export async function clearRemoteControllerSessionState(input: {
   ownerId: string;
   controllerDeviceId: string;
@@ -345,7 +340,9 @@ export async function clearRemoteControllerSessionState(input: {
     }
     return result.cleared;
   }
-  const result = await invokeDesktopBridgeRequest<{ cleared: boolean }>({
+  const result = await invokeDesktopBridgeRequest<{
+    cleared: boolean;
+  }>({
     rpcMethod: "remoteControllerClearSessionState",
     ipcChannel: "remoteController:clearSessionState",
     params: input,

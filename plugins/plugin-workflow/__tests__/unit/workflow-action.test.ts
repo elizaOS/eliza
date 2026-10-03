@@ -55,7 +55,8 @@ const administrationMethods = [
 
 function serviceHarness() {
   const service = {
-    generateWorkflowDraft: mock(async () => workflow),
+    generateWorkflowDraft: mock(async () => ({ ...workflow, id: undefined })),
+    deployWorkflowDefinition: mock(async () => workflow),
     modifyWorkflowDraft: mock(async () => ({ ...workflow, name: 'Edited brief' })),
     deployWorkflow: mock(async () => ({
       id: workflowId,
@@ -71,7 +72,20 @@ function serviceHarness() {
     deactivateWorkflow: mock(async () => workflow),
     deleteWorkflow: mock(async () => undefined),
     startWorkflow: mock(async () => execution),
-    cancelExecution: mock(async () => ({ ...execution, status: 'cancelled' as const })),
+    getExecutionDetail: mock(async () => execution),
+    cancelExecutionWithReceipt: mock(async () => ({
+      execution: {
+        ...execution,
+        status: 'cancelled' as const,
+        cancellationRequestedAt: execution.startedAt,
+      },
+      request: { requestedAt: execution.startedAt, replayed: false },
+    })),
+    cancelExecution: mock(async () => ({
+      ...execution,
+      status: 'cancelled' as const,
+      cancellationRequestedAt: execution.startedAt,
+    })),
     getWorkflowExecutions: mock(async () => [execution]),
     getWorkflowRevisions: mock(async () => [{ id: 'revision-1' }]),
     restoreWorkflowRevision: mock(async () => workflow),
@@ -134,13 +148,17 @@ describe('WORKFLOW chat action', () => {
 
     expect(created.success).toBe(true);
     expect(service.generateWorkflowDraft).toHaveBeenCalledWith('Daily brief', { userId: ownerId });
-    expect(service.deployWorkflow).toHaveBeenCalledWith(workflow, ownerId, { activate: false });
+    expect(service.deployWorkflowDefinition).toHaveBeenCalledWith(
+      { ...workflow, id: undefined },
+      ownerId,
+      { activate: false }
+    );
     expect(created.data).toEqual({
       workflow,
       widget: { type: 'workflow', workflowId },
     });
     expect(callback).toHaveBeenCalledWith({
-      text: 'Created “Daily brief” as an inactive Smithers workflow.',
+      text: 'Created “Daily brief” as an inactive Smithers workflow (workflow-1, version version-1).',
       action: 'WORKFLOW',
       metadata: { workflowId },
     });
@@ -178,16 +196,13 @@ describe('WORKFLOW chat action', () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain('[WORKFLOW]');
     expect(result.text).toContain('"nodeId":"collect"');
-    expect(result.data).toEqual({
+    expect(result.data).toMatchObject({
       execution,
       widget: { type: 'workflow-run', workflowId, runId: executionId },
     });
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'WORKFLOW',
-        metadata: { workflowId, runId: executionId },
-      })
-    );
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(result.modelReplyRequired).toBeUndefined();
+    expect(result.effectReceipts?.[0].outcome).toBe('preview');
   });
 
   test('dispatches every administration operation with canonical ownership', async () => {
@@ -230,20 +245,6 @@ describe('WORKFLOW chat action', () => {
         data: { workflow },
       },
       {
-        parameters: { action: 'delete', workflowId },
-        method: 'deleteWorkflow',
-        args: [workflowId, ownerId],
-        text: 'Workflow deleted.',
-        data: { workflowId },
-      },
-      {
-        parameters: { action: 'cancel_run', executionId: ` ${executionId} ` },
-        method: 'cancelExecution',
-        args: [executionId, ownerId],
-        text: `Cancellation requested for ${executionId}.`,
-        data: { execution: { ...execution, status: 'cancelled' } },
-      },
-      {
         parameters: { action: 'executions', workflowId, limit: 999 },
         method: 'getWorkflowExecutions',
         args: [workflowId, 50, ownerId],
@@ -278,7 +279,7 @@ describe('WORKFLOW chat action', () => {
       const callback = mock(async () => undefined);
       const result = await run(service, testCase.parameters, callback);
 
-      expect(result).toEqual({ success: true, text: testCase.text, data: testCase.data });
+      expect(result).toMatchObject({ success: true, text: testCase.text, data: testCase.data });
       expect(service[testCase.method]).toHaveBeenCalledTimes(1);
       expect(service[testCase.method]).toHaveBeenCalledWith(...testCase.args);
       for (const method of administrationMethods) {
@@ -293,9 +294,30 @@ describe('WORKFLOW chat action', () => {
     }
   });
 
+  test('cancellation scopes durable request proof below a pending preview', async () => {
+    const service = serviceHarness();
+    const fresh = await run(service, { action: 'cancel_run', executionId });
+    expect(fresh.effectReceipts?.[0]).toMatchObject({
+      operation: 'workflow.run.cancel',
+      outcome: 'preview',
+    });
+    expect(fresh.data?.cancellationRequestReceipt).toMatchObject({ outcome: 'applied' });
+    service.cancelExecutionWithReceipt = mock(async () => ({
+      execution: { ...execution, status: 'finished' as const, finished: true },
+      request: null,
+    }));
+    const terminal = await run(service, { action: 'cancel_run', executionId });
+    expect(terminal.effectReceipts).toBeUndefined();
+    expect(terminal.text).toContain('no cancellation request was recorded');
+  });
+
   test('rejects invalid administration input and returns visible service failures', async () => {
     const service = serviceHarness();
 
+    const denied = await run(service, { action: 'delete', workflowId });
+    expect(denied.success).toBe(false);
+    expect(denied.effectReceipts).toEqual([]);
+    expect(service.deleteWorkflow).not.toHaveBeenCalled();
     expect((await run(service, {})).text).toContain('action is required');
     expect((await run(service, { action: 'get' })).text).toBe('workflowId is required.');
     expect((await run(service, { action: 'cancel_run' })).text).toBe('executionId is required.');

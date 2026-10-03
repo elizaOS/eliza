@@ -9,7 +9,7 @@
  *
  * Gated on `LinuxTesseractOcrService.isAvailable()`: it runs when tesseract is
  * resolvable (on PATH, via `ELIZA_TESSERACT_BIN`, or the vendored bundle at
- * `ELIZA_VISION_VENDOR_DIR` — see `scripts/vendor-tesseract-linux.mjs`) and
+ * `ELIZA_VISION_VENDOR_DIR` — see `packages/scripts/plugins/plugin-vision/vendor-tesseract-linux.ts`) and
  * skips cleanly otherwise, so CI without the bundle stays green.
  */
 

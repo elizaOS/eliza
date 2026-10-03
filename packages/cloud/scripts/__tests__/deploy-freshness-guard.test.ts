@@ -1,33 +1,71 @@
 /**
  * Exercises the cloud deploy freshness guard (#14083): stale zombie-run deploys
- * must be skipped, but every ambiguous signal must fail open and deploy.
+ * must be skipped, but every ambiguous signal must fail open and deploy, and a
+ * newer served build absent from the canonical branch never suppresses a
+ * protected release (#27229).
  */
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
+import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.ts";
 import {
   decideDeployFreshness,
   fetchServedCommit,
   parseServedCommit,
-} from "../deploy-freshness-guard.mjs";
-import { isAncestor } from "../deploy-freshness-guard-cli.mjs";
+} from "../deploy-freshness-guard.ts";
+import {
+  isAncestor,
+  isServedCommitOnCanonicalRef,
+} from "../deploy-freshness-guard-cli.ts";
 
 const RUN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SERVED = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 describe("decideDeployFreshness — the narrow SKIP case", () => {
-  it("SKIPS when the run SHA is an ancestor of the served commit (stale zombie run)", () => {
+  it("SKIPS when the run SHA is an ancestor of an attested served commit (stale zombie run)", () => {
     const result = decideDeployFreshness({
       runSha: RUN,
       servedCommit: SERVED,
       isAncestor: () => true,
+      isServedCommitOnCanonical: (commit) => commit === SERVED,
     });
     expect(result.decision).toBe("skip");
     expect(result.reason).toBe("stale_run");
     expect(result.runSha).toBe(RUN);
     expect(result.servedCommit).toBe(SERVED);
+  });
+});
+
+describe("decideDeployFreshness — unattested served builds never suppress a release (#27229)", () => {
+  it("deploys over a newer served commit that is absent from the canonical branch", () => {
+    const result = decideDeployFreshness({
+      runSha: RUN,
+      servedCommit: SERVED,
+      isAncestor: () => true,
+      isServedCommitOnCanonical: () => false,
+    });
+    expect(result.decision).toBe("deploy");
+    expect(result.reason).toBe("served_commit_unattested");
+  });
+
+  it("deploys when canonical membership cannot be proven", () => {
+    for (const isServedCommitOnCanonical of [
+      () => null,
+      () => {
+        throw new Error("ls-remote failed");
+      },
+      undefined,
+    ]) {
+      const result = decideDeployFreshness({
+        runSha: RUN,
+        servedCommit: SERVED,
+        isAncestor: () => true,
+        isServedCommitOnCanonical,
+      });
+      expect(result.decision).toBe("deploy");
+      expect(result.reason).toBe("served_attestation_unknown");
+    }
   });
 });
 
@@ -235,18 +273,33 @@ describe("isAncestor — shallow checkout hydration", () => {
     execFileSync("git", ["config", "user.name", "Deploy Guard Test"], {
       cwd: origin,
     });
-    const commits: string[] = [];
+    const records: string[] = [];
     for (let i = 0; i < commitCount; i += 1) {
-      execFileSync("git", ["commit", "--allow-empty", "-m", `commit ${i}`], {
-        cwd: origin,
-        stdio: "ignore",
-      });
-      commits.push(
-        execFileSync("git", ["rev-parse", "HEAD"], { cwd: origin })
-          .toString()
-          .trim(),
+      const message = `commit ${i}`;
+      records.push(
+        "commit refs/heads/main",
+        `mark :${i + 1}`,
+        `committer Deploy Guard Test <test@example.com> ${i + 1} +0000`,
+        `data ${Buffer.byteLength(message)}`,
+        message,
+        ...(i > 0 ? [`from :${i}`] : []),
+        "",
       );
     }
+    execFileSync("git", ["fast-import", "--quiet"], {
+      cwd: origin,
+      input: `${records.join("\n")}\n`,
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    execFileSync("git", ["symbolic-ref", "HEAD", "refs/heads/main"], {
+      cwd: origin,
+    });
+    const commits = execFileSync("git", ["rev-list", "--reverse", "HEAD"], {
+      cwd: origin,
+    })
+      .toString()
+      .trim()
+      .split("\n");
     return { origin, commits };
   }
 
@@ -378,6 +431,73 @@ describe("isAncestor — shallow checkout hydration", () => {
       process.chdir(clone);
 
       expect(isAncestor(commits.at(-1) ?? "", RUN)).toBeNull();
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  it("redeploys over a newer served upload built off the canonical branch (#27229)", () => {
+    const root = mkdtempSync(join(tmpdir(), "deploy-freshness-guard-"));
+    const clone = join(root, "clone");
+    const previousCwd = process.cwd();
+
+    try {
+      const { origin, commits } = createLinearOrigin(root, 3);
+      const canonicalHead = commits.at(-1) ?? "";
+      // An operator upload from a side branch that descends from the canonical
+      // head: newer than the release, but never merged to the canonical ref.
+      execFileSync("git", ["checkout", "-b", "operator-upload"], {
+        cwd: origin,
+        stdio: "ignore",
+      });
+      execFileSync("git", ["commit", "--allow-empty", "-m", "upload"], {
+        cwd: origin,
+        stdio: "ignore",
+      });
+      const uploaded = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: origin,
+      })
+        .toString()
+        .trim();
+      execFileSync("git", ["checkout", "main"], {
+        cwd: origin,
+        stdio: "ignore",
+      });
+      shallowClone(origin, clone);
+      process.chdir(clone);
+
+      expect(isServedCommitOnCanonicalRef(uploaded, "refs/heads/main")).toBe(
+        false,
+      );
+      expect(isServedCommitOnCanonicalRef(commits[1], "refs/heads/main")).toBe(
+        true,
+      );
+      expect(
+        isServedCommitOnCanonicalRef(uploaded, "refs/heads/main", () => {
+          throw new Error("remote unavailable");
+        }),
+      ).toBeNull();
+
+      const unattested = decideDeployFreshness({
+        runSha: canonicalHead,
+        servedCommit: uploaded,
+        isAncestor,
+        isServedCommitOnCanonical: (commit) =>
+          isServedCommitOnCanonicalRef(commit, "refs/heads/main"),
+      });
+      expect(unattested.decision).toBe("deploy");
+      expect(unattested.reason).toBe("served_commit_unattested");
+
+      const stale = decideDeployFreshness({
+        runSha: commits[0],
+        servedCommit: canonicalHead,
+        isAncestor,
+        isServedCommitOnCanonical: (commit) =>
+          isServedCommitOnCanonicalRef(commit, "refs/heads/main"),
+      });
+      expect(stale.decision).toBe("skip");
+      expect(stale.reason).toBe("stale_run");
     } finally {
       process.chdir(previousCwd);
       rmSync(root, { recursive: true, force: true });

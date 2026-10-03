@@ -1,6 +1,6 @@
 /**
- * Verifies MCP billable-resource cancellation cannot reach the service unless
- * the final current-session OWNER/ADMIN authority gate succeeds.
+ * Verifies MCP billing tools advertise and enforce capability-specific access,
+ * including a final current-session authority check before cancellation.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -34,12 +34,37 @@ mock.module("../cloud-capabilities", () => ({
   executeCloudCapabilityRest: mock(),
   getCloudCapabilities: () => [
     {
+      id: "billing.active_resources",
+      summary: "List active resources.",
+      auth: { modes: ["session", "api_key"] },
+      surfaces: {
+        rest: { method: "GET", path: "/api/v1/billing/resources" },
+        mcp: { tool: "cloud.billing.active_resources" },
+      },
+    },
+    {
       id: "billing.cancel_resource",
       summary: "Stop future billing.",
       auth: { modes: ["session"], organizationRoles: ["owner", "admin"] },
       surfaces: {
         rest: { method: "POST", path: "/api/v1/billing/resources/:id/cancel" },
         mcp: { tool: "cloud.billing.cancel_resource" },
+      },
+    },
+    {
+      summary: "Use platform MCP.",
+      auth: { modes: ["session", "api_key", "admin"] },
+      surfaces: {
+        rest: { method: "POST", path: "/api/mcp" },
+        mcp: { tool: "cloud.mcp.platform" },
+      },
+    },
+    {
+      summary: "Administer users.",
+      auth: { modes: ["admin"], adminOnly: true },
+      surfaces: {
+        rest: { method: "GET", path: "/api/v1/admin/users" },
+        mcp: { tool: "cloud.admin.users" },
       },
     },
   ],
@@ -114,6 +139,20 @@ describe("platform MCP billing cancellation authority", () => {
         idempotencyKey: { type: "string", minLength: 8, maxLength: 128 },
       },
     });
+    expect(tool?.access).toEqual({ effect: "mutation", authority: "billing_manager" });
+    expect(
+      listPlatformCloudMcpTools().find(
+        (candidate) => candidate.name === "cloud.billing.active_resources",
+      )?.access,
+    ).toEqual({ effect: "read", authority: "member" });
+  });
+
+  test("mixed admin auth modes remain member-authorized unless adminOnly is explicit", () => {
+    const tools = listPlatformCloudMcpTools();
+    expect(tools.find((tool) => tool.name === "cloud.mcp.platform")?.access.authority).toBe(
+      "member",
+    );
+    expect(tools.find((tool) => tool.name === "cloud.admin.users")?.access.authority).toBe("admin");
   });
 
   test("uses the current authorized tenant and rechecks before infrastructure", async () => {

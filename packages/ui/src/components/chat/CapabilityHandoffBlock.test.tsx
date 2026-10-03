@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Verifies the real capability-handoff card records continuation and navigates within the app without opening an external browser. */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
 import {
   cleanup,
   fireEvent,
@@ -31,15 +31,12 @@ const request: CapabilityHandoffRequest = {
   },
   continuation: { originalIntent: "Move tomorrow's meeting to 3." },
 };
-
 describe("CapabilityHandoffBlock", () => {
   afterEach(cleanup);
-
   beforeEach(() => {
     window.sessionStorage.clear();
     window.history.replaceState(null, "", "/");
   });
-
   it("shows concise value and preserves explicit review after same-app setup", async () => {
     const opened = vi.spyOn(window, "open");
     const navigate = vi.fn((_event: Event) => true);
@@ -65,14 +62,11 @@ describe("CapabilityHandoffBlock", () => {
     ).toContain("Move tomorrow's meeting to 3.");
     stopListening();
   });
-
   it("clears the continuation when contained setup is unavailable", async () => {
     render(<CapabilityHandoffBlock request={request} />);
-
     fireEvent.click(
       screen.getByRole("button", { name: "Set up personal workspace" }),
     );
-
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Setup can’t open inside this app yet",
     );

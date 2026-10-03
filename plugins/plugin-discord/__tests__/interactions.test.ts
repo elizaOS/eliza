@@ -73,6 +73,20 @@ describe("renderDiscordInteractions", () => {
 		});
 	});
 
+	it("surfaces choice labels over Discord's 80-character limit as prose", () => {
+		const longLabel =
+			"Deploy the production release candidate to the primary cluster and notify the on-call team";
+		const out = renderDiscordInteractions({
+			text: `Which release?\n[CHOICE:deploy]\na=${longLabel}\nb=Cancel\n[/CHOICE]`,
+		} as Content);
+		expect(out.components).toHaveLength(1);
+		expect(out.components[0].components.map((c) => c.label)).toEqual([
+			"Cancel",
+		]);
+		expect(out.text).toContain(`More options (reply with one): ${longLabel}`);
+		expect(out.needsFreeTextReply).toBe(true);
+	});
+
 	it("uses Discord's 100-byte custom_id budget for longer callback values", () => {
 		const value = "x".repeat(74);
 		const content: Content = {

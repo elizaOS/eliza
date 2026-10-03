@@ -18,7 +18,6 @@ import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { Input } from "../ui/input";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
-import { PendantSettingsCard } from "./PendantSettingsCard";
 import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
@@ -122,7 +121,7 @@ export interface VoiceSectionPrefs {
 }
 
 export interface VoiceSectionProps {
-  /** Hardware tier from I9 (null falls back to "GOOD"). */
+  /** Assessed hardware tier; null never implies a successful assessment. */
   tier: VoiceDeviceTier | null;
   /** Optional summary line for the tier banner. */
   tierSummary?: string;
@@ -194,15 +193,11 @@ export function VoiceSection({
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
         {leadingContent}
-        <SettingsGroup bare>
-          <VoiceTierBanner
-            tier={tier ?? "GOOD"}
-            summary={tierSummary}
-            compact
-          />
-        </SettingsGroup>
-
-        <PendantSettingsCard />
+        {tier !== null ? (
+          <SettingsGroup bare>
+            <VoiceTierBanner tier={tier} summary={tierSummary} compact />
+          </SettingsGroup>
+        ) : null}
 
         <SettingsGroup
           title={t("voicesection.chatGroupTitle", {
@@ -364,7 +359,7 @@ export function VoiceSection({
           reads those keys, so they were dead privacy opt-ins. The first-line
           cache implementation exists (`wrapWithFirstLineCache`, wired
           unconditionally via
-          packages/app-core/src/runtime/tts-cache-wiring.ts →
+          packages/app/src/runtime/tts-cache-wiring.ts →
           tts-provider-registry.ts) but does not consult the setting; gate that
           consumer on `messages.voice.cloudFirstLineCache` before re-adding the
           toggle. `autoLearnVoices` has no consumer anywhere — build the

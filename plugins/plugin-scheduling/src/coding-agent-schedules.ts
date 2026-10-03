@@ -186,7 +186,7 @@ function readRuntimeSetting(
 }
 
 function readGitHubToken(runtime: IAgentRuntime): string | null {
-  // Keep this fallback local: plugin-scheduling cannot import app-core's
+  // Keep this fallback local: plugin-scheduling cannot import app's
   // local credential store, but the live coding stack accepts GH_PAT for the
   // same GitHub bearer credential. GITHUB_TOKEN remains the explicit winner.
   return (

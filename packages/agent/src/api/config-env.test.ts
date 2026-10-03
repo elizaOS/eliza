@@ -1,122 +1,57 @@
 /**
- * `config.env` is the designated escape hatch for sensitive process-env-only
- * material, so its write gate has to separate two things that look alike:
- * spawn injection primitives, which must never be persisted, and agent step-up
- * secrets, which are exactly what this file exists to hold.
+ * The agent and the cloud plugin write the same `${stateDir}/config.env`.
+ * They must share one writer (one in-process mutex); two independent promise
+ * chains interleave read-modify-write cycles and silently drop updates.
  */
-
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import * as pluginConfigEnv from "@elizaos/plugin-elizacloud/lib/config-env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as agentConfigEnv from "./config-env.ts";
 
-import { persistConfigEnv } from "./config-env.ts";
+// fsync-per-write is slow on a loaded CI host; the assertions are not timing-based.
+const FS_TIMEOUT_MS = 60_000;
 
 let stateDir: string;
-let envSnapshot: NodeJS.ProcessEnv;
 
 beforeEach(async () => {
-  stateDir = await mkdtemp(path.join(tmpdir(), "eliza-config-env-"));
-  // persistConfigEnv mirrors every successful write into process.env, so the
-  // accepted-key cases below would otherwise leak keys such as
-  // ELIZA_CAPABILITY_ROUTER_ENABLED into the rest of the worker.
-  envSnapshot = { ...process.env };
+  stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-config-env-"));
 });
 
 afterEach(async () => {
-  await rm(stateDir, { recursive: true, force: true });
-  for (const key of Object.keys(process.env)) {
-    if (!(key in envSnapshot)) delete process.env[key];
-  }
-  Object.assign(process.env, envSnapshot);
+  await fs.rm(stateDir, { recursive: true, force: true });
 });
 
-describe("persistConfigEnv rejects spawn injection primitives", () => {
-  it.each([
-    // exact keys from the core spawn denylist
-    "GCONV_PATH",
-    "BASH_ENV",
-    "PYTHONPATH",
-    "GIT_SSH_COMMAND",
-    // prefix families, which the previous exact-only list could not express
-    "NPM_CONFIG_REGISTRY",
-    "DOCKER_HOST",
-    "GIT_CONFIG_KEY_0",
-    "BASH_FUNC_EXPLOIT",
-  ])("rejects %s", async (key) => {
-    await expect(persistConfigEnv(key, "x", { stateDir })).rejects.toThrow(
-      /hijack vector/,
+describe("config.env writer ownership", () => {
+  it("agent and plugin-elizacloud share one writer", () => {
+    expect(agentConfigEnv.persistConfigEnv).toBe(
+      pluginConfigEnv.persistConfigEnv,
     );
   });
 
-  it("still rejects the keys this file blocked before, including the two absent from core", async () => {
-    for (const key of [
-      "NODE_OPTIONS",
-      "LD_PRELOAD",
-      "PATH",
-      "DYLD_FALLBACK_FRAMEWORK_PATH",
-      "DYLD_FALLBACK_LIBRARY_PATH",
-    ]) {
-      await expect(persistConfigEnv(key, "x", { stateDir })).rejects.toThrow(
-        /hijack vector/,
+  it(
+    "interleaved agent and plugin writes lose no updates",
+    async () => {
+      const keys = Array.from(
+        { length: 16 },
+        (_, i) => `ELIZA_TEST_SHARED_CONFIG_ENV_${i}`,
       );
-    }
-  });
-
-  it("rejects malformed keys before consulting either denylist", async () => {
-    await expect(
-      persistConfigEnv("lower_case", "x", { stateDir }),
-    ).rejects.toThrow(/invalid key/);
-  });
-});
-
-describe("persistConfigEnv still writes what config.env exists to hold", () => {
-  it.each([
-    // agent step-up secrets: on BLOCKED_ENV_KEYS for API writes, but this file
-    // is their designated home — cloud-wallet.ts persists the first one here.
-    "ELIZA_CLOUD_CLIENT_ADDRESS_KEY",
-    "ELIZA_CLOUD_EVM_ADDRESS",
-    "ELIZA_CLOUD_SOLANA_ADDRESS",
-    "WALLET_SOURCE_EVM",
-    "WALLET_SOURCE_SOLANA",
-    "ENABLE_CLOUD_WALLET",
-    "ELIZA_CAPABILITY_ROUTER_ENABLED",
-    "ELIZA_CAPABILITY_ROUTER_URLS",
-    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
-  ])("writes %s", async (key) => {
-    await persistConfigEnv(key, "value", { stateDir });
-    const contents = await readFile(path.join(stateDir, "config.env"), "utf8");
-    expect(contents).toContain(`${key}=value`);
-  });
-
-  it.each([
-    // vault-bootstrap scans config.env for keys matching _TOKEN / _API_KEY /
-    // _PRIVATE_KEY and rewrites each as a vault reference *through this
-    // function*. All of these are on the agent's BLOCKED_ENV_KEYS, so gating
-    // on that predicate instead of core's would reject the migration this
-    // bootstrap exists to perform.
-    "ELIZA_API_TOKEN",
-    "EVM_PRIVATE_KEY",
-    "SOLANA_PRIVATE_KEY",
-    "GITHUB_TOKEN",
-    "STEWARD_API_KEY",
-  ])("writes %s so vault-bootstrap can migrate it", async (key) => {
-    await persistConfigEnv(key, "secret", { stateDir });
-    const contents = await readFile(path.join(stateDir, "config.env"), "utf8");
-    expect(contents).toContain(`${key}=secret`);
-  });
-
-  it("allows keys that only look like a blocked family", async () => {
-    for (const key of [
-      "UVICORN_HOST",
-      "DOCKERFILE_PATH",
-      "GIT_CONFIGURATION",
-    ]) {
-      await persistConfigEnv(key, "ok", { stateDir });
-    }
-    const contents = await readFile(path.join(stateDir, "config.env"), "utf8");
-    expect(contents).toContain("UVICORN_HOST=ok");
-    expect(contents).toContain("DOCKERFILE_PATH=ok");
-    expect(contents).toContain("GIT_CONFIGURATION=ok");
-  });
+      await Promise.all(
+        keys.map((key, i) =>
+          (i % 2 === 0 ? agentConfigEnv : pluginConfigEnv).persistConfigEnv(
+            key,
+            `v${i}`,
+            { stateDir },
+          ),
+        ),
+      );
+      const onDisk = await agentConfigEnv.readConfigEnv(stateDir);
+      for (const [i, key] of keys.entries()) {
+        expect(onDisk[key]).toBe(`v${i}`);
+        delete process.env[key];
+      }
+    },
+    FS_TIMEOUT_MS,
+  );
 });

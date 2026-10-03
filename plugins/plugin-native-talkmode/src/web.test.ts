@@ -49,17 +49,26 @@ class FakeUtterance {
 }
 
 function setWindow(value: Record<string, unknown>): void {
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("window", value);
 }
 
 function setNavigator(value: Partial<Navigator>): void {
-  Object.defineProperty(globalThis, "navigator", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("navigator", value);
+}
+
+function speechFixture() {
+  const utterances: FakeUtterance[] = [];
+  const synthesis = {
+    cancel: vi.fn(),
+    speaking: false,
+    speak: vi.fn((value: FakeUtterance) => {
+      utterances.push(value);
+    }),
+  };
+  setWindow({ SpeechRecognition: FakeRecognition, speechSynthesis: synthesis });
+  setNavigator({});
+  vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+  return { plugin: new TalkModeWeb(), utterances, synthesis };
 }
 
 describe("TalkModeWeb fallback", () => {
@@ -318,21 +327,7 @@ describe("TalkModeWeb fallback", () => {
   );
 
   it("restarts the recognizer when the session ends mid-utterance while speaking (issue #22369)", async () => {
-    const utterances: FakeUtterance[] = [];
-    const synthesis = {
-      cancel: vi.fn(),
-      speaking: false,
-      speak: vi.fn((value: FakeUtterance) => {
-        utterances.push(value);
-      }),
-    };
-    setWindow({
-      SpeechRecognition: FakeRecognition,
-      speechSynthesis: synthesis,
-    });
-    setNavigator({});
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    const plugin = new TalkModeWeb();
+    const { plugin, utterances } = speechFixture();
     const transcripts = vi.fn();
     await plugin.addListener("transcript", transcripts);
 
@@ -377,21 +372,7 @@ describe("TalkModeWeb fallback", () => {
   });
 
   it("does not resurrect listening when an utterance ends after stop() (#27977)", async () => {
-    const utterances: FakeUtterance[] = [];
-    const synthesis = {
-      cancel: vi.fn(),
-      speaking: false,
-      speak: vi.fn((value: FakeUtterance) => {
-        utterances.push(value);
-      }),
-    };
-    setWindow({
-      SpeechRecognition: FakeRecognition,
-      speechSynthesis: synthesis,
-    });
-    setNavigator({});
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    const plugin = new TalkModeWeb();
+    const { plugin, utterances, synthesis } = speechFixture();
     const complete = vi.fn();
     await plugin.addListener("speakComplete", complete);
 
@@ -428,21 +409,7 @@ describe("TalkModeWeb fallback", () => {
   });
 
   it("returns to listening when stopSpeaking() interrupts a live session and the utterance ends late", async () => {
-    const utterances: FakeUtterance[] = [];
-    const synthesis = {
-      cancel: vi.fn(),
-      speaking: false,
-      speak: vi.fn((value: FakeUtterance) => {
-        utterances.push(value);
-      }),
-    };
-    setWindow({
-      SpeechRecognition: FakeRecognition,
-      speechSynthesis: synthesis,
-    });
-    setNavigator({});
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    const plugin = new TalkModeWeb();
+    const { plugin, utterances, synthesis } = speechFixture();
 
     await expect(plugin.start()).resolves.toEqual({ started: true });
     const speaking = plugin.speak({ text: "A long reply the user cuts off." });
@@ -500,21 +467,7 @@ describe("TalkModeWeb fallback", () => {
   });
 
   it("keeps the idle teardown state when a cancelled utterance errors after stop()", async () => {
-    const utterances: FakeUtterance[] = [];
-    const synthesis = {
-      cancel: vi.fn(),
-      speaking: false,
-      speak: vi.fn((value: FakeUtterance) => {
-        utterances.push(value);
-      }),
-    };
-    setWindow({
-      SpeechRecognition: FakeRecognition,
-      speechSynthesis: synthesis,
-    });
-    setNavigator({});
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    const plugin = new TalkModeWeb();
+    const { plugin, utterances } = speechFixture();
 
     await expect(plugin.start()).resolves.toEqual({ started: true });
     const speaking = plugin.speak({ text: "Here is your answer." });

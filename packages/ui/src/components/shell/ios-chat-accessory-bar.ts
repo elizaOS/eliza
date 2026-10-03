@@ -4,7 +4,7 @@
  * restore cannot be overtaken by an earlier hide.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "../../logger.ts";
 
 import { isIOS, isNative } from "../../platform/init";
 

@@ -14,7 +14,7 @@
  * first load renders a compact route to the wallet's detailed error state.
  */
 
-import type { WalletBalancesResponse } from "@elizaos/shared";
+import type { WalletBalancesResponse } from "@elizaos/core/contracts/wallet-types";
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
@@ -30,17 +30,27 @@ import {
 } from "./wallet-price-holdings";
 
 /** Price refresh cadence; the server caches market overview 120s so this is cheap. */
-const REFRESH_INTERVAL_MS = 60_000;
-
+const REFRESH_INTERVAL_MS = 60000;
 const DEFAULT_SPAN = "col-span-2 row-span-1";
-
-type RefreshResult<T> = { ok: true; value: T } | { ok: false };
-
+type RefreshResult<T> =
+  | {
+      ok: true;
+      value: T;
+    }
+  | {
+      ok: false;
+    };
 type WalletDisplayState =
-  | { status: "loading" }
-  | { status: "unavailable" }
-  | { status: "ready"; holdings: PricedHolding[] };
-
+  | {
+      status: "loading";
+    }
+  | {
+      status: "unavailable";
+    }
+  | {
+      status: "ready";
+      holdings: PricedHolding[];
+    };
 /** Format a unit price: more decimals for sub-dollar assets, 2 for the rest. */
 function formatPrice(priceUsd: number): string {
   const digits = priceUsd > 0 && priceUsd < 1 ? 6 : 2;
@@ -56,7 +66,6 @@ function formatPrice(priceUsd: number): string {
     return `$${priceUsd.toFixed(digits)}`;
   }
 }
-
 /** Signed 24h-change label, e.g. "+1.2%" / "-0.4%"; empty when ~0. */
 function formatChange(change24hPct: number): string {
   if (!Number.isFinite(change24hPct) || Math.abs(change24hPct) < 0.01)
@@ -64,7 +73,6 @@ function formatChange(change24hPct: number): string {
   const sign = change24hPct > 0 ? "+" : "";
   return `${sign}${change24hPct.toFixed(1)}%`;
 }
-
 export function WalletBalanceWidget(
   props: Partial<WidgetProps>,
 ): React.JSX.Element | null {
@@ -78,20 +86,17 @@ export function WalletBalanceWidget(
   const authenticated = useIsAuthenticated();
   const activeRef = useRef(true);
   const refreshSeqRef = useRef(0);
-
   useEffect(() => {
     activeRef.current = true;
     return () => {
       activeRef.current = false;
     };
   }, []);
-
   useEffect(() => {
     if (authenticated) return;
     refreshSeqRef.current += 1;
     setDisplayState({ status: "loading" });
   }, [authenticated]);
-
   // Prices (BTC/SOL/ETH + trending) come from the market-overview endpoint;
   // balances decide the held-vs-default branch. Both are fetched together and
   // best-effort (J4): either unavailable response hides the initial tile rather
@@ -146,12 +151,10 @@ export function WalletBalanceWidget(
         held.length > 0 ? held : selectDefaultPriceRows(overviewResult.value),
     });
   }, []);
-
   useEffect(() => {
     if (!authenticated) return;
     void refresh();
   }, [authenticated, refresh]);
-
   // Visibility-gated refresh: no requests fire while the app is backgrounded.
   useIntervalWhenDocumentVisible(
     () => {
@@ -160,9 +163,7 @@ export function WalletBalanceWidget(
     REFRESH_INTERVAL_MS,
     authenticated,
   );
-
   if (!authenticated) return null;
-
   // First load pending: a quiet placeholder keeps the grid cell stable.
   if (displayState.status === "loading") {
     return (
@@ -173,7 +174,6 @@ export function WalletBalanceWidget(
       />
     );
   }
-
   if (displayState.status === "unavailable") {
     return (
       <div className={spanClassName}>
@@ -194,10 +194,8 @@ export function WalletBalanceWidget(
       </div>
     );
   }
-
   const { holdings } = displayState;
   if (holdings.length === 0) return null;
-
   return (
     <div className={spanClassName}>
       <Button

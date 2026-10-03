@@ -17,7 +17,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+import { storageOperationPriceUsd } from "@/lib/constants/pricing";
 import {
   executeNativeStorageList,
   NativeStorageReadError,
@@ -76,12 +76,13 @@ app.get("/", async (c) => {
     const { prefix, recursive } = parsed.data;
 
     const trimmedPrefix = prefix.replace(/^\/+|\/+$/g, "");
+    const priceUsd = storageOperationPriceUsd("list");
     const result = await executeNativeStorageList({
       bucket,
       organizationId: organization_id,
       userId: user.id,
       rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
-      priceUsd: await getServiceMethodCost("storage", "list"),
+      priceUsd,
       prefix: trimmedPrefix,
       recursive,
       limit: MAX_LIST_RESULTS,
@@ -89,6 +90,7 @@ app.get("/", async (c) => {
     c.header("X-Storage-Receipt-Id", result.operation.id);
     return c.json(result.body);
   } catch (error) {
+    // error-policy:J1 transport boundary maps typed read failures to HTTP status.
     if (error instanceof NativeStorageReadError) {
       if (error.code === "INSUFFICIENT_CREDITS") {
         return c.json(

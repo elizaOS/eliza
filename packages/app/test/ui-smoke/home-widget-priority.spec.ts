@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Home Widget Priority app flow using the
  * real renderer fixture.
  */
+
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -26,11 +28,10 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 // inbox, workflow, feed, and orchestrator app/activity cards are intentionally
 // absent from the ranked home host.
 // Desktop + mobile screenshots land under
-// aesthetic-audit-output/home-widget-priority/.
+// test-results/aesthetic-audit/home-widget-priority/.
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
+const SCREENSHOT_DIR = testOutputPath(
+  "aesthetic-audit",
   "home-widget-priority",
 );
 
@@ -67,16 +68,6 @@ const VIEW_FIXTURES = [
     available: true,
     pluginName: "goals",
     tags: ["goals"],
-    desktopTabEnabled: true,
-  },
-  {
-    id: "finances",
-    label: "Finances",
-    description: "Finances view",
-    path: "/finances",
-    available: true,
-    pluginName: "finances",
-    tags: ["finances"],
     desktopTabEnabled: true,
   },
 ];
@@ -622,7 +613,6 @@ const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 const URGENT_TESTIDS = [TODAY_TESTID];
 const SEEDED_TESTIDS = [TODAY_TESTID, CALENDAR_TESTID];
 const REMOVED_HOME_TESTIDS = [
-  "chat-widget-finances-alerts",
   "chat-widget-relationships",
   "chat-widget-inbox-unread",
   "chat-widget-automations",

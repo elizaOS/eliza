@@ -19,16 +19,15 @@
  * owner-password boundary.
  */
 
-import type { CloudPairRelaySession } from "@elizaos/shared/contracts";
+import type { CloudPairRelaySession } from "@elizaos/core/contracts/cloud-pair";
 import {
   CloudPairExchangeError,
   exchangeAuthenticatedNativeCloudPairToken,
   persistCloudPairApiToken,
 } from "../components/auth/CloudPairRelay";
 
-const MAX_PAIRING_WAIT_MS = 120_000;
-const DEFAULT_RETRY_AFTER_MS = 5_000;
-
+const MAX_PAIRING_WAIT_MS = 120000;
+const DEFAULT_RETRY_AFTER_MS = 5000;
 interface PairingTokenResponse {
   data?: {
     redirectUrl?: string;
@@ -38,9 +37,12 @@ interface PairingTokenResponse {
   };
   error?: string;
 }
-
 export type AgentSessionRecoveryResult =
-  | { ok: true; redirectUrl: string; mode: "navigate" | "in-process" }
+  | {
+      ok: true;
+      redirectUrl: string;
+      mode: "navigate" | "in-process";
+    }
   | {
       ok: false;
       reason:
@@ -51,7 +53,6 @@ export type AgentSessionRecoveryResult =
         | "error";
       message: string;
     };
-
 export interface RunAgentSessionRecoveryDeps {
   /** Cloud control-plane base (boot config `cloudApiBase`). */
   cloudApiBase: string;
@@ -107,7 +108,6 @@ export interface RunAgentSessionRecoveryDeps {
   /** Optional callback after an in-process pair succeeds. */
   onPairedInProcess?: (apiToken: string) => void | Promise<void>;
 }
-
 const realSleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve) => {
     if (signal?.aborted) {
@@ -125,13 +125,11 @@ const realSleep = (ms: number, signal?: AbortSignal) =>
     const timeout = setTimeout(finish, ms);
     signal?.addEventListener("abort", finish, { once: true });
   });
-
 const cancelledResult = (): AgentSessionRecoveryResult => ({
   ok: false,
   reason: "cancelled",
   message: "Agent session recovery was cancelled",
 });
-
 /** Only absolute http(s) URLs are safe full-page navigation targets. */
 function isSafeRedirectUrl(value: string): boolean {
   try {
@@ -142,17 +140,13 @@ function isSafeRedirectUrl(value: string): boolean {
     return false;
   }
 }
-
 function retryAfterMs(res: Response, data: PairingTokenResponse): number {
   const fromBody = data.data?.retryAfterMs;
   if (typeof fromBody === "number" && fromBody > 0) return fromBody;
-
   const retryAfter = Number(res.headers.get("Retry-After"));
   if (Number.isFinite(retryAfter) && retryAfter > 0) return retryAfter * 1000;
-
   return DEFAULT_RETRY_AFTER_MS;
 }
-
 function pairTokenFromRedirectUrl(redirectUrl: string): string | null {
   try {
     const parsed = new URL(redirectUrl);
@@ -163,15 +157,16 @@ function pairTokenFromRedirectUrl(redirectUrl: string): string | null {
     return null;
   }
 }
-
-function classifyNativePairExchangeError(
-  error: unknown,
-): Extract<AgentSessionRecoveryResult, { ok: false }> {
+function classifyNativePairExchangeError(error: unknown): Extract<
+  AgentSessionRecoveryResult,
+  {
+    ok: false;
+  }
+> {
   const message = error instanceof Error ? error.message : String(error);
   if (!(error instanceof CloudPairExchangeError)) {
     return { ok: false, reason: "error", message };
   }
-
   if (
     error.code === "cloud_auth_required" ||
     error.code === "authentication_required" ||
@@ -179,7 +174,6 @@ function classifyNativePairExchangeError(
   ) {
     return { ok: false, reason: "unauthorized", message };
   }
-
   if (
     error.code === "sandbox_credential_unavailable" ||
     error.code === "access_denied" ||
@@ -188,10 +182,8 @@ function classifyNativePairExchangeError(
   ) {
     return { ok: false, reason: "manage-required", message };
   }
-
   return { ok: false, reason: "error", message };
 }
-
 /**
  * Poll the cloud pairing-token endpoint until it returns a redirect. Browsers
  * navigate through `/pair`; native callers consume its one-time token
@@ -223,12 +215,8 @@ export async function runAgentSessionRecovery(
     nowFn = Date.now,
     signal,
   } = deps;
-
   const base = cloudApiBase.replace(/\/+$/, "");
-  const url = `${base}/api/v1/eliza/agents/${encodeURIComponent(
-    agentId,
-  )}/pairing-token`;
-
+  const url = `${base}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`;
   const deadline = nowFn() + MAX_PAIRING_WAIT_MS;
   while (nowFn() < deadline) {
     if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
@@ -251,7 +239,6 @@ export async function runAgentSessionRecovery(
         message: err instanceof Error ? err.message : String(err),
       };
     }
-
     // error-policy:J3 malformed dependency JSON is converted to the route's
     // explicit unknown-error result rather than escaping the recovery runner.
     const data = (await res
@@ -260,7 +247,6 @@ export async function runAgentSessionRecovery(
     if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
       return cancelledResult();
     }
-
     if (res.status === 202) {
       const remainingMs = Math.max(0, deadline - nowFn());
       const waitMs = Math.min(retryAfterMs(res, data), remainingMs);
@@ -272,7 +258,6 @@ export async function runAgentSessionRecovery(
       if (signal?.aborted) return cancelledResult();
       continue;
     }
-
     if (res.status === 401) {
       // Cloud rejected the credential, so the caller may require a fresh login.
       // The purge remains opt-in: this response proves only the STEWARD
@@ -286,7 +271,6 @@ export async function runAgentSessionRecovery(
         message: data.error || `Unauthorized (HTTP ${res.status})`,
       };
     }
-
     const requiresCloudManagement =
       res.status === 402 ||
       res.status === 403 ||
@@ -308,7 +292,6 @@ export async function runAgentSessionRecovery(
           `Cloud agent requires attention (HTTP ${res.status})`,
       };
     }
-
     if (!res.ok) {
       return {
         ok: false,
@@ -317,7 +300,6 @@ export async function runAgentSessionRecovery(
           data.error || `Failed to generate pairing token (HTTP ${res.status})`,
       };
     }
-
     const redirectUrl = data.data?.redirectUrl;
     if (redirectUrl) {
       // Defense-in-depth (auth-adjacent): only navigate to an absolute http(s)
@@ -386,7 +368,6 @@ export async function runAgentSessionRecovery(
           return failure;
         }
       }
-
       // Hand off to the /pair relay in the current window: it pins the fresh
       // credential and redirects to `/`, clearing the stale-credential 401 loop.
       if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
@@ -395,14 +376,12 @@ export async function runAgentSessionRecovery(
       navigate(redirectUrl);
       return { ok: true, redirectUrl, mode: "navigate" };
     }
-
     return {
       ok: false,
       reason: "error",
       message: "No redirect URL returned from pairing token endpoint",
     };
   }
-
   return {
     ok: false,
     reason: "not-ready",

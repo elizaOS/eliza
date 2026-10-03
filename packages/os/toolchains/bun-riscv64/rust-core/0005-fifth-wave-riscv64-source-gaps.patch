@@ -1,0 +1,96 @@
+Subject: [PATCH] riscv64 Rust-core bun: arch arms for npm Architecture + Windows teb/peb (fifth wave)
+
+Two more Rust source sites that gate on target_arch without a riscv64 arm,
+surfaced once the cargo build reached bun's own crates:
+
+- src/install_types/resolver_hooks.rs — the npm `cpu`-field bitflag
+  `Architecture` (Node os.arch() vocabulary). `CURRENT` and `CURRENT_NAME` had
+  only aarch64/x86_64 arms and no catch-all, so on riscv64 the consts are `()`
+  (E0308; callers in install/PackageManager + install_jsc/npm_jsc use them
+  unconditionally). Add a `RISCV64` bit (1<<12), include it in `ALL_VALUE`, add
+  `b"riscv64" => RISCV64` to the name parser (so a package.json `cpu:
+  ["riscv64"]` resolves), and add the riscv64 `CURRENT`/`CURRENT_NAME` arms.
+
+- src/windows_sys/externs.rs — `teb()`/`peb()` read the Windows TEB/PEB via
+  x86_64 (`gs:`) / aarch64 (`x18`) inline asm with no catch-all, so the bodies
+  are `()` on riscv64 (E0308). `bun_windows_sys` is a workspace member and must
+  compile on every target, but these fns are never called off Windows. Add a
+  `not(any(x86_64, aarch64))` arm that `unreachable!()`s so the fn typechecks.
+
+All additive arch arms; mirror the existing 0002/0003 pattern.
+
+diff --git a/src/install_types/resolver_hooks.rs b/src/install_types/resolver_hooks.rs
+index fa685634..36ef0dc5 100644
+--- a/src/install_types/resolver_hooks.rs
++++ b/src/install_types/resolver_hooks.rs
+@@ -956,6 +956,7 @@ impl Architecture {
+     pub const S390X: u16 = 1 << 9;
+     pub const X32: u16 = 1 << 10;
+     pub const X64: u16 = 1 << 11;
++    pub const RISCV64: u16 = 1 << 12;
+
+     pub const ALL_VALUE: u16 = Self::ARM
+         | Self::ARM64
+@@ -967,17 +968,22 @@ impl Architecture {
+         | Self::S390
+         | Self::S390X
+         | Self::X32
+-        | Self::X64;
++        | Self::X64
++        | Self::RISCV64;
+
+     #[cfg(target_arch = "aarch64")]
+     pub const CURRENT: Self = Self(Self::ARM64);
+     #[cfg(target_arch = "x86_64")]
+     pub const CURRENT: Self = Self(Self::X64);
++    #[cfg(target_arch = "riscv64")]
++    pub const CURRENT: Self = Self(Self::RISCV64);
+
+     #[cfg(target_arch = "aarch64")]
+     pub const CURRENT_NAME: &'static str = "arm64";
+     #[cfg(target_arch = "x86_64")]
+     pub const CURRENT_NAME: &'static str = "x64";
++    #[cfg(target_arch = "riscv64")]
++    pub const CURRENT_NAME: &'static str = "riscv64";
+
+     #[inline]
+     pub const fn none() -> Self {
+@@ -1005,6 +1011,7 @@ negatable_names! { Architecture: u16 => [
+     b"arm" => ARM, b"ppc" => PPC, b"x32" => X32, b"x64" => X64,
+     b"ia32" => IA32, b"mips" => MIPS, b"s390" => S390,
+     b"arm64" => ARM64, b"ppc64" => PPC64, b"s390x" => S390X, b"mipsel" => MIPSEL,
++    b"riscv64" => RISCV64,
+ ] }
+
+ // ─── Repository (data) ────────────────────────────────────────────────────
+diff --git a/src/windows_sys/externs.rs b/src/windows_sys/externs.rs
+index f6c0770a..78ec6974 100644
+--- a/src/windows_sys/externs.rs
++++ b/src/windows_sys/externs.rs
+@@ -1608,6 +1608,14 @@ pub fn teb() -> *mut TEB {
+         core::arch::asm!("mov {}, x18", out(reg) p, options(nostack, pure, readonly));
+         p
+     }
++    // TEB is a Windows-x64/arm64 ABI concept. This crate is a workspace member
++    // so it must compile on every target (e.g. the riscv64-linux cross-build),
++    // but teb() is never called off Windows. Give the otherwise-empty body a
++    // diverging value so the fn typechecks without an x86_64/aarch64 arm.
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++    {
++        unreachable!("teb() is only valid on Windows x86_64/aarch64")
++    }
+ }
+
+ /// `std.os.windows.peb()` — reads `gs:[0x60]` (x64) / `TEB+0x60` (ARM64).
+@@ -1636,6 +1644,11 @@ pub fn peb() -> *const PEB {
+             .cast::<core::ffi::c_void>()
+             .cast::<*const PEB>()
+     }
++    // PEB is a Windows-x64/arm64 ABI concept; never read off Windows. See teb().
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++    {
++        unreachable!("peb() is only valid on Windows x86_64/aarch64")
++    }
+ }
+
+ // ── Console ctrl-handler dwCtrlType values (`wincon.h`) ───────────────────

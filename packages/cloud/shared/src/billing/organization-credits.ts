@@ -1,12 +1,18 @@
-/** Compatibility re-export for the public organization-credit contract. */
+/**
+ * Compatibility re-export for the public organization-credit contract.
+ */
 export {
+  checkoutAmountUsdToCents,
   formatOrganizationCreditUsd,
+  isOrganizationCreditTopUpAmount,
   LEGACY_MCP_POINTS_FRACTION_DIGITS,
   LEGACY_MCP_POINTS_PER_DOLLAR,
   legacyMcpPointsToOrganizationCredits,
   type McpUsageChargeReceipt,
   mcpUsageChargeReceiptFromLegacyPoints,
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
   ORGANIZATION_CREDIT_PRICING,
+  ORGANIZATION_CREDIT_TOP_UP_PRESETS_USD,
   ORGANIZATION_CREDIT_UNIT,
   ORGANIZATION_CREDIT_USD_PRECISION,
   ORGANIZATION_CREDITS_PER_DOLLAR,

@@ -4,7 +4,7 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarSourceAdministrationSnapshot } from "@elizaos/shared";
+import { type LifeOpsCalendarSourceAdministrationSnapshot } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   calendarSourcesProvider,

@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/core/contracts/cloud-coding-containers";
 import { describe, expect, it } from "vitest";
 import { handleCloudCodingContainerRoute } from "../src/routes/cloud-coding-container-routes";
 import type {

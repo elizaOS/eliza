@@ -7,7 +7,7 @@
  * schema migrated into PGlite — no mocked repository.
  */
 import { ElizaError } from "@elizaos/core";
-import type { LifeOpsTaskDefinition } from "@elizaos/shared";
+import { type LifeOpsTaskDefinition } from "@elizaos/core/contracts/personal-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

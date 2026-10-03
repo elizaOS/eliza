@@ -2,6 +2,8 @@
  * Integration coverage for NotificationService over a real AgentRuntime,
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
+
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import {
 	afterAll,
 	beforeAll,
@@ -12,7 +14,7 @@ import {
 	vi,
 } from "vitest";
 import { createCharacter } from "../character.ts";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
+import { ElizaError } from "../errors.js";
 import { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
 import {
@@ -21,12 +23,16 @@ import {
 } from "../types/notification.ts";
 import type { Plugin } from "../types/plugin.ts";
 import { ServiceType } from "../types/service.ts";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { AgentEventService } from "./agentEvent.ts";
 import { NotificationService } from "./notification.ts";
 
 async function createRuntime(
 	services: NonNullable<Plugin["services"]>,
-	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+	adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("NotificationIntegrationAgent"),
+	),
 ): Promise<{
 	runtime: AgentRuntime;
 	cleanup: () => Promise<void>;
@@ -367,15 +373,20 @@ describe("NotificationService", () => {
 	});
 
 	it("fails startup when persisted notification state cannot be read", async () => {
-		class UnreadableCacheAdapter extends InMemoryDatabaseAdapter {
+		class UnreadableCacheAdapter extends SQLiteDatabaseAdapter {
 			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
-				throw new Error("notification cache unavailable");
+				throw new ElizaError("notification cache unavailable", {
+					code: "TEST_STORAGE_UNAVAILABLE",
+				});
 			}
 		}
 
 		const failing = await createRuntime(
 			[NotificationService],
-			new UnreadableCacheAdapter(),
+			UnreadableCacheAdapter.create(
+				":memory:",
+				sqliteTestAgentId("NotificationIntegrationAgent"),
+			),
 		);
 		try {
 			await expect(
@@ -401,19 +412,24 @@ describe("NotificationService", () => {
 	});
 
 	it("recovers persisted history after a transient hydration failure", async () => {
-		class TransientCacheAdapter extends InMemoryDatabaseAdapter {
+		class TransientCacheAdapter extends SQLiteDatabaseAdapter {
 			readAttempts = 0;
 
 			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
 				this.readAttempts += 1;
 				if (this.readAttempts === 1) {
-					throw new Error("notification cache temporarily unavailable");
+					throw new ElizaError("notification cache temporarily unavailable", {
+						code: "TEST_STORAGE_UNAVAILABLE",
+					});
 				}
 				return super.getCaches<T>(keys);
 			}
 		}
 
-		const adapter = new TransientCacheAdapter();
+		const adapter = TransientCacheAdapter.create(
+			":memory:",
+			sqliteTestAgentId("NotificationIntegrationAgent"),
+		);
 		const transient = await createRuntime([NotificationService], adapter);
 		try {
 			await expect(
@@ -467,16 +483,21 @@ describe("NotificationService", () => {
 	});
 
 	it("backs off repeated recovery requests after a persistent failure", async () => {
-		class UnavailableCacheAdapter extends InMemoryDatabaseAdapter {
+		class UnavailableCacheAdapter extends SQLiteDatabaseAdapter {
 			readAttempts = 0;
 
 			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
 				this.readAttempts += 1;
-				throw new Error("notification cache unavailable");
+				throw new ElizaError("notification cache unavailable", {
+					code: "TEST_STORAGE_UNAVAILABLE",
+				});
 			}
 		}
 
-		const adapter = new UnavailableCacheAdapter();
+		const adapter = UnavailableCacheAdapter.create(
+			":memory:",
+			sqliteTestAgentId("NotificationIntegrationAgent"),
+		);
 		const unavailable = await createRuntime([NotificationService], adapter);
 		try {
 			await expect(

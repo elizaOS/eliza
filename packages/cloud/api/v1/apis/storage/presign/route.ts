@@ -11,7 +11,7 @@ import {
   validateStorageReadCapabilityConfiguration,
 } from "@/api-app/storage-read-capability";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+import { storageOperationPriceUsd } from "@/lib/constants/pricing";
 import {
   executeNativeStoragePresign,
   NativeStorageReadError,
@@ -74,13 +74,14 @@ app.post("/", async (c) => {
       c.env.STORAGE_READ_SIGNING_SECRETS,
       c.env.R2_PUBLIC_HOST,
     );
+    const priceUsd = storageOperationPriceUsd("presign");
     const result = await executeNativeStoragePresign({
       bucket: c.env.BLOB,
       organizationId: user.organization_id,
       userId: user.id,
       logicalKey,
       rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
-      priceUsd: await getServiceMethodCost("storage", "presign"),
+      priceUsd,
       capabilityHost,
       ttlSeconds: parsed.data.expiresIn,
     });

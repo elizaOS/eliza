@@ -5,7 +5,6 @@
  * Polls the agent status until running, then dispatches AGENT_RUNNING.
  */
 
-import { logger } from "@elizaos/logger";
 import {
   type AgentBootProgress,
   type AgentStartupDiagnostics,
@@ -13,6 +12,7 @@ import {
   client,
   type LaunchSnapshot,
 } from "../api";
+import { logger } from "../logger.ts";
 import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
@@ -84,8 +84,27 @@ function mapBootProgressToAgentStatus(
   };
 }
 
+/**
+ * Runtime phases in which the agent is serving. The legacy agent host reports
+ * "running"; the app server host that the packaged desktop embeds reports
+ * "runtime-ready", "features-starting", "ready" or "degraded" (all projected
+ * as agent state "running"). Matching only "running" kept a returning
+ * packaged profile in starting-runtime although its runtime was serving.
+ */
+const SERVING_RUNTIME_PHASES: ReadonlySet<string> = new Set([
+  "running",
+  "runtime-ready",
+  "features-starting",
+  "ready",
+  "degraded",
+]);
+
+function isServingRuntimePhase(phase: string | null | undefined): boolean {
+  return typeof phase === "string" && SERVING_RUNTIME_PHASES.has(phase);
+}
+
 function isRuntimeReadyFromBootProgress(progress: AgentBootProgress): boolean {
-  return progress.state === "running" && progress.phase === "running";
+  return progress.state === "running" && isServingRuntimePhase(progress.phase);
 }
 
 function mapLaunchProgressToAgentStatus(progress: LaunchSnapshot): AgentStatus {
@@ -118,7 +137,7 @@ function isRuntimeReadyFromLaunchProgress(progress: LaunchSnapshot): boolean {
   return (
     progress.phase === "ready" ||
     (progress.agent.state === "running" &&
-      progress.boot.runtimePhase === "running")
+      isServingRuntimePhase(progress.boot.runtimePhase))
   );
 }
 
@@ -146,6 +165,41 @@ async function hydrateReadyAgentStatus(
     // Progress snapshots are already enough to leave startup; full status
     // hydration is only needed when the status endpoint is ready too.
   }
+}
+
+/**
+ * The remote backend's answer to the startup status probe. Only an explicit
+ * `running` state or an endpoint the backend does not expose (HTTP 404) keeps
+ * the immediate-ready path; every other outcome, including a failed probe,
+ * must be proven ready by the bounded readiness loop.
+ */
+type RemoteRuntimeState =
+  | { kind: "reported"; state: string }
+  | { kind: "unsupported" }
+  | { kind: "unavailable" };
+
+async function readRemoteRuntimeState(): Promise<RemoteRuntimeState> {
+  const probe = await runStartupProbe(() => client.getStatus(), {
+    unsupportedStatuses: [404],
+  });
+  if (probe.kind === "ok") {
+    return typeof probe.value?.state === "string"
+      ? { kind: "reported", state: probe.value.state }
+      : { kind: "unavailable" };
+  }
+  const detail =
+    probe.error instanceof Error ? probe.error.message : String(probe.error);
+  if (probe.kind === "unsupported") {
+    logger.info(
+      `[eliza][startup:init] remote backend does not expose a status endpoint: ${detail}`,
+    );
+    return { kind: "unsupported" };
+  }
+  // error-policy:J4 an unavailable probe enters the bounded readiness loop.
+  logger.warn(
+    `[eliza][startup:init] remote backend status probe failed: ${detail}`,
+  );
+  return { kind: "unavailable" };
 }
 
 /**
@@ -324,8 +378,35 @@ export async function runStartingRuntime(
     }
 
     // Self-hosted remote backend (or a cloud-managed target with no persisted
-    // cloud record): treat the already-running remote agent as ready and
-    // advance straight to hydration — today's behavior, unchanged.
+    // cloud record): an already-running remote agent, or one that does not
+    // expose a status endpoint (404), advances straight to hydration. A
+    // failed status probe proves nothing and waits below. A remote-backend whose runtime reports it has not booted
+    // (for example the desktop shell's own embedded API with its boot
+    // deferred until onboarding commits, reached through a restored loopback
+    // record) is not ready: fall through to the agent-readiness loop below,
+    // which starts it and waits for "running" instead of presenting the ready
+    // UI over a backend whose database is not open yet (#30744).
+    if (target === "remote-backend") {
+      const runtimeState = await readRemoteRuntimeState();
+      if (cancelled.current || effectRunRef.current !== effectRunId) return;
+      if (
+        runtimeState.kind === "unavailable" ||
+        (runtimeState.kind === "reported" && runtimeState.state !== "running")
+      ) {
+        logger.info(
+          `[eliza][startup:init] remote backend runtime is ${runtimeState.kind === "reported" ? runtimeState.state : "unavailable"}; waiting for it to run before declaring ready`,
+        );
+        return runStartingRuntime(
+          deps,
+          dispatch,
+          effectRunId,
+          effectRunRef,
+          cancelled,
+          tidRef,
+          "embedded-local",
+        );
+      }
+    }
     await hydrateReadyAgentStatus(deps);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
     deps.setConnected(true);

@@ -1,19 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Provision a throwaway Hetzner server for the nightly E2E workflow.
- *
- * Reads:
- *   HCLOUD_TOKEN_CI            - Hetzner Cloud API token (CI-scoped)
- *   CI_SSH_PUBLIC_KEY_ID       - Numeric Hetzner SSH key id (one-time uploaded)
- *   GITHUB_RUN_ID              - run id, embedded in labels
- *   HETZNER_E2E_LOCATION       - default fsn1
- *   HETZNER_E2E_SERVER_TYPE    - default cpx22
- *   HETZNER_E2E_IMAGE          - default ubuntu-24.04
- *
- * On success the CLI prints `{id, ip}` JSON and writes the canonical
- * `server_id` into the state file immediately after creation. Project-wide
- * quota failures stop after one create attempt and report only aggregate
- * capacity data so private server details never enter CI logs.
+ * Provisions a throwaway Hetzner host for the manually invoked diagnostic.
+ * The run identity labels the host, and its server_id is persisted immediately
+ * after creation so teardown can recover it. Project-wide quota failures stop
+ * after one create attempt and report aggregate capacity without private hosts.
+ * The adjacent README defines credentials, placement options and cleanup order.
  */
 
 import {

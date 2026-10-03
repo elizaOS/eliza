@@ -57,22 +57,25 @@ const GROUP_LABELS: Record<string, string> = {
 //   PUT    -> warning (mutating)
 //   PATCH  -> info (neutral, partial update)
 //   DELETE -> destructive (orange-by-design in this system)
-function methodBadgeClass(method: HttpMethod) {
+function methodBadgeClass(method: HttpMethod, selected = false) {
   const base =
     "inline-flex items-center rounded-sm px-2.5 py-1 text-2xs font-bold uppercase tracking-wider border transition-colors";
+  // Tint and border carry method semantics; text stays readable on pale fills.
+  // Selected route labels follow the choice foreground in rest and hover states.
+  if (selected) return `${base} bg-transparent text-inherit border-current`;
   switch (method) {
     case "GET":
-      return `${base} bg-status-success-bg text-status-success border-status-success/30`;
+      return `${base} bg-status-success-bg text-txt-strong border-status-success/30`;
     case "POST":
       return `${base} bg-bg-muted text-txt-strong border-border`;
     case "PUT":
-      return `${base} bg-status-warning-bg text-status-warning border-status-warning/30`;
+      return `${base} bg-status-warning-bg text-txt-strong border-status-warning/30`;
     case "PATCH":
-      return `${base} bg-status-info-bg text-status-info border-status-info/30`;
+      return `${base} bg-status-info-bg text-txt-strong border-status-info/30`;
     case "DELETE":
-      return `${base} bg-destructive-subtle text-destructive border-destructive/30`;
+      return `${base} bg-destructive-subtle text-txt-strong border-destructive/30`;
     default:
-      return `${base} bg-bg-muted text-muted border-border`;
+      return `${base} bg-bg-muted text-txt-strong border-border`;
   }
 }
 
@@ -185,13 +188,13 @@ export function ApiRouteExplorerClient({
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
                   <div className="size-2 rounded-full bg-muted" />
-                  <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted">
+                  <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted-strong">
                     Route Explorer
                   </span>
                 </div>
                 <label
                   htmlFor="api-route-explorer-show-all"
-                  className="flex min-h-touch items-center gap-2 text-xs text-muted select-none cursor-pointer hover:text-txt transition-colors"
+                  className="flex min-h-touch items-center gap-2 text-xs text-muted-strong select-none cursor-pointer hover:text-txt transition-colors"
                 >
                   <Input
                     id="api-route-explorer-show-all"
@@ -221,11 +224,11 @@ export function ApiRouteExplorerClient({
                 />
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-xs text-muted">
+              <div className="mt-3 flex items-center justify-between text-xs text-muted-strong">
                 <span>
                   {filtered.length} endpoint{filtered.length === 1 ? "" : "s"}
                 </span>
-                <span className="text-muted">Click to view details</span>
+                <span className="text-muted-strong">Click to view details</span>
               </div>
             </div>
 
@@ -276,13 +279,15 @@ export function ApiRouteExplorerClient({
                                   .map((m) => (
                                     <span
                                       key={m}
-                                      className={methodBadgeClass(m)}
+                                      className={methodBadgeClass(m, active)}
                                     >
                                       {m}
                                     </span>
                                   ))}
                                 {r.methods.length > 2 && (
-                                  <span className="text-2xs text-muted px-1">
+                                  <span
+                                    className={`text-2xs px-1 ${active ? "text-inherit" : "text-muted"}`}
+                                  >
                                     +{r.methods.length - 2}
                                   </span>
                                 )}
@@ -292,13 +297,15 @@ export function ApiRouteExplorerClient({
                                   className={cn(
                                     "text-sm font-medium truncate transition-colors",
                                     active
-                                      ? "text-txt-strong"
+                                      ? "text-inherit"
                                       : "text-muted-strong",
                                   )}
                                 >
                                   {title}
                                 </div>
-                                <div className="mt-0.5 font-mono text-2xs text-muted truncate">
+                                <div
+                                  className={`mt-0.5 font-mono text-2xs truncate ${active ? "text-inherit" : "text-muted"}`}
+                                >
                                   {r.path}
                                 </div>
                               </div>
@@ -386,14 +393,7 @@ export function ApiRouteExplorerClient({
                         Auth
                       </span>
                     </div>
-                    <div
-                      className={cn(
-                        "text-sm font-medium",
-                        selected.meta?.requiresAuth
-                          ? "text-status-warning"
-                          : "text-status-success",
-                      )}
-                    >
+                    <div className="text-sm font-medium text-txt-strong">
                       {selected.meta
                         ? selected.meta.requiresAuth
                           ? "Required"
@@ -474,19 +474,19 @@ export function ApiRouteExplorerClient({
                 <div className="relative">
                   <pre className="overflow-x-auto border border-border bg-bg rounded-sm p-4 text-xs-tight leading-relaxed font-mono">
                     <code className="text-muted-strong">
-                      <span className="text-status-success">curl</span>
+                      <span className="text-txt-strong">curl</span>
                       <span className="text-muted"> -X </span>
-                      <span className="text-status-warning">
+                      <span className="text-txt-strong">
                         {selected.methods[0] ?? "GET"}
                       </span>
                       <span className="text-muted"> </span>
-                      <span className="text-status-info">
+                      <span className="text-txt-strong">
                         &quot;https://api.eliza.app{selected.path}&quot;
                       </span>
                       <span className="text-muted"> \</span>
                       {"\n"}
                       <span className="text-muted"> -H </span>
-                      <span className="text-status-success">
+                      <span className="text-txt-strong">
                         &quot;Authorization: Bearer YOUR_API_KEY&quot;
                       </span>
                       {["POST", "PUT", "PATCH"].includes(
@@ -496,7 +496,7 @@ export function ApiRouteExplorerClient({
                           <span className="text-muted"> \</span>
                           {"\n"}
                           <span className="text-muted"> -H </span>
-                          <span className="text-status-success">
+                          <span className="text-txt-strong">
                             &quot;Content-Type: application/json&quot;
                           </span>
                           <span className="text-muted"> \</span>

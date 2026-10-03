@@ -3,12 +3,11 @@
  * boundary so chat can offer setup and resume intent without treating
  * untrusted action-result data as navigation or execution authority.
  */
-
 import {
   type CapabilityHandoffRequest,
   capabilityHandoffTargetAgentId,
   parsePersonalWorkspaceCapabilityHandoff,
-} from "@elizaos/shared";
+} from "@elizaos/core/capability-catalog";
 import type {
   ChatActionResultSummary,
   ConversationMessage,
@@ -18,25 +17,21 @@ import { runAsPrivilegedShell } from "./surface-realm-channel";
 const STORED_HANDOFF_PREFIX = "eliza:capability-handoff:message:";
 const PENDING_HANDOFF_KEY = "eliza:capability-handoff:pending";
 const PENDING_READY_AGENT_KEY = "eliza:capability-handoff:ready-agent";
-const HANDOFF_TTL_MS = 24 * 60 * 60 * 1_000;
-
+const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000;
 interface StoredCapabilityHandoff {
   expiresAt: number;
   handoff: CapabilityHandoffRequest;
 }
-
 function recordOf(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
-
 function boundedText(value: unknown, maximum: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed && trimmed.length <= maximum ? trimmed : null;
 }
-
 /** Parse only the personal-workspace review receipt the UI can safely honor. */
 export function parseCapabilityHandoff(
   value: unknown,
@@ -44,7 +39,6 @@ export function parseCapabilityHandoff(
 ): CapabilityHandoffRequest | null {
   return parsePersonalWorkspaceCapabilityHandoff(value, expectedAgentId);
 }
-
 /** Find the newest valid receipt without trusting an action name or success bit. */
 export function findCapabilityHandoff(
   actionResults: readonly ChatActionResultSummary[] | undefined,
@@ -60,7 +54,6 @@ export function findCapabilityHandoff(
   }
   return null;
 }
-
 function storageOrNull(storage?: Storage): Storage | null {
   if (storage) return storage;
   if (typeof window === "undefined") return null;
@@ -71,7 +64,6 @@ function storageOrNull(storage?: Storage): Storage | null {
     return null;
   }
 }
-
 function writeStored(
   key: string,
   handoff: CapabilityHandoffRequest,
@@ -93,7 +85,6 @@ function writeStored(
     // error-policy:J4 storage is an optional reload enhancement.
   }
 }
-
 function readStored(
   key: string,
   storage?: Storage,
@@ -127,7 +118,6 @@ function readStored(
     return null;
   }
 }
-
 /** Retain a validated receipt across a transcript reload in this app session. */
 export function rememberCapabilityHandoff(
   messageId: string,
@@ -137,7 +127,6 @@ export function rememberCapabilityHandoff(
   if (!messageId.trim()) return;
   writeStored(`${STORED_HANDOFF_PREFIX}${messageId}`, handoff, storage);
 }
-
 /** Reattach receipts to durable assistant rows after GET /messages replaces state. */
 export function restoreCapabilityHandoffs(
   messages: readonly ConversationMessage[],
@@ -171,7 +160,6 @@ export function restoreCapabilityHandoffs(
   });
   return changed ? restored : (messages as ConversationMessage[]);
 }
-
 /** Mark setup as explicitly requested; this never provisions or sends intent. */
 export function rememberPendingCapabilityHandoff(
   handoff: CapabilityHandoffRequest,
@@ -186,7 +174,6 @@ export function rememberPendingCapabilityHandoff(
     // error-policy:J4 the offer remains usable even without persistence.
   }
 }
-
 /** Forget an unstarted continuation when contained setup cannot be opened. */
 export function clearPendingCapabilityHandoff(storage?: Storage): void {
   const target = storageOrNull(storage);
@@ -200,7 +187,6 @@ export function clearPendingCapabilityHandoff(storage?: Storage): void {
     // error-policy:J4 restricted storage cannot affect the visible failure.
   }
 }
-
 /** Mark review ready only after the matching runtime reports a real switch. */
 export function markPendingCapabilityReady(
   agentId: string,
@@ -225,7 +211,6 @@ export function markPendingCapabilityReady(
     return false;
   }
 }
-
 /** Read the ready marker so a temporarily occupied composer can retry later. */
 export function readPendingCapabilityReadyAgentId(
   storage?: Storage,
@@ -248,7 +233,6 @@ export function readPendingCapabilityReadyAgentId(
     return null;
   }
 }
-
 /** Consume a matching original intent once in this browser session for review. */
 export function consumePendingCapabilityIntent(
   agentId: string,

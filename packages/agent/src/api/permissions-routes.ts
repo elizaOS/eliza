@@ -12,24 +12,25 @@
  * the personal-data permissions through the shared native capability
  * contract (metadata only; personal payloads never leave the device).
  */
-import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
-import type {
-  IPermissionsRegistry,
-  PermissionId,
-  PermissionRestrictedReason,
-  PermissionState,
-  PermissionStatus,
-  Platform,
-} from "@elizaos/shared";
+
 import {
+  type AgentRuntime,
   assertNativePersonalDataProjectionMetadataOnly,
   getMacPermissionDeepLink,
+  type IPermissionsRegistry,
   isPermissionId,
   PERMISSION_IDS,
+  type PermissionId,
+  type PermissionRestrictedReason,
+  type PermissionState,
+  type PermissionStatus,
+  type Platform,
   PutPermissionsShellRequestSchema,
   PutPermissionsStateRequestSchema,
   projectNativePersonalDataCapabilities,
-} from "@elizaos/shared";
+  type RouteRequestContext,
+} from "@elizaos/core";
+
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 
@@ -38,15 +39,18 @@ interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
     shellEnabled?: boolean;
   };
   plugins?: {
-    entries?: Record<string, { enabled?: boolean }>;
+    entries?: Record<
+      string,
+      {
+        enabled?: boolean;
+      }
+    >;
   };
 }
-
 function currentPlatform(): "darwin" | "win32" | "linux" {
   const p = process.platform;
   return p === "darwin" || p === "win32" || p === "linux" ? p : "linux";
 }
-
 function isPermissionsRegistry(
   service: unknown,
 ): service is IPermissionsRegistry {
@@ -59,14 +63,12 @@ function isPermissionsRegistry(
     "openSettings" in service
   );
 }
-
 function getPermissionRegistry(
   runtime: AgentRuntime | null,
 ): IPermissionsRegistry | null {
   const service = runtime?.getService(PERMISSIONS_REGISTRY_SERVICE);
   return isPermissionsRegistry(service) ? service : null;
 }
-
 function unavailableSystemPermission(id: PermissionId): PermissionState {
   return {
     id,
@@ -77,7 +79,6 @@ function unavailableSystemPermission(id: PermissionId): PermissionState {
     reason: "Native permission checks are unavailable in this runtime.",
   };
 }
-
 const PERMISSION_STATUSES: readonly PermissionStatus[] = [
   "granted",
   "limited",
@@ -86,7 +87,6 @@ const PERMISSION_STATUSES: readonly PermissionStatus[] = [
   "restricted",
   "not-applicable",
 ];
-
 const PLATFORMS: readonly Platform[] = [
   "darwin",
   "win32",
@@ -95,16 +95,16 @@ const PLATFORMS: readonly Platform[] = [
   "android",
   "web",
 ];
-
 const PERMISSION_RESTRICTED_REASONS: readonly PermissionRestrictedReason[] = [
   "entitlement_required",
   "platform_unsupported",
   "os_policy",
 ];
-
-function validateBlockedFeature(
-  value: unknown,
-): { app: string; action: string; at: number } | null {
+function validateBlockedFeature(value: unknown): {
+  app: string;
+  action: string;
+  at: number;
+} | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
   if (
@@ -116,7 +116,6 @@ function validateBlockedFeature(
   }
   return null;
 }
-
 /**
  * Validate a client-supplied permission map into typed `PermissionState`s.
  *
@@ -128,13 +127,16 @@ function validateBlockedFeature(
  * entries are rejected (fail closed) so the persisted map — which feeds GET
  * responses and capability auto-enable — only ever holds real states.
  */
-function validatePermissionStates(
-  raw: Record<string, Record<string, unknown>>,
-):
-  | { ok: true; value: Record<string, PermissionState> }
-  | { ok: false; reason: string } {
+function validatePermissionStates(raw: Record<string, Record<string, unknown>>):
+  | {
+      ok: true;
+      value: Record<string, PermissionState>;
+    }
+  | {
+      ok: false;
+      reason: string;
+    } {
   const result: Record<string, PermissionState> = {};
-
   for (const [key, entry] of Object.entries(raw)) {
     if (!isPermissionId(key)) {
       return { ok: false, reason: `Unknown permission id "${key}"` };
@@ -169,7 +171,6 @@ function validatePermissionStates(
         reason: `Permission "${key}" is missing canRequest`,
       };
     }
-
     const validated: PermissionState = {
       id: key,
       status: entry.status as PermissionStatus,
@@ -198,16 +199,13 @@ function validatePermissionStates(
     }
     result[key] = validated;
   }
-
   return { ok: true, value: result };
 }
-
 async function openSystemPermissionSettings(
   id: PermissionId,
 ): Promise<boolean> {
   const platform = currentPlatform();
   let argv: string[] | null = null;
-
   if (platform === "darwin") {
     argv = ["open", getMacPermissionDeepLink(id)];
   } else if (platform === "win32") {
@@ -229,7 +227,6 @@ async function openSystemPermissionSettings(
     const panel = settingsMap[id];
     if (panel) argv = ["sh", "-lc", `gnome-control-center ${panel}`];
   }
-
   if (!argv) return false;
   try {
     const { spawn } = await import("node:child_process");
@@ -243,7 +240,6 @@ async function openSystemPermissionSettings(
     return false;
   }
 }
-
 async function buildPermissionsPayload(
   state: PermissionRouteState,
   refresh = false,
@@ -257,7 +253,6 @@ async function buildPermissionsPayload(
   const shellEnabled = state.shellEnabled ?? true;
   const registry = getPermissionRegistry(state.runtime);
   const permissions = {} as Record<PermissionId, PermissionState>;
-
   await Promise.all(
     PERMISSION_IDS.map(async (id) => {
       const persisted = permissionStates[id];
@@ -265,7 +260,6 @@ async function buildPermissionsPayload(
         permissions[id] = persisted;
         return;
       }
-
       if (registry) {
         try {
           permissions[id] = refresh
@@ -276,15 +270,12 @@ async function buildPermissionsPayload(
           // Fall through to persisted/unavailable state.
         }
       }
-
       permissions[id] = persisted ?? unavailableSystemPermission(id);
     }),
   );
-
   if (!permissions.shell) {
     permissions.shell = unavailableSystemPermission("shell");
   }
-
   permissions.shell = {
     ...permissions.shell,
     status: shellEnabled ? "granted" : "denied",
@@ -296,20 +287,17 @@ async function buildPermissionsPayload(
     _shellEnabled: shellEnabled,
   };
 }
-
 export interface PermissionRouteState {
   runtime: AgentRuntime | null;
   config: PermissionAutonomousConfigLike;
   permissionStates?: Record<string, PermissionState>;
   shellEnabled?: boolean;
 }
-
 export interface PermissionRouteContext extends RouteRequestContext {
   state: PermissionRouteState;
   saveConfig: (config: PermissionAutonomousConfigLike) => void;
   scheduleRuntimeRestart: (reason: string) => void;
 }
-
 export async function handlePermissionRoutes(
   ctx: PermissionRouteContext,
 ): Promise<boolean> {
@@ -325,14 +313,11 @@ export async function handlePermissionRoutes(
     saveConfig,
     scheduleRuntimeRestart,
   } = ctx;
-
   if (!pathname.startsWith("/api/permissions")) return false;
-
   if (method === "GET" && pathname === "/api/permissions") {
     json(res, await buildPermissionsPayload(state));
     return true;
   }
-
   if (method === "GET" && pathname === "/api/permissions/native-projection") {
     // Project the on-device personal-data bridges through the shared
     // capability contract. Metadata only: permission and availability state,
@@ -353,7 +338,6 @@ export async function handlePermissionRoutes(
     json(res, projection);
     return true;
   }
-
   if (method === "GET" && pathname === "/api/permissions/shell") {
     const enabled = state.shellEnabled ?? true;
     if (!state.permissionStates) {
@@ -368,7 +352,6 @@ export async function handlePermissionRoutes(
       platform: currentPlatform(),
     };
     state.permissionStates.shell = permission;
-
     json(res, {
       enabled,
       ...permission,
@@ -376,7 +359,6 @@ export async function handlePermissionRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname.startsWith("/api/permissions/")) {
     const permId = pathname.slice("/api/permissions/".length);
     if (!permId || permId.includes("/") || !isPermissionId(permId)) {
@@ -400,12 +382,10 @@ export async function handlePermissionRoutes(
     json(res, unavailableSystemPermission(permId));
     return true;
   }
-
   if (method === "POST" && pathname === "/api/permissions/refresh") {
     json(res, await buildPermissionsPayload(state, true));
     return true;
   }
-
   if (
     method === "POST" &&
     pathname.match(/^\/api\/permissions\/[^/]+\/request$/)
@@ -433,7 +413,6 @@ export async function handlePermissionRoutes(
     json(res, unavailableSystemPermission(permId));
     return true;
   }
-
   if (
     method === "POST" &&
     pathname.match(/^\/api\/permissions\/[^/]+\/open-settings$/)
@@ -463,7 +442,6 @@ export async function handlePermissionRoutes(
     });
     return true;
   }
-
   if (method === "PUT" && pathname === "/api/permissions/shell") {
     const rawShell = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawShell === null) return true;
@@ -478,7 +456,6 @@ export async function handlePermissionRoutes(
     }
     const enabled = parsedShell.data.enabled === true;
     state.shellEnabled = enabled;
-
     if (!state.permissionStates) {
       state.permissionStates = {};
     }
@@ -489,26 +466,22 @@ export async function handlePermissionRoutes(
       canRequest: false,
       platform: currentPlatform(),
     };
-
     if (!state.config.features) {
       state.config.features = {};
     }
     state.config.features.shellEnabled = enabled;
     saveConfig(state.config);
-
     if (state.runtime) {
       scheduleRuntimeRestart(
         `Shell access ${enabled ? "enabled" : "disabled"}`,
       );
     }
-
     json(res, {
       shellEnabled: enabled,
       permission: state.permissionStates.shell,
     });
     return true;
   }
-
   if (method === "PUT" && pathname === "/api/permissions/state") {
     const rawPermState = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawPermState === null) return true;
@@ -523,7 +496,6 @@ export async function handlePermissionRoutes(
       return true;
     }
     const body = parsedPermState.data;
-
     if (body.permissions && typeof body.permissions === "object") {
       const validated = validatePermissionStates(body.permissions);
       if (!validated.ok) {
@@ -531,25 +503,21 @@ export async function handlePermissionRoutes(
         return true;
       }
       state.permissionStates = validated.value;
-
       let configChanged = false;
       state.config.plugins = state.config.plugins || {};
       state.config.plugins.entries = state.config.plugins.entries || {};
-
       const capabilities = [
         { id: "browser", required: ["accessibility"] },
         { id: "computeruse", required: ["accessibility", "screen-recording"] },
         { id: "vision", required: ["screen-recording"] },
         { id: "coding-agent", required: [] },
       ];
-
       for (const cap of capabilities) {
         if (state.config.plugins.entries[cap.id]?.enabled === undefined) {
           const allGranted = cap.required.every((permId) => {
             const pStatus = state.permissionStates?.[permId]?.status;
             return pStatus === "granted" || pStatus === "not-applicable";
           });
-
           if (allGranted) {
             state.config.plugins.entries[cap.id] = {
               ...(state.config.plugins.entries[cap.id] || {}),
@@ -559,7 +527,6 @@ export async function handlePermissionRoutes(
           }
         }
       }
-
       if (configChanged) {
         saveConfig(state.config);
         if (state.runtime && !body.startup) {
@@ -567,10 +534,8 @@ export async function handlePermissionRoutes(
         }
       }
     }
-
     json(res, { updated: true, permissions: state.permissionStates });
     return true;
   }
-
   return false;
 }

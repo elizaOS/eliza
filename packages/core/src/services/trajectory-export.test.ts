@@ -3,17 +3,18 @@
  * LLM-call iteration, and JSON/JSONL/ART serialization over a sample trajectory
  * built from both persisted `stepsJson` and inline `steps`.
  */
+
 import { describe, expect, it } from "vitest";
+import { trajectoryToPlaintext } from "../activity-plaintext.js";
 import {
 	iterateTrajectoryLlmCalls,
 	resolveJsonShape,
 	serializeTrajectoryExport,
 	summarizeTrajectoryCache,
 	summarizeTrajectoryUsage,
-	trajectoryToPlaintext,
-} from "./trajectory-export";
-import type { TrajectoryDetailRecord } from "./trajectory-types";
-import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
+} from "./trajectory-export.ts";
+import type { TrajectoryDetailRecord } from "./trajectory-types.ts";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types.ts";
 
 const sampleTrajectory: TrajectoryDetailRecord = {
 	trajectoryId: "traj-1",
@@ -98,6 +99,28 @@ describe("trajectory-export", () => {
 			source: "chat",
 		});
 		expect(calls[1]?.callId).toBe("traj-1:step-1:call:2");
+	});
+
+	it("preserves finite zero timestamps when flattening LLM calls", () => {
+		const calls = iterateTrajectoryLlmCalls({
+			trajectoryId: "traj-zero",
+			agentId: "agent-1",
+			startTime: 200,
+			steps: [
+				{
+					stepId: "step-call-zero",
+					timestamp: 100,
+					llmCalls: [{ callId: "call-zero", timestamp: 0 }],
+				},
+				{
+					stepId: "step-zero",
+					timestamp: 0,
+					llmCalls: [{ callId: "call-fallback" }],
+				},
+			],
+		});
+
+		expect(calls.map((call) => call.timestamp)).toEqual([0, 0]);
 	});
 
 	it("rejects corrupt persisted steps instead of exporting a valid empty run", () => {

@@ -1,0 +1,8 @@
+{
+  "schema": "eliza.os.linux.runtime_tool_input_authorization.v1",
+  "authorized_sha256": {
+    "amd64": [],
+    "arm64": [],
+    "riscv64": []
+  }
+}

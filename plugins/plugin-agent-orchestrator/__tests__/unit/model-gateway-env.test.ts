@@ -12,6 +12,9 @@
  *   behavior — raw keys forward as before, no *_BASE_URL is injected.
  * - The gateway token never appears in log output.
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AcpJsonRpcMessage,
@@ -517,4 +520,39 @@ describe("gateway mode OFF — byte-identical legacy env", () => {
     expect(allLoggedText(logger)).not.toContain(GATEWAY_TOKEN);
     expect(allLoggedText(logger)).not.toContain("model-gateway mode engaged");
   });
+});
+
+it("uses host-hydrated credentials for persisted gateway sentinels and observes refreshes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "gateway-config-"));
+  try {
+    const config = join(directory, "eliza.json");
+    process.env.ELIZA_CONFIG_PATH = config;
+    writeFileSync(
+      config,
+      JSON.stringify({
+        env: {
+          ELIZA_MODEL_GATEWAY_URL: GATEWAY_URL,
+          ELIZA_MODEL_GATEWAY_TOKEN: "vault://ELIZA_MODEL_GATEWAY_TOKEN",
+        },
+      }),
+    );
+    process.env.ELIZA_MODEL_GATEWAY_TOKEN = "hydrated-first";
+    expect(resolveModelGatewayConfig()?.token).toBe("hydrated-first");
+    process.env.ELIZA_MODEL_GATEWAY_TOKEN = "hydrated-second";
+    expect(resolveModelGatewayConfig()?.token).toBe("hydrated-second");
+    delete process.env.ELIZA_MODEL_GATEWAY_TOKEN;
+    expect(() => resolveModelGatewayConfig()).toThrow(/not been hydrated/);
+    process.env.ELIZA_MODEL_GATEWAY_TOKEN = "vault://ELIZA_MODEL_GATEWAY_TOKEN";
+    expect(() => resolveModelGatewayConfig()).toThrow(/not been hydrated/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it("refuses unresolved gateway credentials before mutating the child environment", () => {
+  const env = { ANTHROPIC_API_KEY: "existing" };
+  expect(() =>
+    applyModelGatewayEnv(env, { url: GATEWAY_URL, token: "vault://" }),
+  ).toThrow(/unresolved/);
+  expect(env).toEqual({ ANTHROPIC_API_KEY: "existing" });
 });

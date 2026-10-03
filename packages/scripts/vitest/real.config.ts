@@ -16,14 +16,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig } from "vitest/config";
 import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
   getElizaCoreEntry,
-  getSharedSourceRoot,
   getUiSourceRoot,
-} from "../../core/src/testing/eliza-package-paths";
+} from "@elizaos/testing/package-paths";
+import { defineConfig } from "vitest/config";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
@@ -31,7 +30,6 @@ import {
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
-  getSharedSourceAliases,
   getUiSourceAliases,
   getWorkspaceAppAliases,
   getWorkspacePluginAliases,
@@ -83,12 +81,6 @@ const ciExcludedRealPaths = [
     "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "packages/agent/src/providers/media-provider.real.test.ts",
-  ),
-  elizaWorkspacePattern(
-    "packages/agent/src/actions/life-param-extractor-real.test.ts",
-  ),
-  elizaWorkspacePattern(
     "plugins/plugin-wallet/src/chains/evm/__tests__/integration/rpc-providers.live.test.ts",
   ),
   elizaWorkspacePattern(
@@ -99,60 +91,19 @@ const ciExcludedRealPaths = [
   ),
 ];
 const liveSetupFile = [
-  path.join(
-    elizaWorkspaceRoot,
-    "packages",
-    "app-core",
-    "test",
-    "live.setup.ts",
-  ),
+  path.join(elizaWorkspaceRoot, "packages", "app", "test", "live.setup.ts"),
   path.join(
     disabledElizaWorkspaceRoot,
     "packages",
-    "app-core",
+    "app",
     "test",
     "live.setup.ts",
   ),
 ].find((candidate) => fs.existsSync(candidate));
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const elizaCoreEntryDir = elizaCoreEntry
-  ? path.dirname(elizaCoreEntry)
-  : undefined;
-// Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
-// module graph imports (`./node` from plugin dists, `./testing` from the test
-// runtime tests, `./connectors` from connector plugins). A bare-string
-// "@elizaos/core" alias is prefix-matched by Vite/rollup and rewrites those
-// subpaths into "<core entry file>/<subpath>" (a path under a *file*), which
-// kills any suite whose plugin graph imports them (#11047) — mirror
-// integration.config.ts instead.
-const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
-  ? [
-      { subpath: "node", candidates: ["index.node.ts", "index.node.js"] },
-      {
-        subpath: "testing",
-        candidates: ["testing/index.ts", "../testing/index.js"],
-      },
-      {
-        subpath: "connectors",
-        candidates: ["connectors.ts", "../connectors.js"],
-      },
-      {
-        subpath: "client-public",
-        candidates: ["client-public.ts", "client-public.js"],
-      },
-    ].flatMap(({ subpath, candidates }) => {
-      const replacement = candidates
-        .map((candidate) => path.join(elizaCoreEntryDir, candidate))
-        .find((candidate) => fs.existsSync(candidate));
-      return replacement
-        ? [{ find: new RegExp(`^@elizaos/core/${subpath}$`), replacement }]
-        : [];
-    })
-  : [];
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const vaultSourceRoot = path.join(
   elizaWorkspaceRoot,
   "packages",
@@ -214,10 +165,6 @@ const realResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
     ? [
-        // Subpath aliases must precede the bare specifier (see the note on
-        // elizaCoreSubpathAliases above). The bare specifier is exact-matched
-        // so any other subpath falls through to package-exports resolution.
-        ...elizaCoreSubpathAliases,
         {
           find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
@@ -230,7 +177,7 @@ const realResolveAlias: ModuleAlias[] = [
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
   {
-    find: "@elizaos/vault",
+    find: "@elizaos/auth/vault",
     replacement: path.join(vaultSourceRoot, "index.ts"),
   },
   {
@@ -239,7 +186,7 @@ const realResolveAlias: ModuleAlias[] = [
   },
   {
     find: /^@elizaos\/plugin-openai$/,
-    replacement: path.join(pluginOpenAiRoot, "index.node.ts"),
+    replacement: path.join(pluginOpenAiRoot, "index.ts"),
   },
   {
     find: /^@elizaos\/plugin-google-workspace$/,
@@ -260,7 +207,7 @@ const realResolveAlias: ModuleAlias[] = [
   {
     // Same prefix-alias hazard as plugin-discord above: the installed-package
     // string alias rewrites subpath imports (e.g. ./cloud/duffel-client) into
-    // dist paths that do not exist. Route them to source like app-core does.
+    // dist paths that do not exist. Route them to source like app does.
     find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
     replacement: `${pluginElizaCloudRoot.split(path.sep).join("/")}/$1`,
   },
@@ -283,7 +230,7 @@ const realResolveAlias: ModuleAlias[] = [
   {
     // Subpath imports (e.g. @elizaos/plugin-wallet/diagnostic) must resolve to
     // source before the bare string alias below rewrites the package root to
-    // src/index.ts; mirrors packages/app-core/vitest.config.ts.
+    // src/index.ts; mirrors packages/app/vitest.config.ts.
     find: /^@elizaos\/plugin-wallet\/(.+)$/,
     replacement: `${path
       .join(elizaWorkspaceRoot, "plugins", "plugin-wallet", "src")
@@ -292,7 +239,7 @@ const realResolveAlias: ModuleAlias[] = [
   },
   ...getWorkspaceAppAliases(repoRoot, ["plugin-wallet"]),
   ...getWorkspacePluginAliases(repoRoot, [
-    "plugin-documents",
+    "plugin-knowledge",
     "plugin-personal-assistant",
     "plugin-scheduling",
     "plugin-local-inference",
@@ -307,10 +254,6 @@ const realResolveAlias: ModuleAlias[] = [
       "index.ts",
     ),
   },
-  ...getSharedSourceAliases(sharedSourceRoot, {
-    includeConfigAlias: true,
-    includeElizaAlias: true,
-  }),
   {
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
@@ -330,34 +273,6 @@ const realResolveAlias: ModuleAlias[] = [
           elizaWorkspaceRoot,
           "plugins",
           "plugin-agent-orchestrator",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
-      find: "@elizaos/plugin-agent-skills",
-      packageName: "@elizaos/plugin-agent-skills",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-agent-skills",
-          "typescript",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
-      find: "@elizaos/plugin-commands",
-      packageName: "@elizaos/plugin-commands",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-commands",
-          "typescript",
           "src",
           "index",
         ),
@@ -445,20 +360,6 @@ const realResolveAlias: ModuleAlias[] = [
       },
     },
     {
-      find: "@elizaos/plugin-google-genai",
-      packageName: "@elizaos/plugin-google-genai",
-      options: {
-        entryKind: "node",
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-google-genai",
-          "typescript",
-          "index.node",
-        ),
-      },
-    },
-    {
       find: "@elizaos/plugin-elizacloud",
       packageName: "@elizaos/plugin-elizacloud",
       options: {
@@ -514,7 +415,7 @@ export default defineConfig({
       "**/node_modules/**",
       ".claude/**",
       ...(hiddenElizaWorkspaceGlob ? [hiddenElizaWorkspaceGlob] : []),
-      elizaWorkspacePattern("packages/app-core/platforms/electrobun/**"),
+      elizaWorkspacePattern("packages/app/platforms/electrobun/**"),
       "apps/chrome-extension/**",
       elizaWorkspacePattern("cloud/**"),
       ...(isCiReal ? ciExcludedRealPaths : []),
@@ -524,8 +425,7 @@ export default defineConfig({
         inline: [
           "@elizaos/core",
           "@elizaos/agent",
-          "@elizaos/app-core",
-          /^@elizaai\/shared/,
+          "@elizaos/app",
           /^@elizaos\/plugin-/,
           "zod",
         ],

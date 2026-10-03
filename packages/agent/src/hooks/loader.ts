@@ -10,8 +10,11 @@ import { lstat, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { logger, resolveStateDir } from "@elizaos/core";
-import type { InternalHooksConfig } from "../config/types.hooks.ts";
+import {
+  type InternalHooksConfig,
+  logger,
+  resolveStateDir,
+} from "@elizaos/core";
 import { type DiscoveryOptions, discoverHooks } from "./discovery.ts";
 import { checkEligibility, resolveHookConfig } from "./eligibility.ts";
 import { clearHooks, registerHook } from "./registry.ts";

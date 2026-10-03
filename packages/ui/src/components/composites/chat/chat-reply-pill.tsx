@@ -55,7 +55,10 @@ export function ChatReplyPill({
         </span>
         {target.snippet ? (
           <span
-            className={cn("ml-1.5", glass ? "text-white/60" : "text-muted")}
+            className={cn(
+              "ml-1.5",
+              glass ? "text-white/60" : "text-muted-strong",
+            )}
           >
             {target.snippet}
           </span>

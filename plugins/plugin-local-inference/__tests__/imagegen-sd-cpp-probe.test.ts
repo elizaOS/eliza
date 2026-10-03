@@ -3,7 +3,7 @@
  *
  * Covers two related surfaces:
  *
- *   1. `scripts/probe-sd-cpp.mjs` — first-run probe used by the
+ *   1. `scripts/probe-sd-cpp.ts` — first-run probe used by the
  *      Settings flow and CI bundle-prep. Forks the script under both
  *      "binary missing" (SD_CPP_BIN points at a path that doesn't
  *      exist) and "binary available" (SD_CPP_BIN points at a tiny shell
@@ -38,7 +38,7 @@ import {
 } from "../src/services/imagegen/sd-cpp";
 
 const PROBE_SCRIPT = fileURLToPath(
-	new URL("../scripts/probe-sd-cpp.mjs", import.meta.url),
+	new URL("../../../packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.ts", import.meta.url),
 );
 
 interface ProbeResult {

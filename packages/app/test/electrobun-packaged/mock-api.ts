@@ -179,12 +179,12 @@ const firstRunOptions = {
   ],
   providers: [
     {
-      id: "ollama",
-      name: "Ollama",
+      id: "local-inference",
+      name: "Local Inference",
       envKey: null,
-      pluginName: "@elizaos/plugin-zerollama",
+      pluginName: "@elizaos/plugin-local-inference",
       keyPrefix: null,
-      description: "Use local Ollama",
+      description: "Use local inference",
     },
     {
       id: "openai",
@@ -406,8 +406,8 @@ export async function startMockApiServer(
       validationWarnings: [],
     },
     {
-      id: "ollama",
-      name: "Ollama",
+      id: "local-inference",
+      name: "Local Inference",
       description: "Local provider",
       enabled: true,
       configured: true,
@@ -813,13 +813,13 @@ export async function startMockApiServer(
             },
           },
         };
-      } else if (provider === "ollama") {
+      } else if (provider === "local-inference") {
         config = {
           ...config,
           serviceRouting: {
             llmText: {
               transport: "direct",
-              backend: "ollama",
+              backend: "local-inference",
               primaryModel: primaryModel || "eliza-1-9b",
             },
           },
@@ -1013,6 +1013,11 @@ export async function startMockApiServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/api/approvals") {
+      json(res, 200, { pending: [] });
+      return;
+    }
+
     if (method === "GET" && pathname === "/api/notifications") {
       json(res, 200, { notifications: [], unreadCount: 0 });
       return;
@@ -1026,6 +1031,10 @@ export async function startMockApiServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/api/approvals") {
+      json(res, 200, { approvals: [], pending: [], pendingUserActions: [] });
+      return;
+    }
     if (method === "GET" && pathname === "/api/computer-use/approvals") {
       json(res, 200, emptyComputerUseApprovalSnapshot);
       return;
@@ -1756,14 +1765,6 @@ export async function startMockApiServer(
         distTags: { stable: "latest", beta: "beta", nightly: "nightly" },
         lastCheckAt: nowIso(),
         error: null,
-      });
-      return;
-    }
-    if (method === "GET" && pathname === "/api/extension/status") {
-      json(res, 200, {
-        relayReachable: false,
-        relayPort: 18792,
-        extensionPath: null,
       });
       return;
     }

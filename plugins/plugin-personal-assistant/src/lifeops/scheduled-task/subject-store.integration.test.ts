@@ -9,7 +9,10 @@
  * missing rows and still-unbound kinds (document / calendar_event / self).
  */
 
-import { KNOWLEDGE_GRAPH_SERVICE, KnowledgeGraphService } from "@elizaos/agent";
+import {
+  KNOWLEDGE_GRAPH_SERVICE,
+  KnowledgeGraphService,
+} from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

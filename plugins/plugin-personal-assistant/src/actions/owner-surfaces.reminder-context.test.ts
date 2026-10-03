@@ -1,5 +1,6 @@
 /** Verifies that owner reminder creation fails closed before durable mutation. */
 
+import { promoteSubactionsToActions, validateToolArgs } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 const runLifeOperationHandler = vi.hoisted(() =>
@@ -40,6 +41,91 @@ vi.mock("./screen-time.js", () => ({
 }));
 
 const { ownerRemindersAction } = await import("./owner-surfaces.js");
+
+it("exposes the complete plan only on definition creation and validates native fields", () => {
+  const promoted = promoteSubactionsToActions(ownerRemindersAction);
+  const create = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_CREATE",
+  );
+  const review = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_REVIEW",
+  );
+  const remove = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_DELETE",
+  );
+  expect(create).toBeDefined();
+  expect(review).toBeDefined();
+  expect(remove).toBeDefined();
+  if (!create || !review || !remove) return;
+  const createPlan = {
+    mode: "create",
+    multiStep: false,
+    title: "Call Mom",
+    requestKind: "reminder",
+    cadenceKind: "once",
+    dueInDays: 1,
+    timeOfDay: "12:00",
+  };
+  expect(validateToolArgs(create, { createPlan }).valid).toBe(true);
+  expect(
+    validateToolArgs(create, {
+      createPlan: { ...createPlan, timeOfDay: "29:99" },
+    }).valid,
+  ).toBe(false);
+  expect(
+    validateToolArgs(create, { createPlan: { ...createPlan, confirmed: true } })
+      .valid,
+  ).toBe(false);
+  expect(validateToolArgs(review, { createPlan }).valid).toBe(false);
+  expect(validateToolArgs(remove, { createPlan }).valid).toBe(false);
+});
+
+it("keeps creation and snooze arguments on their owning promoted operations", () => {
+  const promoted = promoteSubactionsToActions(ownerRemindersAction);
+  const create = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_CREATE",
+  );
+  const snooze = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_SNOOZE",
+  );
+  const update = promoted.find(
+    (action) => action.name === "OWNER_REMINDERS_UPDATE",
+  );
+  if (!create || !snooze || !update)
+    throw new Error("Expected owner reminder operations");
+  expect(
+    validateToolArgs(create, {
+      title: "Check notebook",
+      confirmed: true,
+      idempotencyKey: "save-one",
+    }).valid,
+  ).toBe(true);
+  expect(validateToolArgs(create, { minutes: 10 }).valid).toBe(false);
+  expect(
+    validateToolArgs(snooze, { target: "saved-reminder", minutes: 10 }).valid,
+  ).toBe(true);
+  for (const operation of [snooze, update]) {
+    expect(validateToolArgs(operation, { confirmed: true }).valid).toBe(false);
+    expect(
+      validateToolArgs(operation, { idempotencyKey: "save-one" }).valid,
+    ).toBe(false);
+  }
+  expect(
+    ownerRemindersAction.parameters?.find(
+      (parameter) => parameter.name === "minutes",
+    ),
+  ).toBeDefined();
+  expect(
+    ownerRemindersAction.parameters?.find(
+      (parameter) => parameter.name === "confirmed",
+    ),
+  ).toBeDefined();
+  expect(
+    ownerRemindersAction.parameters?.find(
+      (parameter) => parameter.name === "idempotencyKey",
+    ),
+  ).toBeDefined();
+});
 
 describe("OWNER_REMINDERS non-command mutation defense", () => {
   it.each([

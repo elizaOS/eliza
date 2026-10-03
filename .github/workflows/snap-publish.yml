@@ -83,16 +83,16 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          node packages/scripts/store-release-plan.mjs \
+          node packages/scripts/store-release-plan.ts \
             --version "$VERSION" \
             --channel "${{ inputs.channel == 'stable' && 'latest' || 'beta' }}" \
             --source-sha "${{ inputs.source_sha }}" >/dev/null
           # Update the version in snapcraft.yaml to match the release
-          sed -i "s/^version: .*/version: \"${VERSION}\"/" packages/app-core/packaging/snap/snapcraft.yaml
+          sed -i "s/^version: .*/version: \"${VERSION}\"/" packages/app/packaging/snap/snapcraft.yaml
 
       - name: Build snap
         run: |
-          cd packages/app-core/packaging/snap
+          cd packages/app/packaging/snap
           snapcraft --destructive-mode
           SNAP_FILE=$(find . -name "*.snap" -maxdepth 1 | head -1)
           echo "SNAP_FILE=$SNAP_FILE" >> "$GITHUB_ENV"
@@ -113,7 +113,7 @@ jobs:
             stable|candidate|beta|edge) ;;
             *) echo "::error::channel must be stable|candidate|beta|edge, got: $CHANNEL"; exit 1 ;;
           esac
-          cd packages/app-core/packaging/snap
+          cd packages/app/packaging/snap
           snapcraft upload "$SNAP_FILE" --release "$CHANNEL"
           echo "Published snap to channel: $CHANNEL"
 
@@ -121,5 +121,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: eliza-snap-${{ inputs.version }}
-          path: packages/app-core/packaging/snap/*.snap
+          path: packages/app/packaging/snap/*.snap
           retention-days: 30

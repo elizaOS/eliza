@@ -4,7 +4,7 @@
  * preset matching the character's avatar index. Paths are normalized to be
  * root-relative (leading slashes stripped) so callers can join them uniformly.
  */
-import { getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/core/character-presets";
 
 function normalizeGreetingAnimationPath(path: string | null | undefined) {
   const trimmed = path?.trim();
@@ -13,7 +13,6 @@ function normalizeGreetingAnimationPath(path: string | null | undefined) {
   }
   return trimmed.replace(/^\/+/, "");
 }
-
 export function resolveCharacterGreetingAnimation(args: {
   avatarIndex?: number | null;
   greetingAnimation?: string | null;

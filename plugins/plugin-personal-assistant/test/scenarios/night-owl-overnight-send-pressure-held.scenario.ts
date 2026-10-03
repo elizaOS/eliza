@@ -6,7 +6,7 @@
  * the draft stays held until she has actually seen the text, and no outbound
  * dispatch may occur.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

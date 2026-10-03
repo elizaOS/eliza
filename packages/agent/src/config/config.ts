@@ -12,18 +12,22 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import type { ElizaConfig } from "@elizaos/shared";
 import {
+  type ElizaConfig,
+  ElizaError,
   isElizaSettingsDebugEnabled,
+  logger,
   migrateLegacyRuntimeConfig,
+  migrateRetiredSubscriptionChatRoute,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
 import JSON5 from "json5";
 import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
-import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
+import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import { isProcessOnlyEnvKey } from "./blocked-env-keys.ts";
 import {
   captureDevCloudEnvAuthority,
   createDevCloudConfigAuthorityView,
@@ -41,8 +45,9 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "./paths.ts";
+import { assertNoRetiredToolRestrictions } from "./retired-tool-policy.ts";
 
-export type { ElizaConfig } from "@elizaos/shared";
+export type { ElizaConfig } from "@elizaos/core";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,6 +82,11 @@ function migrateRetiredPluginConfig(config: ElizaConfig): void {
 }
 
 function migrateConfig(config: ElizaConfig): void {
+  if (migrateRetiredSubscriptionChatRoute(config as Record<string, unknown>)) {
+    logger.warn(
+      "[eliza] The ChatGPT/Codex subscription no longer powers chat; removed its chat route. It stays linked for coding agents. Choose a chat provider in Settings.",
+    );
+  }
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   migrateRetiredPluginConfig(config);
 }
@@ -118,6 +128,9 @@ function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
   for (const [key, value] of Object.entries(entries)) {
     if (isDevCloudInternalEnvKey(key)) continue;
     if (devCloudAuthority && isDevCloudEnvOwnedKey(key)) continue;
+    // TEE / protected-profile keys come from the process environment only; a
+    // persisted config.env line must not relax them.
+    if (isProcessOnlyEnvKey(key)) continue;
     // Skip unresolved vault sentinels. The boot-time vault hydration
     // (resolveConfigEnvForProcess + applyCloudConfigToEnv) writes the resolved
     // plaintext to process.env once at startup. Many services call
@@ -214,6 +227,7 @@ export function loadElizaConfig(onReadFile?: ConfigReadObserver): ElizaConfig {
       : { logging: { level: "error" } })) as ElizaConfig;
   migrateConfig(resolved);
   normalizeModelMetadataInConfig(resolved);
+  assertNoRetiredToolRestrictions(resolved);
 
   const skillsJsonPath = path.join(stateDir, "skills.json");
 
@@ -525,6 +539,7 @@ function stripWalletPrivateKeysFromConfig(config: ElizaConfig): void {
 }
 
 export function saveElizaConfig(config: ElizaConfig): void {
+  assertNoRetiredToolRestrictions(config);
   if (isDevCloudConfigAuthorityView(config)) {
     throw new Error(
       "[eliza-config] Refusing to persist an ephemeral dev Cloud authority view",
@@ -554,7 +569,36 @@ export function saveElizaConfig(config: ElizaConfig): void {
     stripWalletPrivateKeysFromConfig(sanitized as ElizaConfig);
   }
 
-  const content = `${JSON.stringify(sanitized, null, 2)}\n`;
+  // Host-managed credentials may be hydrated in memory, but stay outside disk config.
+  const externalNames = process.env.ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS;
+  const names =
+    externalNames === undefined || externalNames === ""
+      ? []
+      : externalNames.split(",");
+  if (
+    names.length > 32 ||
+    names.some((name) => !/^[A-Z][A-Z0-9_]{0,127}$/.test(name))
+  ) {
+    throw new ElizaError("Invalid external config secret policy", {
+      code: "CONFIG_EXTERNAL_SECRET_POLICY_INVALID",
+    });
+  }
+  const externalSecrets = new Set(
+    names
+      .map((name) => process.env[name])
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      ),
+  );
+  const content = `${JSON.stringify(
+    sanitized,
+    (_key, value) =>
+      typeof value === "string" && externalSecrets.has(value)
+        ? undefined
+        : value,
+    2,
+  )}\n`;
 
   // Atomic write: write to a temp file then rename. If the process crashes
   // during writeFileSync, only the temp file is corrupted — the original

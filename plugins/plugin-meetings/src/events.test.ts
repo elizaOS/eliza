@@ -3,7 +3,7 @@
  * second per session, with a trailing flush). Deterministic — fake runtime and
  * fake timers.
  */
-import type { MeetingTranscriptEvent } from "@elizaos/shared";
+import { type MeetingTranscriptEvent } from "@elizaos/core/meetings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MeetingEventEmitter } from "./events.js";
 import { makeFakeRuntime, segment } from "./test-support.js";

@@ -1,0 +1,39 @@
+Subject: [PATCH] riscv64 Rust-core bun: set -Ctarget-cpu=generic-rv64 (not cortex-a72)
+
+scripts/build/rust.ts derives the Rust `-Ctarget-cpu` from the arch so Rust
+codegen matches the C/C++ ISA. The chain was x64 -> nehalem/haswell, darwin ->
+apple-m1, else -> "cortex-a72" (the aarch64 default). riscv64 has no branch, so
+it fell through to "cortex-a72" — an ARM CPU — and rustc aborted while building
+core/compiler_builtins with:
+
+    rustc-LLVM ERROR: RV64 target requires an RV64 CPU
+
+Add a `cfg.riscv64 -> "generic-rv64"` branch. `generic-rv64` is rustc's default
+CPU for riscv64gc-unknown-linux-musl and matches the C/C++ side's
+`-march=rv64gc -mabi=lp64d` (flags.ts / build.sh). This is the build-system
+counterpart to 0001's rustTarget() target-triple fix; kept as a focused hunk so
+it applies cleanly on top of 0001 (0001 leaves this cpuTarget block untouched —
+upstream 9d000561 already carries the riscv64gc target wiring).
+
+diff --git a/scripts/build/rust.ts b/scripts/build/rust.ts
+index a2328ddb..c232f331 100644
+--- a/scripts/build/rust.ts
++++ b/scripts/build/rust.ts
+@@ -467,8 +467,15 @@ export function emitRust(n: Ninja, cfg: Config, inputs: RustBuildInputs): string
+       : "haswell"
+     : cfg.darwin
+       ? "apple-m1"
+-      : // armv8-a+crc isn't a CPU name — closest LLVM model with CRC baseline:
+-        "cortex-a72";
++      : cfg.riscv64
++        ? // LLVM's generic RV64 model — the default CPU for
++          // riscv64gc-unknown-linux-musl; matches the C/C++ side's
++          // `-march=rv64gc -mabi=lp64d`. Without this, riscv64 fell through to
++          // the aarch64 "cortex-a72" branch and rustc aborted while building
++          // core/compiler_builtins: "RV64 target requires an RV64 CPU".
++          "generic-rv64"
++        : // armv8-a+crc isn't a CPU name — closest LLVM model with CRC baseline:
++          "cortex-a72";
+   rustflags.push(`-Ctarget-cpu=${cpuTarget}`);
+   // `bun_core::build_options::ENABLE_ASAN = cfg!(bun_asan)` — must agree with
+   // the C++ `ASAN_ENABLED` macro so Global::exit() picks the same libc exit

@@ -13,8 +13,8 @@
  * fallback through Notification.permission.
  */
 
-import { ElizaError } from "@elizaos/core";
-import type { PermissionState, Prober } from "../contracts.js";
+import { ElizaError, type PermissionState, type Prober } from "@elizaos/core";
+
 import {
   buildState,
   getNativeDylib,

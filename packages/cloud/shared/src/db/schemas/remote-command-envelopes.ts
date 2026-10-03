@@ -4,9 +4,8 @@
  * to reject cross-scope delivery without decrypting command or result bodies.
  */
 
-import type { EncryptedRemoteControlEnvelope } from "@elizaos/shared/contracts/remote-control";
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { type EncryptedRemoteControlEnvelope } from "@elizaos/core/contracts/remote-control";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,
   check,
@@ -23,7 +22,6 @@ import { organizations } from "./organizations";
 import { remoteHosts } from "./remote-hosts";
 import { remoteSessions } from "./remote-sessions";
 import { users } from "./users";
-
 export const REMOTE_COMMAND_STATUSES = [
   "pending",
   "claimed",
@@ -34,9 +32,7 @@ export const REMOTE_COMMAND_STATUSES = [
   "cancelled",
 ] as const;
 export type RemoteCommandStatus = (typeof REMOTE_COMMAND_STATUSES)[number];
-
 export type StoredRemoteControlEnvelope = EncryptedRemoteControlEnvelope;
-
 export const remoteCommandEnvelopes = pgTable(
   "remote_command_envelopes",
   {
@@ -144,6 +140,5 @@ export const remoteCommandEnvelopes = pgTable(
     ),
   }),
 );
-
 export type RemoteCommandEnvelope = InferSelectModel<typeof remoteCommandEnvelopes>;
 export type NewRemoteCommandEnvelope = InferInsertModel<typeof remoteCommandEnvelopes>;

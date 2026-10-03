@@ -11,7 +11,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { expect, it } from "vitest";
 import { PGliteClientManager } from "../../plugin-sql/src/pglite/manager.ts";
 import { RuntimeMigrator } from "../../plugin-sql/src/runtime-migrator/runtime-migrator.ts";
-import * as schema from "../src/db/index.ts";
+import * as schema from "../src/db/schema.js";
 import { relationshipsPlugin } from "../src/plugin.ts";
 
 it("preserves owner records across external plugin identity migration", async () => {

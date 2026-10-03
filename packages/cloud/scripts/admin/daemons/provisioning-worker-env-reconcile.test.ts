@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { lookupSystemdEnvironmentValue } from "../systemd-environment-line.mjs";
+import { lookupSystemdEnvironmentValue } from "../systemd-environment-line.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../../..");
@@ -22,7 +22,7 @@ const workflowPath = path.join(
 );
 const serializerPath = path.join(
   repoRoot,
-  "packages/cloud/scripts/admin/systemd-environment-line.mjs",
+  "packages/cloud/scripts/admin/systemd-environment-line.ts",
 );
 const servicePath = path.join(
   repoRoot,
@@ -155,7 +155,7 @@ function installPinnedHelperWithSourceRace() {
   const destinationPath = path.join(
     directory,
     "root-owned",
-    "systemd-environment-line.mjs",
+    "systemd-environment-line.ts",
   );
   const originalBytes = readFileSync(serializerPath);
   writeFileSync(sourcePath, originalBytes);
@@ -429,16 +429,16 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
 
   it("pins privileged helper execution to an exact-SHA root-owned copy", () => {
     expect(workflow).toContain(
-      "sha256sum \\\n            packages/cloud/scripts/admin/systemd-environment-line.mjs",
+      "sha256sum \\\n            packages/cloud/scripts/admin/systemd-environment-line.ts",
     );
     expect(workflow).toContain(
       "SYSTEMD_ENVIRONMENT_HELPER_SHA256=$helper_sha256",
     );
     expect(workflow).toContain(
-      "ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs",
+      "ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.ts",
     );
     expect(workflow).not.toMatch(
-      /^\s*ENV_SERIALIZER=\/opt\/eliza\/.*systemd-environment-line\.mjs$/m,
+      /^\s*ENV_SERIALIZER=\/opt\/eliza\/.*systemd-environment-line\.ts$/m,
     );
     expect(workflow).not.toContain("NODE_BIN=$(command -v node)");
     expect(workflow).toContain("NODE_BIN=/usr/bin/node");
@@ -512,8 +512,11 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
         "# An EnvironmentFile replacement cannot revoke authority",
       ),
     );
+    expect(forwarded).toContain("DATABASE_SSL_NO_VERIFY");
+    expect(workflow).toContain(
+      `DATABASE_SSL_NO_VERIFY: \${{ vars.DATABASE_SSL_NO_VERIFY }}`,
+    );
     const schedulerRuntimeNames = [
-      "DATABASE_SSL_NO_VERIFY",
       "AGENT_BACKUP_SCHEDULE_BATCH_SIZE",
       "AGENT_BACKUP_SCHEDULE_LEASE_MS",
       "AGENT_BACKUP_SCHEDULE_RETRY_MS",
@@ -740,6 +743,75 @@ describe("atomic workflow block (executed verbatim)", () => {
       "shared-reconcile",
     ]);
   });
+
+  it("rewrites a stale host orphan reconciler to exactly one disabled entry", () => {
+    const result = runAtomicReconcile({
+      seedHostFile:
+        "ORPHAN_RECONCILER_ENABLED=1\nOTHER=keep\nORPHAN_RECONCILER_ENABLED=1\n",
+    });
+    expect(result.host.match(/^ORPHAN_RECONCILER_ENABLED=/gm)).toHaveLength(1);
+    expect(
+      lookupSystemdEnvironmentValue(result.host, "ORPHAN_RECONCILER_ENABLED"),
+    ).toBe("0");
+    expect(result.host).toContain("OTHER=keep\n");
+    // The pre-restart and health gates use the serializer's `equals` verb.
+    const gate = (contents: string) => {
+      const directory = mkdtempSync(path.join(tmpdir(), "orphan-gate-"));
+      const file = path.join(directory, "cloud.env.local");
+      writeFileSync(file, contents);
+      try {
+        execFileSync(
+          process.execPath,
+          [serializerPath, "equals", file, "ORPHAN_RECONCILER_ENABLED"],
+          { input: "0", stdio: "pipe", timeout: 20_000 },
+        );
+        return true;
+      } catch {
+        return false;
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    };
+    expect(gate(result.host)).toBe(true);
+    expect(gate("ORPHAN_RECONCILER_ENABLED=1\n")).toBe(false);
+    expect(workflow).toContain('"$ENV_FILE" ORPHAN_RECONCILER_ENABLED 0; then');
+    expect(workflow).toContain(
+      "Provisioning host orphan reconciler drifted from its disabled policy.",
+    );
+  });
+
+  it("gives the deletion-only backup authority the shared database TLS policy", () => {
+    const result = runAtomicReconcile({
+      values: { DATABASE_SSL_NO_VERIFY: "true" },
+    });
+    // The provisioning daemon and the backup authority query the same Cloud
+    // DB; a self-signed managed proxy needs the same verification policy in
+    // both allowlisted EnvironmentFiles (#29024).
+    expect(
+      lookupSystemdEnvironmentValue(result.host, "DATABASE_SSL_NO_VERIFY"),
+    ).toBe("true");
+    expect(
+      lookupSystemdEnvironmentValue(
+        result.backup,
+        "ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED",
+      ),
+    ).toBe("1");
+    expect(
+      lookupSystemdEnvironmentValue(
+        result.backup,
+        "AGENT_BACKUP_CATALOG_RUNTIME_ENABLED",
+      ),
+    ).toBe("0");
+    expect(
+      lookupSystemdEnvironmentValue(result.backup, "DATABASE_SSL_NO_VERIFY"),
+    ).toBe("true");
+    expect(result.backup).not.toContain("AGENT_BACKUP_STEWARD_KMS_TOKEN");
+
+    const strict = runAtomicReconcile({
+      values: { DATABASE_SSL_NO_VERIFY: "" },
+    });
+    expect(strict.backup).not.toContain("DATABASE_SSL_NO_VERIFY");
+  }, 30_000);
 
   it("tolerates a first deployment with no previously installed backup unit", () => {
     const result = runAtomicReconcile({ backupUnitLoadState: "not-found" });

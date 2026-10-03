@@ -1,0 +1,22 @@
+{
+  "schema": "eliza.os.linux.debian-snapshot-lock.v1",
+  "serial": "20260817T000000Z",
+  "baseImage": "debian:trixie@sha256:34cd9e9fd437c0a095ec39cb2e73422c9f30821b0d0848ed74fd0d43bae4d958",
+  "archives": {
+    "debian": {
+      "url": "https://snapshot.debian.org/archive/debian/20260817T000000Z",
+      "releasePath": "dists/trixie/Release",
+      "releaseSha256": "e89b36ee4d4e03b06573468d52c2a8be91ebdbda754c192f9e1a731ad738652f"
+    },
+    "updates": {
+      "url": "https://snapshot.debian.org/archive/debian/20260817T000000Z",
+      "releasePath": "dists/trixie-updates/Release",
+      "releaseSha256": "8504a4f442aeb24d2711abb562d4b0275baea4063825a88d706d27003354bb3b"
+    },
+    "security": {
+      "url": "https://snapshot.debian.org/archive/debian-security/20260817T000000Z",
+      "releasePath": "dists/trixie-security/Release",
+      "releaseSha256": "64cef5982d670094c107aec8fef6a9da36740503c7e4bf75c0106e582ee8cf2b"
+    }
+  }
+}

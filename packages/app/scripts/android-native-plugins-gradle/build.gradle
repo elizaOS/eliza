@@ -1,0 +1,114 @@
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
+buildscript {
+    repositories {
+        google()
+        maven {
+            url = uri('https://maven-central.storage-download.googleapis.com/maven2/')
+        }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20'
+    }
+}
+
+ext {
+    androidGradlePluginVersion = '8.13.0'
+    kotlinVersion = '2.2.20'
+    kotlin_version = '2.2.20'
+    mavenCentralMirrorUrl = 'https://maven-central.storage-download.googleapis.com/maven2/'
+    minSdkVersion = 26
+    compileSdkVersion = 36
+    targetSdkVersion = 36
+    androidxActivityVersion = '1.8.0'
+    androidxAppCompatVersion = '1.7.1'
+    androidxCoordinatorLayoutVersion = '1.3.0'
+    androidxCoreVersion = '1.12.0'
+    androidxFragmentVersion = '1.6.2'
+    coreSplashScreenVersion = '1.2.0'
+    androidxWebkitVersion = '1.9.0'
+    androidxJunitVersion = '1.3.0'
+    androidxEspressoCoreVersion = '3.7.0'
+    cordovaAndroidVersion = '10.1.1'
+    coroutinesVersion = '1.10.2'
+    junitVersion = '4.13.2'
+}
+
+allprojects {
+    repositories {
+        google()
+        maven {
+            url = uri(rootProject.ext.mavenCentralMirrorUrl)
+        }
+        mavenCentral()
+    }
+}
+
+subprojects { subproject ->
+    subproject.afterEvaluate {
+        subproject.tasks.withType(JavaCompile).configureEach { task ->
+            task.javaCompiler = subproject.javaToolchains.compilerFor {
+                languageVersion = JavaLanguageVersion.of(21)
+            }
+        }
+    }
+}
+
+// Shared WebView contract tests are test-only sources. Production plugin AARs
+// never include this host, its assets, or its dependencies.
+subprojects { subproject ->
+    if (subproject.name in ['capacitor-android', 'native-block-target', 'native-gateway-host']) return
+    subproject.afterEvaluate {
+        def fixtures = new File(rootDir, 'bridge-tests')
+        def descriptors = new groovy.json.JsonSlurper().parse(new File(fixtures, 'plugins.json'))
+        def directory = subproject.projectDir.parentFile.name
+        def descriptor = descriptors[directory]
+        if (descriptor == null) throw new GradleException("Missing native bridge contract: ${directory}")
+        def generated = new File(subproject.layout.buildDirectory.get().asFile, 'generated/native-bridge-tests')
+        def prepare = subproject.tasks.register('prepareNativeBridgeTests') {
+            inputs.dir(fixtures)
+            def originalManifest = new File(subproject.projectDir, 'src/androidTest/AndroidManifest.xml')
+            if (originalManifest.exists()) inputs.file(originalManifest)
+            outputs.dir(generated)
+            doLast {
+                subproject.delete(generated)
+                def assets = new File(generated, 'assets')
+                assets.mkdirs()
+                subproject.providers.exec {
+                    commandLine 'bun', 'build', new File(fixtures, 'assets/contracts.ts').absolutePath,
+                        '--target=browser', '--outfile=' + new File(assets, 'contracts.js').absolutePath
+                }.result.get().assertNormalExitValue()
+                new File(assets, 'native-plugin.json').text = groovy.json.JsonOutput.toJson(descriptor + [directory: directory])
+                if (!new File(subproject.projectDir, 'src/androidTest/assets/public/index.html').exists()) {
+                    new File(assets, 'public').mkdirs()
+                    new File(assets, 'public/index.html').text = new File(fixtures, '__fixtures__/index.html').text
+                }
+                def manifest = originalManifest.exists() ? originalManifest.text : '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application></application></manifest>'
+                def activity = '<activity android:name="ai.eliza.testing.NativeBridgeTestActivity" android:exported="true" android:theme="@style/AppTheme.NoActionBar" />'
+                if (manifest.contains('</application>')) {
+                    manifest = manifest.replace('</application>', activity + '</application>')
+                } else if (manifest =~ /<application\s*\/>/) {
+                    manifest = manifest.replaceAll(/<application\s*\/>/, '<application>' + activity + '</application>')
+                } else {
+                    manifest = manifest.replace('</manifest>', '<application>' + activity + '</application></manifest>')
+                }
+                manifest = manifest.replace('</manifest>', '<uses-permission android:name="android.permission.INTERNET" /></manifest>')
+                new File(generated, 'AndroidManifest.xml').text = manifest
+            }
+        }
+        subproject.android.sourceSets.androidTest {
+            java.srcDir(new File(fixtures, 'java'))
+            assets.srcDir(new File(generated, 'assets'))
+            manifest.srcFile(new File(generated, 'AndroidManifest.xml'))
+        }
+        subproject.tasks.matching { it.name == 'preDebugAndroidTestBuild' }.configureEach { dependsOn(prepare) }
+        subproject.dependencies {
+            androidTestImplementation 'androidx.appcompat:appcompat:1.7.1'
+            androidTestImplementation 'androidx.test:core:1.7.0'
+            androidTestImplementation 'androidx.test:runner:1.7.0'
+            androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+        }
+    }
+}

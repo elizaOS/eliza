@@ -1,6 +1,7 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
+		"customConditions": [],
 		"noEmit": false,
 		"declaration": true,
 		"declarationMap": true,
@@ -9,7 +10,6 @@
 		"rootDir": ".",
 		"ignoreDeprecations": "6.0",
 		"paths": {
-			"@elizaos/plugin-browser": ["../plugin-browser/dist/index.d.ts"],
 			"@elizaos/plugin-browser/*": ["../plugin-browser/dist/*"]
 		},
 		"types": ["node", "bun-types"]

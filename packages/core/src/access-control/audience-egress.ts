@@ -39,8 +39,8 @@ import type {
 	ArtifactShareGrant,
 	ArtifactShareGrantMode,
 	MemoryScope,
-	UUID,
-} from "../types";
+} from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 import {
 	type AudienceAdmission,
 	attestedAudienceViewerResolver,

@@ -1,10 +1,11 @@
 // Persists characters records for cloud services through the shared DB boundary.
-import { and, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
+
+import { agentTable } from "@elizaos/plugin-sql";
+import { and, asc, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
 import type { SearchFilters, SortOptions } from "../../lib/types/my-agents";
 import { normalizeTokenAddress } from "../../lib/utils/token-address";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
-import { agentTable } from "../schemas/eliza";
 import { elizaRoomCharactersTable } from "../schemas/eliza-room-characters";
 import {
   type NewUserCharacter,
@@ -542,25 +543,45 @@ export class UserCharactersRepository {
   }
 
   /**
-   * Builds the sort order expression for search queries.
+   * Builds the sort order for search queries: the requested sort followed by
+   * the primary key, so the ORDER BY is a total order. Every sort key admits
+   * ties (popularity_score defaults to 0 for every character), and
+   * LIMIT/OFFSET over a partial order may return a tied row on two pages and
+   * another on none. The tie-break makes page boundaries deterministic for a
+   * dataset that does not change between page loads; it is not a snapshot.
+   * Inserts, deletes, or changes to the primary sort value between pages can
+   * still move rows across a boundary.
    */
-  private buildSortOrder(sortOptions: SortOptions) {
+  private buildSortOrder(sortOptions: SortOptions): SQL[] {
     const { sortBy, order } = sortOptions;
     const direction = order === "asc" ? "asc" : "desc";
+    const tieBreak = asc(userCharacters.id);
 
     switch (sortBy) {
       case "popularity":
-        return direction === "asc"
-          ? userCharacters.popularity_score
-          : desc(userCharacters.popularity_score);
+        return [
+          direction === "asc"
+            ? asc(userCharacters.popularity_score)
+            : desc(userCharacters.popularity_score),
+          tieBreak,
+        ];
       case "newest":
-        return direction === "asc" ? userCharacters.created_at : desc(userCharacters.created_at);
+        return [
+          direction === "asc" ? asc(userCharacters.created_at) : desc(userCharacters.created_at),
+          tieBreak,
+        ];
       case "name":
-        return direction === "asc" ? userCharacters.name : desc(userCharacters.name);
+        return [
+          direction === "asc" ? asc(userCharacters.name) : desc(userCharacters.name),
+          tieBreak,
+        ];
       case "updated":
-        return direction === "asc" ? userCharacters.updated_at : desc(userCharacters.updated_at);
+        return [
+          direction === "asc" ? asc(userCharacters.updated_at) : desc(userCharacters.updated_at),
+          tieBreak,
+        ];
       default:
-        return desc(userCharacters.popularity_score);
+        return [desc(userCharacters.popularity_score), tieBreak];
     }
   }
 
@@ -586,11 +607,14 @@ export class UserCharactersRepository {
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
     if (sortOptions.pinFeatured === false) {
-      return await baseQuery.orderBy(secondaryOrderBy).limit(limit).offset(offset);
+      return await baseQuery
+        .orderBy(...secondaryOrderBy)
+        .limit(limit)
+        .offset(offset);
     }
 
     return await baseQuery
-      .orderBy(desc(userCharacters.featured), secondaryOrderBy)
+      .orderBy(desc(userCharacters.featured), ...secondaryOrderBy)
       .limit(limit)
       .offset(offset);
   }
@@ -690,7 +714,7 @@ export class UserCharactersRepository {
       .select()
       .from(userCharacters)
       .where(and(...conditions))
-      .orderBy(desc(userCharacters.featured), secondaryOrderBy)
+      .orderBy(desc(userCharacters.featured), ...secondaryOrderBy)
       .limit(limit)
       .offset(offset);
   }
@@ -709,11 +733,13 @@ export class UserCharactersRepository {
     return result[0]?.count || 0;
   }
 
+  /**
+   * Makes an agent public. Creator inference markup is retired (#22961), so
+   * publishing always leaves it off; there is no option to turn it on.
+   */
   async publish(
     id: string,
     options: {
-      enableMonetization: boolean;
-      markupPercentage: number;
       payoutWalletAddress?: string;
       a2aEnabled: boolean;
       mcpEnabled: boolean;
@@ -725,8 +751,8 @@ export class UserCharactersRepository {
         is_public: true,
         a2a_enabled: options.a2aEnabled,
         mcp_enabled: options.mcpEnabled,
-        monetization_enabled: options.enableMonetization,
-        inference_markup_percentage: String(options.markupPercentage),
+        monetization_enabled: false,
+        inference_markup_percentage: "0",
         ...(options.payoutWalletAddress && {
           payout_wallet_address: options.payoutWalletAddress,
         }),

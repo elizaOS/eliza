@@ -234,12 +234,13 @@ describe("TASKS spawn gate: empty task prompts refuse pre-spawn", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("EMPTY_TASK_PROMPT");
-    // Clear, planner-usable refusal in data — not a spawned-then-failed
-    // doomed agent, and not an internal envelope in the user channel.
-    const data = result.data as Record<string, unknown>;
-    expect(data.code).toBe("EMPTY_TASK_PROMPT");
-    expect(String(data.plannerGuidance)).toMatch(/empty/i);
+    expect(result.error).toBe("CHILD_TASK_REQUIRED");
+    expect(result.text).toContain("concrete work the child must execute");
+    expect(result.effectReceipts).toHaveLength(1);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: { code: "CHILD_TASK_REQUIRED", acceptance: "rejected" },
+    });
     expectNoInternalTextInUserFacingFields(result);
     expect(spawnSession).not.toHaveBeenCalled();
   });

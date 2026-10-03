@@ -21,7 +21,7 @@
  *        - otherwise                            → cold
  */
 
-import { getFirstRunProviderFamily } from "@elizaos/shared";
+import { getFirstRunProviderFamily } from "@elizaos/core";
 import type { OperationIntent, ReloadTier } from "./types.ts";
 
 export interface ClassifyContext {
@@ -59,7 +59,7 @@ function classifyProviderSwitch(
   const targetFamily = getFirstRunProviderFamily(target);
   const currentFamily = getFirstRunProviderFamily(current);
   if (targetFamily && currentFamily && targetFamily === currentFamily) {
-    // Same plugin family (e.g. openai ↔ openai-subscription) — warm.
+    // Same plugin family (e.g. anthropic ↔ anthropic-subscription) — warm.
     return "warm";
   }
 

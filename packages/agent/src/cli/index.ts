@@ -53,14 +53,14 @@ export async function runAutonomousCli(
   }
 
   if (command === "runtime") {
-    const { bootElizaRuntime } = await import("../runtime/index.ts");
+    const { bootElizaRuntime } = await import("../runtime/eliza.ts");
     await bootElizaRuntime();
     return;
   }
 
   if (command === "ios-bridge") {
     const { runIosBridgeCli } = await import(
-      "@elizaos/plugin-capacitor-bridge/ios/bridge"
+      "@elizaos/plugin-native-inference/ios/bridge"
     );
     await runIosBridgeCli(argv);
     return;
@@ -72,15 +72,15 @@ export async function runAutonomousCli(
     // desktop AgentManager, dev api-supervisor) for a clean restart instead of
     // a silent death. One-shot commands and tests keep default behavior.
     if (process.env.NODE_ENV !== "test") {
-      const { installProcessCrashGuards } = await import("@elizaos/shared");
+      const { installProcessCrashGuards } = await import("@elizaos/core");
       installProcessCrashGuards({ onUncaughtException: "restart" });
     }
-    const { startElizaProcess } = await import("../runtime/index.ts");
+    const { startElizaProcess } = await import("../runtime/eliza.ts");
     const runtime = await startElizaProcess({ serverOnly: true });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
-    // `@elizaos/app-core` runtime wrapper, which the mobile agent
-    // bundle cannot import (would create an `agent → app-core →
+    // `@elizaos/app` runtime wrapper, which the mobile agent
+    // bundle cannot import (would create an `agent → app →
     // agent` workspace cycle). Bootstrapping the AOSP llama loader
     // and ModelType handlers here keeps the registration in the
     // agent package and out of the bundler's cycle path. Skipped when
@@ -95,7 +95,7 @@ export async function runAutonomousCli(
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
     ) {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+        "@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     }
@@ -104,7 +104,7 @@ export async function runAutonomousCli(
 
   if (command === "android-bridge") {
     const { runAndroidBridgeCli } = await import(
-      "@elizaos/plugin-capacitor-bridge/android/bridge"
+      "@elizaos/plugin-native-inference/android/bridge"
     );
     await runAndroidBridgeCli();
     return;

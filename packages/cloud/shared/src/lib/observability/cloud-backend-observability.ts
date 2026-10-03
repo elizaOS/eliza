@@ -1,7 +1,8 @@
-// Defines cloud shared cloud backend observability behavior for backend service
-// consumers: per-request and per-DB-call ring-buffer telemetry plus inference
-// stream milestone events (#16079), all read back through the admin
-// cloud-observability endpoint.
+/**
+ * Records Cloud request, database and inference timing for admin diagnostics.
+ * Dependency telemetry retains admission results and errors unchanged and never
+ * includes request bodies, response bodies or private exception messages.
+ */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../utils/logger";
 
@@ -159,12 +160,12 @@ export async function observeInferenceDependency<T>(
     return fn();
   }
   const startedAt = performance.now();
-  let outcome: "returned" | "threw" = "threw";
-  let completedResult: T | undefined;
+  let completion: { outcome: "threw" } | { outcome: "returned"; result: T } = {
+    outcome: "threw",
+  };
   try {
     const result = await fn();
-    completedResult = result;
-    outcome = "returned";
+    completion = { outcome: "returned", result };
     return result;
   } finally {
     const durationMs = elapsedMs(startedAt);
@@ -173,21 +174,33 @@ export async function observeInferenceDependency<T>(
       // responses, or error messages. Nested spans overlap; do not add them.
       try {
         const handlerMs =
-          outcome === "returned" && handlerTiming ? handlerTiming(completedResult as T) : undefined;
+          completion.outcome === "returned" && handlerTiming
+            ? handlerTiming(completion.result)
+            : undefined;
         logger.audit("[InferenceAdmission] dependency timing", {
           traceId: context.traceId,
           dependency,
           operation,
           durationMs,
-          outcome,
+          outcome: completion.outcome,
           ...(typeof handlerMs === "number" &&
             Number.isFinite(handlerMs) &&
             handlerMs >= 0 &&
             handlerMs <= durationMs && { handlerMs }),
         });
       } catch {
-        // error-policy:J6 diagnostic sink failure must not replace the exact
-        // admission result or error, nor cause a successful charge to retry.
+        // error-policy:J7 this Cloud boundary has no AgentRuntime. Warn without
+        // exposing extractor errors or allowing telemetry to retry admission.
+        try {
+          logger.warn("[InferenceAdmission] dependency timing unavailable", {
+            traceId: context.traceId,
+            dependency,
+            operation,
+          });
+        } catch {
+          // error-policy:J7 both diagnostic sinks failed; preserve the exact
+          // admission result or error because this boundary cannot report further.
+        }
       }
     }
   }

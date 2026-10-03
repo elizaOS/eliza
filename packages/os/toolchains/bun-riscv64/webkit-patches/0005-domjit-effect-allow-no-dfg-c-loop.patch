@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000005 Mon Sep 17 00:00:00 2001
+From: bun-riscv64 build <bun-riscv64@eliza.local>
+Date: Fri, 22 May 2026 00:00:00 +0000
+Subject: [PATCH] DOMJITEffect: provide abstract heap sentinels without DFG
+
+The C_LOOP riscv64 build disables DFG_JIT, so DFGAbstractHeap.h does not
+declare DFG::AbstractHeapKind. DOMJITEffect.h is still exported through
+JavaScriptCore private headers and only needs the sentinel values used by its
+inline Effect helpers. Provide those values when DFG is disabled.
+---
+ Source/JavaScriptCore/domjit/DOMJITEffect.h | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/Source/JavaScriptCore/domjit/DOMJITEffect.h b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+index 1111111..2222222 100644
+--- a/Source/JavaScriptCore/domjit/DOMJITEffect.h
++++ b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+@@ -28,6 +28,20 @@
+ 
+ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
+ 
++#if !ENABLE(DFG_JIT)
++namespace JSC {
++namespace DFG {
++
++enum AbstractHeapKind : uint8_t {
++    InvalidAbstractHeap,
++    Heap,
++    SideState,
++};
++
++}
++}
++#endif
++
+ namespace JSC {
+ namespace DOMJIT {
+ 
+-- 
+2.43.0

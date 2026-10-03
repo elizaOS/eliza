@@ -211,7 +211,7 @@ void eliza_qjl_dequantize_row(const eliza_block_qjl1_256 * blk,
 /* ---------- PolarQuant ---------- */
 
 /* Bit-identical to POLAR_Q4_CENTROIDS in
- * packages/native-plugins/polarquant-cpu/include/polarquant/polar_centroids.h. */
+ * plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polar_centroids.h. */
 const float ELIZA_POLAR_Q4_CENTROIDS[16] = {
     -2.754354807f, -2.093562707f, -1.643041510f, -1.279739752f,
     -0.962640978f, -0.672392117f, -0.397897103f, -0.131757782f,

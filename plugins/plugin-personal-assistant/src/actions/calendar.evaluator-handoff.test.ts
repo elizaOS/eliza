@@ -3,7 +3,8 @@
  * Queued model outputs and an in-memory calendar service prove ownership and
  * receipt transport, not the semantic accuracy of a live language model.
  */
-import { renderGroundedActionReply } from "@elizaos/agent";
+
+import type { PlannerRuntime, PlannerToolCall } from "@elizaos/core";
 import {
   type ActionResult,
   type Content,
@@ -11,22 +12,19 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  NoModelProviderConfiguredError,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
-} from "../../../../packages/core/src/runtime/planner-loop.ts";
-import type {
-  PlannerRuntime,
-  PlannerToolCall,
-} from "../../../../packages/core/src/runtime/planner-types.ts";
-import { NoModelProviderConfiguredError } from "../../../../packages/core/src/runtime.ts";
+} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { calendarAction } from "./calendar.ts";
 
-vi.mock("@elizaos/agent", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/agent")>()),
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-assistant")>()),
   renderGroundedActionReply: vi.fn(),
 }));
 

@@ -10,7 +10,7 @@
  *
  * Consumed by the dev-only seed route in `conversation-routes.ts`, by the
  * scenario-runner `messages` seed step, and by
- * `packages/scripts/seed-message-corpus.mjs` for manual demo prep. Generation
+ * `packages/scripts/seed-message-corpus.ts` for manual demo prep. Generation
  * is a pure function of (seed, now, shape options); ids are random so
  * re-seeding adds more history instead of colliding.
  */

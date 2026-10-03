@@ -6,7 +6,7 @@
  * when the file is missing or malformed). Shape:
  *   { "commit": "58f6bb3beb", "builtAt": "…", "label": "58f6bb3beb · Jul 03 17:42 MDT" }
  *
- * The file is stamped at build time (see packages/app/scripts/build.mjs) and is
+ * The file is stamped at build time (see packages/app/scripts/build.ts) and is
  * gitignored, so local dev / CI builds get a live sha while production bundles
  * without the stamp simply render nothing — i.e. this whole component (badge +
  * diagnostics overlay) is STAMPED-BUILDS-ONLY and costs nothing in prod.

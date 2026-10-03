@@ -4,7 +4,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-notes",
   viewId: "notes",
-  entry: "./src/views/notes-view-bundle.ts",
+  entry: "./src/components/notes-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "NotesView",
 });

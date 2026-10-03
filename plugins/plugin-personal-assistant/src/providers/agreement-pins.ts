@@ -4,9 +4,13 @@
  * participate in guest authorization or widen a resource grant.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
-import type { Memory, Provider } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import {
+  ElizaError,
+  hasRoleAccess,
+  type Memory,
+  type Provider,
+} from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { getAgreementKnowledgeService } from "../lifeops/household/agreement-knowledge.js";
 
 export const agreementPinsProvider: Provider = {
@@ -25,15 +29,32 @@ export const agreementPinsProvider: Provider = {
     if (!service) {
       return { text: "", values: { agreementPinCount: 0 }, data: {} };
     }
-    const owner = await hasOwnerAccess(runtime, message);
+    const owner = await hasRoleAccess(runtime, message, "OWNER");
     const principalEntityId = owner ? SELF_ENTITY_ID : message.entityId;
     if (typeof principalEntityId !== "string" || !principalEntityId.trim()) {
       return { text: "", values: { agreementPinCount: 0 }, data: {} };
     }
-    const views = await service.activePinnedContextForPrincipal({
-      principalEntityId,
-      roomId: typeof message.roomId === "string" ? message.roomId : undefined,
-    });
+    let views: Awaited<
+      ReturnType<typeof service.activePinnedContextForPrincipal>
+    >;
+    try {
+      views = await service.activePinnedContextForPrincipal({
+        principalEntityId,
+        roomId: typeof message.roomId === "string" ? message.roomId : undefined,
+      });
+    } catch (error) {
+      // error-policy:J4 Revoked family context is explicit; unrelated planner work remains usable.
+      if (
+        !(error instanceof ElizaError) ||
+        error.code !== "FAMILY_WORKSPACE_FENCED"
+      )
+        throw error;
+      return {
+        text: "Family workspace access has been revoked. Parenting-agreement context is unavailable.",
+        values: { agreementPinStatus: "revoked" },
+        data: { agreementContext: { status: "revoked" } },
+      };
+    }
     if (views.length === 0) {
       return { text: "", values: { agreementPinCount: 0 }, data: {} };
     }

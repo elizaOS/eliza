@@ -5,7 +5,7 @@
  * provider's native, server-executed web search tool whenever a call targets a
  * supporting provider and carries no tools of its own. Server-side search is
  * zero-plumbing: the provider runs the search and grounds its own answer — no
- * Tavily/Serper key, no extra application round-trips.
+ * search API key, no extra application round-trips.
  *
  * Supported providers (matched against the AI SDK `model.provider` string):
  *   anthropic.messages    → @ai-sdk/anthropic  webSearch_*

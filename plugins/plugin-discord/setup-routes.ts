@@ -20,16 +20,17 @@
 import {
 	buildSetupError,
 	type IAgentRuntime,
-	type Route,
-	type RouteRequest,
-	type RouteResponse,
 	type SetupState,
 	type SetupStatusResponse,
 } from "@elizaos/core";
+import type {
+	Route,
+	RouteRequest,
+	RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import { DISCORD_LOCAL_SERVICE_NAME } from "./discord-local-service";
 
 // ── Discord types ───────────────────────────────────────────────────────
-
 interface DiscordLocalServiceLike {
 	getStatus(): Record<string, unknown>;
 	authorize(): Promise<Record<string, unknown>>;
@@ -38,7 +39,6 @@ interface DiscordLocalServiceLike {
 	listChannels(guildId: string): Promise<Array<Record<string, unknown>>>;
 	subscribeChannelMessages(channelIds: string[]): Promise<string[]>;
 }
-
 function isDiscordLocalServiceLike(
 	service: unknown,
 ): service is DiscordLocalServiceLike {
@@ -53,14 +53,12 @@ function isDiscordLocalServiceLike(
 		typeof candidate.subscribeChannelMessages === "function"
 	);
 }
-
 function resolveService(
 	runtime: IAgentRuntime,
 ): DiscordLocalServiceLike | null {
 	const raw = runtime.getService(DISCORD_LOCAL_SERVICE_NAME);
 	return isDiscordLocalServiceLike(raw) ? raw : null;
 }
-
 interface DiscordServiceStatusShape {
 	available: boolean;
 	connected: boolean;
@@ -73,7 +71,6 @@ interface DiscordServiceStatusShape {
 	ipcPath: string | null;
 	reason?: string;
 }
-
 function getUnregisteredDetail(): DiscordServiceStatusShape {
 	return {
 		available: false,
@@ -88,7 +85,6 @@ function getUnregisteredDetail(): DiscordServiceStatusShape {
 		reason: "discord-local service not registered",
 	};
 }
-
 function buildStatusResponse(
 	runtime: IAgentRuntime,
 ): SetupStatusResponse<DiscordServiceStatusShape> {
@@ -114,9 +110,7 @@ function buildStatusResponse(
 		detail,
 	};
 }
-
 // ── GET /api/setup/discord/status ───────────────────────────────────────
-
 async function handleStatus(
 	_req: RouteRequest,
 	res: RouteResponse,
@@ -124,9 +118,7 @@ async function handleStatus(
 ): Promise<void> {
 	res.status(200).json(buildStatusResponse(runtime));
 }
-
 // ── POST /api/setup/discord/start ───────────────────────────────────────
-
 async function handleStart(
 	_req: RouteRequest,
 	res: RouteResponse,
@@ -168,9 +160,7 @@ async function handleStart(
 			);
 	}
 }
-
 // ── POST /api/setup/discord/cancel ──────────────────────────────────────
-
 async function handleCancel(
 	_req: RouteRequest,
 	res: RouteResponse,
@@ -205,7 +195,6 @@ async function handleCancel(
 			);
 	}
 }
-
 /**
  * Plugin routes for Discord local setup.
  *

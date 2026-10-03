@@ -1,5 +1,5 @@
 /** Resolves schedule ownership through contiguous source history under the caller's organization lock. Only atomically receipted paid renewals may advance the billing period without a new schedule command. */
-import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { cancellationReobserve } from "../../lib/services/stripe-period-end-cancellation";
 import type { DbTransaction } from "../client";
 import {
@@ -82,6 +82,7 @@ async function requirePaidRenewalBridge(
     .from(subscriptionAllowancePeriods)
     .where(
       and(
+        isNull(subscriptionAllowancePeriods.billing_scope_id),
         eq(subscriptionAllowancePeriods.organization_id, revision.organization_id),
         eq(subscriptionAllowancePeriods.subscription_id, revision.subscription_id),
         eq(subscriptionAllowancePeriods.subscription_revision, revision.revision),
@@ -143,6 +144,8 @@ export async function readLatestSubscriptionScheduleCommand(
     .from(billingSubscriptionCommands)
     .where(
       and(
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        isNull(billingSubscriptionCommands.app_id),
         eq(billingSubscriptionCommands.organization_id, source.organization_id),
         eq(billingSubscriptionCommands.subscription_id, source.id),
         inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),

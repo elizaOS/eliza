@@ -67,6 +67,8 @@ export interface CloudRequestOptions {
 }
 
 export interface ElizaCloudClientOptions {
+  /** Explicit configured product for native model requests; requires a stable Idempotency-Key per operation. */
+  nativeApplicationSlot?: string;
   baseUrl?: string;
   apiBaseUrl?: string;
   apiKey?: string;
@@ -189,6 +191,8 @@ export interface EmbeddingsRequest {
 }
 
 export interface EmbeddingsResponse {
+  /** Provider-verified model, pooling, and normalization identity; absent on legacy responses. */
+  embedding_space?: string;
   object?: string;
   data: Array<{ embedding: number[]; index: number; object?: string }>;
   usage?: { prompt_tokens?: number; total_tokens?: number };
@@ -245,6 +249,8 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
     creditsPerDollar: 1;
     usdPerCredit: 1;
     minimumTopUp: number;
+    /** Largest one-off top-up the checkout seams accept; mirrors the enforced contract. */
+    maximumTopUp?: number;
     x402Enabled: boolean;
   };
 }
@@ -273,44 +279,11 @@ export interface CreateCreditsCheckoutResponse extends Record<string, unknown> {
 
 export interface AppCreditsBalanceResponse extends Record<string, unknown> {
   success: boolean;
-  /** The user's org credit balance — the single ledger app purchases fund and app inference debits. */
+  /** The user's org credit balance — the single ledger app inference debits. */
   balance?: number;
   isLow?: boolean;
   error?: string;
 }
-
-export interface CreateAppCreditsCheckoutRequest {
-  app_id: string;
-  amount: number;
-  success_url: string;
-  cancel_url: string;
-}
-
-export interface CreateAppCreditsCheckoutResponse
-  extends Record<string, unknown> {
-  success: boolean;
-  url?: string | null;
-  sessionId?: string;
-  error?: string;
-}
-
-export interface VerifyAppCreditsCheckoutResponse
-  extends Record<string, unknown> {
-  success: boolean;
-  amount?: number;
-  message?: string;
-  status?: string;
-  error?: string;
-}
-
-export type AppChargeProvider = "stripe" | "oxapay";
-export type AppChargePaymentContext = "verified_payer" | "any_payer";
-export type AppChargeStatus =
-  | "requested"
-  | "pending"
-  | "confirmed"
-  | "expired"
-  | string;
 
 export interface PaymentCallbackChannel extends Record<string, unknown> {
   roomId?: string;
@@ -318,97 +291,6 @@ export interface PaymentCallbackChannel extends Record<string, unknown> {
   agentId?: string;
   agent_id?: string;
   source?: string;
-}
-
-export interface AppChargeRequestView extends Record<string, unknown> {
-  id: string;
-  appId: string;
-  amountUsd: number;
-  description: string | null;
-  providers: AppChargeProvider[];
-  paymentContext: AppChargePaymentContext;
-  paymentUrl: string;
-  status: AppChargeStatus;
-  paidAt: string | null;
-  paidProvider?: AppChargeProvider;
-  providerPaymentId?: string;
-  payerUserId?: string;
-  payerOrganizationId?: string;
-  expiresAt: string;
-  createdAt: string;
-  successUrl?: string;
-  cancelUrl?: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface CreateAppChargeRequest {
-  amount: number;
-  description?: string;
-  providers?: AppChargeProvider[];
-  payment_context?: AppChargePaymentContext;
-  success_url?: string;
-  cancel_url?: string;
-  callback_url?: string;
-  callback_secret?: string;
-  callback_channel?: PaymentCallbackChannel;
-  callback_metadata?: Record<string, unknown>;
-  lifetime_seconds?: number;
-  metadata?: Record<string, unknown>;
-}
-
-export interface CreateAppChargeResponse extends Record<string, unknown> {
-  success: boolean;
-  charge: AppChargeRequestView;
-}
-
-export interface ListAppChargesResponse extends Record<string, unknown> {
-  success: boolean;
-  charges: AppChargeRequestView[];
-}
-
-export interface GetAppChargeResponse extends Record<string, unknown> {
-  success: boolean;
-  charge: AppChargeRequestView;
-  app?: {
-    id: string;
-    name: string;
-    description?: string | null;
-    logo_url?: string | null;
-    website_url?: string | null;
-  };
-}
-
-export type OxaPayNetwork =
-  | "ERC20"
-  | "TRC20"
-  | "BEP20"
-  | "POLYGON"
-  | "SOL"
-  | "BASE"
-  | "ARB"
-  | "OP";
-
-export interface CreateAppChargeCheckoutRequest {
-  provider: AppChargeProvider;
-  success_url?: string;
-  cancel_url?: string;
-  return_url?: string;
-  payCurrency?: string;
-  network?: OxaPayNetwork;
-}
-
-export interface CreateAppChargeCheckoutResponse
-  extends Record<string, unknown> {
-  success: boolean;
-  checkout: Record<string, unknown> & {
-    provider: AppChargeProvider;
-    url?: string | null;
-    sessionId?: string;
-    paymentId?: string;
-    trackId?: string;
-    payLink?: string;
-    expiresAt?: string;
-  };
 }
 
 export interface AffiliateCodeView extends Record<string, unknown> {

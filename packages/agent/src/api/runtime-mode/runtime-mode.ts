@@ -12,14 +12,14 @@
  *      `local-only`.
  *
  * The `RUNTIME_EXECUTION_MODE` env var family in
- * `@elizaos/shared/config/runtime-mode.ts` is a *different* concept (sandbox
+ * `@elizaos/core/config/runtime-mode.ts` is a *different* concept (sandbox
  * vs. yolo execution policy for shell tools); do not conflate.
  */
 
 import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import * as zod from "zod";
 import {
   type EffectiveElizaConfigSnapshot,

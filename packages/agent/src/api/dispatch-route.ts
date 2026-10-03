@@ -24,12 +24,12 @@ import type {
 } from "node:http";
 import { Socket } from "node:net";
 import { Readable } from "node:stream";
-
 import {
   type AccessContext,
   type AgentRuntime,
   assertPublicRouteIntent,
   ElizaError,
+  getHttpRuntime,
   type IAgentRuntime,
   type LegacyRouteHandler,
   logger,
@@ -40,6 +40,8 @@ import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
+
+import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import type { X402PluginModule } from "./x402-contract.ts";
 
 // `@elizaos/plugin-x402` is optional: it is a desktop/cloud-only plugin and is
@@ -111,43 +113,6 @@ async function getX402Plugin(): Promise<X402PluginModule | null> {
     })
     .catch(() => null);
   return x402PluginModulePromise;
-}
-
-function matchPluginRoutePath(
-  pattern: string,
-  pathname: string,
-): Record<string, string> | null {
-  const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
-  const pSegs = norm(pattern);
-  const pathSegs = norm(pathname);
-  const params: Record<string, string> = {};
-  for (let i = 0; i < pSegs.length; i++) {
-    const p = pSegs[i];
-    const c = pathSegs[i];
-    if (!p) return null;
-    if (p.startsWith(":") && p.endsWith("*")) {
-      const key = p.slice(1, -1);
-      const tail = pathSegs.slice(i).join("/");
-      if (!tail) return null;
-      try {
-        params[key] = decodeURIComponent(tail);
-      } catch {
-        params[key] = tail;
-      }
-      return params;
-    }
-    if (c === undefined) return null;
-    if (p.startsWith(":")) {
-      try {
-        params[p.slice(1)] = decodeURIComponent(c);
-      } catch {
-        params[p.slice(1)] = c;
-      }
-    } else if (p !== c) {
-      return null;
-    }
-  }
-  return pSegs.length === pathSegs.length ? params : null;
 }
 
 export interface DispatchRouteArgs {
@@ -574,13 +539,13 @@ export async function dispatchRoute(
   args: DispatchRouteArgs,
 ): Promise<RouteHandlerResult | null> {
   const runtime = args.runtime;
-  if (!runtime?.routes?.length) return null;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return null;
 
   const method = args.method.toUpperCase();
   const headers = normalizeHeaders(args.headers);
   const query = args.query ?? {};
 
-  for (const route of runtime.routes as Route[]) {
+  for (const route of getHttpRuntime(runtime).routes as Route[]) {
     assertPublicRouteIntent(route, "runtime.routes");
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;

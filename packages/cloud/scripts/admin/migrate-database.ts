@@ -9,7 +9,9 @@
  *
  * Heavy text/jsonb columns flagged by migration 0081 are uploaded to R2 during
  * the copy and replaced with a `*_storage='r2'` + `*_key=<object-key>` pointer.
- * If R2 isn't configured the script just copies inline.
+ * If R2 isn't configured the script just copies inline. `llm_trajectories` is
+ * copied as-is (encrypted bodies and pointers) and never offloaded to the
+ * general blob bucket.
  *
  * Tables that exist purely as ephemeral state (idempotency keys, anonymous
  * sessions, webhook dedup, daily aggregates) are skipped.
@@ -38,7 +40,6 @@ import {
   requirePhoneJsonObject,
   validatePhoneMediaUrls,
 } from "../../shared/src/lib/services/phone-payload-validation";
-import { putTrajectoryPayload } from "../../shared/src/lib/services/trajectory-object-storage";
 import { ObjectNamespaces } from "../../shared/src/lib/storage/object-namespace";
 import {
   buildObjectFieldKey,
@@ -297,18 +298,11 @@ interface R2JsonField extends Omit<R2TextField, "inlineValueWhenOffloaded"> {
 }
 
 interface R2OffloadConfig {
-  /** Special-cased trajectory bundle (system_prompt + user_prompt + response_text). */
-  trajectoryBundle?: boolean;
   text: R2TextField[];
   json: R2JsonField[];
 }
 
 const R2_TABLES: Record<string, R2OffloadConfig> = {
-  llm_trajectories: {
-    trajectoryBundle: true,
-    text: [],
-    json: [],
-  },
   conversation_messages: {
     text: [
       {
@@ -910,28 +904,6 @@ async function applyConfiguredR2Offloads(input: {
   let uploads = 0;
   let bytes = 0;
 
-  if (input.config.trajectoryBundle) {
-    // Source row already lives in R2: copy the pointer through, don't re-upload.
-    const alreadyOffloaded = input.rowOut.trajectory_payload_storage === "r2";
-    if (!alreadyOffloaded) {
-      const result = await offloadTrajectoryBundle(
-        input.rowOut,
-        input.minBytes,
-      );
-      if (result.storage === "r2") {
-        input.rowOut.trajectory_payload_storage = "r2";
-        input.rowOut.trajectory_payload_key = result.key;
-        if (result.blankPrompts) {
-          input.rowOut.system_prompt = null;
-          input.rowOut.user_prompt = null;
-          input.rowOut.response_text = null;
-        }
-        uploads += 1;
-        bytes += result.bytes;
-      }
-    }
-  }
-
   for (const field of input.config.text) {
     if (!(field.column in input.rowOut)) continue;
     if (input.rowOut[field.storageColumn] === "r2") continue;
@@ -979,38 +951,6 @@ async function applyConfiguredR2Offloads(input: {
   }
 
   return { uploads, bytes };
-}
-
-async function offloadTrajectoryBundle(
-  row: Record<string, unknown>,
-  minBytes: number,
-): Promise<{
-  storage: "inline" | "r2";
-  key: string | null;
-  blankPrompts: boolean;
-  bytes: number;
-}> {
-  const sys = (row.system_prompt as string | null) ?? null;
-  const usr = (row.user_prompt as string | null) ?? null;
-  const resp = (row.response_text as string | null) ?? null;
-  if (sys == null && usr == null && resp == null) {
-    return { storage: "inline", key: null, blankPrompts: false, bytes: 0 };
-  }
-  const totalBytes =
-    byteLength(sys ?? "") + byteLength(usr ?? "") + byteLength(resp ?? "");
-  if (totalBytes < minBytes) {
-    return { storage: "inline", key: null, blankPrompts: false, bytes: 0 };
-  }
-  const orgId = String(row.organization_id ?? "no-org");
-  const id = String(row.id);
-  const createdAt = (row.created_at as Date | null) ?? new Date();
-  const key = await putTrajectoryPayload({
-    organizationId: orgId,
-    trajectoryId: id,
-    createdAt,
-    body: { system_prompt: sys, user_prompt: usr, response_text: resp },
-  });
-  return { storage: "r2", key, blankPrompts: true, bytes: totalBytes };
 }
 
 // ─────────────────────────────────────────────────── value coercion for INSERT ──
@@ -1466,17 +1406,6 @@ export async function copyTable(
         // storage/key columns that aren't in `insertCols`).
         const finalCols = new Set<string>(insertCols);
         if (r2Cfg) {
-          if (r2Cfg.trajectoryBundle) {
-            for (const c of [
-              "trajectory_payload_storage",
-              "trajectory_payload_key",
-              "system_prompt",
-              "user_prompt",
-              "response_text",
-            ]) {
-              if (dstColSet.has(c)) finalCols.add(c);
-            }
-          }
           for (const f of [...r2Cfg.text, ...r2Cfg.json]) {
             if (dstColSet.has(f.storageColumn)) finalCols.add(f.storageColumn);
             if (dstColSet.has(f.keyColumn)) finalCols.add(f.keyColumn);

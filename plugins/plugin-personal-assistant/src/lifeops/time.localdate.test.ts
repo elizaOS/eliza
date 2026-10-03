@@ -4,7 +4,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
+import {
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+  parseLocalDateKey,
+} from "./time.js";
 
 const schedule: Parameters<typeof resolveLifeOpsRelativeTime>[0]["schedule"] = {
   circadianState: "unclear",
@@ -122,5 +126,22 @@ describe("resolveLifeOpsRelativeTime local-day boundaries", () => {
 
     expect(relativeTime.dayBoundaryStartAt).toBe("2011-12-29T10:00:00.000Z");
     expect(relativeTime.dayBoundaryEndAt).toBe("2011-12-30T10:00:00.000Z");
+  });
+});
+describe("parseLocalDateKey", () => {
+  it("accepts real calendar days and rejects rolled-over or malformed keys", () => {
+    expect(parseLocalDateKey("2024-02-29")).toEqual({
+      year: 2024,
+      month: 2,
+      day: 29,
+    });
+    for (const value of [
+      "2026-02-29",
+      "2026-04-31",
+      "2026-13-01",
+      "2026-1-5",
+    ]) {
+      expect(parseLocalDateKey(value)).toBeNull();
+    }
   });
 });

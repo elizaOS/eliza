@@ -6,8 +6,13 @@
  * supersession, contradictions, child scope, action influence, and C/P/E/M
  * ownership without introducing another graph or a parallel scheduler.
  */
-import type { EntityStore, RelationshipStore } from "@elizaos/agent";
-import type { Entity, Relationship } from "@elizaos/shared";
+
+import { type Entity } from "@elizaos/core/knowledge-graph/entity-types";
+import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
+import {
+  type EntityStore,
+  type RelationshipStore,
+} from "@elizaos/plugin-relationships";
 import {
   ACTION_EFFECT_CLASSES,
   type ActionBundle,
@@ -33,7 +38,6 @@ const SOURCE_ARTIFACT_ATTRIBUTE = "school.source_artifact.v1";
 const SOURCE_FACT_ATTRIBUTE = "school.source_fact.v1";
 const ACTION_BUNDLE_ATTRIBUTE = "school.action_bundle.v1";
 const RESPONSIBILITY_ATTRIBUTE = "school.responsibility.v1";
-
 const SOURCE_ARTIFACT_TAG = "lifeops:source-artifact";
 const SOURCE_FACT_TAG = "lifeops:source-fact";
 const ACTION_BUNDLE_TAG = "lifeops:action-bundle";
@@ -43,7 +47,6 @@ const ACTION_BUNDLE_ITEM_KINDS: readonly ActionBundleItem["kind"][] = [
   "clarify_child",
   "resolve_conflict",
 ];
-
 function invalidPersisted(
   message: string,
   context?: Record<string, unknown>,
@@ -54,21 +57,18 @@ function invalidPersisted(
     context,
   );
 }
-
 function recordValue(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return invalidPersisted(`Persisted ${field} is not an object`, { field });
   }
   return value as Record<string, unknown>;
 }
-
 function requiredText(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
     return invalidPersisted(`Persisted ${field} is missing`, { field });
   }
   return value;
 }
-
 function requiredInteger(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     return invalidPersisted(`Persisted ${field} is not a positive integer`, {
@@ -77,12 +77,10 @@ function requiredInteger(value: unknown, field: string): number {
   }
   return value;
 }
-
 function nullableText(value: unknown, field: string): string | null {
   if (value === null) return null;
   return requiredText(value, field);
 }
-
 function attributeValue(entity: Entity, key: string): unknown {
   const attribute = entity.attributes?.[key];
   if (!attribute) {
@@ -93,7 +91,6 @@ function attributeValue(entity: Entity, key: string): unknown {
   }
   return attribute.value;
 }
-
 function artifactFromEntity(entity: Entity): SourceArtifact {
   const contract = recordValue(
     attributeValue(entity, SOURCE_ARTIFACT_ATTRIBUTE),
@@ -113,7 +110,6 @@ function artifactFromEntity(entity: Entity): SourceArtifact {
   }
   return artifact;
 }
-
 function factFromEntity(entity: Entity): SourceFact {
   const contract = recordValue(
     attributeValue(entity, SOURCE_FACT_ATTRIBUTE),
@@ -145,7 +141,6 @@ function factFromEntity(entity: Entity): SourceFact {
   }
   return fact;
 }
-
 function actionItemFromValue(value: unknown, index: number): ActionBundleItem {
   const record = recordValue(value, `actionBundle.items[${index}]`);
   const effectClassText = requiredText(
@@ -212,7 +207,6 @@ function actionItemFromValue(value: unknown, index: number): ActionBundleItem {
     state,
   };
 }
-
 function actionBundleFromEntity(entity: Entity): ActionBundle {
   const contract = recordValue(
     attributeValue(entity, ACTION_BUNDLE_ATTRIBUTE),
@@ -266,7 +260,6 @@ function actionBundleFromEntity(entity: Entity): ActionBundle {
   assertSafeActionBundle(bundle);
   return bundle;
 }
-
 function responsibilityFromEntity(entity: Entity): ResponsibilityAssignment {
   const contract = recordValue(
     attributeValue(entity, RESPONSIBILITY_ATTRIBUTE),
@@ -286,7 +279,6 @@ function responsibilityFromEntity(entity: Entity): ResponsibilityAssignment {
   }
   return assignment;
 }
-
 function entityInput(args: {
   id: string;
   type: "concept" | "project";
@@ -316,7 +308,6 @@ function entityInput(args: {
     visibility: "owner_only" as const,
   };
 }
-
 function assertSafeActionBundle(bundle: ActionBundle): void {
   for (const item of bundle.items) {
     if (
@@ -343,14 +334,12 @@ function assertSafeActionBundle(bundle: ActionBundle): void {
     }
   }
 }
-
 export class SchoolSourceFactRepository {
   constructor(
     private readonly agentId: string,
     private readonly entityStore: EntityStore,
     private readonly relationshipStore: RelationshipStore,
   ) {}
-
   async putArtifact(
     artifactInput: SourceArtifactInput,
   ): Promise<SourceArtifact> {
@@ -401,7 +390,6 @@ export class SchoolSourceFactRepository {
     );
     return artifactFromEntity(entity);
   }
-
   async getArtifact(id: string): Promise<SourceArtifact | null> {
     const entity = await this.entityStore.get(id);
     if (!entity) return null;
@@ -415,7 +403,6 @@ export class SchoolSourceFactRepository {
     }
     return artifactFromEntity(entity);
   }
-
   async putFact(
     artifact: SourceArtifact,
     candidateInput: SourceFactCandidate,
@@ -491,7 +478,6 @@ export class SchoolSourceFactRepository {
     }
     return persisted;
   }
-
   async getFact(id: string): Promise<SourceFact | null> {
     const entity = await this.entityStore.get(id);
     if (!entity) return null;
@@ -502,7 +488,6 @@ export class SchoolSourceFactRepository {
     }
     return factFromEntity(entity);
   }
-
   async listFacts(stableFactKey?: string): Promise<SourceFact[]> {
     const entities = await this.entityStore.list({ tag: SOURCE_FACT_TAG });
     return entities
@@ -517,7 +502,6 @@ export class SchoolSourceFactRepository {
           left.id.localeCompare(right.id),
       );
   }
-
   async putResponsibility(
     inputValue: ResponsibilityAssignmentInput,
     createdAt: string,
@@ -570,7 +554,6 @@ export class SchoolSourceFactRepository {
     }
     return persisted;
   }
-
   async getResponsibility(
     id: string,
   ): Promise<ResponsibilityAssignment | null> {
@@ -584,7 +567,6 @@ export class SchoolSourceFactRepository {
     }
     return responsibilityFromEntity(entity);
   }
-
   async putActionBundle(
     bundle: ActionBundle,
     supersedesBundleIds: readonly string[],
@@ -663,7 +645,6 @@ export class SchoolSourceFactRepository {
     }
     return persisted;
   }
-
   async listActionBundles(noticeKey?: string): Promise<ActionBundle[]> {
     const entities = await this.entityStore.list({ tag: ACTION_BUNDLE_TAG });
     return entities
@@ -676,7 +657,6 @@ export class SchoolSourceFactRepository {
           left.revision - right.revision || left.id.localeCompare(right.id),
       );
   }
-
   async listRelationships(filter?: {
     fromEntityId?: string;
     toEntityId?: string;
@@ -684,7 +664,6 @@ export class SchoolSourceFactRepository {
   }): Promise<Relationship[]> {
     return this.relationshipStore.list(filter);
   }
-
   async linkFacts(args: {
     fromFactId: string;
     toFactId: string;
@@ -701,7 +680,6 @@ export class SchoolSourceFactRepository {
       occurredAt: args.occurredAt,
     });
   }
-
   private async ensureRelationship(input: {
     fromEntityId: string;
     toEntityId: string;
@@ -749,7 +727,6 @@ export class SchoolSourceFactRepository {
     });
   }
 }
-
 export function actionBundleId(args: {
   agentId: string;
   noticeKey: string;

@@ -7,24 +7,23 @@
 
 import {
   type AgentRuntime,
+  createSharedTodoCutoverSnapshot,
   ElizaError,
+  type SharedTodoCutoverRecord,
+  type SharedTodoCutoverSnapshot,
+  TODO_CUTOVER_PROVENANCE_KEY,
+  type TodoCutoverJsonValue,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos/db/schema";
+
+import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos";
 import {
   deserializeTodoMutationRecord,
   importTodoMutationRecordsInTransaction,
   type TodoMutationRecord,
   type TodoMutationResult,
-} from "@elizaos/plugin-todos/service";
-import {
-  createSharedTodoCutoverSnapshot,
-  type SharedTodoCutoverRecord,
-  type SharedTodoCutoverSnapshot,
-  TODO_CUTOVER_PROVENANCE_KEY,
-  type TodoCutoverJsonValue,
-} from "@elizaos/shared/todo-cutover";
+} from "@elizaos/plugin-todos";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
@@ -293,7 +292,7 @@ export async function importSharedTodoCutover(input: {
       { code: "TODO_CUTOVER_DATABASE_UNAVAILABLE" },
     );
   }
-  const { todosTable } = await import("@elizaos/plugin-todos/db/schema");
+  const { todosTable } = await import("@elizaos/plugin-todos");
   const targetScope = {
     agentId: input.runtime.agentId,
     entityId: input.entityId,

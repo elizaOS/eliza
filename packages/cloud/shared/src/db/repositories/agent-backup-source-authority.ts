@@ -1,6 +1,6 @@
 /** Exact, fail-closed Robot/Cloud authority used by backup manifest v2. */
 
-import type { AgentBackupManifestV2Source } from "@elizaos/shared";
+import { type AgentBackupManifestV2Source } from "@elizaos/core/contracts/agent-backup-manifest";
 import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";

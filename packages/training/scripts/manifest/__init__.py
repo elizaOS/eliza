@@ -1,8 +1,8 @@
 """Eliza-1 manifest generator + validator.
 
 Mirrors the TypeScript module at
-``eliza/packages/app-core/src/services/local-inference/manifest/`` so that
-the publish pipeline (training side) and the runtime (app-core side) speak
+``eliza/packages/app/src/services/local-inference/manifest/`` so that
+the publish pipeline (training side) and the runtime (app side) speak
 the same contract. The schema lives in
 ``packages/inference/AGENTS.md`` §6 and the publishing flow in
 ``packages/training/AGENTS.md`` §6.

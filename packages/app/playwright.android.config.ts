@@ -2,9 +2,11 @@
  * Playwright configuration for the Playwright Android app test lane, including
  * browser projects and app-server wiring.
  */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 
 // Playwright config for the REAL on-device Android WebView e2e suite. Unlike
 // playwright.ui-smoke.config.ts (desktop Chromium + mocked /api), this drives
@@ -12,7 +14,7 @@ import { defineConfig } from "@playwright/test";
 // (`_android`), against the real on-device agent. There is no webServer and no
 // browser project — the `page` fixture comes from the device WebView.
 //
-// Prereqs (handled by scripts/android-e2e.mjs, or run manually):
+// Prereqs (handled by scripts/android-e2e.ts, or run manually):
 //   1. An emulator/device is attached (ANDROID_SERIAL selects it; emulator preferred).
 //   2. The app is installed from an APK built with ELIZA_WEBVIEW_DEBUG=1.
 //   3. The on-device local agent is up (mobile-local-chat-smoke bring-up) OR the
@@ -51,7 +53,7 @@ export default defineConfig({
   reporter: reporters,
   outputDir:
     process.env.ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR ??
-    "./test-results/android-playwright",
+    testOutputPath("app", "android-playwright"),
   globalSetup: path.join(appDir, "test/android/global-setup.ts"),
   use: {
     // Screenshots/trace over the Android CDP socket are slow; capture only on

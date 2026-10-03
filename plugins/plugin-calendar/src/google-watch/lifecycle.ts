@@ -18,6 +18,8 @@ import {
   isBlockedHostname,
   isPrivateIpAddress,
 } from "@elizaos/core";
+import { type LifeOpsCalendarChangeDeliveryHealth } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import type { GoogleCalendarWatchResponse } from "@elizaos/plugin-google-workspace";
 import {
   type DispatchResult,
@@ -26,10 +28,6 @@ import {
   registerScheduledTaskChannelDispatcher,
   type ScheduledTaskDispatchRecord,
 } from "@elizaos/plugin-scheduling";
-import type {
-  LifeOpsCalendarChangeDeliveryHealth,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
 import { requireGoogleServiceMethod } from "../internal/google-delegates.js";
 import {
   type GoogleCalendarWatchChannel,

@@ -1,0 +1,57 @@
+{
+  "extends": "./tsconfig.host.json",
+  "compilerOptions": {
+    "customConditions": [],
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "resolveJsonModule": true,
+    "rootDir": "../../",
+    "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "paths": {
+      "@elizaos/app": ["./src/index.ts"],
+      "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
+      "@elizaos/core/*": ["../core/dist/*"],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/dist/*"
+      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"]
+    }
+  },
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "include": [
+    "src/connectors",
+    "src/ui-compat.ts",
+    "src/config",
+    "src/security",
+    "src/entry.ts",
+    "src/dev-settings-figlet-heading.ts",
+    "src/platform",
+    "src/runtime",
+    "src/utils",
+    "src/desktop-shell.ts",
+    "src/cli",
+    "src/permissions",
+    "src/browser.ts",
+    "src/styles",
+    "src/boot-profile.ts",
+    "src/diagnostics",
+    "src/registry",
+    "src/first-run",
+    "src/api",
+    "src/index.ts",
+    "src/account-pool.ts",
+    "src/entry-cloud-api-key.ts",
+    "src/alias-env-reads.13422.test.ts",
+    "src/services"
+  ]
+}

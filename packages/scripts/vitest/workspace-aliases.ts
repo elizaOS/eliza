@@ -4,7 +4,7 @@ import path from "node:path";
 import {
   getInstalledPackageEntry,
   resolveModuleEntry,
-} from "../../core/src/testing/eliza-package-paths";
+} from "@elizaos/testing/package-paths";
 
 /** Vite rollup alias shape; structural type avoids duplicate vite versions in Bun's typings. */
 export type ModuleAlias = {
@@ -25,10 +25,6 @@ export type AgentSourceAliasOptions = FallbackAliasOptions & ElizaAliasOptions;
 export type AppCoreSourceAliasOptions = FallbackAliasOptions & {
   bridgeReplacement?: string;
   stubRootSpecifier?: boolean;
-};
-
-export type SharedSourceAliasOptions = ElizaAliasOptions & {
-  includeConfigAlias?: boolean;
 };
 
 export type InstalledPackageAliasOptions = {
@@ -238,7 +234,7 @@ export function getElizaCoreRolesEntry(repoRoot: string): string {
     : path.join(
         elizaWorkspaceRoot,
         "packages",
-        "app-core",
+        "app",
         "scripts",
         "lib",
         "elizaos-core-roles-shim.js",
@@ -250,10 +246,10 @@ export function getAppCoreBridgeStubPath(repoRoot: string): string {
   return path.join(
     elizaWorkspaceRoot,
     "packages",
-    "app-core",
+    "app",
     "test",
     "stubs",
-    "app-core-bridge.ts",
+    "app-bridge.ts",
   );
 }
 
@@ -262,7 +258,7 @@ export function getAppCorePluginFallbackPath(repoRoot: string): string {
   return path.join(
     elizaWorkspaceRoot,
     "packages",
-    "app-core",
+    "app",
     "test",
     "stubs",
     "plugin-fallback-module.mjs",
@@ -274,7 +270,7 @@ export function getAppCoreModuleFallbackPath(repoRoot: string): string {
   return path.join(
     elizaWorkspaceRoot,
     "packages",
-    "app-core",
+    "app",
     "test",
     "stubs",
     "module-fallback.mjs",
@@ -331,7 +327,7 @@ export function getAppCoreSourceAliases(
             ...(options.stubRootSpecifier
               ? [
                   {
-                    find: /^@elizaos\/app-core$/,
+                    find: /^@elizaos\/app$/,
                     replacement: bridgeReplacement,
                   },
                 ]
@@ -341,11 +337,11 @@ export function getAppCoreSourceAliases(
       ...(!options.stubRootSpecifier
         ? [
             {
-              find: /^@elizaos\/app-core\/(.+)$/,
+              find: /^@elizaos\/app\/(.+)$/,
               replacement: toPosix(path.join(sourceRoot, "$1")),
             },
             {
-              find: "@elizaos/app-core",
+              find: "@elizaos/app",
               replacement: toPosix(
                 resolveModuleEntry(path.join(sourceRoot, "index")),
               ),
@@ -358,45 +354,11 @@ export function getAppCoreSourceAliases(
   return options.fallbackReplacement
     ? [
         {
-          find: /^@elizaos\/app-core$/,
+          find: /^@elizaos\/app$/,
           replacement: options.fallbackReplacement,
         },
       ]
     : [];
-}
-
-export function getSharedSourceAliases(
-  sourceRoot: string | undefined,
-  options: SharedSourceAliasOptions = {},
-): ModuleAlias[] {
-  if (!sourceRoot) {
-    return [];
-  }
-
-  const packageRoot = path.dirname(sourceRoot);
-
-  return [
-    {
-      // Subpath imports (e.g. @elizaos/shared/contracts/first-run-options) must
-      // map to source files; without this the bare-string alias below
-      // prefix-replaces them into "<src>/index.ts/<subpath>" -> ENOTDIR.
-      // Mirrors the agent/app-core/ui subpath aliases above.
-      //
-      // This src catch-all MUST precede the export-map aliases below: those
-      // resolve subpaths to the built dist, whose ESM output emits extensionless
-      // relative imports (e.g. local-inference/device-fit.js -> "./catalog")
-      // that vitest's resolver cannot follow — so a test transitively pulling
-      // such a subpath fails to load. Source resolution sidesteps the dist; the
-      // export aliases remain as a fallback for subpaths with no 1:1 source file.
-      find: /^@elizaos\/shared\/(.+)$/,
-      replacement: toPosix(path.join(sourceRoot, "$1")),
-    },
-    ...getPackageSourceAliases("shared", sourceRoot, {
-      includeElizaAlias: options.includeElizaAlias,
-      rootReplacement: path.join(sourceRoot, "index.ts"),
-    }),
-    ...getWorkspacePackageExportAliases("shared", packageRoot),
-  ];
 }
 
 export function getUiSourceAliases(

@@ -128,7 +128,6 @@ export type FirstRunProviderId =
 	| "nearai"
 	| "ollama"
 	| "openai"
-	| "openai-subscription"
 	| "openrouter"
 	| "together"
 	| "zai"
@@ -227,7 +226,6 @@ export interface InventoryProviderOption {
 
 export type SubscriptionProviderSelectionId =
 	| "anthropic-subscription"
-	| "openai-subscription"
 	| "gemini-subscription"
 	| "zai-coding-subscription"
 	| "kimi-coding-subscription"
@@ -247,24 +245,6 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
 		storedProvider: "anthropic-subscription",
 		family: "anthropic",
 		labelKey: "providerswitcher.claudeSubscription",
-	},
-	{
-		id: "openai-subscription",
-		storedProvider: "openai-codex",
-		family: "openai",
-		labelKey: "providerswitcher.chatgptSubscription",
-	},
-	{
-		id: "gemini-subscription",
-		storedProvider: "gemini-cli",
-		family: "gemini",
-		labelKey: "providerswitcher.geminiSubscription",
-	},
-	{
-		id: "zai-coding-subscription",
-		storedProvider: "zai-coding",
-		family: "zai",
-		labelKey: "providerswitcher.zaiCodingPlan",
 	},
 	{
 		id: "kimi-coding-subscription",
@@ -314,52 +294,6 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 		recommended: true,
 		labelKey: "providerswitcher.claudeSubscription",
 		storedProvider: "anthropic-subscription",
-	},
-	{
-		id: "openai-subscription",
-		name: "ChatGPT Subscription",
-		envKey: null,
-		pluginName: "@elizaos/plugin-codex-cli",
-		keyPrefix: null,
-		description:
-			"Powers Codex-backed coding agents through the official Codex surface.",
-		family: "openai",
-		authMode: "subscription",
-		group: "subscription",
-		order: 30,
-		recommended: true,
-		labelKey: "providerswitcher.chatgptSubscription",
-		storedProvider: "openai-codex",
-	},
-	{
-		id: "gemini-subscription",
-		name: "Gemini CLI Subscription",
-		envKey: null,
-		pluginName: "@elizaos/plugin-google-genai",
-		keyPrefix: null,
-		description:
-			"Powers task agents through the authenticated Gemini CLI. No Gemini subscription token is imported into API env vars.",
-		family: "gemini",
-		authMode: "subscription",
-		group: "subscription",
-		order: 35,
-		labelKey: "providerswitcher.geminiSubscription",
-		storedProvider: "gemini-cli",
-	},
-	{
-		id: "zai-coding-subscription",
-		name: "z.ai Coding Plan",
-		envKey: null,
-		pluginName: "@elizaos/plugin-zai",
-		keyPrefix: null,
-		description:
-			"Stores z.ai Coding Plan credentials for the dedicated coding endpoint only, not the general z.ai API key path.",
-		family: "zai",
-		authMode: "subscription",
-		group: "subscription",
-		order: 36,
-		labelKey: "providerswitcher.zaiCodingPlan",
-		storedProvider: "zai-coding",
 	},
 	{
 		id: "kimi-coding-subscription",
@@ -427,18 +361,6 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 		group: "local",
 		order: 70,
 		supportsPrimaryModelOverride: true,
-	},
-	{
-		id: "gemini",
-		name: "Gemini",
-		envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-		pluginName: "@elizaos/plugin-google-genai",
-		keyPrefix: null,
-		description: "Google's Gemini models.",
-		family: "gemini",
-		authMode: "api-key",
-		group: "local",
-		order: 80,
 	},
 	{
 		id: "grok",
@@ -513,30 +435,6 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 		authMode: "api-key",
 		group: "local",
 		order: 130,
-	},
-	{
-		id: "ollama",
-		name: "Ollama",
-		envKey: null,
-		pluginName: "@elizaos/plugin-zerollama",
-		keyPrefix: null,
-		description: "Local models, no API key needed.",
-		family: "ollama",
-		authMode: "local",
-		group: "local",
-		order: 140,
-	},
-	{
-		id: "zai",
-		name: "z.ai",
-		envKey: "ZAI_API_KEY",
-		pluginName: "@elizaos/plugin-zai",
-		keyPrefix: null,
-		description: "GLM models via z.ai direct API billing.",
-		family: "zai",
-		authMode: "api-key",
-		group: "local",
-		order: 150,
 	},
 	{
 		id: "nearai",
@@ -749,23 +647,12 @@ export interface SubscriptionStatusResponse {
 }
 
 const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
-	"openai-codex": "openai-subscription",
-	"openai-subscription": "openai-subscription",
 	"anthropic-subscription": "anthropic-subscription",
-	"gemini-cli": "gemini-subscription",
-	"gemini-subscription": "gemini-subscription",
-	"google-subscription": "gemini-subscription",
-	"zai-coding": "zai-coding-subscription",
-	"z.ai-coding": "zai-coding-subscription",
-	"zai-coding-subscription": "zai-coding-subscription",
 	"kimi-coding": "kimi-coding-subscription",
 	"kimi-code": "kimi-coding-subscription",
 	"kimi-coding-subscription": "kimi-coding-subscription",
 	"deepseek-coding": "deepseek-coding-subscription",
 	"deepseek-coding-subscription": "deepseek-coding-subscription",
-	google: "gemini",
-	"google-genai": "gemini",
-	gemini: "gemini",
 	xai: "grok",
 	grok: "grok",
 	"together-ai": "together",
@@ -774,14 +661,10 @@ const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
 	"near-ai-cloud": "nearai",
 	"near.ai": "nearai",
 	nearai: "nearai",
-	"z.ai": "zai",
-	zai: "zai",
 	kimi: "moonshot",
 	moonshot: "moonshot",
 	moonshotai: "moonshot",
 	"moonshot-ai": "moonshot",
-	llama_local: "ollama",
-	"llama-local": "ollama",
 	cerebras: "cerebras",
 	// Tolerate the linked-account form so env/integration callers normalize too.
 	"cerebras-api": "cerebras",
@@ -838,11 +721,14 @@ export function getSubscriptionProviderFamily(
 	);
 }
 
+/**
+ * Every subscription selection is a coding-agent credential: none of them
+ * registers a runtime TEXT handler, so chat always needs a separate provider.
+ */
 export function requiresAdditionalRuntimeProvider(
 	providerId: unknown,
 ): boolean {
-	const selection = normalizeSubscriptionProviderSelectionId(providerId);
-	return Boolean(selection && selection !== "openai-subscription");
+	return normalizeSubscriptionProviderSelectionId(providerId) !== null;
 }
 
 export function normalizeFirstRunProviderId(
@@ -1298,6 +1184,55 @@ function pruneLegacyCloudRoutingFields(
 	}
 }
 
+/** Chat backends that were served by the removed Codex CLI text handler. */
+const RETIRED_SUBSCRIPTION_CHAT_BACKENDS = new Set([
+	"openai-subscription",
+	"openai-codex",
+]);
+/** `model.primary` values that pointed at the removed Codex CLI handler. */
+const RETIRED_SUBSCRIPTION_PRIMARY_MODELS = new Set(["codex-cli"]);
+
+/**
+ * The ChatGPT/Codex subscription used to be selectable as the chat backend via
+ * the `codex exec` text handler, which no longer exists. A persisted
+ * `llmText` route (or `model.primary: "codex-cli"`) for it can never serve
+ * chat, so drop it: the agent then reports "no provider" and the UI routes the
+ * user to choose one. The Codex credential itself (`subscriptionProvider`,
+ * linked accounts) is kept because task agents still use it.
+ *
+ * Returns true when the config was changed so hosts can report the migration.
+ */
+export function migrateRetiredSubscriptionChatRoute(
+	config: Record<string, unknown> | null | undefined,
+): boolean {
+	const root = asConfigRecord(config);
+	if (!root) return false;
+	let changed = false;
+
+	const serviceRouting = asConfigRecord(root.serviceRouting);
+	const llmText = asConfigRecord(serviceRouting?.llmText);
+	const backend = readConfigString(llmText, "backend")?.toLowerCase();
+	if (
+		serviceRouting &&
+		backend &&
+		RETIRED_SUBSCRIPTION_CHAT_BACKENDS.has(backend)
+	) {
+		delete serviceRouting.llmText;
+		changed = true;
+	}
+
+	const agents = asConfigRecord(root.agents);
+	const defaults = asConfigRecord(agents?.defaults);
+	const model = asConfigRecord(defaults?.model);
+	const primary = readConfigString(model, "primary")?.toLowerCase();
+	if (model && primary && RETIRED_SUBSCRIPTION_PRIMARY_MODELS.has(primary)) {
+		delete model.primary;
+		changed = true;
+	}
+
+	return changed;
+}
+
 export function migrateLegacyRuntimeConfig<T extends Record<string, unknown>>(
 	config: T,
 ): T {
@@ -1305,6 +1240,8 @@ export function migrateLegacyRuntimeConfig<T extends Record<string, unknown>>(
 	if (!root) {
 		return config;
 	}
+
+	migrateRetiredSubscriptionChatRoute(root);
 
 	const deploymentTarget =
 		normalizeDeploymentTargetConfig(root.deploymentTarget) ??
@@ -1478,19 +1415,8 @@ function deriveFirstRunConnectionFromRuntimeConfig(
 function resolveConfiguredLocalProviderFromSignals(
 	config: Record<string, unknown> | null | undefined,
 ): FirstRunLocalProviderId | null {
-	const agents = asConfigRecord(config?.agents);
-	const defaults = asConfigRecord(agents?.defaults);
-	const storedSubscriptionProvider = normalizeFirstRunProviderId(
-		readConfigString(defaults, "subscriptionProvider"),
-	);
-	if (
-		storedSubscriptionProvider &&
-		storedSubscriptionProvider !== "elizacloud" &&
-		!requiresAdditionalRuntimeProvider(storedSubscriptionProvider)
-	) {
-		return storedSubscriptionProvider;
-	}
-
+	// A stored `subscriptionProvider` is a coding-agent credential, never a
+	// chat backend, so only direct provider signals imply a text route.
 	for (const provider of FIRST_RUN_PROVIDER_CATALOG) {
 		if (provider.id === "elizacloud") {
 			continue;

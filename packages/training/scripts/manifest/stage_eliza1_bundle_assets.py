@@ -897,7 +897,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     # (VOICE_QUANT_LADDER_BY_TIER) so a downloader can pick a smaller level
     # at install time based on the host's RAM/SoC class. The ladder is the
     # publishable subset of omnivoice.cpp's full Q2_K..Q8_0 support; see
-    # packages/shared/src/local-inference/catalog.ts:voiceQuantLadderForTier
+    # plugins/plugin-native-inference/src/model-catalog/catalog.ts:voiceQuantLadderForTier
     # and docs/inference/voice-quant-matrix.md.
     voice_quants: tuple[str, ...]
     if "omnivoice" not in voice_backends:

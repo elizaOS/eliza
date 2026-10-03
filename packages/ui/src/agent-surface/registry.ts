@@ -77,6 +77,7 @@ export function setNativeFieldValue(
 export class ViewAgentRegistry {
   readonly viewId: string;
   readonly viewType: AgentViewType;
+  readonly installationId: string | undefined;
 
   private readonly elements = new Map<string, ElementRecord>();
   private readonly listeners = new Set<() => void>();
@@ -91,7 +92,12 @@ export class ViewAgentRegistry {
   // (`AgentElementOverlay`/reporter) already committed for deletion (#20728).
   private notifying = true;
 
-  constructor(viewId: string, viewType: AgentViewType) {
+  constructor(
+    viewId: string,
+    viewType: AgentViewType,
+    installationId?: string,
+  ) {
+    this.installationId = installationId;
     this.viewId = viewId;
     this.viewType = viewType;
   }
@@ -383,18 +389,23 @@ export class ViewAgentRegistry {
 const viewRegistries = new Map<string, ViewAgentRegistry>();
 const viewRegistryMountCounts = new Map<ViewAgentRegistry, number>();
 
-function key(viewId: string, viewType: AgentViewType): string {
-  return `${viewType}:${viewId}`;
+function key(
+  viewId: string,
+  viewType: AgentViewType,
+  installationId?: string,
+): string {
+  return JSON.stringify([viewType, viewId, installationId ?? null]);
 }
 
 export function getOrCreateViewRegistry(
   viewId: string,
   viewType: AgentViewType,
+  installationId?: string,
 ): ViewAgentRegistry {
-  const k = key(viewId, viewType);
+  const k = key(viewId, viewType, installationId);
   let registry = viewRegistries.get(k);
   if (!registry) {
-    registry = new ViewAgentRegistry(viewId, viewType);
+    registry = new ViewAgentRegistry(viewId, viewType, installationId);
     viewRegistries.set(k, registry);
   }
   return registry;
@@ -403,8 +414,9 @@ export function getOrCreateViewRegistry(
 export function getViewRegistry(
   viewId: string,
   viewType: AgentViewType,
+  installationId?: string,
 ): ViewAgentRegistry | undefined {
-  return viewRegistries.get(key(viewId, viewType));
+  return viewRegistries.get(key(viewId, viewType, installationId));
 }
 
 /**
@@ -415,7 +427,11 @@ export function getViewRegistry(
  * shared registry while one provider remains mounted.
  */
 export function retainViewRegistry(registry: ViewAgentRegistry): () => void {
-  const registryKey = key(registry.viewId, registry.viewType);
+  const registryKey = key(
+    registry.viewId,
+    registry.viewType,
+    registry.installationId,
+  );
   viewRegistries.set(registryKey, registry);
   viewRegistryMountCounts.set(
     registry,
@@ -451,8 +467,9 @@ export function retainViewRegistry(registry: ViewAgentRegistry): () => void {
 export function removeViewRegistry(
   viewId: string,
   viewType: AgentViewType,
+  installationId?: string,
 ): void {
-  const registryKey = key(viewId, viewType);
+  const registryKey = key(viewId, viewType, installationId);
   const registry = viewRegistries.get(registryKey);
   viewRegistries.delete(registryKey);
   if (registry) viewRegistryMountCounts.delete(registry);

@@ -9,7 +9,7 @@ import {
   type LifeOpsConnectorSide,
   type LifeOpsGoogleCapability,
   type LifeOpsXCapability,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   googleCapabilitiesToScopes,
   normalizeGoogleCapabilities,
@@ -27,6 +27,7 @@ interface MockConnectorCredentialStore {
     options?: { reveal?: boolean; caller?: string },
   ): Promise<string | null>;
   reveal(vaultRef: string, caller?: string): Promise<string>;
+  stop(): Promise<void>;
 }
 
 function sanitizePathSegment(value: string): string {
@@ -103,6 +104,7 @@ function installMockGoogleCredential(
         }
         return found;
       },
+      async stop() {},
     };
     services.set(serviceType, [store, ...existing]);
   }

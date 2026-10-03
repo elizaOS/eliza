@@ -4,4 +4,4 @@ export {
   dispatchStewardSessionChange,
   STEWARD_SESSION_CHANGE_EVENT,
   type StewardSessionChangeDetail,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";

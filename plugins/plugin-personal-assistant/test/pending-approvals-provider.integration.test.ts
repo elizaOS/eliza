@@ -4,6 +4,13 @@
  * over that queue, proving pending rows surface as RESOLVE_REQUEST decisions
  * and rejected rows disappear without booting the full optional-plugin graph.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: vi.fn(async (_runtime: IAgentRuntime, message: Memory) => {
+    return message.entityId === "00000000-0000-0000-0000-0000000000b1";
+  }),
+}));
+
 import { PGlite } from "@electric-sql/pglite";
 import {
   ChannelType,
@@ -12,6 +19,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { createApprovalQueue as createAgentApprovalQueue } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -23,7 +31,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { createApprovalQueue as createAgentApprovalQueue } from "../../../packages/agent/src/services/approval/store.ts";
 import type {
   ApprovalEnqueueInput,
   ApprovalQueue,
@@ -39,13 +46,7 @@ import {
 
 vi.mock("@elizaos/agent", async () => {
   const stub = await import("./stubs/agent.ts");
-  return {
-    ...stub,
-    hasOwnerAccess: vi.fn(async (_runtime: IAgentRuntime, message: Memory) => {
-      return message.entityId === "00000000-0000-0000-0000-0000000000b1";
-    }),
-    resolveApprovalService: vi.fn(() => null),
-  };
+  return { ...stub, resolveApprovalService: vi.fn(() => null) };
 });
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
@@ -81,8 +82,21 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   reconciliation_resolved_by text,
   reconciliation_reason text,
   agent_id uuid NOT NULL,
+  admission_revision integer,
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone NOT NULL
+)`;
+
+const CREATE_DISPATCH_CONTROL_TABLE = `CREATE TABLE IF NOT EXISTS approval_dispatch_controls (
+  agent_id uuid NOT NULL,
+  subject_user_id text NOT NULL,
+  revision integer NOT NULL DEFAULT 0,
+  paused boolean NOT NULL DEFAULT false,
+  operation_id text,
+  google_binding_required boolean NOT NULL DEFAULT false,
+  retired_google_grants jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  PRIMARY KEY (agent_id, subject_user_id)
 )`;
 
 const CREATE_APPROVAL_IDEMPOTENCY_INDEX = `CREATE UNIQUE INDEX approval_requests_agent_idempotency_uidx
@@ -133,6 +147,7 @@ beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
   await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
+  await db.execute(sql.raw(CREATE_DISPATCH_CONTROL_TABLE));
   await db.execute(sql.raw(CREATE_APPROVAL_IDEMPOTENCY_INDEX));
   // Minimal recording stand-in for the scheduled-task runner side-channel:
   // enqueue surfaces every approval as a ScheduledTask and rolls the row back
@@ -277,6 +292,7 @@ describe("pendingApprovals provider (real PGlite queue)", () => {
     } finally {
       const db = drizzle(pg);
       await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
+      await db.execute(sql.raw(CREATE_DISPATCH_CONTROL_TABLE));
       await db.execute(sql.raw(CREATE_APPROVAL_IDEMPOTENCY_INDEX));
     }
   });

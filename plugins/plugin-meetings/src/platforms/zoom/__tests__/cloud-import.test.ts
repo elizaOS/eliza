@@ -7,7 +7,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { validateMeetingArtifact } from "@elizaos/shared";
+import { validateMeetingArtifact } from "@elizaos/core/meeting-artifacts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   importZoomCloudMeeting,

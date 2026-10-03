@@ -10,7 +10,6 @@
  * served by the knowledge mirror (see `transcript-knowledge.ts`). A custom
  * `metadata.type` keeps it clear of the document/fragment CHECK constraints.
  */
-
 import {
 	type AccessContext,
 	type ArtifactDisclosure,
@@ -33,26 +32,22 @@ import {
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
-import type {
-	Transcript,
-	TranscriptCaptureSharingState,
-	TranscriptConsentState,
-	TranscriptRetentionState,
-	TranscriptSharingState,
-	TranscriptSummary,
-} from "@elizaos/shared/transcripts";
 import {
 	normalizeTranscriptScope,
 	summarizeTranscript,
+	type Transcript,
+	type TranscriptCaptureSharingState,
+	type TranscriptConsentState,
+	type TranscriptRetentionState,
+	type TranscriptSharingState,
+	type TranscriptSummary,
 	transcriptCapturePrivacyState,
 	transcriptPreview,
-} from "@elizaos/shared/transcripts";
-
+} from "@elizaos/core/transcripts";
 /** The `type` column partition transcripts live in (sibling to "messages"). */
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.type` marker — NOT "document"/"fragment", so no CHECK fires. */
 export const TRANSCRIPT_METADATA_TYPE = "transcript";
-
 /** The subset of `IAgentRuntime` the store needs (real runtime satisfies it). */
 export interface TranscriptStoreRuntime {
 	agentId: UUID;
@@ -70,11 +65,13 @@ export interface TranscriptStoreRuntime {
 	}): Promise<Memory[]>;
 	getMemoryById(id: UUID): Promise<Memory | null>;
 	updateMemory(
-		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
+		memory: Partial<Memory> & {
+			id: UUID;
+			metadata?: MemoryMetadata;
+		},
 	): Promise<boolean>;
 	deleteMemory(id: UUID): Promise<void>;
 }
-
 export interface CreateTranscriptInput {
 	/** Canonical tenant scope supplied by TranscriptService; legacy direct-store callers may omit it. */
 	worldId?: UUID;
@@ -84,7 +81,6 @@ export interface CreateTranscriptInput {
 	/** The fully-built transcript record (audio + segments + words). */
 	transcript: Transcript;
 }
-
 export interface CreateRedactedTranscriptVariantInput {
 	/** The stored original transcript id. */
 	originalId: UUID;
@@ -99,7 +95,6 @@ export interface CreateRedactedTranscriptVariantInput {
 	/** Optional runtime/model recognizer composed with deterministic local guards. */
 	recognizer?: PiiEntityRecognizer;
 }
-
 export interface ShareTranscriptGrantInput {
 	transcriptId: UUID;
 	entityId: UUID;
@@ -107,12 +102,10 @@ export interface ShareTranscriptGrantInput {
 	grantedBy?: UUID;
 	grantedAtMs?: number;
 }
-
 export interface RevokeTranscriptGrantInput {
 	transcriptId: UUID;
 	entityId: UUID;
 }
-
 export interface ShareTranscriptRoomSnapshotInput {
 	transcriptId: UUID;
 	roomId: UUID;
@@ -121,21 +114,22 @@ export interface ShareTranscriptRoomSnapshotInput {
 	grantedBy?: UUID;
 	grantedAtMs?: number;
 }
-
 export interface UpdateTranscriptArtifactSharingInput {
 	transcriptId: UUID;
 	sharing: Partial<TranscriptCaptureSharingState>;
 }
-
 export interface MarkTranscriptSourceAudioDeleteInput {
 	transcriptId: UUID;
 	fileName: string;
 }
-
 /** Pull the stored {@link Transcript} back out of a memory row (parses the
  *  JSON blob; a corrupt/legacy row yields null and is skipped by the list). */
 function rowToTranscript(row: Memory): Transcript | null {
-	const raw = (row.content as { transcript?: unknown }).transcript;
+	const raw = (
+		row.content as {
+			transcript?: unknown;
+		}
+	).transcript;
 	if (typeof raw !== "string") return null;
 	try {
 		const parsed: unknown = JSON.parse(raw);
@@ -146,7 +140,6 @@ function rowToTranscript(row: Memory): Transcript | null {
 		return null;
 	}
 }
-
 /**
  * The viewer's disclosure decision for one transcript row — the ONE role-aware
  * predicate from core (#14781) fed with this store's row shape: scope from the
@@ -174,7 +167,6 @@ export function transcriptRowDisclosure(
 		agentId,
 	);
 }
-
 /** Consent state accepted by every transcript-sharing write path. */
 export function transcriptConsentAllowsSharing(
 	transcript: Transcript,
@@ -182,7 +174,6 @@ export function transcriptConsentAllowsSharing(
 	const state = transcriptCapturePrivacyState(transcript).consentState;
 	return state === "granted" || state === "not_required";
 }
-
 /** Fail closed when capture did not persist an affirmative sharing state. */
 function assertTranscriptConsentAllowsSharing(transcript: Transcript): void {
 	if (transcriptConsentAllowsSharing(transcript)) return;
@@ -196,7 +187,6 @@ function assertTranscriptConsentAllowsSharing(transcript: Transcript): void {
 		},
 	);
 }
-
 /**
  * Whether this row stores a redacted VARIANT of another transcript (write
  * contract for PERM-REDACT #14779): the variant row's metadata carries
@@ -208,14 +198,12 @@ function redactionOriginalId(row: Memory): UUID | null {
 	const of = metadata?.redactionOf;
 	return typeof of === "string" && of.length > 0 ? (of as UUID) : null;
 }
-
 /** The original row's link to its redacted variant record, when one exists. */
 function redactedVariantId(row: Memory): UUID | null {
 	const metadata = row.metadata as Record<string, unknown> | undefined;
 	const id = metadata?.redactedVariantId;
 	return typeof id === "string" && id.length > 0 ? (id as UUID) : null;
 }
-
 /**
  * Project a redacted variant's content onto the ORIGINAL artifact's identity
  * for a redacted-grant viewer: one artifact keeps one id for every viewer,
@@ -236,13 +224,11 @@ function serveRedactedVariant(
 		redacted: true,
 	};
 }
-
 function sharingAllowsGrantedViewer(
 	state: TranscriptSharingState | undefined,
 ): boolean {
 	return state === "restricted" || state === "shared" || state === "public";
 }
-
 function viewerOwnsTranscript(
 	row: Memory,
 	accessContext: AccessContext | undefined,
@@ -256,7 +242,6 @@ function viewerOwnsTranscript(
 		accessContext.requesterEntityId === agentId
 	);
 }
-
 /** Withhold independently-private meeting artifacts from a granted viewer. */
 function projectTranscriptArtifacts(
 	row: Memory,
@@ -297,7 +282,6 @@ function projectTranscriptArtifacts(
 		metadata,
 	};
 }
-
 function mergedTranscriptMetadata(
 	transcript: Transcript,
 	patch: {
@@ -342,7 +326,6 @@ function mergedTranscriptMetadata(
 		},
 	};
 }
-
 function redactedText(text: string): string {
 	const matches = detectPii(text);
 	if (matches.length === 0) return text;
@@ -357,22 +340,25 @@ function redactedText(text: string): string {
 	out += text.slice(cursor);
 	return out;
 }
-
-function transcriptRosterEntries(
-	transcript: Transcript,
-): Array<{ kind: string; value: string }> {
+function transcriptRosterEntries(transcript: Transcript): Array<{
+	kind: string;
+	value: string;
+}> {
 	const participants = transcript.metadata?.participants;
 	if (!Array.isArray(participants)) return [];
 	const names = new Set<string>();
 	for (const participant of participants) {
 		if (!participant || typeof participant !== "object") continue;
-		const displayName = (participant as { displayName?: unknown }).displayName;
+		const displayName = (
+			participant as {
+				displayName?: unknown;
+			}
+		).displayName;
 		if (typeof displayName !== "string" || !displayName.trim()) continue;
 		names.add(displayName.trim());
 	}
 	return [...names].map((value) => ({ kind: "person", value }));
 }
-
 /**
  * Compose the transcript redactor's deterministic structured-PII and roster
  * recognizers with the optional local model recognizer supplied by the runtime.
@@ -391,7 +377,6 @@ export function transcriptPiiRecognizer(
 	if (supplemental) recognizers.push(supplemental);
 	return new CompositeEntityRecognizer(recognizers);
 }
-
 function transcriptTextCorpus(transcript: Transcript): string {
 	return [
 		transcript.title,
@@ -402,7 +387,6 @@ function transcriptTextCorpus(transcript: Transcript): string {
 		]),
 	].join("\n");
 }
-
 async function redactTranscript(
 	original: Transcript,
 	redactedAudioUrl?: string,
@@ -454,7 +438,6 @@ async function redactTranscript(
 		speakerCount: original.speakerCount,
 	};
 }
-
 function mergedGrant(
 	grants: readonly ArtifactShareGrant[],
 	next: ArtifactShareGrant,
@@ -463,7 +446,6 @@ function mergedGrant(
 	out.push(next);
 	return out;
 }
-
 function shareGrantsMetadata(
 	grants: readonly ArtifactShareGrant[],
 	roomSnapshot?: ArtifactRoomSnapshot,
@@ -488,11 +470,9 @@ function shareGrantsMetadata(
 			: {}),
 	};
 }
-
 /** CRUD for transcript records over the runtime memory partition. */
 export class TranscriptStore {
 	constructor(private readonly runtime: TranscriptStoreRuntime) {}
-
 	/** Persist a transcript record; returns it unchanged. */
 	async create(input: CreateTranscriptInput): Promise<Transcript> {
 		const { worldId, roomId, entityId, transcript } = input;
@@ -527,7 +507,6 @@ export class TranscriptStore {
 		await this.runtime.createMemory(memory, TRANSCRIPTS_TABLE);
 		return transcript;
 	}
-
 	/**
 	 * List recent transcripts (newest first) as compact summaries, selected per
 	 * viewer (#14781): full rows for privileged viewers, the redacted variant's
@@ -583,7 +562,6 @@ export class TranscriptStore {
 		}
 		return summaries;
 	}
-
 	/**
 	 * Load one transcript by id, selected per viewer (#14781): the stored record
 	 * for full disclosure, the redacted variant served under the ORIGINAL id
@@ -600,7 +578,6 @@ export class TranscriptStore {
 		if (!row) return null;
 		const transcript = rowToTranscript(row);
 		if (!transcript) return null;
-
 		const originalId = redactionOriginalId(row);
 		if (originalId !== null) {
 			const originalRow = await this.runtime.getMemoryById(originalId);
@@ -616,7 +593,6 @@ export class TranscriptStore {
 			);
 			return disclosure === "full" ? transcript : null;
 		}
-
 		const disclosure = transcriptRowDisclosure(
 			row,
 			transcript,
@@ -637,7 +613,6 @@ export class TranscriptStore {
 		}
 		return null;
 	}
-
 	/** Load + parse the redacted variant linked from an original's row. */
 	private async loadRedactedVariant(row: Memory): Promise<Transcript | null> {
 		const variantId = redactedVariantId(row);
@@ -646,7 +621,6 @@ export class TranscriptStore {
 		if (!variantRow) return null;
 		return rowToTranscript(variantRow);
 	}
-
 	/**
 	 * Create or refresh the deterministic redacted variant linked to an original.
 	 * The original transcript and retained audio URL are never modified. A
@@ -729,7 +703,6 @@ export class TranscriptStore {
 		}
 		return variant;
 	}
-
 	/** Add or replace one per-entity share grant on the original transcript row. */
 	async share(input: ShareTranscriptGrantInput): Promise<void> {
 		const row = await this.runtime.getMemoryById(input.transcriptId);
@@ -772,7 +745,6 @@ export class TranscriptStore {
 			throw new Error(`transcript ${input.transcriptId} not found`);
 		}
 	}
-
 	/**
 	 * Snapshot the persisted room roster and materialize one grant per member.
 	 * Later roster changes cannot widen access because disclosure reads only the
@@ -841,7 +813,6 @@ export class TranscriptStore {
 			throw new Error(`transcript ${input.transcriptId} not found`);
 		}
 	}
-
 	/** Remove one per-entity share grant from the original transcript row. */
 	async revokeShare(input: RevokeTranscriptGrantInput): Promise<void> {
 		const row = await this.runtime.getMemoryById(input.transcriptId);
@@ -871,7 +842,6 @@ export class TranscriptStore {
 			throw new Error(`transcript ${input.transcriptId} not found`);
 		}
 	}
-
 	/** Remove every materialized entity/room grant from an original transcript. */
 	async clearShares(transcriptId: UUID): Promise<void> {
 		const row = await this.runtime.getMemoryById(transcriptId);
@@ -893,7 +863,6 @@ export class TranscriptStore {
 		});
 		if (!ok) throw new Error(`transcript ${transcriptId} not found`);
 	}
-
 	/** Persist independent visibility for transcript-adjacent artifacts. */
 	async updateArtifactSharing(
 		input: UpdateTranscriptArtifactSharingInput,
@@ -913,7 +882,6 @@ export class TranscriptStore {
 			mergedTranscriptMetadata(transcript, { sharing: input.sharing }),
 		);
 	}
-
 	/**
 	 * First durable half of source-audio deletion. The capability is removed
 	 * from the transcript before the byte-store delete is attempted, while the
@@ -941,7 +909,6 @@ export class TranscriptStore {
 		);
 		return this.update(pending);
 	}
-
 	/** Final durable half of source-audio deletion after the byte is absent. */
 	async markSourceAudioDeleted(transcriptId: UUID): Promise<Transcript> {
 		const row = await this.runtime.getMemoryById(transcriptId);
@@ -961,7 +928,6 @@ export class TranscriptStore {
 		}
 		return this.update(finalized);
 	}
-
 	/**
 	 * Overwrite an existing transcript record in place (same id/row) — used when
 	 * the user edits the transcript text. Re-derives the preview text body and
@@ -1018,7 +984,6 @@ export class TranscriptStore {
 		}
 		return transcript;
 	}
-
 	/** Delete a transcript record (the knowledge mirror is removed separately). */
 	async delete(id: UUID): Promise<void> {
 		await this.runtime.deleteMemory(id);

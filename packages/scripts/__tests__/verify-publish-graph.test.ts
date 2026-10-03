@@ -1,5 +1,5 @@
 /**
- * Proves the baseline-free publish graph invariant and its publisher preflight:
+ * Proves the baseline-free publish graph invariant:
  * no publishable package may ship a registry dependency on private/missing
  * workspace code, while private deployment packages remain outside the graph.
  */
@@ -7,18 +7,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "../lib/spawn-sync-captured.mjs";
-import { listPackages } from "../lib/workspaces.mjs";
-import { main as publishFromDist } from "../publish-from-dist.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.ts";
+import { listPackages } from "../lib/workspaces.ts";
 import {
   assertPublishableWorkspaceGraph,
   findUnpublishableWorkspaceDependencies,
   formatPublishGraphViolation,
-  PublishGraphError,
-} from "../verify-publish-graph.mjs";
+} from "../verify-publish-graph.ts";
 
 const CHECK = fileURLToPath(
-  new URL("../verify-publish-graph.mjs", import.meta.url),
+  new URL("../verify-publish-graph.ts", import.meta.url),
 );
 
 function pkg(
@@ -92,22 +90,6 @@ describe("publishable workspace graph", () => {
     ];
 
     expect(findUnpublishableWorkspaceDependencies(graph)).toEqual([]);
-  });
-
-  test("publisher fails before inspecting or packing dist artifacts", () => {
-    const graph = [
-      pkg("@x/public", {
-        dependencies: { "@x/private": "workspace:*" },
-      }),
-      pkg("@x/private", { private: true }),
-    ];
-
-    expect(() =>
-      publishFromDist({
-        flags: { apply: false },
-        packages: graph,
-      }),
-    ).toThrow(PublishGraphError);
   });
 
   test("live workspace graph has no unpublishable edge", () => {

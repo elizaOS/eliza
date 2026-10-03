@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { copyPackageAssets } from "../copy-package-assets.mjs";
+import { copyPackageAssets } from "../copy-package-assets.ts";
 
 const temporaryDirectories: string[] = [];
 

@@ -5,9 +5,11 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/wallet-types";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/client-types-core";
+import { useWalletState } from "./useWalletState";
 
 const mocks = vi.hoisted(() => ({
   authority: {
@@ -40,7 +42,6 @@ const mocks = vi.hoisted(() => ({
     saveComputerUseEnabled: vi.fn(),
   },
 }));
-
 vi.mock("../api", () => ({ client: mocks.client }));
 vi.mock("../api/client", () => ({ client: mocks.client }));
 vi.mock("./agent-profiles", () => ({
@@ -54,10 +55,6 @@ vi.mock("./persistence", () => mocks.persistence);
 vi.mock("../utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
 }));
-
-import { ApiError } from "../api/client-types-core";
-import { useWalletState } from "./useWalletState";
-
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -67,7 +64,6 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-
 const EMPTY_NFTS: WalletNftsResponse = { evm: [], solana: null };
 const FIRST_BALANCES: WalletBalancesResponse = {
   evm: {
@@ -142,7 +138,6 @@ const AGENT_B_CONFIG: WalletConfigStatus = {
     },
   ],
 };
-
 function renderWalletState() {
   return renderHook(() =>
     useWalletState({
@@ -154,7 +149,6 @@ function renderWalletState() {
     }),
   );
 }
-
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.authority.value = "https://agent-a.test";
@@ -185,13 +179,11 @@ beforeEach(() => {
   mocks.client.refreshCloudWallets.mockResolvedValue({ ok: true });
   mocks.client.setWalletPrimary.mockResolvedValue({ ok: true });
 });
-
 describe("useWalletState resource lifecycle", () => {
   it("hides the prior wallet and drops stale responses for a same-host profile switch", async () => {
     mocks.client.getWalletConfig.mockResolvedValueOnce(FIRST_CONFIG);
     mocks.client.getWalletBalances.mockResolvedValueOnce(FIRST_BALANCES);
     const { result } = renderWalletState();
-
     await act(async () => {
       await Promise.all([
         result.current.loadWalletConfig(),
@@ -200,7 +192,6 @@ describe("useWalletState resource lifecycle", () => {
     });
     expect(result.current.state.walletConfig).toEqual(FIRST_CONFIG);
     expect(result.current.state.walletBalances).toEqual(FIRST_BALANCES);
-
     const staleConfig = deferred<WalletConfigStatus>();
     const staleBalances = deferred<WalletBalancesResponse>();
     mocks.client.getWalletConfig.mockReturnValueOnce(staleConfig.promise);
@@ -212,12 +203,10 @@ describe("useWalletState resource lifecycle", () => {
       staleBalanceLoad = result.current.loadBalances();
       await Promise.resolve();
     });
-
     act(() => {
       mocks.authority.profileId = "profile-b";
       for (const onChange of mocks.authority.listeners) onChange();
     });
-
     // The authority-associated return state fail-closes in the switch render;
     // it does not wait for the passive reset effect or B's network response.
     expect(result.current.state.walletConfig).toBeNull();
@@ -225,7 +214,6 @@ describe("useWalletState resource lifecycle", () => {
     expect(result.current.state.walletBalances).toBeNull();
     expect(result.current.state.walletConfigStatus).toBe("idle");
     expect(result.current.state.walletBalancesStatus).toBe("idle");
-
     await act(async () => {
       staleConfig.resolve(LATEST_CONFIG);
       staleBalances.resolve(LATEST_BALANCES);
@@ -233,7 +221,6 @@ describe("useWalletState resource lifecycle", () => {
     });
     expect(result.current.state.walletConfig).toBeNull();
     expect(result.current.state.walletBalances).toBeNull();
-
     mocks.client.getWalletConfig.mockResolvedValueOnce(AGENT_B_CONFIG);
     mocks.client.getWalletBalances.mockResolvedValueOnce(AGENT_B_BALANCES);
     await act(async () => {
@@ -245,12 +232,10 @@ describe("useWalletState resource lifecycle", () => {
     expect(result.current.state.walletConfig).toEqual(AGENT_B_CONFIG);
     expect(result.current.state.walletBalances).toEqual(AGENT_B_BALANCES);
   });
-
   it("hides wallet data and rejects late work after a same-host credential change", async () => {
     mocks.client.getWalletConfig.mockResolvedValueOnce(FIRST_CONFIG);
     mocks.client.getWalletBalances.mockResolvedValueOnce(FIRST_BALANCES);
     const { result } = renderWalletState();
-
     await act(async () => {
       await Promise.all([
         result.current.loadWalletConfig(),
@@ -259,7 +244,6 @@ describe("useWalletState resource lifecycle", () => {
     });
     expect(result.current.state.walletConfig).toEqual(FIRST_CONFIG);
     expect(result.current.state.walletBalances).toEqual(FIRST_BALANCES);
-
     const staleConfig = deferred<WalletConfigStatus>();
     mocks.client.getWalletConfig.mockReturnValueOnce(staleConfig.promise);
     let staleLoad!: Promise<void>;
@@ -267,18 +251,15 @@ describe("useWalletState resource lifecycle", () => {
       staleLoad = result.current.loadWalletConfig();
       await Promise.resolve();
     });
-
     act(() => {
       mocks.authority.revision += 1;
       for (const onChange of mocks.authority.listeners) onChange();
     });
-
     expect(mocks.authority.profileId).toBe("profile-a");
     expect(mocks.authority.value).toBe("https://agent-a.test");
     expect(result.current.state.walletConfig).toBeNull();
     expect(result.current.state.walletAddresses).toBeNull();
     expect(result.current.state.walletBalances).toBeNull();
-
     await act(async () => {
       staleConfig.resolve(LATEST_CONFIG);
       await staleLoad;
@@ -286,12 +267,10 @@ describe("useWalletState resource lifecycle", () => {
     expect(result.current.state.walletConfig).toBeNull();
     expect(result.current.state.walletAddresses).toBeNull();
   });
-
   it("stops a wallet mutation when its initiating authority is superseded", async () => {
     const update = deferred<unknown>();
     mocks.client.updateWalletConfig.mockReturnValueOnce(update.promise);
     const { result } = renderWalletState();
-
     let save!: Promise<boolean>;
     await act(async () => {
       save = result.current.handleWalletApiKeySave({
@@ -299,7 +278,6 @@ describe("useWalletState resource lifecycle", () => {
       });
       await Promise.resolve();
     });
-
     act(() => {
       mocks.authority.value = "https://agent-b.test";
       for (const onChange of mocks.authority.listeners) onChange();
@@ -308,22 +286,18 @@ describe("useWalletState resource lifecycle", () => {
       update.resolve({ ok: true });
       expect(await save).toBe(false);
     });
-
     expect(mocks.client.getWalletConfig).not.toHaveBeenCalled();
     expect(mocks.client.getWalletBalances).not.toHaveBeenCalled();
     expect(result.current.state.walletError).toBeNull();
   });
-
   it("clears a config error and returns to ready after a successful settings save", async () => {
     mocks.client.getWalletConfig.mockRejectedValueOnce(new Error("offline"));
     const { result } = renderWalletState();
-
     await act(async () => {
       await result.current.loadWalletConfig();
     });
     expect(result.current.state.walletConfigStatus).toBe("error");
     expect(result.current.state.walletConfigError).toContain("offline");
-
     mocks.client.getWalletConfig.mockResolvedValueOnce(LATEST_CONFIG);
     let saved = false;
     await act(async () => {
@@ -331,22 +305,18 @@ describe("useWalletState resource lifecycle", () => {
         selections: LATEST_CONFIG.selectedRpcProviders,
       });
     });
-
     expect(saved).toBe(true);
     expect(result.current.state.walletConfig).toEqual(LATEST_CONFIG);
     expect(result.current.state.walletConfigStatus).toBe("ready");
     expect(result.current.state.walletConfigError).toBeNull();
   });
-
   it("runs cloud refresh and primary selection through the same config lifecycle", async () => {
     mocks.client.getWalletConfig.mockRejectedValueOnce(new Error("offline"));
     const { result } = renderWalletState();
-
     await act(async () => {
       await result.current.loadWalletConfig();
     });
     expect(result.current.state.walletConfigStatus).toBe("error");
-
     mocks.client.getWalletConfig.mockResolvedValueOnce(FIRST_CONFIG);
     await act(async () => {
       await result.current.refreshCloudWallets();
@@ -354,7 +324,6 @@ describe("useWalletState resource lifecycle", () => {
     expect(result.current.state.walletConfigStatus).toBe("ready");
     expect(result.current.state.walletConfigError).toBeNull();
     expect(result.current.state.walletConfig).toEqual(FIRST_CONFIG);
-
     mocks.client.getWalletConfig.mockResolvedValueOnce(LATEST_CONFIG);
     await act(async () => {
       await result.current.setWalletPrimary("evm", "local");
@@ -367,7 +336,6 @@ describe("useWalletState resource lifecycle", () => {
     expect(result.current.state.walletConfigStatus).toBe("ready");
     expect(result.current.state.walletConfigError).toBeNull();
   });
-
   it("does not let an older config response overwrite a newer request", async () => {
     const first = deferred<WalletConfigStatus>();
     const latest = deferred<WalletConfigStatus>();
@@ -375,7 +343,6 @@ describe("useWalletState resource lifecycle", () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(latest.promise);
     const { result } = renderWalletState();
-
     let firstLoad!: Promise<void>;
     let latestLoad!: Promise<void>;
     await act(async () => {
@@ -391,19 +358,16 @@ describe("useWalletState resource lifecycle", () => {
       first.resolve(FIRST_CONFIG);
       await firstLoad;
     });
-
     expect(result.current.state.walletConfig).toEqual(LATEST_CONFIG);
     expect(result.current.state.walletConfigStatus).toBe("ready");
     expect(result.current.state.walletConfigError).toBeNull();
   });
-
   it("does not let a later NFT success clear an earlier balance failure", async () => {
     const balances = deferred<WalletBalancesResponse>();
     const nfts = deferred<WalletNftsResponse>();
     mocks.client.getWalletBalances.mockReturnValueOnce(balances.promise);
     mocks.client.getWalletNfts.mockReturnValueOnce(nfts.promise);
     const { result } = renderWalletState();
-
     let balanceLoad!: Promise<void>;
     let nftLoad!: Promise<void>;
     await act(async () => {
@@ -411,14 +375,12 @@ describe("useWalletState resource lifecycle", () => {
       nftLoad = result.current.loadNfts();
       await Promise.resolve();
     });
-
     await act(async () => {
       balances.reject(new Error("RPC offline"));
       await balanceLoad;
     });
     expect(result.current.state.walletBalancesStatus).toBe("error");
     expect(result.current.state.walletBalancesError).toContain("RPC offline");
-
     await act(async () => {
       nfts.resolve(EMPTY_NFTS);
       await nftLoad;
@@ -428,7 +390,6 @@ describe("useWalletState resource lifecycle", () => {
     expect(result.current.state.walletBalancesError).toContain("RPC offline");
     expect(result.current.state.walletError).toBeNull();
   });
-
   it("ignores a stale balance failure that arrives after a newer success", async () => {
     const first = deferred<WalletBalancesResponse>();
     const latest = deferred<WalletBalancesResponse>();
@@ -436,7 +397,6 @@ describe("useWalletState resource lifecycle", () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(latest.promise);
     const { result } = renderWalletState();
-
     let firstLoad!: Promise<void>;
     let latestLoad!: Promise<void>;
     await act(async () => {
@@ -452,14 +412,12 @@ describe("useWalletState resource lifecycle", () => {
       first.reject(new Error("stale failure"));
       await firstLoad;
     });
-
     expect(result.current.state.walletBalances).toEqual(LATEST_BALANCES);
     expect(result.current.state.walletBalancesStatus).toBe("ready");
     expect(result.current.state.walletBalancesError).toBeNull();
     expect(result.current.state.walletLoading).toBe(false);
     expect(result.current.state.walletBalances).not.toEqual(FIRST_BALANCES);
   });
-
   it("classifies an unsupported NFT endpoint without faking an empty response", async () => {
     mocks.client.getWalletNfts.mockRejectedValueOnce(
       new ApiError({
@@ -471,11 +429,9 @@ describe("useWalletState resource lifecycle", () => {
       }),
     );
     const { result } = renderWalletState();
-
     await act(async () => {
       await result.current.loadNfts();
     });
-
     expect(result.current.state.walletNfts).toBeNull();
     expect(result.current.state.walletNftsStatus).toBe("unavailable");
     expect(result.current.state.walletNftsError).toBeNull();

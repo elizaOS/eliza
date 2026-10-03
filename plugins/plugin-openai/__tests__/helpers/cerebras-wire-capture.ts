@@ -301,7 +301,9 @@ export async function startCerebrasWireCapture(
             call.fault.triggered = true;
             call.transport.outcome = "injected-disconnect";
             abortController.abort(new Error("Injected disconnect after first upstream chunk."));
-            response.destroy();
+            response.flushHeaders();
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            response.destroy(new Error("Injected upstream stream disconnect"));
             break;
           }
           response.write(chunk);

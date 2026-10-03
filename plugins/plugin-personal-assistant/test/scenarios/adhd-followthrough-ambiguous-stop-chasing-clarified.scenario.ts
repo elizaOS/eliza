@@ -5,7 +5,7 @@
  * the nudge, and Casey will not notice the loss until the deadline passes.
  * One focused clarifier must come before any chasing is altered.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

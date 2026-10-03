@@ -1,19 +1,19 @@
-/** Verifies ChatSurface composer (shared core) through the package's configured test harness. */
-// @vitest-environment jsdom
 /**
- * ChatSurface composer contract: the glass mini-chat consumes the shared
- * composer core — IME-safe Enter-to-send, the shared usePushToTalk mic hold
- * (hold dictates, tap toggles), and the ChatComposerContext draft slot.
- * Real component in jsdom, real DOM events, fake timers for the hold.
+ * Exercises shell transcript, composer and capability controls in jsdom.
+ * Real components share the app fixture; only mic-hold timing uses fake timers.
  */
+// @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import { PUSH_TO_TALK_HOLD_MS } from "../../gestures";
+import { __setAppValueForTests } from "../../state/app-store";
 import { ChatComposerCtx } from "../../state/ChatComposerContext.hooks";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { ChatSurface } from "./ChatSurface";
+import type { ShellMessage } from "./shell-state";
 
 // jsdom has no Pointer Capture; stub it so the hold machine's capture calls
 // are no-ops that still report "not captured" for the release path.
@@ -23,10 +23,17 @@ beforeEach(() => {
   Element.prototype.hasPointerCapture ??= () => false;
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  __setAppValueForTests(null);
+});
 
 function surface(overrides: Partial<Parameters<typeof ChatSurface>[0]> = {}) {
-  return <ChatSurface messages={[]} onSend={vi.fn()} canSend {...overrides} />;
+  return (
+    <MockAppProvider>
+      <ChatSurface messages={[]} onSend={vi.fn()} canSend {...overrides} />
+    </MockAppProvider>
+  );
 }
 
 function composerInput(): HTMLInputElement {
@@ -34,15 +41,20 @@ function composerInput(): HTMLInputElement {
 }
 
 describe("ChatSurface composer (shared core)", () => {
-  it("sends the trimmed draft on Enter and clears the input", () => {
-    const onSend = vi.fn();
-    render(surface({ onSend }));
-    const input = composerInput();
-    fireEvent.change(input, { target: { value: "  hello there  " } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(onSend).toHaveBeenCalledWith("hello there");
-    expect(input.value).toBe("");
-  });
+  it.each(["Enter", "click"])(
+    "sends the trimmed draft by %s and clears the input",
+    (method) => {
+      const onSend = vi.fn();
+      render(surface({ onSend }));
+      const input = composerInput();
+      fireEvent.change(input, { target: { value: "  hello there  " } });
+      if (method === "Enter") fireEvent.keyDown(input, { key: "Enter" });
+      else
+        fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+      expect(onSend).toHaveBeenCalledWith("hello there");
+      expect(input.value).toBe("");
+    },
+  );
 
   it("renders user form submissions as a compact summary without protocol values", () => {
     const raw =
@@ -75,11 +87,21 @@ describe("ChatSurface composer (shared core)", () => {
     const onSend = vi.fn();
     const { rerender } = render(surface({ onSend, canSend: false }));
     const input = composerInput();
+    expect(input.disabled).toBe(true);
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Send message" })
+        .disabled,
+    ).toBe(true);
     fireEvent.change(input, { target: { value: "queued" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
     rerender(surface({ onSend, canSend: true }));
+    expect(input.disabled).toBe(false);
     fireEvent.change(input, { target: { value: "   " } });
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Send message" })
+        .disabled,
+    ).toBe(true);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -159,5 +181,86 @@ describe("ChatSurface composer (shared core)", () => {
     render(<Provider>{surface()}</Provider>);
     fireEvent.change(composerInput(), { target: { value: "one draft" } });
     expect(screen.getByTestId("shared-draft").textContent).toBe("one draft");
+  });
+
+  it("retains a draft on Shift+Enter", () => {
+    const onSend = vi.fn();
+    render(surface({ onSend }));
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "Draft" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(input.value).toBe("Draft");
+  });
+
+  it("announces transcript updates without replacing the entire live region", () => {
+    render(
+      surface({
+        messages: [
+          { id: "u", role: "user", content: "Hi", createdAt: 0 },
+          { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
+        ],
+      }),
+    );
+    expect(screen.getByText("Hi")).toBeTruthy();
+    expect(screen.getByText("Hello")).toBeTruthy();
+    const list = screen.getByRole("list");
+    expect(list.getAttribute("aria-live")).toBe("polite");
+    expect(list.getAttribute("aria-atomic")).toBe("false");
+  });
+
+  it("gates optional voice and vision capabilities through availability and capture state", () => {
+    const onVision = vi.fn();
+    const { rerender } = render(surface());
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: /voice input/i })
+        .disabled,
+    ).toBe(true);
+    expect(screen.queryByRole("button", { name: /my screen/i })).toBeNull();
+    rerender(surface({ onVision }));
+    const vision = screen.getByRole<HTMLButtonElement>("button", {
+      name: /my screen/i,
+    });
+    expect(vision.disabled).toBe(false);
+    fireEvent.click(vision);
+    expect(onVision).toHaveBeenCalledTimes(1);
+    rerender(surface({ onVision, visionActive: true }));
+    expect(vision.disabled).toBe(true);
+    rerender(surface({ onVision, canSend: false }));
+    expect(vision.disabled).toBe(true);
+  });
+
+  it("does not cover the transcript with a scrollback control", () => {
+    const messages: ShellMessage[] = [
+      { id: "u", role: "user", content: "Hi", createdAt: 0 },
+      { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
+    ];
+    render(surface({ messages }));
+    const scroller = screen
+      .getByTestId("shell-chat-surface")
+      .querySelector(".overflow-y-auto") as HTMLDivElement;
+    // Stub a tall, scrolled-up scroller.
+    Object.defineProperty(scroller, "scrollHeight", {
+      configurable: true,
+      get: () => 2000,
+    });
+    Object.defineProperty(scroller, "clientHeight", {
+      configurable: true,
+      get: () => 400,
+    });
+    let top = 100;
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+      },
+    });
+    scroller.scrollTo = ((opts: ScrollToOptions) => {
+      top = opts.top ?? top;
+    }) as HTMLElement["scrollTo"];
+    fireEvent.scroll(scroller);
+    expect(screen.queryByTestId("chat-surface-jump-to-latest")).toBeNull();
+    expect(scroller.scrollTop).toBe(100);
   });
 });

@@ -19,7 +19,7 @@ import {
   type MeetingArtifactPlatformParticipant,
   type MeetingArtifactSourceStream,
   type MeetingArtifactTranscriptSpan,
-} from "@elizaos/shared";
+} from "@elizaos/core/meeting-artifacts";
 import { persistMeetingMedia } from "../../transcripts/meeting-transcript-writer.js";
 
 const ZOOM_API_BASE = "https://api.zoom.us/v2";

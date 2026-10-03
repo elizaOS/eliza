@@ -16,15 +16,15 @@
  * only while something is mounted.
  */
 
-import {
-  type SwarmActivityPlanEntry,
-  type SwarmActivityStatus,
-  type SwarmActivityTool,
-  type SwarmEvent,
-  toSwarmActivity,
+import type {
+  SwarmActivityPlanEntry,
+  SwarmActivityStatus,
+  SwarmActivityTool,
+  SwarmEvent,
 } from "@elizaos/core";
 import { useSyncExternalStore } from "react";
 import { client } from "../api/client";
+import { toSwarmActivity } from "../views/swarm-activity.js";
 
 /** Cap on retained tool steps per sub-agent — a long task must not grow unbounded. */
 const MAX_STEPS_PER_AGENT = 60;

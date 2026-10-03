@@ -7,7 +7,8 @@ import {
   type RuntimeManagementRequest,
   type RuntimeManagementResult,
   readJsonBody,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { PendingRequestMap } from "./pending-request-map.ts";
 import {

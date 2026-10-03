@@ -12,22 +12,22 @@ import { fileURLToPath } from "node:url";
 import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  FeatureResult,
-  IPermissionsRegistry,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventAttendee,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarSummary,
-  LifeOpsCalendarWriteOnlyCreateReceipt,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarEventAttendee,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarSummary,
+  type LifeOpsCalendarWriteOnlyCreateReceipt,
+} from "@elizaos/core/contracts/calendar";
+import { type FeatureResult } from "@elizaos/core/contracts/feature-result";
+import { type IPermissionsRegistry } from "@elizaos/core/contracts/permissions";
+import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
-} from "@elizaos/shared/platform/native-library-policy";
+} from "@elizaos/core/platform/native-library-policy";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 

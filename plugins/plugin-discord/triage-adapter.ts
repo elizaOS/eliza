@@ -16,24 +16,26 @@
  */
 
 import {
-	BaseMessageAdapter,
 	type Content,
-	type DraftRequest,
-	getDefaultTriageService,
 	type IAgentRuntime,
 	inspectSendHandlerResult,
-	type ListOptions,
 	logger,
 	type Memory,
-	type MessageAdapterCapabilities,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
-	type MessageRef,
-	type MessageSource,
 	type SendHandlerOutcome,
 	type TargetInfo,
 	toWellFormedUnicode,
 } from "@elizaos/core";
+import {
+	BaseMessageAdapter,
+	type DraftRequest,
+	getDefaultTriageService,
+	type ListOptions,
+	type MessageAdapterCapabilities,
+	type MessageRef,
+	type MessageSource,
+} from "@elizaos/plugin-assistant";
 import { DISCORD_SERVICE_NAME } from "./constants";
 
 /** Bounded MessageRef cache so long-running agents don't grow unbounded. */

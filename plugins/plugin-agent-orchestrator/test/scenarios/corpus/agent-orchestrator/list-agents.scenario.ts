@@ -15,9 +15,11 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
+  scenario,
   successfulActionData,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
+
+import { transientTurnEvaluationSeed } from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const TASKS = "TASKS";
 type R = AgentRuntime & {
@@ -39,6 +41,18 @@ export default scenario({
   isolation: "per-scenario",
 
   seed: [
+    transientTurnEvaluationSeed(
+      [
+        {
+          input: "List the active coding agents.",
+          action: TASKS,
+          completed: true,
+          reason:
+            "The local session store was read and the empty active-agent list returned.",
+        },
+      ],
+      "Listing current coding sessions is a transient read, not a durable personal fact, preference, identity, relationship, or standing goal.",
+    ),
     {
       type: "custom",
       name: "orchestrator-list-agents-fixtures",

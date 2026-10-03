@@ -37,7 +37,7 @@ const ME = "/api/users/me";
 /**
  * The `ENVIRONMENT` binding the booted worker runs under. The harness starts
  * cloud-api through its dev launcher, which pins `ENVIRONMENT = "local"`
- * (`packages/cloud/scripts/admin/dev/cloud-api-dev.mjs`), so the worker uses the
+ * (`packages/cloud/scripts/admin/dev/cloud-api-dev.ts`), so the worker uses the
  * environment-suffixed steward cookie names rather than production's historical
  * unsuffixed ones.
  */

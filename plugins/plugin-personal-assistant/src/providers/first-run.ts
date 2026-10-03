@@ -12,7 +12,7 @@
  * `enabled_skills`.
  */
 
-import { hasOwnerAccess, listLocalAgentBackups } from "@elizaos/agent";
+import { listLocalAgentBackups } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -20,7 +20,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ChannelType, logger, timeInferenceSpan } from "@elizaos/core";
+import { hasRoleAccess, logger, timeInferenceSpan } from "@elizaos/core";
 import { createFirstRunStateStore } from "../lifeops/first-run/state.js";
 
 export interface FirstRunAffordance {
@@ -61,17 +61,7 @@ function buildOneLine(
   // set up" while no setup had run, and a "customize my setup" ask was read
   // as devtool config knobs — the line forbids claiming completion and names
   // the real questions so the model walks the actual flow.
-  return "First-run setup NOT done — never claim it is. Offer defaults or customize (wake time / name, categories, channel).";
-}
-
-function isPrivateFirstRunSurface(message: Memory): boolean {
-  const channelType = message.content.channelType;
-  return (
-    channelType === ChannelType.DM ||
-    channelType === ChannelType.VOICE_DM ||
-    channelType === ChannelType.SELF ||
-    channelType === ChannelType.API
-  );
+  return "Setup pending: choose defaults or customize.";
 }
 
 function explicitlyRequestsFirstRun(message: Memory): boolean {
@@ -81,11 +71,7 @@ function explicitlyRequestsFirstRun(message: Memory): boolean {
 }
 
 function shouldSurfaceFirstRun(message: Memory, inProgress: boolean): boolean {
-  return (
-    inProgress ||
-    isPrivateFirstRunSurface(message) ||
-    explicitlyRequestsFirstRun(message)
-  );
+  return inProgress || explicitlyRequestsFirstRun(message);
 }
 
 export const firstRunProvider: Provider = {
@@ -95,18 +81,8 @@ export const firstRunProvider: Provider = {
   descriptionCompressed:
     "Pending first-run affordance; quiet after completion.",
   dynamic: true,
-  // A dynamic provider with no routing declaration is invisible to the v5
-  // planner: composeState's default path skips `dynamic` providers and the
-  // planner's provider selection only adds always-on or context-gated names.
-  // Observed live (#16941): a fresh-boot "set me up with sensible defaults"
-  // turn composed no first-run line, so the planner confidently replied
-  // "you're all set" while first-run had never run. Always-on is correct and
-  // cheap here — the provider goes quiet the moment first-run completes, and
-  // it self-gates on owner access and surface (same shape as
-  // `pendingApprovals`).
-  alwaysInResponseState: true,
-  contexts: ["general", "settings", "system"],
-  contextGate: { anyOf: ["general", "settings", "system"] },
+  contexts: ["settings", "system"],
+  contextGate: { anyOf: ["settings", "system"] },
   roleGate: { minRole: "OWNER" },
   // Run very early so the affordance reaches the planner before any
   // capability provider can claim the turn.
@@ -120,7 +96,7 @@ export const firstRunProvider: Provider = {
   ): Promise<ProviderResult> {
     if (
       !(await timeInferenceSpan("provider:firstRun:owner-access", () =>
-        hasOwnerAccess(runtime, message),
+        hasRoleAccess(runtime, message, "OWNER"),
       ))
     ) {
       return QUIET_RESULT;

@@ -6,9 +6,13 @@
  * Used by the registry and drop services for on-chain operations.
  */
 
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  createIntegrationTelemetrySpan,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import * as ethers from "ethers";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 
 /**
  * Renders a redacted preview of a rejected private key for the constructor's

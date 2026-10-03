@@ -4,9 +4,8 @@
  * this module owns transcript-only presentation policy.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core/messaging/interactions/parse";
 import type { ChatTurnStatus } from "../../api/client-types-chat";
-import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
@@ -35,16 +34,7 @@ import { WALLPAPER_FLOAT_SHADOW } from "./wallpaper-idiom";
 function ThreadLineText({ content }: { content: string }): React.ReactNode {
   const formSubmit = parseFormSubmitDisplay(content);
   if (formSubmit) return <FormSubmitReceipt label={formSubmit.label} />;
-  const slash = splitLeadingSlashCommand(content);
-  if (!slash) return content;
-  return (
-    <>
-      <span className="font-bold" data-testid="slash-command-token">
-        {slash.command}
-      </span>
-      {slash.rest}
-    </>
-  );
+  return content;
 }
 
 /**
@@ -230,6 +220,9 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.interrupted ? { interrupted: true } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.terminalFailure ? { terminalFailure: m.terminalFailure } : {}),
+    ...(m.replyRecoveryAvailable === true
+      ? { replyRecoveryAvailable: true }
+      : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
     ...(m.capabilityHandoff ? { capabilityHandoff: m.capabilityHandoff } : {}),

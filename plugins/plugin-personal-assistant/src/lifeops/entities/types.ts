@@ -1,11 +1,10 @@
 /**
  * Entity types for the LifeOps knowledge graph.
  *
- * Canonical home is `@elizaos/shared` (`knowledge-graph/entity-types.ts`).
+ * Canonical home is `@elizaos/core` (`knowledge-graph/entity-types.ts`).
  * This module re-exports the runtime-level primitives so the DB-backed
  * `EntityStore` and the rest of LifeOps keep importing from `./types.js`.
  */
-
 export {
   BUILT_IN_ENTITY_TYPES,
   type BuiltInEntityType,
@@ -22,4 +21,4 @@ export {
   type EntityVisibility,
   normalizeEntityConnectorAccountId,
   SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/core/knowledge-graph/entity-types";

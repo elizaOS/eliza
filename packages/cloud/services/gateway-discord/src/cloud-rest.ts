@@ -1,6 +1,6 @@
 /** Keeps internal Cloud REST bodies under the request deadline without discarding caller cancellation or response diagnostics. */
 import { boundedFetch } from "@elizaos/cloud-services-common/bounded-fetch";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 
 export const HTTP_TIMEOUT_MS = 10_000;
 

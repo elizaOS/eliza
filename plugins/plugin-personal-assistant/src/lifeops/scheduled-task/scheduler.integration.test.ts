@@ -23,13 +23,15 @@ import {
   type Room,
   type UUID,
 } from "@elizaos/core";
+import {
+  createGlobalPauseStore,
+  resolvePendingPromptsStore,
+} from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
-import { createGlobalPauseStore } from "../global-pause/store.ts";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import { settleDeferredInboundScans } from "./deferred-inbound-scans.ts";
 import {

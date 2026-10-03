@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/cloud-placement-ab.mjs \
+          node packages/cloud/scripts/cloud-placement-ab.ts \
             --deploy-sha "$EXPECTED_DEPLOY_SHA" \
             --smart-base-url "$SMART_BASE_URL" \
             --control-base-url "$CONTROL_BASE_URL" \

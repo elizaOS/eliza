@@ -1,7 +1,6 @@
 /**
- * Guards LifeOps package boundaries: CLAUDE.md/AGENTS.md stay identical, the docs frame
- * LifeOps as the personal-assistant owner (not the health/connector implementation home),
- * and health/screen-time actions stay plugin-health wrappers. Static source asserts.
+ * Guards retained LifeOps ownership boundaries and retired connector surfaces
+ * through static source assertions.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -20,24 +19,6 @@ function readPackageFile(path: string): string {
 }
 
 describe("LifeOps package boundaries", () => {
-  it("keeps CLAUDE.md and AGENTS.md identical", () => {
-    expect(readPackageFile("AGENTS.md")).toBe(readPackageFile("CLAUDE.md"));
-  });
-
-  it("documents LifeOps as the personal assistant owner, not the health or connector implementation home", () => {
-    const guide = readPackageFile("CLAUDE.md");
-
-    expect(guide).toContain(
-      "Chat-first owner operations and cross-domain LifeOps orchestration",
-    );
-    expect(guide).toContain(
-      "Domain implementations remain with their owning plugins.",
-    );
-    expect(guide).toContain(
-      "Connector credentials and domain-specific settings belong to their owning plugin.",
-    );
-  });
-
   it("keeps health and screen-time actions as plugin-health wrappers", () => {
     const healthAction = readPackageFile("src/actions/health.ts");
     const screenTimeAction = readPackageFile("src/actions/screen-time.ts");
@@ -227,13 +208,6 @@ describe("LifeOps package boundaries", () => {
 
     expect(statusMixin).toContain('from "@elizaos/plugin-browser"');
     expect(screenTimeMixin).toContain('from "@elizaos/plugin-browser"');
-    expect(browserMixin).toContain("createBrowserBridgePageContext");
-    expect(browserMixin).toContain("createBrowserBridgeTabSummary");
-    expect(browserMixin).toContain(
-      "resolveBrowserBridgeCompanionPairingTokenExpiresAt",
-    );
-    expect(browserMixin).toContain("browserBridgeDomainFromUrl");
-    expect(browserMixin).toContain("MAX_BROWSER_FOCUS_WINDOW_MS");
     expect(browserMixin).toContain('from "@elizaos/plugin-browser"');
     expect(coreMixin).toContain("createBrowserBridgeCompanionStatus");
     expect(coreMixin).toContain('from "@elizaos/plugin-browser"');

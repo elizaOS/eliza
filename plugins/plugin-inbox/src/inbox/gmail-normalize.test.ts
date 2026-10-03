@@ -4,7 +4,7 @@
  * and label/message id validation before values reach Gmail API calls.
  */
 
-import type { LifeOpsGmailMessageSummary } from "@elizaos/shared";
+import { type LifeOpsGmailMessageSummary } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it } from "vitest";
 import {
   extractNormalizedEmailAddress,

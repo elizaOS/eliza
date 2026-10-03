@@ -1,0 +1,12 @@
+[Icon Theme]
+Name=elizaOS
+Comment=elizaOS brand overrides with Adwaita fallbacks
+Inherits=Adwaita,hicolor
+Directories=scalable/places
+
+[scalable/places]
+Size=96
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Places

@@ -126,7 +126,19 @@ const MAX_LOCAL_TTS_TEXT_LENGTH = 4_000;
 
 type WsLike = CartesiaInkWebSocket & CartesiaWebSocketLike;
 
-function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
+export function wrapNodeWsAsDom(
+  socket: NodeWebSocket,
+  hooks: RealServerHooks,
+): WsLike {
+  // error-policy:J1 DOM sockets do not throw when their error listeners are
+  // removed, but Node EventEmitter sockets do. Keep a transport-level observer
+  // through close/handshake cancellation; active adapters still receive and
+  // settle their own typed failures, while teardown errors stay diagnostic.
+  socket.on("error", (error: Error) => {
+    hooks.log("warn", "provider WebSocket transport error", {
+      message: error.message,
+    });
+  });
   const listenerMap = new WeakMap<
     (e: unknown) => void,
     (...a: unknown[]) => void
@@ -236,7 +248,7 @@ function makeNodeCartesiaInkFactory(
       host: safeHost(url),
     });
     const socket = new NodeWs(url, { headers }) as unknown as NodeWebSocket;
-    return wrapNodeWsAsDom(socket) as CartesiaInkWebSocket;
+    return wrapNodeWsAsDom(socket, hooks) as CartesiaInkWebSocket;
   };
 }
 
@@ -251,7 +263,7 @@ function makeNodeCartesiaFactory(
     const socket = new NodeWs(url, {
       headers: options.headers,
     }) as unknown as NodeWebSocket;
-    return wrapNodeWsAsDom(socket) as CartesiaWebSocketLike;
+    return wrapNodeWsAsDom(socket, hooks) as CartesiaWebSocketLike;
   };
 }
 

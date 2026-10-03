@@ -6,14 +6,16 @@
  * `app_calendar.` prefix.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarProvider,
-  LifeOpsCalendarSourceError,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsIcsSourceSyncStatus,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarProvider,
+  type LifeOpsCalendarSourceError,
+  type LifeOpsIcsSourceSyncStatus,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorSide,
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   parseJsonArray,
@@ -271,6 +273,14 @@ function calendarEventValues(event: LifeOpsCalendarEvent): string {
   )`;
 }
 
+/** Only locally recorded note provenance survives provider metadata replacement. */
+function retainNoteSourceMetadata(incoming: string): string {
+  return `(${incoming}::jsonb || CASE
+    WHEN jsonb_typeof(app_calendar.life_calendar_events.metadata_json::jsonb -> 'sourceNote') = 'object'
+    THEN jsonb_build_object('sourceNote', app_calendar.life_calendar_events.metadata_json::jsonb -> 'sourceNote')
+    ELSE '{}'::jsonb END)::text`;
+}
+
 /**
  * Data-access layer for the calendar event + sync-state tables. Mirrors the
  * raw-SQL pattern of `LifeOpsRepository`: every statement runs through the
@@ -317,7 +327,7 @@ export class CalendarRepository {
     side: LifeOpsConnectorSide = event.side,
   ): Promise<void> {
     const connectorAccountId = event.connectorAccountId ?? null;
-    await executeRawSql(
+    const rows = await executeRawSql(
       this.runtime,
       `INSERT INTO app_calendar.life_calendar_events (
         id, agent_id, provider, side, calendar_id, external_event_id, title,
@@ -364,10 +374,22 @@ export class CalendarRepository {
         attendees_json = excluded.attendees_json,
         connector_account_id = COALESCE(excluded.connector_account_id, app_calendar.life_calendar_events.connector_account_id),
         grant_id = COALESCE(excluded.grant_id, app_calendar.life_calendar_events.grant_id),
-        metadata_json = excluded.metadata_json,
+        metadata_json = ${retainNoteSourceMetadata("excluded.metadata_json")},
         synced_at = excluded.synced_at,
-        updated_at = excluded.updated_at`,
+        updated_at = excluded.updated_at
+      RETURNING *`,
     );
+    const saved = rows[0];
+    if (!saved) {
+      throw new ElizaError(
+        "Calendar upsert did not return the persisted event.",
+        {
+          code: "CALENDAR_EVENT_PERSISTENCE_FAILED",
+        },
+      );
+    }
+    // Feed and mutation callers reuse this event; expose the same provenance as SQL readback.
+    event.metadata = parseCalendarEvent(saved).metadata;
   }
 
   async deleteCalendarEventsForProvider(
@@ -592,7 +614,7 @@ export class CalendarRepository {
         conference_link = ${sqlText(event.conferenceLink)},
         organizer_json = ${event.organizer ? sqlJson(event.organizer) : "NULL"},
         attendees_json = ${sqlJson(event.attendees)},
-        metadata_json = ${sqlJson(event.metadata)},
+        metadata_json = ${retainNoteSourceMetadata(sqlJson(event.metadata))},
         synced_at = ${sqlQuote(event.syncedAt)},
         updated_at = ${sqlQuote(event.updatedAt)}
         WHERE agent_id = ${sqlQuote(event.agentId)}
@@ -1182,7 +1204,7 @@ export class CalendarRepository {
           attendees_json = excluded.attendees_json,
           connector_account_id = excluded.connector_account_id,
           grant_id = excluded.grant_id,
-          metadata_json = excluded.metadata_json,
+          metadata_json = ${retainNoteSourceMetadata("excluded.metadata_json")},
           synced_at = excluded.synced_at,
           updated_at = excluded.updated_at
         WHERE
@@ -1238,7 +1260,7 @@ export class CalendarRepository {
                last_error_message = ${sqlText(args.error?.message)},
                last_error_retryable = ${
                  args.error === null ? "NULL" : sqlBoolean(args.error.retryable)
-},
+               },
                last_synced_at = ${sqlQuote(args.completedAt)},
                lease_token = NULL,
                lease_expires_at = NULL,

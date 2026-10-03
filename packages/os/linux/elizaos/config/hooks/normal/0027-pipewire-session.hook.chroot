@@ -1,0 +1,12 @@
+#!/bin/sh
+# Keep one audio graph owner and make recording/playback available at login.
+set -eu
+
+# A dependency must never leave the legacy PulseAudio daemon racing the
+# PipeWire PulseAudio replacement for the same socket.
+rm -f \
+    /etc/systemd/user/default.target.wants/pulseaudio.service \
+    /etc/systemd/user/sockets.target.wants/pulseaudio.socket
+
+systemctl --global enable pipewire.service pipewire.socket \
+    pipewire-pulse.service pipewire-pulse.socket wireplumber.service

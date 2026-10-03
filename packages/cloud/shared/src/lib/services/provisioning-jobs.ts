@@ -33,6 +33,11 @@ import {
 import type { DbTransaction } from "../../db/client";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
+import {
+  type BillingResumeCandidate,
+  billingResumeStillAuthorizedInTransaction,
+  listBillingResumeCandidates,
+} from "../../db/repositories/agent-billing-resume";
 import { updateAgentLifecycleExecutionFence } from "../../db/repositories/agent-lifecycle-execution-fence";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
@@ -82,6 +87,7 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
+import { checkAgentCreditGate } from "./agent-billing-gate";
 import {
   executeAgentComputeLeaseJob,
   readAgentComputeLeaseJobData,
@@ -284,6 +290,12 @@ export interface AgentResumeJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  /**
+   * Set only by billing-suspension reconciliation (#30702). Execution
+   * re-verifies that this exact provider-confirmed billing stop is still the
+   * agent's latest lifecycle decision and that the organization is funded.
+   */
+  automaticResume?: { stopIntentId: string };
 }
 
 export interface AgentSleepJobData {
@@ -435,6 +447,8 @@ export interface AgentResumeJobResult {
   containerStarted: boolean;
   reprovisioned: boolean;
   error?: string;
+  /** An automatic resume found its billing authority superseded or unfunded. */
+  skipped?: "authority_changed" | "unfunded";
 }
 
 export interface AgentSleepJobResult {
@@ -899,12 +913,21 @@ export async function resolveAgentSuspendAuthorization(
 }
 
 function isAgentResumeJobData(value: unknown): value is AgentResumeJobData {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    typeof (value as { agentId?: unknown }).agentId !== "string" ||
+    typeof (value as { organizationId?: unknown }).organizationId !== "string" ||
+    typeof (value as { userId?: unknown }).userId !== "string"
+  )
+    return false;
+  const automatic = (value as { automaticResume?: unknown }).automaticResume;
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { agentId?: unknown }).agentId === "string" &&
-    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    automatic === undefined ||
+    (typeof automatic === "object" &&
+      automatic !== null &&
+      typeof (automatic as { stopIntentId?: unknown }).stopIntentId === "string" &&
+      isValidUUID((automatic as { stopIntentId: string }).stopIntentId))
   );
 }
 
@@ -2380,9 +2403,10 @@ export class ProvisioningJobService {
             ...(isDeletionContinuation(sandbox)
               ? {}
               : { deletion_allocation_counted: holdsCountedNodeSlot(sandbox) }),
-            billing_status: "suspended" as const,
-            scheduled_shutdown_at: null,
-            shutdown_warning_sent_at: null,
+            // Provider ownership is not provider absence. Keep the existing
+            // billing clock live until executeAgentDelete proves the workload
+            // is gone and removes this row. Failure and timeout writebacks
+            // retain the row, so they also retain the charge authority.
             ...(isRecoveryReEnqueue ? {} : { error_count: 0 }),
             updated_at: new Date(),
           })
@@ -2429,8 +2453,9 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     authorization: "user_request" | "billing_request";
-    webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    requireUserOwnedBillingAuthority?: boolean;
+    webhookUrl?: string;
   }): Promise<EnqueueAgentSuspendResult> {
     return this.enqueueLifecycleJob<AgentSuspendJobData>(this.agentSuspendLifecycleOptions(params));
   }
@@ -2477,12 +2502,26 @@ export class ProvisioningJobService {
     authorization: "user_request" | "billing_request";
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    requireUserOwnedBillingAuthority?: boolean;
   }): LifecycleJobOptions<AgentSuspendJobData> {
     let intentIdToBind: string | undefined;
     const expectedLifecycleRevision = params.expectedLifecycleRevision;
     const validateTarget = (sandbox: LifecycleSandboxRow): void => {
       if (sandbox.pool_status !== null || sandbox.deleted_at !== null) {
         throw new ApiError(404, "resource_not_found", "Agent not found");
+      }
+      if (
+        params.requireUserOwnedBillingAuthority &&
+        (!isContainerBackedExecutionTier(sandbox.execution_tier) ||
+          sandbox.deletion_attempt_id !== null)
+      ) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          sandbox.deletion_attempt_id
+            ? "Managed agent deletion is in progress"
+            : "Managed agent billing authority changed",
+        );
       }
       if (
         expectedLifecycleRevision !== undefined &&
@@ -2805,6 +2844,7 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    expectedLifecycleRevision?: number;
   }): Promise<EnqueueAgentSleepResult> {
     return this.enqueueLifecycleJob<AgentSleepJobData>({
       jobType: JOB_TYPES.AGENT_SLEEP,
@@ -2822,6 +2862,24 @@ export class ProvisioningJobService {
       // snapshot fetch (~15s) + docker stop (~5s) + DB update.
       estimatedDurationMs: 30_000,
       logName: "agent_sleep",
+      validateSandbox:
+        params.expectedLifecycleRevision !== undefined
+          ? (sandbox) => {
+              if (
+                sandbox.lifecycle_revision !== params.expectedLifecycleRevision ||
+                sandbox.status !== "stopped"
+              ) {
+                throw new ElizaError("Agent state changed before retention sleep", {
+                  code: "AGENT_SLEEP_AUTHORITY_CHANGED",
+                  context: {
+                    agentId: params.agentId,
+                    expectedLifecycleRevision: params.expectedLifecycleRevision,
+                    actualLifecycleRevision: sandbox.lifecycle_revision,
+                  },
+                });
+              }
+            }
+          : undefined,
     });
   }
 
@@ -2839,6 +2897,7 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    expectedLifecycleRevision?: number;
     restoreBackupId?: string;
     forceFreshBoot?: boolean;
   }): Promise<EnqueueAgentWakeResult> {
@@ -2860,6 +2919,22 @@ export class ProvisioningJobService {
       // Fresh provision + state restore.
       estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
       logName: "agent_wake",
+      // Automatic recovery must not outlive the observed stop generation.
+      validateSandbox:
+        params.expectedLifecycleRevision !== undefined
+          ? (sandbox) => {
+              if (sandbox.lifecycle_revision !== params.expectedLifecycleRevision)
+                throw new ElizaError("Agent state changed while waking", {
+                  code: "AGENT_WAKE_AUTHORITY_CHANGED",
+                  context: {
+                    agentId: params.agentId,
+                    organizationId: params.organizationId,
+                    expectedLifecycleRevision: params.expectedLifecycleRevision,
+                    actualLifecycleRevision: sandbox.lifecycle_revision,
+                  },
+                });
+            }
+          : undefined,
       // Reusing an in-flight wake keeps ITS params and drops the caller's. A
       // bare retry ("wake me") may ride whatever is already running, but a
       // request that names a restore point or forces a fresh boot is a
@@ -3151,6 +3226,120 @@ export class ProvisioningJobService {
    * replacement. Rows stay fenced until container and VPN absence plus the
    * capacity release commit together.
    */
+  /**
+   * Converges provider-confirmed billing suspensions back to running once
+   * funded entitlement returns (#30702), independent of any browser request or
+   * webhook delivery order. One cursor page per call; the daemon advances the
+   * cursor past unfunded accounts so they cannot starve funded ones. A crash
+   * between a credit commit and enqueue is repaired by the next page.
+   */
+  async reconcileBillingSuspendedResumes(input: { limit: number; afterIntentId?: string }) {
+    const candidates = await listBillingResumeCandidates(input);
+    const result = {
+      total: candidates.length,
+      queued: 0,
+      reused: 0,
+      unfunded: 0,
+      authorityChanged: 0,
+      failures: [] as Array<{ agentId: string; intentId: string; error: string }>,
+      nextCursor: candidates.length === input.limit ? (candidates.at(-1)?.intentId ?? null) : null,
+    };
+    for (const candidate of candidates) {
+      try {
+        const admission = await this.enqueueAutomaticBillingResume(candidate);
+        if (admission.status === "queued") {
+          if (admission.created) result.queued += 1;
+          else result.reused += 1;
+        } else if (admission.status === "unfunded") {
+          result.unfunded += 1;
+        } else {
+          result.authorityChanged += 1;
+        }
+      } catch (error) {
+        // error-policy:J1 each failed admission is reported; its retained
+        // billing stop stays discoverable on the next reconciliation page.
+        const failure = {
+          agentId: candidate.agentId,
+          intentId: candidate.intentId,
+          error: jobErrorText(error),
+        };
+        result.failures.push(failure);
+        logger.error("[provisioning-jobs] Automatic billing resume admission failed", failure);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Converges personal Dedicated access on the organization's current paid
+   * plan entitlement (#25146), one cursor page per call. The fallback
+   * authority admits its stop/resume effects back through this queue.
+   */
+  async reconcilePersonalDedicatedEntitlements(input: {
+    limit: number;
+    afterAuthorityId?: string;
+  }) {
+    // Lazy: the fallback authority itself enqueues through this service.
+    const { reconcilePersonalDedicatedEntitlements } = await import(
+      "./personal-dedicated-fallback"
+    );
+    return reconcilePersonalDedicatedEntitlements(input);
+  }
+
+  /**
+   * Admits at most one resume job for a discovered billing suspension. Funding
+   * is re-read from the primary before admission, and the stop authority is
+   * re-verified under the agent lifecycle lock in the enqueue transaction, so
+   * stale discovery, concurrent refills and repeated scans converge on one job.
+   */
+  async enqueueAutomaticBillingResume(
+    candidate: BillingResumeCandidate,
+  ): Promise<
+    { status: "queued"; job: Job; created: boolean } | { status: "unfunded" | "authority_changed" }
+  > {
+    const funding = await checkAgentCreditGate(candidate.organizationId);
+    if (!funding.allowed) return { status: "unfunded" };
+    try {
+      const admitted = await this.enqueueLifecycleJob<AgentResumeJobData>({
+        jobType: JOB_TYPES.AGENT_RESUME,
+        jobData: {
+          agentId: candidate.agentId,
+          organizationId: candidate.organizationId,
+          userId: candidate.userId,
+          automaticResume: { stopIntentId: candidate.intentId },
+        },
+        toRecord: agentResumeJobDataToRecord,
+        agentId: candidate.agentId,
+        organizationId: candidate.organizationId,
+        userId: candidate.userId,
+        maxAttempts: 3,
+        estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
+        logName: "automatic_billing_resume",
+        logExtras: { stopIntentId: candidate.intentId },
+        beforeInsert: async (tx) => {
+          if (!(await billingResumeStillAuthorizedInTransaction(tx, candidate))) {
+            throw new ElizaError("Billing suspension is no longer resumable", {
+              code: "AUTOMATIC_BILLING_RESUME_AUTHORITY_CHANGED",
+              context: { agentId: candidate.agentId, intentId: candidate.intentId },
+            });
+          }
+        },
+      });
+      return { status: "queued", ...admitted };
+    } catch (error) {
+      // error-policy:J1 a superseded or conflicting lifecycle wins; the
+      // candidate is skipped, never forced.
+      if (
+        (error instanceof ElizaError &&
+          error.code === "AUTOMATIC_BILLING_RESUME_AUTHORITY_CHANGED") ||
+        (error instanceof ApiError && error.status === 409)
+      ) {
+        return { status: "authority_changed" };
+      }
+      throw error;
+    }
+  }
+
   async reconcileReplacementCleanupFences(limit = 5) {
     const boundedLimit = Math.max(1, Math.min(25, Math.trunc(limit)));
     return elizaSandboxService.reconcileReplacementCleanupFences(boundedLimit);
@@ -5385,6 +5574,28 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
+    if (data.automaticResume) {
+      const skipped = await this.automaticResumeRejection(job, data);
+      if (skipped) {
+        // The billing stop was superseded (user stop, deletion, newer
+        // generation) or funding lapsed again. Report the no-op honestly.
+        await this.settleClaimedExecution(job, "completed", {
+          result: agentResumeJobResultToRecord({
+            cloudAgentId: data.agentId,
+            containerStarted: false,
+            reprovisioned: false,
+            skipped,
+          }),
+          completed_at: new Date(),
+        });
+        logger.info("[provisioning-jobs] automatic billing resume skipped", {
+          jobId: job.id,
+          agentId: data.agentId,
+          reason: skipped,
+        });
+        return;
+      }
+    }
     const result = await elizaSandboxService.executeResume(data.agentId, data.organizationId);
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
@@ -5422,6 +5633,29 @@ export class ProvisioningJobService {
       containerStarted: result.containerStarted,
       reprovisioned: result.reprovisioned,
     });
+  }
+
+  /** Execution-time recheck of an automatic billing resume on the primary. */
+  private async automaticResumeRejection(
+    job: Job,
+    data: AgentResumeJobData,
+  ): Promise<AgentResumeJobResult["skipped"]> {
+    const stopIntentId = data.automaticResume?.stopIntentId;
+    if (!stopIntentId) return undefined;
+    const candidate: BillingResumeCandidate = {
+      intentId: stopIntentId,
+      agentId: data.agentId,
+      organizationId: data.organizationId,
+      userId: data.userId,
+    };
+    const authorized = await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      await tx.execute(elizaProvisionAdvisoryLockSql(data.organizationId, data.agentId));
+      return billingResumeStillAuthorizedInTransaction(tx, candidate, job.id);
+    });
+    if (!authorized) return "authority_changed";
+    const funding = await checkAgentCreditGate(data.organizationId);
+    return funding.allowed ? undefined : "unfunded";
   }
 
   private async executeAgentSleep(job: Job): Promise<void> {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Replace the placeholder `voice-emotion` 0.1.0 entry in
-`packages/shared/src/local-inference/voice-models.ts` with the actually
+`plugins/plugin-native-inference/src/model-catalog/voice-models.ts` with the actually
 published asset's sha256 + size, and append a `CHANGELOG.md` entry.
 
 Why this and not `append_voice_model_version.py`? That script *appends*
@@ -14,7 +14,7 @@ Inputs:
 
   --run-dir          training run dir (default packages/training/out/emotion-wav2small-v1).
   --hf-revision      git revision of the HF repo after upload (commit SHA).
-  --voice-models-ts  path to voice-models.ts (default packages/shared/src/local-inference/voice-models.ts).
+  --voice-models-ts  path to voice-models.ts (default plugins/plugin-native-inference/src/model-catalog/voice-models.ts).
   --changelog-md     path to models/voice/CHANGELOG.md.
   --dry-run          show planned changes without writing.
 """
@@ -33,7 +33,7 @@ LOG = logging.getLogger("update_voice_emotion_registry")
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_RUN_DIR = REPO_ROOT / "packages/training/out/emotion-wav2small-v1"
-DEFAULT_TS = REPO_ROOT / "packages/shared/src/local-inference/voice-models.ts"
+DEFAULT_TS = REPO_ROOT / "plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
 DEFAULT_CHANGELOG = REPO_ROOT / "models/voice/CHANGELOG.md"
 
 

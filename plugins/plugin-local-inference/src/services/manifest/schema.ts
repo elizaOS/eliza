@@ -5,7 +5,7 @@
  * contract independently of native kernel requirements.
  */
 
-import type { LocalRuntimeKernel } from "@elizaos/shared";
+import type { LocalRuntimeKernel } from "@elizaos/core/contracts/local-inference";
 import z from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
@@ -40,7 +40,7 @@ export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 // size-slug `tier` field. Any per-tier PUBLISHED FILENAME (e.g. the bundled
 // drafter `mtp/drafter-<publishedSlug>.gguf`) must be derived through this map,
 // or the runtime validator rejects the real published manifest (issue #15976).
-// Mirrors packages/shared/src/local-inference/catalog.ts::ELIZA_1_BUNDLE_SLUGS.
+// Mirrors plugins/plugin-native-inference/src/model-catalog/catalog.ts::ELIZA_1_BUNDLE_SLUGS.
 export const ELIZA_1_BUNDLE_TIER_SLUGS: Readonly<Record<Eliza1Tier, string>> = {
 	"2b": "e2b",
 	"4b": "e4b",
@@ -61,7 +61,7 @@ export function bundleTierSlug(tier: Eliza1Tier): string {
 // speaks in terms of the optimization, not the .metal/.comp file.
 //
 // The relationship to the runtime-side `LocalRuntimeKernel` enum (the
-// llama.cpp-handle layer, declared in `@elizaos/shared/local-inference/types`)
+// llama.cpp-handle layer, declared in `@elizaos/core/contracts/local-inference`)
 // is made explicit by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`
 // below — that is the single source of truth for the manifest↔runtime kernel
 // bridge.
@@ -82,7 +82,7 @@ export type Eliza1RequiredRuntimeKernel =
 //
 // `Eliza1Kernel` (this module, the bundle-manifest layer) names the *named
 // optimization* a bundle advertises; `LocalRuntimeKernel`
-// (`@elizaos/shared/local-inference/types`, the llama.cpp-handle layer) names
+// (`@elizaos/core/contracts/local-inference`, the llama.cpp-handle layer) names
 // the *fork kernel handle* the binary must expose. They overlap but are not the
 // same enum:
 //

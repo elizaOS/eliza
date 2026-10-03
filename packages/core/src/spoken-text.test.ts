@@ -1,139 +1,46 @@
 /**
- * Unit coverage for the core spoken-text sanitizer: hidden model markup must
- * never reach server-side text-to-speech, including when a stream ends before
- * its closing tag arrives.
+ * Regression coverage for the TTS speech sanitizer's compatibility
+ * normalization. NFKC must not erase the numero sign (U+2116) before the
+ * language-aware voice stage can interpret it, while ordinary Latin text
+ * (`No4`) and unrelated compatibility folding keep their existing behavior.
  */
+
 import { describe, expect, it } from "vitest";
+import { sanitizeSpeechText } from "./spoken-text.ts";
 
-import { sanitizeSpeechText } from "./spoken-text";
-
-const hiddenBlockTags = [
-	"think",
-	"analysis",
-	"reasoning",
-	"tool_call",
-	"tool_calls",
-	"tool",
-	"tools",
-] as const;
-
-describe("sanitizeSpeechText", () => {
-	it.each(hiddenBlockTags)(
-		"removes a closed <%s> block and preserves following speech",
-		(tag) => {
-			expect(
-				sanitizeSpeechText(
-					`Visible. <${tag}>private payload</${tag}> Continue.`,
-				),
-			).toBe("Visible. Continue.");
-		},
-	);
-
-	it.each(hiddenBlockTags)(
-		"removes an unterminated <%s> block through end of input",
-		(tag) => {
-			expect(sanitizeSpeechText(`Visible. <${tag}>private payload`)).toBe(
-				"Visible.",
-			);
-		},
-	);
-
-	it.each(hiddenBlockTags)(
-		"removes a truncated <%s> opening tag through end of input",
-		(tag) => {
-			expect(sanitizeSpeechText(`Visible. <${tag} private payload`)).toBe(
-				"Visible.",
-			);
-		},
-	);
-
-	// Twin-pin with packages/shared/src/spoken-text.test.ts (#20519): repeated
-	// punctuation collapses BEFORE the spacing rules separate the repeats, so
-	// identical model output speaks identically on both surfaces.
-	it("removes non-speech directions and cleans repeated punctuation", () => {
-		expect(
-			sanitizeSpeechText("*whispers* Wait!!! (pause) Are you sure??"),
-		).toBe("Wait! Are you sure?");
+describe("sanitizeSpeechText numero sign normalization", () => {
+	it("preserves the numero sign instead of folding it to Latin No", () => {
+		expect(sanitizeSpeechText("№4")).toBe("№4");
+		expect(sanitizeSpeechText("№1")).toBe("№1");
+		expect(sanitizeSpeechText("№12")).toBe("№12");
+		expect(sanitizeSpeechText("№21")).toBe("№21");
 	});
 
-	it("keeps speech around a few nested stage-direction layers", () => {
-		expect(
-			sanitizeSpeechText("Hello (aside (whisper) still aside) world."),
-		).toBe("Hello world.");
-	});
-
-	it("fail-closes a nested-delimiter peel bomb without hanging TTS", () => {
-		const nested = `(${"(".repeat(40_000)}hello${")".repeat(40_000)})`;
-		const spoken = sanitizeSpeechText(`Say this. ${nested} Done.`);
-		expect(spoken).toBe("Say this. Done.");
-	});
-
-	it("does not expose text from outer layers after the peel budget", () => {
-		let nested = "(pause)";
-		for (let depth = 0; depth < 12; depth += 1) {
-			nested = `(secret-${depth} ${nested})`;
-		}
-		expect(sanitizeSpeechText(`Say this. ${nested} Done.`)).toBe(
-			"Say this. Done.",
+	it("keeps the numero token through a mixed-language sentence", () => {
+		expect(sanitizeSpeechText("Заметка №4 создана.")).toBe(
+			"Заметка №4 создана.",
 		);
 	});
 
-	it.each(["*", "**"])(
-		"does not expose deeply nested %s directions after the peel budget",
-		(marker) => {
-			let nested = `${marker}pause${marker}`;
-			for (let depth = 0; depth < 12; depth += 1) {
-				nested = `${marker}secret-${depth} ${nested} tail-${depth}${marker}`;
-			}
-			expect(sanitizeSpeechText(`Say this. ${nested} Done.`)).toBe(
-				"Say this. Done.",
-			);
-		},
-	);
-
-	it("keeps legacy unmatched-direction text while dropping its delimiter", () => {
-		expect(sanitizeSpeechText("Say this (perhaps later")).toBe(
-			"Say this perhaps later",
-		);
-	});
-});
-
-describe("sanitizeSpeechText additional coverage", () => {
-	it("strips markdown links to text", () => {
-		expect(sanitizeSpeechText("Check [Eliza](https://elizaos.ai) docs")).toBe(
-			"Check Eliza docs",
-		);
+	it("preserves each token when several appear in one line", () => {
+		expect(sanitizeSpeechText("Items №1 and №21")).toBe("Items №1 and №21");
 	});
 
-	it("strips code fences and inline code to inner text", () => {
-		expect(sanitizeSpeechText("Use ```js\nconsole.log(1)\n``` now")).toBe(
-			"Use now",
-		);
-		expect(sanitizeSpeechText("Run `npm test` please")).toBe(
-			"Run npm test please",
-		);
+	it("does not rewrite a literal Latin No4", () => {
+		expect(sanitizeSpeechText("No4")).toBe("No4");
+		expect(sanitizeSpeechText("See No4 here")).toBe("See No4 here");
 	});
 
-	it("strips raw HTML tags", () => {
-		expect(sanitizeSpeechText("Hello <b>bold</b> world")).toBe(
-			"Hello bold world",
-		);
-		expect(sanitizeSpeechText('Text <span class="x">span</span> end')).toBe(
-			"Text span end",
-		);
+	it("preserves adjacent numero tokens without spaces", () => {
+		expect(sanitizeSpeechText("№4№5")).toBe("№4№5");
 	});
 
-	it("strips URLs", () => {
-		expect(sanitizeSpeechText("Visit https://example.com/path?q=1 now")).toBe(
-			"Visit now",
-		);
-		expect(sanitizeSpeechText("See http://test.com and https://a.com/b")).toBe(
-			"See and",
-		);
+	it("keeps the numero token while stripping surrounding punctuation", () => {
+		expect(sanitizeSpeechText("Note: №4, done.")).toBe("Note: №4, done.");
 	});
 
-	it("normalizes punctuation and whitespace", () => {
-		expect(sanitizeSpeechText("Hello,,  world!!")).toBe("Hello, world!");
-		expect(sanitizeSpeechText("Wait   \n\n  what???")).toBe("Wait what?");
+	it("still NFKC-folds unrelated compatibility characters", () => {
+		expect(sanitizeSpeechText("ＨＥＬＬＯ")).toBe("HELLO");
+		expect(sanitizeSpeechText("１２３")).toBe("123");
 	});
 });

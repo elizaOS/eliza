@@ -43,7 +43,7 @@ const { clientMock } = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
 import { InlineWidgetText } from "./InlineWidgetText";
-// The task widget is plugin-owned (registered by plugin-task-coordinator at
+// The task widget is plugin-owned (registered by plugin-agent-orchestrator at
 // boot, not a built-in); register it here so this surface renders it too.
 import { registerTaskWidget } from "./widgets/task-widget";
 
@@ -198,6 +198,38 @@ describe("InlineWidgetText", () => {
       "secret chain of thought",
     );
     expect(container.textContent ?? "").not.toContain("<think>");
+  });
+
+  it("renders a complete model table with a surplus closing brace without another model call", () => {
+    const patch = {
+      op: "add",
+      path: "/elements/comparison",
+      value: {
+        type: "Table",
+        props: {
+          columns: ["Project", "Tasks"],
+          rows: [
+            ["Amber", "3"],
+            ["Birch", "7"],
+            ["Cedar", "2"],
+          ],
+        },
+        children: [],
+      },
+    };
+    const { container } = withApp(
+      <InlineWidgetText
+        content={
+          '{"op":"add","path":"/root","value":"comparison"}\n' +
+          JSON.stringify(patch) +
+          "}"
+        }
+      />,
+    );
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "Cedar" })).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "7" })).toBeTruthy();
+    expect(container.textContent).not.toContain('"op"');
   });
 
   it("renders a fenced UiSpec JSON block as an interactive UI block", () => {

@@ -8,7 +8,7 @@
  * fallback, while every other failure still throws immediately. The fetch is
  * mocked; timers are faked to drive the backoff deterministically.
  */
-import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -249,7 +249,7 @@ describe("buffered native chat completion", () => {
     await vi.runAllTimersAsync();
     const error = await pending;
     expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
-    expect((error as ElizaErrorShape).code).toBe(ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED);
+    expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
     expect((error as Error & { status?: number }).status).toBe(503);
     // 1 initial attempt + 4 bounded retries, then the normal error path.
     expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -406,7 +406,7 @@ describe("streaming native chat completion", () => {
     await vi.runAllTimersAsync();
     const error = await pending;
     expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
-    expect((error as ElizaErrorShape).code).toBe(ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED);
+    expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 });

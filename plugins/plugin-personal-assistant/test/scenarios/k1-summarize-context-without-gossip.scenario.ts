@@ -2,7 +2,7 @@
  * K1 privacy summary. Friend disclosures are summarized for the owner as
  * minimum necessary context and are not converted into shareable gossip.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

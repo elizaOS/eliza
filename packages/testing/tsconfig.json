@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "bun"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
+      "@elizaos/core/*": ["../core/src/*"]
+    },
+    "composite": false,
+    "incremental": false
+  },
+  "include": ["src/**/*.ts", "corpus/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**", "corpus/**/*.test.ts"]
+}

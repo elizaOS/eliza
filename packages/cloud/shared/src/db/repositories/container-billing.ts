@@ -13,7 +13,14 @@ import {
   type SQLWrapper,
   sql,
 } from "drizzle-orm";
+import {
+  fundAllowanceEligibleChargeInTransaction,
+  isAllowanceFirstOrganizationInTransaction,
+} from "../../lib/services/allowance-first-credits";
+import { creditsService } from "../../lib/services/credits";
+import { logger } from "../../lib/utils/logger";
 import { type DbTransaction, dbRead, dbWrite } from "../client";
+import { billingFundingAllocations } from "../schemas/billing-funding-reservations";
 import { containerComputeStopIntents } from "../schemas/compute-stop-intents";
 import { containerBillingRecords, containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -22,6 +29,8 @@ import { redeemableEarnings, redeemableEarningsLedger } from "../schemas/redeema
 import { users } from "../schemas/users";
 import { settleComputeRateSegments } from "./compute-billing-segments";
 import { parseContainerBillingNumber } from "./container-billing-numeric";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
+import { observeSubscriptionAllowanceEligibility } from "./subscription-allowance-eligibility";
 
 export type ContainerBillingStatus = "active" | "warning" | "suspended" | "shutdown_pending";
 
@@ -83,6 +92,36 @@ function exactBillingDecimal(
   return parsed;
 }
 
+/**
+ * Allowance an allowance-first subscriber can apply to container compute, or
+ * null when the organization bills on the purchased-credit lane. An
+ * unresolvable subscription authority (for example a paid-work fence during
+ * account deletion) keeps the purchased-credit lane so terminal settlement
+ * never depends on subscription authority.
+ */
+export async function readContainerComputeAllowanceInTransaction(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<Decimal | null> {
+  if (!(await isAllowanceFirstOrganizationInTransaction(tx, organizationId))) return null;
+  const eligibility = await observeSubscriptionAllowanceEligibility(
+    tx,
+    organizationId,
+    await readPostLockDatabaseNow(tx),
+  );
+  if (eligibility.status === "unavailable") {
+    // error-policy:J4 unavailable subscription authority selects the cash lane.
+    logger.warn("[ContainerBilling] Subscription allowance unavailable; using purchased credits", {
+      organizationId,
+      code: eligibility.code,
+    });
+    return null;
+  }
+  return eligibility.period
+    ? exactBillingDecimal(eligibility.period.available_amount, "allowance available_amount")
+    : new Decimal(0);
+}
+
 export interface BillableContainer {
   id: string;
   name: string;
@@ -108,6 +147,11 @@ export interface ContainerBillingOrganization {
   credit_balance: string;
   billing_email: string | null;
   pay_as_you_go_from_earnings: boolean;
+  /**
+   * Subscription allowance available to container compute (6dp string);
+   * "0.000000" for organizations on the purchased-credit lane.
+   */
+  subscription_allowance_available: string;
 }
 
 export interface RecordBillingFailureInput {
@@ -148,6 +192,14 @@ export interface RecordSuccessfulBillingResult {
   uncollected?: boolean;
   amount?: number;
   fromEarnings?: number;
+  /** Portion funded from the subscription allowance (allowance-first lane). */
+  fromAllowance?: number;
+  /** Allowance still available after this charge; absent on the purchased-credit lane. */
+  allowanceRemaining?: number;
+  /** Finalized allowance-first funding reservation that receipts this charge. */
+  fundingReservationId?: string | null;
+  /** The caller must invalidate credit caches after committing this charge. */
+  creditCachesStale?: boolean;
 }
 
 export class ContainerBillingRepository {
@@ -180,7 +232,7 @@ export class ContainerBillingRepository {
       .from(containers)
       .where(
         and(
-          eq(containers.status, "running"),
+          inArray(containers.status, ["running", "deleting"]),
           inArray(containers.billing_status, ["active", "warning", "shutdown_pending"]),
           or(isNull(containers.next_billing_at), lte(containers.next_billing_at, now)),
           // Replica discovery is only a best-effort filter; the canonical
@@ -213,7 +265,7 @@ export class ContainerBillingRepository {
   ): Promise<ContainerBillingOrganization[]> {
     if (organizationIds.length === 0) return [];
 
-    return dbRead
+    const rows = await dbRead
       .select({
         id: organizations.id,
         name: organizations.name,
@@ -223,6 +275,19 @@ export class ContainerBillingRepository {
       })
       .from(organizations)
       .where(inArray(organizations.id, organizationIds));
+    // Discovery-only view of subscriber allowance so the cron's warning gate
+    // counts every funding source. The writer re-derives it under locks.
+    const withAllowance: ContainerBillingOrganization[] = [];
+    for (const row of rows) {
+      const allowance = await dbRead.transaction((tx) =>
+        readContainerComputeAllowanceInTransaction(tx, row.id),
+      );
+      withAllowance.push({
+        ...row,
+        subscription_allowance_available: (allowance ?? new Decimal(0)).toFixed(6),
+      });
+    }
+    return withAllowance;
   }
 
   async suspendContainer(containerId: string, organizationId: string, now: Date): Promise<void> {
@@ -296,9 +361,13 @@ export class ContainerBillingRepository {
   async recordSuccessfulDailyBilling(
     input: RecordSuccessfulBillingInput,
   ): Promise<RecordSuccessfulBillingResult> {
-    return await dbWrite.transaction(async (tx) =>
+    const result = await dbWrite.transaction(async (tx) =>
       this.recordSuccessfulDailyBillingInTransaction(tx, input),
     );
+    if (result.creditCachesStale) {
+      await creditsService.invalidateCreditCaches(input.organizationId);
+    }
+    return result;
   }
 
   /** Shared atomic debit/receipt writer for cron and funded lifecycle fences. */
@@ -367,7 +436,7 @@ export class ContainerBillingRepository {
       !locked ||
       providerProofIntent ||
       (!options.forceLifecycleSettlement &&
-        (locked.status !== "running" ||
+        (!["running", "deleting"].includes(locked.status) ||
           !["active", "warning", "shutdown_pending"].includes(locked.billing_status) ||
           (locked.next_billing_at !== null && locked.next_billing_at > input.now)))
     ) {
@@ -490,7 +559,19 @@ export class ContainerBillingRepository {
       };
     };
 
-    if (creditAvailable.plus(earningsAvailable).lt(amount)) {
+    // Allowance-first subscribers also fund the charge from their current
+    // allowance period. The organization row lock above serializes every
+    // allowance consumer, so this read stays exact until the funding below.
+    const allowanceAvailable = await readContainerComputeAllowanceInTransaction(
+      tx,
+      input.organizationId,
+    );
+    if (
+      creditAvailable
+        .plus(allowanceAvailable ?? 0)
+        .plus(earningsAvailable)
+        .lt(amount)
+    ) {
       if (options.terminalInsufficientDisposition === "uncollected") {
         return await recordTerminalUncollected();
       }
@@ -573,44 +654,96 @@ export class ContainerBillingRepository {
       });
     }
 
-    // Materialize the 4dp earnings conversion in canonical credits and debit
-    // the exact 6dp charge in the same transaction. The relative update
-    // preserves concurrent top-ups and leaves any conversion-rounding change
-    // available instead of overcharging or fabricating an unbacked debit.
-    const [updatedOrg] = await tx
-      .update(organizations)
-      .set({
-        credit_balance: sql`${organizations.credit_balance} + ${earningsConversion.toFixed(6)} - ${amount.toFixed(6)}`,
-        updated_at: input.now,
-      })
-      .where(eq(organizations.id, input.organizationId))
-      .returning({ credit_balance: organizations.credit_balance });
+    // Precedence for subscribers: earnings (pay-as-you-go toggle) first, then
+    // the subscription allowance, then purchased credits. The non-earnings
+    // remainder is funded allowance-first; everyone else keeps the direct
+    // purchased-credit debit of the whole charge.
+    const subscriptionFunded = allowanceAvailable !== null && creditApplied.gt(0);
+    const cashDebit = subscriptionFunded ? earningsApplied : amount;
+    const billingMetadata = {
+      container_id: input.containerId,
+      container_name: input.containerName,
+      billing_type: "daily_container",
+      billing_period_start: periodStart.toISOString(),
+      billing_period_end: input.now.toISOString(),
+      daily_rate: effectiveDailyRate.toFixed(6),
+      rate_segments: settled.segments,
+      paid_from_earnings: earningsApplied.toFixed(6),
+      earnings_converted: earningsConversion.toFixed(6),
+    };
 
-    // The conversion credit above plus this full debit exactly reconcile to
-    // the organization balance movement and retain the charge as one receipt.
-    const [creditTx] = await tx
-      .insert(creditTransactions)
-      .values({
-        organization_id: input.organizationId,
-        user_id: input.userId,
-        amount: amount.negated().toFixed(6),
-        type: "debit",
+    // Materialize the 4dp earnings conversion in canonical credits and debit
+    // the exact 6dp cash-lane share in the same transaction. The relative
+    // update preserves concurrent top-ups and leaves any conversion-rounding
+    // change available instead of overcharging or fabricating an unbacked debit.
+    let [updatedOrg] =
+      !subscriptionFunded || earningsConversion.gt(0)
+        ? await tx
+            .update(organizations)
+            .set({
+              credit_balance: sql`${organizations.credit_balance} + ${earningsConversion.toFixed(6)} - ${cashDebit.toFixed(6)}`,
+              updated_at: input.now,
+            })
+            .where(eq(organizations.id, input.organizationId))
+            .returning({ credit_balance: organizations.credit_balance })
+        : [undefined];
+
+    // The conversion credit above plus this debit exactly reconcile to the
+    // organization balance movement and retain the cash share as one receipt.
+    const [creditTx] =
+      !subscriptionFunded || cashDebit.gt(0)
+        ? await tx
+            .insert(creditTransactions)
+            .values({
+              organization_id: input.organizationId,
+              user_id: input.userId,
+              amount: cashDebit.negated().toFixed(6),
+              type: "debit",
+              description: `Daily container billing: ${input.containerName}`,
+              metadata: subscriptionFunded
+                ? { ...billingMetadata, paid_from_credits: "0.000000", subscription_funded: true }
+                : { ...billingMetadata, paid_from_credits: creditApplied.toFixed(6) },
+              created_at: input.now,
+            })
+            .returning()
+        : [undefined];
+
+    let fundingReservationId: string | null = null;
+    let fromAllowance = new Decimal(0);
+    let creditCachesStale = false;
+    if (subscriptionFunded) {
+      // Retry-stable per elapsed period: the locked cursor makes one charge
+      // per (container, period start), and a rolled-back attempt leaves no
+      // reservation behind.
+      const funded = await fundAllowanceEligibleChargeInTransaction(tx, {
+        organizationId: input.organizationId,
+        operation: "container_compute",
+        logicalOperationId: `container.${input.containerId}.${periodStart.getTime()}`,
+        amount: creditApplied.toFixed(6),
         description: `Daily container billing: ${input.containerName}`,
-        metadata: {
-          container_id: input.containerId,
-          container_name: input.containerName,
-          billing_type: "daily_container",
-          billing_period_start: periodStart.toISOString(),
-          billing_period_end: input.now.toISOString(),
-          daily_rate: effectiveDailyRate.toFixed(6),
-          rate_segments: settled.segments,
-          paid_from_earnings: earningsApplied.toFixed(6),
-          earnings_converted: earningsConversion.toFixed(6),
-          paid_from_credits: creditApplied.toFixed(6),
-        },
-        created_at: input.now,
-      })
-      .returning();
+        occurredAt: input.now,
+        metadata: { ...billingMetadata, paid_from_subscription_funding: creditApplied.toFixed(6) },
+      });
+      fundingReservationId = funded.reservation.id;
+      const [allowanceAllocation] = await tx
+        .select({ finalized_amount: billingFundingAllocations.finalized_amount })
+        .from(billingFundingAllocations)
+        .where(
+          and(
+            eq(billingFundingAllocations.organization_id, input.organizationId),
+            eq(billingFundingAllocations.reservation_id, funded.reservation.id),
+            eq(billingFundingAllocations.source, "allowance"),
+          ),
+        );
+      fromAllowance = allowanceAllocation
+        ? exactBillingDecimal(allowanceAllocation.finalized_amount, "allowance finalized_amount")
+        : new Decimal(0);
+      creditCachesStale = funded.purchasedCreditDebited || earningsConversion.gt(0);
+      [updatedOrg] = await tx
+        .select({ credit_balance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId));
+    }
 
     await tx
       .update(containers)
@@ -636,7 +769,8 @@ export class ContainerBillingRepository {
       billing_period_start: periodStart,
       billing_period_end: input.now,
       status: "success",
-      credit_transaction_id: creditTx.id,
+      credit_transaction_id: creditTx?.id ?? null,
+      funding_reservation_id: fundingReservationId,
       created_at: input.now,
     });
 
@@ -647,11 +781,19 @@ export class ContainerBillingRepository {
       newBalance: updatedOrg
         ? parseContainerBillingNumber(updatedOrg.credit_balance, "credit_balance")
         : 0,
-      transactionId: creditTx.id,
+      transactionId: creditTx?.id ?? null,
       alreadyBilled: false,
       insufficient: false,
       amount: amount.toNumber(),
       fromEarnings: earningsApplied.toNumber(),
+      ...(allowanceAvailable !== null
+        ? {
+            fromAllowance: fromAllowance.toNumber(),
+            allowanceRemaining: allowanceAvailable.minus(fromAllowance).toNumber(),
+            fundingReservationId,
+            creditCachesStale,
+          }
+        : {}),
     };
   }
 }

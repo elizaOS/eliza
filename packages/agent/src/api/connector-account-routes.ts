@@ -27,12 +27,11 @@ import {
   getConnectorAccountManager,
   isPrivacyLevel,
   type Metadata,
-} from "@elizaos/core";
-import {
   parseCanonicalInteger,
   type ReadJsonBodyOptions,
-} from "@elizaos/shared";
-import { extractRows } from "@elizaos/shared/db/raw-sql";
+} from "@elizaos/core";
+
+import { extractRows } from "@elizaos/plugin-sql";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import {

@@ -4,15 +4,16 @@
  * its localized strong/weak keyword terms.
  * `resolveContextSignalSpec` / `getContextSignalTerms` resolve a signal to
  * concrete terms for the requested character locale, drawing the raw phrase
- * lists from `@elizaos/shared`'s validation-keyword registry. Consumed by the
+ * lists from `@elizaos/core`'s validation-keyword registry. Consumed by the
  * providers and action validators that decide whether a signal is present in
  * the complete available context.
  */
+
 import {
   type CharacterLanguage,
   getValidationKeywordTerms,
   normalizeCharacterLanguage,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 
 export type ContextSignalKey =
   | "affirmative"
@@ -43,22 +44,18 @@ export type ContextSignalKey =
   | "temporal_followup"
   | "temporal_next"
   | "web_search";
-
 export type ContextSignalStrength = "strong" | "weak";
-
 type ContextSignalSpec = {
   keywordKeys: {
     strong: string;
     weak?: string;
   };
 };
-
 export type ResolvedContextSignalSpec = {
   locale: CharacterLanguage;
   strongTerms: string[];
   weakTerms: string[];
 };
-
 const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
   affirmative: {
     keywordKeys: {
@@ -211,7 +208,6 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
     },
   },
 };
-
 export function resolveContextSignalSpec(
   key: ContextSignalKey,
   localeInput?: unknown,
@@ -222,7 +218,6 @@ export function resolveContextSignalSpec(
   const locale = normalizeCharacterLanguage(localeInput);
   const spec = CONTEXT_SIGNAL_SPECS[key];
   const includeAllLocales = options?.includeAllLocales ?? false;
-
   return {
     locale,
     strongTerms: getValidationKeywordTerms(spec.keywordKeys.strong, {
@@ -237,7 +232,6 @@ export function resolveContextSignalSpec(
       : [],
   };
 }
-
 export function getContextSignalTerms(
   key: ContextSignalKey,
   strength: ContextSignalStrength,
@@ -252,7 +246,6 @@ export function getContextSignalTerms(
   if (!keywordKey) {
     return [];
   }
-
   return getValidationKeywordTerms(keywordKey, {
     includeAllLocales: options?.includeAllLocales ?? false,
     locale: options?.locale,

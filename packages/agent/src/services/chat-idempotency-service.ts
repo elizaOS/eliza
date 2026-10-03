@@ -3,7 +3,7 @@
  * Route adapters choose the conversation scope and durable outcome shape while
  * this service enforces active-turn ownership and settled-result retention.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, normalizeChatIdempotencyKey } from "@elizaos/core";
 
 export interface ChatIdempotencyReservation {
   readonly scope: string;
@@ -239,11 +239,7 @@ export function createChatIdempotencyStore<Outcome>(options?: {
   return {
     retentionMs,
     normalize(value) {
-      if (typeof value !== "string") return null;
-      const normalized = value.trim();
-      return normalized.length > 0 && normalized.length <= maxKeyLength
-        ? normalized
-        : null;
+      return normalizeChatIdempotencyKey(value, maxKeyLength);
     },
     admit,
     reserve(scope, clientMessageId, now = Date.now()) {

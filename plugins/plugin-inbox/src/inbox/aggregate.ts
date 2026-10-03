@@ -36,7 +36,7 @@ import {
   type LifeOpsInboxMessage,
   type LifeOpsInboxSourceStatus,
   type LifeOpsInboxThreadGroup,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   fetchAllMessages,
   type GmailInboxSource,

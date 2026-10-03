@@ -2,26 +2,27 @@
  * Real-PGlite security coverage for household namespace separation and
  * revision-pinned custody authority across durable proposals and approvals.
  */
+
 import { randomUUID } from "node:crypto";
+import { type AgentRuntime } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";
-import type { ApprovalQueue } from "../approval-queue.types.js";
+import { type ApprovalQueue } from "../approval-queue.types.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import { HouseholdCoordinationService } from "./service.js";
-import type {
-  HouseholdScheduleProposal,
-  HouseholdScheduleTerms,
+import {
+  type HouseholdScheduleProposal,
+  type HouseholdScheduleTerms,
 } from "./types.js";
 
 describe("household authorization boundaries — real PGlite", () => {
@@ -30,7 +31,6 @@ describe("household authorization boundaries — real PGlite", () => {
   let entities: EntityStore;
   let approvals: ApprovalQueue;
   let repository: HouseholdCoordinationRepository;
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
@@ -44,12 +44,10 @@ describe("household authorization boundaries — real PGlite", () => {
     await entities.ensureSelf();
     approvals = createApprovalQueue(runtime, { agentId: runtime.agentId });
     repository = new HouseholdCoordinationRepository(runtime, runtime.agentId);
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   function coordinator(): HouseholdCoordinationService {
     const graph = resolveKnowledgeGraphService(runtime);
     if (!graph) throw new Error("knowledge graph unavailable");
@@ -62,7 +60,6 @@ describe("household authorization boundaries — real PGlite", () => {
       repository,
     });
   }
-
   async function person(label: string): Promise<string> {
     const entity = await entities.upsert({
       entityId: `ent_${label}_${randomUUID()}`,
@@ -75,7 +72,6 @@ describe("household authorization boundaries — real PGlite", () => {
     });
     return entity.entityId;
   }
-
   function scheduleTerms(input: {
     summary: string;
     childEntityId: string;
@@ -111,7 +107,6 @@ describe("household authorization boundaries — real PGlite", () => {
         : null,
     };
   }
-
   async function approve(
     service: HouseholdCoordinationService,
     proposal: HouseholdScheduleProposal,
@@ -130,7 +125,6 @@ describe("household authorization boundaries — real PGlite", () => {
       reason: "I approve these exact proposal bytes.",
     });
   }
-
   it("isolates one principal's roles, grants, heads, and schedule visibility by household", async () => {
     const service = coordinator();
     const principalId = await person("shared-principal");
@@ -139,7 +133,6 @@ describe("household authorization boundaries — real PGlite", () => {
     const householdA = `household-a-${randomUUID()}`;
     const householdB = `household-b-${randomUUID()}`;
     const sharedCoordinationId = `school-pickup-${randomUUID()}`;
-
     await service.bindRole({
       householdId: householdA,
       entityId: childA,
@@ -172,7 +165,6 @@ describe("household authorization boundaries — real PGlite", () => {
       evidence: "Owner assigned the principal as child B's caregiver.",
       boundByEntityId: SELF_ENTITY_ID,
     });
-
     await service.issueGrant({
       householdId: householdA,
       principalEntityId: principalId,
@@ -189,7 +181,6 @@ describe("household authorization boundaries — real PGlite", () => {
       scopes: ["calendar.freebusy", "household.export"],
       issuedByEntityId: SELF_ENTITY_ID,
     });
-
     const proposalA = await service.createProposal({
       householdId: householdA,
       coordinationId: sharedCoordinationId,
@@ -214,7 +205,6 @@ describe("household authorization boundaries — real PGlite", () => {
       requiredApproverEntityIds: [SELF_ENTITY_ID],
       createdByEntityId: SELF_ENTITY_ID,
     });
-
     const exportA = await service.exportFor({
       householdId: householdA,
       principalEntityId: principalId,
@@ -240,7 +230,6 @@ describe("household authorization boundaries — real PGlite", () => {
       }),
     ]);
     expect(JSON.stringify(exportA)).not.toContain(childB);
-
     expect(exportB.householdId).toBe(householdB);
     expect(exportB.roles).toEqual(
       expect.arrayContaining([
@@ -258,7 +247,6 @@ describe("household authorization boundaries — real PGlite", () => {
       }),
     ]);
     expect(JSON.stringify(exportB)).not.toContain(childA);
-
     await expect(
       service.requireScope({
         householdId: householdA,
@@ -274,7 +262,6 @@ describe("household authorization boundaries — real PGlite", () => {
       repository.getHead(householdB, sharedCoordinationId),
     ).resolves.toMatchObject({ householdId: householdB });
   });
-
   it("pins custody authority revisions and invalidates approvals on revise and revoke", async () => {
     const service = coordinator();
     const householdId = `custody-household-${randomUUID()}`;
@@ -296,7 +283,6 @@ describe("household authorization boundaries — real PGlite", () => {
       evidence: "Owner assigned the child's co-parent.",
       boundByEntityId: SELF_ENTITY_ID,
     });
-
     const firstAuthority = await service.setCustodyAuthority({
       householdId,
       childEntityId: childId,
@@ -326,7 +312,6 @@ describe("household authorization boundaries — real PGlite", () => {
     ).toBe(firstAuthority.revisionSha256);
     await approve(service, firstProposal, SELF_ENTITY_ID);
     await approve(service, firstProposal, coParentId);
-
     const secondAuthority = await service.setCustodyAuthority({
       householdId,
       relationshipId: firstAuthority.relationshipId,
@@ -358,7 +343,6 @@ describe("household authorization boundaries — real PGlite", () => {
         proposalVersion: firstProposal.version,
       }),
     ).rejects.toMatchObject({ code: "HOUSEHOLD_PROPOSAL_CONFLICT" });
-
     const secondProposal = await service.createProposal({
       householdId,
       coordinationId: firstProposal.coordinationId,
@@ -381,7 +365,6 @@ describe("household authorization boundaries — real PGlite", () => {
     ).toBe(secondAuthority.revisionSha256);
     await approve(service, secondProposal, SELF_ENTITY_ID);
     await approve(service, secondProposal, coParentId);
-
     const revoked = await service.revokeCustodyAuthority({
       householdId,
       relationshipId: secondAuthority.relationshipId,

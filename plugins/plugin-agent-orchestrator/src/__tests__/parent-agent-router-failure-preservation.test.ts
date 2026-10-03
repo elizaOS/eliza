@@ -65,7 +65,11 @@ describe("SubAgentRouter parent-agent failure preservation", () => {
             didRespond: true,
             responseContent: null,
             responseMessages: [],
-            terminalFailure,
+            outcome: {
+              status: "failed" as const,
+              error: terminalFailure,
+              effects: [],
+            },
           };
         }),
       },

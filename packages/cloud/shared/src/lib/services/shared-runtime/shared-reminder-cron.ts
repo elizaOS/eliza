@@ -19,7 +19,7 @@ import {
   type SharedGroupReminderDelivery,
   type SharedReminderDelivery,
   sharedGroupReminderMessageText,
-} from "@elizaos/plugin-scheduling/edge";
+} from "@elizaos/plugin-scheduling";
 import { v5 as uuidv5 } from "uuid";
 import { personalSharedGroupsRepository } from "../../../db/repositories/personal-shared-groups";
 import type { Bindings } from "../../../types/cloud-worker-env";

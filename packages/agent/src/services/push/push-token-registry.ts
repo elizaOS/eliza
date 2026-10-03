@@ -1,48 +1,5 @@
-/**
- * PushTokenRegistry
- *
- * A small, persistent registry of device push tokens. Each registered device
- * stores `{ token, platform, createdAt }`. The registry is keyed by token so a
- * re-registration of the same token is an idempotent upsert (it refreshes
- * `createdAt`).
- *
- * Persistence rides on the DB-backed runtime cache (`runtime.getCache` /
- * `runtime.setCache`) under a single stable key, mirroring the persistence
- * pattern in `@elizaos/core`'s `NotificationService`. A cold/headless runtime
- * with no cache adapter starts empty and degrades to in-memory only.
- *
- * Boundary invariants (a cache row is untrusted, possibly-hostile input):
- *   1. Hydration bounds work BEFORE traversing. A stored array larger than
- *      {@link MAX_PERSISTED_PUSH_TOKENS} is rejected without filter/copy/sort,
- *      so a hostile/oversized dump cannot force unbounded validation work.
- *   2. Every hydrated record is validated at the persistence boundary
- *      ({@link parsePushTokenRecord}): trimmed non-empty token, token within an
- *      explicit UTF-8 BYTE limit, supported platform, and a finite,
- *      non-negative, safe-integer timestamp. The same validator gates
- *      `register`/`unregister`, so byte/platform/timestamp checks are identical
- *      everywhere.
- *   3. Dedup happens BEFORE the live cap: the newest valid record per token is
- *      kept, then the {@link MAX_PUSH_TOKENS_PER_AGENT} cap is applied, so
- *      duplicate-heavy data cannot underfill the registry.
- *   4. When a bounded-but-dirty legacy dump is normalized, the repaired form is
- *      persisted once (guarded so a clean load never rewrites), so later
- *      restarts do not repeatedly re-scan and re-normalize the same dump. The
- *      repair write must resolve exactly `true`; a rejected OR resolved-`false`
- *      write is reported (best-effort, never failing the read) and the dirty
- *      row is left intact so a later restart retries the repair.
- *   5. `register`/`unregister` are observably atomic w.r.t. `setCache`: the
- *      mutation is staged on a candidate Map that is published to `this.tokens`
- *      only after the durable write succeeds, so `list`/`count` never observe an
- *      uncommitted add/delete. A write that rejects OR resolves a non-`true`
- *      value (`setCache` returns `Promise<boolean>`; adapters resolve `false`
- *      when the row did not land) is treated as a failure that leaves the
- *      observable registry unchanged, and the same-process mutation queue keeps
- *      processing later operations after a failure (no wedge).
- *
- * Concurrency scope: mutations are serialized and failure-atomic WITHIN a
- * single process. Cross-process compare-and-swap is out of scope because the
- * runtime cache contract exposes no transactional CAS primitive; do not read
- * multi-process atomicity into this class.
+/** Durable push-token registry. Mutations reload and compare-and-set the
+ * canonical cache row so overlapping host generations cannot lose revocations.
  */
 
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
@@ -160,163 +117,58 @@ function assertValidPlatform(platform: unknown): PushPlatform {
 }
 
 export class PushTokenRegistry {
-  private tokens = new Map<string, PushTokenRecord>();
-  private hydrated = false;
-  private hydrationPromise: Promise<void> | null = null;
-  private mutationTail: Promise<void> = Promise.resolve();
-
   constructor(private readonly runtime: IAgentRuntime) {}
 
   private get cacheKey(): string {
     return cacheKeyFor(String(this.runtime.agentId));
   }
 
-  /** Load persisted tokens from the DB-backed cache. Idempotent. */
   async hydrate(): Promise<void> {
-    if (this.hydrated) return;
-    if (!this.hydrationPromise) {
-      this.hydrationPromise = this.loadPersistedTokens();
-    }
-    const hydrationPromise = this.hydrationPromise;
-    try {
-      await hydrationPromise;
-    } catch (error) {
-      if (this.hydrationPromise === hydrationPromise) {
-        this.hydrationPromise = null;
-      }
-      throw error;
-    }
+    await this.list();
   }
 
-  private async loadPersistedTokens(): Promise<void> {
-    const stored = await this.runtime.getCache<unknown>(this.cacheKey);
-    const { records, repaired } = normalizePersistedTokens(stored);
-    this.tokens = new Map(records.map((record) => [record.token, record]));
-    this.hydrated = true;
-    if (repaired) {
-      // Durable one-time repair: rewrite the normalized (validated, deduped,
-      // capped) form so later restarts do not re-scan the same dirty dump.
-      // Best-effort: a failed repair write only means we re-normalize next
-      // start; it must not fail the read path.
+  private async mutate<T>(
+    change: (tokens: Map<string, PushTokenRecord>) => T,
+  ): Promise<T> {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const stored = await this.runtime.getCache<unknown>(this.cacheKey);
+      const { records } = normalizePersistedTokens(stored);
+      const candidate = new Map(
+        records.map((record) => [record.token, record]),
+      );
+      const result = change(candidate);
       try {
-        await this.persist();
-      } catch (error) {
-        // error-policy:J7 diagnostics must not kill the loop — a failed
-        // one-time repair write degrades to re-scanning on the next start.
-        this.runtime.reportError("push.registry.repair", error, {
-          tokenCount: this.tokens.size,
+        if (
+          await this.runtime.compareAndSetCache(this.cacheKey, stored, [
+            ...candidate.values(),
+          ])
+        )
+          return result;
+      } catch (cause) {
+        // error-policy:J2 preserve the registry's public persistence error.
+        throw new ElizaError("Failed to persist push-token mutation", {
+          code: PUSH_TOKEN_PERSIST_FAILED_CODE,
+          cause,
+          context: { tokenCount: candidate.size },
         });
-        logger.warn(
-          "[PushTokenRegistry] durable repair write failed; will re-normalize on next hydrate",
-        );
       }
     }
+    throw new ElizaError("Push-token updates repeatedly conflicted", {
+      code: "PUSH_TOKEN_CONFLICT_EXHAUSTED",
+    });
   }
 
-  /**
-   * Durably rewrite the current in-memory tokens (repair path only). Requires
-   * `setCache` to resolve exactly `true`; a rejected write OR a resolved
-   * non-`true` value (an adapter reports `false` when the row did not land) is a
-   * failed durable repair and throws {@link PUSH_TOKEN_PERSIST_FAILED_CODE}, so
-   * the caller degrades to re-normalizing on the next start instead of treating
-   * an unpersisted repair as durable.
-   */
-  private async persist(): Promise<void> {
-    const persisted = await this.runtime.setCache(this.cacheKey, [
-      ...this.tokens.values(),
-    ]);
-    if (persisted !== true) {
-      throw new ElizaError(
-        "[PushTokenRegistry] durable cache rejected the push-token repair write",
-        {
-          code: PUSH_TOKEN_PERSIST_FAILED_CODE,
-          context: { tokenCount: this.tokens.size },
-          severity: "ephemeral",
-        },
-      );
-    }
-  }
-
-  private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const pending = this.mutationTail.then(mutation);
-    // error-policy:J5 the caller observes `pending`; this recovery keeps one
-    // failed persistence attempt from poisoning every later registry mutation.
-    this.mutationTail = pending.then(
-      () => undefined,
-      () => undefined,
-    );
-    return pending;
-  }
-
-  /**
-   * Persist `candidate` and, only after the durable write reports success,
-   * publish it as the observable registry. Because `this.tokens` is reassigned
-   * solely on a `true` result, `list`/`count` running while the write is pending
-   * observe the still-committed prior state; a write that rejects OR resolves a
-   * non-`true` value leaves the observable registry unchanged and throws a typed
-   * error. Callers run this inside {@link enqueueMutation}, so the next queued
-   * mutation still proceeds.
-   */
-  private async commit(candidate: Map<string, PushTokenRecord>): Promise<void> {
-    let persisted: boolean;
-    try {
-      persisted = await this.runtime.setCache(this.cacheKey, [
-        ...candidate.values(),
-      ]);
-    } catch (error) {
-      // error-policy:J2 context-adding rethrow — surface a typed persistence
-      // failure with a redacted count while preserving the underlying cause. The
-      // candidate was never published, so the observable registry is unchanged.
-      throw new ElizaError(
-        "[PushTokenRegistry] failed to persist push-token mutation",
-        {
-          code: PUSH_TOKEN_PERSIST_FAILED_CODE,
-          cause: error,
-          context: { tokenCount: candidate.size },
-          severity: "ephemeral",
-        },
-      );
-    }
-    if (persisted !== true) {
-      // error-policy:J2 context-adding rethrow — `setCache` resolving a
-      // non-`true` value is a durable-write failure (the SQL adapter propagates
-      // `false` when the underlying write did not land). The candidate was never
-      // published, so the observable registry stays on the committed state.
-      throw new ElizaError(
-        "[PushTokenRegistry] durable cache rejected the push-token mutation",
-        {
-          code: PUSH_TOKEN_PERSIST_FAILED_CODE,
-          context: { tokenCount: candidate.size },
-          severity: "ephemeral",
-        },
-      );
-    }
-    this.tokens = candidate;
-  }
-
-  /**
-   * Register (upsert) a device token. Re-registering an existing token under a
-   * new platform moves it to that platform and refreshes `createdAt`.
-   *
-   * Observably atomic w.r.t. persistence: the mutation is staged on a candidate
-   * Map and published only after the durable write succeeds, so a rejected write
-   * leaves the observable registry unchanged and a typed error is thrown.
-   * `platform` is validated at this boundary so a direct/untyped caller cannot
-   * persist an unsupported transport.
-   */
+  /** Validate and durably register a device token. */
   async register(platform: PushPlatform, token: string): Promise<void> {
     const validPlatform = assertValidPlatform(platform);
     const trimmed = assertValidToken(token);
-    await this.enqueueMutation(async () => {
-      await this.hydrate();
-      const candidate = new Map(this.tokens);
+    await this.mutate((candidate) => {
       candidate.set(trimmed, {
         token: trimmed,
         platform: validPlatform,
         createdAt: Date.now(),
       });
       evictOldestPushTokens(candidate);
-      await this.commit(candidate);
     });
   }
 
@@ -326,34 +178,41 @@ export class PushTokenRegistry {
    */
   async unregister(token: string): Promise<boolean> {
     const trimmed = assertValidToken(token);
-    return this.enqueueMutation(async () => {
-      await this.hydrate();
-      if (!this.tokens.has(trimmed)) {
-        return false;
-      }
-      const candidate = new Map(this.tokens);
-      candidate.delete(trimmed);
-      await this.commit(candidate);
-      return true;
-    });
+    return this.mutate((candidate) => candidate.delete(trimmed));
   }
 
   /** List every registered token record. */
   async list(): Promise<PushTokenRecord[]> {
-    await this.hydrate();
-    return [...this.tokens.values()];
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const stored = await this.runtime.getCache<unknown>(this.cacheKey);
+      const { records, repaired } = normalizePersistedTokens(stored);
+      if (!repaired) return records;
+      try {
+        if (
+          await this.runtime.compareAndSetCache(this.cacheKey, stored, records)
+        )
+          return records;
+      } catch (error) {
+        // error-policy:J7 legacy normalization remains best effort on reads.
+        this.runtime.reportError("push.registry.repair", error, {
+          tokenCount: records.length,
+        });
+        return records;
+      }
+    }
+    throw new ElizaError("Push-token repair repeatedly conflicted", {
+      code: "PUSH_TOKEN_CONFLICT_EXHAUSTED",
+    });
   }
 
   /** List token records for one platform. */
   async listByPlatform(platform: PushPlatform): Promise<PushTokenRecord[]> {
-    await this.hydrate();
-    return [...this.tokens.values()].filter((r) => r.platform === platform);
+    return (await this.list()).filter((r) => r.platform === platform);
   }
 
   /** Total number of registered tokens. */
   async count(): Promise<number> {
-    await this.hydrate();
-    return this.tokens.size;
+    return (await this.list()).length;
   }
 }
 

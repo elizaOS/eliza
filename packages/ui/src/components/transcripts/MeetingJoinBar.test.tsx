@@ -1,12 +1,11 @@
 /** Verifies MeetingJoinBar through the package's configured test harness. */
 // @vitest-environment jsdom
-
 /**
  * Behaviour coverage for MeetingJoinBar: real render in jsdom driving the
  * meeting-URL paste/validation and join flow.
  */
 
-import type { MeetingSession } from "@elizaos/shared";
+import type { MeetingSession } from "@elizaos/core/meetings";
 import {
   act,
   cleanup,
@@ -21,7 +20,6 @@ import { getViewRegistry } from "../../agent-surface/registry";
 import { MeetingJoinBar } from "./MeetingJoinBar";
 
 afterEach(cleanup);
-
 function renderBar(
   props: Partial<React.ComponentProps<typeof MeetingJoinBar>> = {},
 ) {
@@ -37,7 +35,6 @@ function renderBar(
   );
   return { onJoin, onStop };
 }
-
 const session: MeetingSession = {
   id: "m1",
   platform: "zoom",
@@ -45,10 +42,9 @@ const session: MeetingSession = {
   nativeMeetingId: "1234567890",
   botName: "Eliza",
   status: "active",
-  requestedAt: 1_700_000_000_000,
+  requestedAt: 1700000000000,
   participants: [],
 };
-
 describe("MeetingJoinBar", () => {
   it("disables submit and shows the invalid hint for an unrecognized URL", () => {
     renderBar();
@@ -60,7 +56,6 @@ describe("MeetingJoinBar", () => {
       (screen.getByTestId("meeting-join-submit") as HTMLButtonElement).disabled,
     ).toBe(true);
   });
-
   it("shows no error for an empty input", () => {
     renderBar();
     expect(screen.queryByTestId("meeting-url-invalid")).toBeNull();
@@ -68,7 +63,6 @@ describe("MeetingJoinBar", () => {
       (screen.getByTestId("meeting-join-submit") as HTMLButtonElement).disabled,
     ).toBe(true);
   });
-
   it.each([
     ["https://meet.google.com/abc-defg-hij", "Google Meet"],
     ["https://us02web.zoom.us/j/1234567890?pwd=x", "Zoom"],
@@ -86,7 +80,6 @@ describe("MeetingJoinBar", () => {
       (screen.getByTestId("meeting-join-submit") as HTMLButtonElement).disabled,
     ).toBe(false);
   });
-
   it("submits the canonical URL, platform, and optional bot name", () => {
     const { onJoin } = renderBar();
     fireEvent.change(screen.getByTestId("meeting-url-input"), {
@@ -106,7 +99,6 @@ describe("MeetingJoinBar", () => {
       (screen.getByTestId("meeting-url-input") as HTMLInputElement).value,
     ).toBe("");
   });
-
   it("omits botName when left blank and never submits an invalid URL", () => {
     const { onJoin } = renderBar();
     fireEvent.submit(screen.getByTestId("meeting-join-form"));
@@ -120,7 +112,6 @@ describe("MeetingJoinBar", () => {
       meetingUrl: "https://meet.google.com/abc-defg-hij",
     });
   });
-
   it("does not submit while a join is in flight", () => {
     const { onJoin } = renderBar({ joining: true });
     fireEvent.change(screen.getByTestId("meeting-url-input"), {
@@ -129,7 +120,6 @@ describe("MeetingJoinBar", () => {
     fireEvent.submit(screen.getByTestId("meeting-join-form"));
     expect(onJoin).not.toHaveBeenCalled();
   });
-
   it("lists active sessions with a Stop control", () => {
     const { onStop } = renderBar({ activeMeetings: [session] });
     expect(screen.getByTestId("active-meeting-m1").textContent).toContain(
@@ -141,12 +131,10 @@ describe("MeetingJoinBar", () => {
     fireEvent.click(screen.getByTestId("stop-meeting-m1"));
     expect(onStop).toHaveBeenCalledWith("m1");
   });
-
   it("renders the join error", () => {
     renderBar({ error: "Bot could not join" });
     expect(screen.getByRole("alert").textContent).toBe("Bot could not join");
   });
-
   it("exposes the live meeting form through the agent bridge", async () => {
     const onJoin = vi.fn();
     render(
@@ -156,7 +144,6 @@ describe("MeetingJoinBar", () => {
     );
     const registry = getViewRegistry("transcripts", "gui");
     if (!registry) throw new Error("transcripts registry missing");
-
     expect(
       handleAgentSurfaceCapability(registry, "list-elements", undefined),
     ).toEqual(

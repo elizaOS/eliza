@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type * as http from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { VoiceModelId, VoiceModelVersion } from "@elizaos/shared";
+import { type VoiceModelId, type VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import {
 	handleVoiceModelsRoutes,
 	resolveInstalledVersions,

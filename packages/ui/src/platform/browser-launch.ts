@@ -3,11 +3,11 @@
  * profile and persists the active-server record so the app opens pointed at it.
  */
 
-import { isCloudPairAgentId } from "@elizaos/shared/contracts";
+import { isCloudPairAgentId } from "@elizaos/core/contracts/cloud-pair";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { client } from "../api";
 import { getBootConfig } from "../config/boot-config-store";
 import { upsertAndActivateAgentProfile } from "../state/agent-profiles";
@@ -25,12 +25,10 @@ function getSearchParams(): URLSearchParams {
   if (typeof window === "undefined") {
     return new URLSearchParams();
   }
-
   return new URLSearchParams(
     window.location.search || window.location.hash.split("?")[1] || "",
   );
 }
-
 function isConfiguredCloudHost(host: string): boolean {
   const configured = getBootConfig().cloudApiBase?.trim();
   if (!configured) return false;
@@ -42,7 +40,6 @@ function isConfiguredCloudHost(host: string): boolean {
     return false;
   }
 }
-
 function isTrustedCloudLaunchHost(host: string): boolean {
   const normalized = host.toLowerCase();
   return (
@@ -51,16 +48,16 @@ function isTrustedCloudLaunchHost(host: string): boolean {
     isConfiguredCloudHost(normalized)
   );
 }
-
 function normalizeLaunchApiBase(
   apiBase: string,
-  options: { kind?: "cloud" | "remote" } = {},
+  options: {
+    kind?: "cloud" | "remote";
+  } = {},
 ): string {
   const trimmed = apiBase.trim();
   if (!trimmed) {
     throw new Error("Missing launch API base");
   }
-
   const stripTrailingSlashes = (s: string): string => {
     let end = s.length;
     while (end > 0 && s.charCodeAt(end - 1) === 47) end--;
@@ -88,7 +85,6 @@ function normalizeLaunchApiBase(
     throw new Error("Rejected invalid launch apiBase");
   }
 }
-
 function normalizeLaunchBaseUrl(baseUrl: string): string {
   const parsed = new URL(baseUrl);
   if (
@@ -100,10 +96,8 @@ function normalizeLaunchBaseUrl(baseUrl: string): string {
     parsed.hash = "";
     return parsed.toString().replace(/\/+$/, "");
   }
-
   throw new Error("Rejected invalid cloud launch base");
 }
-
 function stripLaunchParams(): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
@@ -117,26 +111,26 @@ function stripLaunchParams(): void {
   }
   window.history.replaceState({}, "", url.toString());
 }
-
 async function exchangeCloudLaunchSession(
   cloudBaseUrl: string,
   sessionId: string,
-): Promise<{ agentId: string; apiBase: string; token: string }> {
+): Promise<{
+  agentId: string;
+  apiBase: string;
+  token: string;
+}> {
   const sessionPath = encodeURIComponent(sessionId);
   const launchSessionUrls = [
     `${cloudBaseUrl}/api/v1/eliza/launch-sessions/${sessionPath}`,
     `${cloudBaseUrl}/api/v1/app/launch-sessions/${sessionPath}`,
   ];
-
   let lastError: Error | null = null;
-
   for (const url of launchSessionUrls) {
     const response = await fetch(url, {
       method: "GET",
       headers: { Accept: "application/json" },
       redirect: "manual",
     });
-
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
@@ -145,26 +139,25 @@ async function exchangeCloudLaunchSession(
         payload.error ||
           `Launch session exchange failed (HTTP ${response.status})`,
       );
-
       if (response.status === 404) {
         continue;
       }
       throw lastError;
     }
-
     const payload = (await response.json()) as {
       success?: boolean;
       data?: {
         agentId?: string;
-        connection?: { apiBase?: string; token?: string };
+        connection?: {
+          apiBase?: string;
+          token?: string;
+        };
       };
       error?: string;
     };
-
     if (!payload.success || !payload.data?.connection?.apiBase) {
       throw new Error(payload.error || "Launch session payload is invalid");
     }
-
     const token = payload.data.connection.token?.trim();
     if (!token) {
       throw new Error("Launch session did not include an access token");
@@ -173,30 +166,29 @@ async function exchangeCloudLaunchSession(
     if (!isCloudPairAgentId(agentId)) {
       throw new Error("Launch session did not include a valid agent id");
     }
-
     const apiBase = normalizeLaunchApiBase(payload.data.connection.apiBase, {
       kind: "cloud",
     });
     if (!isTrustedCloudApiBaseUrl(apiBase, agentId)) {
       throw new Error("Launch session agent owner does not match its API base");
     }
-
     return {
       agentId,
       apiBase,
       token,
     };
   }
-
   throw lastError ?? new Error("Launch session exchange failed");
 }
-
 export function applyLaunchConnection(args: {
   apiBase: string;
   token?: string | null;
   kind?: "cloud" | "remote";
   cloudAgentId?: string | null;
-}): { apiBase: string; token: string | null } {
+}): {
+  apiBase: string;
+  token: string | null;
+} {
   const kind = args.kind ?? "remote";
   const normalizedApiBase = normalizeLaunchApiBase(args.apiBase, {
     kind,
@@ -211,7 +203,6 @@ export function applyLaunchConnection(args: {
   ) {
     throw new Error("Cloud launch owner does not match its API base");
   }
-
   client.setToken(null);
   client.setBaseUrl(normalizedApiBase);
   if (token) client.setToken(token);
@@ -233,17 +224,13 @@ export function applyLaunchConnection(args: {
     ...(persisted.apiBase !== undefined ? { apiBase: persisted.apiBase } : {}),
     ...(token ? { accessToken: token } : {}),
   });
-
   return { apiBase: normalizedApiBase, token };
 }
-
 export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-
   const params = getSearchParams();
   const launchSession = params.get("cloudLaunchSession")?.trim();
   const launchBase = params.get("cloudLaunchBase")?.trim();
-
   if (launchSession && launchBase) {
     const connection = await exchangeCloudLaunchSession(
       normalizeLaunchBaseUrl(launchBase),
@@ -258,7 +245,6 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
     stripLaunchParams();
     return true;
   }
-
   const apiBase = params.get("apiBase")?.trim();
   if (!apiBase) {
     return false;
@@ -268,7 +254,6 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
     stripLaunchParams();
     return false;
   }
-
   try {
     const parsed = new URL(apiBase);
     if (
@@ -284,7 +269,6 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
   } catch {
     // error-policy:J3 normalization below owns the structured invalid result.
   }
-
   applyLaunchConnection({
     kind: "remote",
     apiBase,

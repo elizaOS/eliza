@@ -113,7 +113,9 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     if (check) {
       console.log("  ⚠️ Foreign key analysis:");
       if (check.warnings.length > 0) {
-        check.warnings.forEach((w) => console.log(`    - ${w}`));
+        check.warnings.forEach((w) => {
+          console.log(`    - ${w}`);
+        });
       }
     }
 
@@ -244,7 +246,9 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     if (check) {
       console.log("  ℹ️ Cascade behavior change detected");
       if (check.warnings.length > 0) {
-        check.warnings.forEach((w) => console.log(`    - ${w}`));
+        check.warnings.forEach((w) => {
+          console.log(`    - ${w}`);
+        });
       }
     }
 

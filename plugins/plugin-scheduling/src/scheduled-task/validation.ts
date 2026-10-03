@@ -281,11 +281,21 @@ function validateTaskRef(
     "taskId" in ref || "state" in ref
       ? stripServerManaged(ref as ScheduledTask)
       : (ref as ScheduledTaskInput);
-  return validateScheduledTaskInput(input, deps, {
-    path,
-    depth: depth + 1,
-    seen,
-  });
+  // A task-shaped ref is validated through a stripped copy, so the original
+  // object must join the path itself for a cycle back to it to be visible; a
+  // plain input ref is the object the recursive call tracks, so it must not
+  // be pre-marked or every child would read as its own cycle.
+  const trackRef = input !== ref;
+  if (trackRef) seen.add(ref);
+  try {
+    return validateScheduledTaskInput(input, deps, {
+      path,
+      depth: depth + 1,
+      seen,
+    });
+  } finally {
+    if (trackRef) seen.delete(ref);
+  }
 }
 
 export function validateScheduledTaskInput(
@@ -526,5 +536,9 @@ export function validateScheduledTaskInput(
     }
   }
 
+  // Path-scoped: only objects on the current recursion path stay in `seen`,
+  // so a child referenced from two pipeline branches, or a grandchild shared
+  // by two children, is a DAG and not a cycle (#29938).
+  seen.delete(input);
   return issues;
 }

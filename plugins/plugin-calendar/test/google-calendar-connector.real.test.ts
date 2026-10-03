@@ -15,13 +15,13 @@
 // the post-merge lane that runs it explicitly. The describe.skipIf guard keeps
 // it a clean no-op without a token regardless.
 
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import {
   GoogleApiClientFactory,
   type GoogleAuthClient,
   GoogleCalendarClient,
   type GoogleCredentialResolver,
 } from "@elizaos/plugin-google-workspace";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { Auth } from "googleapis";
 import { describe, expect, it } from "vitest";
 import { lifeOpsCalendarEventFromGoogle } from "../src/internal/google-delegates.js";

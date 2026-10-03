@@ -14,6 +14,7 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -174,11 +175,10 @@ describe("LifeOps iMessage runtime status projection", () => {
     runtime = new AgentRuntime({
       agentId: stringToUuid(`imessage-status-${crypto.randomUUID()}`),
       character: createCharacter({ name: "iMessage status projection" }),
-      disableBasicCapabilities: true,
       enableAutonomy: false,
       logLevel: "fatal",
     });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     Object.defineProperty(runtime, "adapter", {
       value: null,
       configurable: true,
@@ -198,6 +198,7 @@ describe("LifeOps iMessage runtime status projection", () => {
   });
 
   it("reports Blooio provider API instead of native AppleScript", async () => {
+    runtime.setSetting("ELIZA_IMESSAGE_BACKEND", "none");
     const { context, response } = routeContext(runtime);
 
     await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
@@ -241,14 +242,10 @@ describe("LifeOps iMessage native transport projection", () => {
     nativeRuntime = new AgentRuntime({
       agentId: stringToUuid(`imessage-native-${crypto.randomUUID()}`),
       character: createCharacter({ name: "iMessage native projection" }),
-      disableBasicCapabilities: true,
       enableAutonomy: false,
       logLevel: "fatal",
     });
-    await nativeRuntime.initialize({
-      allowNoDatabase: true,
-      skipMigrations: true,
-    });
+    await initializeTestRuntime(nativeRuntime, { skipMigrations: true });
     Object.defineProperty(nativeRuntime, "adapter", {
       value: null,
       configurable: true,
@@ -333,4 +330,44 @@ describe("LifeOps iMessage native transport projection", () => {
     });
     expect(response.body).not.toContain("full_disk_access_required");
   });
+});
+
+describe("isolated host iMessage status", () => {
+  it.each(["none", "disabled"])(
+    "does not admit native plugins when backend is %s",
+    async (backend) => {
+      const runtime = new AgentRuntime({
+        character: createCharacter({ name: "Isolated iMessage status" }),
+        enableAutonomy: false,
+        settings: { ELIZA_IMESSAGE_BACKEND: backend },
+        logLevel: "fatal",
+      });
+      await initializeTestRuntime(runtime);
+      Object.defineProperty(runtime, "adapter", {
+        value: null,
+        configurable: true,
+      });
+      // The sentinel rejects admission before any external plugin initializer runs.
+      let nativeAdmissions = 0;
+      runtime.registerPlugin = async () => {
+        nativeAdmissions += 1;
+        throw new Error("Native plugin admission is forbidden in this test");
+      };
+      try {
+        const { context, response } = routeContext(runtime);
+        await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.body)).toMatchObject({
+          available: false,
+          connected: false,
+          bridgeType: "none",
+          sendMode: "none",
+        });
+        expect(nativeAdmissions).toBe(0);
+        expect(runtime.getService("imessage")).toBeNull();
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
 });

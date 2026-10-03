@@ -6,7 +6,7 @@
  */
 import { tmpdir } from "node:os";
 import { delimiter, isAbsolute } from "node:path";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
 
 // Production entrypoints capture PATH before runtime configuration. Mirror
 // that boundary in tests while excluding ambient shell shorthand such as `~`,

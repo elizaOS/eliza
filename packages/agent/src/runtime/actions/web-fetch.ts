@@ -220,6 +220,7 @@ export const webFetch: Action & Record<string, unknown> = {
       const result = await performGuardedHttpGet(url, {
         headers: { Accept: "application/json, text/plain, */*" },
       });
+      const retrievedAt = new Date().toISOString();
 
       if (result.blocked) {
         const text = `Refusing to fetch ${url}: blocked host or disallowed redirect.`;
@@ -248,7 +249,14 @@ export const webFetch: Action & Record<string, unknown> = {
       return {
         text: value,
         success: true,
-        data: { actionName: "WEB_FETCH", url, value },
+        data: {
+          actionName: "WEB_FETCH",
+          url,
+          value,
+          retrieved_at: retrievedAt,
+          retrieved_at_basis:
+            "HTTP retrieval completed; not the source publication or market update time",
+        },
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

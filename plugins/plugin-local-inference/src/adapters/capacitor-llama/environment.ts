@@ -8,12 +8,12 @@
  */
 
 import { logger } from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/plugin-native-inference/model-catalog/bge-embedding-model";
 import { z } from "zod";
 
 const DEFAULT_SMALL_MODEL = "text/eliza-1-2b-128k.gguf";
 const DEFAULT_LARGE_MODEL = "text/eliza-1-2b-128k.gguf";
-const DEFAULT_EMBEDDING_MODEL = "gte-small_fp16.gguf";
-
+const DEFAULT_EMBEDDING_MODEL = BGE_EMBEDDING_MODEL.filename;
 export const configSchema = z.object({
 	LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),
 	LOCAL_LARGE_MODEL: z.string().optional().default(DEFAULT_LARGE_MODEL),
@@ -26,9 +26,7 @@ export const configSchema = z.object({
 		.default("384")
 		.transform((val) => parseInt(val, 10)),
 });
-
 export type Config = z.infer<typeof configSchema>;
-
 export function validateConfig(): Config {
 	try {
 		const configToParse = {
@@ -39,7 +37,6 @@ export function validateConfig(): Config {
 			CACHE_DIR: process.env.CACHE_DIR,
 			LOCAL_EMBEDDING_DIMENSIONS: process.env.LOCAL_EMBEDDING_DIMENSIONS,
 		};
-
 		logger.debug(
 			{
 				LOCAL_SMALL_MODEL: configToParse.LOCAL_SMALL_MODEL,
@@ -51,14 +48,11 @@ export function validateConfig(): Config {
 			},
 			"Validating configuration for local AI plugin from env:",
 		);
-
 		const validatedConfig = configSchema.parse(configToParse);
-
 		logger.info(
 			validatedConfig as Record<string, unknown>,
 			"Using local AI configuration:",
 		);
-
 		return validatedConfig;
 	} catch (error) {
 		if (error instanceof z.ZodError) {

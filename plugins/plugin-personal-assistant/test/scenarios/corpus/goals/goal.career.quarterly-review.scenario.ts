@@ -1,7 +1,6 @@
 /** Scenario fixture for goal career quarterly review; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectScenarioActionResultData } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectScenarioActionResultData, scenario } from "@elizaos/testing";
 import { seedLifeOpsGoal } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -14,7 +13,7 @@ export default scenario({
     "This scenario exercises the current review_goal path on a seeded career goal and asserts the structured review summary that the runtime returns today.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

@@ -53,7 +53,7 @@ interface AgentRow {
   [key: string]: unknown;
 }
 
-import { RuntimeMigrator } from "../../runtime-migrator";
+import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
 

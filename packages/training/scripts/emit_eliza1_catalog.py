@@ -6,10 +6,10 @@ it has a catalog entry. The canonical catalog (``MODEL_CATALOG``,
 ``ELIZA_1_TIER_IDS``,
 ``DEFAULT_ELIGIBLE_MODEL_IDS``, the HuggingFace URL builders) lives in:
 
-    packages/shared/src/local-inference/catalog.ts
+    plugins/plugin-native-inference/src/model-catalog/catalog.ts
 
-(``@elizaos/shared/local-inference/catalog``). The old
-``packages/app-core/src/services/local-inference/catalog.ts`` path is now
+(``@elizaos/plugin-native-inference/model-catalog/catalog``). The old
+``packages/app/src/services/local-inference/catalog.ts`` path is now
 just a re-export shim of that module, so anything written there is
 ignored — the shim has no ``MODEL_CATALOG`` literal to patch.
 
@@ -19,7 +19,7 @@ file to apply it to. Two modes:
 
   * ``--print-entry`` (default when no ``--catalog`` is given): emit just
     the TypeScript object literal to insert into the ``MODEL_CATALOG``
-    array in ``packages/shared/src/local-inference/catalog.ts``, plus a
+    array in ``plugins/plugin-native-inference/src/model-catalog/catalog.ts``, plus a
     header saying where it goes.
   * ``--catalog <path>``: in addition, compute a unified diff that
     inserts the new entry at the end of that file's ``MODEL_CATALOG``
@@ -35,7 +35,7 @@ Usage::
     # Also produce a unified diff against the canonical shared catalog:
     uv run python scripts/emit_eliza1_catalog.py \\
         --manifest checkpoints/eliza-1-2b/gguf/eliza1_manifest.json \\
-        --catalog packages/shared/src/local-inference/catalog.ts \\
+        --catalog plugins/plugin-native-inference/src/model-catalog/catalog.ts \\
         --output reports/training/catalog-eliza-1-2b.diff
 
 Notes:
@@ -74,9 +74,9 @@ log = logging.getLogger("emit_eliza1_catalog")
 
 
 # The canonical catalog this script targets. Both the server
-# (``@elizaos/app-core``) and the UI client (``@elizaos/ui``) import
-# ``MODEL_CATALOG`` from here; the old app-core path is a re-export shim.
-CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
+# (``@elizaos/app``) and the UI client (``@elizaos/ui``) import
+# ``MODEL_CATALOG`` from here; the old app path is a re-export shim.
+CANONICAL_CATALOG_PATH = "plugins/plugin-native-inference/src/model-catalog/catalog.ts"
 
 
 def _bundle_repo(tier: str) -> str:
@@ -299,7 +299,7 @@ def _find_model_catalog_close(text: str) -> int:
     if anchor == -1:
         raise SystemExit(
             "catalog file has no `MODEL_CATALOG` declaration; pass --catalog "
-            f"pointing at {CANONICAL_CATALOG_PATH} (not the app-core re-export shim)."
+            f"pointing at {CANONICAL_CATALOG_PATH} (not the app re-export shim)."
         )
     close = text.find("];", anchor)
     if close == -1:
@@ -337,7 +337,7 @@ def _entry_with_header(entry: Eliza1CatalogEntry, catalog_hint: str) -> str:
     return (
         f"// Add this entry to the `MODEL_CATALOG` array in:\n"
         f"//   {catalog_hint}\n"
-        f"// (the @elizaos/app-core copy is a re-export shim — do not edit it).\n"
+        f"// (the @elizaos/app copy is a re-export shim — do not edit it).\n"
         f"// If `{entry.id}` is a NEW tier id, also add it to ELIZA_1_TIER_IDS\n"
         f"// in the same file (that is what marks it default-eligible).\n"
         f"{entry.to_ts_literal()}"
@@ -361,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(CANONICAL_CATALOG_PATH),
         help=(
             "Catalog .ts file to compute a unified diff against. Defaults to "
-            f"{CANONICAL_CATALOG_PATH} (the canonical @elizaos/shared catalog). "
+            f"{CANONICAL_CATALOG_PATH} (the canonical @elizaos/plugin-native-inference/model-catalog/catalog catalog). "
             "Pass --print-entry to skip the diff and only emit the entry block."
         ),
     )
@@ -404,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     header = (
         f"# MODEL_CATALOG patch for {entry.id}\n"
         f"# Apply to: {args.catalog}\n"
-        f"# (the @elizaos/app-core copy is a re-export shim — do not edit it).\n"
+        f"# (the @elizaos/app copy is a re-export shim — do not edit it).\n"
         f"# If {entry.id} is a NEW tier id, also add it to ELIZA_1_TIER_IDS in that file.\n"
     )
     if args.output is not None:

@@ -4,7 +4,7 @@
  * routing that through `client.patchProviderStrategy`.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import type { AccountStrategy } from "../../api/client-agent";
 import { useAppSelector } from "../../state/app-store";
 import {
@@ -21,7 +21,6 @@ interface RotationStrategyPickerProps {
   onChange: (strategy: AccountStrategy) => void;
   disabled?: boolean;
 }
-
 interface StrategyOption {
   id: AccountStrategy;
   labelKey: string;
@@ -29,7 +28,6 @@ interface StrategyOption {
   descriptionKey: string;
   descriptionFallback: string;
 }
-
 const STRATEGY_OPTIONS: readonly StrategyOption[] = [
   {
     id: "priority",
@@ -76,7 +74,6 @@ const STRATEGY_OPTIONS: readonly StrategyOption[] = [
       "Prefer hand-set priority, then the account whose relevant weekly limit resets soonest.",
   },
 ];
-
 export function RotationStrategyPicker({
   providerId,
   value,
@@ -89,10 +86,9 @@ export function RotationStrategyPicker({
     (providerId === "anthropic-subscription"
       ? "drain-soonest-reset"
       : "priority");
-
   return (
     <div className="flex items-center gap-2">
-      <span className="text-2xs font-medium uppercase tracking-wider text-muted">
+      <span className="text-2xs font-medium uppercase tracking-wider text-muted-strong">
         {t("accounts.strategy.label", { defaultValue: "Strategy" })}
       </span>
       <Select

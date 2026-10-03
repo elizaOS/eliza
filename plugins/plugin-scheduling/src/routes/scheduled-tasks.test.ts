@@ -9,21 +9,29 @@ import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it } from "vitest";
 import {
-  createAnchorRegistry,
   createCompletionCheckRegistry,
+  registerBuiltInCompletionChecks,
+} from "../scheduled-task/completion-check-registry.js";
+import {
+  createAnchorRegistry,
   createConsolidationRegistry,
+} from "../scheduled-task/consolidation-policy.js";
+import {
   createEscalationLadderRegistry,
-  createInMemoryScheduledTaskLogStore,
+  registerDefaultEscalationLadders,
+} from "../scheduled-task/escalation.js";
+import {
+  createTaskGateRegistry,
+  registerBuiltInGates,
+} from "../scheduled-task/gate-registry.js";
+import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-  createTaskGateRegistry,
-  registerBuiltInCompletionChecks,
-  registerBuiltInGates,
-  registerDefaultEscalationLadders,
-  type ScheduledTask,
   type ScheduledTaskRunnerHandle,
   TestNoopScheduledTaskDispatcher,
-} from "../scheduled-task/index.js";
+} from "../scheduled-task/runner.js";
+import { createInMemoryScheduledTaskLogStore } from "../scheduled-task/state-log.js";
+import type { ScheduledTask } from "../scheduled-task/types.js";
 import {
   makeScheduledTasksRouteHandler,
   type SchedulingRouteContext,

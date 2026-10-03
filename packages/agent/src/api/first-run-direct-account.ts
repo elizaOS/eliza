@@ -9,10 +9,14 @@ import {
   createRuntimeAccountStoragePolicy,
   deleteAccount,
   saveAccount,
-} from "@elizaos/auth/account-storage";
-import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
-import { ElizaError, resolveStateDir } from "@elizaos/core";
-import type { LinkedAccountConfig } from "@elizaos/shared";
+} from "@elizaos/auth/auth/account-storage";
+import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
+import {
+  ElizaError,
+  type LinkedAccountConfig,
+  resolveStateDir,
+} from "@elizaos/core";
+
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 interface FirstRunAccountPool {

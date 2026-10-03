@@ -14,7 +14,7 @@
  * string to fail, per the scenario-runner `custom` final-check contract.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
 
 /** Registered service type; mirrors `KNOWLEDGE_GRAPH_SERVICE` in @elizaos/agent. */
 const KNOWLEDGE_GRAPH_SERVICE = "eliza_knowledge_graph";

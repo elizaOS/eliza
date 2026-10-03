@@ -19,7 +19,7 @@ import {
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { wrapUntrustedEmailContent } from "@elizaos/shared";
+import { wrapUntrustedEmailContent } from "@elizaos/core/text/untrusted-email-content";
 import type { EmailLikeMessage } from "./email-classifier.js";
 import { getConfiguredEmailClassifierModel } from "./email-classifier.js";
 
@@ -363,11 +363,17 @@ function mergeRuleAndLlm(
   if (!ruleResult && !llmResult) return null;
   if (!ruleResult) return llmResult;
   if (!llmResult) return ruleResult;
-  // Prefer regex amount/currency (precise), prefer whichever has dueDate,
-  // prefer the longer / more specific merchant name.
+  // Prefer regex amount/currency (precise), prefer whichever has dueDate.
+  // Merchant: the regex pass derives its name from authoritative sender
+  // metadata (From display name / address), so keep it whenever it produced a
+  // real name. Fall back to the LLM merchant only when the regex pass yielded
+  // the "Unknown merchant" placeholder (no sender metadata) and the model did
+  // supply a real name. The old length gate compared against the 16-char
+  // placeholder, which silently discarded correct short merchant names such as
+  // "Netflix", "Comcast", or "AT&T" and persisted "Unknown merchant" instead.
   const merchant =
-    llmResult.merchant.length > ruleResult.merchant.length &&
-    ruleResult.merchant === "Unknown merchant"
+    ruleResult.merchant === "Unknown merchant" &&
+    llmResult.merchant !== "Unknown merchant"
       ? llmResult.merchant
       : ruleResult.merchant;
   const dueDate = ruleResult.dueDate ?? llmResult.dueDate;

@@ -13,9 +13,8 @@ import type {
   TranscriptSegment,
   TranscriptSource,
   TranscriptSummary,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/core/transcripts";
 import { ElizaClient } from "./client-base";
-
 /** Body the recording pipeline POSTs to create a transcript record. The
  *  world/room/entity ids are optional — the server derives them from the agent
  *  context when the shell client doesn't supply them. */
@@ -34,18 +33,15 @@ export interface TranscriptCreateInput {
   audioBase64?: string;
   createdAt?: number;
 }
-
 /** Body for a user edit to a transcript (title and/or replacement segments). */
 export interface TranscriptUpdateInput {
   title?: string;
   segments?: TranscriptSegment[];
 }
-
 export interface TranscriptShareInput {
   entityId: string;
   mode: ArtifactShareGrantMode;
 }
-
 export interface TranscriptShareResult {
   ok: boolean;
   transcriptId: string;
@@ -53,31 +49,34 @@ export interface TranscriptShareResult {
   mode: ArtifactShareGrantMode;
   variantId?: string;
 }
-
 export interface TranscriptRevokeShareResult {
   ok: boolean;
   transcriptId: string;
   entityId: string;
 }
-
 export interface TranscriptPrivacyUpdateInput {
   sharing: Partial<TranscriptCaptureSharingState>;
 }
-
 declare module "./client-base" {
   interface ElizaClient {
-    listTranscripts(
-      roomId?: string,
-    ): Promise<{ transcripts: TranscriptSummary[] }>;
-    getTranscript(id: string): Promise<{ transcript: Transcript }>;
-    createTranscript(
-      input: TranscriptCreateInput,
-    ): Promise<{ transcript: Transcript }>;
+    listTranscripts(roomId?: string): Promise<{
+      transcripts: TranscriptSummary[];
+    }>;
+    getTranscript(id: string): Promise<{
+      transcript: Transcript;
+    }>;
+    createTranscript(input: TranscriptCreateInput): Promise<{
+      transcript: Transcript;
+    }>;
     updateTranscript(
       id: string,
       input: TranscriptUpdateInput,
-    ): Promise<{ transcript: Transcript }>;
-    deleteTranscript(id: string): Promise<{ ok: boolean }>;
+    ): Promise<{
+      transcript: Transcript;
+    }>;
+    deleteTranscript(id: string): Promise<{
+      ok: boolean;
+    }>;
     shareTranscript(
       id: string,
       input: TranscriptShareInput,
@@ -89,13 +88,15 @@ declare module "./client-base" {
     updateTranscriptPrivacy(
       id: string,
       input: TranscriptPrivacyUpdateInput,
-    ): Promise<{ transcript: Transcript }>;
-    deleteTranscriptSourceAudio(
-      id: string,
-    ): Promise<{ deleted: boolean; transcript: Transcript }>;
+    ): Promise<{
+      transcript: Transcript;
+    }>;
+    deleteTranscriptSourceAudio(id: string): Promise<{
+      deleted: boolean;
+      transcript: Transcript;
+    }>;
   }
 }
-
 ElizaClient.prototype.listTranscripts = async function (
   this: ElizaClient,
   roomId?: string,
@@ -103,14 +104,12 @@ ElizaClient.prototype.listTranscripts = async function (
   const q = roomId ? `?roomId=${encodeURIComponent(roomId)}` : "";
   return this.fetch(`/api/transcripts${q}`);
 };
-
 ElizaClient.prototype.getTranscript = async function (
   this: ElizaClient,
   id: string,
 ) {
   return this.fetch(`/api/transcripts/${encodeURIComponent(id)}`);
 };
-
 ElizaClient.prototype.createTranscript = async function (
   this: ElizaClient,
   input: TranscriptCreateInput,
@@ -120,7 +119,6 @@ ElizaClient.prototype.createTranscript = async function (
     body: JSON.stringify(input),
   });
 };
-
 ElizaClient.prototype.updateTranscript = async function (
   this: ElizaClient,
   id: string,
@@ -131,7 +129,6 @@ ElizaClient.prototype.updateTranscript = async function (
     body: JSON.stringify(input),
   });
 };
-
 ElizaClient.prototype.deleteTranscript = async function (
   this: ElizaClient,
   id: string,
@@ -140,7 +137,6 @@ ElizaClient.prototype.deleteTranscript = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.shareTranscript = async function (
   this: ElizaClient,
   id: string,
@@ -151,20 +147,16 @@ ElizaClient.prototype.shareTranscript = async function (
     body: JSON.stringify(input),
   });
 };
-
 ElizaClient.prototype.revokeTranscriptShare = async function (
   this: ElizaClient,
   id: string,
   entityId: string,
 ) {
   return this.fetch(
-    `/api/transcripts/${encodeURIComponent(id)}/share/${encodeURIComponent(
-      entityId,
-    )}`,
+    `/api/transcripts/${encodeURIComponent(id)}/share/${encodeURIComponent(entityId)}`,
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.updateTranscriptPrivacy = async function (
   this: ElizaClient,
   id: string,
@@ -175,7 +167,6 @@ ElizaClient.prototype.updateTranscriptPrivacy = async function (
     body: JSON.stringify(input),
   });
 };
-
 ElizaClient.prototype.deleteTranscriptSourceAudio = async function (
   this: ElizaClient,
   id: string,

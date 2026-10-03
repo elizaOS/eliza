@@ -3,4 +3,4 @@ export {
 	createTestRuntime,
 	type TestRuntimeOptions,
 	type TestRuntimeResult,
-} from "../../../../packages/core/src/testing/pglite-runtime.ts";
+} from "../../../../packages/testing/src/pglite-runtime.ts";

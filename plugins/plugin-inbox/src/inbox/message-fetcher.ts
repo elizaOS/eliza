@@ -7,18 +7,20 @@
  * the fetchers on pull paths and the status probes on cache paths.
  */
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
+  logger,
+  normalizeConnectorSource,
+} from "@elizaos/core";
+import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
+import {
   type GetLifeOpsGmailTriageRequest,
-  type LifeOpsConnectorDegradation,
   type LifeOpsGmailTriageFeed,
   type LifeOpsGoogleConnectorStatus,
   type LifeOpsInboxSourceStatus,
   type LifeOpsXConnectorStatus,
   type LifeOpsXDm,
-  normalizeConnectorSource,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
 
@@ -305,10 +307,17 @@ export async function fetchChatMessages(
   const allRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
   if (allRoomIds.length === 0) return [];
 
-  const roomIds = allRoomIds as UUID[];
-  const rooms = await Promise.all(roomIds.map((id) => runtime.getRoom(id)));
+  // One batched read: the agent's room list is unbounded, so a per-room
+  // `getRoom` fan-out would admit one database read per room at once.
+  const roomsById = new Map(
+    (await runtime.getRoomsByIds(allRoomIds as UUID[])).map((room) => [
+      room.id,
+      room,
+    ]),
+  );
   const sourceRooms: Room[] = [];
-  for (const room of rooms) {
+  for (const roomId of allRoomIds) {
+    const room = roomsById.get(roomId as UUID);
     if (!room) continue;
     const roomSource = extractRoomSource(room);
     if (sourceMatchesFilter(roomSource, sourceTags)) {
@@ -355,7 +364,8 @@ export async function fetchChatMessages(
         .filter((worldId): worldId is UUID => Boolean(worldId)),
     ),
   ];
-  const worlds = await Promise.all(worldIds.map((id) => runtime.getWorld(id)));
+  const worlds =
+    worldIds.length > 0 ? await runtime.getWorldsByIds(worldIds) : [];
   const worldMap = new Map<string, World>();
   for (const world of worlds) {
     if (world) {
@@ -374,12 +384,10 @@ export async function fetchChatMessages(
   // Fetch participant counts per room exactly once. Used to classify DMs,
   // group DMs, and public channels without letting unknown rooms default to DM.
   const participantCountByRoom = new Map<string, number>();
-  await Promise.all(
-    sourceRooms.map(async (room) => {
-      const ids = await runtime.getParticipantsForRoom(room.id);
-      participantCountByRoom.set(room.id, ids.length);
-    }),
-  );
+  const participants = await runtime.getParticipantsForRooms(sourceRoomIds);
+  for (const { roomId, entityIds } of participants) {
+    participantCountByRoom.set(roomId, entityIds.length);
+  }
 
   const results: InboundMessage[] = [];
   for (const memory of filtered.slice(0, limit)) {

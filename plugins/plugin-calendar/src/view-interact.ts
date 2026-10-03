@@ -19,11 +19,11 @@ import {
   normalizeEffectReceipt,
   toElizaError,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-} from "@elizaos/shared";
+import {
+  type CreateLifeOpsCalendarEventRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+} from "@elizaos/core/contracts/calendar";
 import { normalizeCalendarTimeZone } from "./internal/calendar-normalize.js";
 import { INTERNAL_URL } from "./internal/detail.js";
 import { CalendarServiceError } from "./internal/errors.js";

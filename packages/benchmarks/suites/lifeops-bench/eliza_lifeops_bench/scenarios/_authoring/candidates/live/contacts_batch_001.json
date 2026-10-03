@@ -1,0 +1,922 @@
+[
+  {
+    "id": "live.contacts.merge_duplicate_jordan",
+    "name": "Merge duplicate contacts for Jordan Lee",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "I see two entries for Jordan Lee\u2014one from work and one from personal. Help me merge them into a single contact, keeping the work email but removing the personal phone. Ask me if I'm okay with losing any info.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Duplicate detection with hidden constraint about phone removal.",
+    "success_criteria": [
+      "Executor identifies the two Jordan Lee entries before proposing a merge.",
+      "Executor asks for confirmation before deleting the personal phone number.",
+      "Executor completes the merge and confirms the final contact fields."
+    ],
+    "world_assertions": [
+      "If merged: a single contact_* named 'Jordan Lee' with work email retained and no personal phone field."
+    ]
+  },
+  {
+    "id": "live.contacts.update_phone_maya",
+    "name": "Update Maya's child's phone number",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My son Leo's phone changed to 555\u2011321\u20119876. Please update his contact info, but don't change his email. Let me know what will be updated first.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Simple field update with privacy guard on email.",
+    "success_criteria": [
+      "Executor states which fields will be changed before applying the update.",
+      "Executor confirms the new phone number without altering the email address.",
+      "Executor reports the updated contact summary after the change."
+    ],
+    "world_assertions": [
+      "If updated: contact_* for 'Leo' has phone = '555-321-9876' and unchanged email."
+    ]
+  },
+  {
+    "id": "live.contacts.add_tag_sam",
+    "name": "Tag Sam's new vendor as 'priority'",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "Just got a quote from vendor QuickPrint. I need to add them to contacts and tag them 'priority' so I don't lose them. Ask me if the tag is correct before saving.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Create and tag a new contact with verification.",
+    "success_criteria": [
+      "Executor asks to confirm the 'priority' tag before creating the contact.",
+      "Executor creates a new contact with the vendor name and the confirmed tag.",
+      "Executor displays the created contact summary."
+    ],
+    "world_assertions": [
+      "If created: a contact_* with name containing 'QuickPrint' and tag 'priority' exists."
+    ]
+  },
+  {
+    "id": "live.contacts.share_contact_alex",
+    "name": "Share Alex's email with a colleague",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Send my colleague the email address for Alex Tran. Verify the address first and ask me to confirm before sending.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Retrieval and confirmation before sharing.",
+    "success_criteria": [
+      "Executor retrieves Alex's email and presents it for confirmation.",
+      "Executor asks explicit permission before sharing the address.",
+      "Executor confirms that the email was shared after consent."
+    ],
+    "world_assertions": [
+      "If shared: a note or log entry indicating Alex's email was sent to the colleague."
+    ]
+  },
+  {
+    "id": "live.contacts.find_email_kai",
+    "name": "Find Kai's missing email",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I need Kai's university email for the group project. It's not in my contacts. Can you locate it from recent messages? Let me know if you need more context.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Search messages to extract missing contact info.",
+    "success_criteria": [
+      "Executor asks which conversation to search if ambiguous.",
+      "Executor extracts the email address from the identified message.",
+      "Executor confirms the email before adding it to Kai's contact entry."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Kai' now includes a university email address."
+    ]
+  },
+  {
+    "id": "live.contacts.add_note_nora",
+    "name": "Log meeting note for Nora Klein",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I met with Nora Klein on April 15th to discuss the Q2 strategy. Please add a note to her contact entry summarizing the key points. Ask me to confirm the note content first.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Note creation with confirmation step.",
+    "success_criteria": [
+      "Executor drafts a concise note summarizing the meeting.",
+      "Executor asks for approval of the note text before saving.",
+      "Executor attaches the approved note to Nora's contact record."
+    ],
+    "world_assertions": [
+      "If noted: contact_* for 'Nora Klein' has a note containing 'Q2 strategy' dated April 15."
+    ]
+  },
+  {
+    "id": "live.contacts.reconcile_family_owen",
+    "name": "Reconcile family contacts for Owen Hall",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I have three entries for my daughter Emily\u2014different phone numbers and one duplicate email. Help me clean them up, but keep any number that I confirm as correct.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Multiple duplicates with hidden correctness constraint.",
+    "success_criteria": [
+      "Executor lists all Emily entries and their differing fields.",
+      "Executor asks which phone number(s) are valid before consolidating.",
+      "Executor merges the entries into a single contact preserving the confirmed phone numbers."
+    ],
+    "world_assertions": [
+      "If merged: a single contact_* named 'Emily' with only the confirmed phone numbers and no duplicate email."
+    ]
+  },
+  {
+    "id": "live.contacts.cleanup_dev_freelancer",
+    "name": "Clean up stale developer contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I have five contractor contacts I haven't spoken to in over a year. Identify them and suggest which ones to archive. I will approve the list before any deletion.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Batch identification with user approval before action.",
+    "success_criteria": [
+      "Executor filters contacts by last interaction date > 1 year.",
+      "Executor presents the list of stale contacts for review.",
+      "Executor asks for explicit confirmation before archiving any contact."
+    ],
+    "world_assertions": [
+      "If archived: the identified contact_* entries are marked as archived or removed from the active list."
+    ]
+  },
+  {
+    "id": "live.contacts.rename_contact_tara",
+    "name": "Rename Tara's health coach contact",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "My health coach is listed as 'Coach' in my contacts. Change the name to 'Dr. Maya Patel' and keep the phone number. Ask me to confirm the new name before updating.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Simple rename with confirmation.",
+    "success_criteria": [
+      "Executor displays the current contact entry for verification.",
+      "Executor asks for confirmation of the new name 'Dr. Maya Patel'.",
+      "Executor updates the contact name while preserving the phone number."
+    ],
+    "world_assertions": [
+      "If renamed: contact_* formerly named 'Coach' now has name 'Dr. Maya Patel' and unchanged phone."
+    ]
+  },
+  {
+    "id": "live.contacts.link_contact_to_event_lin",
+    "name": "Link contact to upcoming meeting event",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I have a calendar event titled 'Project Kickoff' on 2026-05-15. Link my contact 'Samuel Ortiz' as an attendee. Verify the contact exists and ask for confirmation before modifying the event.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Cross-entity linking with explicit consent.",
+    "success_criteria": [
+      "Executor confirms Samuel Ortiz is in contacts.",
+      "Executor asks before adding him to the event attendee list.",
+      "Executor updates the calendar event with the new attendee and reports the change."
+    ],
+    "world_assertions": [
+      "If linked: calendar_event on 2026-05-15 includes contact_* 'Samuel Ortiz' as an attendee."
+    ]
+  },
+  {
+    "id": "live.contacts.block_contact_alex",
+    "name": "Block spam contact for Alex",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "There's a contact named 'promo@offers.example.test' that keeps sending junk. Block them from contacting me. Confirm the email before applying the block.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Privacy action with verification.",
+    "success_criteria": [
+      "Executor displays the email address to be blocked.",
+      "Executor asks for explicit permission to block the contact.",
+      "Executor marks the contact as blocked and confirms the status."
+    ],
+    "world_assertions": [
+      "If blocked: contact_* with email 'promo@offers.example.test' has a blocked flag set."
+    ]
+  },
+  {
+    "id": "live.contacts.import_vcard_ria",
+    "name": "Import vCard for new client",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "I received a vCard file for client 'Luna Studios'. Import it, but first tell me which fields will be created so I can approve any sensitive info.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "File import with preview.",
+    "success_criteria": [
+      "Executor parses the vCard and lists the fields (name, phone, email, etc.).",
+      "Executor asks for approval before creating the contact.",
+      "Executor creates the contact after confirmation and shows the final entry."
+    ],
+    "world_assertions": [
+      "If imported: a new contact_* named 'Luna Studios' with the vCard fields present."
+    ]
+  },
+  {
+    "id": "live.contacts.verify_address_kai",
+    "name": "Verify Kai's mailing address",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I need to send Kai a package but his address looks outdated. Check the latest address in recent chats and confirm with me before updating the contact.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Cross-message lookup and verification.",
+    "success_criteria": [
+      "Executor searches recent messages for Kai's address.",
+      "Executor presents the found address for user confirmation.",
+      "Executor updates Kai's contact with the confirmed address."
+    ],
+    "world_assertions": [
+      "If updated: contact_* for 'Kai' has a mailing address matching the one confirmed by the user."
+    ]
+  },
+  {
+    "id": "live.contacts.bulk_tag_sam",
+    "name": "Apply 'VIP' tag to multiple contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "Add the tag 'VIP' to all contacts whose company is 'Acme Corp'. Show me the list first and ask me to confirm before tagging.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 29,
+    "description": "Batch tagging with preview.",
+    "success_criteria": [
+      "Executor filters contacts by company 'Acme Corp' and lists them.",
+      "Executor asks for confirmation to apply the 'VIP' tag to the listed contacts.",
+      "Executor adds the tag to each contact after approval."
+    ],
+    "world_assertions": [
+      "If tagged: every contact_* with company 'Acme Corp' includes the tag 'VIP'."
+    ]
+  },
+  {
+    "id": "live.contacts.merge_duplicate_nora",
+    "name": "Consolidate duplicate contacts for 'Dr. Klein'",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "There are two entries for Dr. Nora Klein\u2014one with title 'Consultant' and another with title 'Advisor'. Merge them, preserving the title I prefer. Ask me which title to keep.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Duplicate merge with title selection.",
+    "success_criteria": [
+      "Executor enumerates the two Dr. Klein entries and their titles.",
+      "Executor asks which title should be retained.",
+      "Executor merges the contacts, keeping the chosen title and combining other fields."
+    ],
+    "world_assertions": [
+      "If merged: a single contact_* for 'Nora Klein' with the selected title and no duplicate entries."
+    ]
+  },
+  {
+    "id": "live.contacts.add_social_link_alex",
+    "name": "Add LinkedIn URL to Alex's profile",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Add my LinkedIn profile https://linkedin.com/in/alextran to my contact entry. Confirm the URL before saving.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 21,
+    "description": "Simple field addition with confirmation.",
+    "success_criteria": [
+      "Executor displays the LinkedIn URL for confirmation.",
+      "Executor asks for permission to add the URL to the contact.",
+      "Executor updates Alex's contact with the LinkedIn link."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Alex Tran' includes a LinkedIn field with the given URL."
+    ]
+  },
+  {
+    "id": "live.contacts.find_missing_phone_maya",
+    "name": "Locate missing phone for Maya's vet",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I need the phone number for my vet 'Happy Paws Clinic' but it's not in my contacts. Search recent emails for it and add it, but ask me to confirm first.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Email search and contact enrichment.",
+    "success_criteria": [
+      "Executor scans recent emails for a phone number belonging to 'Happy Paws Clinic'.",
+      "Executor presents the found number for user approval.",
+      "Executor adds the phone number to the vet's contact entry after confirmation."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Happy Paws Clinic' now contains a phone number matching the email source."
+    ]
+  },
+  {
+    "id": "live.contacts.remove_duplicate_tag_owen",
+    "name": "Remove duplicate 'friend' tag from contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "Some of my contacts have the tag 'friend' listed twice. Identify them and clean up the duplicate tags. Show me the affected contacts before you edit.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Tag de-duplication with preview.",
+    "success_criteria": [
+      "Executor lists contacts that have duplicate 'friend' tags.",
+      "Executor asks for confirmation to remove the extra tag.",
+      "Executor removes the duplicate tag from each listed contact."
+    ],
+    "world_assertions": [
+      "If cleaned: no contact_* has more than one 'friend' tag."
+    ]
+  },
+  {
+    "id": "live.contacts.update_company_dev_freelancer",
+    "name": "Correct company name for a client",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "My client 'Acme Corporation' is listed as 'Acme Corp' in the contact. Change it to the full legal name. Ask me to confirm the new spelling before applying.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Field correction with user verification.",
+    "success_criteria": [
+      "Executor shows the current company field value.",
+      "Executor asks for confirmation of the corrected name 'Acme Corporation'.",
+      "Executor updates the contact's company field after approval."
+    ],
+    "world_assertions": [
+      "If corrected: contact_* for the client now has company = 'Acme Corporation'."
+    ]
+  },
+  {
+    "id": "live.contacts.share_contact_info_kai",
+    "name": "Share Kai's contact card via email",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I need to email my professor the contact card for Kai. Export the vCard and ask me which email to send it to before sending.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Export and share with confirmation.",
+    "success_criteria": [
+      "Executor generates a vCard for Kai and shows a preview.",
+      "Executor asks for the recipient email address and confirmation.",
+      "Executor reports that the vCard was emailed after consent."
+    ],
+    "world_assertions": [
+      "If sent: a log entry indicates Kai's vCard was emailed to the specified address."
+    ]
+  },
+  {
+    "id": "live.contacts.add_custom_field_ria",
+    "name": "Add 'Preferred Language' field to contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "I want to track the preferred language for each contact. Add a custom field 'Preferred Language' and set it to 'English' for all existing contacts after I confirm the default value.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Bulk custom field addition with default value confirmation.",
+    "success_criteria": [
+      "Executor proposes adding the custom field with default 'English'.",
+      "Executor asks for confirmation before applying the field to all contacts.",
+      "Executor updates each contact with the new field after approval."
+    ],
+    "world_assertions": [
+      "If added: every contact_* now includes a 'Preferred Language' field set to 'English'."
+    ]
+  },
+  {
+    "id": "live.contacts.resolve_name_conflict_alex",
+    "name": "Resolve name conflict between Alex and Alec",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I have contacts 'Alex Tran' and 'Alec Tran' that seem to be the same person. Verify which is correct and merge them, preserving the email from the correct entry. Ask before merging.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Potential duplicate with user validation.",
+    "success_criteria": [
+      "Executor displays both contacts and their key fields.",
+      "Executor asks which record is accurate before merging.",
+      "Executor merges the chosen record and retains the email."
+    ],
+    "world_assertions": [
+      "If merged: a single contact_* for the chosen name contains the preserved email and no duplicate entry exists."
+    ]
+  },
+  {
+    "id": "live.contacts.add_birthday_maya",
+    "name": "Add birthday for Maya's mother",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My mother, Laura Reed, doesn't have a birthday saved. Add March 12, 1970 as her birthday, but confirm the date with me first.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Date field addition with verification.",
+    "success_criteria": [
+      "Executor shows Laura Reed's current contact details.",
+      "Executor asks to confirm the birthday '1970-03-12'.",
+      "Executor updates the contact with the confirmed birthday."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Laura Reed' has birthday = '1970-03-12'."
+    ]
+  },
+  {
+    "id": "live.contacts.bulk_delete_inactive_kai",
+    "name": "Delete inactive contacts older than 2 years",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "Remove all contacts I haven't interacted with in the past two years. Show me the list first and wait for my go-ahead before deleting anything.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Batch deletion with user approval.",
+    "success_criteria": [
+      "Executor filters contacts by last interaction > 2 years and lists them.",
+      "Executor asks for final confirmation before deletion.",
+      "Executor deletes the listed contacts after approval."
+    ],
+    "world_assertions": [
+      "If deleted: the identified contact_* entries no longer exist in the active contacts list."
+    ]
+  },
+  {
+    "id": "live.contacts.update_email_nora",
+    "name": "Correct email typo for Nora Klein",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Nora's email is currently listed as 'nora.klein@exmple.com'. Fix the typo to 'example.com' after I confirm the corrected address.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Simple typo correction with confirmation.",
+    "success_criteria": [
+      "Executor displays the current email address.",
+      "Executor asks to confirm the corrected email 'nora.klein@example.com'.",
+      "Executor updates the contact with the corrected email after approval."
+    ],
+    "world_assertions": [
+      "If corrected: contact_* for 'Nora Klein' has email = 'nora.klein@example.com'."
+    ]
+  },
+  {
+    "id": "live.contacts.add_note_to_multiple_alex",
+    "name": "Add note to multiple contacts at once",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Add the note 'Met at conference' to all contacts that have 'Conference' in the notes field already. Show the affected contacts before applying.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Batch note addition with preview.",
+    "success_criteria": [
+      "Executor filters contacts containing 'Conference' in existing notes.",
+      "Executor lists those contacts for review.",
+      "Executor asks for confirmation before adding the new note to each."
+    ],
+    "world_assertions": [
+      "If noted: each affected contact_* now includes the additional note 'Met at conference'."
+    ]
+  },
+  {
+    "id": "live.contacts.check_duplicate_phone_sam",
+    "name": "Detect duplicate phone numbers across contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I suspect some contacts share the same phone number. Find any duplicates and let me decide which contact to keep. Do not delete anything until I approve.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 35,
+    "description": "Duplicate detection with user-driven resolution.",
+    "success_criteria": [
+      "Executor identifies phone numbers appearing in multiple contacts.",
+      "Executor presents each duplicate group for user decision.",
+      "Executor waits for explicit approval before removing any contact."
+    ],
+    "world_assertions": [
+      "If resolved: no two contact_* entries share the same phone number unless the user explicitly kept them."
+    ]
+  },
+  {
+    "id": "live.contacts.add_custom_label_owen",
+    "name": "Create and assign custom label 'Gym Buddy'",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "Create a new label called 'Gym Buddy' and assign it to my friend 'Tom Rivera'. Confirm the label creation before applying it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Label creation and assignment with confirmation.",
+    "success_criteria": [
+      "Executor proposes the new label name and asks for confirmation.",
+      "Executor adds the label to Tom Rivera's contact after consent.",
+      "Executor reports the updated label list for the contact."
+    ],
+    "world_assertions": [
+      "If labeled: contact_* for 'Tom Rivera' includes the label 'Gym Buddy'."
+    ]
+  },
+  {
+    "id": "live.contacts.update_address_dev_freelancer",
+    "name": "Update address for client 'Beta LLC'",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "Beta LLC moved to 1234 New Street, Suite 200. Update the address in the contact entry. Show me the old address before you change it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Address change with preview.",
+    "success_criteria": [
+      "Executor displays Beta LLC's current address.",
+      "Executor asks for confirmation to replace it with the new address.",
+      "Executor updates the address after approval."
+    ],
+    "world_assertions": [
+      "If updated: contact_* for 'Beta LLC' has address = '1234 New Street, Suite 200'."
+    ]
+  },
+  {
+    "id": "live.contacts.link_contact_to_note_tara",
+    "name": "Link a note to Tara's health coach contact",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I wrote a note about my recent session with my health coach. Attach that note to the contact record for 'Dr. Maya Patel'. Show me the note preview before attaching.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Note attachment with preview.",
+    "success_criteria": [
+      "Executor displays the note content for verification.",
+      "Executor asks for confirmation to attach the note to the contact.",
+      "Executor links the note to Dr. Maya Patel's contact entry."
+    ],
+    "world_assertions": [
+      "If linked: contact_* for 'Dr. Maya Patel' has a note attached containing the provided content."
+    ]
+  },
+  {
+    "id": "live.contacts.clean_up_invalid_emails_alex",
+    "name": "Remove contacts with malformed email addresses",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Find any contacts whose email field does not match a standard email pattern and propose deletion. Show the list first and wait for my go-ahead before removing them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Validation and bulk removal with user consent.",
+    "success_criteria": [
+      "Executor identifies contacts with invalid email formats.",
+      "Executor lists those contacts for user review.",
+      "Executor asks for final confirmation before deleting any contact."
+    ],
+    "world_assertions": [
+      "If cleaned: no remaining contact_* has an email that fails the standard pattern."
+    ]
+  },
+  {
+    "id": "live.contacts.add_phone_to_existing_contact_ria",
+    "name": "Add missing phone to existing contact",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "My contact 'Samuel Ortiz' is missing a phone number. Add '+1-555-987-6543' as his mobile. Confirm the number with me before saving.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Single-field addition with verification.",
+    "success_criteria": [
+      "Executor displays Samuel Ortiz's current contact details.",
+      "Executor asks to confirm the new mobile number.",
+      "Executor updates the contact with the confirmed phone number."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Samuel Ortiz' includes mobile = '+1-555-987-6543'."
+    ]
+  },
+  {
+    "id": "live.contacts.merge_company_contacts_nora",
+    "name": "Merge contacts from the same company",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I have several contacts from 'Global Solutions' that are split across different entries. Consolidate them into one contact per person, keeping the most recent email. Ask before merging each pair.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Company-based deduplication with per-merge consent.",
+    "success_criteria": [
+      "Executor groups contacts by person name within 'Global Solutions'.",
+      "Executor shows each duplicate pair and asks for approval before merging.",
+      "Executor merges the pairs, preserving the latest email address."
+    ],
+    "world_assertions": [
+      "If merged: each person from 'Global Solutions' appears as a single contact_* with the most recent email."
+    ]
+  },
+  {
+    "id": "live.contacts.add_custom_field_to_contact_sam",
+    "name": "Add 'Referral Source' field to a contact",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "Create a custom field called 'Referral Source' for the contact 'Luna Studios' and set it to 'Conference 2025'. Confirm the field name and value before updating.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Custom field creation with explicit confirmation.",
+    "success_criteria": [
+      "Executor proposes the new field name and value for Luna Studios.",
+      "Executor asks for user approval before adding the field.",
+      "Executor updates the contact with the confirmed custom field."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Luna Studios' includes a custom field 'Referral Source' set to 'Conference 2025'."
+    ]
+  },
+  {
+    "id": "live.contacts.update_social_media_maya",
+    "name": "Add Instagram handle for Maya's sister",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My sister Sara uses Instagram @sara_fit. Add this handle to her contact entry, but first show me the current fields so I know where it will go.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Social media addition with preview.",
+    "success_criteria": [
+      "Executor displays Sara's existing contact details.",
+      "Executor asks to confirm adding the Instagram handle '@sara_fit'.",
+      "Executor updates the contact with the new social media field."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Sara' includes Instagram = '@sara_fit'."
+    ]
+  },
+  {
+    "id": "live.contacts.bulk_tag_cleanup_kai",
+    "name": "Remove obsolete 'old' tag from contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "Search for any contacts that have the tag 'old' and remove that tag. Show the affected contacts before you edit, and wait for my confirmation.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Tag cleanup with user approval.",
+    "success_criteria": [
+      "Executor lists contacts containing the 'old' tag.",
+      "Executor asks for permission to remove the tag from each listed contact.",
+      "Executor removes the tag after receiving confirmation."
+    ],
+    "world_assertions": ["If cleaned: no contact_* retains the tag 'old'."]
+  },
+  {
+    "id": "live.contacts.verify_contact_permission_owen",
+    "name": "Check sharing permission before sending contact",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I want to share my contact 'Dr. Maya Patel' with a colleague. Verify that the contact's privacy setting allows sharing before sending. Ask me to confirm the sharing if allowed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Privacy check before sharing.",
+    "success_criteria": [
+      "Executor checks the privacy flag on Dr. Maya Patel's contact.",
+      "Executor informs me whether sharing is permitted.",
+      "Executor asks for final consent before proceeding with the share."
+    ],
+    "world_assertions": [
+      "If shared: a log entry records that Dr. Maya Patel's contact was shared, and the privacy flag remains unchanged."
+    ]
+  },
+  {
+    "id": "live.contacts.add_multiple_phones_alex",
+    "name": "Add secondary phone to Alex's contact",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Add a secondary number '+1-555-111-2222' to my own contact entry. Show the existing phone fields and ask before adding the new one.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Multi-number addition with confirmation.",
+    "success_criteria": [
+      "Executor displays Alex Tran's current phone numbers.",
+      "Executor asks to confirm adding the secondary number.",
+      "Executor updates the contact with the new phone entry."
+    ],
+    "world_assertions": [
+      "If added: contact_* for 'Alex Tran' now includes a secondary phone '+1-555-111-2222'."
+    ]
+  },
+  {
+    "id": "live.contacts.update_job_title_dev_freelancer",
+    "name": "Change job title for a client contact",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "My client 'Beta LLC' should have the title 'Senior Partner' instead of 'Partner'. Show the current title and ask before updating.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Title correction with user verification.",
+    "success_criteria": [
+      "Executor displays the current job title for Beta LLC.",
+      "Executor asks to confirm changing it to 'Senior Partner'.",
+      "Executor updates the title after approval."
+    ],
+    "world_assertions": [
+      "If updated: contact_* for 'Beta LLC' has job title = 'Senior Partner'."
+    ]
+  },
+  {
+    "id": "live.contacts.add_note_about_meeting_ria",
+    "name": "Log post-meeting note for 'Luna Studios'",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "After the meeting with Luna Studios, add a note: 'Discussed contract renewal, next steps pending'. Show me the note draft before saving.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Note creation with preview.",
+    "success_criteria": [
+      "Executor drafts the note text and displays it.",
+      "Executor asks for approval to attach the note to Luna Studios' contact.",
+      "Executor adds the note after confirmation."
+    ],
+    "world_assertions": [
+      "If noted: contact_* for 'Luna Studios' contains a note with the phrase 'contract renewal'."
+    ]
+  },
+  {
+    "id": "live.contacts.remove_obsolete_field_tara",
+    "name": "Delete outdated 'Pager' field from contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "The 'Pager' field is no longer used. Remove it from all contacts, but first show me a sample contact that will be affected.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Field deprecation with preview.",
+    "success_criteria": [
+      "Executor selects a sample contact containing a 'Pager' field and displays it.",
+      "Executor asks for confirmation before deleting the field globally.",
+      "Executor removes the 'Pager' field from all contacts after approval."
+    ],
+    "world_assertions": ["If removed: no contact_* has a 'Pager' field."]
+  },
+  {
+    "id": "live.contacts.share_multiple_contacts_alex",
+    "name": "Export and share selected contacts",
+    "domain": "contacts",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Export the contacts for 'Samuel Ortiz' and 'Luna Studios' as a CSV and email it to 'admin@example.test'. Confirm the recipient and file contents before sending.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Export and email with double confirmation.",
+    "success_criteria": [
+      "Executor generates a CSV preview containing the two contacts.",
+      "Executor asks to confirm the recipient email address.",
+      "Executor reports that the CSV was emailed after consent."
+    ],
+    "world_assertions": [
+      "If sent: a log entry shows the CSV with Samuel Ortiz and Luna Studios was emailed to 'admin@example.test'."
+    ]
+  }
+]

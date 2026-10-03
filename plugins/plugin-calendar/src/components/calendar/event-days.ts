@@ -1,5 +1,5 @@
 /** Maps canonical feed events to visible civil days without shifting all-day dates through the viewer's timezone. */
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 
 export function calendarEventOccursOn(
   event: LifeOpsCalendarEvent,

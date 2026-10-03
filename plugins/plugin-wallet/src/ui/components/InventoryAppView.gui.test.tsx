@@ -16,7 +16,7 @@ import type {
   WalletMarketOverviewResponse,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/wallet-types";
 import {
   cleanup,
   fireEvent,
@@ -1482,7 +1482,7 @@ describe("InventoryView GUI — progressive insights", () => {
 });
 
 describe("InventoryView GUI — calm empty-wallet hero", () => {
-  it("disabled wallet shows a calm hero + Enable control, no Keys CTA, no market panels", async () => {
+  it("disabled wallet shows a distinct off state + Enable control, never the empty-wallet claim", async () => {
     const state = makeAppState({
       walletEnabled: false,
       walletBalances: {
@@ -1497,9 +1497,11 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    // Calm hero: motif + one neutral line, nothing else.
-    expect(await screen.findByLabelText("Empty wallet")).toBeTruthy();
-    expect(screen.getByText("Your wallet is empty.")).toBeTruthy();
+    // Disabled is not empty: nothing was read, so no "empty" balance claim.
+    expect(await screen.findByLabelText("Wallet off")).toBeTruthy();
+    expect(screen.getByText("Wallet is off.")).toBeTruthy();
+    expect(screen.queryByText("Your wallet is empty.")).toBeNull();
+    expect(screen.queryByLabelText("Empty wallet")).toBeNull();
     // The "Keys" marketing CTA is gone.
     expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
     // The empty hero no longer pads itself with a market dashboard.

@@ -16,3 +16,123 @@ index c1a5327280b3c88ab6b14e7629838116b93066a0..68486adbaceb35b75f60ddc7da8a966d
  	},
  	"dependencies": {},
  	"trustedDependencies": []
+diff --git a/dist/api/bun/core/BrowserView.ts b/dist/api/bun/core/BrowserView.ts
+--- a/dist/api/bun/core/BrowserView.ts
++++ b/dist/api/bun/core/BrowserView.ts
+@@ -74,7 +74,7 @@
+ 
+ export class BrowserView<T extends RPCWithTransport = RPCWithTransport> {
+ 	id: number = nextWebviewId++;
+-	ptr: Pointer | null = null;
++	ptr: Pointer | bigint | null = null;
+ 	hostWebviewId?: number;
+ 	windowId!: number;
+ 	renderer!: "cef" | "native";
+diff --git a/dist/api/bun/core/BrowserWindow.ts b/dist/api/bun/core/BrowserWindow.ts
+--- a/dist/api/bun/core/BrowserWindow.ts
++++ b/dist/api/bun/core/BrowserWindow.ts
+@@ -117,7 +117,7 @@
+ 
+ export class BrowserWindow<T extends RPCWithTransport = RPCWithTransport> {
+ 	id: number = getNextWindowId();
+-	ptr!: Pointer;
++	ptr!: Pointer | bigint;
+ 	title: string = "Electrobun";
+ 	state: "creating" | "created" = "creating";
+ 	url: string | null = null;
+diff --git a/dist/api/bun/core/GpuWindow.ts b/dist/api/bun/core/GpuWindow.ts
+--- a/dist/api/bun/core/GpuWindow.ts
++++ b/dist/api/bun/core/GpuWindow.ts
+@@ -55,7 +55,7 @@
+ 
+ export class GpuWindow {
+ 	id: number = getNextWindowId();
+-	ptr!: Pointer;
++	ptr!: Pointer | bigint;
+ 	title: string = "Electrobun";
+ 	state: "creating" | "created" = "creating";
+ 	transparent: boolean = false;
+diff --git a/dist/api/bun/core/Tray.ts b/dist/api/bun/core/Tray.ts
+--- a/dist/api/bun/core/Tray.ts
++++ b/dist/api/bun/core/Tray.ts
+@@ -22,7 +22,7 @@
+ 
+ export class Tray {
+ 	id: number = nextTrayId++;
+-	ptr: Pointer | null = null;
++	ptr: Pointer | bigint | null = null;
+ 	visible = true;
+ 	title = "";
+ 	image = "";
+diff --git a/dist/api/bun/core/WGPUView.ts b/dist/api/bun/core/WGPUView.ts
+--- a/dist/api/bun/core/WGPUView.ts
++++ b/dist/api/bun/core/WGPUView.ts
+@@ -35,7 +35,7 @@
+ 
+ export class WGPUView {
+ 	id: number = nextWGPUViewId++;
+-	ptr!: Pointer;
++	ptr!: Pointer | bigint;
+ 	windowId!: number;
+ 	autoResize: boolean = true;
+ 	frame: {
+diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
+--- a/dist/api/bun/proc/native.ts
++++ b/dist/api/bun/proc/native.ts
+@@ -857,7 +857,7 @@
+ 				x: number;
+ 				y: number;
+ 			};
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+ 			const {
+ 				id,
+ 				url: _url,
+@@ -1237,7 +1237,7 @@
+ 			sandbox: boolean;
+ 			startTransparent: boolean;
+ 			startPassthrough: boolean;
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+ 			const {
+ 				id,
+ 				windowId,
+@@ -1352,7 +1352,7 @@
+ 			autoResize: boolean;
+ 			startTransparent: boolean;
+ 			startPassthrough: boolean;
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+ 			const {
+ 				id,
+ 				windowId,
+@@ -1460,7 +1460,7 @@
+ 
+ 			native_.symbols.wgpuViewRemove(view.ptr);
+ 		},
+-		wgpuViewGetNativeHandle: (params: { id: number }): Pointer | null => {
++		wgpuViewGetNativeHandle: (params: { id: number }): Pointer | bigint | null => {
+ 			const view = WGPUView.getById(params.id);
+ 			if (!view?.ptr) {
+ 				console.error(
+@@ -1497,7 +1497,7 @@
+ 			template: boolean;
+ 			width: number;
+ 			height: number;
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+ 			const { id, title, image, template, width, height } = params;
+ 
+ 			const trayPtr = native_.symbols.createTray(
+@@ -1633 +1633 @@
+-		}): string => {
++		}): string | null => {
+@@ -1649 +1649 @@
+-			return filePath.toString();
++			return filePath;
+diff --git a/dist/api/bun/core/Utils.ts b/dist/api/bun/core/Utils.ts
+--- a/dist/api/bun/core/Utils.ts
++++ b/dist/api/bun/core/Utils.ts
+@@ -190 +190 @@
+-	const filePaths = result.split(",");
++	const filePaths = result === null || result === "" ? [] : result.split(",");

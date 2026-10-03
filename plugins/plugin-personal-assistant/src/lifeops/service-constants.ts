@@ -1,12 +1,10 @@
 /**
  * Re-export shim. The LifeOps service constants are now a runtime-level
- * primitive in `@elizaos/shared` (they depend only on the LifeOps contract
- * types, which are themselves mirrored in `@elizaos/shared`). This file
+ * primitive in `@elizaos/core` (they depend only on the LifeOps contract
+ * types, which are themselves mirrored in `@elizaos/core`). This file
  * preserves the historical `./service-constants.js` import path for in-plugin
  * callers.
  */
-
-export type { ReminderActivityGate } from "@elizaos/shared";
 export {
   DAY_MINUTES,
   DEFAULT_CALENDAR_REMINDER_STEPS,
@@ -69,5 +67,6 @@ export {
   REMINDER_REVIEW_STATUS_METADATA_KEY,
   REMINDER_URGENCY_LEGACY_METADATA_KEY,
   REMINDER_URGENCY_METADATA_KEY,
+  type ReminderActivityGate,
   reminderProcessingQueues,
-} from "@elizaos/shared";
+} from "@elizaos/core/lifeops-constants/service-constants";

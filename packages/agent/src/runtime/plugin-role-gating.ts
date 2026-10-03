@@ -14,16 +14,17 @@
  *
  * @module plugin-role-gating
  */
-import type {
-  IAgentRuntime,
-  Memory,
-  Plugin,
-  Provider,
-  ProviderResult,
-  RoleGateRole,
-  State,
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Plugin,
+  type Provider,
+  type ProviderResult,
+  type RoleGateRole,
+  type State,
+  satisfiesRoleGate,
 } from "@elizaos/core";
-import { logger, satisfiesRoleGate } from "@elizaos/core";
 
 import { tryCanonicalizeJson } from "./tool-call-cache/key.ts";
 
@@ -76,7 +77,7 @@ const roleCheckInflightByRuntime = new WeakMap<
   Map<string, Promise<RoleCheckValue>>
 >();
 let roleCheckLoader:
-  | Promise<typeof import("./roles.ts").checkSenderRole>
+  | Promise<typeof import("@elizaos/core").checkSenderRole>
   | undefined;
 
 function loadCheckSenderRole() {
@@ -86,7 +87,9 @@ function loadCheckSenderRole() {
     // failure (e.g. evaluation error during startup) would permanently
     // wedge every gated provider for the runtime's lifetime by handing
     // back the same rejected promise on every call.
-    roleCheckLoader = import("./roles.ts").then((mod) => mod.checkSenderRole);
+    roleCheckLoader = import("@elizaos/core").then(
+      (mod) => mod.checkSenderRole,
+    );
     roleCheckLoader.catch(() => {
       roleCheckLoader = undefined;
     });

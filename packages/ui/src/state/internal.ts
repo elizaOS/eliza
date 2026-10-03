@@ -20,7 +20,6 @@ export {
   parseConversationMessageEvent,
   parseCustomActionParams,
   parseProactiveMessageEvent,
-  parseSlashCommandInput,
   parseStreamEventEnvelopeEvent,
   shouldApplyFinalStreamText,
 } from "./parsers";
@@ -82,7 +81,6 @@ export {
   type NavigationEventsApi,
   type SetTabOptions,
   type ShellView,
-  type SlashCommandInput,
   type StartupErrorReason,
   type StartupErrorState,
   type StartupPhase,

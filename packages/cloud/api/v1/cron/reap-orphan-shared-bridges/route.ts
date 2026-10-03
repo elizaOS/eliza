@@ -1,6 +1,6 @@
 // Handles v1 cloud API v1 cron reap orphan shared bridges route traffic with route-local auth expectations.
 
-import { parseCanonicalInteger } from "@elizaos/shared";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import { Hono } from "hono";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { reapOrphanedSharedBridges } from "@/lib/services/orphan-shared-bridge-reaper";

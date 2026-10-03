@@ -15,7 +15,10 @@ import { sharedRuntimeHistoryRepository } from "@/db/repositories/shared-runtime
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
-import { prewarmSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
+import {
+  prewarmPersonalSharedRoom,
+  prewarmSharedAgentTurnCaches,
+} from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { prewarmSharedElizaRuntime } from "@/lib/services/shared-runtime/shared-eliza-runtime";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -26,6 +29,8 @@ const app = new Hono<AppEnv>();
 const KEEPWARM_WINDOW_MS = 24 * 60 * 60_000;
 /** Per-invocation cap so a busy deployment cannot turn the sweep unbounded. */
 const KEEPWARM_MAX_AGENTS = 50;
+/** Per-invocation cap on Personal Shared rooms, bounded like the agent sweep. */
+const KEEPWARM_MAX_PERSONAL_ROOMS = 50;
 
 async function runKeepwarm(c: AppContext) {
   try {
@@ -42,9 +47,9 @@ async function runKeepwarm(c: AppContext) {
     let rowlessPersonal = 0;
     let missing = 0;
     for (const agentId of agentIds) {
-      // Account-native Personal Shared identities have no agent_sandboxes row.
-      // Their process-wide kernel is warmed below; sending the namespaced id to
-      // the UUID repository aborts the whole sweep before that can happen.
+      // Account-native Personal Shared identities have no agent_sandboxes row;
+      // sending the namespaced id to the UUID repository would abort the
+      // sweep. Their rooms are warmed per room below.
       if (isPersonalSharedAgentId(agentId)) {
         rowlessPersonal++;
         continue;
@@ -63,18 +68,60 @@ async function runKeepwarm(c: AppContext) {
       warmed++;
     }
 
+    // Personal Shared identities are the ones whose first turn hit the warming
+    // 503 (#22552): warm each recently active room's conversation object and
+    // turn-ingress modules. Sequential for the same flat-pressure reason.
+    let personalRoomsWarmed = 0;
+    let personalOrganizationsWarmed = 0;
+    if (rowlessPersonal > 0) {
+      const namespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
+      if (!namespace) {
+        throw new Error(
+          "SHARED_RUNTIME_CONVERSATIONS binding is required to warm Personal Shared rooms",
+        );
+      }
+      const rooms =
+        await sharedRuntimeHistoryRepository.listRecentlyActiveRooms(
+          since,
+          KEEPWARM_MAX_PERSONAL_ROOMS,
+        );
+      // Each room reports its verified owner; the owning organization's
+      // rate-limit gate is warmed once per sweep.
+      const warmedOrganizations = new Set<string>();
+      for (const room of rooms) {
+        if (!isPersonalSharedAgentId(room.agentId)) continue;
+        await prewarmPersonalSharedRoom(
+          room.agentId,
+          room.channelId,
+          namespace,
+          warmedOrganizations,
+        );
+        personalRoomsWarmed++;
+      }
+      personalOrganizationsWarmed = warmedOrganizations.size;
+    }
+
     await prewarmSharedElizaRuntime();
 
     logger.info("[SharedKeepwarm Cron] swept recently active shared agents", {
       candidates: agentIds.length,
       warmed,
       rowlessPersonal,
+      personalRoomsWarmed,
+      personalOrganizationsWarmed,
       missing,
     });
 
     return c.json({
       success: true,
-      data: { candidates: agentIds.length, warmed, rowlessPersonal, missing },
+      data: {
+        candidates: agentIds.length,
+        warmed,
+        rowlessPersonal,
+        personalRoomsWarmed,
+        personalOrganizationsWarmed,
+        missing,
+      },
     });
   } catch (error) {
     logger.error("[SharedKeepwarm Cron] failed", {

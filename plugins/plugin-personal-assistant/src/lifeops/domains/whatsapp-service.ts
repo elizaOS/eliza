@@ -4,7 +4,7 @@
  * assistant DTOs. Transport is owned by `@elizaos/plugin-whatsapp`.
  */
 import type { Memory } from "@elizaos/core";
-import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
+import { type LifeOpsWhatsAppConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   fetchWhatsAppMessagesWithRuntimeService,

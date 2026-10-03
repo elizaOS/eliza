@@ -4,6 +4,25 @@
  */
 
 export {
+  getAppDetailExtension,
+  registerDetailExtension,
+} from "../apps/detail-extension-registry.js";
+export type {
+  AppDetailExtensionComponent,
+  AppDetailExtensionProps,
+} from "../apps/detail-extension-types.js";
+export type { OverlayApp, OverlayAppContext } from "../apps/overlay-app-api.js";
+export {
+  getAllOverlayApps,
+  getAvailableOverlayApps,
+  getOverlayApp,
+  isAospAndroid,
+  isOverlayApp,
+  type OverlayAppAvailabilityContext,
+  overlayAppToRegistryInfo,
+  registerOverlayApp,
+} from "../apps/overlay-app-registry.js";
+export {
   type AnalyticsExportFormat,
   type AnalyticsExportType,
   CostAlerts,
@@ -14,10 +33,7 @@ export {
   ExportButton,
   type ExportButtonProps,
 } from "../cloud-ui/components/analytics";
-export type {
-  KeyMetric,
-  TabItem,
-} from "../cloud-ui/components/brand";
+export type { KeyMetric, TabItem } from "../cloud-ui/components/brand";
 export {
   AgentCard,
   BrandTabs,
@@ -154,20 +170,25 @@ export {
   DashboardRouteError,
   formatDashboardRouteErrorMessage,
 } from "../cloud-ui/components/primitives";
-export * from "../utils/documents-upload-image";
-export * from "../utils/labels";
-export * from "../utils/trajectory-format";
+export {
+  type DocumentImageCompressionPlatform,
+  type DocumentImageUploadFile,
+  isDocumentImageFile,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+} from "../utils/documents-upload-image.js";
+export { autoLabel, ENV_KEY_ACRONYMS } from "../utils/labels.js";
+export {
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+} from "../utils/trajectory-format.js";
 export * from "./accounts/EditableAccountLabel";
-export * from "./apps/extensions/registry";
 export * from "./apps/extensions/surface";
 export * from "./apps/extensions/surface.helpers";
-export * from "./apps/extensions/types";
 export * from "./apps/FullscreenView";
 export * from "./apps/FullscreenView.helpers";
 export * from "./apps/GameViewOverlay";
-export * from "./apps/overlay-app-api";
-export * from "./apps/overlay-app-registry";
-export * from "./browser";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/CharacterRoster.helpers";
@@ -178,7 +199,6 @@ export * from "./chat/ConnectorAccountPicker";
 export * from "./chat/connector-send-as";
 export * from "./chat/MessageAttachments";
 export * from "./chat/MessageContent";
-export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
 export {
   OrchestratorAccountsView,
@@ -216,7 +236,7 @@ export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ConfigPageView";
-// DatabasePageView omitted — App.tsx lazy-loads it by path and app-core imports
+// DatabasePageView omitted — App.tsx lazy-loads it by path and app imports
 // the direct subpath; re-exporting it here forms a barrel cycle with
 // DynamicViewLoader (issue #9154).
 export * from "./pages/DatabaseView";

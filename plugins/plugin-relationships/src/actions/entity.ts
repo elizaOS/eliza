@@ -16,7 +16,7 @@
  *   - `log_interaction`    record an inbound/outbound interaction on an entity
  *   - `set_relationship`   upsert a typed edge between two entities
  *
- * Owner-only (`roleGate.minRole: OWNER` + the {@link hasOwnerAccess} gate).
+ * Owner-only (`roleGate.minRole: OWNER` + the {@link hasRoleAccess} gate).
  *
  * NOTE on naming: this action is `KNOWLEDGE_GRAPH`, NOT `ENTITY`.
  * `@elizaos/plugin-personal-assistant` registers the `ENTITY` action (a rich
@@ -26,21 +26,23 @@
  * under a distinct name keeps exactly one `ENTITY` action at runtime.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
-import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph";
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
+import {
+  type Action,
+  type ActionResult,
+  describeUserReference,
+  type HandlerCallback,
+  type HandlerOptions,
+  hasRoleAccess,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type State,
 } from "@elizaos/core";
-import { describeUserReference, logger } from "@elizaos/core";
-import type { Entity } from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
-
+import {
+  type Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
+import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
 import {
   ENTITY_OPS,
   type EntityOp,
@@ -48,7 +50,6 @@ import {
   RELATIONSHIPS_CONTEXTS,
   RELATIONSHIPS_LOG_PREFIX,
 } from "../types.js";
-
 /**
  * Parameter shape accepted by the action. The planner provides these via
  * `options.parameters`; every field is optional and validated per-op.
@@ -81,14 +82,12 @@ export interface EntityActionParameters {
   /** Limit for `list`. */
   limit?: number;
 }
-
 function getParams(
   options: HandlerOptions | undefined,
 ): EntityActionParameters {
   const params = options?.parameters as EntityActionParameters | undefined;
   return params ?? {};
 }
-
 function resolveOp(params: EntityActionParameters): EntityOp | null {
   const candidate = params.op ?? params.subaction ?? params.action;
   if (typeof candidate !== "string") return null;
@@ -96,13 +95,11 @@ function resolveOp(params: EntityActionParameters): EntityOp | null {
     ? (candidate as EntityOp)
     : null;
 }
-
 function trimmed(value: string | undefined): string | null {
   if (typeof value !== "string") return null;
   const t = value.trim();
   return t.length > 0 ? t : null;
 }
-
 function entitySummary(entity: Entity): {
   entityId: string;
   type: string;
@@ -114,19 +111,19 @@ function entitySummary(entity: Entity): {
     preferredName: entity.preferredName,
   };
 }
-
 const ENTITY_KINDS_DEFAULT = "person";
-
 function entityCount(count: number, hasMore: boolean): string {
   return `${count}${hasMore ? "+" : ""} entit${count === 1 && !hasMore ? "y" : "ies"}`;
 }
-
 function listScopeText(args: {
   entities: readonly Entity[];
   kind: string | null;
   limit: number;
   hasMore: boolean;
-  unfiltered: { count: number; hasMore: boolean } | null;
+  unfiltered: {
+    count: number;
+    hasMore: boolean;
+  } | null;
 }): string {
   const kindLabel = args.kind
     ? describeUserReference(args.kind, "that entity kind")
@@ -144,7 +141,6 @@ function listScopeText(args: {
   }
   return `No entities of kind ${kindLabel}. The graph has ${entityCount(args.unfiltered.count, args.unfiltered.hasMore)} of other kinds; list without kind to see them.`;
 }
-
 export const entityAction: Action = {
   name: RELATIONSHIPS_ACTION_NAME,
   similes: ["ENTITY_CRUD", "GRAPH_ENTITY", "KNOWLEDGE_GRAPH_CRUD"],
@@ -169,7 +165,7 @@ export const entityAction: Action = {
     _state?: State,
   ): Promise<boolean> => {
     if (!resolveKnowledgeGraphService(runtime)) return false;
-    return hasOwnerAccess(runtime, message);
+    return hasRoleAccess(runtime, message, "OWNER");
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -178,7 +174,7 @@ export const entityAction: Action = {
     options: HandlerOptions | undefined,
     callback: HandlerCallback | undefined,
   ): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       const text = "The knowledge graph is restricted to the owner.";
       await callback?.({
         text,
@@ -187,7 +183,6 @@ export const entityAction: Action = {
       });
       return { success: false, text, data: { error: "PERMISSION_DENIED" } };
     }
-
     const service = resolveKnowledgeGraphService(runtime);
     if (!service) {
       const text = "The knowledge graph service is not available.";
@@ -198,7 +193,6 @@ export const entityAction: Action = {
       });
       return { success: false, text, data: { error: "SERVICE_UNAVAILABLE" } };
     }
-
     const params = getParams(options);
     const op = resolveOp(params);
     if (!op) {
@@ -211,12 +205,12 @@ export const entityAction: Action = {
       });
       return { success: false, text, data: { error: "MISSING_OP" } };
     }
-
     const entityStore = service.getEntityStore();
     const relationshipStore = service.getRelationshipStore();
-
     const reply = async (
-      result: ActionResult & { text: string },
+      result: ActionResult & {
+        text: string;
+      },
     ): Promise<ActionResult> => {
       await callback?.({
         text: result.text,
@@ -225,11 +219,9 @@ export const entityAction: Action = {
       });
       return result;
     };
-
     logger.info(
       `${RELATIONSHIPS_LOG_PREFIX} ${RELATIONSHIPS_ACTION_NAME} op=${op}`,
     );
-
     switch (op) {
       case "create": {
         const name = trimmed(params.name);
@@ -255,7 +247,6 @@ export const entityAction: Action = {
           data: { op, entity: entitySummary(entity) },
         });
       }
-
       case "read": {
         const entityId = trimmed(params.entityId);
         if (!entityId) {
@@ -279,7 +270,6 @@ export const entityAction: Action = {
           data: { op, entity },
         });
       }
-
       case "list": {
         const kind = trimmed(params.kind);
         const limit =
@@ -319,7 +309,6 @@ export const entityAction: Action = {
           },
         });
       }
-
       case "log_interaction": {
         const entityId = trimmed(params.entityId);
         if (!entityId) {
@@ -355,7 +344,6 @@ export const entityAction: Action = {
           data: { op, entityId, platform, direction },
         });
       }
-
       case "set_relationship": {
         const toEntityId = trimmed(params.toEntityId);
         const relationshipType = trimmed(params.relationshipType);
@@ -415,5 +403,4 @@ export const entityAction: Action = {
     ],
   ],
 };
-
 export default entityAction;

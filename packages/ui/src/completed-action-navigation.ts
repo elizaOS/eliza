@@ -4,27 +4,27 @@
  * an unhandled first delivery instead records its route epoch so intervening
  * user navigation wins over a late fallback.
  */
-
-import type { NavigateViewDetail } from "@elizaos/shared/events";
 import {
   NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
   normalizeCompletedActionHandoffId,
-} from "@elizaos/shared/events";
+} from "@elizaos/core/events";
 import { getWindowNavigationPath } from "./navigation";
 
 const MAX_TRACKED_HANDOFFS = 256;
 const handledHandoffs = new Set<string>();
 const pendingHandoffs = new Map<
   string,
-  { navigationEpoch: number; path: string }
+  {
+    navigationEpoch: number;
+    path: string;
+  }
 >();
 let navigationEpoch = 0;
 let observedWindow: Window | undefined;
-
 function advanceNavigationEpoch(): void {
   navigationEpoch += 1;
 }
-
 function observeNavigationEpoch(): void {
   if (typeof window === "undefined" || observedWindow === window) return;
   observedWindow?.removeEventListener("popstate", advanceNavigationEpoch);
@@ -33,7 +33,6 @@ function observeNavigationEpoch(): void {
   observedWindow.addEventListener("popstate", advanceNavigationEpoch);
   observedWindow.addEventListener("hashchange", advanceNavigationEpoch);
 }
-
 /** Capture before a request so even navigation away and back wins over its reply. */
 export function captureCompletedActionNavigationFence(): () => boolean {
   observeNavigationEpoch();
@@ -45,7 +44,6 @@ export function captureCompletedActionNavigationFence(): () => boolean {
     navigationEpoch === initialEpoch &&
     getWindowNavigationPath() === initialPath;
 }
-
 function rememberHandledHandoff(id: string): void {
   pendingHandoffs.delete(id);
   handledHandoffs.delete(id);
@@ -56,10 +54,12 @@ function rememberHandledHandoff(id: string): void {
     handledHandoffs.delete(oldest);
   }
 }
-
 function rememberPendingHandoff(
   id: string,
-  snapshot: { navigationEpoch: number; path: string },
+  snapshot: {
+    navigationEpoch: number;
+    path: string;
+  },
 ): void {
   pendingHandoffs.delete(id);
   pendingHandoffs.set(id, snapshot);
@@ -69,7 +69,6 @@ function rememberPendingHandoff(
     pendingHandoffs.delete(oldest);
   }
 }
-
 /** Dispatch once unless the mounted shell already handled the same handoff. */
 export function dispatchCompletedActionNavigation(
   detail: NavigateViewDetail,
@@ -78,7 +77,6 @@ export function dispatchCompletedActionNavigation(
   observeNavigationEpoch();
   const id = normalizeCompletedActionHandoffId(detail.completedActionHandoffId);
   if (id && handledHandoffs.has(id)) return false;
-
   const path = getWindowNavigationPath();
   const pending = id ? pendingHandoffs.get(id) : undefined;
   if (
@@ -92,7 +90,6 @@ export function dispatchCompletedActionNavigation(
     rememberHandledHandoff(id);
     return false;
   }
-
   const snapshot = { navigationEpoch, path };
   const event = new CustomEvent<NavigateViewDetail>(NAVIGATE_VIEW_EVENT, {
     detail,
@@ -105,7 +102,6 @@ export function dispatchCompletedActionNavigation(
   }
   return true;
 }
-
 /** Mark a handoff handled from a shell listener before performing navigation. */
 export function markCompletedActionNavigationHandled(
   event: Event,
@@ -119,7 +115,6 @@ export function markCompletedActionNavigationHandled(
   }
   event.preventDefault();
 }
-
 /** Test-only reset for module-scoped renderer delivery history. */
 export function resetCompletedActionNavigationForTests(): void {
   handledHandoffs.clear();

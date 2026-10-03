@@ -3,16 +3,18 @@
  * draft lifecycle metadata to the agent while keeping unsent text entirely
  * client-side.
  */
-import { logger } from "@elizaos/core";
+
+import {
+  getElizaApiBase,
+  getElizaApiToken,
+} from "@elizaos/core/utils/eliza-globals";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
-import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
-
+import { logger } from "../logger.ts";
 export type ComposerActivityKind =
   | "typing_started"
   | "typing_paused"
   | "draft_abandoned";
-
 export interface ComposerActivityReport {
   activity: ComposerActivityKind;
   surface: string;
@@ -22,10 +24,8 @@ export interface ComposerActivityReport {
   reason?: "cleared" | "blurred" | "conversation_switched" | "unknown";
   occurredAt?: string;
 }
-
 /** Composer-activity report POST — same 15s Fal #21205 family. */
-const COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS = 15_000;
-
+const COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS = 15000;
 async function postComposerActivity(args: {
   base: string;
   token?: string | null;
@@ -60,7 +60,6 @@ async function postComposerActivity(args: {
   }
   await res.arrayBuffer();
 }
-
 /** Report composer lifecycle metadata to the agent without blocking input. */
 export function reportComposerActivity(report: ComposerActivityReport): void {
   try {

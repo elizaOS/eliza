@@ -28,6 +28,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  ElizaError,
   inspectSendHandlerResult,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   registerRuntimeManagedInternalActor,
@@ -425,7 +426,12 @@ async function dispatchWorkflow(
         eventKind: event.kind,
         eventPayload: event.payload ?? {},
       }
-    : {};
+    : typeof task.metadata?.hostedVersionId === "string"
+      ? {
+          scheduledAtMs: trigger.nextRunAtMs,
+          workflowVersionId: task.metadata.hostedVersionId,
+        }
+      : {};
   const result = await svc.execute(trigger.workflowId, payload, {
     idempotencyKey,
     ...(event?.triggerChainDepth !== undefined
@@ -623,6 +629,14 @@ export async function executeTriggerTask(
 ): Promise<TriggerExecutionResult> {
   if (!task.id) {
     return { status: "skipped", taskDeleted: false };
+  }
+
+  if (task.scheduleError !== undefined) {
+    throw new ElizaError(task.scheduleError, {
+      code: "TASK_SCHEDULE_INVALID",
+      context: { taskId: task.id, field: "metadata.scheduledAt" },
+      severity: "fatal",
+    });
   }
 
   const trigger = readTriggerConfig(task);

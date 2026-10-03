@@ -1,20 +1,38 @@
+import { randomUUID as uuidv4 } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { ElizaError } from "../errors";
+import type { Content } from "../types/primitives.js";
+import {
+	buildMessageContentProjection,
+	collectMessageContentSegmentIds,
+	messageContentRequiresSegments,
+} from "./message-content-segments";
 /** Owns database mutations and their room, entity, and relationship cache invalidation using the canonical adapter and original runtime hooks. */
 
 import { redactWithSecrets } from "../security/redact.js";
+import type { Service } from "../types/service.ts";
+
+/** Optional evidence-maintenance service supplied by an extraction plugin. */
+type EvidenceMutationService = Service & {
+	mutateSourceEvidence<T>(
+		ids: UUID[],
+		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+		write: () => Promise<T>,
+	): Promise<T>;
+};
+
+import type { PatchOp } from "../types/database.js";
 import type {
 	Component,
 	Entity,
-	IAgentRuntime,
-	Memory,
-	MemoryMetadata,
-	Metadata,
 	Participant,
-	PatchOp,
 	Relationship,
 	Room,
-	UUID,
-} from "../types";
+} from "../types/environment.js";
+import type { Memory, MemoryMetadata } from "../types/memory.js";
 import { afterMemoryPersistedPipelineHookContext } from "../types/pipeline-hooks";
+import type { Metadata, UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
@@ -34,6 +52,18 @@ export class RuntimeDataMutations {
 		private readonly runtime: IAgentRuntime,
 		private readonly host: RuntimeDataMutationsHost,
 	) {}
+
+	private async mutateSourceEvidence<T>(
+		ids: UUID[],
+		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+		write: () => Promise<T>,
+	): Promise<T> {
+		const evaluator =
+			this.runtime.getService<EvidenceMutationService>("evaluator");
+		return evaluator
+			? evaluator.mutateSourceEvidence(ids, updates, write)
+			: write();
+	}
 
 	async updateEntities(entities: Entity[]): Promise<void> {
 		await this.runtime.adapter.updateEntities(entities);
@@ -147,17 +177,25 @@ export class RuntimeDataMutations {
 				},
 			};
 		}
-		return this.runtime.adapter.upsertMemories(
-			[{ memory, tableName }],
-			options,
-		);
+		return this.upsertMemories([{ memory, tableName }], options);
 	}
 
 	async upsertMemories(
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.runtime.adapter.upsertMemories(memories, options);
+		const messages = memories
+			.filter((entry) => entry.tableName === "messages" && entry.memory.id)
+			.map((entry) => entry.memory as Memory & { id: UUID });
+		return this.mutateSourceEvidence(
+			messages.map((row) => row.id),
+			messages,
+			async () => {
+				await this.runtime.adapter.upsertMemories(memories, options);
+				for (const message of messages)
+					this.host.roomMessagesMemo().invalidate(message.roomId);
+			},
+		);
 	}
 
 	// Batch relationship methods
@@ -209,7 +247,15 @@ export class RuntimeDataMutations {
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
-		const ids = await this.runtime.adapter.createMemories(memories);
+		const ids = await this.runtime.adapter.createMemories(
+			memories.map((entry) => ({
+				...entry,
+				memory: {
+					...entry.memory,
+					agentId: entry.memory.agentId ?? this.runtime.agentId,
+				},
+			})),
+		);
 		for (const entry of memories) {
 			if (entry.tableName === "messages" && entry.memory.roomId) {
 				this.host.roomMessagesMemo().invalidate(entry.memory.roomId);
@@ -221,15 +267,222 @@ export class RuntimeDataMutations {
 	async updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void> {
-		await this.runtime.adapter.updateMemories(memories);
+		await this.mutateSourceEvidence(
+			memories.map((row) => row.id),
+			memories,
+			async () => {
+				await this.runtime.adapter.updateMemories(memories);
+				this.host.roomMessagesMemo().invalidate();
+			},
+		);
 		// Partial updates carry no table/room; drop every cached window rather
 		// than risk serving a pre-update snapshot.
 		this.host.roomMessagesMemo().invalidate();
 	}
 
+	async updateMemoryEmbedding(
+		update: import("../types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean> {
+		// A vector-only write does not change source evidence. Keep it outside the
+		// reconciliation lease (including during shutdown); the adapter owns CAS.
+		if (update.expected.agentId !== this.runtime.agentId) return false;
+		const written = await this.runtime.adapter.updateMemoryEmbedding(update);
+		if (written)
+			this.host.roomMessagesMemo().invalidate(update.expected.roomId);
+		return written;
+	}
+
 	async deleteMemories(memoryIds: UUID[]): Promise<void> {
-		await this.runtime.adapter.deleteMemories(memoryIds);
-		this.host.roomMessagesMemo().invalidate();
+		await this.mutateSourceEvidence(memoryIds, undefined, async () => {
+			await this.runtime.adapter.deleteMemories(memoryIds);
+			this.host.roomMessagesMemo().invalidate();
+		});
+	}
+
+	private redactMessageContentForStorage(content: Content): Content {
+		const secrets = this.host.getSecretsForRedaction();
+		if (Object.keys(secrets).length === 0) return content;
+		const redact = (value: string | undefined): string | undefined =>
+			typeof value === "string"
+				? redactWithSecrets(value, { secrets, applyPatterns: true })
+				: value;
+		return {
+			...content,
+			...(typeof content.text === "string"
+				? { text: redact(content.text) }
+				: {}),
+			...(content.attachments
+				? {
+						attachments: content.attachments.map((attachment) => ({
+							...attachment,
+							...(typeof attachment.text === "string"
+								? { text: redact(attachment.text) }
+								: {}),
+							...(typeof attachment.description === "string"
+								? { description: redact(attachment.description) }
+								: {}),
+						})),
+					}
+				: {}),
+		};
+	}
+
+	/** Atomically publishes a message's immutable sources before its parent. */
+	async createMessageMemory(memory: Memory, unique?: boolean): Promise<UUID> {
+		const id = memory.id ?? (uuidv4() as UUID);
+		const parent: Memory & { id: UUID } = {
+			...memory,
+			agentId: memory.agentId ?? this.runtime.agentId,
+			id,
+			...(unique !== undefined ? { unique } : {}),
+			content: this.redactMessageContentForStorage(memory.content),
+		};
+		const projection = buildMessageContentProjection(parent);
+		const projectedParent = { ...parent, content: projection.content };
+		const publish = this.runtime.adapter.publishMessageContentSegments;
+		if (
+			!publish ||
+			this.runtime.adapter.messageContentSegmentCapability !== 1
+		) {
+			if (projection.segments.length > 0) {
+				throw new ElizaError(
+					"Database adapter cannot publish bounded message content",
+					{
+						code: "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE",
+						context: { messageId: id },
+					},
+				);
+			}
+			return this.createMemory(projectedParent, "messages", unique);
+		}
+		const result = await publish.call(this.runtime.adapter, {
+			mode: "create",
+			parent: projectedParent,
+			segments: projection.segments,
+		});
+		if (result.status !== "created") {
+			// Hosts can durably admit the incoming message before assistant ingress.
+			// Accept only an exact replay, never a collision with different evidence.
+			const existing = await this.runtime.adapter.getMemoriesByIds(
+				[id],
+				"messages",
+			);
+			const sameEvidence = (
+				stored: Memory | undefined,
+				expected: Memory,
+			): boolean =>
+				stored !== undefined &&
+				stored.id === expected.id &&
+				stored.agentId === expected.agentId &&
+				stored.roomId === expected.roomId &&
+				stored.entityId === expected.entityId &&
+				// Adapters assign timestamps when callers omit them.
+				(expected.createdAt === undefined ||
+					stored.createdAt === expected.createdAt) &&
+				isDeepStrictEqual(stored.metadata ?? {}, expected.metadata ?? {}) &&
+				isDeepStrictEqual(stored.content, expected.content);
+			if (sameEvidence(existing[0], projectedParent)) {
+				const segments = projection.segments.length
+					? await this.runtime.adapter.getMemoriesByIds(
+							projection.segments.map((segment) => segment.id as UUID),
+							"message_content_segments",
+						)
+					: [];
+				if (
+					projection.segments.every((segment) => {
+						const stored = segments.find((entry) => entry.id === segment.id);
+						return sameEvidence(stored, segment);
+					})
+				)
+					return id;
+			}
+
+			throw new ElizaError("Message content publication conflicted", {
+				code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+				context: { messageId: id },
+			});
+		}
+		this.host.roomMessagesMemo().invalidate(parent.roomId);
+		await this.runtime.applyPipelineHooks(
+			"after_memory_persisted",
+			afterMemoryPersistedPipelineHookContext(projectedParent, "messages", id),
+		);
+		return id;
+	}
+
+	/** Compare-and-swap replacement that preserves manifest-last publication. */
+	async replaceMessageMemoryContent(id: UUID, content: Content): Promise<void> {
+		const existing = await this.runtime.getMemoryById(id);
+		if (!existing) {
+			throw new ElizaError("Message memory was not found", {
+				code: "MESSAGE_CONTENT_PARENT_NOT_FOUND",
+				context: { messageId: id },
+			});
+		}
+		const replacement: Memory & { id: UUID } = {
+			...existing,
+			id,
+			content: this.redactMessageContentForStorage(content),
+		};
+		const projection = buildMessageContentProjection(replacement);
+		const oldSegmentIds = collectMessageContentSegmentIds(id, existing.content);
+		const retainedIds = new Set(
+			collectMessageContentSegmentIds(id, projection.content).map(String),
+		);
+		const oldIds = new Set(oldSegmentIds.map(String));
+		const removeSegmentIds = oldSegmentIds.filter(
+			(segmentId) => !retainedIds.has(String(segmentId)),
+		);
+		const newSegments = projection.segments.filter(
+			(segment) => !oldIds.has(String(segment.id)),
+		);
+		const publish = this.runtime.adapter.publishMessageContentSegments;
+		if (
+			!publish ||
+			this.runtime.adapter.messageContentSegmentCapability !== 1
+		) {
+			if (
+				newSegments.length > 0 ||
+				messageContentRequiresSegments(existing.content)
+			) {
+				throw new ElizaError(
+					"Database adapter cannot replace bounded message content",
+					{
+						code: "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE",
+						context: { messageId: id },
+					},
+				);
+			}
+			await this.updateMemory({ id, content: projection.content });
+			return;
+		}
+		const result = await this.mutateSourceEvidence(
+			[id],
+			[{ id, content: projection.content }],
+			() =>
+				publish.call(this.runtime.adapter, {
+					mode: "replace",
+					agentId: this.runtime.agentId,
+					messageId: id,
+					expectedContent: existing.content,
+					replacementContent: projection.content,
+					segments: newSegments,
+					removeSegmentIds,
+				}),
+		);
+		if (result.status === "not_found") {
+			throw new ElizaError("Message memory was not found", {
+				code: "MESSAGE_CONTENT_PARENT_NOT_FOUND",
+				context: { messageId: id },
+			});
+		}
+		if (result.status !== "updated") {
+			throw new ElizaError("Message content replacement conflicted", {
+				code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+				context: { messageId: id },
+			});
+		}
+		this.host.roomMessagesMemo().invalidate(existing.roomId);
 	}
 
 	// WHY createMemory is special: it performs secret redaction before
@@ -243,6 +496,9 @@ export class RuntimeDataMutations {
 		unique?: boolean,
 	): Promise<UUID> {
 		if (unique !== undefined) memory.unique = unique;
+		// Match SQL's default ownership in every adapter, including the ephemeral
+		// fallback, so omitted caller identity still produces a scoped source.
+		memory = { ...memory, agentId: memory.agentId ?? this.runtime.agentId };
 
 		// Redact any secrets from memory content before storing
 		const secrets = this.host.getSecretsForRedaction();
@@ -300,14 +556,12 @@ export class RuntimeDataMutations {
 	async updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean> {
-		await this.runtime.adapter.updateMemories([memory]);
-		this.host.roomMessagesMemo().invalidate();
+		await this.updateMemories([memory]);
 		return true; // Successfully updated if no error thrown
 	}
 
 	async deleteMemory(memoryId: UUID): Promise<void> {
-		await this.runtime.adapter.deleteMemories([memoryId]);
-		this.host.roomMessagesMemo().invalidate();
+		await this.deleteMemories([memoryId]);
 	}
 
 	// ── Participant passthroughs & wrappers ──────────────────────────────

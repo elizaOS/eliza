@@ -5,7 +5,7 @@
  * sources contributed and how fresh they are without rendering event details.
  */
 
-import type { LifeOpsCalendarSourceHealth } from "@elizaos/shared";
+import { type LifeOpsCalendarSourceHealth } from "@elizaos/core/contracts/calendar";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";

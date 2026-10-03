@@ -3,14 +3,13 @@
  * the projection from shared StylePresets to roster entries. Kept out of the
  * component so the mapping is unit-testable and reused by the editor.
  */
-import type { StylePreset } from "@elizaos/shared";
-import type { CharacterRosterEntry } from "./CharacterRoster";
 
+import type { StylePreset } from "@elizaos/core/contracts/first-run-options";
+import type { CharacterRosterEntry } from "./CharacterRoster";
 export const SLANT_CLIP =
   "polygon(32px 0, 100% 0, calc(100% - 32px) 100%, 0 100%)";
 export const INSET_CLIP =
   "polygon(0px 0, 100% 0, calc(100% - 4px) 100%, -8px 100%)";
-
 export function resolveRosterEntries(
   styles: readonly StylePreset[],
 ): CharacterRosterEntry[] {
@@ -27,7 +26,6 @@ export function resolveRosterEntries(
     };
   });
 }
-
 export function createCustomPackRosterEntry(args: {
   id: string;
   name: string;

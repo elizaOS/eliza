@@ -1,20 +1,21 @@
 /** Platform detection and initialization utilities. */
-
 import { Capacitor } from "@capacitor/core";
+import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
-import { userAgentHasElizaOSMarker } from "./aosp-user-agent";
 import {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
   shouldInstallStandaloneBottomReclaim,
 } from "./standalone-bottom-reclaim";
 
-export { userAgentHasElizaOSMarker } from "./aosp-user-agent";
+export { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
 
 // ── Platform detection ──────────────────────────────────────────────
-
-function detectPlatform(): { platform: string; isNative: boolean } {
+function detectPlatform(): {
+  platform: string;
+  isNative: boolean;
+} {
   try {
     return {
       platform: Capacitor.getPlatform(),
@@ -25,16 +26,13 @@ function detectPlatform(): { platform: string; isNative: boolean } {
   }
   return { platform: "web", isNative: false };
 }
-
 const detected = detectPlatform();
-
 export const platform = isElectrobunRuntime()
   ? "electrobun"
   : detected.platform;
 export const isNative = detected.isNative;
 export const isIOS = platform === "ios";
 export const isAndroid = platform === "android";
-
 /**
  * True when the app is running as an INSTALLED PWA in standalone (or fullscreen)
  * display-mode — i.e. added to the home screen and launched chrome-less — while
@@ -71,13 +69,19 @@ export function isStandalonePwa(): boolean {
   }
   // Legacy iOS Safari home-screen flag (pre-display-mode support).
   const nav = typeof navigator !== "undefined" ? navigator : undefined;
-  return (nav as { standalone?: boolean } | undefined)?.standalone === true;
+  return (
+    (
+      nav as
+        | {
+            standalone?: boolean;
+          }
+        | undefined
+    )?.standalone === true
+  );
 }
-
 export function isDesktopPlatform(): boolean {
   return platform === "electrobun";
 }
-
 /**
  * True when the APK is running on the AOSP ElizaOS variant (the system
  * app on a Eliza-branded device), as opposed to the same APK installed
@@ -96,12 +100,10 @@ export function isElizaOS(): boolean {
   if (typeof navigator === "undefined") return false;
   return userAgentHasElizaOSMarker(navigator.userAgent ?? "");
 }
-
 /** True when the runtime can spin up a local agent — desktop or dev server. */
 export function canRunLocal(): boolean {
   return isDesktopPlatform() || Boolean(import.meta.env.DEV);
 }
-
 /**
  * True when the onboarding runtime selector should offer the **Local** card.
  *
@@ -113,7 +115,6 @@ export function canRunLocal(): boolean {
 export function canSelectLocalRuntime(): boolean {
   return canRunLocal() || isElizaOS();
 }
-
 /**
  * True when the platform might host a local agent that the UI can reach over
  * the app. Used to decide whether the local first-run option should run a
@@ -125,18 +126,14 @@ export function canSelectLocalRuntime(): boolean {
 export function canHostLocalAgent(): boolean {
   return canRunLocal() || isAndroid || isIOS;
 }
-
 export function isWebPlatform(): boolean {
   return detected.platform === "web" && !isElectrobunRuntime();
 }
-
 // ── Share target ────────────────────────────────────────────────────
-
 export interface ShareTargetFile {
   name: string;
   path?: string;
 }
-
 export interface ShareTargetPayload {
   source?: string;
   title?: string;
@@ -144,13 +141,11 @@ export interface ShareTargetPayload {
   url?: string;
   files?: ShareTargetFile[];
 }
-
 declare global {
   interface Window {
     __ELIZAOS_SHARE_QUEUE__?: ShareTargetPayload[];
   }
 }
-
 export function dispatchShareTarget(
   payload: ShareTargetPayload,
   dispatchEvent: (name: string, detail: unknown) => void,
@@ -162,9 +157,7 @@ export function dispatchShareTarget(
   window.__ELIZAOS_SHARE_QUEUE__.push(payload);
   dispatchEvent(eventName, payload);
 }
-
 // ── Deep link handling ──────────────────────────────────────────────
-
 export interface DeepLinkHandlers {
   onChat?: () => void;
   onSettings?: () => void;
@@ -172,7 +165,6 @@ export interface DeepLinkHandlers {
   onShare?: (payload: ShareTargetPayload) => void;
   onUnknown?: (path: string) => void;
 }
-
 export function handleDeepLink(
   url: string,
   protocol: string,
@@ -186,11 +178,8 @@ export function handleDeepLink(
     // ignored rather than routed.
     return;
   }
-
   if (parsed.protocol !== `${protocol}:`) return;
-
   const path = (parsed.pathname || parsed.host || "").replace(/^\/+/, "");
-
   switch (path) {
     case "chat":
       handlers.onChat?.();
@@ -232,7 +221,6 @@ export function handleDeepLink(
           const name = slash >= 0 ? filePath.slice(slash + 1) : filePath;
           return { name, path: filePath };
         });
-
       handlers.onShare?.({
         source: "deep-link",
         title,
@@ -246,18 +234,13 @@ export function handleDeepLink(
       handlers.onUnknown?.(path);
   }
 }
-
 // ── Platform CSS setup ──────────────────────────────────────────────
-
 export function setupPlatformStyles(): void {
   const root = document.documentElement;
-
   document.body.classList.add(`platform-${platform}`);
-
   if (isNative) {
     document.body.classList.add("native");
   }
-
   // Installed PWA on the WEB platform (iOS home-screen app, chrome-less Android
   // PWA): apply the mobile touch-viewport lockdown that the Capacitor `native`
   // path gets, so the body claims `touch-action` and hands drags to the app's
@@ -269,7 +252,6 @@ export function setupPlatformStyles(): void {
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
   }
-
   // JS-MEASURED BOTTOM RECLAIM — THE INSTALL POINT (device-proven cure for the
   // recurring iOS home-indicator "black bottom bar", #15103/#15136). On the
   // installed iOS standalone PWA the layout viewport collapses to the small box
@@ -299,13 +281,10 @@ export function setupPlatformStyles(): void {
   } else {
     clearStandaloneBottomReclaim();
   }
-
   // Shared base.css owns the live Capacitor/env safe-area aliases on every host.
   root.style.setProperty("--keyboard-height", "0px");
 }
-
 // ── Popout helpers ──────────────────────────────────────────────────
-
 export function isPopoutWindow(): boolean {
   if (typeof window === "undefined") return false;
   const params = new URLSearchParams(
@@ -313,7 +292,6 @@ export function isPopoutWindow(): boolean {
   );
   return params.has("popout");
 }
-
 export function injectPopoutApiBase(): void {
   const params = new URLSearchParams(
     window.location.search || window.location.hash.split("?")[1] || "",
@@ -349,7 +327,6 @@ export function injectPopoutApiBase(): void {
       }
     }
   }
-
   const waifuAccessToken = params.get("waifu_access_token")?.trim();
   if (waifuAccessToken) {
     setBootConfig({ ...getBootConfig(), apiToken: waifuAccessToken });
@@ -360,7 +337,6 @@ export function injectPopoutApiBase(): void {
     );
   }
 }
-
 function removeUrlParameter(href: string, parameter: string): URL {
   const nextUrl = new URL(href);
   nextUrl.searchParams.delete(parameter);

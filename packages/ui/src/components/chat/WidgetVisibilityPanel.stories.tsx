@@ -57,14 +57,14 @@ function ListIcon() {
 
 const sampleCandidates: WidgetVisibilityCandidate[] = [
   {
-    pluginId: "app-core",
+    pluginId: "app",
     id: "tasks",
     label: "Tasks",
     defaultEnabled: true,
     icon: <ListIcon />,
   },
   {
-    pluginId: "app-core",
+    pluginId: "app",
     id: "events",
     label: "Upcoming events",
     defaultEnabled: true,
@@ -158,7 +158,7 @@ export const Empty: Story = {
 export const WithOverrides: Story = {
   args: {
     initialOverrides: {
-      "app-core/events": false,
+      "app/events": false,
       "plugin-feed/trending": true,
     },
   },
@@ -168,7 +168,7 @@ export const SingleCandidate: Story = {
   args: {
     candidates: [
       {
-        pluginId: "app-core",
+        pluginId: "app",
         id: "tasks",
         label: "Tasks",
         defaultEnabled: true,

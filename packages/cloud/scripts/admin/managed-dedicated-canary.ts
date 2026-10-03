@@ -257,7 +257,9 @@ function classifyConditionalDeleteConflict(body: JsonObject): string {
   if (message === "warm-claim credential handoff is still in progress") {
     return "warm_claim_handoff_in_progress";
   }
-  if (message === "agent deletion changed while recording state-loss authority") {
+  if (
+    message === "agent deletion changed while recording state-loss authority"
+  ) {
     return "delete_authority_changed";
   }
   return "unexpected_http_409";

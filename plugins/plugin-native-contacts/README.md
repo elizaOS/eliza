@@ -1,109 +1,41 @@
-# @elizaos/capacitor-contacts
+# @elizaos/plugin-native-contacts
 
-Capacitor plugin providing an Android `ContactsContract` bridge for elizaOS agents. Enables reading, creating, and importing contacts on Android from TypeScript/JavaScript code. On web and Node.js the plugin provides an explicit unsupported-platform fallback: reads, writes and permission operations reject with Capacitor code `UNAVAILABLE`.
+Android address-book overlay app for elizaOS: provides a full-screen UI surface for
+browsing, searching, creating, and importing contacts, plus a read-only dynamic provider
+that injects address-book context into the agent planner.
 
-## What it does
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-- **List contacts** — query the device address book with optional text search and result limit.
-- **Create a contact** — insert a new contact with a display name, phone numbers, and email addresses.
-- **Import vCard** — parse RFC 6350 vCard text and bulk-insert the contacts.
+## Development
 
-## Platform support
-
-| Platform | `listContacts` | `createContact` | `importVCard` |
-|----------|---------------|----------------|---------------|
-| Android  | Full          | Full           | Full          |
-| Web/Node | Unavailable   | Unavailable    | Unavailable   |
-
-## Requirements
-
-- `@capacitor/core ^8.3.1` in the host app.
-- Android runtime permissions must be granted by the host app:
-  - `READ_CONTACTS` — required for `listContacts`.
-  - `WRITE_CONTACTS` — required for `createContact` and `importVCard`.
-
-The permissions are declared in the plugin's `AndroidManifest.xml` and are merged automatically by the Android build system.
-
-## Installation
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun add @elizaos/capacitor-contacts
+bun run --cwd plugins/plugin-native-contacts build  # build
+bun run --cwd plugins/plugin-native-contacts test   # tests
 ```
 
-Then sync Capacitor:
+Native view and app-shell declarations share an ADMIN-gated capability catalog. Agents use named complete-or-error reads; mutations and generic renderer/DOM operations require human interaction. A bridge result at its non-paginated boundary is an explicit incomplete-read error. Device-status failures remain errors rather than fabricated empty state.
 
-```bash
-npx cap sync android
-```
+Explicit limits must be positive safe integers; omitted reads are complete.
+Malformed limits reject with INVALID_LIMIT. Missing provider cursors reject with
+CONTACTS_UNAVAILABLE; valid empty cursors remain empty arrays. The isolated
+ContactsBridgeInstrumentedTest exercises create/read/search and numeric limits
+against actual ContactsProvider; null/empty child-query failures inject only the
+provider response into the production reader. Cleanup owns exact synthetic raw
+contact IDs. Inspect terminal instrumentation results, not just shell exit status.
 
-## Usage
+The Android WebView contract also verifies multi-card vCard import, folded Unicode
+names, escaped backslashes and name separators, all phone/email values, and native
+provider readback. Cleanup removes only the run’s synthetic raw-contact IDs and
+exports a zero-remaining receipt.
 
-```typescript
-import { Contacts } from "@elizaos/capacitor-contacts";
+The runner first revokes contacts access on its isolated test APK. A real WebView
+requests access through Android's dialog, denies it, verifies read/create/import
+rejections, then grants access and verifies recovery without denied writes leaving
+contacts behind. Permission results and native grant states are exported separately
+from the subsequent granted-access suite.
 
-// List contacts (optionally filtered)
-const { contacts } = await Contacts.listContacts({ query: "Alice", limit: 50 });
-
-// Create a contact
-const { id } = await Contacts.createContact({
-  displayName: "Alice Example",
-  phoneNumber: "+15555550100",
-  emailAddress: "alice@example.com",
-});
-
-// Import from vCard text
-const { imported } = await Contacts.importVCard({ vcardText: myVCardString });
-```
-
-## API
-
-### `listContacts(options?)`
-
-| Option  | Type     | Default | Description |
-|---------|----------|---------|-------------|
-| `query` | `string` | —       | Case-insensitive search across name, phone, and email. |
-| `limit` | `number` | all matches | Optional positive caller-requested result limit. |
-
-Returns `{ contacts: ContactSummary[] }`.
-
-### `createContact(options)`
-
-| Option           | Type       | Required | Description |
-|------------------|------------|----------|-------------|
-| `displayName`    | `string`   | Yes      | Contact display name. |
-| `phoneNumber`    | `string`   | No       | Single phone number (convenience alias). |
-| `phoneNumbers`   | `string[]` | No       | Multiple phone numbers. |
-| `emailAddress`   | `string`   | No       | Single email address (convenience alias). |
-| `emailAddresses` | `string[]` | No       | Multiple email addresses. |
-
-Returns `{ id: string }` (the new contact's `ContactsContract` ID).
-
-### `importVCard(options)`
-
-| Option      | Type     | Required | Description |
-|-------------|----------|----------|-------------|
-| `vcardText` | `string` | Yes      | Raw vCard text (vCard 2.1 / 3.0 / 4.0). |
-
-Parses `FN`, `N`, `TEL`, and `EMAIL` fields. Photo data is not imported. Returns `{ imported: ImportedContactSummary[] }`.
-
-### `ContactSummary`
-
-```typescript
-interface ContactSummary {
-  id: string;
-  lookupKey: string;
-  displayName: string;
-  phoneNumbers: string[];
-  emailAddresses: string[];
-  photoUri?: string;
-  starred: boolean;
-}
-```
-
-## Building
-
-```bash
-bun run --cwd plugins/plugin-native-contacts build
-```
-
-Runs TypeScript compilation and Rollup to produce `dist/esm/` (ESM) and `dist/plugin.cjs.js` (CJS).
+Permission preflight artifacts include Android grant flags before and after the
+request. Missing-dialog failures preserve the actual WebView reply and window
+hierarchy; tests remain failures and are not retried automatically.

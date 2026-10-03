@@ -70,7 +70,7 @@ Without both, no HF upload is attempted. The would-be command is:
 
 To dry-run the per-tier plan instead (no HF API calls), run:
 
-  node packages/training/scripts/publish/eliza1-hf-stage.mjs --dry-run
+  node packages/training/scripts/publish/eliza1-hf-stage.ts --dry-run
 
 To dry-run via the underlying CLI:
 

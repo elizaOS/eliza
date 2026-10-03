@@ -1,4 +1,4 @@
-/** Storybook proof for canonical USD-denominated MCP pricing in the real editor dialog. */
+/** Storybook proof that the real MCP editor dialog offers only free listings (#22961). */
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -15,12 +15,12 @@ const EDITING_MCP = {
   category: "utilities",
   external_endpoint: "https://mcp.example.com/weather",
   endpoint_path: "/mcp",
-  pricing_type: "credits",
+  pricing_type: "free",
   credit_unit: "USD",
-  price_usd: "0.0125",
-  credits_per_request: "1.25",
-  legacy_credits_per_request: "1.25",
-  x402_price_usd: "0.0001",
+  price_usd: "0",
+  credits_per_request: "0",
+  legacy_credits_per_request: "0",
+  x402_price_usd: "0",
   x402_enabled: false,
   tools: [{ name: "get_weather", description: "Get weather" }],
   documentation_url: null,
@@ -46,7 +46,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const CanonicalUsdPrice: Story = {
+export const FreeListing: Story = {
   render: () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -67,18 +67,13 @@ export const CanonicalUsdPrice: Story = {
   },
   play: async ({ canvasElement }) => {
     const document = canvasElement.ownerDocument;
-    const label = document.querySelector('label[for="mcp-price-usd"]');
-    const input = document.querySelector<HTMLInputElement>("#mcp-price-usd");
-
-    if (label?.textContent?.trim() !== "Price per request (USD cloud credit)") {
-      throw new Error(
-        "MCP editor did not render the canonical USD price label",
-      );
+    if (!document.querySelector('[data-testid="mcp-free-listing-note"]')) {
+      throw new Error("MCP editor did not explain that listings are free");
     }
-    if (input?.value !== "0.0125") {
-      throw new Error(
-        "MCP editor did not preserve the canonical fractional USD price",
-      );
+    if (
+      document.querySelector("#mcp-price-usd, #mcp-pricing, #mcp-x402-enabled")
+    ) {
+      throw new Error("MCP editor still renders a price control");
     }
   },
 };

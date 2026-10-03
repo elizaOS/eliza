@@ -1,9 +1,10 @@
 /**
- * Classifies provider failures only when their wire status proves the request
- * was rejected before inference. Ambiguous transport and server failures stay
+ * Classifies provider failures when a wire rejection or a typed preflight
+ * failure proves inference was not accepted. Ambiguous inference failures stay
  * conservative because absence of output is not evidence of zero provider cost.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { APICallError, RetryError } from "ai";
 
 const KNOWN_UNACCEPTED_STATUSES = new Set([
@@ -15,7 +16,7 @@ export function isKnownUnacceptedProviderStatus(status: number): boolean {
   return KNOWN_UNACCEPTED_STATUSES.has(status);
 }
 
-/** True only for an explicit provider response that rejects the request. */
+/** True only when the failure proves inference was not accepted. */
 export function isKnownUnacceptedProviderError(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
@@ -23,6 +24,22 @@ export function isKnownUnacceptedProviderError(error: unknown): boolean {
     if (seen.has(current)) return false;
     seen.add(current);
     const terminal = RetryError.isInstance(current) ? current.lastError : current;
+    // A later rejected batch cannot make an already accepted prefix free.
+    if (
+      terminal instanceof Error &&
+      "code" in terminal &&
+      terminal.code === "EMBEDDING_BATCH_PARTIALLY_ACCEPTED"
+    ) {
+      return false;
+    }
+    // TEI preflight failures occur before sending any source to /embed.
+    if (
+      terminal instanceof ElizaError &&
+      (terminal.code === "EMBEDDING_PROVIDER_IDENTITY_MISMATCH" ||
+        terminal.code === "EMBEDDING_PROVIDER_PREFLIGHT_FAILED")
+    ) {
+      return true;
+    }
     if (
       APICallError.isInstance(terminal) &&
       terminal.statusCode !== undefined &&

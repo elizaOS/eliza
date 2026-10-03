@@ -1,0 +1,39 @@
+// elizaOS Plymouth splash script.
+// Solid elizaOS blue (#0B35F1) background with centered logo + wordmark
+// and a subtle bouncing-dot progress indicator at the bottom.
+
+Window.SetBackgroundTopColor(0.043, 0.208, 0.945);     // #0B35F1
+Window.SetBackgroundBottomColor(0.043, 0.208, 0.945);
+
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetX(Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2);
+logo.sprite.SetY(Window.GetHeight() / 2 - logo.image.GetHeight() / 2 - 40);
+
+wordmark.image = Image("wordmark.png");
+wordmark.sprite = Sprite(wordmark.image);
+wordmark.sprite.SetX(Window.GetWidth() / 2 - wordmark.image.GetWidth() / 2);
+wordmark.sprite.SetY(Window.GetHeight() / 2 + logo.image.GetHeight() / 2);
+
+// Progress dots.
+fun refresh_callback() {
+    t = Plymouth.GetBootProgress();
+    for (i = 0; i < 3; i++) {
+        if (!dots[i]) {
+            dots[i].image = Image("dot.png");
+            dots[i].sprite = Sprite(dots[i].image);
+        }
+        offset = Math.Sin((t * 4) + (i * 0.6)) * 4;
+        dots[i].sprite.SetX(Window.GetWidth() / 2 - 24 + i * 16);
+        dots[i].sprite.SetY(Window.GetHeight() - 60 + offset);
+    }
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+fun message_callback(text) {
+    if (!message.sprite) message.sprite = Sprite();
+    message.sprite.SetImage(Image.Text(text, 1, 1, 1));
+    message.sprite.SetX(20);
+    message.sprite.SetY(Window.GetHeight() - 30);
+}
+Plymouth.SetMessageFunction(message_callback);

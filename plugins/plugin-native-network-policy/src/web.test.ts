@@ -50,8 +50,8 @@ describe("NetworkPolicyWeb fallback", () => {
         source: "android-os",
       });
       await expect(policy.getPathHints()).resolves.toEqual({
-        isExpensive: false,
-        isConstrained: false,
+        isExpensive: null,
+        isConstrained: null,
         source: "nw-path-monitor",
       });
     },

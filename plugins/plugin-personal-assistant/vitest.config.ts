@@ -1,6 +1,6 @@
 /**
  * Base Vitest configuration for the plugin: extends the repo default config and
- * wires the LifeOps and app-core test setup, stub roots, and workspace aliases
+ * wires the LifeOps and app test setup, stub roots, and workspace aliases
  * so unit specs resolve source and native-library policy correctly.
  */
 import fs from "node:fs";
@@ -21,29 +21,24 @@ const packageRootFromRepo = path
 const appCoreTestSetup = path.join(
   elizaRoot,
   "packages",
-  "app-core",
+  "app",
   "test",
   "setup.ts",
 );
 const lifeopsTestSetup = path.join(here, "test", "setup.ts");
 const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
-const appCoreNativeLibraryPolicy = path.join(
-  elizaRoot,
-  "packages",
-  "app-core",
-  "src",
-  "platform",
-  "native-library-policy.ts",
-);
 const appCoreTaskHostCapabilities = path.join(
   elizaRoot,
   "packages",
-  "app-core",
+  "app",
   "src",
   "services",
   "task-host-capabilities.ts",
 );
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
+const assistantPackageRequire = createRequire(
+  path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
+);
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
 );
@@ -55,18 +50,13 @@ const escapedAgentSourceRoot = agentSourceRoot.replace(
 const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
 const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-agent-orchestrator",
-  "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-pty",
-  "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
   "@elizaos/plugin-vision",
   "@elizaos/plugin-background-runner",
   "@elizaos/plugin-native-filesystem",
-  "@elizaos/plugin-app-manager",
   "@elizaos/plugin-elizacloud",
-  "@elizaos/plugin-inbox/plugin",
-  "@elizaos/plugin-zerollama",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);
@@ -74,6 +64,8 @@ const agentSourceJsToTsPlugin = {
   name: "lifeops-agent-source-js-to-ts",
   enforce: "pre" as const,
   resolveId(source: string, importer?: string) {
+    // Native built-ins remain lazy runtime imports in the UI test graph.
+    if (source.startsWith("bun:")) return { id: source, external: true };
     if (optionalCorePluginStubPackages.has(source)) {
       return `${optionalCorePluginStubPrefix}${source}`;
     }
@@ -82,6 +74,19 @@ const agentSourceJsToTsPlugin = {
     }
     if (source === "@elizaos/agent/api/connector-account-routes") {
       return path.join(agentSourceRoot, "api", "connector-account-routes.ts");
+    }
+    if (source === "@elizaos/agent/api/zip-utils") {
+      return path.join(agentSourceRoot, "api", "zip-utils.ts");
+    }
+    if (source === "@elizaos/agent/services/agent-backup") {
+      return path.join(agentSourceRoot, "services", "agent-backup.ts");
+    }
+    if (source === "@elizaos/agent/services/agent-backup-authority") {
+      return path.join(
+        agentSourceRoot,
+        "services",
+        "agent-backup-authority.ts",
+      );
     }
     if (source === "@elizaos/agent/api/server-helpers") {
       return path.join(agentSourceRoot, "api", "server-helpers.ts");
@@ -156,16 +161,6 @@ function resolveNodePackageRoot(packageName: string): string {
   return path.join(here, "node_modules", packageName);
 }
 
-function resolveCorePackageEntry(packageName: string): string {
-  return corePackageRequire.resolve(packageName);
-}
-
-function resolveCorePackageRoot(packageName: string): string {
-  return path.dirname(
-    corePackageRequire.resolve(path.join(packageName, "package.json")),
-  );
-}
-
 const reactRoot = resolveNodePackageRoot("react");
 const reactDomRoot = resolveNodePackageRoot("react-dom");
 // Bun's isolated install puts the logger's transitive deps deep under
@@ -177,11 +172,13 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 // real install dirs so resolution is one hop on every platform.
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
-const aiEntry = resolveCorePackageEntry("ai");
+const aiEntry = assistantPackageRequire.resolve("ai");
 const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
-const handlebarsEntry = resolveCorePackageEntry("handlebars");
-const mammothEntry = resolveCorePackageEntry("mammoth");
-const markdownItRoot = resolveCorePackageRoot("markdown-it");
+const handlebarsEntry = corePackageRequire.resolve("handlebars");
+const mammothEntry = assistantPackageRequire.resolve("mammoth");
+const markdownItRoot = path.dirname(
+  corePackageRequire.resolve("markdown-it/package.json"),
+);
 const telegramSessionsEntry = path.join(
   elizaRoot,
   "plugins",
@@ -249,28 +246,37 @@ export default defineConfig({
     ...baseConfig.resolve,
     preserveSymlinks: false,
     alias: [
-      // The real agent runtime loads audio-redaction services while this lane
-      // boots the OWNER/USER matrix. This specialized alias list replaces the
-      // base shared-source aliases, so keep these two package subpaths anchored
-      // to their source modules instead of requiring prebuilt shared/core dist.
       {
-        find: /^@elizaos\/shared\/audio-redaction$/,
+        find: /^@elizaos\/app\/api\/compat-route-shared$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "shared",
+          "app",
           "src",
-          "audio-redaction.ts",
+          "api",
+          "compat-route-shared.ts",
         ),
       },
       {
-        find: /^@elizaos\/shared\/audio-redaction-verify$/,
+        find: /^@elizaos\/app\/api\/auth$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "shared",
+          "app",
           "src",
-          "audio-redaction-verify.ts",
+          "api",
+          "auth.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app\/services\/auth-store$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app",
+          "src",
+          "services",
+          "auth-store.ts",
         ),
       },
       {
@@ -280,6 +286,10 @@ export default defineConfig({
           "api",
           "connector-account-routes.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/loopback-trust$/,
+        replacement: path.join(agentSourceRoot, "api", "loopback-trust.ts"),
       },
       {
         find: /^@elizaos\/agent\/api\/server-helpers$/,
@@ -295,12 +305,21 @@ export default defineConfig({
           "plugin-collector.ts",
         ),
       },
+      // Registered HTTP routes must exercise the real owner authentication
+      // boundary even when app's distribution has not been built.
       {
-        find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
-        replacement: appCoreNativeLibraryPolicy,
+        find: /^@elizaos\/app\/api\/(auth|compat-route-shared)$/,
+        replacement: path.join(elizaRoot, "packages/app/src/api/$1.ts"),
       },
       {
-        find: /^@elizaos\/app-core\/services\/task-host-capabilities$/,
+        find: /^@elizaos\/app\/services\/auth-store$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/app/src/services/auth-store.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app\/services\/task-host-capabilities$/,
         replacement: appCoreTaskHostCapabilities,
       },
       {
@@ -314,22 +333,13 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/core\/edge$/,
+        find: /^@elizaos\/auth\/vault$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "core",
+          "auth",
           "src",
-          "index.edge.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/vault$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
           "vault",
-          "src",
           "index.ts",
         ),
       },
@@ -427,6 +437,12 @@ export default defineConfig({
           "settings-section-meta.ts",
         ),
       },
+      // The real API client imports this leaf; mapping it to the API mock
+      // would make the mock factory await itself during module collection.
+      {
+        find: /^@elizaos\/ui\/logger$/,
+        replacement: path.join(elizaRoot, "packages/ui/src/logger.ts"),
+      },
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
@@ -434,17 +450,6 @@ export default defineConfig({
       {
         find: "@elizaos/ui",
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
-      },
-      // `@elizaos/plugin-calendar`'s built dist pulls `renderGroundedActionReply`
-      // from the `@elizaos/agent/actions/grounded-action-reply` subpath (to dodge
-      // the full agent barrel in the Plugin Tests lane). The bare-specifier alias
-      // below prefix-matches that subpath and rewrites it to `agent.ts/actions/...`,
-      // which is unresolvable — so anchor the subpath to the stub explicitly first.
-      // Other agent subpaths (e.g. services/app-session-gate) must keep resolving
-      // to the real source, so this stays narrow rather than a `/(.+)` catch-all.
-      {
-        find: /^@elizaos\/agent\/actions\/grounded-action-reply$/,
-        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
       {
         find: /^@elizaos\/agent\/security\/access$/,
@@ -454,30 +459,24 @@ export default defineConfig({
       // trust-fallback owner derivations; anchor both to source ahead of the
       // bare `@elizaos/agent` stub alias below.
       {
+        find: /^@elizaos\/agent\/api\/zip-utils$/,
+        replacement: path.join(agentSourceRoot, "api", "zip-utils.ts"),
+      },
+      {
         find: /^@elizaos\/agent\/api\/client-chat-admin$/,
         replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/eliza$/,
+        replacement: path.join(agentSourceRoot, "runtime", "eliza.ts"),
       },
       {
         find: /^@elizaos\/agent\/runtime\/owner-entity$/,
         replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
       },
       {
-        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
-        replacement: path.join(
-          agentSourceRoot,
-          "services",
-          "knowledge-graph",
-          "index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/agent\/services\/knowledge-graph\/service$/,
-        replacement: path.join(
-          agentSourceRoot,
-          "services",
-          "knowledge-graph",
-          "service.ts",
-        ),
+        find: /^@elizaos\/plugin-relationships$/,
+        replacement: path.resolve(here, "../plugin-relationships/src/index.ts"),
       },
       {
         find: /^@elizaos\/agent\/config\/config$/,
@@ -488,7 +487,19 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "config", "paths.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent\/services\/agent-backup-authority$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "services",
+          "agent-backup-authority.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/agent\/services\/agent-backup$/,
+        replacement: path.join(agentSourceRoot, "services", "agent-backup.ts"),
+      },
+      {
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
       {
@@ -507,29 +518,6 @@ export default defineConfig({
           elizaRoot,
           "plugins",
           "plugin-calendar",
-          "src",
-          "$1.ts",
-        ),
-      },
-      // The agent's settings action pulls createSettingsAction +
-      // parseSettingsRequest from the `@elizaos/plugin-app-control` barrel
-      // (#14804), but app-control's build bundles only the barrel — there is
-      // no per-file dist and vitest has no eliza-source condition. Anchor the
-      // bare specifier to the file stub (which re-exports the real settings
-      // module) and subpaths to source. These must be alias entries, not
-      // resolveId stubs: vite:alias runs before user plugins, so baseConfig's
-      // installed-package alias for this plugin would otherwise win and
-      // resolve a stale published dist that lacks the settings exports.
-      {
-        find: /^@elizaos\/plugin-app-control$/,
-        replacement: path.join(lifeopsTestStubsRoot, "plugin-app-control.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-control\/(.+)$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-app-control",
           "src",
           "$1.ts",
         ),
@@ -596,26 +584,6 @@ export default defineConfig({
       // condition, so without dist they resolve to missing ./dist/*.js. Anchor
       // both the barrel and every subpath to source, same as plugin-blocker.
       {
-        find: /^@elizaos\/plugin-finances\/(.+)$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-finances",
-          "src",
-          "$1.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-finances$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-finances",
-          "src",
-          "index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/plugin-goals\/(.+)$/,
         replacement: path.join(
           elizaRoot,
@@ -675,15 +643,14 @@ export default defineConfig({
           "index.ts",
         ),
       },
-      // The scenario-corpus gate dynamically imports every scenario file, and the
-      // first-run onboarding helper (test/scenarios/_helpers/first-run-onboarding.ts)
-      // pulls PA's OWN deep modules through the package specifier
-      // (`@elizaos/plugin-personal-assistant/lifeops/first-run/*`). PA is not in
-      // build:core and this lane has no eliza-source condition, so the package
-      // `exports` `./*` wildcard would send those subpaths to a `./dist/*.js` that
-      // never gets built. Anchor PA self-subpaths to source (the base workspace-app
-      // config only source-aliases the barrel, and the exports-alias builder skips
-      // the wildcard entry).
+      {
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-personal-assistant$/,
+        replacement: path.join(here, "src", "index.ts"),
+      },
       {
         find: /^@elizaos\/plugin-personal-assistant\/(.+)$/,
         replacement: path.join(
@@ -694,36 +661,9 @@ export default defineConfig({
           "$1.ts",
         ),
       },
-      // The scenario-corpus gate (test/executive-assistant-scenarios.test.ts)
-      // imports the real scenario loader from source; loader.ts references its
-      // own package via `@elizaos/scenario-runner/schema`, a self-referencing
-      // package-exports import Vite's resolver does not support. Anchor the
-      // subpath to the prebuilt schema entry the exports map points at.
       {
-        find: /^@elizaos\/scenario-runner\/schema$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "scenario-runner",
-          "schema",
-          "index.js",
-        ),
-      },
-      // The scenario corpus imports shared assertion helpers through
-      // `@elizaos/scenario-runner/scenario-assertions` — the same
-      // package-exports subpath shape as `/schema` above, which this lane
-      // cannot resolve (the `./*` exports wildcard points at a `./dist/*.js`
-      // that plugin-tests never builds). Anchor it to source; its only
-      // package import is `/schema`, covered by the alias above.
-      {
-        find: /^@elizaos\/scenario-runner\/scenario-assertions$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "scenario-runner",
-          "src",
-          "scenario-assertions.ts",
-        ),
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
       },
       {
         find: /^react\/jsx-dev-runtime$/,
@@ -757,7 +697,7 @@ export default defineConfig({
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "test",
           "stubs",
           "capacitor-core.ts",
@@ -795,11 +735,11 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-phone\/twilio$/,
+        find: /^@elizaos\/plugin-native-phone\/twilio$/,
         replacement: path.join(
           elizaRoot,
           "plugins",
-          "plugin-phone",
+          "plugin-native-phone",
           "src",
           "twilio.ts",
         ),
@@ -886,7 +826,7 @@ export default defineConfig({
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
     ],
@@ -917,7 +857,15 @@ export default defineConfig({
       ...baseConfig.test?.coverage,
       include: [
         `${packageRootFromRepo}/src/**/*.{ts,tsx}`,
-        `${packageRootFromRepo}/scripts/run-cerebras-journey-eval.mjs`,
+        path
+          .relative(
+            repoRoot,
+            path.join(
+              elizaRoot,
+              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.ts",
+            ),
+          )
+          .replaceAll(path.sep, "/"),
       ],
       exclude: [
         `${packageRootFromRepo}/src/**/*.test.{ts,tsx}`,

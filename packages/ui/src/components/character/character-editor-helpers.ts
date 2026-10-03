@@ -6,27 +6,26 @@
  * with AppContext without pulling in React.
  */
 
-import type { StylePreset } from "@elizaos/shared";
+import type { StylePreset } from "@elizaos/core/contracts/first-run-options";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 
 export { replaceNameTokens } from "../../utils/name-tokens";
-
 /* ── Roster / preset helpers ─────────────────────────────────────── */
-
 export type FirstRunPreset = StylePreset;
-
 export function getFirstRunPresetStyles(
   options: unknown,
 ): readonly FirstRunPreset[] {
   if (!options || typeof options !== "object") return [];
-  const styles = (options as { styles?: unknown }).styles;
+  const styles = (
+    options as {
+      styles?: unknown;
+    }
+  ).styles;
   return Array.isArray(styles) ? (styles as FirstRunPreset[]) : [];
 }
-
 export function replaceCharacterToken(value: string, name: string) {
   return value.replaceAll("{{name}}", name).replaceAll("{{agentName}}", name);
 }
-
 export function buildCharacterDraftFromPreset(entry: CharacterRosterEntry) {
   const p: FirstRunPreset = entry.preset;
   const name = entry.name;
@@ -42,9 +41,21 @@ export function buildCharacterDraftFromPreset(entry: CharacterRosterEntry) {
       post: [...p.style.post],
     },
     messageExamples: p.messageExamples.map(
-      (convo: Array<{ user: string; content: { text: string } }>) => ({
+      (
+        convo: Array<{
+          user: string;
+          content: {
+            text: string;
+          };
+        }>,
+      ) => ({
         examples: convo.map(
-          (msg: { user: string; content: { text: string } }) => ({
+          (msg: {
+            user: string;
+            content: {
+              text: string;
+            };
+          }) => ({
             name:
               msg.user === "{{agentName}}"
                 ? name
@@ -59,7 +70,6 @@ export function buildCharacterDraftFromPreset(entry: CharacterRosterEntry) {
     ),
   };
 }
-
 /**
  * Decide whether the character editor should apply preset defaults when
  * auto-selecting a roster entry.
@@ -75,13 +85,11 @@ export function shouldApplyPresetDefaults(
   rosterEntryName: string,
 ): boolean {
   if (!hasMeaningfulContent) return true;
-
   const savedNorm =
     typeof savedCharacterName === "string"
       ? savedCharacterName.trim().toLowerCase()
       : null;
   const entryNorm = rosterEntryName.trim().toLowerCase();
-
   // Name mismatch means the user navigated to a different preset
   return savedNorm === null || savedNorm !== entryNorm;
 }

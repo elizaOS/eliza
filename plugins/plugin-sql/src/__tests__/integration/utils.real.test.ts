@@ -121,9 +121,28 @@ describe("Utils Integration Tests", () => {
       fs.writeFileSync(path.join(tempDir, ".env"), "PGLITE_DATA_DIR=/from/env/file");
       delete process.env.PGLITE_DATA_DIR;
 
-      const result = resolvePgliteDir();
-      expect(process.env.PGLITE_DATA_DIR).toBe("/from/env/file");
-      expect(result).toBe("/from/env/file");
+      const originalDisableDotenv = process.env.ELIZA_BENCH_DISABLE_DOTENV;
+      const originalSubscriptionOnly = process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY;
+      try {
+        // Opt in only after the resolver is bound to this test-owned .env.
+        expect(resolveEnvFile()).toBe(path.join(tempDir, ".env"));
+        delete process.env.ELIZA_BENCH_DISABLE_DOTENV;
+        delete process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY;
+        const result = resolvePgliteDir();
+        expect(process.env.PGLITE_DATA_DIR).toBe("/from/env/file");
+        expect(result).toBe("/from/env/file");
+      } finally {
+        if (originalDisableDotenv === undefined) {
+          delete process.env.ELIZA_BENCH_DISABLE_DOTENV;
+        } else {
+          process.env.ELIZA_BENCH_DISABLE_DOTENV = originalDisableDotenv;
+        }
+        if (originalSubscriptionOnly === undefined) {
+          delete process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY;
+        } else {
+          process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY = originalSubscriptionOnly;
+        }
+      }
     });
 
     it("should not load .env credentials in subscription benchmark mode", () => {

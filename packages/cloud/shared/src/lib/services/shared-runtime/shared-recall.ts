@@ -13,16 +13,8 @@
  * abort, no retries); the caller owns retry/backoff policy.
  */
 
-import { ElizaError } from "@elizaos/core/edge";
+import { BGE_SMALL_VECTOR_SPACE, ElizaError, identifyEmbeddingVector } from "@elizaos/core";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
-
-export const SHARED_RECALL_EDGE_COMPATIBILITY = {
-  target: "edge",
-  state: "tenant-postgres",
-  effects: ["tenant-postgres-read", "sidecar-embeddings"],
-  requiredBindings: ["HYPERDRIVE"],
-  requiredSecrets: [],
-} as const;
 
 export const SHARED_RECALL_EMBEDDING_MODEL = "bge-small-en-v1.5";
 export const SHARED_RECALL_EMBEDDING_DIMENSIONS = 384;
@@ -61,6 +53,20 @@ export interface BuildSharedRecallContextInput {
   topK?: number;
   /** @deprecated Recall rendering is complete; this option is ignored. */
   maxChars?: number;
+}
+
+function verifySidecarRepresentation(payload: unknown): void {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("embedding_space" in payload) ||
+    payload.embedding_space !== BGE_SMALL_VECTOR_SPACE
+  ) {
+    throw new ElizaError("Embedding sidecar must attest the canonical BGE representation", {
+      code: "EMBEDDING_SPACE_MISMATCH",
+      context: { expected: BGE_SMALL_VECTOR_SPACE },
+    });
+  }
 }
 
 function readSidecarEmbedding(payload: unknown): number[] | undefined {
@@ -161,7 +167,10 @@ export async function embedTextsViaSidecar(
       severity: "ephemeral",
     });
   }
-  return vectors as number[][];
+  verifySidecarRepresentation(payload);
+  return (vectors as number[][]).map((vector) =>
+    identifyEmbeddingVector(vector, BGE_SMALL_VECTOR_SPACE),
+  );
 }
 
 export async function embedTextViaSidecar(
@@ -237,7 +246,8 @@ export async function embedTextViaSidecar(
       severity: "ephemeral",
     });
   }
-  return embedding;
+  verifySidecarRepresentation(payload);
+  return identifyEmbeddingVector(embedding, BGE_SMALL_VECTOR_SPACE);
 }
 
 function formatRecallRow(row: SharedRecallRow): string {

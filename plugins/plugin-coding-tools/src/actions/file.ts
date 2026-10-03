@@ -86,7 +86,14 @@ const FILE_ACTIONS: Record<FileOperation, FileHandler> = {
 
 const WORKSPACE_OPERATION_PARAMETERS: Record<FileOperation, readonly string[]> =
   {
-    read: ["file_path", "offset", "limit", "unit", "expectedRevision"],
+    read: [
+      "file_path",
+      "reference",
+      "offset",
+      "limit",
+      "unit",
+      "expectedRevision",
+    ],
     write: ["file_path", "content", "overwrite"],
     edit: [
       "file_path",
@@ -409,8 +416,9 @@ async function deviceFileHandler(
 
 export const fileAction: Action = {
   name: "FILE",
-  contexts: [...CODING_TOOLS_CONTEXTS],
-  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  contexts: ["files", ...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: ["files", ...CODING_TOOLS_CONTEXTS] },
+  tags: ["resource:files"],
   roleGate: { minRole: "ADMIN" },
   // Stage-1 models routinely hint file work with invented names like
   // FILES_READ / FILES_LIST; the retrieval layer resolves simile hints to this
@@ -461,7 +469,8 @@ export const fileAction: Action = {
     },
     {
       name: "content",
-      description: "Full file contents for action=write.",
+      description:
+        "Exact full text for action=write, preserving all whitespace including the final newline.",
       required: false,
       schema: { type: "string" },
     },
@@ -547,6 +556,13 @@ export const fileAction: Action = {
       schema: { type: "boolean" },
     },
     {
+      name: "reference",
+      description:
+        "For action=read, an opaque file reference from a previous read. Requires expectedRevision; omit file_path.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
       name: "offset",
       description: "For action=read, zero-based offset in the selected unit.",
       required: false,
@@ -554,7 +570,8 @@ export const fileAction: Action = {
     },
     {
       name: "limit",
-      description: "For action=read, maximum lines or UTF-8 bytes to return.",
+      description:
+        "For action=read, maximum lines or UTF-8 bytes to return; omit for the complete remainder.",
       required: false,
       schema: { type: "number" },
     },
@@ -567,7 +584,7 @@ export const fileAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "For action=read continuation, reject if the file revision changed.",
+        "For read continuation only, copy the opaque revision from the latest READ of this file, never a write receipt version or content hash. Omit on initial reads and after writes or edits.",
       required: false,
       schema: { type: "string" },
     },

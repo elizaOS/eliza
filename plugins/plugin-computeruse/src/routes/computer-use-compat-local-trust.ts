@@ -1,6 +1,8 @@
 /** Applies the agent server's canonical same-machine trust policy to computer-use routes. */
 import type http from "node:http";
-import { isTrustedLocalRequest } from "@elizaos/shared";
+import { isTrustedLocalRequest } from "@elizaos/core/security/loopback-trust";
+
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 
 export function isTrustedComputerUseLocalRequest(
   req: Pick<http.IncomingMessage, "headers"> & {
@@ -8,8 +10,7 @@ export function isTrustedComputerUseLocalRequest(
   },
 ): boolean {
   return isTrustedLocalRequest(req, {
-    requireLocalAuthEnv: true,
-    devAuthBypassEnv: false,
-    cloudCheck: "container",
+    localAuthRequired: process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1",
+    cloudProvisioned: isCloudProvisionedContainer(),
   });
 }

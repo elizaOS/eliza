@@ -19,6 +19,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentComputeFunding } from "./agent-compute-funding";
+import { billingFundingReservations } from "./billing-funding-reservations";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
 
@@ -53,6 +54,8 @@ export const agentBillingRecords = pgTable(
       .notNull(),
     credit_transaction_id: uuid("credit_transaction_id"),
     compute_funding_id: uuid("compute_funding_id"),
+    /** Finalized allowance-first funding for a subscriber's legacy hourly charge. */
+    funding_reservation_id: uuid("funding_reservation_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -75,8 +78,16 @@ export const agentBillingRecords = pgTable(
       .where(sql`${table.compute_funding_id} IS NOT NULL`),
     funding_source_check: check(
       "agent_billing_records_funding_source_check",
-      sql`num_nonnulls(${table.credit_transaction_id}, ${table.compute_funding_id}) = 1`,
+      sql`num_nonnulls(${table.credit_transaction_id}, ${table.compute_funding_id}, ${table.funding_reservation_id}) = 1`,
     ),
+    funding_reservation_tenant_fk: foreignKey({
+      columns: [table.funding_reservation_id, table.organization_id],
+      foreignColumns: [billingFundingReservations.id, billingFundingReservations.organization_id],
+      name: "agent_billing_records_funding_reservation_tenant_fk",
+    }).onDelete("restrict"),
+    funding_reservation_unique: uniqueIndex("agent_billing_records_funding_reservation_idx")
+      .on(table.funding_reservation_id)
+      .where(sql`${table.funding_reservation_id} IS NOT NULL`),
     credit_transaction_tenant_fk: foreignKey({
       columns: [table.credit_transaction_id, table.organization_id],
       foreignColumns: [creditTransactions.id, creditTransactions.organization_id],

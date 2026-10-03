@@ -15,8 +15,8 @@ import {
   type LifeOpsMessageChannel,
   type LifeOpsRelationship,
   type LifeOpsRelationshipInteraction,
-  SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   contactAttributes,

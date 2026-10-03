@@ -1,5 +1,5 @@
 /** Exercises feed-to-day placement across timezone and exclusive all-day boundaries. */
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { calendarEventOccursOn } from "./event-days.js";
 

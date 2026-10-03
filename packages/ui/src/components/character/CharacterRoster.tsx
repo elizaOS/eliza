@@ -4,15 +4,14 @@
  * editor. Entries derive from the shared style presets (see
  * CharacterRoster.helpers); preview URLs resolve lazily from the VRM state.
  */
-import type { StylePreset } from "@elizaos/shared";
+
+import type { StylePreset } from "@elizaos/core/contracts/first-run-options";
 import { useEffect, useState } from "react";
 import { useAppSelector } from "../../state";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import { Button } from "../ui/button";
 import { INSET_CLIP, SLANT_CLIP } from "./CharacterRoster.helpers";
-
 /* ── Types ────────────────────────────────────────────────────────────── */
-
 export type CharacterRosterEntry = {
   id: string;
   name: string;
@@ -23,9 +22,7 @@ export type CharacterRosterEntry = {
   greetingAnimation?: string;
   preset: StylePreset;
 };
-
 /* ── Component ────────────────────────────────────────────────────────── */
-
 interface CharacterRosterProps {
   entries: CharacterRosterEntry[];
   selectedId: string | null;
@@ -34,7 +31,6 @@ interface CharacterRosterProps {
   variant?: "first-run" | "editor";
   testIdPrefix?: string;
 }
-
 export function CharacterRoster({
   entries,
   selectedId,
@@ -45,7 +41,6 @@ export function CharacterRoster({
   const t = useAppSelector((s) => s.t);
   const useWhiteBorders = variant === "first-run";
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
-
   useEffect(() => {
     setLoadedImages((previous) => {
       const next: Record<string, boolean> = {};
@@ -57,14 +52,11 @@ export function CharacterRoster({
       return next;
     });
   }, [entries]);
-
   if (entries.length === 0) {
     return (
       <div
         /* Flat — no card/border. */
-        className={`p-4 text-sm ${
-          useWhiteBorders ? "text-[var(--first-run-text-faint)]" : "text-muted"
-        }`}
+        className={`p-4 text-sm ${useWhiteBorders ? "text-[var(--first-run-text-faint)]" : "text-muted"}`}
       >
         {t("characterroster.LoadingPresets", {
           defaultValue: "Loading character presets...",
@@ -72,7 +64,6 @@ export function CharacterRoster({
       </div>
     );
   }
-
   return (
     <div
       className="flex flex-nowrap items-end justify-center gap-0 w-full max-w-[min(100%,900px)] px-4 box-border max-[600px]:!grid max-[600px]:!grid-cols-4 max-[600px]:gap-y-6 max-[600px]:gap-x-0 max-[600px]:px-[2.35rem] max-[600px]:pb-6 max-[600px]:max-w-full max-[600px]:w-full"
@@ -81,7 +72,6 @@ export function CharacterRoster({
       {entries.map((entry, index) => {
         const isSelected = selectedId === entry.id;
         const imageLoaded = loadedImages[entry.id] === true;
-
         return (
           <div
             key={entry.id}

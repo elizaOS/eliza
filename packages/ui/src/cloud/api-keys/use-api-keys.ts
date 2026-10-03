@@ -27,6 +27,20 @@ export interface ApiKeyRecord {
   expires_at: string | null;
 }
 
+/**
+ * Plan-limited count of user-created keys (#22958). Keys are free; the plan
+ * caps how many a user can create (pay-as-you-go 5, Plus 10, Pro 25).
+ */
+export type ApiKeyUsage =
+  | { status: "available"; used: number; limit: number; remaining: number }
+  | { status: "unavailable"; code: string };
+
+/** Server shape of `GET /api/v1/api-keys`. */
+export interface ApiKeysResponse {
+  keys: ApiKeyRecord[];
+  usage: ApiKeyUsage;
+}
+
 // API keys change only on explicit user action. Mutations invalidate this key
 // directly, so a 5-minute stale window is safe and avoids refetching the list
 // every time the user pops back to the keys surface.
@@ -38,10 +52,7 @@ export function useApiKeys() {
   const gate = useAuthenticatedQueryGate();
   return useQuery({
     queryKey: authenticatedQueryKey(API_KEYS_QUERY_KEY, gate),
-    queryFn: async () => {
-      const data = await api<{ keys: ApiKeyRecord[] }>("/api/v1/api-keys");
-      return data.keys;
-    },
+    queryFn: () => api<ApiKeysResponse>("/api/v1/api-keys"),
     enabled: gate.enabled,
     staleTime: API_KEY_STALE_MS,
   });

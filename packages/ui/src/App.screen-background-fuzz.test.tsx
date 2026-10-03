@@ -129,7 +129,7 @@ const documentsView = {
   id: "documents",
   label: "Knowledge",
   available: true,
-  pluginName: "@elizaos/plugin-documents",
+  pluginName: "@elizaos/plugin-knowledge",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
   viewType: "gui" as const,
@@ -202,12 +202,7 @@ vi.mock("./hooks", () => ({
     <>{children}</>
   ),
   useBugReportState: () => ({}),
-  useContextMenu: () => ({
-    closeSaveCommandModal: vi.fn(),
-    confirmSaveCommand: vi.fn(),
-    saveCommandModalOpen: false,
-    saveCommandText: "",
-  }),
+  useContextMenu: () => undefined,
   useMediaQuery: () => false,
   useDocumentVisibility: () => true,
   useRenderGuard: vi.fn(),
@@ -324,9 +319,6 @@ vi.mock("./components/shell/SystemWarningBanner", () => ({
 }));
 vi.mock("./components/shell/ShellOverlays", () => ({
   ShellOverlays: () => null,
-}));
-vi.mock("./components/chat/SaveCommandModal", () => ({
-  SaveCommandModal: () => null,
 }));
 vi.mock("./components/pages/ChatView", () => ({
   ChatView: () => <div data-testid="chat-view" />,
@@ -660,7 +652,6 @@ describe("App screen-background fuzz — color invariant across view switching",
       vi.fn(() => 1),
     );
     window.history.replaceState(null, "", "/views");
-    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     window.addEventListener("error", swallow);
     window.addEventListener("unhandledrejection", swallow);
   });
@@ -912,7 +903,6 @@ describe("App view-surface mutation isolation — rogue view cannot leak global 
       vi.fn(() => 1),
     );
     window.history.replaceState(null, "", "/views");
-    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     window.addEventListener("error", swallow);
     window.addEventListener("unhandledrejection", swallow);
   });

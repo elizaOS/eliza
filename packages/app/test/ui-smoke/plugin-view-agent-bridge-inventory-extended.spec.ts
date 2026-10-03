@@ -99,19 +99,6 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     ],
   },
   {
-    label: "Finances",
-    path: "/finances",
-    viewId: "finances",
-    // Populated money fixtures → 1 transaction (tx-1) + 1 recurring (netflix).
-    ready: { text: "Transactions (1)" },
-    requiredIds: [
-      "txn-tx-1",
-      "open-txn-tx-1",
-      "bill-netflix",
-      "open-bill-netflix",
-    ],
-  },
-  {
     label: "Goals",
     path: "/goals",
     viewId: "goals",

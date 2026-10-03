@@ -1,7 +1,7 @@
 /** Loads optional bundled plugins while honoring explicit workspace-source development. */
 import { pathToFileURL } from "node:url";
 import { logger } from "@elizaos/core";
-import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
+import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.ts";
 import {
   hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,

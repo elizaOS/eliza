@@ -1,5 +1,5 @@
 // Defines the workout blocker basic LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 /**
  * Live-model scenario: a workout-blocker request persists a daily afternoon
@@ -16,7 +16,7 @@ export default scenario({
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

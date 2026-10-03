@@ -18,8 +18,11 @@ import { describe, expect, it } from "vitest";
 import { getBuiltinType } from "./builtins";
 import type { FormControl, ValidationResult } from "./types";
 import {
+  formatValue,
   MAX_CONTROL_PATTERN_INPUT_LENGTH,
   MAX_CONTROL_PATTERN_LENGTH,
+  parseBoolean,
+  parseValue,
   testControlPattern,
   validateField,
 } from "./validation";
@@ -299,5 +302,74 @@ describe("control-pattern execution deadline (out of process)", () => {
       );
       expect(entry.builtinMs, entry.name).toBeLessThan(PER_CASE_BUDGET_MS);
     }
+  });
+});
+
+/**
+ * A boolean answer crosses three call sites — validation, extraction parsing and
+ * display — and each used to carry its own literal list. Validation accepted
+ * both directions while the parser held only the true-like literals, so "no",
+ * "false", "0" and "off" were coerced to `false` and an unknown string such as
+ * "maybe" was coerced to `false` too, while display rendered any non-empty
+ * string — including "no" — as a confident "Yes". These assert the shared
+ * contract at the exported boundary the form service itself calls.
+ */
+describe("boolean contract", () => {
+  const booleanControl: FormControl = {
+    key: "optIn",
+    label: "Opt in",
+    type: "boolean",
+  };
+
+  const trueLiterals = ["true", "yes", "1", "on"];
+  const falseLiterals = ["false", "no", "0", "off"];
+
+  it("resolves every accepted literal in both directions", () => {
+    for (const literal of trueLiterals) {
+      expect(parseBoolean(literal)).toEqual({ known: true, value: true });
+      expect(parseBoolean(literal.toUpperCase())).toEqual({
+        known: true,
+        value: true,
+      });
+      expect(validateField(literal, booleanControl).valid).toBe(true);
+    }
+    for (const literal of falseLiterals) {
+      expect(parseBoolean(literal)).toEqual({ known: true, value: false });
+      expect(validateField(literal, booleanControl).valid).toBe(true);
+    }
+    expect(parseBoolean(true)).toEqual({ known: true, value: true });
+    expect(parseBoolean(false)).toEqual({ known: true, value: false });
+  });
+
+  it("reports unknown input instead of guessing a boolean", () => {
+    for (const unknown of ["maybe", "2", "yep", "perhaps"]) {
+      expect(parseBoolean(unknown)).toEqual({ known: false });
+      expect(validateField(unknown, booleanControl).valid).toBe(false);
+    }
+    expect(parseBoolean(null)).toEqual({ known: false });
+    expect(parseBoolean("")).toEqual({ known: false });
+    expect(validateField("", booleanControl).valid).toBe(true);
+    expect(validateField("", { ...booleanControl, required: true }).valid).toBe(
+      false,
+    );
+  });
+
+  it("keeps an unrecognised extraction as its original string", () => {
+    expect(parseValue("maybe", booleanControl)).toBe("maybe");
+    expect(parseValue("no", booleanControl)).toBe(false);
+    expect(parseValue("YES", booleanControl)).toBe(true);
+  });
+
+  it("renders false-like and unknown persisted values honestly", () => {
+    for (const literal of falseLiterals) {
+      expect(formatValue(literal, booleanControl)).toBe("No");
+    }
+    for (const literal of trueLiterals) {
+      expect(formatValue(literal, booleanControl)).toBe("Yes");
+    }
+    expect(formatValue(true, booleanControl)).toBe("Yes");
+    expect(formatValue(false, booleanControl)).toBe("No");
+    // Unknown input is shown as-is rather than as a confident answer.
+    expect(formatValue("maybe", booleanControl)).toBe("maybe");
   });
 });

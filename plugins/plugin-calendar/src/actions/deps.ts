@@ -5,18 +5,19 @@
  * through this typed dependency object instead of importing LifeOps internals.
  */
 import type {
+  GenerateTextParams,
   GroundedActionReply,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  LifeOpsCalendarAllDayRange,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarRecurrenceScope,
-} from "@elizaos/shared";
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type LifeOpsCalendarAllDayRange,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarRecurrenceScope,
+} from "@elizaos/core/contracts/calendar";
 
 /**
  * Arguments for a single LLM call routed through the host's model runner.
@@ -31,6 +32,8 @@ export interface CalendarModelCallArgs {
   failureMessage: string;
   source: string;
   purpose?: string;
+  temperature?: number;
+  responseSchema?: GenerateTextParams["responseSchema"];
 }
 
 export interface CalendarJsonModelResult<

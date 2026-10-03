@@ -5,7 +5,7 @@
  * is controlled by the parent via `useCloudModelConfig`.
  */
 
-import type { ModelOption } from "@elizaos/shared";
+import type { ModelOption } from "@elizaos/core/contracts/first-run-options";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
@@ -13,7 +13,6 @@ import { useAppSelector } from "../../state";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { SettingsSelectRow } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
-
 export interface ProviderRoutingPanelProps {
   /** All cloud large-tier models, used for the visible primary dropdown. */
   largeModelOptions: ModelOption[];
@@ -32,7 +31,6 @@ export interface ProviderRoutingPanelProps {
   showCloudControls: boolean;
   elizaCloudConnected: boolean;
 }
-
 export function ProviderRoutingPanel({
   largeModelOptions,
   cloudModelSchema,
@@ -45,13 +43,10 @@ export function ProviderRoutingPanel({
   elizaCloudConnected,
 }: ProviderRoutingPanelProps) {
   const t = useAppSelector((s) => s.t);
-
   const hasModelControls =
     elizaCloudConnected &&
     (largeModelOptions.length > 0 || cloudModelSchema !== null);
-
   if (!showCloudControls || !hasModelControls) return null;
-
   return (
     <div className="flex flex-col">
       {largeModelOptions.length > 0 ? (

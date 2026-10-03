@@ -24,6 +24,7 @@ import * as path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { isAgentBridgePath } from "../../../shared/src/lib/agent-api-routing.ts";
 import { isFirstPartyOrigin } from "../../../shared/src/lib/cors/first-party-origin.ts";
 import { loadLocalEnv } from "./shared/load-env";
 
@@ -225,18 +226,7 @@ export function selectAgentProxyTarget(
   routing: Pick<RoutingResponse, "bridgeTarget" | "webTarget">,
   pathname: string,
 ): string {
-  if (
-    pathname === "/bridge" ||
-    pathname === "/v1/chat/completions" ||
-    pathname.startsWith("/api/agents") ||
-    pathname.startsWith("/api/conversations") ||
-    pathname.startsWith("/api/messaging") ||
-    pathname.startsWith("/api/restore") ||
-    pathname.startsWith("/api/snapshot") ||
-    pathname.startsWith("/api/wallet")
-  ) {
-    return routing.bridgeTarget;
-  }
+  if (isAgentBridgePath(pathname)) return routing.bridgeTarget;
 
   return routing.webTarget;
 }

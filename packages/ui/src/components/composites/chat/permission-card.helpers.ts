@@ -10,8 +10,7 @@ import {
   isPermissionId,
   type PermissionId,
   type PermissionState,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/permissions";
 /**
  * Friendly human-readable labels per permission id. Used as the card title
  * (e.g. `reminders` → "Apple Reminders").
@@ -46,11 +45,9 @@ export const PERMISSION_LABELS: Record<PermissionId, string> = {
   "local-network": "Local Network",
   "battery-optimization": "Battery Optimization",
 };
-
 export function getPermissionLabel(id: PermissionId): string {
   return PERMISSION_LABELS[id] ?? id;
 }
-
 /**
  * Result emitted to the agent when the user picks the fallback option. The
  * chat host turns this into a system-tagged user message:
@@ -67,7 +64,6 @@ export interface PermissionCardFallbackChoice {
   feature: string;
   permission: PermissionId;
 }
-
 export interface PermissionCardLabels {
   grantAccess?: string;
   upgradeAccess?: string;
@@ -78,7 +74,6 @@ export interface PermissionCardLabels {
   granted?: string;
   granting?: string;
 }
-
 export function defaultStateFor(id: PermissionId): PermissionState {
   const platform =
     typeof navigator !== "undefined" && /Win/i.test(navigator.platform ?? "")
@@ -95,7 +90,6 @@ export function defaultStateFor(id: PermissionId): PermissionState {
     platform,
   };
 }
-
 export function parseFeatureRef(feature: string): {
   app: string;
   action: string;
@@ -107,31 +101,26 @@ export function parseFeatureRef(feature: string): {
   const action = parts.slice(1).join(".") || "unknown";
   return { app, action };
 }
-
 export interface PermissionClientLike {
   getPermission(id: PermissionId): Promise<PermissionState>;
   requestPermission(id: PermissionId): Promise<PermissionState>;
 }
-
 export function createClientPermissionsRegistry(
   clientLike: PermissionClientLike,
 ): IPermissionsRegistry {
   const states = new Map<PermissionId, PermissionState>();
   const subscribers = new Set<(state: PermissionState[]) => void>();
-
   const notify = () => {
     const snapshot = Array.from(states.values());
     for (const subscriber of subscribers) {
       subscriber(snapshot);
     }
   };
-
   const commit = (state: PermissionState) => {
     states.set(state.id, state);
     notify();
     return state;
   };
-
   return {
     get(id) {
       return states.get(id) ?? defaultStateFor(id);
@@ -185,7 +174,6 @@ export function createClientPermissionsRegistry(
     },
   };
 }
-
 /**
  * Render-helper invoked by the chat transcript's `renderMessageContent` hook
  * when the message text contains a parsed permission_request block. The host
@@ -198,7 +186,6 @@ export interface PermissionCardPayload {
   fallbackOffered?: boolean;
   fallbackLabel?: string;
 }
-
 /**
  * Minimal UI-side parser for `permission_request` action blocks. Mirrors the
  * server-side `parseActionBlock` output for `permission_request` so the
@@ -235,7 +222,11 @@ export function parsePermissionRequestFromText(text: string): {
   if (
     !parsed ||
     typeof parsed !== "object" ||
-    (parsed as { action?: unknown }).action !== "permission_request"
+    (
+      parsed as {
+        action?: unknown;
+      }
+    ).action !== "permission_request"
   ) {
     return null;
   }

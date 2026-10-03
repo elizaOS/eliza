@@ -1,3 +1,4 @@
+// @vitest-environment node
 /** Exercises owner-authorized Notes reads against real filesystem state, trusted dispatch, the planner loop and reply-egress guard with bounded scripted models. */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
@@ -5,14 +6,17 @@ import path from "node:path";
 import {
   AgentRuntime,
   createCharacter,
-  evaluatePlannedReplyEgress,
   executePlannedToolCall,
   type IAgentRuntime,
-  plannedReplyHasClaimGroundingReceipt,
   stringToUuid,
 } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, test } from "vitest";
-import { runPlannerLoop } from "../../../../packages/core/src/runtime/planner-loop.js";
+import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  evaluatePlannedReplyEgress,
+  plannedReplyHasClaimGroundingReceipt,
+} from "../../../plugin-assistant/src/services/message/egress-policy.ts";
 import { notesAction } from "../action.js";
 import { notesPlugin } from "../plugin.js";
 import { NotesService } from "../service.js";
@@ -36,12 +40,11 @@ async function setup() {
   const runtime = new AgentRuntime({
     agentId: stringToUuid(directory),
     character: createCharacter({ name: "Notes read proof" }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });
   runtimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   class PersistedNotes extends NotesService {
     static override async start(owner: IAgentRuntime) {
       const service = new NotesService(owner, {
@@ -86,6 +89,31 @@ test("an empty owner read remains structured and does not license an invented br
   expect(result.text).toBeUndefined();
   expect(result.userFacingText).toBeUndefined();
   expect(result.verifiedUserFacing).toBeUndefined();
+  for (const reply of [
+    "You have no saved notes.",
+    "You have no notes saved at the moment.",
+  ]) {
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        actionResults: [result],
+        actions: [notesAction],
+      }),
+    ).toEqual({ verdict: "allow" });
+  }
+  for (const reply of [
+    "You have no tasks.",
+    "You have no notes or tasks.",
+    "You have no notes from last week.",
+  ]) {
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        actionResults: [result],
+        actions: [notesAction],
+      }).verdict,
+    ).toBe("reject");
+  }
   expect(result.turnComplete).toBeUndefined();
   expect(
     evaluatePlannedReplyEgress({
@@ -195,7 +223,9 @@ test("the real planner re-reads Notes after a mutation with identical list argum
       evaluations++;
       if (evaluations > plans.length)
         throw new Error("Unexpected extra evaluation");
-      return evaluations === plans.length
+      // Intermediate successful internal reads may continue without a model
+      // evaluation. Finish only after the actual post-write read is recorded.
+      return counts.length === 2 && counts[1] === 1
         ? {
             success: true,
             decision: "FINISH",
@@ -212,7 +242,8 @@ test("the real planner re-reads Notes after a mutation with identical list argum
   });
   expect(counts).toEqual([0, 1]);
   expect(planningRounds).toBe(3);
-  expect(evaluations).toBe(3);
+  expect(evaluations).toBeGreaterThan(0);
+  expect(evaluations).toBeLessThanOrEqual(3);
   expect(result.finalMessage).toBe(finalReply);
 });
 
@@ -231,4 +262,18 @@ test("denied reads and mutations cannot supply empty-read authority", async () =
       }),
     ).toBe(false);
   }
+});
+
+test("a later write invalidates earlier empty inventory authority", async () => {
+  const { invoke } = await setup();
+  const empty = await invoke({ action: "list" });
+  const created = await invoke({ action: "create", content: "A real note" });
+  expect(created.success).toBe(true);
+  expect(
+    evaluatePlannedReplyEgress({
+      reply: "You have no saved notes.",
+      actionResults: [empty, created],
+      actions: [notesAction],
+    }).verdict,
+  ).toBe("reject");
 });

@@ -4,7 +4,7 @@
  * prefill, but never automatically send, the original request.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
 import { useCallback, useState } from "react";
 import { useInRouterContext } from "react-router-dom";
 import {
@@ -14,7 +14,6 @@ import {
 import { dispatchNavigateViewRequest } from "../../events";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-
 export function CapabilityHandoffBlock({
   request,
 }: {
@@ -46,7 +45,6 @@ export function CapabilityHandoffBlock({
       setOpening(false);
     }
   }, [inContainedCloudRouter, opening, request]);
-
   return (
     <Card
       asChild
@@ -62,7 +60,9 @@ export function CapabilityHandoffBlock({
         >
           Set up {request.label}
         </div>
-        <div className="whitespace-pre-wrap text-muted">{request.reason}</div>
+        <div className="whitespace-pre-wrap text-muted-strong">
+          {request.reason}
+        </div>
         <Button
           aria-busy={opening}
           disabled={opening}
@@ -79,7 +79,7 @@ export function CapabilityHandoffBlock({
           </div>
         ) : null}
         {request.continuation?.originalIntent ? (
-          <div className="text-xs text-muted">
+          <div className="text-xs text-muted-strong">
             I’ll put your request back in the composer for review when setup is
             done.
           </div>

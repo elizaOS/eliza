@@ -8,9 +8,9 @@ import {
 	type AgentRuntime,
 	createUniqueUuid,
 	type Memory,
-	messageAction,
 	type UUID,
 } from "@elizaos/core";
+import { messageAction } from "@elizaos/plugin-assistant";
 import { Collection, ChannelType as DiscordChannelType } from "discord.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {

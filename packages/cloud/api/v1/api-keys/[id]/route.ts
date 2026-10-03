@@ -7,7 +7,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -43,9 +43,9 @@ app.delete("/", async (c) => {
       c,
     });
 
-    await apiKeysService.delete(id);
-    await getAuditDispatcher()
-      .emit({
+    const audit = createTransactionalAudit();
+    await apiKeysService.delete(id, async (tx) => {
+      await audit.write(tx, {
         actor: { type: "user", id: user.id },
         action: "api_key.revoke",
         result: "success",
@@ -53,13 +53,9 @@ app.delete("/", async (c) => {
         org_id: user.organization_id,
         request_id: c.get("requestId"),
         metadata: { key_id: id, reason: "user_delete" },
-      })
-      .catch((err: unknown) => {
-        // error-policy:J7 audit-log emit is best-effort telemetry; a failed emit must not fail an already-revoked key. Observed via this warn.
-        logger.warn("[API Keys] revoke audit emit failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
       });
+    });
+    await audit.publish();
     return c.json({ success: true });
   } catch (error) {
     logger.error("[API Keys] Error deleting API key", { error });

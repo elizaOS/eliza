@@ -7,7 +7,7 @@
 import type {
   SpeakerNameAttribution,
   SpeakerNameEvidenceSource,
-} from "@elizaos/shared";
+} from "@elizaos/core/speaker-name-inference";
 import type * as React from "react";
 import { StatusBadge } from "../ui/status-badge";
 
@@ -19,7 +19,6 @@ const SOURCE_LABELS: Record<SpeakerNameEvidenceSource, string> = {
   voice_profile: "voice profile",
   speaker_memory: "speaker memory",
 };
-
 function decisionLabel(attribution: SpeakerNameAttribution): string {
   if (attribution.resolution === "confirmed") {
     return attribution.requiresReview ? "Confirmed · review" : "Confirmed";
@@ -28,7 +27,6 @@ function decisionLabel(attribution: SpeakerNameAttribution): string {
   if (attribution.resolution === "withheld") return "Withheld";
   return "Unknown";
 }
-
 function provenanceLabels(attribution: SpeakerNameAttribution): string[] {
   return [
     ...new Set(
@@ -36,7 +34,6 @@ function provenanceLabels(attribution: SpeakerNameAttribution): string[] {
     ),
   ];
 }
-
 export function SpeakerNameAttributionBadge({
   attribution,
   className,
@@ -62,7 +59,6 @@ export function SpeakerNameAttributionBadge({
   ]
     .filter(Boolean)
     .join("; ");
-
   return (
     <StatusBadge
       data-testid="speaker-name-attribution"

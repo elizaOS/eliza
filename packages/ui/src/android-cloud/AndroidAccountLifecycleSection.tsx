@@ -1,6 +1,6 @@
 /** Canonical Settings section for the Play-safe Android account lifecycle. */
 
-import { clearStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback } from "react";
 import { useAppSelectorShallow } from "../state";
 import { openExternalUrl } from "../utils/openExternalUrl";

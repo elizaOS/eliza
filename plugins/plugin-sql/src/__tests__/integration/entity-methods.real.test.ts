@@ -816,4 +816,101 @@ describe("Entity Methods Integration Tests", () => {
       expect(results).toHaveLength(1);
     });
   });
+
+  /**
+   * Regression coverage for #30010.
+   *
+   * `getEntitiesByNames` and the non-empty-query branch of
+   * `searchEntitiesByName` previously ran `SELECT * FROM entities` through
+   * `db.execute()`, which returns driver-native snake_case column names
+   * (`agent_id`). The result mapping read `row.agentId`, which was always
+   * `undefined`, so every returned Entity silently dropped its required
+   * `agentId` field. That violated the Entity DTO contract (`agentId` is
+   * required) and diverged from both the reference `InMemoryAdapter` and the
+   * empty-query branch of `searchEntitiesByName`, which uses the Drizzle query
+   * builder and returns a populated `agentId`.
+   *
+   * These assertions pin the corrected contract: the required `agentId` key is
+   * present, is the queried agent, and the two branches of `searchEntitiesByName`
+   * agree. They fail before the alias fix and pass after it.
+   */
+  describe("agentId population (regression #30010)", () => {
+    it("getEntitiesByNames returns entities with the required agentId field", async () => {
+      const entity: Entity = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        names: ["Probe Person GEBN"],
+        metadata: { type: "person" },
+      };
+      await adapter.createEntities([entity]);
+
+      const byName = await adapter.getEntitiesByNames({
+        names: ["Probe Person GEBN"],
+        agentId: testAgentId,
+      });
+
+      const found = byName.find((e) => e.id === entity.id);
+      if (!found) throw new Error("getEntitiesByNames should return the probe entity");
+      // The row must actually carry the agentId key, not merely be undefined.
+      expect(Object.keys(found)).toContain("agentId");
+      expect(found.agentId).toBe(testAgentId);
+      expect(found.agentId).not.toBeUndefined();
+    });
+
+    it("searchEntitiesByName (non-empty query) returns entities with the required agentId field", async () => {
+      const entity: Entity = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        names: ["Probe Person SEBN"],
+        metadata: { type: "person" },
+      };
+      await adapter.createEntities([entity]);
+
+      const searched = await adapter.searchEntitiesByName({
+        query: "Probe Person SEBN",
+        agentId: testAgentId,
+        limit: 1000,
+      });
+
+      const found = searched.find((e) => e.id === entity.id);
+      if (!found) throw new Error("searchEntitiesByName should return the probe entity");
+      expect(Object.keys(found)).toContain("agentId");
+      expect(found.agentId).toBe(testAgentId);
+      expect(found.agentId).not.toBeUndefined();
+    });
+
+    it("both searchEntitiesByName branches (empty vs non-empty query) populate the same agentId", async () => {
+      const entity: Entity = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        names: ["Parity Probe Person"],
+        metadata: { type: "person" },
+      };
+      await adapter.createEntities([entity]);
+
+      // Non-empty-query branch: raw SELECT with aliased columns.
+      const nonEmptyBranch = await adapter.searchEntitiesByName({
+        query: "Parity Probe Person",
+        agentId: testAgentId,
+        limit: 1000,
+      });
+      // Empty-query branch: Drizzle query builder (already correct pre-fix).
+      const emptyBranch = await adapter.searchEntitiesByName({
+        query: "",
+        agentId: testAgentId,
+        limit: 1000,
+      });
+
+      const fromNonEmpty = nonEmptyBranch.find((e) => e.id === entity.id);
+      const fromEmpty = emptyBranch.find((e) => e.id === entity.id);
+
+      if (!fromNonEmpty) throw new Error("Non-empty-query branch should return the probe entity");
+      if (!fromEmpty) throw new Error("Empty-query branch should return the probe entity");
+
+      // Both branches of the same method must agree on the populated agentId.
+      expect(fromNonEmpty.agentId).toBe(testAgentId);
+      expect(fromEmpty.agentId).toBe(testAgentId);
+      expect(fromNonEmpty.agentId).toBe(fromEmpty.agentId);
+    });
+  });
 });

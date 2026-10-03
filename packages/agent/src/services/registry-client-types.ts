@@ -4,7 +4,7 @@
  * projection, plus the `RegistrySearchResult` and `RegistryPluginListItem` DTOs
  * returned to clients. App-facing metadata (viewer, session, ui-extension,
  * catalog/visibility flags) reuses the canonical app config types from
- * `@elizaos/shared`.
+ * `@elizaos/core`.
  */
 import type {
   AppSessionConfig,
@@ -13,14 +13,12 @@ import type {
   AppUiExtensionConfig,
   AppViewerConfig,
   RegistryAppInfo,
-} from "@elizaos/shared";
-
+} from "@elizaos/core";
 export type RegistryAppViewerMeta = Omit<AppViewerConfig, "authMessage">;
 export type RegistryAppSessionMode = AppSessionMode;
 export type RegistryAppSessionFeature = AppSessionFeature;
 export type RegistryAppSessionMeta = AppSessionConfig;
 export type { AppUiExtensionConfig, RegistryAppInfo };
-
 export interface RegistryAppMeta {
   displayName: string;
   category: string;
@@ -62,7 +60,7 @@ export interface RegistryAppMeta {
    * shell. Set via `package.json` → `elizaos.app.mainTab`. Exactly one
    * installed app should declare this; if multiple do, the shell picks
    * the first one deterministically and logs a warning. Consumed by
-   * `getMainTabApp()` in `@elizaos/app-core` at boot.
+   * `getMainTabApp()` in `@elizaos/app` at boot.
    */
   mainTab?: boolean;
   /**
@@ -78,7 +76,6 @@ export interface RegistryAppMeta {
   /** Capability scope gating default visibility (`"wallet"`). */
   scope?: string;
 }
-
 export interface RegistryPluginInfo {
   name: string;
   gitRepo: string;
@@ -100,7 +97,11 @@ export interface RegistryPluginInfo {
     v1Branch: string | null;
     v2Branch: string | null;
   };
-  supports: { v0: boolean; v1: boolean; v2: boolean };
+  supports: {
+    v0: boolean;
+    v1: boolean;
+    v2: boolean;
+  };
   localPath?: string;
   kind?: string;
   registryKind?: string;
@@ -113,7 +114,6 @@ export interface RegistryPluginInfo {
   status?: string;
   appMeta?: RegistryAppMeta;
 }
-
 export interface RegistrySearchResult {
   name: string;
   description: string;
@@ -121,7 +121,11 @@ export interface RegistrySearchResult {
   tags: string[];
   latestVersion: string | null;
   stars: number;
-  supports: { v0: boolean; v1: boolean; v2: boolean };
+  supports: {
+    v0: boolean;
+    v1: boolean;
+    v2: boolean;
+  };
   repository: string;
   origin?: string;
   support?: string;
@@ -129,7 +133,6 @@ export interface RegistrySearchResult {
   firstParty?: boolean;
   thirdParty?: boolean;
 }
-
 export interface RegistryPluginListItem {
   name: string;
   description: string;
@@ -137,7 +140,11 @@ export interface RegistryPluginListItem {
   repository: string;
   topics: string[];
   latestVersion: string | null;
-  supports: { v0: boolean; v1: boolean; v2: boolean };
+  supports: {
+    v0: boolean;
+    v1: boolean;
+    v2: boolean;
+  };
   npm: {
     package: string;
     v0Version: string | null;

@@ -26,9 +26,9 @@ export function extractSessionContext(memory: Memory): {
 	sessionKey?: string;
 	entry?: SessionEntry;
 } | null {
-	// Direct properties on memory (optional on Memory for backwards compat).
-	const directSessionId = memory.sessionId;
-	const directSessionKey = memory.sessionKey;
+	// Empty connector defaults must not hide the metadata session.
+	const directSessionId = memory.sessionId || undefined;
+	const directSessionKey = memory.sessionKey || undefined;
 
 	// Metadata-based session info
 	const metadata = memory.metadata as

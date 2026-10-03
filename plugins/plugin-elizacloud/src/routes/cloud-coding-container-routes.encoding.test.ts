@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const CLOUD_CONTAINER_SERVICE_TYPE = "cloud-container-service";
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/core/contracts/cloud-coding-containers", () => ({
 	CLOUD_CONTAINER_SERVICE_TYPE,
 	PromoteVfsToCloudContainerRequestSchema: {
 		safeParse: (body: unknown) => ({ success: true, data: body }),

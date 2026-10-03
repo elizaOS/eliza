@@ -1,9 +1,9 @@
 /** Verifies that generated icon-only controls expose accessible names. */
 // @vitest-environment jsdom
 
+import type { UiSpec } from "@elizaos/core/config/ui-spec";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { UiSpec } from "../../../config/ui-spec";
 import { __setAppValueForTests } from "../../../state/app-store";
 import { AppContext } from "../../../state/useApp";
 import { UiRenderer } from "../ui-renderer";
@@ -21,12 +21,10 @@ function renderSpec(spec: unknown) {
     </AppContext.Provider>,
   ).container;
 }
-
 afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
 });
-
 describe("UiRenderer icon-control accessibility", () => {
   it("names dialog, pagination, and carousel controls", () => {
     const dialog = renderSpec({
@@ -43,7 +41,6 @@ describe("UiRenderer icon-control accessibility", () => {
     expect(
       dialog.querySelector('button[aria-label="Close dialog"]'),
     ).toBeTruthy();
-
     const pager = renderSpec({
       root: "a",
       elements: {
@@ -54,7 +51,6 @@ describe("UiRenderer icon-control accessibility", () => {
       pager.querySelector('button[aria-label="Previous page"]'),
     ).toBeTruthy();
     expect(pager.querySelector('button[aria-label="Next page"]')).toBeTruthy();
-
     const carousel = renderSpec({
       root: "a",
       elements: {

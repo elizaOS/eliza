@@ -20,34 +20,40 @@ import {
   type KmsAeadOperationKeyBundleHandle,
   type KmsAeadOperationKeyBundleProvider,
   type KmsAeadOperationKeyBundleWrapped,
-} from "@elizaos/core/security/kms";
+} from "@elizaos/auth/kms";
+import {
+  type AgentBackupCaptureV2ComponentDescriptor,
+  type AgentBackupCaptureV2Frame,
+  type AgentBackupCaptureV2Request,
+  parseAgentBackupCaptureV2Request,
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
 import {
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,
   AGENT_BACKUP_MANIFEST_FORMAT,
   AGENT_BACKUP_MANIFEST_V2_LIMITS,
+  AGENT_BACKUP_PAYLOAD_DIGEST_DERIVATION,
+  canonicalizeAgentBackupChunkAad,
+  computeAgentBackupChunkAadDigest,
+} from "@elizaos/core/contracts/agent-backup-manifest";
+import {
   AGENT_BACKUP_MANIFEST_V3_SCHEMA_VERSION,
   AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
-  AGENT_BACKUP_PAYLOAD_DIGEST_DERIVATION,
-  AGENT_BACKUP_RECORD_STREAM_V1_FORMAT,
-  type AgentBackupCaptureV2ComponentDescriptor,
-  type AgentBackupCaptureV2Frame,
-  type AgentBackupCaptureV2Request,
   type AgentBackupManifestV3,
   type AgentBackupManifestV3Draft,
   type AgentBackupManifestV3KmsProvider,
-  canonicalizeAgentBackupChunkAad,
   canonicalizeAgentBackupManifestV3,
   canonicalizeAgentBackupOperationKeyBundleContext,
-  computeAgentBackupChunkAadDigest,
   createAgentBackupManifestV3,
-  parseAgentBackupCaptureV2Request,
   parseAgentBackupManifestV3,
+} from "@elizaos/core/contracts/agent-backup-manifest-v3";
+import {
+  AGENT_BACKUP_RECORD_STREAM_V1_FORMAT,
   serializeAgentBackupRecordStreamV1Magic,
   serializeAgentBackupRecordStreamV1Record,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/agent-backup-record-stream-v1";
 import {
   AgentBackupCaptureV3Spool,
   type AgentBackupCaptureV3SpoolChunk,

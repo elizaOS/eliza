@@ -34,7 +34,7 @@ import {
   readStoredStewardToken,
   STEWARD_SESSION_ENDPOINT,
   syncStewardSession,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 

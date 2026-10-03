@@ -12,21 +12,22 @@
  * settings surface uses one neutral treatment and can't ship a rainbow of
  * saturated logos into a calm list.
  */
-
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import type { ReactElement, SVGProps } from "react";
 
 type BrandGlyphProps = SVGProps<SVGSVGElement> & {
   title?: string;
 };
-
 function Glyph({
   path,
   title,
   viewBox = "0 0 24 24",
   className,
   ...rest
-}: BrandGlyphProps & { path: string; viewBox?: string }) {
+}: BrandGlyphProps & {
+  path: string;
+  viewBox?: string;
+}) {
   return (
     <svg
       viewBox={viewBox}
@@ -42,7 +43,6 @@ function Glyph({
     </svg>
   );
 }
-
 // simple-icons: Anthropic (MIT)
 export function AnthropicMark(props: BrandGlyphProps) {
   return (
@@ -52,7 +52,6 @@ export function AnthropicMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // simple-icons: OpenAI (MIT)
 export function OpenAIMark(props: BrandGlyphProps) {
   return (
@@ -62,7 +61,6 @@ export function OpenAIMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // simple-icons: Google Gemini (MIT)
 export function GeminiMark(props: BrandGlyphProps) {
   return (
@@ -72,7 +70,6 @@ export function GeminiMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // simple-icons: DeepSeek (MIT)
 export function DeepSeekMark(props: BrandGlyphProps) {
   return (
@@ -82,7 +79,6 @@ export function DeepSeekMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // simple-icons: Moonshot AI / Kimi (MIT)
 export function MoonshotMark(props: BrandGlyphProps) {
   return (
@@ -92,7 +88,6 @@ export function MoonshotMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // simple-icons: Z (z.ai / Zhipu) — using a clean Z monogram in currentColor
 export function ZaiMark(props: BrandGlyphProps) {
   return (
@@ -103,7 +98,6 @@ export function ZaiMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // Cerebras — stylized concentric brain-loop monogram (original, no brand color)
 export function CerebrasMark(props: BrandGlyphProps) {
   return (
@@ -114,7 +108,6 @@ export function CerebrasMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // Eliza Cloud — the eliza spark mark (simplified, currentColor)
 export function ElizaCloudMark(props: BrandGlyphProps) {
   return (
@@ -125,7 +118,6 @@ export function ElizaCloudMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // Neutral API-key identity for paid providers without a bundled licensed mark.
 export function ApiKeyMark(props: BrandGlyphProps) {
   return (
@@ -136,7 +128,6 @@ export function ApiKeyMark(props: BrandGlyphProps) {
     />
   );
 }
-
 // Local / on-device — a monitor+chip glyph
 export function LocalMark(props: BrandGlyphProps) {
   return (
@@ -147,7 +138,6 @@ export function LocalMark(props: BrandGlyphProps) {
     />
   );
 }
-
 const PROVIDER_MARKS: Record<
   LinkedAccountProviderId,
   (props: BrandGlyphProps) => ReactElement
@@ -167,17 +157,14 @@ const PROVIDER_MARKS: Record<
   "openrouter-api": ApiKeyMark,
   "xai-api": ApiKeyMark,
 };
-
 export interface ProviderMarkProps extends BrandGlyphProps {
   providerId: LinkedAccountProviderId;
 }
-
 /** Resolve and render the brand mark for a linked-account provider id. */
 export function ProviderMark({ providerId, ...rest }: ProviderMarkProps) {
   const Mark = PROVIDER_MARKS[providerId] ?? AnthropicMark;
   return <Mark {...rest} />;
 }
-
 export function hasProviderMark(providerId: LinkedAccountProviderId): boolean {
   return providerId in PROVIDER_MARKS;
 }

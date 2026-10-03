@@ -1,0 +1,56 @@
+{
+  "id": "elizaos-linux-amd64-gui-@@BUILD_TIMESTAMP@@",
+  "kind": "iso-hybrid",
+  "target": {
+    "platform": "linux",
+    "architecture": "amd64",
+    "device": "generic-x86_64",
+    "hypervisor": "qemu-kvm",
+    "firmware": "SeaBIOS and UEFI"
+  },
+  "filename": "@@FILENAME@@",
+  "downloadUrl": null,
+  "status": "planned",
+  "sizeBytes": @@SIZE_BYTES@@,
+  "sha256": "@@SHA256@@",
+  "signature": {
+    "status": "pending",
+    "url": null
+  },
+  "inputs": {
+    "debian": {
+      "snapshotSerial": "@@DEBIAN_SNAPSHOT_SERIAL@@",
+      "baseImage": "@@DEBIAN_BASE_IMAGE@@"
+    },
+    "eliza": {
+      "repository": "https://github.com/elizaOS/eliza",
+      "commit": "@@ELIZA_COMMIT@@",
+      "artifactTreeSha256": "@@APP_ARTIFACT_SHA256@@"
+    }
+  },
+  "validation": {
+    "requiredEvidence": [
+      "iso-hybrid-layout",
+      "qemu-bios-boot",
+      "qemu-uefi-boot",
+      "elizaos-app-live",
+      "visual-review",
+      "audio-input",
+      "local-chat",
+      "cloud-setup",
+      "root-broker"
+    ],
+    "evidence": [
+      { "id": "iso-hybrid-layout", "status": "missing", "path": null },
+      { "id": "qemu-bios-boot", "status": "missing", "path": null },
+      { "id": "qemu-uefi-boot", "status": "missing", "path": null },
+      { "id": "elizaos-app-live", "status": "missing", "path": null },
+      { "id": "visual-review", "status": "missing", "path": null },
+      { "id": "audio-input", "status": "missing", "path": null },
+      { "id": "local-chat", "status": "missing", "path": null },
+      { "id": "cloud-setup", "status": "missing", "path": null },
+      { "id": "root-broker", "status": "missing", "path": null }
+    ]
+  },
+  "notes": "Built artifact metadata only. Promotion remains blocked until every required exact-image evidence row is collected."
+}

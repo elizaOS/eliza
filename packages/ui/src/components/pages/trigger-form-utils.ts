@@ -6,6 +6,8 @@
  * by TriggersView and its tests so neither duplicates the logic.
  */
 
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { CronExpressionParser } from "cron-parser";
 import type {
   CreateTriggerRequest,
   TriggerSummary,
@@ -13,21 +15,13 @@ import type {
   TriggerWakeMode,
   UpdateTriggerRequest,
 } from "../../api/client";
-
-export type TriggerKind = "text" | "workflow";
-
-import { parsePositiveInteger } from "@elizaos/shared";
-import { CronExpressionParser } from "cron-parser";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import type { TranslateFn as AppTranslateFn } from "../../types";
-import { formatDurationMs } from "../../utils/format";
-
+import { formatDateTime, formatDurationMs } from "../../utils/format";
+export type TriggerKind = "text" | "workflow";
 // ── Translation helper type ────────────────────────────────────────
-
 export type TranslateFn = AppTranslateFn;
-
 // ── Duration units ─────────────────────────────────────────────────
-
 export const DURATION_UNITS = [
   {
     unit: "seconds",
@@ -36,24 +30,25 @@ export const DURATION_UNITS = [
   },
   {
     unit: "minutes",
-    ms: 60_000,
+    ms: 60000,
     labelKey: "triggersview.durationUnitMinutes",
   },
   {
     unit: "hours",
-    ms: 3_600_000,
+    ms: 3600000,
     labelKey: "triggersview.durationUnitHours",
   },
   {
     unit: "days",
-    ms: 86_400_000,
+    ms: 86400000,
     labelKey: "triggersview.durationUnitDays",
   },
 ] as const;
-
 export type DurationUnit = (typeof DURATION_UNITS)[number]["unit"];
-
-export function bestFitUnit(ms: number): { value: number; unit: DurationUnit } {
+export function bestFitUnit(ms: number): {
+  value: number;
+  unit: DurationUnit;
+} {
   for (let i = DURATION_UNITS.length - 1; i >= 0; i -= 1) {
     const unit = DURATION_UNITS[i];
     if (ms >= unit.ms && ms % unit.ms === 0) {
@@ -62,19 +57,15 @@ export function bestFitUnit(ms: number): { value: number; unit: DurationUnit } {
   }
   return { value: ms / 1000, unit: "seconds" };
 }
-
 export function durationToMs(value: number, unit: DurationUnit): number {
   const found = DURATION_UNITS.find((candidate) => candidate.unit === unit);
   return value * (found?.ms ?? 1000);
 }
-
 export function durationUnitLabel(unit: DurationUnit, t: TranslateFn): string {
   const found = DURATION_UNITS.find((candidate) => candidate.unit === unit);
   return found ? t(found.labelKey) : unit;
 }
-
 // ── Form state ─────────────────────────────────────────────────────
-
 export interface TriggerFormState {
   displayName: string;
   instructions: string;
@@ -91,7 +82,6 @@ export interface TriggerFormState {
   durationValue: string;
   durationUnit: DurationUnit;
 }
-
 export const emptyForm: TriggerFormState = {
   displayName: "",
   instructions: "",
@@ -108,9 +98,7 @@ export const emptyForm: TriggerFormState = {
   durationValue: "1",
   durationUnit: "hours",
 };
-
 // ── Template types & storage ───────────────────────────────────────
-
 export interface TriggerTemplate {
   id: string;
   name: string;
@@ -120,9 +108,7 @@ export interface TriggerTemplate {
   nameKey?: string;
   instructionsKey?: string;
 }
-
 export const TEMPLATES_STORAGE_KEY = "elizaos:trigger-templates";
-
 export const BUILT_IN_TEMPLATES: TriggerTemplate[] = [
   {
     id: "__builtin_crypto",
@@ -155,7 +141,6 @@ export const BUILT_IN_TEMPLATES: TriggerTemplate[] = [
     unit: "hours",
   },
 ];
-
 export function isValidTemplate(v: unknown): v is TriggerTemplate {
   if (typeof v !== "object" || v == null) return false;
   const t = v as Record<string, unknown>;
@@ -167,7 +152,6 @@ export function isValidTemplate(v: unknown): v is TriggerTemplate {
     typeof t.unit === "string"
   );
 }
-
 export function loadUserTemplates(): TriggerTemplate[] {
   try {
     const raw = localStorage.getItem(TEMPLATES_STORAGE_KEY);
@@ -181,7 +165,6 @@ export function loadUserTemplates(): TriggerTemplate[] {
     return [];
   }
 }
-
 export function saveUserTemplates(templates: TriggerTemplate[]): void {
   try {
     shellLocalStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
@@ -190,7 +173,6 @@ export function saveUserTemplates(templates: TriggerTemplate[]): void {
     // convenience cache; the trigger itself is persisted server-side.
   }
 }
-
 export function getTemplateName(
   template: TriggerTemplate,
   t: (key: string, options?: Record<string, unknown>) => string,
@@ -199,7 +181,6 @@ export function getTemplateName(
     ? t(template.nameKey, { defaultValue: template.name })
     : template.name;
 }
-
 export function getTemplateInstructions(
   template: TriggerTemplate,
   t: (key: string, options?: Record<string, unknown>) => string,
@@ -208,9 +189,7 @@ export function getTemplateInstructions(
     ? t(template.instructionsKey, { defaultValue: template.instructions })
     : template.instructions;
 }
-
 // ── Misc helpers ───────────────────────────────────────────────────
-
 export function railMonogram(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
   const initials = words
@@ -219,9 +198,7 @@ export function railMonogram(label: string): string {
     .join("");
   return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
 }
-
 export { parsePositiveInteger };
-
 export function scheduleLabel(
   trigger: TriggerSummary,
   t: TranslateFn,
@@ -245,7 +222,6 @@ export function scheduleLabel(
   }
   return trigger.triggerType;
 }
-
 export function humanizeEventKind(value: string): string {
   return value
     .trim()
@@ -255,9 +231,8 @@ export function humanizeEventKind(value: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
-
 export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
-  const intervalMs = trigger.intervalMs ?? 3_600_000;
+  const intervalMs = trigger.intervalMs ?? 3600000;
   const { value, unit } = bestFitUnit(intervalMs);
   return {
     displayName: trigger.displayName,
@@ -276,7 +251,6 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
     durationUnit: unit,
   };
 }
-
 export function buildCreateRequest(
   form: TriggerFormState,
 ): CreateTriggerRequest {
@@ -302,23 +276,26 @@ export function buildCreateRequest(
     maxRuns,
   };
 }
-
 export function buildUpdateRequest(
   form: TriggerFormState,
 ): UpdateTriggerRequest {
   return { ...buildCreateRequest(form) };
 }
-
 // ── Cron validation ────────────────────────────────────────────────
-
 /**
  * Validate a 5-field cron expression using cron-parser.
  * Returns `{ ok: true, message: null }` on success or
  * `{ ok: false, message: string }` with the parser error message on failure.
  */
-export function validateCronExpression(
-  expr: string,
-): { ok: true; message: null } | { ok: false; message: string } {
+export function validateCronExpression(expr: string):
+  | {
+      ok: true;
+      message: null;
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   const trimmed = expr.trim();
   if (!trimmed) return { ok: false, message: "Expression is empty" };
   try {
@@ -333,9 +310,7 @@ export function validateCronExpression(
     };
   }
 }
-
 // ── Schedule preview ───────────────────────────────────────────────
-
 /**
  * Compute the next N fire dates for an interval trigger (ms between fires).
  * Returns an empty array when intervalMs is not positive.
@@ -352,7 +327,6 @@ export function nextRunsForInterval(
   }
   return results;
 }
-
 /**
  * Compute the next N fire dates for a cron expression.
  * Returns an empty array when parsing fails.
@@ -379,7 +353,6 @@ export function nextRunsForCron(
     return [];
   }
 }
-
 /** Returns an error message when invalid, null when valid. */
 export function validateTriggerKind(
   form: TriggerFormState,
@@ -390,7 +363,6 @@ export function validateTriggerKind(
   }
   return null;
 }
-
 export function validateForm(
   form: TriggerFormState,
   t: TranslateFn,
@@ -429,7 +401,6 @@ export function validateForm(
   }
   return null;
 }
-
 export function toneForLastStatus(
   status?: string,
 ): "success" | "warning" | "danger" | "muted" {
@@ -439,7 +410,6 @@ export function toneForLastStatus(
   if (status === "error" || status === "failed") return "danger";
   return "muted";
 }
-
 export function localizedExecutionStatus(
   status: string,
   t: TranslateFn,
@@ -463,7 +433,4 @@ export function localizedExecutionStatus(
       return status;
   }
 }
-
 // ── Private import used by scheduleLabel ───────────────────────────
-
-import { formatDateTime } from "../../utils/format";

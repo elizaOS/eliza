@@ -75,12 +75,12 @@ async function getClusterMemories(
   });
 }
 
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsGmailMessageSummary,
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsGmailMessageSummary,
+  type LifeOpsXDm,
+  type LifeOpsXFeedItem,
+} from "@elizaos/core/contracts/personal-assistant";
 
 // ---------------------------------------------------------------------------
 // Public types

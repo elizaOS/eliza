@@ -15,7 +15,7 @@
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/shared/events";
+} from "@elizaos/core/events";
 import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
@@ -33,6 +33,11 @@ import {
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
 import { voiceSettingsController } from "../../voice/voice-settings-controller";
+import {
+  readVadAutoStop as readBroadcastVadAutoStop,
+  readContinuousMode,
+} from "../../voice/voice-settings-payload";
+import { Alert, AlertDescription } from "../ui/alert";
 import { VoicePresetSettingsContent } from "./IdentitySettingsSection";
 import {
   type VadAutoStopPrefs,
@@ -45,16 +50,13 @@ import {
 } from "./VoiceSection.helpers";
 
 const VOICE_PREFS_CONFIG_KEY = "voice";
-
 const profilesClient = createVoiceProfilesClient(client);
-
 function isContinuousMode(value: unknown): value is VoiceContinuousMode {
   return (
     typeof value === "string" &&
     VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode)
   );
 }
-
 function readVadAutoStop(value: unknown): VadAutoStopPrefs {
   const stored = (value ?? {}) as Record<string, unknown>;
   return {
@@ -69,7 +71,6 @@ function readVadAutoStop(value: unknown): VadAutoStopPrefs {
         : DEFAULT_VAD_AUTO_STOP_PREFS.speechRmsThreshold,
   };
 }
-
 function readStoredVoicePrefs(
   config: Record<string, unknown>,
 ): VoiceSectionPrefs {
@@ -102,12 +103,15 @@ function readStoredVoicePrefs(
     vadAutoStop: readVadAutoStop(stored.vadAutoStop),
   };
 }
-
 export function VoiceSectionMount(): React.ReactElement {
   const { cloudOnly } = useBranding();
   const [prefs, setPrefs] = React.useState<VoiceSectionPrefs>(
     DEFAULT_VOICE_SECTION_PREFS,
   );
+  // Applied fields received during the initial read override only their stale
+  // counterparts; unrelated persisted preferences still hydrate normally.
+  const pendingHydrationUpdates =
+    React.useRef<Partial<VoiceSectionPrefs> | null>({});
   const [persistError, setPersistError] = React.useState<string | null>(null);
   // Wake-word listening is a device-local pref (localStorage mirror the shell
   // reads synchronously — see useShellController's useWakeListenWindow), not part
@@ -115,32 +119,41 @@ export function VoiceSectionMount(): React.ReactElement {
   const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
     loadWakeWordEnabled(),
   );
+  const [tierError, setTierError] = React.useState(false);
   const [tier, setTier] = React.useState<DeviceTier | null>(null);
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
     undefined,
   );
-
   useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
     const payload = event.payload as VoiceSettingsApplyPayload;
+    const continuous = readContinuousMode(payload.continuous);
+    const vadAutoStop = readBroadcastVadAutoStop(payload.vadAutoStop);
     if (
+      !continuous &&
+      !vadAutoStop &&
       typeof payload.osIntentAutoStartVoice !== "boolean" &&
       typeof payload.osIntentAutoStartTranscription !== "boolean"
     ) {
       return;
     }
-    setPrefs((current) => ({
-      ...current,
-      osIntentAutoStartVoice:
-        typeof payload.osIntentAutoStartVoice === "boolean"
-          ? payload.osIntentAutoStartVoice
-          : current.osIntentAutoStartVoice,
-      osIntentAutoStartTranscription:
-        typeof payload.osIntentAutoStartTranscription === "boolean"
-          ? payload.osIntentAutoStartTranscription
-          : current.osIntentAutoStartTranscription,
-    }));
+    const applied: Partial<VoiceSectionPrefs> = {
+      ...(continuous ? { continuous } : {}),
+      ...(vadAutoStop ? { vadAutoStop } : {}),
+      ...(typeof payload.osIntentAutoStartVoice === "boolean"
+        ? { osIntentAutoStartVoice: payload.osIntentAutoStartVoice }
+        : {}),
+      ...(typeof payload.osIntentAutoStartTranscription === "boolean"
+        ? {
+            osIntentAutoStartTranscription:
+              payload.osIntentAutoStartTranscription,
+          }
+        : {}),
+    };
+    if (pendingHydrationUpdates.current !== null) {
+      Object.assign(pendingHydrationUpdates.current, applied);
+    }
+    setPrefs((current) => ({ ...current, ...applied }));
   });
-
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -154,7 +167,11 @@ export function VoiceSectionMount(): React.ReactElement {
         // here would leave the capture hot path with no value at all).
       }
       if (cancelled) return;
-      const loaded = readStoredVoicePrefs(config);
+      const loaded = {
+        ...readStoredVoicePrefs(config),
+        ...pendingHydrationUpdates.current,
+      };
+      pendingHydrationUpdates.current = null;
       setPrefs(loaded);
       // Seed the local mirrors so the capture hot path reads the server value.
       voiceSettingsController.applyDeviceSettings(loaded);
@@ -163,7 +180,6 @@ export function VoiceSectionMount(): React.ReactElement {
       cancelled = true;
     };
   }, []);
-
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -173,22 +189,20 @@ export function VoiceSectionMount(): React.ReactElement {
         setTier(result.tier);
         setTierSummary(result.reason);
       } catch {
-        // Tier probe failed — keep the null-tier default (VoiceSection renders
-        // without the tier banner) instead of surfacing an unhandled rejection.
+        // error-policy:J4 A failed assessment stays visibly unavailable, never a positive tier.
+        if (!cancelled) setTierError(true);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
-
   // Persist the wake-word toggle and update local state so the control reflects
   // it immediately; the shell picks the new value up on its next render.
   const handleWakeWordToggle = React.useCallback((next: boolean) => {
     setWakeWordEnabled(next);
     saveWakeWordEnabled(next);
   }, []);
-
   const handlePrefsChange = React.useCallback(
     async (next: VoiceSectionPrefs) => {
       setPrefs(next);
@@ -212,7 +226,6 @@ export function VoiceSectionMount(): React.ReactElement {
     },
     [],
   );
-
   return (
     <>
       {persistError ? (
@@ -233,10 +246,25 @@ export function VoiceSectionMount(): React.ReactElement {
         showModelsPanel={cloudOnly !== true}
         wakeWordEnabled={wakeWordEnabled}
         onWakeWordToggle={handleWakeWordToggle}
-        leadingContent={<VoicePresetSettingsContent />}
+        leadingContent={
+          <>
+            <VoicePresetSettingsContent />
+            {tierError ? (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Hardware assessment unavailable. Reopen Voice settings to try
+                  again.
+                </AlertDescription>
+              </Alert>
+            ) : tier === null ? (
+              <p role="status" className="text-xs text-muted">
+                Checking hardware suitability…
+              </p>
+            ) : null}
+          </>
+        }
       />
     </>
   );
 }
-
 export default VoiceSectionMount;

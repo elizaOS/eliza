@@ -28,6 +28,12 @@ const clientMock = vi.hoisted(() => ({
 const dispatchChatOpen = vi.hoisted(() => vi.fn());
 const authorityMock = vi.hoisted(() => ({ value: "agent-a" }));
 
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
+
 vi.mock("../../api/client", () => ({ client: clientMock }));
 vi.mock("../../events", () => ({ dispatchChatOpen }));
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
@@ -434,6 +440,59 @@ describe("MemoryViewerView interface contract", () => {
       expect.objectContaining({ before: 200, beforeId: "feed-cursor" }),
     );
     expect(await screen.findByText("older tied row")).not.toBeNull();
+  });
+
+  it("pages a multi-type filter from the raw server tail past a page with no matches", async () => {
+    const row = (index: number, type: string) => ({
+      id: `mem-${index}`,
+      type,
+      text: `memory ${index}`,
+      source: "client_chat",
+      createdAt: 10_000 - index,
+      entityId: "entity-1",
+      roomId: "room-1",
+    });
+    // Page 1 has one match, page 2 has none, page 3 has more.
+    const pages = [
+      [row(0, "messages"), row(1, "facts")],
+      [row(2, "facts"), row(3, "facts")],
+      [row(4, "documents")],
+    ];
+    clientMock.getMemoryStats.mockResolvedValue({
+      total: 5,
+      byType: { messages: 1, documents: 1, facts: 3 },
+    });
+    clientMock.getMemoryFeed.mockImplementation(
+      async ({ before }: { before?: number }) => {
+        const index =
+          before === undefined
+            ? 0
+            : pages.findIndex((page) => page[0].createdAt < before);
+        return {
+          memories: pages[index],
+          count: pages[index].length,
+          limit: 50,
+          hasMore: index < pages.length - 1,
+        };
+      },
+    );
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<MemoryViewerView />);
+    await user.click(await screen.findByTestId("memory-type-filter-trigger"));
+    await user.click(await screen.findByTestId("memory-type-filter-messages"));
+    await user.click(await screen.findByTestId("memory-type-filter-documents"));
+    await user.keyboard("{Escape}");
+    await screen.findByText("memory 0");
+
+    await user.click(await screen.findByRole("button", { name: "Load older" }));
+    await waitFor(() =>
+      expect(clientMock.getMemoryFeed).toHaveBeenLastCalledWith(
+        expect.objectContaining({ before: 10_000 - 1, beforeId: "mem-1" }),
+      ),
+    );
+    await user.click(await screen.findByRole("button", { name: "Load older" }));
+    expect(await screen.findByText("memory 4")).not.toBeNull();
   });
 
   it("points the empty feed forward with Ask Eliza", async () => {

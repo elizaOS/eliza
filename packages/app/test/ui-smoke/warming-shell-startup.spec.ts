@@ -2,14 +2,16 @@
  * Playwright UI-smoke spec for the Warming Shell Startup app flow using the
  * real renderer fixture.
  */
+import { mkdir } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { installDefaultAppRoutes, openAppPath } from "./helpers";
 
 /**
  * Verifies the "fade in first-turn capability" gate-split: while the local agent
  * is still WARMING (agentState "starting", canRespond false), the live shell +
  * chat composer must already be on screen — NOT the full-screen StartupScreen
- * loader — and the composer must be editable with a "waking up" affordance. When
+ * loader — and the composer must be editable with a "connecting" affordance. When
  * first-turn capability comes online (canRespond true), the composer goes live.
  */
 
@@ -89,12 +91,80 @@ test("the shell + composer paint while the agent warms up, then go live", async 
   // The warming composer is editable (you can type now) and advertises warmup.
   const composer = chatComposer(page);
   await expect(composer).not.toHaveAttribute("readonly", /.*/);
-  await expect(composer).toHaveAttribute("placeholder", /waking up/i);
+  await expect(composer).toHaveAttribute("placeholder", /connecting/i);
 
-  // Capability comes online → the composer goes live (placeholder drops "waking up").
+  // Capability comes online → the composer goes live (placeholder drops "connecting").
   ready = true;
   await expect
     .poll(async () => composer.getAttribute("placeholder"), { timeout: 30_000 })
-    .not.toMatch(/waking up/i);
+    .not.toMatch(/connecting/i);
   await expect(composer).toBeVisible();
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  test(`missing local model remains editable and recovers on ${viewport.name}`, async ({
+    page,
+  }) => {
+    const output = testOutputPath(
+      "app",
+      "local-model-readiness",
+      viewport.name,
+    );
+    await mkdir(output, { recursive: true });
+    await page.setViewportSize(viewport);
+    await installDefaultAppRoutes(page);
+    let ready = false;
+    await page.route("**/api/status", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: {
+          state: "running",
+          agentName: "Eliza",
+          model: "local-model",
+          canRespond: ready,
+          ...(!ready
+            ? {
+                localModelReadiness: {
+                  provider: "eliza-local-inference",
+                  status: "model_not_loaded",
+                },
+              }
+            : {}),
+        },
+      });
+    });
+    await openAppPath(page, "/chat");
+    const composer = chatComposer(page);
+    await expect(composer).toHaveAttribute(
+      "placeholder",
+      /text model not loaded/i,
+      { timeout: 30_000 },
+    );
+    await composer.fill("Keep this draft while I prepare the model.");
+    await expect(composer).toHaveValue(
+      "Keep this draft while I prepare the model.",
+    );
+    await expect(composer).toHaveAttribute(
+      "aria-describedby",
+      "cc-local-model-hint",
+    );
+    await page.screenshot({
+      path: `${output}/model-missing.png`,
+    });
+    ready = true;
+    await expect(composer).not.toHaveAttribute(
+      "placeholder",
+      /text model not loaded/i,
+      { timeout: 30_000 },
+    );
+    await expect(composer).toHaveValue(
+      "Keep this draft while I prepare the model.",
+    );
+    await page.screenshot({
+      path: `${output}/model-ready.png`,
+    });
+  });
+}

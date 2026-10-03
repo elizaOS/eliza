@@ -16,8 +16,9 @@
  * or stopped tour stays quiet across launches; the legacy one-bit
  * "eliza:tutorial-completed" flag is honored on first load.
  */
-import { logger } from "@elizaos/logger";
+
 import * as React from "react";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { TUTORIAL_STEP_IDS } from "./tutorial-script";
 

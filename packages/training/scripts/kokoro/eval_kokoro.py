@@ -30,8 +30,6 @@ The script applies the gates defined in the config (`config.gates`) and
 emits a `passed: true|false` summary plus per-metric pass/fail. If
 `--allow-gate-fail` is not set, a failed gate exits non-zero.
 
-Synthetic-smoke (`--synthetic-smoke`) writes a synthetic eval.json with fallback
-metrics so downstream tooling can be tested without a real model.
 """
 
 from __future__ import annotations
@@ -119,28 +117,6 @@ def _build_comparison(
         "speakerSimBeatThreshold": SPEAKER_SIM_BEAT_BASELINE_DELTA,
         "beatsBaseline": bool(beats),
     }
-
-
-def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
-    metrics = {"utmos": 4.0, "wer": 0.04, "speaker_similarity": 0.78, "rtf": 12.5}
-    gates_result = _apply_gates(metrics, cfg["gates"])
-    out: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "kokoro-eval-report",
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "synthetic": True,
-        "metrics": metrics,
-        "gates": cfg["gates"],
-        "gateResult": gates_result,
-        "voiceName": cfg.get("voice_name", "eliza_custom"),
-    }
-    if args.baseline_eval:
-        out["comparison"] = _build_comparison(metrics, Path(args.baseline_eval).resolve())
-    out_path = Path(args.eval_out).resolve()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(out, indent=2) + "\n")
-    log.info("synthetic-smoke wrote %s", out_path)
-    return 0
 
 
 def _measure_rtf(synth_fn, prompts: list[str], device: str) -> tuple[float, float]:
@@ -459,7 +435,6 @@ def build_parser() -> argparse.ArgumentParser:
             "boolean. Publish flows gate on `gateResult.passed && comparison.beatsBaseline`."
         ),
     )
-    p.add_argument("--synthetic-smoke", action="store_true")
     p.add_argument(
         "--baseline-voice-id",
         type=str,
@@ -475,8 +450,6 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
     if args.eval_out is None:
         args.eval_out = Path(args.run_dir) / "eval.json"
-    if args.synthetic_smoke:
-        return _run_synthetic_smoke(args, cfg)
     return _real_eval(args, cfg)
 
 

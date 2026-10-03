@@ -13,9 +13,18 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type DeterministicModelFixture,
+  scenario,
+  strictActionRouteFixtures,
+} from "@elizaos/testing";
+import {
+  matchesTypedTurnInput,
+  typedTurnEvaluationFixtures,
+} from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
 import { executeRawSql } from "../../../../../../plugins/plugin-goals/src/db/sql.ts";
 import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/src/goals-runtime.ts";
+import { evaluatorSourceRevision } from "../../../../../plugin-assistant/src/services/evaluator-progress.ts";
 
 // The create path is a preview->confirm handshake (#14459/#15055):
 // `shouldRequireLifeCreateConfirmation` commits only when the create params carry
@@ -23,63 +32,22 @@ import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/
 // phrase. This single-turn smoke scenario predates the gate, so the message
 // carries "save it" and the tool-call args set `confirmed:true`.
 const GOAL_INPUT = "Add a goal to run a marathon next year, and save it.";
-const OWNER_GOALS = "OWNER_GOALS";
+const OWNER_GOALS = "OWNER_GOALS_CREATE";
 
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
+    register: (...fixtures: DeterministicModelFixture[]) => void;
   };
 };
 
-function goalsRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes("marathon");
+function goalsRouteFixtures(): DeterministicModelFixture[] {
   return [
-    {
-      name: "route-owner-goals-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["general"],
-        intents: ["goal"],
-        replyText: "",
-        threadOps: [],
-        candidateActionNames: [OWNER_GOALS],
-      },
-      times: 1,
-    },
-    {
-      name: "route-owner-goals-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: OWNER_GOALS,
-      },
-      response: {
-        text: "",
-        // Non-empty so the planner-loop gate synthesizes a FINISH after the
-        // successful create instead of firing an (unfixtured) in-loop evaluator.
-        thought: "Create the owner's marathon life goal.",
-        messageToUser: "Added your goal.",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-owner-goals",
-            name: OWNER_GOALS,
-            type: "function",
-            arguments: {
-              action: "create",
-              title: "Run a marathon",
-              confirmed: true,
-            },
-          },
-        ],
-      },
-      times: 1,
-    },
+    ...strictActionRouteFixtures({
+      actionName: OWNER_GOALS,
+      args: { action: "create", title: "Run a marathon", confirmed: true },
+      input: GOAL_INPUT,
+      messageToUser: "Added your goal.",
+    }),
     {
       // The action's own resolveActionArgs extraction. Excludes the grounding
       // prompt (below) so the two TEXT_LARGE fixtures are mutually exclusive, and
@@ -166,7 +134,48 @@ export default scenario({
              created_at text NOT NULL
            )`,
         );
-        runtime.scenarioModelFixtures?.register(...goalsRouteFixtures());
+        if (!runtime.scenarioModelFixtures)
+          throw new Error("Scenario model fixtures unavailable");
+        runtime.scenarioModelFixtures.register(
+          ...goalsRouteFixtures(),
+          ...typedTurnEvaluationFixtures(runtime, ctx, {
+            name: "marathon-goal",
+            input: GOAL_INPUT,
+            action: OWNER_GOALS,
+            goal: {
+              goalFound: true,
+              goal: "Run a marathon next year.",
+              confidence: 1,
+            },
+            memory: ({ sourceMessageIds }) => ({
+              factMemory: {
+                ops:
+                  sourceMessageIds.length === 0
+                    ? []
+                    : [
+                        {
+                          op: "add_durable",
+                          category: "goal",
+                          claim: "The user wants to run a marathon next year.",
+                          structured_fields: {},
+                          keywords: ["marathon", "running", "goal"],
+                          sourceMessageIds,
+                          reason:
+                            "The user explicitly asked to save this goal; preserve the relative year without inventing a date or training details.",
+                        },
+                      ],
+              },
+              relationships: { relationships: [] },
+              identities: { identities: [] },
+              preferences: { ops: [] },
+              experiencePatterns: { experiences: [] },
+              success: {
+                completed: true,
+                reason: "The goal action returned a successful create receipt.",
+              },
+            }),
+          }),
+        );
         return undefined;
       },
     },
@@ -206,6 +215,65 @@ export default scenario({
   ],
 
   finalChecks: [
+    {
+      type: "custom",
+      name: "marathon goal fact retains original user evidence",
+      predicate: async (ctx) => {
+        if (!ctx.primaryRoomId || !ctx.primaryUserId)
+          return "Missing scenario identities";
+        const runtime = ctx.runtime as AgentRuntime;
+        const facts = await runtime.getMemories({
+          tableName: "facts",
+          roomId: ctx.primaryRoomId,
+          entityId: ctx.primaryUserId,
+          unique: false,
+        });
+        const fact = facts.find(
+          (entry) =>
+            entry.content.text ===
+            "The user wants to run a marathon next year.",
+        );
+        const metadata = fact?.metadata;
+        if (
+          !metadata ||
+          !("category" in metadata) ||
+          metadata.category !== "goal" ||
+          !("kind" in metadata) ||
+          metadata.kind !== "durable"
+        )
+          return "Declared durable goal fact was not persisted";
+        const revisions =
+          "extractionSourceRevisions" in metadata
+            ? metadata.extractionSourceRevisions
+            : undefined;
+        if (
+          !revisions ||
+          typeof revisions !== "object" ||
+          Array.isArray(revisions)
+        )
+          return "Goal fact lacks source revisions";
+        // Use the evaluator's canonical source query: getMemoryById omits
+        // the message table type retained by the extraction revision contract.
+        const sources = await runtime.getMemories({
+          tableName: "messages",
+          roomId: ctx.primaryRoomId,
+          agentId: runtime.agentId,
+          unique: false,
+          orderDirection: "asc",
+          includeEmbedding: false,
+        });
+        for (const [id, revision] of Object.entries(revisions)) {
+          const source = sources.find((entry) => entry.id === id);
+          if (
+            source?.entityId === ctx.primaryUserId &&
+            matchesTypedTurnInput(source.content.text, GOAL_INPUT) &&
+            revision === evaluatorSourceRevision(source)
+          )
+            return undefined;
+        }
+        return "Goal fact does not cite the original user request";
+      },
+    },
     {
       type: "actionCalled",
       actionName: OWNER_GOALS,

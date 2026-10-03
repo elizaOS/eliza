@@ -1177,7 +1177,7 @@ async function main() {
     const out = {
       ...baseReport,
       status: "needs-harness",
-      reason: "this tier is Kokoro-only for TTS; the fused OmniVoice+MTP e2e harness is not applicable and the app-core Kokoro voice-loop harness must drive the full ASR->text->Kokoro path",
+      reason: "this tier is Kokoro-only for TTS; the fused OmniVoice+MTP e2e harness is not applicable and the app Kokoro voice-loop harness must drive the full ASR->text->Kokoro path",
       bundleArtifacts: {
         text: !!isRealGguf(files.text),
         drafter: files.drafter ? !!isRealGguf(files.drafter, 10_000_000) : null,

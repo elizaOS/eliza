@@ -152,7 +152,7 @@ export interface PowerMonitorState {
  * permission" without triggering implicit OS dialogs.
  *
  * The id set mirrors the PermissionId from
- * `@elizaos/shared/contracts/permissions`. Defined inline here to keep the
+ * `@elizaos/core/contracts/permissions`. Defined inline here to keep the
  * Capacitor plugin package free of cross-package type imports.
  */
 export type DesktopPermissionId =

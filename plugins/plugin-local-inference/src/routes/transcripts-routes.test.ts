@@ -2,16 +2,15 @@
  * Unit tests for the `/api/transcripts*` rawPath routes — request-to-`Transcript`
  * shaping via `buildTranscriptFromRequest` and the handler contract.
  */
-
-import type {
-	AccessContext,
-	Memory,
-	RouteHandlerContext,
-	UUID,
+import {
+	type AccessContext,
+	type Memory,
+	ServiceType,
+	type UUID,
 } from "@elizaos/core";
-import { ServiceType } from "@elizaos/core";
-import { buildMeetingArtifactFixtures } from "@elizaos/shared";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+import type { RouteHandlerContext } from "@elizaos/core/api/http-plugin";
+import { buildMeetingArtifactFixtures } from "@elizaos/core/meeting-artifacts";
+import type { TranscriptSegment } from "@elizaos/core/transcripts";
 import { describe, expect, it } from "vitest";
 import {
 	buildTranscriptFromRequest,
@@ -24,7 +23,6 @@ const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
 const OTHER_ENTITY = "33333333-3333-3333-3333-333333333333" as UUID;
 const THIRD_ENTITY = "44444444-4444-4444-4444-444444444444" as UUID;
-
 const segments: TranscriptSegment[] = [
 	{
 		id: "s1",
@@ -43,11 +41,13 @@ const segments: TranscriptSegment[] = [
 		words: [],
 	},
 ];
-
 function fakeRuntime(storage?: {
 	delete(fileName: string): Promise<boolean>;
 	exists(fileName: string): Promise<boolean>;
-}): { rows: Map<string, Memory>; runtime: unknown } {
+}): {
+	rows: Map<string, Memory>;
+	runtime: unknown;
+} {
 	const rows = new Map<string, Memory>();
 	const runtime = {
 		agentId: "agent-1" as UUID,
@@ -60,7 +60,11 @@ function fakeRuntime(storage?: {
 		getRoom: async (id: UUID) => ({ id, worldId: WORLD }),
 		getRoomsForParticipants: async () => [ROOM],
 		reportError: () => undefined,
-		updateMemory: async (m: Partial<Memory> & { id: UUID }) => {
+		updateMemory: async (
+			m: Partial<Memory> & {
+				id: UUID;
+			},
+		) => {
 			const existing = rows.get(m.id);
 			if (!existing) return false;
 			rows.set(m.id, { ...existing, ...m });
@@ -74,7 +78,6 @@ function fakeRuntime(storage?: {
 	};
 	return { rows, runtime };
 }
-
 function ctx(over: Partial<RouteHandlerContext>): RouteHandlerContext {
 	return {
 		params: {},
@@ -87,31 +90,26 @@ function ctx(over: Partial<RouteHandlerContext>): RouteHandlerContext {
 		...over,
 	} as RouteHandlerContext;
 }
-
 function handlerFor(type: string, path: string) {
 	const r = transcriptsRoutes.find((x) => x.type === type && x.path === path);
 	if (!r?.routeHandler) throw new Error(`no route ${type} ${path}`);
 	return r.routeHandler;
 }
-
 const access = (requesterEntityId: UUID): AccessContext => ({
 	requesterEntityId,
 	worldId: WORLD,
 	role: "USER",
 });
-
 const adminAccess = (requesterEntityId: UUID): AccessContext => ({
 	requesterEntityId,
 	worldId: WORLD,
 	role: "ADMIN",
 });
-
 const ownerAccess = (requesterEntityId: UUID): AccessContext => ({
 	requesterEntityId,
 	worldId: WORLD,
 	role: "OWNER",
 });
-
 describe("buildTranscriptFromRequest", () => {
 	it("derives duration + speaker count + defaults", () => {
 		const body: CreateTranscriptRequest = {
@@ -132,7 +130,6 @@ describe("buildTranscriptFromRequest", () => {
 		expect(t.title).toContain("Recording");
 		expect(t.metadata).toEqual({ consent: { state: "unknown" } });
 	});
-
 	it("preserves a validated canonical meeting artifact in metadata", () => {
 		const meetingArtifact = buildMeetingArtifactFixtures().googleMeetRoom;
 		const t = buildTranscriptFromRequest(
@@ -144,7 +141,6 @@ describe("buildTranscriptFromRequest", () => {
 			"id-1",
 			9000,
 		);
-
 		expect(t.metadata).toEqual({
 			consent: { state: "granted" },
 			source: "test",
@@ -152,7 +148,6 @@ describe("buildTranscriptFromRequest", () => {
 		});
 	});
 });
-
 describe("transcripts routes", () => {
 	it("POST creates, GET reads it back, GET list summarizes, DELETE removes", async () => {
 		const { runtime } = fakeRuntime();
@@ -166,26 +161,39 @@ describe("transcripts routes", () => {
 			"/api/transcripts",
 		)(ctx({ runtime: runtime as never, body }));
 		expect(created.status).toBe(201);
-		const id = (created.body as { transcript: { id: string } }).transcript.id;
+		const id = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		expect(typeof id).toBe("string");
-
 		const got = await handlerFor(
 			"GET",
 			"/api/transcripts/:id",
 		)(ctx({ runtime: runtime as never, params: { id } }));
 		expect(got.status).toBe(200);
 		expect(
-			(got.body as { transcript: { title: string } }).transcript.title,
+			(
+				got.body as {
+					transcript: {
+						title: string;
+					};
+				}
+			).transcript.title,
 		).toBe("Standup");
-
 		const list = await handlerFor(
 			"GET",
 			"/api/transcripts",
 		)(ctx({ runtime: runtime as never }));
-		expect((list.body as { transcripts: unknown[] }).transcripts).toHaveLength(
-			1,
-		);
-
+		expect(
+			(
+				list.body as {
+					transcripts: unknown[];
+				}
+			).transcripts,
+		).toHaveLength(1);
 		const del = await handlerFor(
 			"DELETE",
 			"/api/transcripts/:id",
@@ -197,7 +205,6 @@ describe("transcripts routes", () => {
 		)(ctx({ runtime: runtime as never, params: { id } }));
 		expect(after.status).toBe(404);
 	});
-
 	it("POST rejects a body with no segments", async () => {
 		const { runtime } = fakeRuntime();
 		const res = await handlerFor(
@@ -206,7 +213,6 @@ describe("transcripts routes", () => {
 		)(ctx({ runtime: runtime as never, body: { segments: [] } }));
 		expect(res.status).toBe(400);
 	});
-
 	it("POST rejects an invalid canonical meeting artifact", async () => {
 		const { runtime } = fakeRuntime();
 		const meetingArtifact = {
@@ -226,18 +232,20 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-
 		expect(res.status).toBe(400);
 		expect(res.body).toMatchObject({
 			error: "meetingArtifact is invalid",
 		});
 		expect(
-			(res.body as { errors: string[] }).errors.some((error) =>
+			(
+				res.body as {
+					errors: string[];
+				}
+			).errors.some((error) =>
 				error.includes("mediaRefId references missing media"),
 			),
 		).toBe(true);
 	});
-
 	it("POST stores a valid canonical meeting artifact", async () => {
 		const { runtime } = fakeRuntime();
 		const meetingArtifact = buildMeetingArtifactFixtures().googleMeetRoom;
@@ -254,25 +262,32 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-
 		expect(created.status).toBe(201);
 		expect(
 			(
 				created.body as {
-					transcript: { metadata?: { meetingArtifact?: unknown } };
+					transcript: {
+						metadata?: {
+							meetingArtifact?: unknown;
+						};
+					};
 				}
 			).transcript.metadata?.meetingArtifact,
 		).toEqual(meetingArtifact);
 	});
-
 	it("PUT edits an existing transcript and 404s on a missing one", async () => {
 		const { runtime } = fakeRuntime();
 		const created = await handlerFor(
 			"POST",
 			"/api/transcripts",
 		)(ctx({ runtime: runtime as never, body: { title: "Raw", segments } }));
-		const id = (created.body as { transcript: { id: string } }).transcript.id;
-
+		const id = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const put = await handlerFor(
 			"PUT",
 			"/api/transcripts/:id",
@@ -285,9 +300,14 @@ describe("transcripts routes", () => {
 		);
 		expect(put.status).toBe(200);
 		expect(
-			(put.body as { transcript: { title: string } }).transcript.title,
+			(
+				put.body as {
+					transcript: {
+						title: string;
+					};
+				}
+			).transcript.title,
 		).toBe("Fixed title");
-
 		const missing = await handlerFor(
 			"PUT",
 			"/api/transcripts/:id",
@@ -300,7 +320,6 @@ describe("transcripts routes", () => {
 		);
 		expect(missing.status).toBe(404);
 	});
-
 	it("PUT rejects a body with neither title nor segments", async () => {
 		const { runtime } = fakeRuntime();
 		const res = await handlerFor(
@@ -309,7 +328,6 @@ describe("transcripts routes", () => {
 		)(ctx({ runtime: runtime as never, params: { id: "x" }, body: {} }));
 		expect(res.status).toBe(400);
 	});
-
 	it("POST derives tenant scope from the canonical room for an authorized participant", async () => {
 		const { rows, runtime } = fakeRuntime();
 		const created = await handlerFor(
@@ -327,7 +345,6 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-
 		expect(created.status).toBe(201);
 		expect([...rows.values()][0]).toMatchObject({
 			worldId: WORLD,
@@ -335,7 +352,6 @@ describe("transcripts routes", () => {
 			entityId: ENTITY,
 		});
 	});
-
 	it("POST rejects mismatched tenant scope and non-participant rooms", async () => {
 		const { runtime } = fakeRuntime();
 		const otherWorld = "00000000-0000-4000-8000-000000000099" as UUID;
@@ -350,7 +366,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(mismatch.status).toBe(403);
-
 		const nonParticipantRuntime = {
 			...(runtime as object),
 			getRoomsForParticipants: async () => [],
@@ -367,7 +382,6 @@ describe("transcripts routes", () => {
 		);
 		expect(nonParticipant.status).toBe(403);
 	});
-
 	it("POST rejects identity spoofing and reports canonical-room lookup failure", async () => {
 		const { runtime } = fakeRuntime();
 		const spoofed = await handlerFor(
@@ -381,7 +395,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(spoofed.status).toBe(403);
-
 		const lookupFailure = new Error("database unavailable");
 		const reported: unknown[][] = [];
 		const failingRuntime = {
@@ -405,7 +418,6 @@ describe("transcripts routes", () => {
 			["transcripts.create-scope", lookupFailure, { roomId: ROOM }],
 		]);
 	});
-
 	it("PUT preserves the persisted tenant scope and rejects relocation", async () => {
 		const { rows, runtime } = fakeRuntime();
 		const created = await handlerFor(
@@ -417,9 +429,14 @@ describe("transcripts routes", () => {
 				body: { segments, roomId: ROOM, worldId: WORLD, entityId: ENTITY },
 			}),
 		);
-		const id = (created.body as { transcript: { id: string } }).transcript.id;
+		const id = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const otherRoom = "00000000-0000-4000-8000-000000000098" as UUID;
-
 		const update = await handlerFor(
 			"PUT",
 			"/api/transcripts/:id",
@@ -430,14 +447,12 @@ describe("transcripts routes", () => {
 				body: { title: "relocated", roomId: otherRoom },
 			}),
 		);
-
 		expect(update.status).toBe(403);
 		expect(rows.get(id)).toMatchObject({
 			worldId: WORLD,
 			roomId: ROOM,
 			entityId: ENTITY,
 		});
-
 		const malformed = await handlerFor(
 			"PUT",
 			"/api/transcripts/:id",
@@ -450,13 +465,11 @@ describe("transcripts routes", () => {
 		);
 		expect(malformed.status).toBe(400);
 	});
-
 	it("filters GET list and get-by-id for a non-owner requester", async () => {
 		const { runtime } = fakeRuntime();
 		const post = handlerFor("POST", "/api/transcripts");
 		const list = handlerFor("GET", "/api/transcripts");
 		const get = handlerFor("GET", "/api/transcripts/:id");
-
 		const ownerPrivate = await post(
 			ctx({
 				runtime: runtime as never,
@@ -505,24 +518,37 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-
 		const unfiltered = await list(ctx({ runtime: runtime as never }));
 		expect(
-			(unfiltered.body as { transcripts: Array<{ title: string }> })
-				.transcripts,
+			(
+				unfiltered.body as {
+					transcripts: Array<{
+						title: string;
+					}>;
+				}
+			).transcripts,
 		).toHaveLength(4);
-
 		const filtered = await list(
 			ctx({ runtime: runtime as never, accessContext: access(ENTITY) }),
 		);
 		expect(
-			(filtered.body as { transcripts: Array<{ title: string }> }).transcripts
+			(
+				filtered.body as {
+					transcripts: Array<{
+						title: string;
+					}>;
+				}
+			).transcripts
 				.map((t) => t.title)
 				.sort(),
 		).toEqual(["Global", "User owned"]);
-
-		const id = (ownerPrivate.body as { transcript: { id: string } }).transcript
-			.id;
+		const id = (
+			ownerPrivate.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const hidden = await get(
 			ctx({
 				runtime: runtime as never,
@@ -532,13 +558,11 @@ describe("transcripts routes", () => {
 		);
 		expect(hidden.status).toBe(404);
 	});
-
 	it("selects full / redacted-variant / none per viewer role through the real GET routes (#14781)", async () => {
 		const { rows, runtime } = fakeRuntime();
 		const post = handlerFor("POST", "/api/transcripts");
 		const list = handlerFor("GET", "/api/transcripts");
 		const get = handlerFor("GET", "/api/transcripts/:id");
-
 		// Original owner-private transcript with PII in the text.
 		const original = await post(
 			ctx({
@@ -561,9 +585,13 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-		const originalId = (original.body as { transcript: { id: string } })
-			.transcript.id;
-
+		const originalId = (
+			original.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		// Redacted variant transcript (its own row); linked from the original.
 		const variant = await post(
 			ctx({
@@ -586,9 +614,13 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-		const variantId = (variant.body as { transcript: { id: string } })
-			.transcript.id;
-
+		const variantId = (
+			variant.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		// Read contract this issue owns (write path is PERM-REDACT #14779):
 		// original -> variant link + a redacted grant for VIEWER; variant ->
 		// original backlink so it never lists standalone.
@@ -612,7 +644,6 @@ describe("transcripts routes", () => {
 				redactionOf: originalId,
 			},
 		});
-
 		// OWNER boundary (no context): full original, no flag.
 		const ownerGet = await get(
 			ctx({ runtime: runtime as never, params: { id: originalId } }),
@@ -620,12 +651,16 @@ describe("transcripts routes", () => {
 		expect(ownerGet.status).toBe(200);
 		const ownerT = (
 			ownerGet.body as {
-				transcript: { segments: Array<{ text: string }>; redacted?: true };
+				transcript: {
+					segments: Array<{
+						text: string;
+					}>;
+					redacted?: true;
+				};
 			}
 		).transcript;
 		expect(ownerT.segments[0].text).toContain("123-45-6789");
 		expect(ownerT.redacted).toBeUndefined();
-
 		// ADMIN rank: full original.
 		const adminGet = await get(
 			ctx({
@@ -636,12 +671,16 @@ describe("transcripts routes", () => {
 		);
 		const adminT = (
 			adminGet.body as {
-				transcript: { redacted?: true; segments: Array<{ text: string }> };
+				transcript: {
+					redacted?: true;
+					segments: Array<{
+						text: string;
+					}>;
+				};
 			}
 		).transcript;
 		expect(adminT.redacted).toBeUndefined();
 		expect(adminT.segments[0].text).toContain("123-45-6789");
-
 		// USER with the redacted grant: variant under the original id, flagged,
 		// audio + PII withheld.
 		const userGet = await get(
@@ -658,7 +697,9 @@ describe("transcripts routes", () => {
 					id: string;
 					redacted?: true;
 					audioUrl?: string;
-					segments: Array<{ text: string }>;
+					segments: Array<{
+						text: string;
+					}>;
 				};
 			}
 		).transcript;
@@ -666,7 +707,6 @@ describe("transcripts routes", () => {
 		expect(userT.redacted).toBe(true);
 		expect(userT.audioUrl).toBeUndefined();
 		expect(userT.segments[0].text).toBe("Bob SSN [REDACTED]");
-
 		// Ungranted USER: 404 (non-enumerable).
 		const strangerGet = await get(
 			ctx({
@@ -676,7 +716,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(strangerGet.status).toBe(404);
-
 		// GUEST: 404.
 		const guestGet = await get(
 			ctx({
@@ -690,7 +729,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(guestGet.status).toBe(404);
-
 		// List: VIEWER sees exactly one row (the original id, redacted-flagged);
 		// the variant row never lists standalone.
 		const userList = await list(
@@ -698,7 +736,11 @@ describe("transcripts routes", () => {
 		);
 		const userRows = (
 			userList.body as {
-				transcripts: Array<{ id: string; redacted?: true; hasAudio: boolean }>;
+				transcripts: Array<{
+					id: string;
+					redacted?: true;
+					hasAudio: boolean;
+				}>;
 			}
 		).transcripts;
 		expect(userRows).toHaveLength(1);
@@ -707,16 +749,18 @@ describe("transcripts routes", () => {
 			redacted: true,
 			hasAudio: false,
 		});
-
 		// Ungranted stranger: empty list.
 		const strangerList = await list(
 			ctx({ runtime: runtime as never, accessContext: access(OTHER_ENTITY) }),
 		);
 		expect(
-			(strangerList.body as { transcripts: unknown[] }).transcripts,
+			(
+				strangerList.body as {
+					transcripts: unknown[];
+				}
+			).transcripts,
 		).toEqual([]);
 	});
-
 	it("shares and revokes redacted transcript access through the real routes (#14782)", async () => {
 		const { runtime } = fakeRuntime();
 		const post = handlerFor("POST", "/api/transcripts");
@@ -725,7 +769,6 @@ describe("transcripts routes", () => {
 		const get = handlerFor("GET", "/api/transcripts/:id");
 		const update = handlerFor("PUT", "/api/transcripts/:id");
 		const del = handlerFor("DELETE", "/api/transcripts/:id");
-
 		const created = await post(
 			ctx({
 				runtime: runtime as never,
@@ -754,9 +797,13 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-		const transcriptId = (created.body as { transcript: { id: string } })
-			.transcript.id;
-
+		const transcriptId = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const shared = await share(
 			ctx({
 				runtime: runtime as never,
@@ -772,7 +819,6 @@ describe("transcripts routes", () => {
 			entityId: OTHER_ENTITY,
 			mode: "redacted",
 		});
-
 		const fullShareByUser = await share(
 			ctx({
 				runtime: runtime as never,
@@ -782,7 +828,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(fullShareByUser.status).toBe(403);
-
 		const fullShareByOwner = await share(
 			ctx({
 				runtime: runtime as never,
@@ -801,7 +846,6 @@ describe("transcripts routes", () => {
 		expect(
 			"variantId" in (fullShareByOwner.body as Record<string, unknown>),
 		).toBe(false);
-
 		const fullViewerGet = await get(
 			ctx({
 				runtime: runtime as never,
@@ -811,8 +855,13 @@ describe("transcripts routes", () => {
 		);
 		expect(fullViewerGet.status).toBe(200);
 		expect(
-			(fullViewerGet.body as { transcript: { redacted?: true } }).transcript
-				.redacted,
+			(
+				fullViewerGet.body as {
+					transcript: {
+						redacted?: true;
+					};
+				}
+			).transcript.redacted,
 		).toBeUndefined();
 		const fullViewerReshare = await share(
 			ctx({
@@ -848,7 +897,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(fullViewerDelete.status).toBe(403);
-
 		const viewerGet = await get(
 			ctx({
 				runtime: runtime as never,
@@ -858,10 +906,14 @@ describe("transcripts routes", () => {
 		);
 		expect(viewerGet.status).toBe(200);
 		expect(
-			(viewerGet.body as { transcript: { redacted?: true } }).transcript
-				.redacted,
+			(
+				viewerGet.body as {
+					transcript: {
+						redacted?: true;
+					};
+				}
+			).transcript.redacted,
 		).toBe(true);
-
 		const resharedByRedactedViewer = await share(
 			ctx({
 				runtime: runtime as never,
@@ -871,7 +923,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(resharedByRedactedViewer.status).toBe(403);
-
 		const editedByRedactedViewer = await update(
 			ctx({
 				runtime: runtime as never,
@@ -892,7 +943,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(editedByRedactedViewer.status).toBe(403);
-
 		const deletedByRedactedViewer = await del(
 			ctx({
 				runtime: runtime as never,
@@ -901,7 +951,6 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(deletedByRedactedViewer.status).toBe(403);
-
 		const revoked = await revoke(
 			ctx({
 				runtime: runtime as never,
@@ -919,7 +968,6 @@ describe("transcripts routes", () => {
 		);
 		expect(hidden.status).toBe(404);
 	});
-
 	it("snapshots the room roster for admin redact-for-all sharing", async () => {
 		const { rows, runtime } = fakeRuntime();
 		const post = handlerFor("POST", "/api/transcripts");
@@ -942,9 +990,13 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-		const transcriptId = (created.body as { transcript: { id: string } })
-			.transcript.id;
-
+		const transcriptId = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const shared = await share(
 			ctx({
 				runtime: runtime as never,
@@ -980,12 +1032,16 @@ describe("transcripts routes", () => {
 			);
 			expect(response.status).toBe(200);
 			expect(
-				(response.body as { transcript: { redacted?: true } }).transcript
-					.redacted,
+				(
+					response.body as {
+						transcript: {
+							redacted?: true;
+						};
+					}
+				).transcript.redacted,
 			).toBe(true);
 		}
 	});
-
 	it("rejects sharing an unknown-consent transcript before writing a variant or grant", async () => {
 		const { rows, runtime } = fakeRuntime();
 		const post = handlerFor("POST", "/api/transcripts");
@@ -993,9 +1049,13 @@ describe("transcripts routes", () => {
 		const created = await post(
 			ctx({ runtime: runtime as never, body: { roomId: ROOM, segments } }),
 		);
-		const transcriptId = (created.body as { transcript: { id: string } })
-			.transcript.id;
-
+		const transcriptId = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const response = await share(
 			ctx({
 				runtime: runtime as never,
@@ -1015,7 +1075,6 @@ describe("transcripts routes", () => {
 		expect(metadata?.redactedVariantId).toBeUndefined();
 		expect(rows.size).toBe(1);
 	});
-
 	it("persists independent artifact visibility and requires real transcript grants", async () => {
 		const { runtime } = fakeRuntime();
 		const post = handlerFor("POST", "/api/transcripts");
@@ -1037,9 +1096,13 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-		const transcriptId = (created.body as { transcript: { id: string } })
-			.transcript.id;
-
+		const transcriptId = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const fakeShared = await patchPrivacy(
 			ctx({
 				runtime: runtime as never,
@@ -1052,7 +1115,6 @@ describe("transcripts routes", () => {
 			status: 409,
 			body: { code: "TRANSCRIPT_GRANT_REQUIRED" },
 		});
-
 		await share(
 			ctx({
 				runtime: runtime as never,
@@ -1085,12 +1147,16 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(viewer.status).toBe(200);
-		const projected = (viewer.body as { transcript: { metadata?: object } })
-			.transcript;
+		const projected = (
+			viewer.body as {
+				transcript: {
+					metadata?: object;
+				};
+			}
+		).transcript;
 		expect(projected.metadata).not.toHaveProperty("notes");
 		expect(projected.metadata).toHaveProperty("artifacts");
 	});
-
 	it("deletes content-addressed source audio while retaining the transcript", async () => {
 		const fileName = `${"a".repeat(64)}.wav`;
 		const deleted: string[] = [];
@@ -1120,9 +1186,13 @@ describe("transcripts routes", () => {
 				},
 			}),
 		);
-		const transcriptId = (created.body as { transcript: { id: string } })
-			.transcript.id;
-
+		const transcriptId = (
+			created.body as {
+				transcript: {
+					id: string;
+				};
+			}
+		).transcript.id;
 		const response = await deleteAudio(
 			ctx({
 				runtime: runtime as never,
@@ -1140,7 +1210,9 @@ describe("transcripts routes", () => {
 			}),
 		);
 		const transcript = (
-			retained.body as { transcript: Record<string, unknown> }
+			retained.body as {
+				transcript: Record<string, unknown>;
+			}
 		).transcript;
 		expect(transcript.audioUrl).toBeUndefined();
 		expect(transcript.segments).toEqual(segments);

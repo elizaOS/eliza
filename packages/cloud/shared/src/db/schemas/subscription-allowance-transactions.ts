@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { appBillingScopes } from "./app-billing";
 import { billingFundingAllocations } from "./billing-funding-reservations";
 import { billingSubscriptionRevisions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
@@ -29,6 +30,7 @@ export const SUBSCRIPTION_ALLOWANCE_TRANSACTION_KINDS = [
   "clawback",
   "grant_adjustment",
   "close",
+  "import_consumed",
 ] as const;
 export type SubscriptionAllowanceTransactionKind =
   (typeof SUBSCRIPTION_ALLOWANCE_TRANSACTION_KINDS)[number];
@@ -37,6 +39,8 @@ export const subscriptionAllowanceTransactions = pgTable(
   "subscription_allowance_transactions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
@@ -44,8 +48,9 @@ export const subscriptionAllowanceTransactions = pgTable(
     funding_allocation_id: uuid("funding_allocation_id"),
     source_subscription_id: uuid("source_subscription_id"),
     source_subscription_revision: bigint("source_subscription_revision", { mode: "number" }),
+    trial_claim_id: uuid("trial_claim_id"),
     source_invoice_id: text("source_invoice_id"),
-    source_plan_key: text("source_plan_key").$type<"plus_monthly" | "pro_monthly">(),
+    source_plan_key: text("source_plan_key"),
     source_catalog_version: text("source_catalog_version"),
     sequence: integer("sequence").notNull(),
     kind: text("kind").$type<SubscriptionAllowanceTransactionKind>().notNull(),
@@ -67,6 +72,10 @@ export const subscriptionAllowanceTransactions = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     allowance_period_tenant_fk: foreignKey({
       columns: [table.allowance_period_id, table.organization_id],
       foreignColumns: [
@@ -103,7 +112,7 @@ export const subscriptionAllowanceTransactions = pgTable(
       .on(table.allowance_period_id)
       .where(sql`${table.kind} = 'grant'`),
     source_invoice_unique: uniqueIndex("subscription_allowance_transactions_source_invoice_idx")
-      .on(table.source_invoice_id)
+      .on(table.merchant_key, table.source_invoice_id)
       .where(sql`${table.source_invoice_id} IS NOT NULL`),
     period_occurred_idx: index("subscription_allowance_transactions_period_occurred_idx").on(
       table.allowance_period_id,
@@ -112,7 +121,7 @@ export const subscriptionAllowanceTransactions = pgTable(
     ),
     kind_check: check(
       "subscription_allowance_transactions_kind_check",
-      sql`${table.kind} IN ('grant','reserve','finalize','release','expired_refund','expire','clawback','grant_adjustment','close')`,
+      sql`${table.kind} IN ('grant','reserve','finalize','release','expired_refund','expire','clawback','grant_adjustment','close','import_consumed')`,
     ),
     amount_check: check(
       "subscription_allowance_transactions_amount_check",
@@ -124,7 +133,7 @@ export const subscriptionAllowanceTransactions = pgTable(
     ),
     reservation_shape_check: check(
       "subscription_allowance_transactions_reservation_shape_check",
-      sql`(${table.kind} IN ('reserve','finalize','release','expired_refund') AND ${table.funding_allocation_id} IS NOT NULL) OR (${table.kind} IN ('grant','expire','clawback','grant_adjustment','close') AND ${table.funding_allocation_id} IS NULL)`,
+      sql`(${table.kind} IN ('reserve','finalize','release','expired_refund') AND ${table.funding_allocation_id} IS NOT NULL) OR (${table.kind} IN ('grant','expire','clawback','grant_adjustment','close','import_consumed') AND ${table.funding_allocation_id} IS NULL)`,
     ),
     adjustment_source_check: check(
       "subscription_allowance_transactions_adjustment_source_check",
@@ -132,7 +141,7 @@ export const subscriptionAllowanceTransactions = pgTable(
     ),
     snapshot_transition_check: check(
       "subscription_allowance_transactions_snapshot_transition_check",
-      sql`(${table.kind} = 'grant' AND ${table.available_before} = 0 AND ${table.available_after} = ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'grant_adjustment' AND ${table.available_after} = ${table.available_before} + ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'reserve' AND ${table.available_after} = ${table.available_before} - ${table.amount} AND ${table.reserved_after} = ${table.reserved_before} + ${table.amount} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'finalize' AND ${table.available_before} = ${table.available_after} AND ${table.reserved_after} = ${table.reserved_before} - ${table.amount} AND ${table.settled_after} = ${table.settled_before} + ${table.amount} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'release' AND ${table.available_after} = ${table.available_before} + ${table.amount} AND ${table.reserved_after} = ${table.reserved_before} - ${table.amount} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'expired_refund' AND ${table.available_before} = ${table.available_after} AND ${table.reserved_after} = ${table.reserved_before} - ${table.amount} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_after} = ${table.expired_before} + ${table.amount} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'expire' AND ${table.available_after} = ${table.available_before} - ${table.amount} AND ${table.expired_after} = ${table.expired_before} + ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'clawback' AND ${table.available_after} = ${table.available_before} - ${table.amount} AND ${table.clawed_back_after} = ${table.clawed_back_before} + ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after}) OR (${table.kind} = 'close' AND ${table.available_before} = 0 AND ${table.available_after} = 0 AND ${table.reserved_before} = 0 AND ${table.reserved_after} = 0 AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after})`,
+      sql`(${table.kind} = 'grant' AND ${table.available_before} = 0 AND ${table.available_after} = ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'grant_adjustment' AND ${table.available_after} = ${table.available_before} + ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'reserve' AND ${table.available_after} = ${table.available_before} - ${table.amount} AND ${table.reserved_after} = ${table.reserved_before} + ${table.amount} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'finalize' AND ${table.available_before} = ${table.available_after} AND ${table.reserved_after} = ${table.reserved_before} - ${table.amount} AND ${table.settled_after} = ${table.settled_before} + ${table.amount} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'release' AND ${table.available_after} = ${table.available_before} + ${table.amount} AND ${table.reserved_after} = ${table.reserved_before} - ${table.amount} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'expired_refund' AND ${table.available_before} = ${table.available_after} AND ${table.reserved_after} = ${table.reserved_before} - ${table.amount} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_after} = ${table.expired_before} + ${table.amount} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'expire' AND ${table.available_after} = ${table.available_before} - ${table.amount} AND ${table.expired_after} = ${table.expired_before} + ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'clawback' AND ${table.available_after} = ${table.available_before} - ${table.amount} AND ${table.clawed_back_after} = ${table.clawed_back_before} + ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after}) OR (${table.kind} = 'import_consumed' AND ${table.available_after} = ${table.available_before} - ${table.amount} AND ${table.settled_after} = ${table.settled_before} + ${table.amount} AND ${table.reserved_before} = ${table.reserved_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'close' AND ${table.available_before} = 0 AND ${table.available_after} = 0 AND ${table.reserved_before} = 0 AND ${table.reserved_after} = 0 AND ${table.settled_before} = ${table.settled_after} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after})`,
     ),
   }),
 );

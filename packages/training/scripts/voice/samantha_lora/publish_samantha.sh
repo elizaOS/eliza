@@ -8,7 +8,7 @@
 #     this script is meant to run unattended after the operator has
 #     reviewed the gate_report.json).
 #   - Refuses to run when gate_report.json says any gate failed.
-#   - Updates `packages/shared/src/local-inference/voice-models.ts`
+#   - Updates `plugins/plugin-native-inference/src/model-catalog/voice-models.ts`
 #     metadata pointer (sha256 + sizeBytes) only when --update-catalog
 #     is passed AND the push succeeds.
 #

@@ -1,0 +1,79 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><h1>Android agent lifecycle verification</h1><pre id="progress">Waiting for native bridge</pre><script>
+window.runAgentLifecycle = async () => {
+  const call = (method, options = {}) => Capacitor.nativePromise('Agent', method, options);
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const progress = [];
+  const note = (message) => { progress.push(message); document.querySelector('#progress').textContent = progress.join('\n'); };
+  try {
+    await call('start');
+    note('Production Agent.start resolved');
+    const deadline = Date.now() + 180000;
+    let response;
+    while (Date.now() < deadline) {
+      response = await call('request', {path:'/api/health', timeoutMs:2000});
+      if (response.status === 200 && JSON.parse(response.body).ready === true) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    assert(response?.status === 200, 'Real agent health never became reachable: ' + JSON.stringify(response));
+    const health = JSON.parse(response.body);
+    assert(health.ready === true, 'Agent health is reachable but not ready: ' + JSON.stringify(health));
+    note('Real Bun agent returned ready health');
+    const token = await call('getLocalAgentToken');
+    assert(token.available && typeof token.token === 'string' && token.token.length > 10, 'Per-boot token missing');
+    const status = await call('request', {path:'/api/status', timeoutMs:5000});
+    assert(status.status === 200, 'Authenticated status request failed');
+    const unauthorized = await call('request', {path:'/api/status', headers:{Authorization:'Bearer deliberately-invalid-e2e-token'}, timeoutMs:5000});
+    assert(unauthorized.status === 401 || unauthorized.status === 403, 'Invalid bearer token was accepted: ' + unauthorized.status);
+    note('Authenticated request succeeds; invalid token denied');
+    const events = [];
+    const listeners = await Promise.all(['agentStreamResponse', 'agentStreamChunk', 'agentStreamComplete'].map(async type =>
+      await Capacitor.Plugins.Agent.addListener(type, event => events.push({type, ...event}))));
+    let stream;
+    try {
+      const handle = await call('requestStream', {path:'/api/status', timeoutMs:5000});
+      const streamDeadline = Date.now() + 10000;
+      while (!events.some(event => event.streamId === handle.streamId && event.type === 'agentStreamComplete') && Date.now() < streamDeadline)
+        await new Promise(resolve => setTimeout(resolve, 50));
+      stream = events.filter(event => event.streamId === handle.streamId);
+      assert(stream[0]?.type === 'agentStreamResponse' && stream[0].status === 200, 'Stream response head missing');
+      assert(stream.at(-1)?.type === 'agentStreamComplete' && !stream.at(-1).error, 'Stream completion missing or failed');
+      const raw = stream.filter(event => event.type === 'agentStreamChunk').map(event => atob(event.dataBase64)).join('');
+      const streamedStatus = JSON.parse(new TextDecoder().decode(Uint8Array.from(raw, char => char.charCodeAt(0))));
+      assert(streamedStatus.state === 'running', 'Streamed response bytes were not preserved');
+      note('Agent stream delivered response, complete body, and terminal event');
+    } finally { await Promise.all(listeners.map(listener => listener.remove())); }
+
+    await call('stop');
+    const stopDeadline = Date.now() + 15000;
+    let stopped;
+    while (Date.now() < stopDeadline) {
+      stopped = await call('request', {path:'/api/health', timeoutMs:1000});
+      if (stopped.status === 503) break;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    assert(stopped?.status === 503, 'Agent remained reachable after stop');
+    note('Agent.stop closed the real backend');
+    const bun = (method, options = {}) => Capacitor.nativePromise('ElizaBunRuntime', method, options);
+    const restarted = await bun('start');
+    assert(restarted.ok === true, 'BunRuntime restart failed: ' + JSON.stringify(restarted));
+    const bunStatus = await bun('getStatus');
+    assert(bunStatus.ready === true && bunStatus.engine === 'bun', 'BunRuntime status did not observe the real agent');
+    const rpcStatus = await bun('call', {method:'status'});
+    assert(rpcStatus.result?.ready === true && rpcStatus.result.transport === 'agent-service', 'BunRuntime status RPC shape incorrect: ' + JSON.stringify(rpcStatus));
+    const rpc = await bun('call', {method:'http_request', args:{path:'/api/status', timeoutMs:5000}});
+    assert(rpc.result?.status === 200 && JSON.parse(rpc.result.body).state === 'running', 'BunRuntime HTTP request did not reach the real agent');
+    await bun('stop');
+    const bunStopDeadline = Date.now() + 15000;
+    let bunStopped;
+    while (Date.now() < bunStopDeadline) {
+      bunStopped = await bun('getStatus');
+      if (bunStopped.ready === false) break;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    assert(bunStopped?.ready === false, 'BunRuntime stop left the agent ready');
+    note('BunRuntime restarted, dispatched RPC/HTTP, and stopped the real agent');
+
+    window.agentResult = {ok:true, progress, health, status:JSON.parse(status.body)};
+  } catch (error) { window.agentResult = {ok:false, progress, error:String(error)}; }
+};
+</script></body></html>

@@ -79,6 +79,38 @@ afterAll(async () => {
 });
 
 describe('Smithers worker lifecycle', () => {
+  for (const [mode, exitCode, signal] of [
+    ['exit-seven', 7, null],
+    ['empty-success', 0, null],
+    ['self-term', null, 'SIGTERM'],
+  ] as const) {
+    test(`retains fixed termination metadata for real ${mode} subprocess`, async () => {
+      await expect(run(mode)).rejects.toMatchObject({
+        code: 'SMTHRS_RESULT_MISSING',
+        context: { workerTermination: { exitCode, signal } },
+      });
+    });
+  }
+  test('valid terminal result remains successful with no termination error', async () => {
+    const result = await run('event-before-result');
+    expect(result.status).toBe('finished');
+    expect(result.error).toBeUndefined();
+  });
+
+  test('retains a silent nonzero worker exit in the stored error message', async () => {
+    await expect(run('exit-without-result')).rejects.toMatchObject({
+      code: 'SMTHRS_RESULT_MISSING',
+      message: 'Smithers worker exited without a result (exit=17; signal=none)',
+    });
+  });
+
+  test('retains a silent worker kill in the stored error message', async () => {
+    await expect(run('signal-without-result')).rejects.toMatchObject({
+      code: 'SMTHRS_RESULT_MISSING',
+      message: 'Smithers worker exited without a result (exit=unknown; signal=SIGKILL)',
+    });
+  });
+
   test('uses the current Bun executable when BUN_BIN is unset', () => {
     delete process.env.BUN_BIN;
     expect(resolveSmithersBunExecutable()).toBe(process.execPath);
@@ -222,7 +254,7 @@ describe('Smithers worker lifecycle', () => {
     }
   });
 
-  test('cancels when event delivery does not settle after the worker exits', async () => {
+  test('preserves the emitted terminal result when abort releases event delivery after exit', async () => {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 500);
     const startedAt = Date.now();
@@ -243,7 +275,7 @@ describe('Smithers worker lifecycle', () => {
     try {
       const outcome = await Promise.race([workflowOutcome, watchdogOutcome]);
 
-      expect(outcome.status).toBe('cancelled');
+      expect(outcome.status).toBe('finished');
       expect(Date.now() - startedAt).toBeLessThan(2_000);
     } finally {
       if (watchdogTimer) clearTimeout(watchdogTimer);
@@ -272,3 +304,30 @@ describe('Smithers worker lifecycle', () => {
     ).rejects.toMatchObject({ code: 'SMTHRS_PROTOCOL_OVERFLOW' });
   });
 });
+
+test.each(['finished', 'failed', 'continued'] as const)(
+  'preserves the complete %s receipt across a late host abort',
+  async (status) => {
+    const controller = new AbortController();
+    const terminalResult = {
+      status,
+      output: { text: 'exact 🟠 output' },
+      error: status === 'failed' ? { message: 'native error', stack: 'native stack' } : undefined,
+      nextRunId: status === 'continued' ? 'next-native-run' : undefined,
+    };
+    const timer = setTimeout(() => controller.abort(), 300);
+    try {
+      const result = await run('event-before-result', {
+        signal: controller.signal,
+        input: { terminalResult },
+        onEvent: () => new Promise(() => {}),
+      });
+      expect(result.status).toBe(status);
+      expect(result.output).toEqual(terminalResult.output);
+      expect(result.error).toEqual(terminalResult.error);
+      expect(result.nextRunId).toBe(terminalResult.nextRunId);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+);

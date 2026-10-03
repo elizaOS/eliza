@@ -4,9 +4,9 @@
  * Handles all database operations for participants without spinning up runtime.
  */
 
+import { participantTable } from "@elizaos/plugin-sql";
 import { and, eq, type InferSelectModel, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../helpers";
-import { participantTable } from "../../schemas/eliza";
 
 export type ParticipantRecord = InferSelectModel<typeof participantTable>;
 

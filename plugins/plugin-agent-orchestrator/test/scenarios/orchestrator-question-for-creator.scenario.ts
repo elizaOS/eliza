@@ -11,8 +11,8 @@
  * the question text).
  */
 import type { Action, IAgentRuntime, Plugin } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { SubAgentRouter } from "../../src/services/sub-agent-router.js";
 
 const PLUGIN_NAME = "orchestrator-question-for-creator-scenario";

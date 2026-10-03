@@ -4,7 +4,7 @@
  * Unlike `inbox-routes.test.ts` (pure auth-gate unit with the service
  * mocked out), this suite registers the REAL `inboxPlugin` on a REAL
  * PGLite-backed AgentRuntime and drives the registered route handlers the
- * way app-core's HTTP adapter does: `runtime.routes` lookup + a
+ * way app's HTTP adapter does: host-owned route lookup + a
  * RouteHandlerContext. The InboxService / InboxRepository / migration
  * service / `app_inbox` tables are all real; only the TEXT_SMALL model is a
  * deterministic handler (the LLM boundary).
@@ -18,16 +18,19 @@ import {
   type AgentRuntime,
   ModelType,
   type ModelTypeName,
+} from "@elizaos/core";
+import {
   type RouteHandlerContext,
   type RouteHandlerResult,
-} from "@elizaos/core";
+} from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import { InboxRepository } from "../src/inbox/repository.ts";
-import type { InboundMessage, TriageEntry } from "../src/inbox/types.ts";
+import { type InboundMessage, type TriageEntry } from "../src/inbox/types.ts";
 import { inboxPlugin } from "../src/plugin.ts";
 
 /** Deterministic TEXT_SMALL classifier (same contract the triage prompt uses). */
@@ -75,9 +78,11 @@ function deterministicTriageModel(prompt: string): string {
   });
   return JSON.stringify({ results });
 }
-
 function inbound(
-  overrides: Partial<InboundMessage> & { id: string; text: string },
+  overrides: Partial<InboundMessage> & {
+    id: string;
+    text: string;
+  },
 ): InboundMessage {
   return {
     source: "discord",
@@ -89,12 +94,10 @@ function inbound(
     ...overrides,
   };
 }
-
 describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
   let runtime: AgentRuntime;
   let testResult: RealTestRuntimeResult;
   let repo: InboxRepository;
-
   /** Dispatch a request through the runtime-registered route handlers. */
   async function call(
     method: "GET" | "POST",
@@ -107,7 +110,7 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     } = {},
   ): Promise<RouteHandlerResult> {
     // Match the registered route by method + path pattern (`:id` segment).
-    const route = runtime.routes.find((candidate) => {
+    const route = getHttpRuntime(runtime).routes.find((candidate) => {
       if (candidate.type !== method) return false;
       const pattern = new RegExp(
         `^${candidate.path.replace(/:[^/]+/g, "[^/]+")}$`,
@@ -133,7 +136,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     if (!result) throw new Error(`route ${method} ${path} returned nothing`);
     return result;
   }
-
   beforeAll(async () => {
     testResult = await createRealTestRuntime({
       characterName: "inbox-routes-e2e",
@@ -146,18 +148,22 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       ModelType.TEXT_SMALL as ModelTypeName,
       async (_rt, params) =>
         deterministicTriageModel(
-          String((params as { prompt?: string }).prompt),
+          String(
+            (
+              params as {
+                prompt?: string;
+              }
+            ).prompt,
+          ),
         ),
       "inbox-routes-e2e",
       100,
     );
     repo = new InboxRepository(runtime);
-  }, 120_000);
-
+  }, 120000);
   afterAll(async () => {
     await testResult?.cleanup();
   });
-
   it("standalone plugin-inbox registers INBOX plus the promoted INBOX_* virtuals and both providers", () => {
     const actionNames = new Set(runtime.actions.map((action) => action.name));
     expect(actionNames.has("INBOX")).toBe(true);
@@ -179,7 +185,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     expect(providerNames.has("inboxTriage")).toBe(true);
     expect(providerNames.has("inboxCrossChannelContext")).toBe(true);
   });
-
   it("rejects every inbox route for non-trusted callers", async () => {
     for (const [method, path] of [
       ["GET", "/api/lifeops/inbox/triage"],
@@ -197,13 +202,11 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       });
     }
   });
-
   it("GET triage returns an empty queue before any triage run", async () => {
     const result = await call("GET", "/api/lifeops/inbox/triage");
     expect(result.status).toBe(200);
     expect(result.body).toEqual({ ok: true, entries: [] });
   });
-
   it("POST triage rejects a body without a messages array", async () => {
     for (const body of [undefined, {}, { messages: "nope" }, []]) {
       const result = await call("POST", "/api/lifeops/inbox/triage", { body });
@@ -214,7 +217,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       });
     }
   });
-
   it("POST triage classifies through the real service and persists real app_inbox rows", async () => {
     const result = await call("POST", "/api/lifeops/inbox/triage", {
       body: {
@@ -237,7 +239,9 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     expect(result.status).toBe(200);
     const body = result.body as {
       ok: boolean;
-      triaged: Array<{ classification: string }>;
+      triaged: Array<{
+        classification: string;
+      }>;
     };
     expect(body.ok).toBe(true);
     expect(body.triaged.map((item) => item.classification)).toEqual([
@@ -245,7 +249,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       "needs_reply",
       "ignore",
     ]);
-
     // Domain artifact: the rows really landed in app_inbox tables.
     const unresolved = await repo.getUnresolved({ limit: 50 });
     const bySource = new Map(
@@ -265,25 +268,30 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       "route-msg-newsletter",
     );
   });
-
   it("GET triage filters by classification and respects limit", async () => {
     const urgent = await call("GET", "/api/lifeops/inbox/triage", {
       query: { classification: "urgent" },
     });
     expect(urgent.status).toBe(200);
-    const urgentEntries = (urgent.body as { entries: TriageEntry[] }).entries;
+    const urgentEntries = (
+      urgent.body as {
+        entries: TriageEntry[];
+      }
+    ).entries;
     expect(urgentEntries.length).toBeGreaterThanOrEqual(1);
     for (const entry of urgentEntries) {
       expect(entry.classification).toBe("urgent");
     }
-
     const limited = await call("GET", "/api/lifeops/inbox/triage", {
       query: { limit: "1" },
     });
-    expect((limited.body as { entries: TriageEntry[] }).entries).toHaveLength(
-      1,
-    );
-
+    expect(
+      (
+        limited.body as {
+          entries: TriageEntry[];
+        }
+      ).entries,
+    ).toHaveLength(1);
     // An unknown classification value falls back to the unresolved queue
     // rather than erroring or leaking a raw SQL failure.
     const bogus = await call("GET", "/api/lifeops/inbox/triage", {
@@ -291,17 +299,19 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     });
     expect(bogus.status).toBe(200);
     expect(
-      (bogus.body as { entries: TriageEntry[] }).entries.length,
+      (
+        bogus.body as {
+          entries: TriageEntry[];
+        }
+      ).entries.length,
     ).toBeGreaterThanOrEqual(2);
   });
-
   it("POST :id/snooze hides the entry until the timestamp; includeSnoozed reveals it", async () => {
     const unresolved = await repo.getUnresolved({ limit: 50 });
     const target = unresolved.find(
       (entry) => entry.sourceMessageId === "route-msg-question",
     );
     if (!target) throw new Error("unreachable");
-
     const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const snooze = await call(
       "POST",
@@ -315,22 +325,23 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       entryId: target.id,
       snoozedUntil: until,
     });
-
     const defaultRead = await call("GET", "/api/lifeops/inbox/triage");
     const defaultIds = (
-      defaultRead.body as { entries: TriageEntry[] }
+      defaultRead.body as {
+        entries: TriageEntry[];
+      }
     ).entries.map((entry) => entry.id);
     expect(defaultIds).not.toContain(target.id);
-
     const withSnoozed = await call("GET", "/api/lifeops/inbox/triage", {
       query: { includeSnoozed: "1" },
     });
     const snoozedIds = (
-      withSnoozed.body as { entries: TriageEntry[] }
+      withSnoozed.body as {
+        entries: TriageEntry[];
+      }
     ).entries.map((entry) => entry.id);
     expect(snoozedIds).toContain(target.id);
   });
-
   it("snooze validates its inputs: unknown entry and bad timestamp both fail loudly", async () => {
     const missing = await call(
       "POST",
@@ -341,10 +352,15 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       },
     );
     expect(missing.status).toBe(404);
-    expect(String((missing.body as { error: string }).error)).toContain(
-      "was not found",
-    );
-
+    expect(
+      String(
+        (
+          missing.body as {
+            error: string;
+          }
+        ).error,
+      ),
+    ).toContain("was not found");
     const unresolved = await repo.getUnresolved({ limit: 1 });
     const anyEntry = unresolved[0];
     if (!anyEntry) throw new Error("unreachable");
@@ -354,11 +370,16 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       { params: { id: anyEntry.id }, body: { snoozedUntil: "not-a-date" } },
     );
     expect(badTs.status).toBe(400);
-    expect(String((badTs.body as { error: string }).error)).toContain(
-      "snooze timestamp",
-    );
+    expect(
+      String(
+        (
+          badTs.body as {
+            error: string;
+          }
+        ).error,
+      ),
+    ).toContain("snooze timestamp");
   });
-
   it("POST :id/approve fails cleanly when the entry has no draft or suggested response", async () => {
     const unresolved = await repo.getUnresolved({
       limit: 50,
@@ -368,18 +389,22 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       (entry) => !entry.draftResponse && !entry.suggestedResponse,
     );
     if (!noDraft) throw new Error("unreachable");
-
     const approve = await call(
       "POST",
       `/api/lifeops/inbox/${noDraft.id}/approve`,
       { params: { id: noDraft.id }, body: {} },
     );
     expect(approve.status).toBe(400);
-    expect(String((approve.body as { error: string }).error)).toContain(
-      "no draft or suggested response",
-    );
+    expect(
+      String(
+        (
+          approve.body as {
+            error: string;
+          }
+        ).error,
+      ),
+    ).toContain("no draft or suggested response");
   });
-
   it("POST :id/reply requires a body and a real entry", async () => {
     const noEntry = await call(
       "POST",
@@ -390,7 +415,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       },
     );
     expect(noEntry.status).toBe(404);
-
     const unresolved = await repo.getUnresolved({
       limit: 1,
       includeSnoozed: true,
@@ -402,11 +426,16 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       body: {},
     });
     expect(noBody.status).toBe(400);
-    expect(String((noBody.body as { error: string }).error)).toContain(
-      "reply body is required",
-    );
+    expect(
+      String(
+        (
+          noBody.body as {
+            error: string;
+          }
+        ).error,
+      ),
+    ).toContain("reply body is required");
   });
-
   it("re-triaging the same source message ids dedupes instead of duplicating rows", async () => {
     const before = await repo.getUnresolved({ limit: 50 });
     const result = await call("POST", "/api/lifeops/inbox/triage", {

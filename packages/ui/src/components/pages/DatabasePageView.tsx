@@ -6,12 +6,14 @@
  */
 
 import type { ReactNode } from "react";
+import { useAvailableViews } from "../../hooks/useAvailableViews";
 import {
   FramedPage,
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
 } from "../../layouts/framed-page";
+import { DATABASE_VECTOR_VIEW } from "../../navigation/builtin-route-descriptors";
 import { useAppSelector } from "../../state";
 import { SegmentedControl } from "../ui/segmented-control";
 import { DynamicViewLoader } from "../views/DynamicViewLoader";
@@ -23,14 +25,18 @@ import { MediaGalleryView } from "./MediaGalleryView";
 // THREE runtime. It lives in its own plugin package and is loaded dynamically
 // so it (and three) only ship when the user actually opens the vectors tab,
 // never with the always-loaded Database page.
-const VECTOR_BROWSER_BUNDLE_URL = "/api/views/vector-browser/bundle.js";
-const VECTOR_BROWSER_COMPONENT_EXPORT = "VectorBrowserView";
 
 export function DatabasePageView({
   contentHeader,
 }: {
   contentHeader?: ReactNode;
 } = {}) {
+  const { views } = useAvailableViews();
+  const vectorView = views.find(
+    (view) =>
+      view.id === DATABASE_VECTOR_VIEW.viewId &&
+      (view.viewType ?? "gui") === "gui",
+  );
   const t = useAppSelector((s) => s.t);
   const databaseSubTab = useAppSelector((s) => s.databaseSubTab);
   const setState = useAppSelector((s) => s.setState);
@@ -76,9 +82,10 @@ export function DatabasePageView({
   } else if (databaseSubTab === "vectors") {
     content = (
       <DynamicViewLoader
-        bundleUrl={VECTOR_BROWSER_BUNDLE_URL}
-        componentExport={VECTOR_BROWSER_COMPONENT_EXPORT}
-        viewId="vector-browser"
+        viewId={DATABASE_VECTOR_VIEW.viewId}
+        bundleUrl={vectorView?.bundleUrl}
+        installationId={vectorView?.installationId}
+        surface={vectorView?.surface}
         viewProps={{ leftNav, contentHeader }}
       />
     );

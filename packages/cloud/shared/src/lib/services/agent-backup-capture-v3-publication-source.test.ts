@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { KmsAeadOperationKeyBundleProvider, LocalKmsAdapter } from "@elizaos/core/security/kms";
+import { KmsAeadOperationKeyBundleProvider, LocalKmsAdapter } from "@elizaos/auth/kms";
 import {
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
@@ -11,8 +11,8 @@ import {
   type AgentBackupCaptureV2ComponentDescriptor,
   type AgentBackupCaptureV2Frame,
   type AgentBackupCaptureV2Request,
-  canonicalizeAgentBackupOperationKeyBundleContext,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
+import { canonicalizeAgentBackupOperationKeyBundleContext } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import type { AgentBackupOperationClaim } from "../../db/repositories/agent-backup-catalog";
 import {
   type AgentBackupCaptureV3Artifacts,

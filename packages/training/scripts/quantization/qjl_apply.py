@@ -248,7 +248,7 @@ def _build_jl_projections(
     """Per-layer ``(head_dim, proj_dim)`` row-major JL projection matrices.
 
     Layout matches the canonical kernel reference at
-    ``eliza/packages/native/plugins/qjl-cpu/include/qjl/qjl.h`` (Π row-major,
+    ``eliza/plugins/plugin-local-inference/native/qjl-cpu/include/qjl/qjl.h`` (Π row-major,
     indexed as ``prj[i*proj_dim + j]``) and the verify harness reference at
     ``eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c``. A row of the matrix
     is ``proj_dim`` floats; with the canonical (head_dim=128, proj_dim=256)

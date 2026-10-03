@@ -21,6 +21,8 @@ export interface StoreContext {
   agentId: UUID;
   /** Get current embedding dimension column (dynamic to reflect runtime changes) */
   getEmbeddingDimension: () => EmbeddingDimensionColumn;
+  /** Null denotes unversioned legacy vectors, never an alias for a named representation. */
+  getEmbeddingSpace: () => string | null;
 }
 
 /**

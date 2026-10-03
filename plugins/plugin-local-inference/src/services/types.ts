@@ -1,7 +1,7 @@
 /**
  * Local inference type re-exports.
  *
- * The canonical definitions live in `@elizaos/shared/local-inference`.
+ * The canonical definitions live in `@elizaos/plugin-native-inference/model-catalog`.
  * This shim preserves the historical import path
  * `../services/local-inference/types` for server-side code.
  */
@@ -15,17 +15,12 @@ export {
 	type CatalogQuantizationMatrix,
 	type CatalogQuantizationVariant,
 	type CpuFeatureProbe,
-	classifyCatalogModelRuntimeClass,
-	classifyInstalledModelRuntimeClass,
 	type DownloadEvent,
 	type DownloadJob,
 	type DownloadState,
-	type GpuProfile,
-	type GpuProfileId,
 	type HardwareFitLevel,
 	type HardwareProbe,
 	type InstalledModel,
-	type KvCacheType,
 	type LocalInferenceDownloadStatus,
 	type LocalInferenceReadiness,
 	type LocalInferenceSlotReadiness,
@@ -40,12 +35,21 @@ export {
 	type ModelHubSnapshot,
 	type OpenVinoDeviceKind,
 	type OpenVinoHardwareProbe,
-	type RuntimeClass,
 	TEXT_GENERATION_SLOTS,
 	type TextGenerationSlot,
 	type TokenizerFamily,
+} from "@elizaos/core/contracts/local-inference";
+export type {
+	GpuProfile,
+	GpuProfileId,
+	KvCacheType,
+} from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
+export {
+	classifyCatalogModelRuntimeClass,
+	classifyInstalledModelRuntimeClass,
+	type RuntimeClass,
 	withRuntimeClass,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
 
 /** RAM requirements for a model bundle. */
 export interface RamBudget {

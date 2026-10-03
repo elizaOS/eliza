@@ -8,9 +8,9 @@
  * render the matching unavailable-message when access is missing.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
   type Action,
+  hasRoleAccess,
   type Memory,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   type Provider,
@@ -57,7 +57,7 @@ export async function hasLifeOpsAccess(
   ) {
     return false;
   }
-  return hasOwnerAccess(runtime, message);
+  return hasRoleAccess(runtime, message, "OWNER");
 }
 
 export type GoogleCapabilityStatus = {

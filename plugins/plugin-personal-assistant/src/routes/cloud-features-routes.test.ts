@@ -11,7 +11,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   resetDevCloudEnvAuthorityForTests,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import {
   afterAll,
   afterEach,

@@ -26,7 +26,7 @@ Gemma 4 architecture (relevant to memory + KV budgets):
     ``<start_of_turn>role\\n … <end_of_turn>`` with ``<bos>`` / ``<eos>``.
 
 The active entries map onto the size-first ``eliza-1-*`` tier ids used
-by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
+by the runtime model catalog (``plugins/plugin-native-inference/src/model-catalog/catalog.ts``
 — ``ELIZA_1_TIER_IDS`` / ``MODEL_CATALOG``). The registry keys are the Gemma 4
 base names; the user-facing ``eliza_short_name`` stays size-first:
 
@@ -308,7 +308,7 @@ MTP_DRAFTER_BASE: dict[str, str] = {
 REGISTRY: dict[str, ModelEntry] = {
     # ─────────────────────────── REAL ENTRIES ───────────────────────────
     # Buildable Gemma 4 dense base models, mapped onto the size-first
-    # eliza-1 tier ids in packages/shared/src/local-inference/catalog.ts.
+    # eliza-1 tier ids in plugins/plugin-native-inference/src/model-catalog/catalog.ts.
     # Full-parameter SFT with APOLLO + Liger; the entry/local-tier budgets
     # target a single consumer GPU, the 9b/27b tiers use workstation/cloud
     # GPUs (or FSDP).

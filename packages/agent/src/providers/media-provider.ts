@@ -13,23 +13,21 @@
  */
 
 import {
+  type AudioGenConfig,
+  type AudioGenProvider,
+  type AudioKind,
   ElizaError,
   fetchRemoteMedia,
+  type ImageConfig,
   isElizaError,
   logger,
+  type MediaConfig,
   nodeLookupFn,
   nodePinnedFetch,
   VISION_IMAGE_MAX_BYTES,
+  type VideoConfig,
+  type VisionConfig,
 } from "@elizaos/core";
-import type {
-  AudioGenConfig,
-  AudioGenProvider,
-  AudioKind,
-  ImageConfig,
-  MediaConfig,
-  VideoConfig,
-  VisionConfig,
-} from "../config/types.eliza.ts";
 
 // ============================================================================
 // Fetch Utilities

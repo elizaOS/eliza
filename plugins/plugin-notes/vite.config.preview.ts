@@ -8,31 +8,45 @@ import tailwindcss from "../../packages/app/node_modules/@tailwindcss/vite/dist/
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  root: path.join(packageRoot, "src/views/__e2e__"),
+  root: path.join(packageRoot, "src/components/__e2e__"),
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: [
       {
         find: /^@elizaos\/ui$/,
-        replacement: path.join(packageRoot, "src/views/__e2e__/ui-shim.ts"),
+        replacement: path.join(
+          packageRoot,
+          "src/components/__e2e__/ui-shim.ts",
+        ),
       },
       {
         find: /^@elizaos\/ui\/agent-surface$/,
         replacement: path.join(
           packageRoot,
-          "src/views/__e2e__/agent-surface-shim.ts",
+          "src/components/__e2e__/agent-surface-shim.ts",
         ),
       },
       {
         find: /^@elizaos\/ui\/api(?:\/client-types-core)?$/,
-        replacement: path.join(packageRoot, "src/views/__e2e__/api-shim.ts"),
+        replacement: path.join(
+          packageRoot,
+          "src/components/__e2e__/api-shim.ts",
+        ),
       },
       {
         find: /^@elizaos\/ui\/components\/shared\/ViewHeader$/,
         replacement: path.join(
           packageRoot,
-          "src/views/__e2e__/view-header-shim.tsx",
+          "src/components/__e2e__/view-header-shim.tsx",
         ),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.resolve(packageRoot, "../../packages/core/src/$1"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.resolve(packageRoot, "../../packages/ui/src/$1"),
       },
     ],
   },

@@ -12,25 +12,27 @@
  * collapse the unreported state into a healthy-looking empty list.
  */
 
-import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/shared/connector-account-catalog";
+import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/connector-account-catalog";
 import type {
   ConnectorAccountRecord,
   ConnectorAccountStatus,
 } from "../../api/client-agent-connector-accounts";
-
 /**
  * The one badge/chip tone vocabulary shared by connection cards and the
  * Permissions settings badges (`PERMISSION_BADGE_LABELS`). Matches the
  * `StatusBadge` tone union so both surfaces render through the same primitive.
  */
 export type CapabilityTone = "success" | "warning" | "danger" | "muted";
-
 /** Granted-capability read result. `reported: false` means the server sent no
  * grant information at all — render it as a visibly distinct state. */
 export type ConnectorCapabilityAccess =
-  | { reported: true; granted: ReadonlySet<string> }
-  | { reported: false };
-
+  | {
+      reported: true;
+      granted: ReadonlySet<string>;
+    }
+  | {
+      reported: false;
+    };
 /** One capability chip: a declared least-privilege choice and whether this
  * account currently holds it. `action: "grant"` marks the incremental-scope
  * affordance for a missing capability. */
@@ -41,14 +43,12 @@ export interface CapabilityChipModel {
   state: "granted" | "missing";
   action: "grant" | null;
 }
-
 /** Unified account status presentation: tone plus whether the account needs a
  * reconnect (reauth) affordance rather than a plain retry. */
 export interface ConnectorAccountStatusPresentation {
   tone: CapabilityTone;
   needsReconnect: boolean;
 }
-
 /** Metadata keys that historically carry granted capability/scope ids. The
  * first key present wins so a provider that reports both granted and requested
  * sets is read from its authoritative granted set. Intent-only keys such as
@@ -61,7 +61,6 @@ const GRANTED_CAPABILITY_METADATA_KEYS = [
   "capabilities",
   "scopes",
 ] as const;
-
 function sanitizeCapabilityIds(value: unknown): ReadonlySet<string> | null {
   if (!Array.isArray(value)) return null;
   const ids = new Set<string>();
@@ -73,7 +72,6 @@ function sanitizeCapabilityIds(value: unknown): ReadonlySet<string> | null {
   }
   return ids;
 }
-
 /**
  * Reads the granted capability ids from an account record's wire metadata.
  * Malformed values (non-arrays, non-string members) are dropped by
@@ -95,7 +93,6 @@ export function readConnectorAccountCapabilityAccess(
   }
   return { reported: false };
 }
-
 /**
  * Builds the chip list for one account from the provider's declared
  * least-privilege capability catalog and the account's reported access.
@@ -133,7 +130,6 @@ export function presentConnectorCapabilityChips(
   }
   return chips;
 }
-
 /** Maps the connector account status union onto the shared tone vocabulary. */
 export function presentConnectorAccountStatus(
   status: ConnectorAccountStatus | undefined,
@@ -154,7 +150,6 @@ export function presentConnectorAccountStatus(
       return { tone: "muted", needsReconnect: false };
   }
 }
-
 /**
  * Computes the scope list for an incremental-scope OAuth restart: the union of
  * every currently granted capability and the newly requested one, so a grant

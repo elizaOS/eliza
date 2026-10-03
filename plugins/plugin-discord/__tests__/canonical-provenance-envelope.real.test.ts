@@ -28,11 +28,11 @@ import {
 import {
 	createTestRuntimeWithModelProvider,
 	type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import type { Message } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { messageAction } from "../../../packages/core/src/features/advanced-capabilities/actions/message.ts";
+import { messageAction } from "../../plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
 import {
 	buildMemoryFromMessage,
 	type HistoryServiceInternals,

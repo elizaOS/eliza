@@ -3,13 +3,12 @@
 import type {
   RuntimeManagementRequest,
   RuntimeManagementResult,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/core/contracts/runtime-management";
 import { client } from "../api";
 import {
   createDefaultRemoteControlCloudClient,
   getDefaultRemoteControlCloudConnection,
 } from "../api/remote-control-cloud-default";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentProfileRegistry,
   addAgentProfile,
@@ -34,6 +33,7 @@ import {
   getRemoteTargetStatus,
   startRemoteTarget,
   stopRemoteTarget,
+  supportsNativeRemoteTarget,
 } from "./remote-target";
 import {
   deleteRuntimeCredentialRecord,
@@ -48,13 +48,11 @@ import {
   type SshRuntimeLifecycleDependencies,
   setupSshRuntime,
 } from "./ssh-runtime-lifecycle";
-
 /** Secret-bearing fields exist only inside the renderer and never cross agent HTTP/WS. */
 export interface LocalRuntimeManagementRequest
   extends RuntimeManagementRequest {
   accessToken?: string;
 }
-
 const SSH_DEPENDENCIES: SshRuntimeLifecycleDependencies = {
   startTunnel: startSshRuntime,
   stopTunnel: stopSshRuntime,
@@ -64,12 +62,13 @@ const SSH_DEPENDENCIES: SshRuntimeLifecycleDependencies = {
   removeProfile: removeProfileWithoutStaleSelection,
   loadRegistry: loadAgentProfileRegistry,
 };
-
 export function removeProfileWithoutStaleSelection(
   profileId: string,
   dependencies: {
     loadRegistry: () => AgentProfileRegistry;
-    switchRuntime: (profileId: string) => { ok: boolean };
+    switchRuntime: (profileId: string) => {
+      ok: boolean;
+    };
     clearRuntimeSelection: () => void;
     removeProfile: (profileId: string) => void;
   } = {
@@ -99,13 +98,11 @@ export function removeProfileWithoutStaleSelection(
   }
   dependencies.removeProfile(profileId);
 }
-
 function requiredString(value: string | undefined, field: string): string {
   const normalized = value?.trim() ?? "";
   if (!normalized) throw new Error(`${field} is required.`);
   return normalized;
 }
-
 function requiredPort(value: number | undefined, field: string): number {
   if (
     !Number.isSafeInteger(value) ||
@@ -117,7 +114,6 @@ function requiredPort(value: number | undefined, field: string): number {
   }
   return value;
 }
-
 function requireCompleteCleanup(results: SshRuntimeCleanupResult[]): void {
   if (results.some((result) => !result.complete)) {
     throw new Error(
@@ -125,7 +121,6 @@ function requireCompleteCleanup(results: SshRuntimeCleanupResult[]): void {
     );
   }
 }
-
 function publicRuntimeList(): Record<string, unknown>[] {
   const registry = loadAgentProfileRegistry();
   return registry.profiles.map((profile) => ({
@@ -142,7 +137,6 @@ function publicRuntimeList(): Record<string, unknown>[] {
       : {}),
   }));
 }
-
 async function removeRuntime(profileId: string): Promise<void> {
   const profile = loadAgentProfileRegistry().profiles.find(
     (candidate) => candidate.id === profileId,
@@ -163,7 +157,6 @@ async function removeRuntime(profileId: string): Promise<void> {
   }
   removeProfileWithoutStaleSelection(profile.id);
 }
-
 async function revokeRuntime(targetId: string): Promise<void> {
   const cloud = createDefaultRemoteControlCloudClient();
   const registry = loadAgentProfileRegistry();
@@ -180,7 +173,6 @@ async function revokeRuntime(targetId: string): Promise<void> {
     removeProfileWithoutStaleSelection(profile.id);
     return;
   }
-
   const directory = await cloud.listHosts();
   const controller = await getOrCreateRemoteControllerIdentity({
     ownerId: directory.ownerId,
@@ -202,16 +194,14 @@ async function revokeRuntime(targetId: string): Promise<void> {
     throw new Error("No active pairing was found for this controller.");
   await cloud.revokeSession(session.id);
 }
-
 async function execute(
   request: LocalRuntimeManagementRequest,
 ): Promise<Record<string, unknown>> {
   if (request.op === "list") {
     const data: Record<string, unknown> = { runtimes: publicRuntimeList() };
-    if (isElectrobunRuntime()) data.host = await getRemoteTargetStatus();
+    if (supportsNativeRemoteTarget()) data.host = await getRemoteTargetStatus();
     return data;
   }
-
   if (request.op === "pair") {
     const targetId = requiredString(request.targetId, "targetId");
     const hostId = targetId.replace(/^host:/, "");
@@ -229,11 +219,10 @@ async function execute(
       receipt,
     };
   }
-
   if (request.op === "create_pairing") {
-    if (!isElectrobunRuntime()) {
+    if (!supportsNativeRemoteTarget()) {
       throw new Error(
-        "Pairing challenges must be created on the target desktop.",
+        "Pairing challenges must be created on the target device.",
       );
     }
     const identity = await getRemoteTargetIdentity();
@@ -242,7 +231,6 @@ async function execute(
     }
     return { challenge: await createRemoteTargetPairingChallenge() };
   }
-
   if (request.op === "claim_pairing") {
     const cloud = createDefaultRemoteControlCloudClient();
     const directory = await cloud.listHosts();
@@ -261,10 +249,10 @@ async function execute(
       }),
     };
   }
-
   if (request.op === "confirm_pairing") {
     const result = await confirmRemoteTargetPairing(
       requiredString(request.sessionId, "sessionId"),
+      request.browserProfileId,
     );
     if (result.status !== "active") {
       throw new Error(
@@ -274,7 +262,6 @@ async function execute(
     await startRemoteTarget();
     return { controllerDisplayName: result.controllerDisplayName };
   }
-
   if (request.op === "deny_pairing") {
     return {
       denial: await compensateRemoteTargetActivation(
@@ -282,17 +269,14 @@ async function execute(
       ),
     };
   }
-
   if (request.op === "revoke") {
     await revokeRuntime(requiredString(request.targetId, "targetId"));
     return {};
   }
-
   if (request.op === "remove") {
     await removeRuntime(requiredString(request.runtimeId, "runtimeId"));
     return {};
   }
-
   if (request.op === "retry") {
     const runtimeId = requiredString(request.runtimeId, "runtimeId");
     const profile = loadAgentProfileRegistry().profiles.find(
@@ -311,7 +295,6 @@ async function execute(
     });
     return {};
   }
-
   if (request.op === "inspect_ssh") {
     return {
       inspection: await inspectSshHost({
@@ -321,7 +304,6 @@ async function execute(
       }),
     };
   }
-
   if (request.op === "connect_ssh") {
     const runtimeId = requiredString(request.runtimeId, "runtimeId");
     requireCompleteCleanup(
@@ -350,7 +332,6 @@ async function execute(
     );
     return { runtimeId: profile.id, label: profile.label };
   }
-
   if (request.op === "add_direct") {
     const apiBase = requiredString(request.apiBase, "apiBase");
     if (!isTrustedRestoreApiBaseUrl(apiBase)) {
@@ -369,10 +350,9 @@ async function execute(
     );
     return { runtimeId: profile.id, label: profile.label };
   }
-
   if (request.op === "enroll_host") {
-    if (!isElectrobunRuntime())
-      throw new Error("Host enrollment requires the desktop app.");
+    if (!supportsNativeRemoteTarget())
+      throw new Error("Host enrollment requires a native device app.");
     const cloud = createDefaultRemoteControlCloudClient();
     const directory = await cloud.listHosts();
     const connection = getDefaultRemoteControlCloudConnection();
@@ -380,9 +360,10 @@ async function execute(
     if (
       platform !== "macos" &&
       platform !== "windows" &&
-      platform !== "linux"
+      platform !== "linux" &&
+      platform !== "android"
     ) {
-      throw new Error("Desktop platform is required for host enrollment.");
+      throw new Error("Native platform is required for host enrollment.");
     }
     const enrollment = await enrollRemoteTarget({
       apiBaseUrl: connection.baseUrl,
@@ -394,15 +375,19 @@ async function execute(
           ? "My Mac"
           : platform === "windows"
             ? "My Windows PC"
-            : "My Linux computer"),
+            : platform === "android"
+              ? "My Android device"
+              : "My Linux computer"),
       platform,
       managedNetwork: request.managedNetwork === true,
     });
     return { hostId: enrollment.hostId };
   }
-
   if (request.op === "approve_pairing") {
     const result = await activateRemoteTarget({
+      ...(request.browserProfileId
+        ? { browserProfileId: request.browserProfileId }
+        : {}),
       ...(request.sessionId?.trim()
         ? { sessionId: request.sessionId.trim() }
         : {}),
@@ -418,19 +403,16 @@ async function execute(
     await startRemoteTarget();
     return { controllerDisplayName: result.controllerDisplayName };
   }
-
   if (request.op === "start_host") {
     if (!(await startRemoteTarget()))
       throw new Error("The desktop relay did not start.");
     return {};
   }
-
   if (request.op === "stop_host") {
     if (!(await stopRemoteTarget()))
       throw new Error("The desktop relay did not stop.");
     return {};
   }
-
   const identity = await getRemoteTargetIdentity();
   const hostId = identity.identity?.runtimeId;
   if (!hostId) throw new Error("This computer's host identity is unavailable.");
@@ -443,7 +425,6 @@ async function execute(
   }
   return { hostId };
 }
-
 export async function executeRuntimeManagementCommand(
   request: LocalRuntimeManagementRequest,
 ): Promise<RuntimeManagementResult> {
@@ -462,7 +443,6 @@ export async function executeRuntimeManagementCommand(
     };
   }
 }
-
 export const runtimeManagementInternals = {
   publicRuntimeList,
   removeProfileWithoutStaleSelection,

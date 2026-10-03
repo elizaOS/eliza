@@ -22,17 +22,34 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 function fakeDeps(service: StubService): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              grantId: "connector-account:acct-a",
+              calendarId: "primary",
+              startAt: "2026-07-06T13:00:00Z",
+              endAt: "2026-07-06T13:30:00Z",
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     mutationGateway: {
       schedule: service.scheduleApproval,
@@ -96,12 +113,15 @@ const LUNCH = event({ externalId: "evt-lunch", title: "Lunch with Maya" });
 
 function stubService(feedEvents: LifeOpsCalendarEvent[]) {
   return {
+    listCalendars: vi.fn(async () =>
+      calendarSummariesForEvents(feedEvents.length ? feedEvents : [LUNCH]),
+    ),
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "all",
       events: feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
+      sources: freshCalendarSources(feedEvents.length ? feedEvents : [LUNCH]),
       timeMin: "2026-07-01T00:00:00.000Z",
       timeMax: "2026-07-31T00:00:00.000Z",
       syncedAt: null,
@@ -186,6 +206,7 @@ function message(text: string): Memory {
     id: "00000000-0000-0000-0000-000000000101",
     entityId: "00000000-0000-0000-0000-000000000102",
     roomId: "00000000-0000-0000-0000-000000000103",
+    createdAt: Date.parse("2026-07-01T12:00:00.000Z"),
     content: { text },
   } as unknown as Memory;
 }
@@ -273,6 +294,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
         },
       },
       extractedUpdate: {
+        startAt: "2026-07-08T18:00:00.000Z",
         title: "",
         description: "",
         location: "",
@@ -321,6 +343,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move just this standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: { subaction: "update_event", query: "standup" },
     });
     expect(result.success).toBe(true);
@@ -336,7 +359,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
   it('"whole series" phrasing → one series-scoped patch', async () => {
     const result = await runHandler({
       service,
-      text: "rename the whole series of my standup",
+      text: "rename the whole series of my standup to Daily Sync",
+      extractedUpdate: { title: "Daily Sync" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -355,7 +379,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
   it('"this and following" phrasing → one split-scoped patch', async () => {
     const result = await runHandler({
       service,
-      text: "rename this standup and every following one",
+      text: "rename this standup and every following one to Family Sync",
+      extractedUpdate: { title: "Family Sync" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -373,6 +398,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move my standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -389,6 +415,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move just this standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -440,6 +467,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move my lunch with maya to 2pm",
+      extractedUpdate: { startAt: "2026-07-08T14:00:00.000Z" },
       parameters: {
         subaction: "update_event",
         query: "lunch",

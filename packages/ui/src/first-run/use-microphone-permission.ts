@@ -10,14 +10,13 @@
  * None of these paths throw: every failure resolves to a concrete state so the
  * onboarding UI can always render an actionable affordance.
  */
-import type { PermissionStatus } from "@elizaos/shared";
+
+import type { PermissionStatus } from "@elizaos/core/contracts/permissions";
 import * as React from "react";
 import { client } from "../api";
 
 const MICROPHONE = "microphone" as const;
-
 export type MicrophonePermissionStatus = PermissionStatus | "unknown";
-
 export interface MicrophonePermissionState {
   status: MicrophonePermissionStatus;
   /** Whether the OS-level request can be re-triggered (false once denied). */
@@ -25,7 +24,6 @@ export interface MicrophonePermissionState {
   /** True while a request is in flight. */
   requesting: boolean;
 }
-
 export interface MicrophonePermissionController
   extends MicrophonePermissionState {
   /** Prompt the OS for microphone access and reflect the resulting state. */
@@ -33,14 +31,12 @@ export interface MicrophonePermissionController
   /** Open OS settings so a denied permission can be granted manually. */
   openSettings: () => Promise<void>;
 }
-
 function hasClientPermissionApi(): boolean {
   return (
     typeof client.requestPermission === "function" &&
     typeof client.openPermissionSettings === "function"
   );
 }
-
 /**
  * Fallback path when the permission client is unavailable: a bare
  * `getUserMedia` probe. A granted stream is stopped immediately (we only want
@@ -65,7 +61,6 @@ async function probeMicrophoneViaGetUserMedia(): Promise<MicrophonePermissionSta
     return "denied";
   }
 }
-
 async function openMicrophoneSettingsViaClient(): Promise<void> {
   if (typeof client.openPermissionSettings !== "function") return;
   try {
@@ -75,7 +70,6 @@ async function openMicrophoneSettingsViaClient(): Promise<void> {
     // not break onboarding — the user can still grant access via the OS
   }
 }
-
 export function useMicrophonePermission(): MicrophonePermissionController {
   const [state, setState] = React.useState<MicrophonePermissionState>({
     status: "unknown",
@@ -83,15 +77,12 @@ export function useMicrophonePermission(): MicrophonePermissionController {
     requesting: false,
   });
   const requestingRef = React.useRef(false);
-
   const request = React.useCallback(async () => {
     if (requestingRef.current) return;
     requestingRef.current = true;
     setState((current) => ({ ...current, requesting: true }));
-
     let status: MicrophonePermissionStatus = "unknown";
     let canRequest = true;
-
     if (hasClientPermissionApi()) {
       try {
         const result = await client.requestPermission(MICROPHONE);
@@ -108,11 +99,9 @@ export function useMicrophonePermission(): MicrophonePermissionController {
       status = await probeMicrophoneViaGetUserMedia();
       canRequest = status !== "denied";
     }
-
     requestingRef.current = false;
     setState({ status, canRequest, requesting: false });
   }, []);
-
   const openSettings = React.useCallback(async () => {
     if (hasClientPermissionApi()) {
       await openMicrophoneSettingsViaClient();
@@ -127,7 +116,6 @@ export function useMicrophonePermission(): MicrophonePermissionController {
       canRequest: status !== "denied",
     }));
   }, []);
-
   return {
     ...state,
     request,

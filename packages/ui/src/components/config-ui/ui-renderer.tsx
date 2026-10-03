@@ -10,6 +10,15 @@
  * data, not code. Contrast with `ConfigRenderer`, which drives a JSON-Schema
  * config form rather than a spec tree.
  */
+
+import type {
+  AuthState,
+  CondExpr,
+  UiAction,
+  UiElement,
+  UiRenderContext,
+  UiSpec,
+} from "@elizaos/core/config/ui-spec";
 import { X } from "lucide-react";
 import type React from "react";
 import {
@@ -20,14 +29,6 @@ import {
   useState,
 } from "react";
 import { getByPath, setByPath } from "../../config/config-catalog";
-import type {
-  AuthState,
-  CondExpr,
-  UiAction,
-  UiElement,
-  UiRenderContext,
-  UiSpec,
-} from "../../config/ui-spec";
 import { useAppSelector } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
 import { Badge } from "../ui/badge";
@@ -71,41 +72,33 @@ import {
   type SupportedUiComponentType,
   sanitizeLinkHref,
 } from "./ui-renderer.helpers";
-
 export interface UiActionDispatchMetadata {
   /** Resolved params safe to persist in chat or another durable history. */
   historySafeParams: Record<string, unknown>;
 }
-
 type UiRendererActionHandler = (
   action: string,
   params?: Record<string, unknown>,
   metadata?: UiActionDispatchMetadata,
 ) => void;
-
 type UiRendererContext = Omit<UiRenderContext, "onAction"> & {
   onAction?: UiRendererActionHandler;
   clearActionError: () => void;
   reportActionError: (error: Error) => void;
 };
-
 const UiContext = createContext<UiRendererContext | null>(null);
-
 function useUiCtx(): UiRendererContext {
   const ctx = useContext(UiContext);
   if (!ctx) throw new Error("UiRenderer context missing");
   return ctx;
 }
-
 // ── Dynamic value resolution ────────────────────────────────────────
-
 function resolveProp(
   value: unknown,
   ctx: UiRendererContext,
   resolveLegacyPath = true,
 ): unknown {
   if (value == null) return value;
-
   // $data.path string prefix (simpler syntax for AI)
   if (typeof value === "string" && value.startsWith("$data.")) {
     const path = value.slice(6); // strip "$data."
@@ -114,13 +107,16 @@ function resolveProp(
     }
     return getByPath(ctx.state, path);
   }
-
   // $path reference
   if (
     typeof value === "object" &&
     "$path" in (value as Record<string, unknown>)
   ) {
-    const path = (value as { $path: unknown }).$path;
+    const path = (
+      value as {
+        $path: unknown;
+      }
+    ).$path;
     if (typeof path !== "string") {
       throw new TypeError("UiSpec $path binding must be a string");
     }
@@ -129,7 +125,6 @@ function resolveProp(
     }
     return getByPath(ctx.state, path);
   }
-
   // $cond expression
   if (
     typeof value === "object" &&
@@ -138,7 +133,6 @@ function resolveProp(
     const expr = value as CondExpr;
     const cond = expr.$cond;
     let result = false;
-
     if (cond.eq) {
       const [a, b] = cond.eq.map((v) => resolveProp(v, ctx, resolveLegacyPath));
       result = a === b;
@@ -160,12 +154,10 @@ function resolveProp(
     } else if (cond.path) {
       result = !!getByPath(ctx.state, cond.path);
     }
-
     return result
       ? resolveProp(expr.$then, ctx, resolveLegacyPath)
       : resolveProp(expr.$else, ctx, resolveLegacyPath);
   }
-
   // Object with path references
   if (
     resolveLegacyPath &&
@@ -173,16 +165,18 @@ function resolveProp(
     value !== null &&
     "path" in (value as Record<string, unknown>)
   ) {
-    const p = (value as { path: string }).path;
+    const p = (
+      value as {
+        path: string;
+      }
+    ).path;
     if (p.startsWith("$item/") && ctx.repeatItem) {
       return ctx.repeatItem[p.slice(6)];
     }
     return getByPath(ctx.state, p);
   }
-
   return value;
 }
-
 function resolveProps(
   props: Record<string, unknown>,
   ctx: UiRendererContext,
@@ -194,15 +188,16 @@ function resolveProps(
   }
   return resolved;
 }
-
 type ActionParamsResolution =
   | {
       ok: true;
       params: Record<string, unknown> | undefined;
       metadata?: UiActionDispatchMetadata;
     }
-  | { ok: false; error: Error };
-
+  | {
+      ok: false;
+      error: Error;
+    };
 function pathTouchesSensitiveState(
   path: string,
   sensitivePaths: ReadonlySet<string>,
@@ -218,7 +213,6 @@ function pathTouchesSensitiveState(
   }
   return false;
 }
-
 function referencesSensitiveState(
   value: unknown,
   sensitivePaths: ReadonlySet<string>,
@@ -233,13 +227,11 @@ function referencesSensitiveState(
   if (value === null || typeof value !== "object") return false;
   if (seen.has(value)) return false;
   seen.add(value);
-
   if (Array.isArray(value)) {
     return value.some((entry) =>
       referencesSensitiveState(entry, sensitivePaths, seen),
     );
   }
-
   const record = value as Record<string, unknown>;
   if (
     typeof record.$path === "string" &&
@@ -247,8 +239,13 @@ function referencesSensitiveState(
   ) {
     return true;
   }
-  const conditionalPath = (record.$cond as { path?: unknown } | undefined)
-    ?.path;
+  const conditionalPath = (
+    record.$cond as
+      | {
+          path?: unknown;
+        }
+      | undefined
+  )?.path;
   if (
     typeof conditionalPath === "string" &&
     pathTouchesSensitiveState(conditionalPath, sensitivePaths)
@@ -259,7 +256,6 @@ function referencesSensitiveState(
     referencesSensitiveState(entry, sensitivePaths, seen),
   );
 }
-
 // Generic-action serialization writes resolved params into durable chat
 // history, so a field is excluded from that payload only if the spec declares
 // it secret. UiSpecs are plugin- and model-authored, and `type: "password"`
@@ -284,13 +280,11 @@ function sensitiveStatePaths(ctx: UiRendererContext): ReadonlySet<string> {
   }
   return paths;
 }
-
 function resolveActionParams(
   params: Record<string, unknown> | undefined,
   ctx: UiRendererContext,
 ): ActionParamsResolution {
   if (!params) return { ok: true, params: undefined };
-
   try {
     // Action payloads have historically allowed literal objects containing a
     // `path` field. Resolve only the documented `$path`/`$data`/`$cond`
@@ -324,9 +318,7 @@ function resolveActionParams(
     };
   }
 }
-
 // ── State helpers ───────────────────────────────────────────────────
-
 function useStatePath(statePath: string | undefined, ctx: UiRendererContext) {
   const value = statePath ? getByPath(ctx.state, statePath) : undefined;
   const setValue = useCallback(
@@ -337,12 +329,9 @@ function useStatePath(statePath: string | undefined, ctx: UiRendererContext) {
   );
   return [value, setValue] as const;
 }
-
 // ── Fire event action ───────────────────────────────────────────────
-
 function fireEvent(action: UiAction | undefined, ctx: UiRendererContext) {
   if (!action) return;
-
   const execute = () => {
     ctx.clearActionError();
     const resolution = resolveActionParams(action.params, ctx);
@@ -356,7 +345,10 @@ function fireEvent(action: UiAction | undefined, ctx: UiRendererContext) {
     }
     const { params } = resolution;
     if (action.action === "setState" && params) {
-      const p = params as { path: string; value: unknown };
+      const p = params as {
+        path: string;
+        value: unknown;
+      };
       ctx.setState(p.path, p.value);
       if (action.onSuccess && ctx.onAction) {
         ctx.onAction(action.onSuccess.action, action.onSuccess.params);
@@ -385,7 +377,6 @@ function fireEvent(action: UiAction | undefined, ctx: UiRendererContext) {
       }
     }
   };
-
   void (async () => {
     if (action.confirm) {
       const ok = await confirmDesktopAction({
@@ -400,9 +391,7 @@ function fireEvent(action: UiAction | undefined, ctx: UiRendererContext) {
     execute();
   })();
 }
-
 // ── Gap / size maps ─────────────────────────────────────────────────
-
 const GAP: Record<string, string> = {
   none: "gap-0",
   xs: "gap-0.5",
@@ -411,14 +400,12 @@ const GAP: Record<string, string> = {
   lg: "gap-5",
   xl: "gap-8",
 };
-
 const ALIGN: Record<string, string> = {
   start: "items-start",
   center: "items-center",
   end: "items-end",
   stretch: "items-stretch",
 };
-
 const JUSTIFY: Record<string, string> = {
   start: "justify-start",
   center: "justify-center",
@@ -426,20 +413,16 @@ const JUSTIFY: Record<string, string> = {
   between: "justify-between",
   around: "justify-around",
 };
-
 // ══════════════════════════════════════════════════════════════════════
 // COMPONENT REGISTRY
 // ══════════════════════════════════════════════════════════════════════
-
 type ComponentFn = (
   props: Record<string, unknown>,
   children: React.ReactNode,
   ctx: UiRendererContext,
   el: UiElement,
 ) => React.ReactNode;
-
 // ── Layout ──────────────────────────────────────────────────────────
-
 const StackComponent: ComponentFn = (props, children) => {
   const dir = props.direction === "horizontal" ? "flex-row" : "flex-col";
   const gap = GAP[String(props.gap ?? "md")] ?? "gap-3";
@@ -449,7 +432,6 @@ const StackComponent: ComponentFn = (props, children) => {
     <div className={`flex ${dir} ${gap} ${align} ${justify}`}>{children}</div>
   );
 };
-
 const GridComponent: ComponentFn = (props, children) => {
   const cols = Number(props.columns ?? 2);
   const gap = GAP[String(props.gap ?? "md")] ?? "gap-3";
@@ -462,7 +444,6 @@ const GridComponent: ComponentFn = (props, children) => {
     </div>
   );
 };
-
 const CardComponent: ComponentFn = (props, children) => {
   const maxW = props.maxWidth === "full" ? "max-w-full" : "";
   return (
@@ -479,7 +460,6 @@ const CardComponent: ComponentFn = (props, children) => {
     </Card>
   );
 };
-
 const SeparatorComponent: ComponentFn = (props) => {
   const isVert = props.orientation === "vertical";
   return (
@@ -489,9 +469,7 @@ const SeparatorComponent: ComponentFn = (props) => {
     />
   );
 };
-
 // ── Typography ──────────────────────────────────────────────────────
-
 const HeadingComponent: ComponentFn = (props) => {
   const text = String(props.text ?? "");
   const level = String(props.level ?? "h2");
@@ -503,7 +481,6 @@ const HeadingComponent: ComponentFn = (props) => {
         : "text-base font-bold";
   return <div className={cls}>{text}</div>;
 };
-
 const TextComponent: ComponentFn = (props) => {
   const text = String(props.text ?? "");
   const variant = String(props.variant ?? "body");
@@ -516,9 +493,7 @@ const TextComponent: ComponentFn = (props) => {
   };
   return <div className={cls[variant] ?? "text-sm"}>{text}</div>;
 };
-
 // ── Form ────────────────────────────────────────────────────────────
-
 const InputComponent: ComponentFn = (props, _children, ctx, el) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
@@ -527,7 +502,6 @@ const InputComponent: ComponentFn = (props, _children, ctx, el) => {
   const sp = props.statePath as string | undefined;
   const errors = sp ? ctx.fieldErrors?.[sp] : undefined;
   const validateOn = el.validation?.validateOn ?? "blur";
-
   const handleChange = (v: string) => {
     setValue(v);
     if (validateOn === "change" && sp && ctx.validateField)
@@ -536,7 +510,6 @@ const InputComponent: ComponentFn = (props, _children, ctx, el) => {
   const handleBlur = () => {
     if (validateOn === "blur" && sp && ctx.validateField) ctx.validateField(sp);
   };
-
   return (
     <div className="flex flex-col gap-1">
       {props.label ? (
@@ -557,7 +530,6 @@ const InputComponent: ComponentFn = (props, _children, ctx, el) => {
     </div>
   );
 };
-
 const TextareaComponent: ComponentFn = (props, _children, ctx, el) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
@@ -566,7 +538,6 @@ const TextareaComponent: ComponentFn = (props, _children, ctx, el) => {
   const sp = props.statePath as string | undefined;
   const errors = sp ? ctx.fieldErrors?.[sp] : undefined;
   const validateOn = el.validation?.validateOn ?? "blur";
-
   const handleChange = (v: string) => {
     setValue(v);
     if (validateOn === "change" && sp && ctx.validateField)
@@ -575,7 +546,6 @@ const TextareaComponent: ComponentFn = (props, _children, ctx, el) => {
   const handleBlur = () => {
     if (validateOn === "blur" && sp && ctx.validateField) ctx.validateField(sp);
   };
-
   return (
     <div className="flex flex-col gap-1">
       {props.label ? (
@@ -596,18 +566,19 @@ const TextareaComponent: ComponentFn = (props, _children, ctx, el) => {
     </div>
   );
 };
-
 const SelectComponent: ComponentFn = (props, _children, ctx, el) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
     ctx,
   );
   const options =
-    (props.options as Array<{ label: string; value: string }>) ?? [];
+    (props.options as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
   const sp = props.statePath as string | undefined;
   const errors = sp ? ctx.fieldErrors?.[sp] : undefined;
   const validateOn = el.validation?.validateOn ?? "blur";
-
   const handleChange = (v: string) => {
     setValue(v);
     if (validateOn === "change" && sp && ctx.validateField)
@@ -616,7 +587,6 @@ const SelectComponent: ComponentFn = (props, _children, ctx, el) => {
   const handleBlur = () => {
     if (validateOn === "blur" && sp && ctx.validateField) ctx.validateField(sp);
   };
-
   return (
     <div className="flex flex-col gap-1">
       {props.label ? (
@@ -660,7 +630,6 @@ const SelectComponent: ComponentFn = (props, _children, ctx, el) => {
     </div>
   );
 };
-
 const CheckboxComponent: ComponentFn = (props, _children, ctx) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
@@ -679,14 +648,16 @@ const CheckboxComponent: ComponentFn = (props, _children, ctx) => {
     </div>
   );
 };
-
 const RadioComponent: ComponentFn = (props, _children, ctx) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
     ctx,
   );
   const options =
-    (props.options as Array<{ label: string; value: string }>) ?? [];
+    (props.options as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
   return (
     <RadioGroup
       value={String(value ?? "")}
@@ -710,7 +681,6 @@ const RadioComponent: ComponentFn = (props, _children, ctx) => {
     </RadioGroup>
   );
 };
-
 const SwitchComponent: ComponentFn = (props, _children, ctx) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
@@ -728,7 +698,6 @@ const SwitchComponent: ComponentFn = (props, _children, ctx) => {
     </span>
   );
 };
-
 const SliderComponent: ComponentFn = (props, _children, ctx) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
@@ -755,7 +724,6 @@ const SliderComponent: ComponentFn = (props, _children, ctx) => {
     </div>
   );
 };
-
 const ToggleComponent: ComponentFn = (props, _children, ctx, el) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
@@ -777,16 +745,18 @@ const ToggleComponent: ComponentFn = (props, _children, ctx, el) => {
     </Button>
   );
 };
-
 const ToggleGroupComponent: ComponentFn = (props, _children, ctx) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
     ctx,
   );
-  const items = (props.items as Array<{ label: string; value: string }>) ?? [];
+  const items =
+    (props.items as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
   const isMultiple = props.type === "multiple";
   const selected = new Set(Array.isArray(value) ? (value as string[]) : []);
-
   const toggle = (v: string) => {
     if (isMultiple) {
       const next = new Set(selected);
@@ -797,7 +767,6 @@ const ToggleGroupComponent: ComponentFn = (props, _children, ctx) => {
       setValue(v);
     }
   };
-
   return (
     <div className="flex gap-1">
       {items.map((item) => {
@@ -820,14 +789,16 @@ const ToggleGroupComponent: ComponentFn = (props, _children, ctx) => {
     </div>
   );
 };
-
 const ButtonGroupComponent: ComponentFn = (props, _children, ctx) => {
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
     ctx,
   );
   const buttons =
-    (props.buttons as Array<{ label: string; value: string }>) ?? [];
+    (props.buttons as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
   return (
     <div className="flex gap-1">
       {buttons.map((btn) => {
@@ -848,9 +819,7 @@ const ButtonGroupComponent: ComponentFn = (props, _children, ctx) => {
     </div>
   );
 };
-
 // ── Data Display ────────────────────────────────────────────────────
-
 const TableComponent: ComponentFn = (props) => {
   const columns = (props.columns as string[]) ?? [];
   const rows = (props.rows as string[][]) ?? [];
@@ -889,11 +858,13 @@ const TableComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const CarouselComponent: ComponentFn = (props) => {
   const t = useAppSelector((s) => s.t);
   const items =
-    (props.items as Array<{ title: string; description: string }>) ?? [];
+    (props.items as Array<{
+      title: string;
+      description: string;
+    }>) ?? [];
   const [current, setCurrent] = useState(0);
   return (
     <div className="relative">
@@ -937,7 +908,6 @@ const CarouselComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const BadgeComponent: ComponentFn = (props) => {
   const variant = String(props.variant ?? "default");
   const tone: NonNullable<React.ComponentProps<typeof Badge>["tone"]> =
@@ -956,7 +926,6 @@ const BadgeComponent: ComponentFn = (props) => {
     </Badge>
   );
 };
-
 const AvatarComponent: ComponentFn = (props) => {
   const name = String(props.name ?? "?");
   const size =
@@ -979,7 +948,6 @@ const AvatarComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const ImageComponent: ComponentFn = (props) => {
   const src = props.src as string | undefined;
   const resolvedSrc = src ? resolveAppAssetUrl(src) : undefined;
@@ -1002,9 +970,7 @@ const ImageComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 // ── Feedback ────────────────────────────────────────────────────────
-
 const AlertComponent: ComponentFn = (props) => {
   const type = String(props.type ?? "info");
   const borderCls: Record<string, string> = {
@@ -1034,7 +1000,6 @@ const AlertComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const ProgressComponent: ComponentFn = (props) => {
   const value = Number(props.value ?? 0);
   const max = Number(props.max ?? 100);
@@ -1051,7 +1016,6 @@ const ProgressComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const RatingComponent: ComponentFn = (props) => {
   const value = Number(props.value ?? 0);
   const max = Number(props.max ?? 5);
@@ -1073,7 +1037,6 @@ const RatingComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const SkeletonComponent: ComponentFn = (props) => {
   const w = props.width ? String(props.width) : "100%";
   const h = props.height ? String(props.height) : "20px";
@@ -1085,7 +1048,6 @@ const SkeletonComponent: ComponentFn = (props) => {
     />
   );
 };
-
 const SpinnerComponent: ComponentFn = (props) => {
   const size =
     props.size === "lg"
@@ -1104,9 +1066,7 @@ const SpinnerComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 // ── Navigation ──────────────────────────────────────────────────────
-
 const ButtonComponent: ComponentFn = (props, _children, ctx, el) => {
   const variant = String(props.variant ?? "primary");
   return (
@@ -1129,10 +1089,8 @@ const ButtonComponent: ComponentFn = (props, _children, ctx, el) => {
     </Button>
   );
 };
-
 const LinkComponent: ComponentFn = (props, _children, ctx, el) => {
   const safeHref = sanitizeLinkHref(props.href);
-
   return (
     <a
       href={safeHref}
@@ -1150,9 +1108,12 @@ const LinkComponent: ComponentFn = (props, _children, ctx, el) => {
     </a>
   );
 };
-
 const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
-  const items = (props.items as Array<{ label: string; value: string }>) ?? [];
+  const items =
+    (props.items as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -1178,11 +1139,13 @@ const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
     </DropdownMenu>
   );
 };
-
 const TabsComponent: ComponentFn = (props, _children, ctx) => {
   const tabs =
-    (props.tabs as Array<{ label: string; value: string; content: string }>) ??
-    [];
+    (props.tabs as Array<{
+      label: string;
+      value: string;
+      content: string;
+    }>) ?? [];
   const [value, setValue] = useStatePath(
     props.statePath as string | undefined,
     ctx,
@@ -1211,7 +1174,6 @@ const TabsComponent: ComponentFn = (props, _children, ctx) => {
     </div>
   );
 };
-
 const PaginationComponent: ComponentFn = (props, _children, ctx) => {
   const total = Number(props.totalPages ?? 1);
   const [value, setValue] = useStatePath(
@@ -1258,9 +1220,7 @@ const PaginationComponent: ComponentFn = (props, _children, ctx) => {
     </div>
   );
 };
-
 // ── Metric / KPI ────────────────────────────────────────────────────
-
 const MetricComponent: ComponentFn = (props) => {
   const trend = props.trend as string | undefined;
   const trendColor =
@@ -1290,11 +1250,13 @@ const MetricComponent: ComponentFn = (props) => {
     </Card>
   );
 };
-
 // ── Visualization ───────────────────────────────────────────────────
-
 const BarGraphComponent: ComponentFn = (props) => {
-  const data = (props.data as Array<{ label: string; value: number }>) ?? [];
+  const data =
+    (props.data as Array<{
+      label: string;
+      value: number;
+    }>) ?? [];
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   return (
     <div>
@@ -1321,9 +1283,12 @@ const BarGraphComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const LineGraphComponent: ComponentFn = (props) => {
-  const data = (props.data as Array<{ label: string; value: number }>) ?? [];
+  const data =
+    (props.data as Array<{
+      label: string;
+      value: number;
+    }>) ?? [];
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   const h = 80;
   const w = 100;
@@ -1378,9 +1343,7 @@ const LineGraphComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 // ── Interaction ─────────────────────────────────────────────────────
-
 const TooltipComponent: ComponentFn = (props) => {
   const [show, setShow] = useState(false);
   return (
@@ -1406,7 +1369,6 @@ const TooltipComponent: ComponentFn = (props) => {
     </Button>
   );
 };
-
 const PopoverComponent: ComponentFn = (props) => {
   return (
     <Popover>
@@ -1423,7 +1385,6 @@ const PopoverComponent: ComponentFn = (props) => {
     </Popover>
   );
 };
-
 const CollapsibleComponent: ComponentFn = (props, children) => {
   const [open, setOpen] = useState(!!props.defaultOpen);
   return (
@@ -1449,13 +1410,14 @@ const CollapsibleComponent: ComponentFn = (props, children) => {
     </div>
   );
 };
-
 const AccordionComponent: ComponentFn = (props) => {
   const items =
-    (props.items as Array<{ title: string; content: string }>) ?? [];
+    (props.items as Array<{
+      title: string;
+      content: string;
+    }>) ?? [];
   const isSingle = props.type === "single";
   const [openSet, setOpenSet] = useState<Set<number>>(new Set());
-
   const toggle = (idx: number) => {
     setOpenSet((prev) => {
       const next = isSingle ? new Set<number>() : new Set(prev);
@@ -1464,7 +1426,6 @@ const AccordionComponent: ComponentFn = (props) => {
       return next;
     });
   };
-
   return (
     <div className="border border-border divide-y divide-border">
       {items.map((item, i) => (
@@ -1494,7 +1455,6 @@ const AccordionComponent: ComponentFn = (props) => {
     </div>
   );
 };
-
 const DialogComponent: ComponentFn = (props, children, ctx) => {
   const openPath = props.openPath as string | undefined;
   const isOpen = openPath ? !!getByPath(ctx.state, openPath) : false;
@@ -1544,7 +1504,6 @@ const DialogComponent: ComponentFn = (props, children, ctx) => {
     </div>
   );
 };
-
 const DrawerComponent: ComponentFn = (props, children, ctx) => {
   const openPath = props.openPath as string | undefined;
   const isOpen = openPath ? !!getByPath(ctx.state, openPath) : false;
@@ -1596,9 +1555,7 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
     </div>
   );
 };
-
 // ── Component map ───────────────────────────────────────────────────
-
 const COMPONENTS: Record<SupportedUiComponentType, ComponentFn> = {
   // Layout
   Stack: StackComponent,
@@ -1650,11 +1607,9 @@ const COMPONENTS: Record<SupportedUiComponentType, ComponentFn> = {
   Dialog: DialogComponent,
   Drawer: DrawerComponent,
 };
-
 // ══════════════════════════════════════════════════════════════════════
 // ELEMENT RENDERER
 // ══════════════════════════════════════════════════════════════════════
-
 // Renders a single item of a `repeat` element. The per-item context is
 // memoized on the item identity so that re-rendering the parent (e.g. on an
 // unrelated state change) does not produce a fresh context value and force every
@@ -1687,18 +1642,15 @@ function RepeatItemRenderer({
   );
   return <>{component(resolvedProps, childNodes, itemCtx, el)}</>;
 }
-
 function ElementRenderer({ elementId }: { elementId: string }) {
   const t = useAppSelector((s) => s.t);
   const ctx = useUiCtx();
   const el = ctx.spec.elements[elementId];
   if (!el) return null;
-
   // Visibility check
   if (el.visible && !evaluateUiVisibility(el.visible, ctx.state, ctx.auth)) {
     return null;
   }
-
   const component = COMPONENTS[el.type as SupportedUiComponentType];
   if (!component) {
     return (
@@ -1707,19 +1659,16 @@ function ElementRenderer({ elementId }: { elementId: string }) {
       </Banner>
     );
   }
-
   // Model-emitted specs routinely omit `props`/`children` on an element;
   // Object.entries(undefined) / undefined.map() would throw and (without the
   // ErrorBoundary around MessageUiSpecBlock) crash the whole app. Default them.
   const resolvedProps = resolveProps(el.props ?? {}, ctx);
-
   // Handle repeat / list rendering
   if (el.repeat) {
     const listData = getByPath(ctx.state, el.repeat.path) as
       | Array<Record<string, unknown>>
       | undefined;
     if (!Array.isArray(listData)) return null;
-
     const repeatKey = el.repeat.key;
     return (
       <>
@@ -1739,19 +1688,15 @@ function ElementRenderer({ elementId }: { elementId: string }) {
       </>
     );
   }
-
   // Normal rendering: resolve children (default missing children to []).
   const childNodes = (el.children ?? []).map((childId) => (
     <ElementRenderer key={childId} elementId={childId} />
   ));
-
   return <>{component(resolvedProps, childNodes, ctx, el)}</>;
 }
-
 // ══════════════════════════════════════════════════════════════════════
 // ROOT RENDERER
 // ══════════════════════════════════════════════════════════════════════
-
 export interface UiRendererProps {
   spec: UiSpec;
   onAction?: UiRendererActionHandler;
@@ -1765,7 +1710,6 @@ export interface UiRendererProps {
     ) => boolean | Promise<boolean>
   >;
 }
-
 export function UiRenderer({
   spec,
   onAction,
@@ -1778,7 +1722,6 @@ export function UiRenderer({
   }));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [actionError, setActionError] = useState<string | null>(null);
-
   const clearActionError = useCallback(() => setActionError(null), []);
   const reportActionError = useCallback((error: Error) => {
     setActionError(
@@ -1787,7 +1730,6 @@ export function UiRenderer({
         : "This action could not be completed.",
     );
   }, []);
-
   const setState = useCallback((path: string, value: unknown) => {
     setStateRaw((prev) => {
       const next = { ...prev };
@@ -1795,7 +1737,6 @@ export function UiRenderer({
       return next;
     });
   }, []);
-
   const validateField = useCallback(
     (statePath: string) => {
       // Find the element that has this statePath
@@ -1810,7 +1751,6 @@ export function UiRenderer({
     },
     [spec.elements, state, validators],
   );
-
   const ctx = useMemo<UiRendererContext>(
     () => ({
       spec,
@@ -1839,7 +1779,6 @@ export function UiRenderer({
       reportActionError,
     ],
   );
-
   if (loading && Object.keys(spec.elements).length === 0) {
     return (
       <div className="min-h-24">
@@ -1858,7 +1797,6 @@ export function UiRenderer({
       </div>
     );
   }
-
   return (
     <UiContext.Provider value={ctx}>
       <ElementRenderer elementId={spec.root} />

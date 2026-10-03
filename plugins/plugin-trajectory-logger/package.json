@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-trajectory-logger",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
+  "description": "Realtime trajectory inspector overlay app \u2014 surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -12,16 +12,8 @@
       "default": "./dist/index.js"
     },
     "./plugin": {
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "bun": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
+      "eliza-source": "./src/plugin.ts",
+      "bun": "./src/plugin.ts",
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
@@ -38,18 +30,16 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
@@ -77,6 +67,6 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",
-    "vite": "^8.0.0"
+    "vite": "^8.3.0"
   }
 }

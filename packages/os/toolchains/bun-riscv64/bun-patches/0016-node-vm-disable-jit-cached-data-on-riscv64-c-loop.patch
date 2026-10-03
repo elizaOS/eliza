@@ -1,0 +1,96 @@
+diff --git a/src/jsc/bindings/NodeVMScript.cpp b/src/jsc/bindings/NodeVMScript.cpp
+index d7cfa61..e18a30a 100644
+--- a/src/jsc/bindings/NodeVMScript.cpp
++++ b/src/jsc/bindings/NodeVMScript.cpp
+@@ -8,6 +8,7 @@
+ #include "JavaScriptCore/JSWeakMapInlines.h"
+ #include "JavaScriptCore/ProgramCodeBlock.h"
+ #include "JavaScriptCore/SourceCodeKey.h"
++#include "JavaScriptCore/Watchdog.h"
+ 
+ #include "NodeVMScriptFetcher.h"
+ #include "../vm/SigintWatcher.h"
+@@ -163,6 +164,10 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+                 codeBlock = JSC::ProgramCodeBlock::create(vm, executable, unlinkedBlock, jsScope);
+                 RETURN_IF_EXCEPTION(scope, {});
+             }
++#if defined(__riscv) && __riscv_xlen == 64
++            UNUSED_PARAM(codeBlock);
++            script->cachedDataRejected(TriState::True);
++#else
+             JSC::CompilationResult compilationResult = JIT::compileSync(vm, codeBlock, JITCompilationEffort::JITCompilationCanFail);
+             if (compilationResult != JSC::CompilationResult::CompilationFailed) {
+                 executable->installCode(codeBlock);
+@@ -170,6 +175,7 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+             } else {
+                 script->cachedDataRejected(TriState::True);
+             }
++#endif
+         }
+     } else if (produceCachedData) {
+         script->cacheBytecode();
+@@ -301,6 +307,15 @@ static bool checkForTermination(JSC::VM& vm, JSC::JSGlobalObject* globalObject,
+ 
+ void setupWatchdog(VM& vm, double timeout, double* oldTimeout, double* newTimeout)
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(vm);
++    if (oldTimeout) {
++        *oldTimeout = timeout;
++    }
++    if (newTimeout) {
++        *newTimeout = timeout;
++    }
++#else
+     JSC::JSLockHolder locker(vm);
+     JSC::Watchdog& dog = vm.ensureWatchdog();
+     dog.enteredVM();
+@@ -320,6 +335,7 @@ void setupWatchdog(VM& vm, double timeout, double* oldTimeout, double* newTimeou
+     if (newTimeout) {
+         *newTimeout = timeout;
+     }
++#endif
+ }
+ 
+ static JSC::EncodedJSValue runInContext(NodeVMGlobalObject* globalObject, NodeVMScript* script, JSObject* contextifiedObject, JSValue optionsArg, bool allowStringInPlaceOfOptions = false)
+@@ -366,7 +382,9 @@ static JSC::EncodedJSValue runInContext(NodeVMGlobalObject* globalObject, NodeVM
+     RETURN_IF_EXCEPTION(scope, {});
+ 
+     if (options.timeout) {
++#if !(defined(__riscv) && __riscv_xlen == 64)
+         vm.watchdog()->setTimeLimit(WTF::Seconds::fromMilliseconds(*oldLimit));
++#endif
+     }
+ 
+     if (checkForTermination(vm, globalObject, scope, script, newLimit)) {
+@@ -429,7 +447,9 @@ JSC_DEFINE_HOST_FUNCTION(scriptRunInThisContext, (JSGlobalObject * globalObject,
+     }
+ 
+     if (options.timeout) {
++#if !(defined(__riscv) && __riscv_xlen == 64)
+         vm.watchdog()->setTimeLimit(WTF::Seconds::fromMilliseconds(*oldLimit));
++#endif
+     }
+ 
+     if (checkForTermination(vm, globalObject, scope, script, newLimit)) {
+diff --git a/src/jsc/bindings/NodeVMSourceTextModule.cpp b/src/jsc/bindings/NodeVMSourceTextModule.cpp
+index 2b83e97..2290f1e 100644
+--- a/src/jsc/bindings/NodeVMSourceTextModule.cpp
++++ b/src/jsc/bindings/NodeVMSourceTextModule.cpp
+@@ -140,12 +140,16 @@ NodeVMSourceTextModule* NodeVMSourceTextModule::create(VM& vm, JSGlobalObject* g
+             RETURN_IF_EXCEPTION(scope, nullptr);
+         }
+         if (codeBlock) {
++#if defined(__riscv) && __riscv_xlen == 64
++            UNUSED_PARAM(codeBlock);
++#else
+             CompilationResult compilationResult = JIT::compileSync(vm, codeBlock, JITCompilationEffort::JITCompilationCanFail);
+             RETURN_IF_EXCEPTION(scope, nullptr);
+             if (compilationResult != CompilationResult::CompilationFailed) {
+                 executable->installCode(codeBlock);
+                 return ptr;
+             }
++#endif
+         }
+     }
+ 

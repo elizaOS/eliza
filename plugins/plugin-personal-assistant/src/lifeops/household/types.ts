@@ -5,7 +5,7 @@
  * affected adult actually approved.
  */
 import { ElizaError } from "@elizaos/core";
-import { isValidTimeZone } from "@elizaos/shared";
+import { isValidTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
 
 export const HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID =
   "household.schedule.proposal.approval" as const;

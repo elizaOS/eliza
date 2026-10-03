@@ -3,7 +3,6 @@
  * navigation presence rather than individual data requests.
  */
 
-/// <reference path="../types/nprogress.d.ts" />
 import nprogress from "nprogress";
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";

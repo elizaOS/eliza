@@ -5,8 +5,7 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/types/message-source";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   ChatTurnStatus,
@@ -20,6 +19,7 @@ import {
   client,
   type ImageAttachment,
 } from "../api";
+import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { isIOS, isNative } from "../platform/init";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
@@ -145,6 +145,15 @@ export interface HydrateInitialConversationDeps {
   loadedConversationIdRef: MutableRefObject<string | null>;
   /** Explicitly binds the visible message store before any rows are committed. */
   claimConversationMessagesOwnership: (conversationId: string | null) => void;
+  /**
+   * Merges restored server history with the claimed conversation's registered
+   * local-turn overlay (useDataLoaders). A restore can land while a send is
+   * in flight or before history exposes its receipts; it must never evict it.
+   */
+  reconcileRestoredConversationMessages: (
+    conversationId: string,
+    serverMessages: ConversationMessage[],
+  ) => ConversationMessage[];
   setConversations: (conversations: Conversation[]) => void;
   setActiveConversationId: (id: string | null) => void;
   setConversationMessages: (messages: ConversationMessage[]) => void;
@@ -286,6 +295,7 @@ export async function hydrateInitialConversation(
     conversationMessagesRef,
     loadedConversationIdRef,
     claimConversationMessagesOwnership,
+    reconcileRestoredConversationMessages,
     setConversations,
     setActiveConversationId,
     setConversationMessages,
@@ -300,10 +310,17 @@ export async function hydrateInitialConversation(
 
   try {
     const { conversations: rawConversations } = await api.listConversations();
-    if (
-      !Array.isArray(rawConversations) ||
-      !rawConversations.every(isConversationRecord)
-    ) {
+    const invalidRows = Array.isArray(rawConversations)
+      ? rawConversations.filter((row) => !isConversationRecord(row)).length
+      : null;
+    if (invalidRows === null || invalidRows > 0) {
+      logger.warn(
+        {
+          isArray: Array.isArray(rawConversations),
+          invalidRows,
+        },
+        "[useChatCallbacks] invalid conversation list during hydration",
+      );
       return null;
     }
     const conversations = normalizeConversationList(rawConversations);
@@ -358,14 +375,18 @@ export async function hydrateInitialConversation(
       }
       try {
         claimConversationMessagesOwnership(restoredConversation.id);
+        const restoredMessages = reconcileRestoredConversationMessages(
+          restoredConversation.id,
+          nextMessages,
+        );
         greetingFiredRef.current =
-          hasConversationBootstrapMessage(nextMessages);
-        conversationMessagesRef.current = nextMessages;
+          hasConversationBootstrapMessage(restoredMessages);
+        conversationMessagesRef.current = restoredMessages;
         loadedConversationIdRef.current = restoredConversation.id;
-        setConversationMessages(nextMessages);
+        setConversationMessages(restoredMessages);
         markConversationHistoryApplied(messagesLoaded);
         return messagesLoaded &&
-          nextMessages.length === 0 &&
+          restoredMessages.length === 0 &&
           seedSyntheticGreeting
           ? restoredConversation.id
           : null;
@@ -461,7 +482,12 @@ export async function hydrateInitialConversation(
       }
       return null;
     }
-  } catch {
+  } catch (error) {
+    // error-policy:J4 Keep hydration unavailable and expose the failed restore for diagnosis.
+    logger.warn(
+      { error },
+      "[useChatCallbacks] initial conversation hydration failed",
+    );
     return null;
   }
 }
@@ -611,6 +637,7 @@ export interface UseChatCallbacksDeps {
     lineages: readonly string[],
     explicitMessages?: readonly ConversationMessage[],
   ) => void;
+  reconcileRestoredConversationMessages: HydrateInitialConversationDeps["reconcileRestoredConversationMessages"];
   applyConversationMessageOverlayModification: (
     conversationId: string | null,
     lineage: string,
@@ -739,6 +766,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    reconcileRestoredConversationMessages,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,
@@ -971,6 +999,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       conversationMessagesRef,
       loadedConversationIdRef,
       claimConversationMessagesOwnership,
+      reconcileRestoredConversationMessages,
       setConversations,
       setActiveConversationId,
       setConversationMessages,
@@ -994,6 +1023,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     greetingFiredRef,
     loadedConversationIdRef,
     claimConversationMessagesOwnership,
+    reconcileRestoredConversationMessages,
     seedSyntheticGreeting,
     uiLanguage,
     setActiveConversationId,

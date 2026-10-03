@@ -40,7 +40,7 @@ const { VIEW_SPECS } = await import("./fixtures.ts");
 const OUTPUT_DIR = path.join(here, "output");
 const rmRecursiveScript = path.resolve(
   appRoot,
-  "../scripts/rm-path-recursive.mjs",
+  "../scripts/rm-path-recursive.ts",
 );
 const VIEWPORTS = [
   { id: "desktop", width: 1280, height: 900 },

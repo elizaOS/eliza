@@ -21,6 +21,7 @@ beforeAll(async () => {
   for (const name of [
     "0383_subscription_cancellation_result.sql",
     "0384_subscription_cancellation_undo.sql",
+    "0397_subscription_checkout_contract.sql",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     for (const statement of migration.split("--> statement-breakpoint"))

@@ -1,5 +1,6 @@
 /** Storybook states for the in-chat capability setup handoff. */
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+
+import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
 import type { Meta, StoryObj } from "@storybook/react";
 import { userEvent } from "storybook/test";
 import { assert } from "../../storybook/home-widget-decorator";
@@ -21,7 +22,6 @@ const baseRequest = {
     href: "/settings/agents/new",
   },
 } satisfies CapabilityHandoffRequest;
-
 const meta = {
   title: "Chat/CapabilityHandoffBlock",
   component: CapabilityHandoffBlock,
@@ -35,12 +35,9 @@ const meta = {
   ],
   args: { request: baseRequest },
 } satisfies Meta<typeof CapabilityHandoffBlock>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 export const SetupRequired: Story = {};
-
 export const WithContinuation: Story = {
   args: {
     request: {
@@ -52,7 +49,6 @@ export const WithContinuation: Story = {
     },
   },
 };
-
 export const NavigationUnavailable: Story = {
   play: async ({ canvasElement }) => {
     const button = canvasElement.querySelector("button");

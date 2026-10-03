@@ -29,10 +29,11 @@ import {
   type ConnectorOAuthStartRequest,
   type ConnectorOAuthStartResult,
   ElizaError,
+  type FetchLike,
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import type { LifeOpsMicrosoftCapability } from "@elizaos/shared";
+import type { LifeOpsMicrosoftCapability } from "@elizaos/core/contracts/personal-assistant";
 import { MICROSOFT_CALENDAR_PROVIDER } from "./accounts.js";
 
 const MICROSOFT_LOGIN_ROOT = "https://login.microsoftonline.com";
@@ -180,7 +181,7 @@ function member(value: unknown, key: string): unknown {
     : undefined;
 }
 
-function runtimeFetch(runtime: IAgentRuntime): typeof fetch {
+function runtimeFetch(runtime: IAgentRuntime): FetchLike {
   return runtime.fetch ? runtime.fetch.bind(runtime) : globalThis.fetch;
 }
 

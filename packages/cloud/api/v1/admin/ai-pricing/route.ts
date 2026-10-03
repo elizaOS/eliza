@@ -78,6 +78,7 @@ const RefreshSchema = z.object({
   sources: z
     .array(
       z.enum([
+        "selfhosted",
         "gateway",
         "bitrouter",
         "cerebras",

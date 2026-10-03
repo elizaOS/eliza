@@ -11,7 +11,7 @@
 // dismissed) against a mocked client, asserting the real DOM/handler effects
 // rather than render-presence alone.
 
-import type { PluginParamDef } from "@elizaos/shared";
+import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
 import {
   cleanup,
   fireEvent,
@@ -29,6 +29,7 @@ import type {
 } from "../../api/client-types-config";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
+import { MessageContent } from "./MessageContent";
 import {
   CONFIG_RE,
   isSafeNormalizedPluginId,
@@ -47,15 +48,12 @@ const { clientMock } = vi.hoisted(() => ({
     updatePlugin: vi.fn(),
   },
 }));
-
 vi.mock("../../api/client", () => ({ client: clientMock }));
-
-import { MessageContent } from "./MessageContent";
-
 // ── fixtures ────────────────────────────────────────────────────────
-
 function param(
-  over: Partial<PluginParamDef> & { key: string },
+  over: Partial<PluginParamDef> & {
+    key: string;
+  },
 ): PluginParamDef {
   return {
     type: "string",
@@ -67,8 +65,11 @@ function param(
     ...over,
   };
 }
-
-function plugin(over: Partial<PluginInfo> & { id: string }): PluginInfo {
+function plugin(
+  over: Partial<PluginInfo> & {
+    id: string;
+  },
+): PluginInfo {
   return {
     name: over.id,
     description: "",
@@ -83,22 +84,19 @@ function plugin(over: Partial<PluginInfo> & { id: string }): PluginInfo {
     ...over,
   };
 }
-
 function mutationResult(
   over: Partial<PluginMutationResult> = {},
 ): PluginMutationResult {
   return { ok: true, ...over };
 }
-
 function assistant(text: string): ConversationMessage {
   return {
     id: "m-config",
     role: "assistant",
     text,
-    timestamp: 1_700_000_000_000,
+    timestamp: 1700000000000,
   } as ConversationMessage;
 }
-
 // The component reads `setActionNotice`, `loadPlugins`, and `t` from the app
 // selector store. Seed a typed-enough stub; capture the spies so tests can
 // assert the toggle wired them.
@@ -126,9 +124,7 @@ function withApp(node: React.ReactElement) {
   );
   return { ...utils, setActionNotice, loadPlugins };
 }
-
 // ── parser side ─────────────────────────────────────────────────────
-
 describe("[CONFIG] marker parsing", () => {
   it("CONFIG_RE matches a bare plugin id and a scoped npm id", () => {
     CONFIG_RE.lastIndex = 0;
@@ -137,11 +133,17 @@ describe("[CONFIG] marker parsing", () => {
     ).map((m) => m[1]);
     expect(ids).toEqual(["weather", "@elizaos/plugin-x"]);
   });
-
   it("parseSegments lifts [CONFIG:weather] into a config segment", () => {
     const segments = parseSegments("Configure it: [CONFIG:weather]", false);
     const config = segments.find(
-      (s): s is Extract<Segment, { kind: "config" }> => s.kind === "config",
+      (
+        s,
+      ): s is Extract<
+        Segment,
+        {
+          kind: "config";
+        }
+      > => s.kind === "config",
     );
     expect(config?.pluginId).toBe("weather");
     // The surrounding prose survives as its own text segment.
@@ -151,17 +153,22 @@ describe("[CONFIG] marker parsing", () => {
       ),
     ).toBe(true);
   });
-
   it("parseSegments recognizes a scoped npm plugin id", () => {
     const segments = parseSegments("[CONFIG:@elizaos/plugin-x]", false);
     const config = segments.find(
-      (s): s is Extract<Segment, { kind: "config" }> => s.kind === "config",
+      (
+        s,
+      ): s is Extract<
+        Segment,
+        {
+          kind: "config";
+        }
+      > => s.kind === "config",
     );
     expect(config?.pluginId).toBe("@elizaos/plugin-x");
     // ...and normalizing the scoped id strips the @scope/plugin- prefix.
     expect(normalizePluginId(config?.pluginId ?? "")).toBe("x");
   });
-
   it("rejects a prototype-pollution id via isSafeNormalizedPluginId", () => {
     expect(isSafeNormalizedPluginId(normalizePluginId("__proto__"))).toBe(
       false,
@@ -177,7 +184,6 @@ describe("[CONFIG] marker parsing", () => {
       isSafeNormalizedPluginId(normalizePluginId("@elizaos/plugin-x")),
     ).toBe(true);
   });
-
   it("does not render an InlinePluginConfig for a prototype-pollution id", () => {
     // The renderer guards on isSafeNormalizedPluginId before mounting, so a
     // poisoned id yields no config UI even though the parser produced a segment.
@@ -189,9 +195,7 @@ describe("[CONFIG] marker parsing", () => {
     expect(container.textContent ?? "").not.toContain("[CONFIG:");
   });
 });
-
 // ── renderer side ───────────────────────────────────────────────────
-
 describe("MessageContent → InlinePluginConfig states", () => {
   beforeEach(() => {
     withFrozenClock();
@@ -199,12 +203,10 @@ describe("MessageContent → InlinePluginConfig states", () => {
     clientMock.getPlugins.mockReset();
     clientMock.updatePlugin.mockReset();
   });
-
   afterEach(() => {
     cleanup();
     __setAppValueForTests(null);
   });
-
   it("shows the loading placeholder while the plugin fetch is pending", () => {
     clientMock.getPlugins.mockReturnValue(new Promise(() => undefined));
     const { container } = withApp(
@@ -214,7 +216,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
       "Loading weather configuration...",
     );
   });
-
   it("shows the not-found message when the plugin is absent", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "other" })],
@@ -222,7 +223,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
     withApp(<MessageContent message={assistant("[CONFIG:weather]")} />);
     expect(await screen.findByText('Plugin "weather" not found.')).toBeTruthy();
   });
-
   it("renders the configurable params and the plugin title for a found plugin", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [
@@ -247,7 +247,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
       container.querySelector('input[data-config-key="WEATHER_API_KEY"]'),
     ).toBeTruthy();
   });
-
   it("saves edited config via updatePlugin and surfaces the saved state", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [
@@ -261,7 +260,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
       ],
     });
     clientMock.updatePlugin.mockResolvedValue(mutationResult());
-
     const { container } = withApp(
       <MessageContent message={assistant("[CONFIG:weather]")} />,
     );
@@ -272,9 +270,7 @@ describe("MessageContent → InlinePluginConfig states", () => {
     fireEvent.change(input as HTMLInputElement, {
       target: { value: "sk-live-123" },
     });
-
     fireEvent.click(screen.getByRole("button", { name: "common.save" }));
-
     await waitFor(() => {
       expect(clientMock.updatePlugin).toHaveBeenCalledWith("weather", {
         config: { WEATHER_API_KEY: "sk-live-123" },
@@ -283,7 +279,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
     // "Saved" confirmation surfaces after the mutation resolves.
     expect(await screen.findByText("common.saved")).toBeTruthy();
   });
-
   it("surfaces the server error message when save fails", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [
@@ -297,7 +292,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
       ],
     });
     clientMock.updatePlugin.mockRejectedValue(new Error("Invalid API key"));
-
     const { container } = withApp(
       <MessageContent message={assistant("[CONFIG:weather]")} />,
     );
@@ -309,18 +303,15 @@ describe("MessageContent → InlinePluginConfig states", () => {
       target: { value: "bad" },
     });
     fireEvent.click(screen.getByRole("button", { name: "common.save" }));
-
     expect(await screen.findByText("Invalid API key")).toBeTruthy();
     // No "Saved" confirmation when the mutation rejected.
     expect(screen.queryByText("common.saved")).toBeNull();
   });
-
   it("enabling a disabled plugin calls updatePlugin({enabled:true}), refreshes, notifies, and dismisses", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "weather", name: "Weather", enabled: false })],
     });
     clientMock.updatePlugin.mockResolvedValue(mutationResult());
-
     const { setActionNotice, loadPlugins } = withApp(
       <MessageContent message={assistant("[CONFIG:weather]")} />,
     );
@@ -328,7 +319,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
       name: "Enable plugin",
     });
     fireEvent.click(enableButton);
-
     await waitFor(() => {
       expect(clientMock.updatePlugin).toHaveBeenCalledWith("weather", {
         enabled: true,
@@ -346,13 +336,11 @@ describe("MessageContent → InlinePluginConfig states", () => {
     // The widget collapses to the dismissed "enabled" confirmation.
     expect(await screen.findByText("Weather is enabled.")).toBeTruthy();
   });
-
   it("disabling an enabled plugin calls updatePlugin({enabled:false}) and does not dismiss", async () => {
     clientMock.getPlugins.mockResolvedValue({
       plugins: [plugin({ id: "weather", name: "Weather", enabled: true })],
     });
     clientMock.updatePlugin.mockResolvedValue(mutationResult());
-
     const { setActionNotice } = withApp(
       <MessageContent message={assistant("[CONFIG:weather]")} />,
     );
@@ -360,7 +348,6 @@ describe("MessageContent → InlinePluginConfig states", () => {
       name: "Disable",
     });
     fireEvent.click(disableButton);
-
     await waitFor(() => {
       expect(clientMock.updatePlugin).toHaveBeenCalledWith("weather", {
         enabled: false,

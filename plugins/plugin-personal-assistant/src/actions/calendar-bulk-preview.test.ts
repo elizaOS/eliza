@@ -1,6 +1,6 @@
 /** Tests that bulk-reschedule approval previews enumerate the complete cohort. */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/personal-assistant";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { formatBulkReschedulePreviewLines } from "./calendar-preview.js";
 
@@ -14,7 +14,6 @@ describe("bulk reschedule preview", () => {
       timezone: "UTC",
       isAllDay: false,
     })) as LifeOpsCalendarEvent[];
-
     const lines = formatBulkReschedulePreviewLines(events);
     expect(lines).toHaveLength(11);
     expect(lines.at(-1)).toContain("Partnership meeting 10");

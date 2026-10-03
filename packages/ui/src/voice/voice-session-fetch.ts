@@ -5,7 +5,7 @@
  * dashboard transport.
  */
 
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { CSRF_HEADER_NAME } from "../api/auth/sessions";
 import {
   readCsrfTokenFromCookie,

@@ -3,11 +3,20 @@
  * document beneath the configured elizaOS state directory; duplicate service
  * instances share one in-process cache and write barrier for that file. Missing
  * agent-scoped documents start empty and are installed without replacing data.
+ *
+ * First-boot publication uses a hard link when the filesystem allows it. Where
+ * hard links are denied (Android app storage), a complete document is fsynced
+ * into a private directory that is renamed into place: a directory rename
+ * cannot replace an existing nonempty publication, so a rival initializer's
+ * document is never overwritten and a partial document is never visible. The
+ * flat state file stays authoritative whenever it exists; every mutation
+ * writes it.
  */
 
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   ElizaError,
   isElizaError,
@@ -105,6 +114,26 @@ function isNodeErrorWithCode(
   );
 }
 
+/** Hard-link failures that mean "this filesystem forbids links", not I/O loss. */
+const LINK_UNSUPPORTED_CODES = [
+  "EACCES",
+  "EPERM",
+  "ENOSYS",
+  "ENOTSUP",
+  "EOPNOTSUPP",
+] as const;
+
+function isLinkUnsupported(error: unknown): boolean {
+  return LINK_UNSUPPORTED_CODES.some((code) =>
+    isNodeErrorWithCode(error, code),
+  );
+}
+
+/** Directory holding a first-boot document published without a hard link. */
+export function notesPublicationDirectory(filePath: string): string {
+  return `${filePath}.published`;
+}
+
 function toStoreError(
   error: unknown,
   code: string,
@@ -199,6 +228,14 @@ export class NotesStore {
     return snapshotFromDocument(this.requireReadyDocument());
   }
 
+  /** Reads persisted bytes after queued writes without refreshing or mutating Notes. */
+  async persistedSnapshot(): Promise<NotesSnapshot> {
+    await this.initialize();
+    return this.serialize(async () =>
+      snapshotFromDocument(await this.readCurrentDocument()),
+    );
+  }
+
   async transact<T>(
     mutate: (draft: NotesDocument) => T,
   ): Promise<{ value: T; snapshot: NotesSnapshot }> {
@@ -207,6 +244,11 @@ export class NotesStore {
       const current = this.requireReadyDocument();
       const draft = cloneDocument(current);
       const value = mutate(draft);
+      // Compare inside the write barrier: a replay must neither rewrite the
+      // file nor invalidate a confirmation bound to unchanged Notes state.
+      if (isDeepStrictEqual(draft, current)) {
+        return { value, snapshot: snapshotFromDocument(current) };
+      }
       draft.revision = current.revision + 1;
       draft.persistedAt = this.now().toISOString();
       const next = parseNotesDocument(draft);
@@ -235,7 +277,7 @@ export class NotesStore {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     let document: NotesDocument;
     try {
-      document = await this.readDocument(this.filePath);
+      document = await this.readCurrentDocument();
     } catch (error) {
       // error-policy:J3 ENOENT is the explicit first-boot signal; every other
       // filesystem or validation failure remains fatal.
@@ -244,6 +286,34 @@ export class NotesStore {
     }
     this.shared.document = document;
     this.shared.phase = "ready";
+  }
+
+  /**
+   * Reads the flat state file, or the directory publication when the flat file
+   * has never been written. ENOENT from both means first boot.
+   */
+  private async readCurrentDocument(): Promise<NotesDocument> {
+    try {
+      return await this.readDocument(this.filePath);
+    } catch (error) {
+      // error-policy:J3 only a missing flat file falls through to the
+      // link-free publication; every other failure is fatal.
+      if (!isNodeErrorWithCode(error, "ENOENT")) throw error;
+      try {
+        return await this.readDocument(this.publishedDocumentPath());
+      } catch (publishedError) {
+        // error-policy:J3 no publication either: report the original ENOENT.
+        if (isNodeErrorWithCode(publishedError, "ENOENT")) throw error;
+        throw publishedError;
+      }
+    }
+  }
+
+  private publishedDocumentPath(): string {
+    return path.join(
+      notesPublicationDirectory(this.filePath),
+      NOTES_STATE_FILENAME,
+    );
   }
 
   private async readDocument(filePath: string): Promise<NotesDocument> {
@@ -274,7 +344,7 @@ export class NotesStore {
     };
 
     const installed = await this.writeAtomicIfAbsent(candidate);
-    return installed ? candidate : this.readDocument(this.filePath);
+    return installed ? candidate : this.readCurrentDocument();
   }
 
   private requireReadyDocument(): NotesDocument {
@@ -340,16 +410,85 @@ export class NotesStore {
         await fs.link(temporaryPath, this.filePath);
         return true;
       } catch (error) {
-        // error-policy:J3 EEXIST is an explicit concurrent-writer result; other
-        // link failures must abort initialization.
+        // error-policy:J3 EEXIST is an explicit concurrent-writer result; a
+        // filesystem that forbids hard links (Android app storage denies them
+        // with EACCES) uses the link-free publication; other link failures
+        // must abort initialization.
         if (isNodeErrorWithCode(error, "EEXIST")) return false;
-        throw error;
+        if (!isLinkUnsupported(error)) throw error;
+        return await this.publishDirectoryIfAbsent(document);
       }
     } catch (error) {
       // error-policy:J2 preserve the failed filesystem operation as the cause.
       throw this.writeFailure(error);
     } finally {
       await this.removeTemporaryFile(temporaryPath);
+    }
+  }
+
+  /**
+   * Link-free first-boot publication. The complete document is fsynced inside a
+   * private directory, which is renamed onto the publication path. POSIX rename
+   * fails with EEXIST/ENOTEMPTY when the target is a nonempty directory, so a
+   * rival's publication is never replaced and readers only ever see a complete
+   * document or none.
+   */
+  private async publishDirectoryIfAbsent(
+    document: NotesDocument,
+  ): Promise<boolean> {
+    const publicationPath = notesPublicationDirectory(this.filePath);
+    const stagingPath = `${publicationPath}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await fs.mkdir(stagingPath, { mode: 0o700 });
+      await this.writeTemporaryDocument(
+        path.join(stagingPath, NOTES_STATE_FILENAME),
+        document,
+      );
+      try {
+        await fs.rename(stagingPath, publicationPath);
+      } catch (error) {
+        // error-policy:J3 an existing nonempty publication is the explicit
+        // concurrent-initializer result; other rename failures are fatal.
+        if (
+          isNodeErrorWithCode(error, "EEXIST") ||
+          isNodeErrorWithCode(error, "ENOTEMPTY")
+        ) {
+          return false;
+        }
+        throw error;
+      }
+      // A flat document written before this publication stays authoritative.
+      return !(await this.flatDocumentExists());
+    } finally {
+      await this.removeTemporaryDirectory(stagingPath);
+    }
+  }
+
+  private async flatDocumentExists(): Promise<boolean> {
+    try {
+      await fs.access(this.filePath);
+      return true;
+    } catch (error) {
+      // error-policy:J3 ENOENT is the explicit absence result.
+      if (isNodeErrorWithCode(error, "ENOENT")) return false;
+      throw error;
+    }
+  }
+
+  private async removeTemporaryDirectory(stagingPath: string): Promise<void> {
+    try {
+      await fs.rm(stagingPath, { recursive: true, force: true });
+    } catch (cleanupError) {
+      // error-policy:J6 best-effort teardown — the publication result or its
+      // primary error is reported by the caller.
+      logger.warn(
+        {
+          src: "plugin-notes",
+          stagingPath,
+          cleanupError,
+        },
+        "[NotesStore] Failed to remove a temporary publication directory",
+      );
     }
   }
 

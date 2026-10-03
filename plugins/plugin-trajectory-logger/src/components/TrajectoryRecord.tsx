@@ -260,8 +260,11 @@ export function TrajectoryRecord({ detail }: { detail: TrajectoryDetail }) {
                   {call.latencyMs == null ? "Unknown" : `${call.latencyMs} ms`}
                 </td>
                 <td className="p-2">
+                  {call.tokenUsageEstimated ? "≈ " : ""}
                   {call.promptTokens ?? "Unknown"} /{" "}
+                  {call.tokenUsageEstimated ? "≈ " : ""}
                   {call.completionTokens ?? "Unknown"}
+                  {call.tokenUsageEstimated ? " (estimated)" : ""}
                 </td>
               </tr>
             ))}

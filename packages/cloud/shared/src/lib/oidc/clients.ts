@@ -1,3 +1,7 @@
+import {
+  CLOUD_RUNTIME_CLIENT,
+  CLOUD_RUNTIME_SCOPE,
+} from "@elizaos/core/contracts/cloud-runtime-request";
 /**
  * Relying-party registry for the OpenID Connect provider.
  *
@@ -568,6 +572,11 @@ function parseClient(raw: unknown, index: number): OidcClient {
     throw new Error(`OIDC_CLIENTS[${index}] is missing client_id`);
   }
   const allowedScopes = stringList(entry.allowed_scopes, "allowed_scopes", clientId);
+  if (clientId === CLOUD_RUNTIME_CLIENT || allowedScopes.includes(CLOUD_RUNTIME_SCOPE)) {
+    throw new Error(
+      "Cloud runtime owner proof identity and scope are reserved for the authenticated gateway",
+    );
+  }
   const scopes = allowedScopes.length > 0 ? allowedScopes : [...DEFAULT_SCOPES];
   if (!scopes.includes("openid")) scopes.unshift("openid");
 

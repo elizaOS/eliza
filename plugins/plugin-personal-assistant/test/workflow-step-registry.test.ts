@@ -1,16 +1,4 @@
-/**
- * WorkflowStepRegistry unit tests.
- *
- * Covers the registry contract that replaces the closed 9-branch `step.kind`
- * switch in `service-mixin-workflows.ts` (audit `rigidity-hunt-audit.md`
- * top-2). The dispatcher behaviour itself is integration-tested elsewhere;
- * these tests verify:
- *   - the default pack registers all 10 built-in step kinds,
- *   - a synthetic third-party step kind can be registered + dispatched,
- *   - `UnknownWorkflowStepError` carries the offending kind + the current
- *     known set,
- *   - duplicate registration is rejected.
- */
+/** Exercises workflow contribution dispatch, validation and per-runtime isolation with deterministic collaborators. */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -38,7 +26,6 @@ const EXPECTED_DEFAULT_KINDS = [
   "get_health_summary",
   "dispatch_workflow",
   "summarize",
-  "browser",
 ] as const;
 
 function makeRuntimeStub(): IAgentRuntime {
@@ -85,7 +72,7 @@ function makeStubCtx(): WorkflowStepExecuteContext {
 }
 
 describe("WorkflowStepRegistry", () => {
-  it("default pack registers all 10 built-in step kinds", () => {
+  it("default pack registers the supported built-in step kinds", () => {
     const registry = createWorkflowStepRegistry();
     registerDefaultWorkflowStepPack(registry);
     const kinds = registry.list().map((c) => c.kind);
@@ -165,7 +152,7 @@ describe("WorkflowStepRegistry", () => {
     expect(err.name).toBe("UnknownWorkflowStepError");
     expect(err.kind).toBe("nonexistent");
     expect(err.knownKinds).toContain("create_task");
-    expect(err.knownKinds).toContain("browser");
+    expect(err.knownKinds).not.toContain("browser");
     expect(err.message).toContain("nonexistent");
     expect(err.message).toContain("create_task");
   });
@@ -268,26 +255,5 @@ describe("WorkflowStepRegistry", () => {
       },
       { triggerChainDepth: 4 },
     );
-  });
-
-  it("default browser contribution short-circuits when permissionPolicy.allowBrowserActions=false", async () => {
-    const registry = createWorkflowStepRegistry();
-    registerDefaultWorkflowStepPack(registry);
-    const browser = registry.get("browser");
-    expect(browser).not.toBeNull();
-    const validated = browser?.paramSchema.parse({
-      kind: "browser",
-      sessionTitle: "noop",
-      actions: [{ kind: "open" }],
-    });
-    const result = await browser?.execute(
-      validated,
-      makeStubArgs(),
-      makeStubCtx(),
-    );
-    expect(result).toEqual({
-      blocked: true,
-      reason: "browser_actions_disabled",
-    });
   });
 });

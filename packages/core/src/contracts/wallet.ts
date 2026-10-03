@@ -1,8 +1,9 @@
 /**
- * Runtime-owned wallet contracts, RPC builders, and provider normalization.
- * Pure shapes live in wallet-types; shared import paths forward to this owner.
+ * Wallet wire contracts, RPC request builders, and provider normalization.
+ * Hosts consume these shared values when configuring their wallet services.
  */
 
+import { ElizaError } from "../errors.ts";
 import type {
 	WalletConfigStatus,
 	WalletConfigUpdateRequest,
@@ -102,7 +103,6 @@ export type {
 
 // ── Runtime helpers ──────────────────────────────────────────────────────────
 // RPC provider catalog, normalizers, and request builders.
-// These have runtime values and cannot live in the pure-types contracts package.
 
 export const WALLET_RPC_PROVIDER_OPTIONS = {
 	evm: [
@@ -291,6 +291,37 @@ function collectSelectedWalletRpcCredentialKeys(
 	return selectedKeys;
 }
 
+function normalizeWalletUpdateNetwork(
+	value: unknown,
+	source: "selectedNetwork" | "walletConfig.walletNetwork",
+): "mainnet" | "testnet" | undefined {
+	if (value === undefined || value === null) return undefined;
+	const normalized = String(value).trim().toLowerCase();
+	if (normalized === "") return undefined;
+	if (normalized === "mainnet" || normalized === "testnet") return normalized;
+	throw new ElizaError(
+		`Invalid wallet network ${JSON.stringify(String(value))} from ${source}: expected "mainnet" or "testnet".`,
+		{
+			code: "WALLET_NETWORK_INVALID",
+			context: { received: String(value), source },
+		},
+	);
+}
+
+function resolveWalletUpdateNetwork(args: {
+	selectedNetwork?: "mainnet" | "testnet";
+	walletConfig?: WalletConfigStatus | null;
+}): "mainnet" | "testnet" {
+	return (
+		normalizeWalletUpdateNetwork(args.selectedNetwork, "selectedNetwork") ??
+		normalizeWalletUpdateNetwork(
+			args.walletConfig?.walletNetwork,
+			"walletConfig.walletNetwork",
+		) ??
+		"mainnet"
+	);
+}
+
 export function buildWalletRpcUpdateRequest(args: {
 	walletConfig?: WalletConfigStatus | null;
 	rpcFieldValues: Partial<Record<WalletRpcCredentialKey, string>>;
@@ -348,9 +379,10 @@ export function buildWalletRpcUpdateRequest(args: {
 
 	return {
 		selections: normalizedSelections,
-		walletNetwork:
-			selectedNetwork ??
-			(walletConfig?.walletNetwork === "testnet" ? "testnet" : "mainnet"),
+		walletNetwork: resolveWalletUpdateNetwork({
+			selectedNetwork,
+			walletConfig,
+		}),
 		credentials,
 	};
 }

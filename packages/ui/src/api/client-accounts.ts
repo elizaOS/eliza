@@ -2,14 +2,14 @@
  * Extends the dashboard client with server-authoritative account capability
  * and selection metadata without coupling those contracts to agent controls.
  */
-import type { ProviderRuntimeEligibility } from "@elizaos/shared";
+
+import type { ProviderRuntimeEligibility } from "@elizaos/core/contracts/coding-agent-capabilities";
 import type {
   AccountsListProvider,
   AccountsListResponse,
 } from "./client-agent";
 
-export type { ProviderRuntimeEligibility } from "@elizaos/shared";
-
+export type { ProviderRuntimeEligibility } from "@elizaos/core/contracts/coding-agent-capabilities";
 export interface ProviderSelectionState {
   activeAccountId: string | null;
   reason:
@@ -23,7 +23,6 @@ export interface ProviderSelectionState {
     | "least-recently-throttled"
     | null;
 }
-
 /**
  * Per-account lease/observability surfaced by the localhost pool broker
  * (#16355). Optional end-to-end: older agent hosts (and the broker-absent
@@ -40,7 +39,6 @@ export interface AccountLeaseObservability {
   /** True when this account served the provider's most recent request. */
   servedLastRequest: boolean;
 }
-
 /** Provider-level broker telemetry (last pick + recent failovers). */
 export interface ProviderLeaseObservability {
   lastSelection: {
@@ -54,14 +52,12 @@ export interface ProviderLeaseObservability {
     cause: string;
   }>;
 }
-
 declare module "./client-agent" {
   interface AccountsListProvider {
     runtimeEligibility?: ProviderRuntimeEligibility;
     selection?: ProviderSelectionState;
     observability?: ProviderLeaseObservability;
   }
-
   interface AccountWithCredentialFlag {
     observability?: AccountLeaseObservability;
   }

@@ -14,6 +14,12 @@
  * dynamic import (no hard dependency in either direction — mirrors the
  * coord-OCR bridge plugin-vision already uses for plugin-computeruse). When no
  * augmenter is registered the handler describes the image unaugmented.
+ *
+ * The registered augmenter lives on a `globalThis` slot keyed by `Symbol.for`,
+ * not in module scope: the package bundles this module into both
+ * `dist/index.js` (where `provider.ts` reads it) and the `services` subpath
+ * (where plugin-vision registers), and module-scoped state would give each
+ * bundle its own empty slot.
  */
 
 import { logger } from "@elizaos/core";
@@ -55,7 +61,27 @@ export interface VisionContextAugmenter {
 	}): Promise<VisionAugmentResult | null>;
 }
 
-let registered: VisionContextAugmenter | null = null;
+const AUGMENTER_KEY = Symbol.for(
+	"elizaos.plugin-local-inference.vision-context-augmenter",
+);
+
+interface AugmenterSlot {
+	current: VisionContextAugmenter | null;
+}
+
+/**
+ * The process-wide slot. Read from `globalThis` on every access (no
+ * module-local cache) so every bundled copy of this module observes the same
+ * registration.
+ */
+function augmenterSlot(): AugmenterSlot {
+	const slot = globalThis as Record<PropertyKey, unknown>;
+	const existing = slot[AUGMENTER_KEY];
+	if (existing !== undefined) return existing as AugmenterSlot;
+	const created: AugmenterSlot = { current: null };
+	slot[AUGMENTER_KEY] = created;
+	return created;
+}
 
 /**
  * Register (or clear, with `null`) the process-wide vision-context augmenter.
@@ -64,12 +90,12 @@ let registered: VisionContextAugmenter | null = null;
 export function registerVisionContextAugmenter(
 	augmenter: VisionContextAugmenter | null,
 ): void {
-	registered = augmenter;
+	augmenterSlot().current = augmenter;
 }
 
 /** The currently registered augmenter, or `null` when none is wired. */
 export function getVisionContextAugmenter(): VisionContextAugmenter | null {
-	return registered;
+	return augmenterSlot().current;
 }
 
 /**
@@ -83,7 +109,7 @@ export async function augmentVisionRequest(request: {
 	image: VisionImageInput;
 	prompt?: string;
 }): Promise<void> {
-	const augmenter = registered;
+	const augmenter = augmenterSlot().current;
 	if (!augmenter) return;
 	try {
 		const augmented = await augmenter.augmentImagePrompt({

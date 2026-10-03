@@ -6,7 +6,7 @@
  * overlay presentation of the same data the full-page `CustomActionsView` owns.
  */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/core/contracts/config";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { useAppSelector } from "../../state";
@@ -20,13 +20,11 @@ interface CustomActionsPanelProps {
   onClose: () => void;
   onOpenEditor: (action?: CustomActionDef | null) => void;
 }
-
 const HANDLER_TYPE_COLORS: Record<string, string> = {
   http: "bg-status-info-bg text-status-info",
   shell: "bg-status-success-bg text-status-success",
   code: "bg-accent/10 text-accent",
 };
-
 function handlerTypeLabel(
   type: string,
   t: (key: string, options?: Record<string, string | number>) => string,
@@ -48,7 +46,6 @@ function handlerTypeLabel(
       return type;
   }
 }
-
 export function CustomActionsPanel({
   open,
   onClose,
@@ -60,7 +57,6 @@ export function CustomActionsPanel({
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const mountedRef = useRef(true);
-
   const loadActions = useCallback(async () => {
     try {
       setLoading(true);
@@ -81,7 +77,6 @@ export function CustomActionsPanel({
       }
     }
   }, [t]);
-
   useEffect(() => {
     mountedRef.current = true;
     if (open) {
@@ -91,11 +86,9 @@ export function CustomActionsPanel({
       mountedRef.current = false;
     };
   }, [open, loadActions]);
-
   const filteredActions = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
     if (!searchTerm) return actions;
-
     return actions.filter((action) => {
       const hasName = action.name.toLowerCase().includes(searchTerm);
       const hasDescription =
@@ -107,7 +100,6 @@ export function CustomActionsPanel({
       return hasName || hasDescription || hasAlias;
     });
   }, [actions, search]);
-
   const enabledCount = useMemo(
     () => actions.filter((action) => action.enabled).length,
     [actions],
@@ -145,7 +137,6 @@ export function CustomActionsPanel({
     },
     [t],
   );
-
   const handleToggleEnabled = async (action: CustomActionDef) => {
     try {
       const next = !action.enabled;
@@ -170,7 +161,6 @@ export function CustomActionsPanel({
       );
     }
   };
-
   const handleDelete = async (action: CustomActionDef) => {
     const confirmed = await confirmDesktopAction({
       title: t("customactionsview.DeleteCustomActionTitle"),
@@ -184,7 +174,6 @@ export function CustomActionsPanel({
     if (!confirmed) {
       return;
     }
-
     try {
       await client.deleteCustomAction(action.id);
       setActions((prev) => prev.filter((item) => item.id !== action.id));
@@ -196,20 +185,15 @@ export function CustomActionsPanel({
       );
     }
   };
-
   const handleEdit = (action: CustomActionDef) => {
     onOpenEditor(action);
   };
-
   const handleCreate = () => {
     onOpenEditor(null);
   };
-
   return (
     <div
-      className={`bg-card flex flex-col transition-all duration-200 ${
-        open ? "w-80" : "w-0 overflow-hidden"
-      }`}
+      className={`bg-card flex flex-col transition-all duration-200 ${open ? "w-80" : "w-0 overflow-hidden"}`}
     >
       {open && (
         <>

@@ -6,7 +6,7 @@
  * Canonical owner lives here in `@elizaos/core`: setup-preset characters ship
  * `{{name}}` / `{{agentName}}` tokens in `system` / `bio` (PR #7101 preserves
  * them on save so renames propagate), so the prompt builder must resolve them
- * before forwarding text to the model. `@elizaos/shared` (and, through it,
+ * before forwarding text to the model. `@elizaos/core` (and, through it,
  * `@elizaos/ui`) re-exports this so preview tooling and the model see the same
  * substitution.
  *
@@ -20,7 +20,6 @@ export function replaceNameTokens(text: string, name: string): string {
 		.replace(/\{\{\s*name\s*\}\}/g, () => name)
 		.replace(/\{\{\s*agentName\s*\}\}/g, () => name);
 }
-
 /**
  * Resolve indexed example-participant tokens (`{{name1}}` / `{{user1}}` …) in
  * example-conversation templates against a positional `names` array (slot 1 ->

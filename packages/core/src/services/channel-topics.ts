@@ -29,7 +29,8 @@
 
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
-import type { Room, UUID } from "../types/index";
+import type { Room } from "../types/environment.js";
+import type { UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 

@@ -1,3 +1,8 @@
+/**
+ * Reads Android framework locations without requiring Google Play Services.
+ * Registration and cancellation run on the main looper; each one-shot request
+ * owns its timeout and listener, and cached fixes use monotonic age.
+ */
 package ai.eliza.plugins.location
 
 import android.Manifest
@@ -5,40 +10,17 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.android.gms.location.CurrentLocationRequest
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.Task
-import com.google.android.gms.tasks.Tasks
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 
-/**
- * [Context]-backed reader for the fused current-location fetch that
- * [LocationPlugin.getCurrentPosition] exposes — the accuracy→[Priority] mapping,
- * the [CurrentLocationRequest] construction, and the
- * `FusedLocationProviderClient.getCurrentLocation` call.
- *
- * Extracted from the Capacitor plugin so the real Play Services location path
- * can be exercised by an instrumented `androidTest` (driven with
- * `adb emu geo fix`), without a Capacitor `Bridge`/`Activity`/WebView
- * (issue #9967). The plugin delegates its priority mapping, request build, and
- * async fetch here (JS wire shape unchanged); [awaitCurrentLocation] is the
- * blocking variant the on-device test drives. Requires
- * `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`.
- */
 class LocationFixReader(private val context: Context) {
-
     data class ProviderStatus(
         val gpsEnabled: Boolean,
         val networkEnabled: Boolean,
@@ -61,18 +43,6 @@ class LocationFixReader(private val context: Context) {
         val coords: Coordinates,
         val cached: Boolean,
     )
-
-    private val fusedClient: FusedLocationProviderClient =
-        LocationServices.getFusedLocationProviderClient(context.applicationContext)
-
-    /** Accuracy string from JS → Play Services [Priority] constant. */
-    fun mapAccuracyToPriority(accuracy: String): Int = when (accuracy) {
-        "best", "high" -> Priority.PRIORITY_HIGH_ACCURACY
-        "medium" -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
-        "low" -> Priority.PRIORITY_LOW_POWER
-        "passive" -> Priority.PRIORITY_PASSIVE
-        else -> Priority.PRIORITY_HIGH_ACCURACY
-    }
 
     fun hasForegroundPermission(): Boolean =
         ContextCompat.checkSelfPermission(
@@ -151,60 +121,120 @@ class LocationFixReader(private val context: Context) {
             cached = cached,
         )
 
-    /** The fresh-fix request the plugin's `requestFreshLocation` issues. */
-    fun buildCurrentLocationRequest(priority: Int, timeoutMs: Long, maxAgeMs: Long): CurrentLocationRequest =
-        CurrentLocationRequest.Builder()
-            .setPriority(priority)
-            .setMaxUpdateAgeMillis(maxAgeMs)
-            .setDurationMillis(timeoutMs)
-            .build()
+    private val manager: LocationManager
+        get() = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            ?: throw IllegalStateException("Location service is unavailable")
 
-    /** The async fused fetch the plugin awaits via its success/failure listeners. */
-    fun getCurrentLocation(request: CurrentLocationRequest): Task<Location> =
-        fusedClient.getCurrentLocation(request, null)
+    private val handler = Handler(Looper.getMainLooper())
 
-    /**
-     * Blocking current-location fetch for tests and synchronous callers: issues
-     * the same fused [getCurrentLocation] the plugin uses and awaits the Task.
-     * Returns `null` when no fix arrives within the window.
-     *
-     * @throws com.google.android.gms.tasks.RuntimeExecutionException on a Play
-     *   Services failure, [java.util.concurrent.TimeoutException] if the Task
-     *   never completes.
-     */
-    fun awaitCurrentLocation(accuracy: String, timeoutMs: Long, maxAgeMs: Long = 0): Location? {
-        val request = buildCurrentLocationRequest(mapAccuracyToPriority(accuracy), timeoutMs, maxAgeMs)
-        return Tasks.await(getCurrentLocation(request), timeoutMs + 2000, TimeUnit.MILLISECONDS)
+    class RequestHandle(private val cleanup: () -> Unit) {
+        private var active = true
+
+        fun cancel() {
+            check(Looper.myLooper() == Looper.getMainLooper())
+            if (!active) return
+            active = false
+            cleanup()
+        }
     }
 
-    /** The continuous-updates request the plugin's `watchPositionInternal` builds. */
-    fun buildLocationRequest(priority: Int, intervalMs: Long): LocationRequest =
-        LocationRequest.Builder(priority, intervalMs).build()
+    private fun selectProvider(accuracy: String): String {
+        require(accuracy in setOf("best", "high", "medium", "low", "passive")) {
+            "accuracy must be best, high, medium, low, or passive"
+        }
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val candidates = when {
+            accuracy == "passive" -> listOf(LocationManager.PASSIVE_PROVIDER)
+            !fine -> listOf(LocationManager.NETWORK_PROVIDER, "fused")
+            accuracy == "best" || accuracy == "high" ->
+                listOf(LocationManager.GPS_PROVIDER, "fused", LocationManager.NETWORK_PROVIDER)
+            else -> listOf(LocationManager.NETWORK_PROVIDER, "fused", LocationManager.GPS_PROVIDER)
+        }
+        val enabled = manager.getProviders(true)
+        return candidates.firstOrNull { it in enabled }
+            ?: throw IllegalStateException("No enabled location provider supports the requested accuracy and permission")
+    }
 
-    /**
-     * Blocking single-update fetch via `requestLocationUpdates` — the same
-     * continuous API the plugin's `watchPosition` uses — keeping the provider
-     * actively warm until the first fix arrives (or [timeoutMs] elapses). This
-     * is the path that an emulator's injected `geo fix` actually delivers on,
-     * since the provider stays active. Returns `null` on timeout.
-     */
-    fun awaitNextLocation(accuracy: String, timeoutMs: Long, intervalMs: Long = 1000): Location? {
-        val request = buildLocationRequest(mapAccuracyToPriority(accuracy), intervalMs)
-        val holder = AtomicReference<Location?>(null)
-        val latch = CountDownLatch(1)
-        val callback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                val location = result.lastLocation ?: return
-                holder.set(location)
-                latch.countDown()
+    fun watchPosition(
+        accuracy: String,
+        intervalMs: Long,
+        distanceMeters: Float,
+        onLocation: (Location) -> Unit,
+        onUnavailable: (String) -> Unit,
+    ): RequestHandle {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        require(intervalMs >= 0) { "minInterval must be non-negative" }
+        require(distanceMeters.isFinite() && distanceMeters >= 0) { "minDistance must be non-negative and finite" }
+        val provider = selectProvider(accuracy)
+        var active = true
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                if (active) onLocation(location)
+            }
+            override fun onProviderDisabled(provider: String) {
+                if (active) onUnavailable("Location provider $provider was disabled")
+            }
+            override fun onProviderEnabled(provider: String) = Unit
+            @Deprecated("Required on older Android releases")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+        }
+        manager.requestLocationUpdates(provider, intervalMs, distanceMeters, listener, Looper.getMainLooper())
+        return RequestHandle {
+            active = false
+            manager.removeUpdates(listener)
+        }
+    }
+
+    fun getCurrentPosition(
+        accuracy: String,
+        timeoutMs: Long,
+        maxAgeMs: Long,
+        onLocation: (Location, Boolean) -> Unit,
+        onError: (String, String) -> Unit,
+    ): RequestHandle {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        require(timeoutMs > 0) { "timeout must be positive" }
+        require(maxAgeMs >= 0) { "maxAge must be non-negative" }
+        val provider = selectProvider(accuracy)
+        if (maxAgeMs > 0) {
+            val cached = manager.getLastKnownLocation(provider)
+            if (cached != null) {
+                val ageNanos = SystemClock.elapsedRealtimeNanos() - cached.elapsedRealtimeNanos
+                if (ageNanos >= 0 && ageNanos / 1_000_000 <= maxAgeMs) {
+                    onLocation(cached, true)
+                    return RequestHandle { }
+                }
             }
         }
-        fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
-        try {
-            latch.await(timeoutMs, TimeUnit.MILLISECONDS)
-        } finally {
-            fusedClient.removeLocationUpdates(callback)
+        var settled = false
+        lateinit var subscription: RequestHandle
+        lateinit var timeout: Runnable
+        fun finish() {
+            settled = true
+            handler.removeCallbacks(timeout)
+            subscription.cancel()
         }
-        return holder.get()
+        timeout = Runnable {
+            if (!settled) {
+                finish()
+                onError("TIMEOUT", "Location request timed out")
+            }
+        }
+        subscription = watchPosition(accuracy, 0, 0f, { location ->
+            if (!settled) {
+                finish()
+                onLocation(location, false)
+            }
+        }, { message ->
+            if (!settled) {
+                finish()
+                onError("POSITION_UNAVAILABLE", message)
+            }
+        })
+        handler.postDelayed(timeout, timeoutMs)
+        return RequestHandle {
+            if (!settled) finish()
+        }
     }
 }

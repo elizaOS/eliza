@@ -1,6 +1,6 @@
 /** Storybook stories for CustomActionEditor across handler types and create/edit modes, under the shared MockAppProvider. */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/core/contracts/config";
 import type { Meta, StoryObj } from "@storybook/react";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { CustomActionEditor } from "./CustomActionEditor";
@@ -27,7 +27,6 @@ const sampleHttpAction: CustomActionDef = {
   },
   enabled: true,
 };
-
 const sampleShellAction: CustomActionDef = {
   id: "act-shell-1",
   name: "DISK_USAGE_REPORT",
@@ -40,7 +39,6 @@ const sampleShellAction: CustomActionDef = {
   },
   enabled: true,
 };
-
 const sampleCodeAction: CustomActionDef = {
   id: "act-code-1",
   name: "SUM_NUMBERS",
@@ -56,7 +54,6 @@ const sampleCodeAction: CustomActionDef = {
   },
   enabled: true,
 };
-
 const meta = {
   title: "CustomActions/CustomActionEditor",
   component: CustomActionEditor,
@@ -83,28 +80,23 @@ const meta = {
     onClose: () => {},
   },
 } satisfies Meta<typeof CustomActionEditor>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 export const NewAction: Story = {
   args: {
     action: null,
   },
 };
-
 export const EditHttpAction: Story = {
   args: {
     action: sampleHttpAction,
   },
 };
-
 export const EditShellAction: Story = {
   args: {
     action: sampleShellAction,
   },
 };
-
 export const EditCodeAction: Story = {
   args: {
     action: sampleCodeAction,

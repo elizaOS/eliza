@@ -10,7 +10,8 @@ import {
   identityLinkReply,
 } from "@elizaos/cloud-services-common/identity-link-code";
 import {
-  PERSONAL_SHARED_FAILURE_REPLY,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
   readPersonalSharedFailureMetadata,
 } from "@elizaos/cloud-services-common/personal-shared-failure";
 import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
@@ -25,6 +26,7 @@ import {
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
   TelegramIdentityAttestationError,
+  telegramReplyWithMedia,
   verifyTelegramWebhook,
 } from "@elizaos/cloud-services-common/telegram-connector";
 import {
@@ -1146,7 +1148,29 @@ export async function handlePersonalTelegramEdge(
                   "Personal Shared edge turn returned no reply",
                 );
               }
-              reply = candidate;
+              const deliveredReply =
+                event.chatType === "private" && !event.membershipChange
+                  ? telegramReplyWithMedia(
+                      candidate,
+                      payload &&
+                        typeof payload === "object" &&
+                        "data" in payload
+                        ? (payload.data as { mediaUrls?: unknown } | null)
+                            ?.mediaUrls
+                        : undefined,
+                    )
+                  : candidate;
+              if (
+                event.chatType === "private" &&
+                !event.membershipChange &&
+                deliveredReply.trim().length === 0
+              ) {
+                throw new PersonalTelegramPreEgressError(
+                  "Personal Shared private turn completed without a reply",
+                  { failure: personalSharedNoResponseFailure() },
+                );
+              }
+              reply = deliveredReply;
             }
           } catch (error) {
             // error-policy:J4 only the typed, expected pre-egress failure
@@ -1188,7 +1212,7 @@ export async function handlePersonalTelegramEdge(
             await sendTelegramReply(
               config,
               event,
-              PERSONAL_SHARED_FAILURE_REPLY,
+              personalSharedFailureReply(fallbackFailure),
               logger,
               deliveryHooks,
             );
@@ -1238,6 +1262,24 @@ export async function handlePersonalTelegramEdge(
     // error-policy:J1 translate an exact delivery-claim conflict at the route boundary.
     if (error instanceof TelegramEgressAlreadyClaimedError) {
       return c.json({ success: false, error: "Egress already claimed" }, 503);
+    }
+    if (error instanceof TelegramApiResponseError) {
+      // A private chat that just delivered this update is only unreachable
+      // when the attested outbound bot is not the bot that received it (for
+      // example, a retired bot still pointing its webhook here with a shared
+      // secret). Record that value-safe classification before propagating.
+      logger.error("[PersonalTelegramEdge] provider rejected egress", {
+        traceId,
+        project,
+        connectorAccountId,
+        messageId: event.messageId,
+        chatType: event.chatType,
+        providerErrorCode: error.errorCode,
+        recipientUnreachable:
+          event.chatType === "private" &&
+          (error.errorCode === 403 ||
+            (error.errorCode === 400 && /chat not found/i.test(error.message))),
+      });
     }
     throw error;
   }

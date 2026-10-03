@@ -3,7 +3,7 @@
  * (bio, message and post examples, style, topics, voice settings) used to
  * exercise prompt composition and character-dependent runtime paths.
  */
-import type { Character } from "@elizaos/core";
+import type { Character } from "../types/agent.js";
 
 export const mockCharacter: Character = {
 	name: "Eliza",

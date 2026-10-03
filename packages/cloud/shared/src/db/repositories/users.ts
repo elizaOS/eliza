@@ -1,7 +1,7 @@
 /** Persists user records and identity transitions through the shared database boundary. */
 
 import { ElizaError } from "@elizaos/core";
-import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos/edge";
+import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -21,6 +21,7 @@ import {
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
 import { revokePersonalSharedGroupConsentForUser } from "./personal-shared-group-consent-lifecycle";
+import { phoneVerifiedProjectionMatches } from "./user-identity-projection";
 
 const stewardAuthorityIdentity = alias(userIdentities, "steward_authority_identity");
 const canonicalStewardIdentity = alias(userIdentities, "canonical_steward_identity");
@@ -398,8 +399,7 @@ function projectionMatchesUser(user: User, identity: UserIdentity): boolean {
     identity.telegram_username === user.telegram_username &&
     identity.telegram_first_name === user.telegram_first_name &&
     identity.telegram_photo_url === user.telegram_photo_url &&
-    identity.phone_number === user.phone_number &&
-    identity.phone_verified === user.phone_verified &&
+    phoneVerifiedProjectionMatches(user, identity) &&
     identity.discord_id === user.discord_id &&
     identity.discord_username === user.discord_username &&
     identity.discord_global_name === user.discord_global_name &&

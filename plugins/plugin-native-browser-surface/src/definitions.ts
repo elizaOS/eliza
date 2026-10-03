@@ -16,6 +16,8 @@
  * epic closes.
  */
 
+import type { PluginListenerHandle } from "@capacitor/core";
+
 /**
  * Native renderer policy. `isolated` means a dedicated pool on iOS and a
  * verified out-of-app sandboxed renderer on Android, which the OS may reuse
@@ -125,7 +127,63 @@ export interface SurfaceStateList {
   surfaces: SurfaceStateWithId[];
 }
 
+export interface NativePageRead {
+  url: string;
+  title: string;
+  text: string;
+  /** Legacy-client compatibility flag; consumers reject incomplete reads. */
+  truncated: boolean;
+}
+
+export interface BrowserDockState {
+  supported: boolean;
+  embedded: boolean;
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
 export interface ElizaSurfaceManagerPlugin {
+  getBrowserHelperEntryState(): Promise<{
+    permissionGranted: boolean;
+    visible: boolean;
+    fullScreen: boolean;
+  }>;
+  requestBrowserHelperEntryPermission(): Promise<{ status: "dispatched" }>;
+  hideBrowserDockWithEntry(options: {
+    label: string;
+    description: string;
+  }): Promise<{ status: "requested" }>;
+  restoreBrowserDockFromEntry(): Promise<{ status: "requested" }>;
+  /** Resize an existing host-owned Android split without navigation. Request receipt only. */
+  setBrowserDockVisible(options: {
+    visible: boolean;
+  }): Promise<{ status: "requested" }>;
+
+  /** Android: explicit navigation with a requested right helper pane. Dispatch is not proof of a split. */
+  openDockedBrowser(options: { url: string; panelWidthDp?: number }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    status: "dispatched";
+  }>;
+  /** Actual host activity embedding/bounds. No browser tab or task authority is implied. */
+  getBrowserDockState(): Promise<BrowserDockState>;
+
+  /** Android: present the build-pinned browser without a URL or new website tab.
+   * Dispatch receipt only; callers must re-observe before any task action.
+   * Requires an explicit user interaction. Other platforms reject as unavailable.
+   */
+  presentBrowser(): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+  }>;
+
+  /**
+   * Android: open a website in installed full Chromium with browser-owned
+   * storage and permissions. Resolves on dispatch, not page load. This is not
+   * an isolated native surface and rejects if Chromium is unavailable.
+   */
+  openBrowser(options: { url: string }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    engine: "chromium";
+    surface: "custom-tab";
+  }>;
   /**
    * Create a native web surface with the given EXPLICIT process/storage policy.
    * Rejects when `process` or `storage` is missing, or when the platform cannot
@@ -143,6 +201,32 @@ export interface ElizaSurfaceManagerPlugin {
   navigate(options: NavigateOptions): Promise<void>;
   /** Reload an existing surface's current page. */
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
+  /** Move back in this surface's own history; never replays after a lost reply. */
+  goBack(options: SurfaceIdOptions): Promise<void>;
+  /** Read visible text from this foreground native page, never the host DOM. */
+  readPage(
+    options: SurfaceIdOptions & { selector?: string },
+  ): Promise<NativePageRead>;
+  addListener(
+    eventName: "browserHelperReturned",
+    listener: (event: { presentation: "full-screen" }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "browserHelperReturnFailed",
+    listener: (event: { code: string }) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "browserHelperWindowClosed",
+    listener: (event: {
+      reason: "website-opened" | "permission-revoked";
+    }) => void,
+  ): Promise<PluginListenerHandle>;
+  /** Signals a native page change; consumers read current state before applying it. */
+  addListener(
+    eventName: "navigationChanged",
+    listener: (event: SurfaceIdOptions) => void,
+  ): Promise<PluginListenerHandle>;
   /** Atomically hide all siblings, then present the requested surface or host. */
   presentSurface(options: PresentSurfaceOptions): Promise<void>;
   /** Tear a surface down and release its native renderer and storage resources. */

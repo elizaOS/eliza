@@ -19,6 +19,7 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
+import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 // Side-effect import: patches the direct-cloud methods onto the prototype.
 import "./client-cloud";
@@ -52,6 +53,7 @@ function routeFetch(
 
 describe("direct-cloud prototype methods (Steward session bound)", () => {
   let client: ElizaClient;
+  const initialBootConfig = getBootConfig();
 
   beforeEach(() => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
@@ -60,6 +62,7 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
   });
 
   afterEach(() => {
+    setBootConfig(initialBootConfig);
     localStorage.removeItem(STEWARD_TOKEN_KEY);
     vi.unstubAllGlobals();
   });
@@ -98,6 +101,33 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
     expect(status).toMatchObject({
       connected: false,
       reason: "not-authenticated",
+    });
+  });
+
+  it("exposes the host product before signup without requesting developer account data", async () => {
+    localStorage.removeItem(STEWARD_TOKEN_KEY);
+    setBootConfig({
+      ...initialBootConfig,
+      applicationBillingSlot: "host-product",
+    });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const status = await client.getCloudStatus();
+    expect(status).toMatchObject({
+      connected: false,
+      applicationBilling: { kind: "configured", slotKey: "host-product" },
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("an invalid host product cannot become a billing navigation target", async () => {
+    localStorage.removeItem(STEWARD_TOKEN_KEY);
+    setBootConfig({
+      ...initialBootConfig,
+      applicationBillingSlot: "../other-product",
+    });
+    expect((await client.getCloudStatus()).applicationBilling).toMatchObject({
+      kind: "unavailable",
     });
   });
 

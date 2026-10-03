@@ -1,8 +1,6 @@
 /**
- * Unit tests for the calendar client methods that `client-calendar.ts` augments
- * onto the `@elizaos/ui/api` `ElizaClient` prototype. The UI API client is
- * mocked so the suite stays node-safe; we assert each method issues the right
- * verb, path, and query/body against a spied `fetch`.
+ * Exercises explicitly installed Calendar client methods against a deterministic
+ * transport spy, including verbs, paths, request bodies and mutation preconditions.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,8 +14,9 @@ const { FakeElizaClient } = vi.hoisted(() => {
 
 vi.mock("@elizaos/ui/api", () => ({ ElizaClient: FakeElizaClient }));
 
-// Import for its side effect: augments FakeElizaClient.prototype.
-import "../src/api/client-calendar.js";
+import { installCalendarClient } from "../src/api/client-calendar.js";
+
+installCalendarClient();
 
 type AugmentedClient = FakeElizaClient & {
   getLifeOpsCalendarFeed: (

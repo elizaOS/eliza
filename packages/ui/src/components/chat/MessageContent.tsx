@@ -14,8 +14,9 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
-import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
+import type { UiSpec } from "@elizaos/core/config/ui-spec";
+import { isRetryableChatFailureKind } from "@elizaos/core/contracts/chat";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core/messaging/interactions/parse";
 import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,
@@ -30,8 +31,6 @@ import {
 import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
-import { splitLeadingSlashCommand } from "../../chat/slash-menu";
-import type { UiSpec } from "../../config/ui-spec";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
@@ -82,16 +81,15 @@ import {
 import { ThinkingBlock } from "./ThinkingBlock";
 import { useParsedSegments } from "./use-parsed-segments";
 import { ChatWidgetShell } from "./widgets/chat-widget-shell";
-// Side effect: registers the built-in inline widgets (choice/followups/form/task).
-import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
 import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
+// Side effect: registers the built-in inline widgets (choice/followups/form/task).
+import "./widgets/inline-builtins";
 
 interface MessageContentProps {
   message: ConversationMessage;
   analysisMode?: boolean;
 }
-
 /**
  * Render a text run, wrapping any inline `` `code` `` spans in the CodeBlock
  * inline primitive so they keep their place in the sentence. Returns the raw
@@ -113,7 +111,6 @@ function isHttpsAuthorizationUrl(url: unknown): url is string {
     return false;
   }
 }
-
 function renderInlineText(text: string): ReactNode {
   if (!text.includes("`")) return text;
   const parts = splitInlineCode(text);
@@ -137,7 +134,6 @@ function renderInlineText(text: string): ReactNode {
     );
   });
 }
-
 /**
  * Render a plain-text message body. When the message is a user-typed slash
  * command (e.g. `/imagine a cat`), the leading `/command` token is rendered in
@@ -147,12 +143,12 @@ function renderInlineText(text: string): ReactNode {
  */
 function MessageTextBody({
   text,
-  boldSlashCommand,
+  userMessage,
 }: {
   text: string;
-  boldSlashCommand: boolean;
+  userMessage: boolean;
 }) {
-  const formSubmit = boldSlashCommand ? parseFormSubmitDisplay(text) : null;
+  const formSubmit = userMessage ? parseFormSubmitDisplay(text) : null;
   if (formSubmit) {
     return (
       <div className="whitespace-normal">
@@ -160,26 +156,8 @@ function MessageTextBody({
       </div>
     );
   }
-  const slash = boldSlashCommand ? splitLeadingSlashCommand(text) : null;
-  return (
-    <div className="whitespace-pre-wrap">
-      {slash ? (
-        <>
-          <span
-            className="font-bold text-txt"
-            data-testid="slash-command-token"
-          >
-            {slash.command}
-          </span>
-          {renderInlineText(slash.rest)}
-        </>
-      ) : (
-        renderInlineText(text)
-      )}
-    </div>
-  );
+  return <div className="whitespace-pre-wrap">{renderInlineText(text)}</div>;
 }
-
 export function FormSubmitReceipt({ label }: { label: string }) {
   return (
     <div
@@ -190,9 +168,7 @@ export function FormSubmitReceipt({ label }: { label: string }) {
     </div>
   );
 }
-
 // ── InlinePluginConfig ──────────────────────────────────────────────
-
 // The in-chat connector/plugin setup card for `[CONFIG:pluginId]` markers
 // (#14412). All state (fetch status, field edits, mutations) is internal and
 // the only prop is a primitive, so `memo` makes a transcript-parent re-render
@@ -225,7 +201,6 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       t: s.t,
       elizaCloudConnected: s.elizaCloudConnected,
     }));
-
   // Track mount state — reset to true on each mount (needed for StrictMode
   // which unmounts/remounts and would leave the ref false otherwise).
   useEffect(() => {
@@ -236,7 +211,6 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
-
   // Self-contained: fetch plugin data directly from API
   const fetchPlugin = useCallback(async () => {
     try {
@@ -257,22 +231,18 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       if (mountedRef.current) setLoading(false);
     }
   }, [pluginId, t]);
-
   useEffect(() => {
     void fetchPlugin();
   }, [fetchPlugin]);
-
   const { hasConfigurableParams, hints, mergedValues, schema, setKeys } =
     useMemo(
       () => buildInlinePluginConfigModel(plugin, values),
       [plugin, values],
     );
-
   // "Connected" is the server's own setup verdict: enabled AND configured.
   // Hoisted above the early returns so the OAuth polling effect below can
   // observe it; drives the shell's collapse-on-connect.
   const connected = Boolean(plugin?.enabled && plugin?.configured);
-
   // Auth-mode switch (OAuth / token form / local bridge), projected from the
   // same connector-mode registry the Settings connectors page renders.
   const modes = useMemo(
@@ -289,7 +259,6 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
   // fallback link under a sign-in button — the required visible toggle away
   // from OAuth. Undefined when the connector is OAuth-only.
   const apiKeyModeId = modes.find((m) => m.kind !== "oauth")?.id ?? undefined;
-
   // Bounded refetch loop after a sign-in hand-off: the authorization finishes
   // in another window/app, so the card polls the plugin status until the
   // server reports connected (or gives up after ~1 minute). Collapse-on-connect
@@ -309,13 +278,11 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
     };
     pollTimerRef.current = setTimeout(() => void tick(), 3000);
   }, [fetchPlugin]);
-
   useEffect(() => {
     if (!connected) return;
     setSigningIn(false);
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
   }, [connected]);
-
   // OAuth sign-in: start the connector's OAuth flow through the agent API and
   // open the returned authorization URL. https-only (isHttpsAuthorizationUrl)
   // because the URL is server-supplied data flowing into window.open.
@@ -354,7 +321,6 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       }
     }
   }, [pluginId, beginConnectPolling, t]);
-
   // Discord desktop pairing is the one local mode with a one-click authorize
   // (local IPC, same call the Settings panel makes); other local modes render
   // their env form + guidance instead.
@@ -379,13 +345,11 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       }
     }
   }, [beginConnectPolling, t]);
-
   const handleChange = useCallback((key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
     setError(null);
   }, []);
-
   const handleSave = useCallback(async () => {
     setSaving(true);
     setError(null);
@@ -412,7 +376,6 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       if (mountedRef.current) setSaving(false);
     }
   }, [pluginId, values, fetchPlugin, t]);
-
   const handleToggle = useCallback(
     async (enable: boolean) => {
       setEnabling(true);
@@ -485,7 +448,6 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
     },
     [pluginId, plugin, values, fetchPlugin, loadPlugins, setActionNotice, t],
   );
-
   if (loading) {
     return (
       <div className="my-2 py-2 text-xs text-muted italic">
@@ -496,7 +458,6 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       </div>
     );
   }
-
   if (!plugin) {
     return (
       <div className="my-2 py-2 text-xs text-muted italic">
@@ -507,11 +468,9 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       </div>
     );
   }
-
   const isEnabled = plugin.enabled;
   const showConfigForm =
     schema && hasConfigurableParams && selectedMode?.kind !== "oauth";
-
   return (
     <ChatWidgetShell
       testId="inline-plugin-config"
@@ -557,8 +516,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       }
     >
       {/* Auth-mode switch — OAuth / API-key / local-bridge, when the connector
-          declares more than one setup mode. A single-mode connector shows no
-          switch (nothing to choose). */}
+              declares more than one setup mode. A single-mode connector shows no
+              switch (nothing to choose). */}
       {modes.length > 1 && (
         // biome-ignore lint/a11y/useSemanticElements: a mode-switch button row is a grouped toolbar, not a form field set — <fieldset> would add form semantics and legacy layout quirks.
         <div
@@ -594,7 +553,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       )}
 
       {/* OAuth sign-in — shown for a cloud/OAuth-shaped mode instead of the env
-          form. The API-key / local fallback is always one click away below. */}
+              form. The API-key / local fallback is always one click away below. */}
       {selectedMode?.kind === "oauth" && (
         <div className="py-1.5" data-testid="inline-plugin-config-oauth">
           <Button
@@ -634,7 +593,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       )}
 
       {/* Local desktop pairing (Discord IPC): one-click authorize instead of an
-          env form, plus the mode's guidance text. */}
+              env form, plus the mode's guidance text. */}
       {selectedMode?.kind === "local" && localSignIn && (
         <div className="py-1.5" data-testid="inline-plugin-config-local">
           {selectedMode.description && (
@@ -661,8 +620,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       )}
 
       {/* Config form — the env-var / token form for local-config + local-setup
-          modes (and connectors with no declared modes at all). Hidden while an
-          OAuth or one-click-local mode owns the body. */}
+              modes (and connectors with no declared modes at all). Hidden while an
+              OAuth or one-click-local mode owns the body. */}
       {showConfigForm ? (
         <div className="py-1.5">
           {selectedMode?.description &&
@@ -744,9 +703,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
     </ChatWidgetShell>
   );
 });
-
 // ── UiSpec block ────────────────────────────────────────────────────
-
 export function MessageUiSpecBlock({
   spec,
   raw,
@@ -759,7 +716,6 @@ export function MessageUiSpecBlock({
     sendActionMessage: s.sendActionMessage,
   }));
   const [showRaw, setShowRaw] = useState(false);
-
   const handleAction = useCallback(
     (
       action: string,
@@ -849,7 +805,6 @@ export function MessageUiSpecBlock({
     },
     [sendActionMessage],
   );
-
   return (
     <div className="my-2 overflow-hidden">
       <div className="flex items-center justify-between py-1">
@@ -919,7 +874,6 @@ export function MessageUiSpecBlock({
     </div>
   );
 }
-
 export function SensitiveRequestBlock({
   request,
 }: {
@@ -930,10 +884,8 @@ export function SensitiveRequestBlock({
   const [saving, setSaving] = useState(false);
   const [authorizing, setAuthorizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const currentRequest = useRef(request);
   currentRequest.current = request;
-
   useEffect(() => {
     setStatus(request.status);
     setValues({});
@@ -941,7 +893,6 @@ export function SensitiveRequestBlock({
     setAuthorizing(false);
     setError(null);
   }, [request]);
-
   const fields = request.form?.fields ?? [];
   const isRemoteConnect = request.form?.kind === "remote_connect";
   const canCollectSecret =
@@ -953,17 +904,14 @@ export function SensitiveRequestBlock({
     status === "pending" &&
     request.form?.kind === "oauth" &&
     isHttpsAuthorizationUrl(request.form.authorizationUrl);
-
   const canSubmit = fields.every((field) => {
     if (!field.required) return true;
     return (values[field.name] ?? "").trim().length > 0;
   });
-
   const tunnel = request.delivery?.tunnel;
   const requestLabel = sensitiveRequestTitleLabel(request.key);
   const isSaved =
     status === "saved" || status === "submitted" || status === "fulfilled";
-
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -1066,7 +1014,6 @@ export function SensitiveRequestBlock({
       values,
     ],
   );
-
   return (
     <Card
       variant="insetPadded"
@@ -1078,7 +1025,7 @@ export function SensitiveRequestBlock({
         <div className="min-w-0">
           <div className="break-words font-medium">{requestLabel}</div>
           {canCollectSecret && !tunnel && !isRemoteConnect && (
-            <div className="mt-0.5 text-xs text-muted">
+            <div className="mt-0.5 text-xs text-muted-strong">
               Masked input. It never lands in the transcript.
             </div>
           )}
@@ -1087,7 +1034,7 @@ export function SensitiveRequestBlock({
           data-testid="sensitive-request-status"
           className={cn(
             "flex shrink-0 items-center gap-1 text-xs",
-            isSaved ? "text-ok" : "text-muted",
+            isSaved ? "text-ok" : "text-muted-strong",
           )}
         >
           {isSaved && <Check className="size-3.5" aria-hidden />}
@@ -1095,10 +1042,12 @@ export function SensitiveRequestBlock({
         </div>
       </div>
       {request.reason && (
-        <div className="text-xs text-muted">{request.reason}</div>
+        <div className="text-xs text-muted-strong">{request.reason}</div>
       )}
       {request.delivery?.instruction && (
-        <div className="text-xs text-muted">{request.delivery.instruction}</div>
+        <div className="text-xs text-muted-strong">
+          {request.delivery.instruction}
+        </div>
       )}
       {canCollectSecret && (
         <SemanticForm className="space-y-3" onSubmit={handleSubmit}>
@@ -1146,9 +1095,7 @@ export function SensitiveRequestBlock({
                       }
                       if (field.maxBytes && file.size > field.maxBytes) {
                         setError(
-                          `${label} is too large (max ${Math.round(
-                            field.maxBytes / 1024,
-                          )} KB).`,
+                          `${label} is too large (max ${Math.round(field.maxBytes / 1024)} KB).`,
                         );
                         event.currentTarget.value = "";
                         return;
@@ -1208,7 +1155,7 @@ export function SensitiveRequestBlock({
           </Button>
           {!isRemoteConnect && (
             <div
-              className="flex items-center gap-1.5 text-xs text-muted"
+              className="flex items-center gap-1.5 text-xs text-muted-strong"
               data-testid="sensitive-request-security-note"
             >
               <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
@@ -1290,7 +1237,6 @@ export function SensitiveRequestBlock({
     </Card>
   );
 }
-
 export function MessagePermissionCard({
   payload,
 }: {
@@ -1299,7 +1245,6 @@ export function MessagePermissionCard({
   const { sendActionMessage } = useAppSelectorShallow((s) => ({
     sendActionMessage: s.sendActionMessage,
   }));
-
   const permissionRegistry = useMemo(
     () =>
       isNative && !isDesktopPlatform()
@@ -1307,7 +1252,6 @@ export function MessagePermissionCard({
         : createClientPermissionsRegistry(client),
     [],
   );
-
   const handlePermissionFallback = useCallback(
     (feature: string, permission: string) => {
       void sendActionMessage(
@@ -1316,7 +1260,6 @@ export function MessagePermissionCard({
     },
     [sendActionMessage],
   );
-
   const handlePermissionGranted = useCallback(
     (feature: string, permission: string) => {
       void sendActionMessage(
@@ -1325,7 +1268,6 @@ export function MessagePermissionCard({
     },
     [sendActionMessage],
   );
-
   return renderPermissionCardFromPayload(payload, {
     registry: permissionRegistry,
     onOpenSettings: async (permission) => {
@@ -1341,7 +1283,6 @@ export function MessagePermissionCard({
       handlePermissionGranted(payload.feature, payload.permission),
   });
 }
-
 function OAuthRequestPanel({
   form,
   authorizing,
@@ -1377,9 +1318,7 @@ function OAuthRequestPanel({
     </div>
   );
 }
-
 // ── Main component ──────────────────────────────────────────────────
-
 export function MessageContent({
   message,
   analysisMode = false,
@@ -1395,13 +1334,13 @@ export function MessageContent({
   // Composer prefill for followup `prompt` chips. Outside the chat provider,
   // `useChatComposer` returns an inert setter, so this is safe everywhere.
   const { setChatInput } = useChatComposer();
+  const [replyRecoveryPending, setReplyRecoveryPending] = useState(false);
   const [localDownloadState, setLocalDownloadState] = useState<
     "idle" | "busy" | "queued" | "failed"
   >("idle");
   const [localDownloadError, setLocalDownloadError] = useState<string | null>(
     null,
   );
-
   // Incremental prefix-cached parse: a streaming turn re-parses only its changed
   // tail instead of the whole buffer every rAF flush (#15280). Byte-identical to
   // parseSegments; falls back to raw text if the markup is malformed.
@@ -1410,7 +1349,6 @@ export function MessageContent({
       ? stripUnclaimedInteractionMarkup(message.text)
       : message.text;
   const segments = useParsedSegments(displayText, analysisMode);
-
   // Handlers handed to every inline widget at render: the SAME shared contract
   // the overlay surface (InlineWidgetText) uses, so a CHOICE pick / FOLLOWUPS
   // chip / FORM submit behaves identically on both. Self-contained widgets (the
@@ -1419,11 +1357,9 @@ export function MessageContent({
     sendActionMessage,
     setChatInput,
   );
-
   const handleOpenSettings = useCallback(() => {
     setTab?.("settings");
   }, [setTab]);
-
   const handleDownloadDefaultLocalModel = useCallback(async () => {
     const modelId = message.localInference?.modelId;
     if (!modelId) {
@@ -1443,26 +1379,22 @@ export function MessageContent({
       setLocalDownloadState("failed");
     }
   }, [handleOpenSettings, message.localInference?.modelId]);
-
   if (message.secretRequest) {
     return <SensitiveRequestBlock request={message.secretRequest} />;
   }
-
   if (message.accountConnect) {
     return <AccountConnectBlock request={message.accountConnect} />;
   }
-
   if (message.capabilityHandoff) {
     return (
       <div className="space-y-2">
         {message.text.trim() ? (
-          <MessageTextBody text={message.text} boldSlashCommand={false} />
+          <MessageTextBody text={message.text} userMessage={false} />
         ) : null}
         <CapabilityHandoffBlock request={message.capabilityHandoff} />
       </div>
     );
   }
-
   if (
     message.localInference &&
     message.localInference.status !== "ready" &&
@@ -1508,7 +1440,31 @@ export function MessageContent({
       </Alert>
     );
   }
-
+  if (message.role === "assistant" && message.replyRecoveryAvailable === true) {
+    return (
+      <Alert variant="warning">
+        <AlertDescription>
+          <div className="whitespace-pre-wrap">{message.text}</div>
+          <Button
+            type="button"
+            size="sm"
+            disabled={replyRecoveryPending}
+            onClick={async () => {
+              if (!message.id || replyRecoveryPending) return;
+              setReplyRecoveryPending(true);
+              try {
+                await handleChatRetry(message.id);
+              } finally {
+                setReplyRecoveryPending(false);
+              }
+            }}
+          >
+            {replyRecoveryPending ? "Regenerating reply…" : "Regenerate reply"}
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
   // The server flags failed assistant turns with `failureKind`. For
   // `no_provider` specifically the user can't make progress without
   // wiring up a provider, so render a structured gate (banner + CTA)
@@ -1527,7 +1483,6 @@ export function MessageContent({
       </Alert>
     );
   }
-
   // A drained org returns a 402; retrying just re-hits the same empty balance,
   // so render a designed out-of-credits gate rather than the generic failure
   // text (which invites the retry loop). The CTA jumps to Settings where the
@@ -1545,11 +1500,10 @@ export function MessageContent({
       </Alert>
     );
   }
-
   // Transient / recoverable server failures render the graceful message plus a
   // one-tap Retry that resends the preceding user turn. Permanent gates
   // (`no_provider`, `insufficient_credits`, `missing_capability`) stay off the
-  // shared retry contract in `@elizaos/shared`.
+  // shared retry contract in `@elizaos/core`.
   if (
     message.failureKind &&
     (message.terminalFailure
@@ -1573,7 +1527,6 @@ export function MessageContent({
       </Alert>
     );
   }
-
   // Fast path: single plain-text segment (most messages). Assistant turns
   // that carry reasoning or tool events must NOT take it — the thinking block
   // and the expandable action log render only on the full path below, and the
@@ -1590,11 +1543,10 @@ export function MessageContent({
     return (
       <MessageTextBody
         text={segments[0].text}
-        boldSlashCommand={message.role === "user"}
+        userMessage={message.role === "user"}
       />
     );
   }
-
   return (
     <div>
       {message.role === "assistant" && message.reasoning?.trim() ? (
@@ -1614,7 +1566,6 @@ export function MessageContent({
           keyCounts.set(base, nextCount);
           return `${base}:${nextCount}`;
         };
-
         return segments.map((seg) => {
           const baseKey =
             seg.kind === "text"
@@ -1632,14 +1583,13 @@ export function MessageContent({
                         ? `analysis:${seg.tag}`
                         : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
-
           switch (seg.kind) {
             case "text":
               return (
                 <MessageTextBody
                   key={segmentKey}
                   text={seg.text}
-                  boldSlashCommand={message.role === "user"}
+                  userMessage={message.role === "user"}
                 />
               );
             case "code":
@@ -1665,7 +1615,7 @@ export function MessageContent({
                   <div className="text-xs font-semibold text-accent">
                     &lt;{seg.tag}&gt;
                   </div>
-                  <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-muted overscroll-x-contain">
+                  <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-muted-strong overscroll-x-contain">
                     {seg.content.trim()}
                   </pre>
                 </Card>
@@ -1706,7 +1656,7 @@ export function MessageContent({
       {analysisMode && message.actionName && (
         <Card variant="insetPadded" stack="compact" className="my-2">
           <div className="text-xs font-semibold text-accent">Action taken</div>
-          <div className="space-y-1 font-mono text-xs text-muted">
+          <div className="space-y-1 font-mono text-xs text-muted-strong">
             {message.actionName}
           </div>
         </Card>
@@ -1718,7 +1668,7 @@ export function MessageContent({
             <div className="text-xs font-semibold text-muted-strong">
               Action callback history
             </div>
-            <div className="space-y-1 font-mono text-xs text-muted">
+            <div className="space-y-1 font-mono text-xs text-muted-strong">
               {(() => {
                 const occurrence = new Map<string, number>();
                 return message.actionCallbackHistory.map((log) => {

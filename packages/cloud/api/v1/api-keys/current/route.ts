@@ -1,11 +1,11 @@
 /**
- * Revokes only the first-party mobile credential authenticating this request.
+ * Revokes only the credential proven by the secret in this request.
  * The presented mobile-prefixed secret and authenticated database row must
  * agree on one exact identity; a response-loss retry can recover only that
  * credential's durable tombstone.
  */
 import { Hono } from "hono";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 import {
   ApiError,
   AuthenticationError,
@@ -33,36 +33,49 @@ function readSinglePresentedApiKey(c: AppContext): string | null {
   return headerKey ?? bearerKey;
 }
 
-async function emitSelfRevocationAudit(
-  c: AppContext,
-  result: NonNullable<
-    Awaited<ReturnType<typeof apiKeysService.revokePresentedMobileCredential>>
-  >,
-): Promise<void> {
-  if (!result.revokedNow) return;
-  await getAuditDispatcher()
-    .emit({
-      actor: { type: "user", id: result.userId },
-      action: "api_key.revoke",
-      result: "success",
-      resource: { type: "api_key", id: result.receipt.credentialId },
-      org_id: result.organizationId,
-      request_id: c.get("requestId"),
-      metadata: {
-        key_id: result.receipt.credentialId,
-        reason: "credential_self_revoke",
-      },
-    })
-    .catch((error: unknown) => {
-      // error-policy:J7 audit telemetry cannot resurrect an already-revoked credential.
-      logger.warn("[API Keys] Self-revoke audit emit failed", {
-        error: error instanceof Error ? error.message : String(error),
+type SelfRevocationResult = NonNullable<
+  Awaited<ReturnType<typeof apiKeysService.revokePresentedMobileCredential>>
+>;
+
+/** Durable `api_key.revoke` record written inside the tombstone transaction. */
+function selfRevocationAudit(c: AppContext) {
+  const audit = createTransactionalAudit();
+  return {
+    audit,
+    write: async (
+      tx: Parameters<typeof audit.write>[0],
+      result: SelfRevocationResult,
+    ) => {
+      await audit.write(tx, {
+        actor: { type: "user", id: result.userId },
+        action: "api_key.revoke",
+        result: "success",
+        resource: { type: "api_key", id: result.receipt.credentialId },
+        org_id: result.organizationId,
+        request_id: c.get("requestId"),
+        metadata: {
+          key_id: result.receipt.credentialId,
+          reason: "credential_self_revoke",
+        },
       });
-    });
+    },
+  };
 }
 
 app.delete("/", async (c) => {
   try {
+    const standardSecret = readSinglePresentedApiKey(c);
+    if (standardSecret && /^eliza_[0-9a-f]{64}$/.test(standardSecret)) {
+      const selfAudit = selfRevocationAudit(c);
+      const result = await apiKeysService.revokePresentedStandardCredential(
+        standardSecret,
+        selfAudit.write,
+      );
+      if (!result)
+        throw AuthenticationError("API key identity could not be proven");
+      await selfAudit.audit.publish();
+      return c.json({ success: true, ...result.receipt });
+    }
     let credential: Awaited<ReturnType<typeof requireApiKeyCredential>>;
     try {
       credential = await requireApiKeyCredential(c);
@@ -76,12 +89,16 @@ app.delete("/", async (c) => {
         (error.status === 401 || error.status === 503)
       ) {
         const presented = readSinglePresentedApiKey(c);
+        const selfAudit = selfRevocationAudit(c);
         const result =
           presented && isMobileApiKeySecret(presented)
-            ? await apiKeysService.revokePresentedMobileCredential(presented)
+            ? await apiKeysService.revokePresentedMobileCredential(
+                presented,
+                selfAudit.write,
+              )
             : null;
         if (result) {
-          await emitSelfRevocationAudit(c, result);
+          await selfAudit.audit.publish();
           return c.json({ success: true, ...result.receipt });
         }
       }
@@ -100,8 +117,12 @@ app.delete("/", async (c) => {
       throw AuthenticationError("Mobile API key identity could not be proven");
     }
 
-    const result = await apiKeysService.revokeExactMobileCredential(credential);
-    await emitSelfRevocationAudit(c, result);
+    const selfAudit = selfRevocationAudit(c);
+    const result = await apiKeysService.revokeExactMobileCredential(
+      credential,
+      selfAudit.write,
+    );
+    await selfAudit.audit.publish();
     return c.json({ success: true, ...result.receipt });
   } catch (error) {
     // error-policy:J1 HTTP boundary returns a canonical auth or dependency failure.

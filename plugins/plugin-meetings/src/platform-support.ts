@@ -16,7 +16,7 @@
 import { existsSync } from "node:fs";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { chromium } from "playwright-core";
 
 /** System-browser channel a platform prefers for its fallback. */

@@ -20,10 +20,8 @@
  * touching the sentinel.
  */
 
-import {
-  isLocalCodeExecutionAllowed,
-  registerAppRoutePluginLoader,
-} from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/core/api/app-route-plugin-registry";
+import { isLocalCodeExecutionAllowed } from "@elizaos/core/platform/sandbox-policy";
 
 function registerCodingAgentRoutePluginLoader(): void {
   if (!isLocalCodeExecutionAllowed()) return;
@@ -45,6 +43,6 @@ registerCodingAgentRoutePluginLoader();
  * Sentinel re-exported by `src/index.ts` so bundlers that aggressively
  * tree-shake side-effect-only imports cannot drop this module. The
  * value is true once the module has evaluated. The registration itself is
- * synchronous so app-core's loader snapshot cannot race the route registration.
+ * synchronous so app's loader snapshot cannot race the route registration.
  */
 export const codingAgentRouteRegistration = true;

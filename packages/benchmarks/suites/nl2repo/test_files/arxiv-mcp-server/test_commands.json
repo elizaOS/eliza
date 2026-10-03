@@ -1,0 +1,4 @@
+[
+  "touch README.md && pip install -e .",
+  "pytest --continue-on-collection-errors tests"
+]

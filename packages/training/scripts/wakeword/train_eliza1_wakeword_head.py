@@ -14,7 +14,7 @@ it is replaceable (pass `--phrase "..."`). Until a head trained by this script
 ships in bundles, `wake/hey-eliza.onnx` is the upstream `hey_jarvis` head
 renamed and the runtime marks it a placeholder
 (`OPENWAKEWORD_PLACEHOLDER_HEADS` in
-`packages/app-core/src/services/local-inference/voice/wake-word.ts`).
+`packages/app/src/services/local-inference/voice/wake-word.ts`).
 
 Pipeline (each step is a function below; `--help` lists the flags):
 
@@ -194,7 +194,7 @@ class OpenWakeWordFrontEnd:
         self.emb = ort.InferenceSession(str(emb_path), sess_options=opts, providers=["CPUExecutionProvider"])
         # The head must be trained on the SAME embeddings it will see at
         # inference. The wakeword-cpp C runtime
-        # (packages/native/plugins/wakeword-cpp/src/wakeword_runtime.c) feeds
+        # (plugins/plugin-local-inference/native/wakeword-cpp/src/wakeword_runtime.c) feeds
         # the raw log-mel straight into the embedding model — it does NOT apply
         # openWakeWord's `mel/10 + 2` rescale (its parity test confirms the C
         # path and a no-rescale ONNX reference agree). A head trained WITH the

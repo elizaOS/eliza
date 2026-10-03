@@ -4,11 +4,8 @@
  * Orchestration lives in the shared driver (plugins/plugin-build.ts); this
  * lists only what differs.
  *
- * No browser build: this plugin includes Node-only services (ACP subprocess
- * sessions, workspace lifecycle, child_process spawn). Browser callers should
- * only depend on the type definitions; the package's `exports` field points the
- * browser condition at the same node bundle for resolution purposes but the
- * runtime is Node/bun.
+ * This entry builds Node services. The separate build:ui command emits the
+ * browser-safe /ui subpaths and view bundle without subprocess dependencies.
  */
 import { buildPlugin } from "../plugin-build";
 

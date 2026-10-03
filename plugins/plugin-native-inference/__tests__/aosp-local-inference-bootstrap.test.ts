@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Covers AOSP bootstrap helpers and loader ownership. Pure helpers use real
  * filesystem tempdirs and env overrides; service lifecycle uses a real
@@ -16,7 +17,6 @@ import {
   aospAsrAssetsPresent,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
-  disabledAospEmbeddingVector,
   ensureAospLocalInferenceHandlers,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
@@ -52,7 +52,7 @@ describe("AOSP loader runtime service", () => {
       // Public mobile bootstrap can register before initialize. Startup stays
       // lazy so registration never waits on the runtime initialization barrier.
       await registerAospLoaderService(runtime, loader);
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await initializeTestRuntime(runtime, { skipMigrations: true });
       expect(runtime.getService("localInferenceLoader")).toBeNull();
 
       await runtime.getServiceLoadPromise("localInferenceLoader");
@@ -125,6 +125,77 @@ async function withEnvAsync<T>(
 }
 
 describe("AOSP headless boot ownership", () => {
+  it("waits for embedding admission when chat loading is already in flight", async () => {
+    const stateDir = mkdtempSync(
+      path.join(os.tmpdir(), "aosp-role-admission-"),
+    );
+    const modelsDir = path.join(stateDir, "local-inference", "models");
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(path.join(modelsDir, "chat.gguf"), "loader fixture");
+    writeFileSync(
+      path.join(modelsDir, "bge-small-en-v1.5-f16.gguf"),
+      "loader fixture",
+    );
+    writeFileSync(
+      path.join(modelsDir, "manifest.json"),
+      JSON.stringify({ models: [{ role: "chat", ggufFile: "chat.gguf" }] }),
+    );
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_LOCAL_EMBEDDING_ENABLED: "1",
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        const chatStarted = Promise.withResolvers<void>();
+        const releaseChat = Promise.withResolvers<void>();
+        let embeddingLoaded = false;
+        const loader: AospLoader = {
+          currentModelPath: () => null,
+          async loadModel(args) {
+            if (args.role === "chat") {
+              chatStarted.resolve();
+              await releaseChat.promise;
+            } else {
+              embeddingLoaded = true;
+            }
+          },
+          async unloadModel() {},
+          async generate() {
+            return "chat completed";
+          },
+          async embed() {
+            if (!embeddingLoaded)
+              throw new Error("embedding dispatched before admission");
+            return { embedding: [0.25], tokens: 1 };
+          },
+        };
+        try {
+          await ensureAospLocalInferenceHandlers(runtime, {
+            buildLoader: async () => loader,
+            prewarm: false,
+          });
+          const chat = runtime.getModel(ModelType.TEXT_SMALL);
+          const embedding = runtime.getModel(ModelType.TEXT_EMBEDDING);
+          if (!chat || !embedding) throw new Error("model handlers missing");
+          const chatResult = chat(runtime, { prompt: "hello" });
+          await chatStarted.promise;
+          const embeddingResult = embedding(runtime, { text: "remember this" });
+          releaseChat.resolve();
+          await expect(
+            Promise.all([chatResult, embeddingResult]),
+          ).resolves.toEqual(["chat completed", [0.25]]);
+        } finally {
+          releaseChat.resolve();
+          await runtime.stop();
+        }
+      },
+    );
+  });
+
   it("builds one serving loader before initialize and tears that owner down once", async () => {
     const stateDir = mkdtempSync(path.join(os.tmpdir(), "aosp-owner-boot-"));
     const modelsDir = path.join(stateDir, "local-inference", "models");
@@ -141,6 +212,7 @@ describe("AOSP headless boot ownership", () => {
     await withEnvAsync(
       {
         ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_LOCAL_EMBEDDING_ENABLED: "0",
         ELIZA_DISABLE_FFI_LLAMA: undefined,
         ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
         ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
@@ -150,6 +222,7 @@ describe("AOSP headless boot ownership", () => {
       async () => {
         const runtime = new AgentRuntime({ logLevel: "fatal" });
         let builderCalls = 0;
+        let embeddingCalls = 0;
         let currentPath: string | null = null;
         let unloads = 0;
         let closes = 0;
@@ -163,7 +236,10 @@ describe("AOSP headless boot ownership", () => {
           },
           currentModelPath: () => currentPath,
           generate: async ({ prompt }) => `owned:${prompt}`,
-          embed: async () => ({ embedding: [0.5], tokens: 1 }),
+          embed: async () => {
+            embeddingCalls += 1;
+            return { embedding: [0.5], tokens: 1 };
+          },
           async close() {
             closes += 1;
           },
@@ -187,10 +263,7 @@ describe("AOSP headless boot ownership", () => {
               .filter((type) => type === "localInferenceLoader"),
           ).toHaveLength(1);
 
-          await runtime.initialize({
-            allowNoDatabase: true,
-            skipMigrations: true,
-          });
+          await initializeTestRuntime(runtime, { skipMigrations: true });
           await expect(registerAospLlamaLoader(runtime, options)).resolves.toBe(
             true,
           );
@@ -216,6 +289,17 @@ describe("AOSP headless boot ownership", () => {
                 ),
             ).toHaveLength(1);
           }
+
+          const embeddingHandler = runtime.getModel(ModelType.TEXT_EMBEDDING);
+          if (!embeddingHandler)
+            throw new Error("AOSP embedding handler missing");
+          await expect(
+            embeddingHandler(runtime, {
+              text: "Remember the meeting location.",
+            }),
+          ).rejects.toMatchObject({ code: "LOCAL_EMBEDDING_DISABLED" });
+          expect(embeddingCalls).toBe(0);
+          expect(currentPath).toBeNull();
 
           const handler = runtime.getModel(ModelType.TEXT_SMALL);
           if (!handler) throw new Error("AOSP TEXT_SMALL handler missing");
@@ -789,37 +873,6 @@ describe("AOSP embedding gate", () => {
       isAospLocalEmbeddingEnabled({ ELIZA_LOCAL_EMBEDDING_ENABLED: "1" }),
     ).toBe(true);
   });
-
-  it("returns a SQL-compatible zero vector while native embeddings are disabled", () => {
-    expect(disabledAospEmbeddingVector({})).toHaveLength(384);
-    expect(
-      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024" }),
-    ).toHaveLength(1024);
-  });
-
-  it("ignores a prefix-parsed embedding dimension instead of sizing the vector from it", () => {
-    // parseInt("1024junk") is 1024, so a typo silently produced a vector of a
-    // width the operator never configured — and the width must match the SQL
-    // column, so this is not a cosmetic difference.
-    expect(
-      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024junk" }),
-    ).toHaveLength(384);
-    expect(
-      disabledAospEmbeddingVector({
-        LOCAL_EMBEDDING_DIMENSIONS: "9007199254740993",
-      }),
-    ).toHaveLength(384);
-    // A signed value was accepted by parseInt and must stay accepted.
-    expect(
-      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "+1024" }),
-    ).toHaveLength(1024);
-    expect(
-      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "0" }),
-    ).toHaveLength(384);
-    expect(
-      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "-1" }),
-    ).toHaveLength(384);
-  });
 });
 
 describe("AOSP TEXT_TO_SPEECH backend selection", () => {
@@ -866,6 +919,7 @@ describe("buildAospLoadModelArgs", () => {
   it("uses the Gemma KV defaults for chat models (q8_0 K, f16 V — V-quant needs FA, off on Android; QJL/Polar retired post-#9033)", () => {
     expect(buildAospLoadModelArgs("chat", "/models/chat.gguf")).toEqual({
       modelPath: "/models/chat.gguf",
+      role: "chat",
       contextSize: 4096,
       draftModelPath: undefined,
       draftContextSize: undefined,
@@ -941,6 +995,7 @@ describe("buildAospLoadModelArgs", () => {
       buildAospLoadModelArgs("embedding", "/models/bge-small.gguf"),
     ).toEqual({
       modelPath: "/models/bge-small.gguf",
+      role: "embedding",
       contextSize: 512,
       useGpu: false,
       gpuLayers: 0,

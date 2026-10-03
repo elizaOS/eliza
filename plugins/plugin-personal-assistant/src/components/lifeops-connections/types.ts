@@ -1,15 +1,19 @@
 /** View-facing contracts for the focused LifeOps connection manager. */
 
-import type {
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarImportedDataPurgeReceipt,
-  LifeOpsCalendarSummary,
-  LifeOpsGmailImportedDataPurgeReceipt,
-  LifeOpsGmailSyncHealth,
-  LifeOpsGoogleCapability,
-  LifeOpsGoogleConnectorStatus,
-  PermissionState,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarImportedDataPurgeReceipt,
+  type LifeOpsCalendarSummary,
+  type LifeOpsLinkedCalendarControl,
+  type UpdateLifeOpsLinkedCalendarControlRequest,
+} from "@elizaos/core/contracts/calendar";
+import { type PermissionState } from "@elizaos/core/contracts/permissions";
+import {
+  type LifeOpsGmailImportedDataPurgeReceipt,
+  type LifeOpsGmailSyncHealth,
+  type LifeOpsGoogleCapability,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
 
 export type LifeOpsSeedRangeDays = 7 | 30 | 90;
 export type LifeOpsSeedPhase =
@@ -51,6 +55,10 @@ export interface LifeOpsPurgeReceipt {
 }
 
 export interface LifeOpsConnectionsAdapter {
+  getLinkedCalendarControl(): Promise<LifeOpsLinkedCalendarControl>;
+  updateLinkedCalendarControl(
+    request: UpdateLifeOpsLinkedCalendarControlRequest,
+  ): Promise<LifeOpsLinkedCalendarControl>;
   load(options?: { forceSync?: boolean }): Promise<LifeOpsConnectionsSnapshot>;
   connectGoogle(capabilities: LifeOpsGoogleCapability[]): Promise<void>;
   disconnectGoogle(grantId: string): Promise<void>;

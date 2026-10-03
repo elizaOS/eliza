@@ -32,7 +32,7 @@ import {
   type LifeOpsOwnership,
   type LifeOpsOwnershipInput,
   type UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   createGoalDefinition,
   GoalsRepository,

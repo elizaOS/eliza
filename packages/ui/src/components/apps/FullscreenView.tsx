@@ -6,7 +6,7 @@
  * `EmbeddedAppViewer` when `shouldUseEmbeddedAppViewer` selects it.
  */
 
-import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -61,7 +61,6 @@ interface GameLearningTelemetry {
   abilitiesLearned?: number;
   survivalRate?: number;
 }
-
 function readLearningTelemetry(
   telemetry: AppSessionState["telemetry"],
 ): GameLearningTelemetry {
@@ -91,7 +90,6 @@ function readLearningTelemetry(
         : undefined,
   };
 }
-
 function buildDisconnectedSessionState(
   session: AppSessionState | null,
 ): AppSessionState | null {
@@ -109,13 +107,11 @@ function buildDisconnectedSessionState(
       : "Session unavailable.",
   };
 }
-
 type RunSteeringDisposition =
   | "accepted"
   | "queued"
   | "rejected"
   | "unsupported";
-
 interface RunSteeringResult {
   success: boolean;
   message: string;
@@ -124,7 +120,6 @@ interface RunSteeringResult {
   run?: AppRunSummary | null;
   session?: AppSessionState | null;
 }
-
 function getSteeringNotice(
   disposition: RunSteeringDisposition,
   message: string,
@@ -153,7 +148,6 @@ function getSteeringNotice(
     text: message,
   };
 }
-
 function getSteeringFallbackMessage(
   disposition: RunSteeringDisposition,
   defaultValue: string,
@@ -165,19 +159,25 @@ function getSteeringFallbackMessage(
   }
   return defaultValue;
 }
-
 function getApiStatus(err: unknown): number | null {
   if (
     err &&
     typeof err === "object" &&
     "status" in err &&
-    typeof (err as { status?: unknown }).status === "number"
+    typeof (
+      err as {
+        status?: unknown;
+      }
+    ).status === "number"
   ) {
-    return (err as { status: number }).status;
+    return (
+      err as {
+        status: number;
+      }
+    ).status;
   }
   return null;
 }
-
 /** Canonical status tones for recognized log tags. */
 const TAG_TONES: Readonly<Partial<Record<string, StatusTone>>> = {
   agent: "accent",
@@ -185,11 +185,13 @@ const TAG_TONES: Readonly<Partial<Record<string, StatusTone>>> = {
   autonomy: "warning",
   websocket: "info",
 };
-
 function heroHealthProgress(
   current: number,
   maximum: number,
-): { value: number; tone: "success" | "warning" | "danger" } {
+): {
+  value: number;
+  tone: "success" | "warning" | "danger";
+} {
   const value = Math.min(
     100,
     Math.max(0, Math.round((current / maximum) * 100)),
@@ -199,7 +201,6 @@ function heroHealthProgress(
     tone: value > 50 ? "success" : value > 25 ? "warning" : "danger",
   };
 }
-
 export function DesktopGameWindowControls({
   gameWindowId,
 }: {
@@ -215,7 +216,6 @@ export function DesktopGameWindowControls({
   );
   const [gpuWindowId, setGpuWindowId] = useState<string | null>(null);
   const branding = useBranding();
-
   const refresh = useCallback(async () => {
     if (!gameWindowId) {
       setBoundsLabel(
@@ -242,7 +242,10 @@ export function DesktopGameWindowControls({
       }
       try {
         const windows = await invokeDesktopBridgeRequest<{
-          windows: Array<{ id: string; alwaysOnTop: boolean }>;
+          windows: Array<{
+            id: string;
+            alwaysOnTop: boolean;
+          }>;
         }>({
           rpcMethod: "canvasListWindows",
           ipcChannel: "canvas:listWindows",
@@ -255,20 +258,19 @@ export function DesktopGameWindowControls({
         // non-fatal: pin state defaults to false on poll failure
       }
     }
-
     const gpuWindows = await invokeDesktopBridgeRequest<{
-      windows: Array<{ id: string }>;
+      windows: Array<{
+        id: string;
+      }>;
     }>({
       rpcMethod: "gpuWindowList",
       ipcChannel: "gpuWindow:list",
     });
     setGpuWindowId(gpuWindows?.windows[0]?.id ?? null);
   }, [gameWindowId, t]);
-
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
   const runAction = useCallback(
     async (
       id: string,
@@ -301,7 +303,6 @@ export function DesktopGameWindowControls({
     },
     [refresh, t],
   );
-
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Badge asChild variant="metaDefault" size="metaCompact">
@@ -512,7 +513,9 @@ export function DesktopGameWindowControls({
           void runAction(
             "game-gpu-window",
             async () => {
-              const created = await invokeDesktopBridgeRequest<{ id: string }>({
+              const created = await invokeDesktopBridgeRequest<{
+                id: string;
+              }>({
                 rpcMethod: "gpuWindowCreate",
                 ipcChannel: "gpuWindow:create",
                 params: {
@@ -610,7 +613,6 @@ export function DesktopGameWindowControls({
     </div>
   );
 }
-
 export function FullscreenView() {
   useRenderGuard("FullscreenView");
   const { setTimeout } = useTimeout();
@@ -725,27 +727,21 @@ export function FullscreenView() {
   const canDetachViewer =
     activeGameRun?.viewerAttachment === "attached" &&
     (activeGameRun?.supportsViewerDetach ?? true);
-
   useEffect(() => {
     appRunsRef.current = appRuns;
   }, [appRuns]);
-
   useEffect(() => {
     activeGameRunIdRef.current = activeGameRunId;
   }, [activeGameRunId]);
-
   useEffect(() => {
     activeGameAppRef.current = activeGameApp;
   }, [activeGameApp]);
-
   useEffect(() => {
     activeGameSessionRef.current = activeGameSession;
   }, [activeGameSession]);
-
   useEffect(() => {
     sessionStateRef.current = sessionState;
   }, [sessionState]);
-
   const applySessionState = useCallback(
     (nextSession: AppSessionState | null) => {
       setSessionState(nextSession);
@@ -784,7 +780,6 @@ export function FullscreenView() {
     },
     [setState],
   );
-
   const applyRunState = useCallback(
     (nextRun: AppRunSummary | null) => {
       if (!nextRun) return;
@@ -826,7 +821,6 @@ export function FullscreenView() {
     },
     [setState],
   );
-
   const refreshSessionState = useCallback(async () => {
     const currentSession =
       sessionStateRef.current ?? activeGameSessionRef.current;
@@ -835,11 +829,9 @@ export function FullscreenView() {
       : activeGameApp && currentSession?.sessionId
         ? `session:${activeGameApp}:${currentSession.sessionId}`
         : "none";
-
     if (refreshSessionPromiseRef.current?.key === refreshKey) {
       return refreshSessionPromiseRef.current.promise;
     }
-
     const isCurrentRefresh = () =>
       activeGameRunIdRef.current === activeGameRunId &&
       activeGameAppRef.current === activeGameApp &&
@@ -847,7 +839,6 @@ export function FullscreenView() {
         activeGameSessionRef.current?.sessionId ===
           currentSession?.sessionId) &&
       refreshSessionPromiseRef.current?.key === refreshKey;
-
     const refreshTask = (async () => {
       if (activeGameRunId) {
         try {
@@ -871,7 +862,6 @@ export function FullscreenView() {
           }
         }
       }
-
       if (!activeGameApp || !currentSession?.sessionId) return null;
       try {
         const nextSession = await client.getAppSessionState(
@@ -893,7 +883,6 @@ export function FullscreenView() {
         return null;
       }
     })();
-
     refreshSessionPromiseRef.current = {
       key: refreshKey,
       promise: refreshTask,
@@ -906,22 +895,18 @@ export function FullscreenView() {
       }
     }
   }, [activeGameRunId, activeGameApp, applyRunState, applySessionState]);
-
   useEffect(() => {
     setSessionState(activeGameSession);
     sessionStateRef.current = activeGameSession;
   }, [activeGameSession]);
-
   useEffect(() => {
     setShowLogsPanel(dashboardPanelEnabled);
     setMobileSurface("game");
   }, []);
-
   useEffect(() => {
     if (!activeGameRunId && !activeGameSession?.sessionId) return;
     void refreshSessionState();
   }, [activeGameRunId, activeGameSession?.sessionId, refreshSessionState]);
-
   useIntervalWhenDocumentVisible(
     () => {
       void refreshSessionState();
@@ -929,7 +914,6 @@ export function FullscreenView() {
     3000,
     Boolean(activeGameRunId || activeGameSession?.sessionId),
   );
-
   // Cheap liveness ping — separate from the 3s session refresh so it still
   // fires when the upstream game API is degraded. The server's stale-run
   // sweeper uses this to decide whether to stop a run whose UI tab has
@@ -955,10 +939,9 @@ export function FullscreenView() {
         }
       });
     },
-    15_000,
+    15000,
     Boolean(activeGameRunId),
   );
-
   // Clean up server-side state when the browser tab closes. `sendBeacon`
   // is the only request method browsers reliably deliver during unload —
   // a normal `fetch` would be cancelled. Falls through silently if the
@@ -980,7 +963,6 @@ export function FullscreenView() {
       window.removeEventListener("beforeunload", handleUnload);
     };
   }, [activeGameRunId]);
-
   const sendChatCommand = useCallback(
     async (rawContent: string) => {
       const content = rawContent.trim();
@@ -1086,18 +1068,15 @@ export function FullscreenView() {
       applyRunState,
     ],
   );
-
   const handleSendChat = useCallback(() => {
     void sendChatCommand(chatInput);
   }, [chatInput, sendChatCommand]);
-
   const activeSessionState = sessionState ?? activeGameSession;
   const sessionControlAction = useMemo<AppSessionControlAction | null>(() => {
     if (activeSessionState?.controls?.includes("pause")) return "pause";
     if (activeSessionState?.controls?.includes("resume")) return "resume";
     return null;
   }, [activeSessionState]);
-
   const handleSessionControl = useCallback(async () => {
     if (
       !activeGameRunId ||
@@ -1173,7 +1152,6 @@ export function FullscreenView() {
       buildViewerSessionKey(activeGameViewerUrl, activeGamePostMessagePayload),
     [activeGamePostMessagePayload, activeGameViewerUrl],
   );
-
   // Filter logs relevant to the current game
   const gameLogs = useMemo(() => {
     if (!activeGameApp) return [];
@@ -1194,7 +1172,6 @@ export function FullscreenView() {
       );
     });
   }, [activeGameApp, logs]);
-
   // Memoized activity-feed derivations for the logs panel. FullscreenView re-renders on
   // every context change (3s polls, keystrokes, toasts); deriving these inline in
   // renderLogsPanel re-sorted/re-sliced the feeds on each render.
@@ -1205,12 +1182,17 @@ export function FullscreenView() {
     if (!Array.isArray(recentActivity) || recentActivity.length === 0) {
       return null;
     }
-    return (recentActivity as { ts: number; action: string; detail: string }[])
+    return (
+      recentActivity as {
+        ts: number;
+        action: string;
+        detail: string;
+      }[]
+    )
       .slice()
       .reverse()
       .slice(0, 30);
   }, [activeSessionState?.telemetry]);
-
   const sessionActivityFeed = useMemo(() => {
     const activity = activeSessionState?.activity;
     if (!Array.isArray(activity) || activity.length === 0) {
@@ -1221,15 +1203,12 @@ export function FullscreenView() {
       .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
       .slice(0, 30);
   }, [activeSessionState?.activity]);
-
   const gameLogsFeed = useMemo(() => gameLogs.slice(0, 50), [gameLogs]);
-
   // Auto-refresh logs when panel is open and tab is visible (catch-up on focus).
   useEffect(() => {
     if (!showLogsPanel || !docVisible) return;
     void loadLogs();
   }, [showLogsPanel, docVisible, loadLogs]);
-
   useIntervalWhenDocumentVisible(
     () => {
       void loadLogs();
@@ -1237,15 +1216,14 @@ export function FullscreenView() {
     3000,
     showLogsPanel,
   );
-
   // Open the game URL in an isolated Electrobun BrowserWindow.
   // Runs whenever the viewer URL or game title changes and we're inside the desktop app.
   useEffect(() => {
     if (!useNativeGameWindow || !resolvedActiveGameViewerUrl) return;
-
     let cancelled = false;
-
-    void invokeDesktopBridgeRequest<{ id: string }>({
+    void invokeDesktopBridgeRequest<{
+      id: string;
+    }>({
       rpcMethod: "gameOpenWindow",
       ipcChannel: "game:openWindow",
       params: {
@@ -1268,7 +1246,6 @@ export function FullscreenView() {
         // error-policy:J4 native game window unavailable — the iframe
         // fallback is already rendered, so the game is still playable.
       });
-
     return () => {
       cancelled = true;
       // Close the game window when FullscreenView unmounts or the URL changes
@@ -1290,7 +1267,6 @@ export function FullscreenView() {
     t,
     useNativeGameWindow,
   ]);
-
   // Reset auth handshake state when the active viewer session changes.
   useEffect(() => {
     if (viewerSessionRef.current !== viewerSessionKey) {
@@ -1312,12 +1288,10 @@ export function FullscreenView() {
     useNativeGameWindow,
     viewerSessionKey,
   ]);
-
   const resetActiveGameState = useCallback(() => {
     setSessionState(null);
     setState("activeGameRunId", "");
   }, [setState]);
-
   useEffect(() => {
     if (
       !useEmbeddedViewer ||
@@ -1333,8 +1307,11 @@ export function FullscreenView() {
     // Fail closed: without a concrete http(s) origin we can neither verify the
     // sender nor safely target the auth payload, so never send it.
     if (!postMessageTargetOrigin) return;
-
-    const onMessage = (event: MessageEvent<{ type?: string }>) => {
+    const onMessage = (
+      event: MessageEvent<{
+        type?: string;
+      }>,
+    ) => {
       if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
@@ -1354,7 +1331,6 @@ export function FullscreenView() {
         1800,
       );
     };
-
     window.addEventListener("message", onMessage);
     return () => {
       window.removeEventListener("message", onMessage);
@@ -1367,7 +1343,6 @@ export function FullscreenView() {
     t,
     useEmbeddedViewer,
   ]);
-
   const handleOpenInNewTab = useCallback(async () => {
     if (!openableUrl) {
       setActionNotice(
@@ -1396,7 +1371,6 @@ export function FullscreenView() {
       );
     }
   }, [openableUrl, setActionNotice, t]);
-
   const handleAttachViewer = useCallback(async () => {
     if (!activeGameRun) return;
     setAttachingViewer(true);
@@ -1426,7 +1400,6 @@ export function FullscreenView() {
       setAttachingViewer(false);
     }
   }, [activeGameRun, applyRunState, setActionNotice, t]);
-
   const handleDetachViewer = useCallback(async () => {
     if (!activeGameRun) return;
     setDetachingViewer(true);
@@ -1456,7 +1429,6 @@ export function FullscreenView() {
       setDetachingViewer(false);
     }
   }, [activeGameRun, applyRunState, setActionNotice, t]);
-
   const handleStop = useCallback(async () => {
     if (!activeGameRunId) return;
     setStopping(true);
@@ -1491,7 +1463,6 @@ export function FullscreenView() {
     setState,
     t,
   ]);
-
   if (!hasActiveRun) {
     return (
       <div className="flex items-center justify-center py-10 text-muted italic">
@@ -1510,7 +1481,6 @@ export function FullscreenView() {
       </div>
     );
   }
-
   const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => {
     const learningTelemetry = readLearningTelemetry(
       activeSessionState?.telemetry,
@@ -1745,7 +1715,11 @@ export function FullscreenView() {
           {telemetryActivityFeed ? (
             telemetryActivityFeed.map(
               (
-                entry: { ts: number; action: string; detail: string },
+                entry: {
+                  ts: number;
+                  action: string;
+                  detail: string;
+                },
                 idx: number,
               ) => (
                 <div
@@ -1839,7 +1813,6 @@ export function FullscreenView() {
       </Card>
     );
   };
-
   const activeRunSummary =
     activeGameRun?.summary ??
     activeGameRun?.health.message ??
@@ -1896,7 +1869,6 @@ export function FullscreenView() {
         </Button>
       );
     }
-
     return (
       <Button asChild variant={variant} size="sm" className={className}>
         <a href={openableUrl} target="_blank" rel="noreferrer">
@@ -1905,7 +1877,6 @@ export function FullscreenView() {
       </Button>
     );
   };
-
   const renderViewerPane = () => {
     if (!hasViewer) {
       return (
@@ -1925,7 +1896,6 @@ export function FullscreenView() {
         </Card>
       );
     }
-
     if (!viewerAttached) {
       return (
         <Card
@@ -1945,7 +1915,6 @@ export function FullscreenView() {
         </Card>
       );
     }
-
     if (useNativeGameWindow) {
       return (
         <Card
@@ -1970,7 +1939,6 @@ export function FullscreenView() {
         </Card>
       );
     }
-
     return (
       <Card asChild variant="transparentSquare">
         <iframe
@@ -1988,7 +1956,6 @@ export function FullscreenView() {
       </Card>
     );
   };
-
   return (
     <div className="flex flex-col h-full min-h-0">
       <Card flow="row" gap="default" padding="compact" className="flex-wrap">
@@ -2161,9 +2128,7 @@ export function FullscreenView() {
         </Card>
       ) : null}
       <div
-        className={`flex-1 min-h-0 ${
-          isCompactLayout ? "flex flex-col" : "flex"
-        }`}
+        className={`flex-1 min-h-0 ${isCompactLayout ? "flex flex-col" : "flex"}`}
       >
         {!dashboardPanelEnabled ||
         !isCompactLayout ||

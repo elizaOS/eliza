@@ -32,6 +32,9 @@ function t(_key: string, opts?: { defaultValue?: string; id?: string }) {
 
 function seedCloudOverviewState(
   overrides: Partial<{
+    elizaCloudStatusLoading: boolean;
+    elizaCloudStatusUnavailable: boolean;
+    refreshCloudStatus: () => Promise<boolean>;
     elizaCloudConnected: boolean;
     elizaCloudDisconnecting: boolean;
     elizaCloudLoginBusy: boolean;
@@ -43,6 +46,10 @@ function seedCloudOverviewState(
 ) {
   __setAppValueForTests({
     t,
+    elizaCloudStatusLoading: overrides.elizaCloudStatusLoading ?? false,
+    elizaCloudStatusUnavailable: overrides.elizaCloudStatusUnavailable ?? false,
+    refreshCloudStatus:
+      overrides.refreshCloudStatus ?? vi.fn(async () => false),
     elizaCloudConnected: overrides.elizaCloudConnected ?? false,
     elizaCloudDisconnecting: overrides.elizaCloudDisconnecting ?? false,
     elizaCloudLoginBusy: overrides.elizaCloudLoginBusy ?? false,
@@ -65,6 +72,59 @@ afterEach(() => {
 });
 
 describe("CloudOverviewSection", () => {
+  it("shows verification instead of disconnected and prevents duplicate login while checking", () => {
+    const handleInteractiveCloudLogin = vi.fn(async () => undefined);
+    seedCloudOverviewState({
+      elizaCloudStatusLoading: true,
+      handleInteractiveCloudLogin,
+    });
+    render(<CloudOverviewSection />);
+    const button = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Checking Cloud account...",
+    });
+    expect(button.disabled).toBe(true);
+    expect(screen.queryByText("No Cloud account connected")).toBeNull();
+    fireEvent.click(button);
+    expect(handleInteractiveCloudLogin).not.toHaveBeenCalled();
+    expect(cloudLoginWindow.claim).not.toHaveBeenCalled();
+  });
+
+  it("offers verification retry instead of claiming a failed initial check means disconnected", () => {
+    const refreshCloudStatus = vi.fn(async () => false);
+    const handleInteractiveCloudLogin = vi.fn(async () => undefined);
+    seedCloudOverviewState({
+      elizaCloudStatusUnavailable: true,
+      refreshCloudStatus,
+      handleInteractiveCloudLogin,
+    });
+    render(<CloudOverviewSection />);
+    expect(
+      screen.getByText("Cloud account verification unavailable"),
+    ).toBeTruthy();
+    expect(screen.queryByText("No Cloud account connected")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Connect Cloud" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry verification" }));
+    expect(refreshCloudStatus).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveCloudLogin).not.toHaveBeenCalled();
+    expect(cloudLoginWindow.claim).not.toHaveBeenCalled();
+  });
+
+  it("keeps connected account controls available during background verification", () => {
+    seedCloudOverviewState({
+      elizaCloudStatusLoading: true,
+      elizaCloudConnected: true,
+    });
+    render(<CloudOverviewSection />);
+    expect(
+      screen.queryByText("Verifying your connection to Eliza Cloud."),
+    ).toBeNull();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Open Cloud management",
+      }).disabled,
+    ).toBe(false);
+  });
+
   it("invokes the interactive login entry point and claims the popup inside the click gesture", () => {
     const handleInteractiveCloudLogin = vi.fn(async () => undefined);
     seedCloudOverviewState({ handleInteractiveCloudLogin });

@@ -12,17 +12,17 @@
  * off) it commits immediately so the agent still replies snappily.
  *
  * The syntactic scorer itself is the single canonical heuristic in
- * `@elizaos/shared/voice-eot` — the SAME definition the plugin's Tier-3
+ * `@elizaos/core/voice-eot` — the SAME definition the plugin's Tier-3
  * `HeuristicEotClassifier` (and, through it, the fused composite EOT) consume,
  * so the shell capture path and the native voice engine never drift.
  */
 
-import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
+import { scoreEndOfTurnHeuristic } from "@elizaos/core/voice-eot";
 
 /**
  * Probability in [0,1] that `transcript` is a COMPLETE turn (the speaker is
  * done). High → commit; low → the utterance trails off, keep listening.
- * Re-exported from the canonical `@elizaos/shared/voice-eot` so the shell and
+ * Re-exported from the canonical `@elizaos/core/voice-eot` so the shell and
  * the plugin score identically.
  */
 export const scoreEndOfTurn = scoreEndOfTurnHeuristic;

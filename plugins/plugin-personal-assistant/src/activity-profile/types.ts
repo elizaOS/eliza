@@ -3,7 +3,7 @@
  * their hour ranges, per-platform activity records, activity signals, the
  * assembled ActivityProfile, and the proactive-action shape.
  */
-import type { LifeOpsActivitySignalSourceName } from "@elizaos/shared";
+import { type LifeOpsActivitySignalSourceName } from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsHealthSignal } from "../contracts/index.js";
 
 export type TimeBucket =

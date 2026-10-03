@@ -4,12 +4,12 @@
  * document-URL fetch.
  */
 import {
-	__setDocumentUrlFetchImplForTests,
 	ContentType,
 	type IAgentRuntime,
 	type SendHandlerReceipt,
 	ServiceType,
 } from "@elizaos/core";
+import { __setDocumentUrlFetchImplForTests } from "@elizaos/plugin-assistant";
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

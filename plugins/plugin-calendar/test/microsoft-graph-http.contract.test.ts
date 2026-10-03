@@ -12,7 +12,7 @@ import {
   type IAgentRuntime,
   InMemoryConnectorAccountStorage,
 } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import {
   afterAll,
   beforeAll,

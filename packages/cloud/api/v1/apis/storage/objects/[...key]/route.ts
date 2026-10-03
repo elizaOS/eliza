@@ -29,8 +29,8 @@ import {
   StorageQuotaExceededError,
 } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { storageOperationPriceUsd } from "@/lib/constants/pricing";
 import { InsufficientCreditsError } from "@/lib/services/credits";
-import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
 import {
   calculateStoragePutPrice,
   executeNativeStorageDelete,
@@ -49,7 +49,6 @@ import {
   parseTrustworthyDecimalInteger,
 } from "./put-body-budget";
 
-const STORAGE_SERVICE_ID = "storage";
 const MAX_OBJECT_KEY_LENGTH = 1024;
 const R2_NOT_CONFIGURED_BODY = {
   error:
@@ -175,11 +174,8 @@ app.put("/*", async (c) => {
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "Request body is required" }, 400);
 
-    const flatCost = await getServiceMethodCost(STORAGE_SERVICE_ID, "put");
-    const perByteCost = await getServiceMethodCost(
-      STORAGE_SERVICE_ID,
-      "put_per_byte",
-    );
+    const flatCost = storageOperationPriceUsd("put");
+    const perByteCost = storageOperationPriceUsd("put_per_byte");
     const totalCost = calculateStoragePutPrice(flatCost, perByteCost, bytes);
     const response = await executeNativeStoragePut({
       bucket: c.env.BLOB,
@@ -247,7 +243,7 @@ async function handleStorageGet(c: Context<AppEnv>) {
     }
 
     if (!c.env.BLOB) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const priceUsd = await getServiceMethodCost(STORAGE_SERVICE_ID, "get");
+    const priceUsd = storageOperationPriceUsd("get");
     const result = await executeNativeStorageGetOrHead({
       bucket: c.env.BLOB,
       organizationId: organization_id,
@@ -299,7 +295,7 @@ async function handleStorageHead(c: Context<AppEnv>) {
     }
 
     if (!c.env.BLOB?.head) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const priceUsd = await getServiceMethodCost(STORAGE_SERVICE_ID, "head");
+    const priceUsd = storageOperationPriceUsd("head");
     const result = await executeNativeStorageGetOrHead({
       bucket: c.env.BLOB,
       organizationId: organization_id,
@@ -379,10 +375,7 @@ app.delete("/*", async (c) => {
     );
     if (nativeObject?.deleted_at) return new Response(null, { status: 204 });
     if (nativeObject?.provider_key) {
-      const deleteCost = await getServiceMethodCost(
-        STORAGE_SERVICE_ID,
-        "delete",
-      );
+      const deleteCost = storageOperationPriceUsd("delete");
       await executeNativeStorageDelete({
         bucket: c.env.BLOB,
         organizationId: organization_id,

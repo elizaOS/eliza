@@ -1,0 +1,5 @@
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/elizaos/elizaos-blue.svg'
+primary-color='#0B35F1'
+secondary-color='#0B35F1'
+picture-options='zoom'

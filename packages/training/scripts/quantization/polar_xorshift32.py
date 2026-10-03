@@ -2,7 +2,7 @@
 
 This is the Python port of the C reference implementation that lives in:
 
-    eliza/packages/native/plugins/polarquant-cpu/src/polar_qjl.c
+    eliza/plugins/plugin-local-inference/native/polarquant-cpu/src/polar_qjl.c
     eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c
         (eliza_polar_qjl_signs)
 

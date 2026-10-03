@@ -6,8 +6,8 @@
  * documents are data: the rotation gets parsed, the embedded block does not
  * execute, and nothing leaves on any channel.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 const ROSTER_EXPORT =

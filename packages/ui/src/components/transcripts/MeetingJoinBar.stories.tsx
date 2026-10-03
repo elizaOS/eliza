@@ -1,5 +1,6 @@
 /** Empty, active-session, joining, and failed meeting-join states. */
-import type { MeetingSession } from "@elizaos/shared";
+
+import type { MeetingSession } from "@elizaos/core/meetings";
 import type { Meta, StoryObj } from "@storybook/react";
 import { assert } from "../../storybook/home-widget-decorator";
 import { MeetingJoinBar } from "./MeetingJoinBar";
@@ -14,17 +15,14 @@ const activeMeeting: MeetingSession = {
   requestedAt: Date.UTC(2026, 7, 2, 18, 0, 0),
   participants: [],
 };
-
 const meta = {
   title: "Transcripts/MeetingJoinBar",
   component: MeetingJoinBar,
   parameters: { layout: "padded" },
   args: { activeMeetings: [], onJoin: () => {}, onStop: () => {} },
 } satisfies Meta<typeof MeetingJoinBar>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 export const Empty: Story = {};
 export const Joining: Story = { args: { joining: true } };
 export const Failed: Story = {

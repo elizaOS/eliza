@@ -1,3 +1,4 @@
+/** Defines complete SMS records and caller-controlled native message queries. */
 export interface SendSmsOptions {
   address: string;
   body: string;
@@ -19,6 +20,7 @@ export interface SendSmsResult {
 }
 
 export interface ListMessagesOptions {
+  /** Omit to read all matching messages; otherwise a positive 32-bit integer. */
   limit?: number;
   threadId?: string;
 }

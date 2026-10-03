@@ -8,7 +8,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
 import { type ConnectRequestResult, listenForConnectRequests } from "../events";
-import { completeRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
+import {
+  clearPendingRemoteFirstRun,
+  completeRemoteAgentFirstRun,
+} from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
 import { applyLaunchConnection } from "../platform";
@@ -156,6 +159,7 @@ export function useStartupShellController(): StartupShellController {
       }
 
       try {
+        clearPendingRemoteFirstRun();
         const connection = applyLaunchConnection({
           kind: "remote",
           apiBase: payload.gatewayUrl,

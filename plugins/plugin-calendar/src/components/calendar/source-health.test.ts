@@ -3,7 +3,7 @@
  * including sparse local-source payloads produced by older runtimes.
  */
 
-import type { LifeOpsCalendarSourceHealth } from "@elizaos/shared";
+import { type LifeOpsCalendarSourceHealth } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { toCalendarSourceHealthRows } from "./source-health.js";
 

@@ -7,7 +7,7 @@ the inference manifest builder at publish time.
 
 This module owns the canonical pin between training-side recipes and the
 kernel references in ``plugins/plugin-local-inference/native/{reference,verify}``
-and ``packages/native/plugins/{qjl-cpu,polarquant-cpu}``. When a kernel
+and ``plugins/plugin-local-inference/native/{qjl-cpu,polarquant-cpu}``. When a kernel
 constant changes, the matching pinned sha256 here MUST be bumped in lockstep,
 otherwise recipe sidecar generation fails.
 
@@ -30,9 +30,9 @@ KERNEL_CODEBOOK_HASH_SOURCES = {
     "turbo4": ("plugins/plugin-local-inference/native/reference/turbo_kernels.c",),
     "turbo3_tcq": ("plugins/plugin-local-inference/native/reference/turbo_kernels.c",),
     "polar_q4": (
-        "packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h",
+        "plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polar_centroids.h",
     ),
-    "qjl1_256": ("packages/native/plugins/qjl-cpu/include/qjl/qjl.h",),
+    "qjl1_256": ("plugins/plugin-local-inference/native/qjl-cpu/include/qjl/qjl.h",),
 }
 
 

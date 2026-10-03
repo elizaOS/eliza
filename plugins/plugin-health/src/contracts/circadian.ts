@@ -25,7 +25,7 @@ import type {
   LifeOpsCircadianState,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealLabel,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 
 /**
  * The contract's view of "the current sleep window". `state` is null when

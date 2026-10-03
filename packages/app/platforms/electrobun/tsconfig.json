@@ -1,0 +1,66 @@
+{
+	"compilerOptions": {
+		"customConditions": ["eliza-source"],
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"declaration": false,
+		"outDir": "./dist",
+		"rootDir": "../../../..",
+		"types": ["bun-types"],
+		"paths": {
+			"@elizaos/plugin-assistant/*": [
+				"../../../../plugins/plugin-assistant/src/*"
+			],
+			"@elizaos/plugin-github/*": ["../../../../plugins/plugin-github/src/*"],
+			"@elizaos/app": ["../../src/index.ts"],
+			"@elizaos/app/*": ["../../src/*"],
+			"@elizaos/agent/*": ["../../../agent/src/*"],
+			"@elizaos/capacitor-bun-runtime/*": [
+				"../../../../plugins/plugin-native-bun-runtime/src/*"
+			],
+			"@elizaos/capacitor-secure-store/*": [
+				"../../../../plugins/plugin-native-secure-store/src/*"
+			],
+			"@elizaos/plugin-elizacloud/*": [
+				"../../../../plugins/plugin-elizacloud/src/*"
+			],
+			"@elizaos/cloud-sdk/*": ["../../../cloud/sdk/src/*"],
+			"@elizaos/plugin-coding-tools/*": [
+				"../../../../plugins/plugin-coding-tools/src/*"
+			],
+			"@elizaos/plugin-workflow/*": [
+				"../../../../plugins/plugin-workflow/src/*"
+			],
+			"@elizaos/plugin-wallet/ui": [
+				"../../../../plugins/plugin-wallet/src/ui/index.ts"
+			],
+			"@elizaos/plugin-wallet/*": ["../../../../plugins/plugin-wallet/src/*"],
+			"@elizaos/plugin-agent-orchestrator/ui/*": [
+				"../../../../plugins/plugin-agent-orchestrator/src/ui/*"
+			],
+			"@elizaos/auth/vault/*": ["../../../auth/src/vault/*"],
+			"@elizaos/plugin-native-inference/*": [
+				"../../../../plugins/plugin-native-inference/src/*"
+			],
+			"@elizaos/plugin-local-inference/*": [
+				"../../../../plugins/plugin-local-inference/src/*"
+			],
+			"@elizaos/capacitor-*": [
+				"../../../../plugins/plugin-native-*/src/index.ts"
+			],
+			"@elizaos/core/*": ["../../../core/src/*"]
+		}
+	},
+	"include": ["src/**/*.ts", "../../scripts/electrobun/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}

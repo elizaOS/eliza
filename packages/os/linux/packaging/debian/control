@@ -1,0 +1,22 @@
+Source: elizaos-app
+Section: misc
+Priority: optional
+Maintainer: elizaos <dev@app.elizaos.ai>
+Build-Depends: debhelper-compat (= 13), appstream, binutils, desktop-file-utils, systemd
+Standards-Version: 4.6.2
+Homepage: https://elizaos.ai/
+Vcs-Git: https://github.com/elizaOS/os.git
+Vcs-Browser: https://github.com/elizaOS/os
+Rules-Requires-Root: no
+
+Package: elizaos-app
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ca-certificates, xdg-desktop-portal
+Recommends: gnome-keyring, systemd, xdg-desktop-portal-gtk | xdg-desktop-portal-gnome
+Description: Native elizaOS desktop shell and local Eliza agent
+ This package installs the signed native GTK/WebKitGTK elizaOS shell, local
+ Eliza agent, diagnostic and owner-controlled autostart commands, and hardened
+ systemd user services. Autostart is disabled until the desktop owner opts in;
+ package scripts never assume a live user D-Bus session. Package architecture
+ is explicit because the authenticated upstream payload contains native ELF
+ executables and may include architecture-specific libraries.

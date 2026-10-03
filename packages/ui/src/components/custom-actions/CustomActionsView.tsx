@@ -6,7 +6,7 @@
  * refreshes after each mutation.
  */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/core/contracts/config";
 import { useCallback, useEffect, useId, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
@@ -29,7 +29,6 @@ const HANDLER_BADGE_CLASS: Record<string, string> = {
   shell: "border border-success/25 bg-success/10 text-success",
   code: "border border-accent/25 bg-accent/10 text-accent",
 };
-
 export function CustomActionsView() {
   const t = useAppSelector((s) => s.t);
   const importInputId = useId().replace(/:/g, "");
@@ -42,7 +41,6 @@ export function CustomActionsView() {
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-
   const loadActions = useCallback(async () => {
     try {
       setLoading(true);
@@ -58,32 +56,26 @@ export function CustomActionsView() {
       setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     loadActions();
   }, [loadActions]);
-
   const handleCreate = useCallback(() => {
     setEditingAction(null);
     setEditorOpen(true);
   }, []);
-
   const handleEdit = useCallback((action: CustomActionDef) => {
     setEditingAction(action);
     setEditorOpen(true);
   }, []);
-
   const handleEditorClose = useCallback(() => {
     setEditorOpen(false);
     setEditingAction(null);
   }, []);
-
   const handleEditorSave = useCallback(async () => {
     setEditorOpen(false);
     setEditingAction(null);
     await loadActions();
   }, [loadActions]);
-
   const handleToggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
       setActionError(null);
@@ -106,7 +98,6 @@ export function CustomActionsView() {
     },
     [t],
   );
-
   const handleDelete = useCallback(
     async (id: string, name: string) => {
       const confirmed = await confirmDesktopAction({
@@ -119,7 +110,6 @@ export function CustomActionsView() {
       if (!confirmed) {
         return;
       }
-
       setActionError(null);
       try {
         await client.deleteCustomAction(id);
@@ -136,21 +126,17 @@ export function CustomActionsView() {
     },
     [t],
   );
-
   const handleImport = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
-
       try {
         const text = await file.text();
         const imported = JSON.parse(text);
         const actionsToImport = Array.isArray(imported) ? imported : [imported];
-
         for (const action of actionsToImport) {
           await client.createCustomAction(action);
         }
-
         await loadActions();
         event.target.value = "";
       } catch {
@@ -163,7 +149,6 @@ export function CustomActionsView() {
     },
     [loadActions, t],
   );
-
   const handleExport = useCallback(() => {
     const dataStr = JSON.stringify(actions, null, 2);
     const dataBlob = new Blob([dataStr], { type: "application/json" });
@@ -176,7 +161,6 @@ export function CustomActionsView() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, [actions]);
-
   const filteredActions = actions.filter((action) => {
     const searchLower = search.toLowerCase();
     return (
@@ -184,14 +168,12 @@ export function CustomActionsView() {
       action.description?.toLowerCase().includes(searchLower)
     );
   });
-
   const actionCountLabel = t(
     actions.length === 1
       ? "customactionsview.ActionCountOne"
       : "customactionsview.ActionCountOther",
     { count: actions.length },
   );
-
   if (loading) {
     return (
       <div className={CUSTOM_ACTIONS_SHELL_CLASS}>
@@ -203,7 +185,6 @@ export function CustomActionsView() {
       </div>
     );
   }
-
   // Non-404 load failures get a retry path instead of healthy-empty UI.
   if (loadFailed) {
     return (
@@ -232,7 +213,6 @@ export function CustomActionsView() {
       </div>
     );
   }
-
   const emptyState = (
     <div
       className={`${CUSTOM_ACTIONS_PANEL_CLASS} flex flex-1 flex-col items-center justify-center px-6 py-14 text-center`}
@@ -261,7 +241,6 @@ export function CustomActionsView() {
       </div>
     </div>
   );
-
   return (
     <div
       data-testid="custom-actions-view"

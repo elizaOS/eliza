@@ -18,12 +18,6 @@ assignees: ""
 
 <!-- A clear and concise description of any alternative solutions or features you've considered. -->
 
-**Design doc / board**
-
-<!-- Link the relevant design doc under packages/docs/ongoing-development/ if
-     one exists. If this is MVP work, add the issue to the LifeOps Personal
-     Assistant MVP board: https://github.com/orgs/elizaOS/projects/15 -->
-
 **Additional context**
 
 <!-- Add any other context or current-state screenshots (JPG) about the feature request here. -->

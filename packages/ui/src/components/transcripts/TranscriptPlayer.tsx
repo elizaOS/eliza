@@ -6,7 +6,7 @@
  * seeks). The waveform is a separate progressive enhancement.
  */
 
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/core/transcripts";
 import { Pause, Play } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";
@@ -14,7 +14,6 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { TranscriptBody } from "./TranscriptBody";
 import { useAudioElement } from "./useAudioElement";
-
 export interface TranscriptPlayerProps {
   transcript: Transcript;
   /** Served audio URL; when absent the player is read-only (no transport). */
@@ -23,7 +22,6 @@ export interface TranscriptPlayerProps {
   initialSeekMs?: number;
   className?: string;
 }
-
 /** `m:ss` from milliseconds. */
 function formatMs(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -31,7 +29,6 @@ function formatMs(ms: number): string {
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
-
 export function TranscriptPlayer({
   transcript,
   audioUrl,
@@ -40,12 +37,10 @@ export function TranscriptPlayer({
 }: TranscriptPlayerProps): React.JSX.Element {
   const audio = useAudioElement();
   const durationMs = audio.durationMs || transcript.durationMs;
-
   React.useEffect(() => {
     if (!audioUrl || initialSeekMs === undefined) return;
     audio.seekMs(initialSeekMs);
   }, [audio.seekMs, audioUrl, initialSeekMs]);
-
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       {audioUrl ? (

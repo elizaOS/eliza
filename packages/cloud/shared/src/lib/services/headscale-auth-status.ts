@@ -2,7 +2,7 @@
  * Headscale mesh-join auth status classification.
  *
  * Shared source of truth between the container entrypoint
- * (packages/app-core/scripts/docker-entrypoint.sh) and the control plane. When
+ * (packages/app/scripts/docker-entrypoint.sh) and the control plane. When
  * a container cannot join the mesh because its baked pre-auth key has expired /
  * been consumed AND it could not reconnect on a persisted node identity, the
  * entrypoint:

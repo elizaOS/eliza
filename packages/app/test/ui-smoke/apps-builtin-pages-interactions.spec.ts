@@ -1,9 +1,8 @@
-// Real interaction coverage for the built-in app page-views that all-pages-
-// clicksafe only render-smokes (runtime, plugins, database, skills, trajectories,
-// relationships, stream, and rolodex). Each test proves the page is
-// wired to a real endpoint (fires its data query on load) AND that a primary
-// control does something — not just that the page renders. Sibling of
-// apps-diagnostics-interactions.spec.ts; runs keyless against the stub.
+/**
+ * Exercises built-in views through the real renderer and deterministic API stub,
+ * checking data requests and user interactions. Runtime layout uses real browser
+ * geometry and scrolling rather than stylesheet source assertions.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -25,7 +24,7 @@ function countRequests(page: Page, pattern: RegExp): () => number {
   return () => n;
 }
 
-test("runtime view loads a snapshot and re-queries it on a poll", async ({
+test("runtime view polls its snapshot and keeps long registration rows scrollable", async ({
   page,
 }) => {
   // The minimal redesign dropped the manual Refresh button: the snapshot stays
@@ -37,6 +36,27 @@ test("runtime view loads a snapshot and re-queries it on a poll", async ({
     timeout: 60_000,
   });
   await expect.poll(runtimeReqs).toBeGreaterThan(0);
+
+  for (const width of [390, 820]) {
+    await page.setViewportSize({ width, height: 900 });
+    const row = page.getByText(/^\[0\] open_browser_workspace/).first();
+    await expect(row).toBeVisible();
+    const geometry = await row.evaluate((element) => {
+      const scroller = element.parentElement;
+      if (!scroller)
+        throw new Error("Registration row has no scroll container");
+      scroller.scrollLeft = scroller.scrollWidth;
+      return {
+        scrollLeft: scroller.scrollLeft,
+        rowHeight: element.getBoundingClientRect().height,
+        lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    expect(geometry.scrollLeft).toBeGreaterThan(0);
+    expect(geometry.rowHeight).toBeLessThanOrEqual(geometry.lineHeight + 1);
+    expect(geometry.pageOverflow).toBeLessThanOrEqual(2);
+  }
 
   const before = runtimeReqs();
   await expect.poll(runtimeReqs, { timeout: 30_000 }).toBeGreaterThan(before);
@@ -116,6 +136,55 @@ test("skills view shows empty state and New Skill opens the create form", async 
   ).toBeVisible({ timeout: 10_000 });
 });
 
+test("learning a skill opens an editable conversation draft", async ({
+  page,
+}) => {
+  let sentMessages = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      /\/api\/(?:chat|conversations\/[^/]+\/messages)(?:\/stream)?(?:\?|$)/.test(
+        request.url(),
+      )
+    )
+      sentMessages += 1;
+  });
+  await openAppPath(page, "/character/skills");
+  const learn = page.getByRole("button", {
+    name: "Learn a skill",
+    exact: true,
+  });
+  await expect(learn).toBeVisible({ timeout: 60_000 });
+  const before = sentMessages;
+  await learn.click();
+  const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toBeVisible();
+  await expect(composer).toHaveValue(/Help me learn a new skill/);
+  await composer.fill("Help me practice Spanish conversation.");
+  await expect(composer).toHaveValue("Help me practice Spanish conversation.");
+  expect(sentMessages).toBe(before);
+  // The stub keeps one message list per conversation for the whole run, so
+  // fixture replies from earlier specs in this worker are already in the
+  // thread; assert the send added exactly one, not that it is the only one.
+  const thread = page.getByTestId("chat-thread");
+  const fixtureReplies = thread.getByText(/"fixture":"ui-smoke-assistant-v1"/);
+  const repliesBefore = await fixtureReplies.count();
+  const submitted = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      /\/api\/(?:chat|conversations\/[^/]+\/messages)(?:\/stream)?(?:\?|$)/.test(
+        request.url(),
+      ),
+  );
+  await page.getByRole("button", { name: "send", exact: true }).click();
+  expect((await submitted).postDataJSON()).toMatchObject({
+    text: "Help me practice Spanish conversation.",
+  });
+  await expect(thread).toBeVisible();
+  await expect(fixtureReplies).toHaveCount(repliesBefore + 1);
+  expect(sentMessages).toBe(before + 1);
+});
+
 test("trajectories view loads and search re-queries", async ({ page }) => {
   const trajReqs = countRequests(page, /\/api\/trajectories(?:\?|$|\/)/);
   await openAppPath(page, "/apps/trajectories");
@@ -156,10 +225,17 @@ test("stream view renders the offline status surface", async ({ page }) => {
   });
 });
 
-test("rolodex renders its designed unavailable boundary", async ({ page }) => {
+test("legacy rolodex URL opens the working relationship graph", async ({
+  page,
+}) => {
+  const graphRequests = countRequests(
+    page,
+    /\/api\/lifeops\/(entities|relationships)(?:\?|$)/,
+  );
   await openAppPath(page, "/rolodex");
-  await expect(
-    page.locator('[data-view-status="unavailable"][data-view-id="rolodex"]'),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(page.getByTestId("relationships-view")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page).toHaveURL(/\/apps\/relationships$/);
+  await expect.poll(graphRequests).toBeGreaterThan(0);
 });

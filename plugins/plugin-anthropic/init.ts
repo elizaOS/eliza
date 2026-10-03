@@ -5,7 +5,7 @@
  * once when `anthropicPlugin` is loaded; performs no network calls.
  */
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import { getApiKeyOptional, getAuthMode, isBrowser } from "./utils/config";
+import { getApiKeyOptional, getAuthMode } from "./utils/config";
 import { getClaudeOAuthMeta, getClaudeOAuthToken } from "./utils/credential-store";
 
 export interface PluginConfig {
@@ -14,7 +14,6 @@ export interface PluginConfig {
   readonly ANTHROPIC_LARGE_MODEL?: string;
   readonly ANTHROPIC_EXPERIMENTAL_TELEMETRY?: string;
   readonly ANTHROPIC_BASE_URL?: string;
-  readonly ANTHROPIC_BROWSER_BASE_URL?: string;
   readonly ANTHROPIC_COT_BUDGET?: string;
   readonly ANTHROPIC_COT_BUDGET_SMALL?: string;
   readonly ANTHROPIC_COT_BUDGET_LARGE?: string;
@@ -91,7 +90,7 @@ export function initializeAnthropic(_config: PluginConfig, runtime: IAgentRuntim
 
     const apiKey = getApiKeyOptional(runtime);
 
-    if (!apiKey && !isBrowser()) {
+    if (!apiKey) {
       logger.warn(
         "ANTHROPIC_API_KEY is not set in environment - Anthropic functionality will be limited. " +
           "Set ANTHROPIC_API_KEY in your environment variables or runtime settings."

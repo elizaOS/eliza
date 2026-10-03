@@ -2,11 +2,11 @@
  *
  * Reference C declarations for QJL and PolarQuant fixture generation.
  * Mirror the bit-exact CPU references that live under
- *   packages/native-plugins/qjl-cpu/src/qjl_score_ref.c
- *   packages/native-plugins/polarquant-cpu/src/polar_dequantize_ref.c
- *   packages/native-plugins/polarquant-cpu/src/polar_dot_ref.c
- *   packages/native-plugins/polarquant-cpu/src/polar_qjl.c
- *   packages/native-plugins/polarquant-cpu/src/polar_hadamard.c
+ *   plugins/plugin-local-inference/native/qjl-cpu/src/qjl_score_ref.c
+ *   plugins/plugin-local-inference/native/polarquant-cpu/src/polar_dequantize_ref.c
+ *   plugins/plugin-local-inference/native/polarquant-cpu/src/polar_dot_ref.c
+ *   plugins/plugin-local-inference/native/polarquant-cpu/src/polar_qjl.c
+ *   plugins/plugin-local-inference/native/polarquant-cpu/src/polar_hadamard.c
  * Re-implemented here so the verify/ harness has zero deps on those plugin
  * checkouts (which live in a separate package and are owned by W1-A / W1-B).
  *

@@ -19,7 +19,7 @@
  *     The real-model trajectory is written to `<run>/<viewport>/trajectory/`.
  *
  * Artifacts land under `reports/walkthrough/<runId>/` (gitignored); the
- * committed verdict markdown is produced by `scripts/ai-qa/review-walkthrough.mjs`.
+ * committed verdict markdown is produced by `packages/scripts/ai-qa/review-walkthrough.ts`.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -119,6 +119,10 @@ async function runJourneyAtViewport(
     viewport: profile.size,
     isMobile: profile.isMobile,
     hasTouch: profile.hasTouch,
+    recordVideo:
+      process.env.E2E_RECORD === "1"
+        ? { dir: join(RUN_DIR, profile.id, "video"), size: profile.size }
+        : undefined,
   });
   const page = await context.newPage();
   const recorder = new WalkthroughRecorder(

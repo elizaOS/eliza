@@ -112,6 +112,8 @@ export interface SubscriptionResourceCeilingsDto {
   containers: number;
   storageGiB: number;
   apps: number;
+  /** Active user-created API keys; keys themselves are free. */
+  apiKeys: number;
 }
 
 export interface SubscriptionAllowanceDto {
@@ -133,7 +135,8 @@ export interface SubscriptionPlanDto {
   allowance: SubscriptionAllowanceDto;
   fundingClasses: readonly SubscriptionFundingClass[];
   rateLimits: SubscriptionRateEnvelopeDto;
-  resourceCeilings: null;
+  /** Enforced resource ceilings; paid plans are never below the Free ceilings. */
+  resourceCeilings: SubscriptionResourceCeilingsDto;
 }
 
 export interface SubscriptionPlansDto {
@@ -144,28 +147,33 @@ export interface SubscriptionPlansDto {
 export type SubscriptionPlansResponse =
   ApiSuccessEnvelope<SubscriptionPlansDto>;
 
-export type SubscriptionPublicState =
-  | "active"
-  | "grace"
-  | "past_due"
-  | "unpaid"
-  | "canceled";
-
-export interface SubscriptionDto {
-  catalogVersion: SubscriptionCatalogVersion;
+export interface SubscriptionCheckoutRequest {
   planKey: SubscriptionPlanKey;
-  state: SubscriptionPublicState;
-  currentPeriodStartsAt: IsoDateString;
-  currentPeriodEndsAt: IsoDateString;
-  cancelAtPeriodEnd: boolean;
-  pendingPlanKey: SubscriptionPlanKey | null;
-  allowanceGrantedUsd: string;
-  allowanceRemainingUsd: string;
-  allowanceExpiresAt: IsoDateString;
-  rateLimits: SubscriptionRateEnvelopeDto;
-  /** Unavailable (`null`) until the resource-enforcement policy is ratified. */
-  resourceCeilings: SubscriptionResourceCeilingsDto | null;
+  /** Client-minted UUID; reuse it only to retry the same purchase intent. */
+  idempotencyKey: string;
 }
+
+/**
+ * `open`: redirect to `checkoutUrl` (https://checkout.stripe.com only).
+ * `completed`: the payment is captured and its subscription is still live.
+ * `expired`: the checkout expired or was replaced; mint a new idempotency key.
+ * `stale_intent`: the key already bought a subscription that has ended; mint a new key.
+ */
+export type SubscriptionCheckoutResult =
+  | { status: "open"; commandId: string; checkoutUrl: string }
+  | {
+      status: "completed" | "expired" | "stale_intent";
+      commandId: string;
+      checkoutUrl: null;
+    };
+export type SubscriptionCheckoutResponse =
+  ApiSuccessEnvelope<SubscriptionCheckoutResult>;
+/** A single-use Stripe Customer Portal URL (https://billing.stripe.com only). */
+export type SubscriptionPortalResponse = ApiSuccessEnvelope<{ url: string }>;
+export type SubscriptionCheckoutConfirmationResponse = ApiSuccessEnvelope<{
+  subscriptionId: string | null;
+  replayed: boolean;
+}>;
 
 export type AgentSandboxStatus =
   | "pending"

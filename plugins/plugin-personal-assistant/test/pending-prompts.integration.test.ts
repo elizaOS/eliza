@@ -6,8 +6,8 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { createPendingPromptsStore } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
-import { createPendingPromptsStore } from "../src/lifeops/pending-prompts/store.ts";
 import {
   createPendingPromptsProvider,
   pendingPromptsProvider,

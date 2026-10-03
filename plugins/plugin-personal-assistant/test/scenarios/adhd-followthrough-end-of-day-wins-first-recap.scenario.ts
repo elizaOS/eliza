@@ -14,7 +14,7 @@
  * and consent-before-create — a discourse/tone judgment the deterministic proxy
  * cannot make. Live-verify deferred to the key boundary (#12781).
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

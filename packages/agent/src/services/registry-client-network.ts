@@ -11,9 +11,12 @@
  * plugins into the result.
  */
 
-import { decodeRuntimeRegistry } from "@elizaos/registry";
-import { isCloudReachable } from "@elizaos/shared";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import {
+  createIntegrationTelemetrySpan,
+  decodeRuntimeRegistry,
+} from "@elizaos/core";
+
+import { isCloudReachable } from "@elizaos/plugin-elizacloud/cloud-config/is-cloud-reachable";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const REGISTRY_FETCH_TIMEOUT_MS = 2_500;
@@ -45,8 +48,8 @@ export function isExpectedRegistryNetworkFallback(
   );
 }
 
-function isExpectedRegistryNotFound(resp: Response): boolean {
-  return resp.status === 404;
+function isExpectedRegistryUnavailable(resp: Response): boolean {
+  return resp.status === 404 || resp.status === 410;
 }
 
 function createRegistryFetchInit(): RequestInit {
@@ -141,7 +144,7 @@ async function fetchGeneratedRegistry(
       generatedSpan.success({ statusCode: resp.status });
       return plugins;
     }
-    if (!isExpectedRegistryNotFound(resp)) {
+    if (!isExpectedRegistryUnavailable(resp)) {
       generatedSpan.failure({
         statusCode: resp.status,
         errorKind: "http_error",
@@ -179,7 +182,7 @@ async function fetchIndexRegistry(
     throw err;
   }
   if (!resp.ok) {
-    if (!isExpectedRegistryNotFound(resp)) {
+    if (!isExpectedRegistryUnavailable(resp)) {
       indexSpan.failure({ statusCode: resp.status, errorKind: "http_error" });
     }
     throw new RegistryNetworkFallbackError(

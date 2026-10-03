@@ -37,7 +37,7 @@
 import { writeFileSync } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import type {
 	AudioFrameEvent,
 	EchoReferenceProvider,

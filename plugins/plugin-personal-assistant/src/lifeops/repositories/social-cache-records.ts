@@ -1,10 +1,10 @@
 /** Defines and parses social cache records for the LifeOps persistence boundary, preserving public factory and row contracts. */
-import type {
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-  LifeOpsXSyncState,
-} from "@elizaos/shared";
+import {
+  type LifeOpsXDm,
+  type LifeOpsXFeedItem,
+  type LifeOpsXFeedType,
+  type LifeOpsXSyncState,
+} from "@elizaos/core/contracts/personal-assistant";
 import { parseJsonRecord, toBoolean, toText } from "../sql.js";
 
 export function parseXDm(row: Record<string, unknown>): LifeOpsXDm {

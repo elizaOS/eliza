@@ -1,0 +1,36 @@
+Subject: [PATCH] riscv64 Rust-core bun: hardcode bun_alloc MAX_ALIGN_T for riscv64
+
+src/bun_alloc/lib.rs computes `MAX_ALIGN_T` from `libc::max_align_t` for all
+non-Windows / non-(freebsd-aarch64) targets. The `libc` crate does not define
+`max_align_t` for `riscv64gc-unknown-linux-musl`, so the cargo build failed:
+
+    error[E0425]: cannot find type `max_align_t` in crate `libc`
+      --> src/bun_alloc/lib.rs:69
+
+The file already hardcodes the ABI value for the targets `libc` misses (Windows,
+freebsd-aarch64). Add a riscv64 arm: on RISC-V LP64D `long double` is IEEE
+binary128 (16-byte aligned), so `max_align_t` is 16 — same as aarch64 — and add
+riscv64 to the `not(any(...))` exclusion so it no longer takes the `libc` branch.
+
+diff --git a/src/bun_alloc/lib.rs b/src/bun_alloc/lib.rs
+index a19e3feb..73f8b6a0 100644
+--- a/src/bun_alloc/lib.rs
++++ b/src/bun_alloc/lib.rs
+@@ -65,7 +65,16 @@ pub const MAX_ALIGN_T: usize = core::mem::align_of::<MaxAlignT>();
+ // for the aarch64 port.
+ #[cfg(all(target_os = "freebsd", target_arch = "aarch64"))]
+ pub const MAX_ALIGN_T: usize = 16;
+-#[cfg(not(any(windows, all(target_os = "freebsd", target_arch = "aarch64"))))]
++// riscv64 LP64D: `long double` is IEEE binary128 (16-byte aligned), so
++// max_align_t = 16 — same as aarch64. The `libc` crate does not define
++// `max_align_t` for riscv64gc-unknown-linux-musl, so hardcode the ABI value.
++#[cfg(target_arch = "riscv64")]
++pub const MAX_ALIGN_T: usize = 16;
++#[cfg(not(any(
++    windows,
++    all(target_os = "freebsd", target_arch = "aarch64"),
++    target_arch = "riscv64"
++)))]
+ pub const MAX_ALIGN_T: usize = core::mem::align_of::<libc::max_align_t>();
+
+ pub struct AllocatorVTable {

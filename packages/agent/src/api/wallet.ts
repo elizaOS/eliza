@@ -7,26 +7,38 @@
  * DEX price oracle logic lives in ./wallet-dex-prices.ts.
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type {
-  KeyValidationResult,
-  SolanaTokenBalance,
-  WalletAddresses,
-  WalletChain,
-  WalletGenerateResult,
-  WalletImportResult,
-  WalletKeys,
-} from "@elizaos/shared";
-import { resolveDevCloudStewardOperationalTuple } from "@elizaos/shared";
-import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { keccak_256 } from "@noble/hashes/sha3.js";
-import { resolveStewardCredentialsPath } from "../config/paths.ts";
 import {
-  assertSolanaBase58CharBudget,
-  assertSolanaSecretCharBudget,
-} from "./solana-secret-budget.ts";
+  decodeSolanaBase58,
+  decodeSolanaPrivateKey,
+  deriveEvmAddress,
+  deriveSolanaAddress,
+  isWalletKeyPlaceholder,
+  setSolanaWalletEnv,
+} from "./wallet-keygen.ts";
+
+export {
+  deriveEvmAddress,
+  deriveSolanaAddress,
+  generateWalletForChain,
+  generateWalletKeys,
+  setSolanaWalletEnv,
+  syncSolanaPublicKeyEnv,
+} from "./wallet-keygen.ts";
+
+import {
+  type KeyValidationResult,
+  logger,
+  type SolanaTokenBalance,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  type WalletAddresses,
+  type WalletChain,
+  type WalletImportResult,
+} from "@elizaos/core";
+
+import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { resolveStewardCredentialsPath } from "../config/paths.ts";
 import { computeValueUsd } from "./wallet-dex-prices.ts";
 
 type StewardAgentPayload = {
@@ -68,7 +80,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 
@@ -263,7 +275,7 @@ function readValidatedSolanaAddress(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
   try {
-    const decoded = base58Decode(trimmed);
+    const decoded = decodeSolanaBase58(trimmed);
     return decoded.length === 32 ? trimmed : null;
   } catch {
     return null;
@@ -346,7 +358,7 @@ function warnInvalidKeyOnce(
 
 function deriveLocalEvmAddress(): string | null {
   const evmKey = process.env.EVM_PRIVATE_KEY?.trim();
-  if (!evmKey || PLACEHOLDER_RE.test(evmKey)) return null;
+  if (!evmKey || isWalletKeyPlaceholder(evmKey)) return null;
   const validated = validateEvmPrivateKey(evmKey);
   if (!validated.valid) {
     warnInvalidKeyOnce("EVM_PRIVATE_KEY", evmKey, validated.error);
@@ -357,7 +369,7 @@ function deriveLocalEvmAddress(): string | null {
 
 function deriveLocalSolanaAddress(): string | null {
   const solKey = process.env.SOLANA_PRIVATE_KEY?.trim();
-  if (!solKey || PLACEHOLDER_RE.test(solKey)) return null;
+  if (!solKey || isWalletKeyPlaceholder(solKey)) return null;
   const validated = validateSolanaPrivateKey(solKey);
   if (!validated.valid) {
     warnInvalidKeyOnce("SOLANA_PRIVATE_KEY", solKey, validated.error);
@@ -458,141 +470,6 @@ function resolveSolanaAddressForConfiguredSource(
   return null;
 }
 
-// ── EVM key derivation (secp256k1 via @noble/curves + keccak-256) ─────
-
-function generateEvmPrivateKey(): string {
-  return `0x${crypto.randomBytes(32).toString("hex")}`;
-}
-
-export function deriveEvmAddress(privateKeyHex: string): string {
-  const cleaned = privateKeyHex.startsWith("0x")
-    ? privateKeyHex.slice(2)
-    : privateKeyHex;
-  // Use @noble/curves — works in Node, Bun, and browsers.
-  // (Node's crypto.createECDH("secp256k1") fails in Bun due to BoringSSL.)
-  const pubKey = secp256k1.getPublicKey(Buffer.from(cleaned, "hex"), false); // uncompressed (65 bytes)
-  const pubNoPrefix = pubKey.subarray(1); // drop the 04 prefix
-  // Ethereum address = last 20 bytes of keccak-256(pubkey).
-  const hash = Buffer.from(keccak_256(pubNoPrefix)).toString("hex");
-  const raw = hash.slice(-40);
-  return toChecksumEvmAddress(raw);
-}
-
-function toChecksumEvmAddress(addressHex: string): string {
-  const lower = addressHex.toLowerCase().replace(/^0x/, "");
-  const hash = Buffer.from(keccak_256(Buffer.from(lower, "ascii"))).toString(
-    "hex",
-  );
-  let out = "0x";
-  for (let i = 0; i < lower.length; i += 1) {
-    const char = lower[i];
-    out += Number.parseInt(hash[i], 16) >= 8 ? char.toUpperCase() : char;
-  }
-  return out;
-}
-
-// ── Solana key derivation (Ed25519 via Node crypto) ───────────────────
-
-function generateSolanaKeypair(): { privateKey: string; publicKey: string } {
-  const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
-  const privBytes = privateKey.export({ type: "pkcs8", format: "der" });
-  const pubBytes = publicKey.export({ type: "spki", format: "der" });
-  // Ed25519 PKCS8 DER: raw 32-byte seed at offset 16; SPKI DER: raw 32-byte pubkey at offset 12
-  const seed = (privBytes as Buffer).subarray(16, 48);
-  const pubRaw = (pubBytes as Buffer).subarray(12, 44);
-  // Solana secret key = seed(32) + pubkey(32)
-  return {
-    privateKey: base58Encode(Buffer.concat([seed, pubRaw])),
-    publicKey: base58Encode(pubRaw),
-  };
-}
-
-export function deriveSolanaAddress(privateKeyString: string): string {
-  const secretBytes = decodeSolanaPrivateKey(privateKeyString);
-  if (secretBytes.length === 64) return base58Encode(secretBytes.subarray(32));
-  if (secretBytes.length === 32) {
-    // Derive pubkey from 32-byte seed
-    const keyObj = crypto.createPrivateKey({
-      key: Buffer.concat([
-        Buffer.from("302e020100300506032b657004220420", "hex"),
-        secretBytes,
-      ]),
-      format: "der",
-      type: "pkcs8",
-    });
-    const pubDer = crypto
-      .createPublicKey(keyObj)
-      .export({ type: "spki", format: "der" }) as Buffer;
-    return base58Encode(pubDer.subarray(12, 44));
-  }
-  throw new Error(`Invalid Solana secret key length: ${secretBytes.length}`);
-}
-
-// ── Base58 (Bitcoin alphabet) ─────────────────────────────────────────
-
-const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-function base58Encode(data: Buffer | Uint8Array): string {
-  let num = BigInt(`0x${Buffer.from(data).toString("hex")}`);
-  const chars: string[] = [];
-  while (num > 0n) {
-    chars.unshift(B58[Number(num % 58n)]);
-    num /= 58n;
-  }
-  for (const byte of data) {
-    if (byte === 0) chars.unshift("1");
-    else break;
-  }
-  return chars.join("") || "1";
-}
-
-function base58Decode(str: string): Buffer {
-  assertSolanaBase58CharBudget(str);
-  if (str.length === 0) return Buffer.alloc(0);
-  let num = 0n;
-  for (const c of str) {
-    const i = B58.indexOf(c);
-    if (i === -1) throw new Error(`Invalid base58: ${c}`);
-    num = num * 58n + BigInt(i);
-  }
-  const hex = num.toString(16).padStart(2, "0");
-  const bytes = Buffer.from(hex.length % 2 ? `0${hex}` : hex, "hex");
-  let zeros = 0;
-  for (const c of str) {
-    if (c === "1") zeros++;
-    else break;
-  }
-  return zeros > 0 ? Buffer.concat([Buffer.alloc(zeros), bytes]) : bytes;
-}
-
-/** Sentinel values that appear as env placeholders – skip without error. */
-const PLACEHOLDER_RE =
-  /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
-
-function decodeSolanaPrivateKey(key: string): Buffer {
-  assertSolanaSecretCharBudget(key);
-  if (PLACEHOLDER_RE.test(key)) {
-    throw new Error("placeholder value");
-  }
-  // Only attempt JSON array parse when the content looks like a numeric array
-  // e.g. [1,2,3,...] — not [REDACTED] or other bracket-wrapped strings
-  if (key.startsWith("[") && key.endsWith("]") && /^\[\s*\d/.test(key)) {
-    try {
-      const parsed = JSON.parse(key) as unknown;
-      if (
-        !Array.isArray(parsed) ||
-        !parsed.every((v) => typeof v === "number")
-      ) {
-        throw new Error("not a numeric array");
-      }
-      return Buffer.from(parsed);
-    } catch {
-      throw new Error("Invalid JSON byte-array format");
-    }
-  }
-  return base58Decode(key);
-}
-
 // ── Key validation ────────────────────────────────────────────────────
 
 const HEX_RE = /^[0-9a-fA-F]+$/;
@@ -672,48 +549,6 @@ export function validatePrivateKey(key: string): KeyValidationResult {
 export function maskSecret(value: string): string {
   if (!value || value.length <= 8) return "****";
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
-}
-
-// ── Key generation ────────────────────────────────────────────────────
-
-export function generateWalletKeys(): WalletKeys {
-  const evmPrivateKey = generateEvmPrivateKey();
-  const solana = generateSolanaKeypair();
-  return {
-    evmPrivateKey,
-    evmAddress: deriveEvmAddress(evmPrivateKey),
-    solanaPrivateKey: solana.privateKey,
-    solanaAddress: solana.publicKey,
-  };
-}
-
-export function generateWalletForChain(
-  chain: WalletChain,
-): WalletGenerateResult {
-  if (chain === "evm") {
-    const pk = generateEvmPrivateKey();
-    return { chain, address: deriveEvmAddress(pk), privateKey: pk };
-  }
-  const sol = generateSolanaKeypair();
-  return {
-    chain: "solana",
-    address: sol.publicKey,
-    privateKey: sol.privateKey,
-  };
-}
-
-// `syncSolanaPublicKeyEnv` lives in wallet-env-sync.ts to avoid a circular
-// dependency with config/config.ts. Imported here for internal use
-// (setSolanaWalletEnv below) and re-exported so consumers of this module
-// (e.g. runtime/eliza.ts) can reach it through wallet.ts.
-import { syncSolanaPublicKeyEnv } from "./wallet-env-sync.ts";
-
-export { syncSolanaPublicKeyEnv } from "./wallet-env-sync.ts";
-
-export function setSolanaWalletEnv(privateKey: string): string | null {
-  const trimmed = privateKey.trim();
-  process.env.SOLANA_PRIVATE_KEY = trimmed;
-  return syncSolanaPublicKeyEnv(trimmed);
 }
 
 /** Validate key, store in process.env. Caller persists to config if needed. */

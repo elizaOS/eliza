@@ -1,10 +1,42 @@
 /**
  * Timezone-aware date primitives for the calendar domain: zoned date-part
  * extraction, offset lookup, and local-date arithmetic built on cached
- * `Intl.DateTimeFormat` instances. Local-to-instant conversion follows
- * Temporal-compatible disambiguation so repeated and skipped wall times remain
- * deterministic across DST and date-line transitions.
+ * `Intl.DateTimeFormat` instances. Compatible local-to-instant disambiguation
+ * supports calendar arithmetic; mutation callers can
+ * reject repeated and skipped wall times until the user resolves them.
  */
+import { ElizaError } from "@elizaos/core";
+
+export class CalendarLocalTimeError extends ElizaError {
+  readonly status = 409;
+
+  constructor(
+    timeZone: string,
+    parts: ZonedDateParts,
+    candidates: readonly Date[],
+  ) {
+    const repeated = candidates.length > 1;
+    super(
+      repeated
+        ? `This local time occurs twice in ${timeZone}. Choose the earlier or later occurrence before changing the calendar.`
+        : `This local time does not exist in ${timeZone}. Choose a different local time before changing the calendar.`,
+      {
+        code: repeated
+          ? "CALENDAR_LOCAL_TIME_AMBIGUOUS"
+          : "CALENDAR_LOCAL_TIME_NONEXISTENT",
+        severity: "ephemeral",
+        context: {
+          timeZone,
+          localTime: parts,
+          possibleInstants: candidates.map((candidate) =>
+            candidate.toISOString(),
+          ),
+        },
+      },
+    );
+  }
+}
+
 export interface ZonedDateParts {
   year: number;
   month: number;
@@ -112,6 +144,7 @@ function sameZonedParts(left: ZonedDateParts, right: ZonedDateParts): boolean {
 export function buildUtcDateFromLocalParts(
   timeZone: string,
   parts: ZonedDateParts,
+  disambiguation: "compatible" | "reject" = "compatible",
 ): Date {
   const baseUtcMs = localPartsToEpochMs(parts);
   if (!Number.isFinite(baseUtcMs)) {
@@ -136,6 +169,9 @@ export function buildUtcDateFromLocalParts(
       }
     })
     .sort((left, right) => left.getTime() - right.getTime());
+  if (disambiguation === "reject" && exact.length !== 1) {
+    throw new CalendarLocalTimeError(timeZone, parts, exact);
+  }
   if (exact[0]) {
     // "Compatible" selects the earlier instant when a fall-back repeats time.
     return exact[0];

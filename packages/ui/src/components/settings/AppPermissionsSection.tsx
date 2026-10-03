@@ -12,7 +12,7 @@ import {
   parseAppPermissions,
   RECOGNISED_PERMISSION_NAMESPACES,
   type RecognisedPermissionNamespace,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/app-permissions";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
@@ -25,22 +25,26 @@ const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
   fs: "Filesystem",
   net: "Network",
 };
-
 type AsyncStatus =
-  | { state: "idle" }
-  | { state: "loading"; message?: string }
-  | { state: "error"; message: string };
-
+  | {
+      state: "idle";
+    }
+  | {
+      state: "loading";
+      message?: string;
+    }
+  | {
+      state: "error";
+      message: string;
+    };
 interface RowState {
   view: AppPermissionsView;
   pending: boolean;
   error: string | null;
 }
-
 function buildRowState(view: AppPermissionsView): RowState {
   return { view, pending: false, error: null };
 }
-
 function summariseRequested(
   view: AppPermissionsView,
   ns: RecognisedPermissionNamespace,
@@ -67,7 +71,6 @@ function summariseRequested(
   }
   return null;
 }
-
 export function AppPermissionsSection() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [rows, setRows] = useState<RowState[]>([]);
@@ -76,18 +79,15 @@ export function AppPermissionsSection() {
   });
   const mountedRef = useRef(true);
   const rowsRef = useRef<RowState[]>([]);
-
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
   }, []);
-
   const refresh = useCallback(async () => {
     setListStatus({ state: "loading" });
     try {
@@ -105,11 +105,9 @@ export function AppPermissionsSection() {
       });
     }
   }, []);
-
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
   const onToggle = useCallback(
     async (slug: string, ns: RecognisedPermissionNamespace, next: boolean) => {
       const targetRow = rowsRef.current.find((row) => row.view.slug === slug);
@@ -122,7 +120,6 @@ export function AppPermissionsSection() {
         : previousGranted.filter(
             (existing: RecognisedPermissionNamespace) => existing !== ns,
           );
-
       // Optimistic flip; reverted on error below.
       setRows((prev) =>
         prev.map((row) =>
@@ -168,17 +165,14 @@ export function AppPermissionsSection() {
     },
     [setActionNotice],
   );
-
   const grantableRows = useMemo(
     () => rows.filter((row) => row.view.recognisedNamespaces.length > 0),
     [rows],
   );
-
   const noManifestRows = useMemo(
     () => rows.filter((row) => row.view.recognisedNamespaces.length === 0),
     [rows],
   );
-
   const refreshButton = (
     <SettingsActionButton
       agentId="appperm-refresh"
@@ -200,7 +194,6 @@ export function AppPermissionsSection() {
       Refresh
     </SettingsActionButton>
   );
-
   const noManifestDetails =
     noManifestRows.length > 0 ? (
       <details className="mt-4 text-left text-xs text-muted">
@@ -218,7 +211,6 @@ export function AppPermissionsSection() {
         </ul>
       </details>
     ) : null;
-
   if (listStatus.state === "loading") {
     return (
       <SettingsStack>
@@ -232,7 +224,6 @@ export function AppPermissionsSection() {
       </SettingsStack>
     );
   }
-
   if (listStatus.state === "error") {
     return (
       <SettingsStack>
@@ -245,7 +236,6 @@ export function AppPermissionsSection() {
       </SettingsStack>
     );
   }
-
   if (grantableRows.length === 0) {
     return (
       <SettingsStack>
@@ -259,7 +249,6 @@ export function AppPermissionsSection() {
       </SettingsStack>
     );
   }
-
   return (
     <SettingsStack>
       <div className="flex flex-wrap items-center justify-end gap-3">
@@ -310,7 +299,6 @@ export function AppPermissionsSection() {
     </SettingsStack>
   );
 }
-
 function AppPermissionToggle({
   slug,
   ns,

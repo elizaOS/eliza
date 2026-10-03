@@ -14,6 +14,11 @@
  * Run: bunx vitest run test/resolve-request-executor.test.ts
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: docMocks.hasOwnerAccess,
+}));
+
 import { randomUUID } from "node:crypto";
 import type {
   HandlerCallback,
@@ -23,9 +28,10 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { parseInteractionBlocks } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID } from "../src/lifeops/resource-capacity/types.js";
+import { googleHandoffFixture } from "./helpers/handoff-google.js";
 
 const twilioMocks = vi.hoisted(() => ({
   readTwilioCredentialsFromEnv: vi.fn<
@@ -45,7 +51,7 @@ const twilioMocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@elizaos/plugin-phone/twilio", () => twilioMocks);
+vi.mock("@elizaos/plugin-native-phone/twilio", () => twilioMocks);
 
 // The sign_document tests seed a real DocumentRequest through the real
 // OWNER_DOCUMENTS action; only its collaborators (owner gate, approval-queue
@@ -86,17 +92,6 @@ const docMocks = vi.hoisted(() => ({
     state: { status: "scheduled", followupCount: 0 },
   })),
 }));
-
-vi.mock("@elizaos/agent", async () => {
-  const approvalTypes = await import(
-    "../../../packages/agent/src/services/approval/types.ts"
-  );
-  return {
-    hasOwnerAccess: docMocks.hasOwnerAccess,
-    ApprovalNotFoundError: approvalTypes.ApprovalNotFoundError,
-    ApprovalStateTransitionError: approvalTypes.ApprovalStateTransitionError,
-  };
-});
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({
@@ -571,77 +566,83 @@ describe("executeApprovedRequest", () => {
     expect(queue.transitions).toEqual([]);
   });
 
-  it("send_email approval projects sent-mail commitments into the ledger after delivery", async () => {
-    const runtime = {
-      ...makeRuntime(),
-      adapter: { db: {} },
-      reportError: vi.fn(),
-    } as unknown as IAgentRuntime;
-    const request = approvedRequest({
-      action: "send_email",
-      payload: {
+  it.each([undefined, "reviewed-account"])(
+    "send_email pins the resolved sender and projects commitments (requested grant: %s)",
+    async (requestedGrantId) => {
+      const runtime = {
+        ...makeRuntime(),
+        adapter: { db: {} },
+        reportError: vi.fn(),
+      } as unknown as IAgentRuntime;
+      const request = approvedRequest({
         action: "send_email",
-        to: ["mira@example.com"],
-        cc: [],
-        bcc: [],
-        subject: "Launch deck",
-        grantId: "reviewed-account",
-        body: "I'll send the deck by 2026-07-10 and include the pricing appendix.",
-        threadId: null,
-        replyToMessageId: null,
-      },
-    });
-    const queue = new RecordingQueue(request);
-    vi.spyOn(
-      LifeOpsService.prototype,
-      "requireGoogleGmailSendGrant",
-    ).mockResolvedValue({} as never);
-    const sendSpy = vi
-      .spyOn(LifeOpsService.prototype, "sendGmailMessage")
-      .mockResolvedValue({
-        ok: true,
-        messageId: "gmail-message-1",
-        threadId: "gmail-thread-1",
+        payload: {
+          action: "send_email",
+          to: ["mira@example.com"],
+          cc: [],
+          bcc: [],
+          subject: "Launch deck",
+          grantId: requestedGrantId,
+          body: "I'll send the deck by 2026-07-10 and include the pricing appendix.",
+          threadId: null,
+          replyToMessageId: null,
+        },
       });
-    const upsertSpy = vi
-      .spyOn(LifeOpsRepository.prototype, "upsertCommitmentLedgerRecord")
-      .mockResolvedValue();
-    const { texts, callback } = collectTexts();
+      const queue = new RecordingQueue(request);
+      vi.spyOn(
+        LifeOpsService.prototype,
+        "requireGoogleGmailSendGrant",
+      ).mockResolvedValue({
+        ...googleHandoffFixture().grant,
+        id: "reviewed-account",
+      });
+      const sendSpy = vi
+        .spyOn(LifeOpsService.prototype, "sendGmailMessage")
+        .mockResolvedValue({
+          ok: true,
+          messageId: "gmail-message-1",
+          threadId: "gmail-thread-1",
+        });
+      const upsertSpy = vi
+        .spyOn(LifeOpsRepository.prototype, "upsertCommitmentLedgerRecord")
+        .mockResolvedValue();
+      const { texts, callback } = collectTexts();
 
-    const result = await executeApprovedRequest({
-      runtime,
-      queue,
-      request,
-      callback,
-    });
+      const result = await executeApprovedRequest({
+        runtime,
+        queue,
+        request,
+        callback,
+      });
 
-    expect(sendSpy).toHaveBeenCalledTimes(1);
-    expect(sendSpy).toHaveBeenCalledWith(
-      expect.any(URL),
-      expect.objectContaining({ grantId: "reviewed-account" }),
-    );
-    expect(queue.transitions).toEqual(["executing", "done"]);
-    expect(upsertSpy).toHaveBeenCalledTimes(1);
-    expect(upsertSpy.mock.calls[0]?.[0]).toMatchObject({
-      agentId: runtime.agentId,
-      source: "sent_mail",
-      sourceKey: `approval:${request.id}`,
-      kind: "commitment",
-      counterparty: "mira@example.com",
-      dueAt: "2026-07-10T17:00:00.000Z",
-      status: "open",
-      scheduledTaskId: null,
-      metadata: {
-        approvalRequestId: request.id,
-        subject: "Launch deck",
-        to: ["mira@example.com"],
-      },
-    });
-    expect(upsertSpy.mock.calls[0]?.[0].summary).toContain("send the deck");
-    expect(runtime.reportError).not.toHaveBeenCalled();
-    expect(result.success).toBe(true);
-    expect(texts.join(" ")).toContain("mira@example.com");
-  });
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({ grantId: "reviewed-account" }),
+      );
+      expect(queue.transitions).toEqual(["executing", "done"]);
+      expect(upsertSpy).toHaveBeenCalledTimes(1);
+      expect(upsertSpy.mock.calls[0]?.[0]).toMatchObject({
+        agentId: runtime.agentId,
+        source: "sent_mail",
+        sourceKey: `approval:${request.id}`,
+        kind: "commitment",
+        counterparty: "mira@example.com",
+        dueAt: "2026-07-10T17:00:00.000Z",
+        status: "open",
+        scheduledTaskId: null,
+        metadata: {
+          approvalRequestId: request.id,
+          subject: "Launch deck",
+          to: ["mira@example.com"],
+        },
+      });
+      expect(upsertSpy.mock.calls[0]?.[0].summary).toContain("send the deck");
+      expect(runtime.reportError).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(texts.join(" ")).toContain("mira@example.com");
+    },
+  );
 
   it("refuses altered scheduling content before any connector or queue transition", async () => {
     const runtime = makeRuntime();

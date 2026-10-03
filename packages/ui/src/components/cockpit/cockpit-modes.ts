@@ -11,17 +11,17 @@
  *   2. Claude / Codex via the TOS-safe subscription connector
  *   3. Experimental TOS-unsafe Claude / Codex (gated)
  */
-
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/utils/unicode";
 import type {
   CodingAgentCreateTaskInput,
   CodingAgentTaskProviderPolicy,
 } from "../../api/client-types-cloud";
-
 /** Eliza Cloud inference tiers. `small` is fast; `large` is smart. */
 export type ElizaCloudTier = "small" | "large";
-
 /**
  * Canonical Cerebras model id per tier.
  *
@@ -34,10 +34,13 @@ export const ELIZA_CLOUD_TIER_MODEL: Record<ElizaCloudTier, string> = {
   small: DEFAULT_CEREBRAS_TEXT_MODEL,
   large: DEFAULT_CEREBRAS_TEXT_MODEL,
 };
-
 /** One cockpit session's mode. */
 export type CockpitModeConfig =
-  | { mode: "eliza-cloud"; agentType: "elizaos"; tier: ElizaCloudTier }
+  | {
+      mode: "eliza-cloud";
+      agentType: "elizaos";
+      tier: ElizaCloudTier;
+    }
   | {
       mode: "subscription";
       agentType: "claude" | "codex";
@@ -50,7 +53,6 @@ export type CockpitModeConfig =
       proxy: "anthropic-proxy" | "codex-cli";
       model?: string;
     };
-
 /** Stable id for one selectable picker option (tier is chosen separately). */
 export type CockpitModeOptionId =
   | "eliza-cloud"
@@ -58,10 +60,8 @@ export type CockpitModeOptionId =
   | "codex"
   | "claude-experimental"
   | "codex-experimental";
-
 /** Badge kind → drives the chip's accent styling. */
 export type CockpitModeBadge = "cloud" | "sub" | "exp";
-
 /** A selectable option shown in the picker. */
 export interface CockpitModeOption {
   id: CockpitModeOptionId;
@@ -74,7 +74,6 @@ export interface CockpitModeOption {
    * (tier is ignored by non-cloud options). */
   toConfig: (tier: ElizaCloudTier) => CockpitModeConfig;
 }
-
 /** The picker's options, in display order. Experimental ones are gated. */
 export const COCKPIT_MODE_OPTIONS: readonly CockpitModeOption[] = [
   {
@@ -123,7 +122,6 @@ export const COCKPIT_MODE_OPTIONS: readonly CockpitModeOption[] = [
     }),
   },
 ];
-
 /** The picker options visible given whether the experimental gate is armed. */
 export function visibleCockpitModeOptions(
   experimentalEnabled: boolean,
@@ -132,7 +130,6 @@ export function visibleCockpitModeOptions(
     (o) => experimentalEnabled || !o.experimental,
   );
 }
-
 /** Map a concrete config back to the picker option id it represents. */
 export function optionIdForConfig(
   config: CockpitModeConfig,
@@ -148,19 +145,16 @@ export function optionIdForConfig(
         : "codex-experimental";
   }
 }
-
 /** Read the Eliza Cloud tier from a config (defaults to `small` for non-cloud). */
 export function tierForConfig(config: CockpitModeConfig): ElizaCloudTier {
   return config.mode === "eliza-cloud" ? config.tier : "small";
 }
-
 /** `providerSource` discriminant: where inference/credentials are sourced. */
 export type ProviderSource =
   | "user-claude"
   | "user-openai"
   | "eliza-cloud"
   | "local";
-
 /** The inference/credential source label for a mode. */
 export function cockpitModeProviderSource(
   config: CockpitModeConfig,
@@ -173,7 +167,6 @@ export function cockpitModeProviderSource(
       return config.agentType === "claude" ? "user-claude" : "user-openai";
   }
 }
-
 /** The model hint for a mode (undefined ⇒ let the host pick its default). */
 export function cockpitModeModel(
   config: CockpitModeConfig,
@@ -182,7 +175,6 @@ export function cockpitModeModel(
     ? ELIZA_CLOUD_TIER_MODEL[config.tier]
     : config.model;
 }
-
 /**
  * Lower a cockpit mode to the orchestrator's create-task `providerPolicy` —
  * the `{preferredFramework, providerSource, model}` the create-task route's
@@ -199,7 +191,6 @@ export function cockpitModeToProviderPolicy(
   if (model !== undefined) policy.model = model;
   return policy;
 }
-
 /**
  * Optional spawn targeting a cockpit session can carry alongside its goal +
  * mode: the repo to point the coding agent at, and an optional working
@@ -213,7 +204,6 @@ export interface CockpitSpawnTarget {
   /** Optional working subdirectory within the repo/workspace. */
   workdir?: string;
 }
-
 /**
  * Normalize a raw repo/workdir pair into a {@link CockpitSpawnTarget}, trimming
  * whitespace and dropping empty values. Returns `undefined` when neither field
@@ -229,7 +219,6 @@ export function normalizeCockpitSpawnTarget(
   if (workdir) target.workdir = workdir;
   return target.repo || target.workdir ? target : undefined;
 }
-
 /** First non-empty line of `text`, trimmed to `max` chars — used as a task title. */
 function deriveTitle(text: string, max = 80): string {
   const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
@@ -238,7 +227,6 @@ function deriveTitle(text: string, max = 80): string {
   if (wellFormed.length <= max) return wellFormed;
   return `${truncateWellFormed(wellFormed, max - 1)}…`;
 }
-
 /**
  * Build the orchestrator create-task input for a cockpit session from a
  * free-text goal + the selected mode. `title` defaults to the goal's first line.

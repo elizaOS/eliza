@@ -4,7 +4,7 @@
  * treat channel, platform, direction, and sender identity as evidence quality.
  */
 
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
+import { type LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it } from "vitest";
 import { mapSignalToTelemetryPayload } from "./telemetry-mapping.js";
 

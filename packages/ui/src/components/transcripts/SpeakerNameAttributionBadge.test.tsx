@@ -3,16 +3,14 @@
  * confidence/provenance while keeping unconfirmed candidate names out of the
  * visible transcript label.
  */
-
 // @vitest-environment jsdom
 
-import type { SpeakerNameAttribution } from "@elizaos/shared";
+import type { SpeakerNameAttribution } from "@elizaos/core/speaker-name-inference";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SpeakerNameAttributionBadge } from "./SpeakerNameAttributionBadge";
 
 afterEach(cleanup);
-
 function attribution(
   overrides: Partial<SpeakerNameAttribution> = {},
 ): SpeakerNameAttribution {
@@ -41,7 +39,6 @@ function attribution(
     ...overrides,
   };
 }
-
 describe("SpeakerNameAttributionBadge", () => {
   it("shows confirmed confidence and provenance", () => {
     render(<SpeakerNameAttributionBadge attribution={attribution()} />);
@@ -51,7 +48,6 @@ describe("SpeakerNameAttributionBadge", () => {
     expect(badge.textContent).toContain("roster + calendar");
     expect(badge.getAttribute("data-resolution")).toBe("confirmed");
   });
-
   it("shows a withheld state without presenting candidate names as labels", () => {
     render(
       <SpeakerNameAttributionBadge

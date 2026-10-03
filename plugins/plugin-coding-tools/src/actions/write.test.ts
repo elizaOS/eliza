@@ -3,33 +3,21 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
-  CapabilityError,
   type ElizaCapabilityRouter,
   type FileWriteTextParams,
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { writeFileHandler } from "./write.js";
-
-function unavailableCapability(
-  capability: "fs" | "pty" | "git" | "model",
-  method: string,
-): never {
-  throw new CapabilityError({
-    code: "CAPABILITY_UNAVAILABLE",
-    message: `${capability} unavailable`,
-    capability,
-    method,
-  });
-}
 
 function makeWriteRouter(
   writeText: ElizaCapabilityRouter["fs"]["writeText"],
 ): ElizaCapabilityRouter {
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -41,23 +29,7 @@ function makeWriteRouter(
         plugin: false,
       },
     }),
-    fs: {
-      list: async () => unavailableCapability("fs", "fs.list"),
-      readText: async () => unavailableCapability("fs", "fs.readText"),
-      writeText,
-    },
-    pty: {
-      runCommand: async () => unavailableCapability("pty", "pty.command.run"),
-    },
-    git: {
-      status: async () => unavailableCapability("git", "git.status"),
-      diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () => unavailableCapability("git", "git.command.run"),
-    },
-    model: {
-      status: async () => unavailableCapability("model", "model.status"),
-    },
-    plugin: new UnavailableCapabilityRouter("desktop").plugin,
+    fs: { ...router.fs, writeText },
   };
 }
 
@@ -134,6 +106,64 @@ describe("WRITE", () => {
     ]);
     const meta = env.fileState.get("test-room", file);
     expect(meta).toBeDefined();
+  });
+
+  it("accepts a path-translating provider that echoes the requested path", async () => {
+    const file = path.join(env.tmpDir, "fresh.txt");
+    // The sandbox workdir mirrors the host workspace; the provider reports
+    // its mapped path plus the host path it was asked to write.
+    const writeText = vi.fn(async (params: FileWriteTextParams) => {
+      await fs.writeFile(params.path, params.text, "utf8");
+      return {
+        path: "/workspace/fresh.txt",
+        requestedPath: params.path,
+        bytesWritten: Buffer.byteLength(params.text, "utf8"),
+      };
+    });
+    const result = await writeFileHandler(
+      runtimeWithRouter(env.runtime, makeWriteRouter(writeText)),
+      env.message,
+      undefined,
+      { parameters: { file_path: file, content: "hello" } },
+      vi.fn(async () => []),
+    );
+    expect(result.success).toBe(true);
+    expect(result.effectReceipts).toHaveLength(1);
+    expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a provider acknowledgment for another path without falling back or claiming no effect", async () => {
+    const file = path.join(env.tmpDir, "requested.txt");
+    const other = path.join(env.tmpDir, "different.txt");
+    const writeText = vi.fn(async (params: FileWriteTextParams) => {
+      await fs.writeFile(other, params.text, "utf8");
+      return {
+        path: other,
+        bytesWritten: Buffer.byteLength(params.text, "utf8"),
+      };
+    });
+    const callback = vi.fn(async () => []);
+    const result = await writeFileHandler(
+      runtimeWithRouter(env.runtime, makeWriteRouter(writeText)),
+      env.message,
+      undefined,
+      { parameters: { file_path: file, content: "provider wrote elsewhere" } },
+      callback,
+    );
+    expect(result.success).toBe(false);
+    expect(result.effectReceipts).toBeUndefined();
+    expect(result.failureProvenance).toMatchObject({
+      kind: "persistence_error",
+      code: "FILE_WRITE_UNVERIFIED",
+      retryable: false,
+    });
+    expect(result.data).toMatchObject({ path: file, acceptance: "unknown" });
+    expect(result.text).toContain("requested write outcome is unknown");
+    expect(await fs.readFile(other, "utf8")).toBe("provider wrote elsewhere");
+    await expect(fs.stat(file)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(env.fileState.get("test-room", file)).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledTimes(1);
   });
 
   it("rejects writes to existing files that were not READ first (must_read_first)", async () => {

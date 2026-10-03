@@ -4,7 +4,7 @@
  * Consumed by Playwright specs (and any other test runner) that want to assert
  * against the OS-level cursor screenshot exposed by the dev API at
  * `GET /api/dev/cursor-screenshot` (see
- * `packages/app-core/src/api/dev-compat-routes.ts`). The endpoint:
+ * `packages/app/src/api/dev-compat-routes.ts`). The endpoint:
  *   - 200 image/png       → screenshot bytes
  *   - 404 application/json → screenshot server not enabled in this env
  *   - 502/403/etc          → upstream / proxy error

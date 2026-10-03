@@ -7,10 +7,11 @@
 // document-visibility-gated price refresh, self-hide only when prices are
 // unavailable, and opening the wallet view on tap. jsdom render with the wallet
 // balances/market API mocked (no backend).
+
 import type {
   WalletBalancesResponse,
   WalletMarketOverviewResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/wallet-types";
 import {
   act,
   cleanup,
@@ -20,6 +21,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../../api";
+import { WalletBalanceWidget } from "./wallet-balance";
 
 // Auth gate (#11084) - mutable so tests can flip the session state. Default
 // authenticated so the pre-gate behavior tests exercise the live poll path.
@@ -29,27 +32,20 @@ const { authMock } = vi.hoisted(() => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
-
 vi.mock("../../../api", () => ({
   client: {
     getWalletBalances: vi.fn(),
     getWalletMarketOverview: vi.fn(),
   },
 }));
-
 const navOpenView = vi.fn();
 vi.mock("./home-widget-card", () => ({
   HOME_WIDGET_SOLID_TILE_CLASS:
     "group relative flex h-auto w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--brand-white)_20%,var(--brand-black))] bg-[var(--brand-black)] text-left text-[var(--brand-white)]",
   useWidgetNavigation: () => ({ openView: navOpenView, openTab: vi.fn() }),
 }));
-
-import { client } from "../../../api";
-import { WalletBalanceWidget } from "./wallet-balance";
-
 const getWalletBalances = vi.mocked(client.getWalletBalances);
 const getWalletMarketOverview = vi.mocked(client.getWalletMarketOverview);
-
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -57,10 +53,12 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-
 /** Balances with a single EVM chain of `{symbol, valueUsd}` token holdings. */
 function balances(
-  tokens: { symbol: string; valueUsd: string }[],
+  tokens: {
+    symbol: string;
+    valueUsd: string;
+  }[],
 ): WalletBalancesResponse {
   return {
     evm: {
@@ -88,10 +86,17 @@ function balances(
     solana: null,
   } as unknown as WalletBalancesResponse;
 }
-
 function overview(
-  prices: { symbol: string; priceUsd: number; change24hPct?: number }[],
-  movers: { symbol: string; priceUsd: number; change24hPct?: number }[] = [],
+  prices: {
+    symbol: string;
+    priceUsd: number;
+    change24hPct?: number;
+  }[],
+  movers: {
+    symbol: string;
+    priceUsd: number;
+    change24hPct?: number;
+  }[] = [],
 ): WalletMarketOverviewResponse {
   return {
     prices: prices.map((p) => ({
@@ -106,7 +111,6 @@ function overview(
     })),
   } as unknown as WalletMarketOverviewResponse;
 }
-
 /** Override jsdom's document visibility so the refresh gate can be exercised. */
 function setVisibility(state: "visible" | "hidden"): void {
   Object.defineProperty(document, "visibilityState", {
@@ -115,7 +119,6 @@ function setVisibility(state: "visible" | "hidden"): void {
   });
   document.dispatchEvent(new Event("visibilitychange"));
 }
-
 beforeEach(() => {
   authMock.authenticated = true;
   setVisibility("visible");
@@ -124,13 +127,11 @@ beforeEach(() => {
   getWalletMarketOverview.mockReset();
   getWalletMarketOverview.mockResolvedValue(overview([]));
 });
-
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.clearAllMocks();
 });
-
 describe("WalletBalanceWidget (price-only, #10706)", () => {
   it("renders nothing and fetches nothing while unauthenticated", () => {
     authMock.authenticated = false;
@@ -139,7 +140,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(getWalletBalances).not.toHaveBeenCalled();
     expect(getWalletMarketOverview).not.toHaveBeenCalled();
   });
-
   it("renders a loading placeholder until the data resolves", () => {
     const d = deferred<WalletBalancesResponse>();
     getWalletBalances.mockReturnValue(d.promise);
@@ -148,7 +148,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
       screen.getByTestId("chat-widget-wallet-balance-loading"),
     ).toBeTruthy();
   });
-
   it("renders price-only rows for held assets - no amount or holding value", async () => {
     getWalletBalances.mockResolvedValue(
       balances([
@@ -162,9 +161,7 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
         { symbol: "WBTC", priceUsd: 64000, change24hPct: 1.4 },
       ]),
     );
-
     render(<WalletBalanceWidget spanClassName="col-span-2 row-span-1" />);
-
     await waitFor(() =>
       expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy(),
     );
@@ -181,7 +178,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(text).not.toContain("500"); // no holding value leaked
     expect(text).not.toContain("2,000");
   });
-
   it("skips holdings under $1 and renders nothing when none qualify", async () => {
     getWalletBalances.mockResolvedValue(
       balances([{ symbol: "SHIB", valueUsd: "0.40" }]),
@@ -193,14 +189,12 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
-
   it("renders nothing when balances are empty", async () => {
     getWalletBalances.mockResolvedValue({ evm: null, solana: null });
     const { container } = render(<WalletBalanceWidget />);
     await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
-
   it("opens the wallet view on tap", async () => {
     getWalletBalances.mockResolvedValue(
       balances([{ symbol: "USDC", valueUsd: "100" }]),
@@ -215,7 +209,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     fireEvent.click(screen.getByTestId("chat-widget-wallet-prices"));
     expect(navOpenView).toHaveBeenCalledWith("/wallet", "wallet");
   });
-
   it("shows BTC/SOL/ETH default rows when the user holds nothing (#14344)", async () => {
     // Fresh account: no holdings, but the overview supplies the tracked prices.
     getWalletBalances.mockResolvedValue({ evm: null, solana: null });
@@ -242,7 +235,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(text).toContain("$150.00");
     expect(text).toContain("$3,000.00");
   });
-
   it("keeps the last-good rows when a later balance refresh fails", async () => {
     vi.useFakeTimers();
     getWalletBalances
@@ -255,14 +247,13 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
         { symbol: "SOL", priceUsd: 150, change24hPct: 2.1 },
       ]),
     );
-
     render(<WalletBalanceWidget />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(60000);
     });
     expect(getWalletBalances).toHaveBeenCalledTimes(2);
     expect(
@@ -273,7 +264,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
       "wallet-price-row-ETH",
     ]);
   });
-
   it("does not render no-holdings defaults when balances are unavailable", async () => {
     getWalletBalances.mockRejectedValue(new Error("balances 503"));
     getWalletMarketOverview.mockResolvedValue(
@@ -292,7 +282,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(unavailable.textContent).toContain("Unavailable");
     expect(screen.queryAllByTestId(/^wallet-price-row-/)).toHaveLength(0);
   });
-
   it("refreshes prices on the 60s visibility-gated interval (#14344)", async () => {
     vi.useFakeTimers();
     getWalletBalances.mockResolvedValue({ evm: null, solana: null });
@@ -310,14 +299,13 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
     // One interval tick → a fresh fetch updates the displayed price.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(60000);
     });
     expect(getWalletMarketOverview).toHaveBeenCalledTimes(2);
     expect(
       screen.getByTestId("chat-widget-wallet-prices").textContent,
     ).toContain("$70,000.00");
   });
-
   it("does not poll while the document is hidden", async () => {
     vi.useFakeTimers();
     setVisibility("hidden");
@@ -325,19 +313,16 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     getWalletMarketOverview.mockResolvedValue(
       overview([{ symbol: "BTC", priceUsd: 64000 }]),
     );
-
     render(<WalletBalanceWidget />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
-
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(180_000);
+      await vi.advanceTimersByTimeAsync(180000);
     });
     expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
   });
-
   it("ignores an older refresh response that resolves after a newer one", async () => {
     vi.useFakeTimers();
     const firstOverview = deferred<WalletMarketOverviewResponse>();
@@ -346,12 +331,10 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     getWalletMarketOverview
       .mockReturnValueOnce(firstOverview.promise)
       .mockReturnValueOnce(secondOverview.promise);
-
     render(<WalletBalanceWidget />);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(60000);
     });
-
     secondOverview.resolve(overview([{ symbol: "BTC", priceUsd: 70000 }]));
     await act(async () => {
       await secondOverview.promise;
@@ -359,7 +342,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(
       screen.getByTestId("chat-widget-wallet-prices").textContent,
     ).toContain("$70,000.00");
-
     firstOverview.resolve(overview([{ symbol: "BTC", priceUsd: 64000 }]));
     await act(async () => {
       await firstOverview.promise;
@@ -368,7 +350,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
       screen.getByTestId("chat-widget-wallet-prices").textContent,
     ).toContain("$70,000.00");
   });
-
   it("renders unavailable when the overview cannot load", async () => {
     getWalletBalances.mockResolvedValue({ evm: null, solana: null });
     getWalletMarketOverview.mockRejectedValue(new Error("overview 503"));

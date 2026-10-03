@@ -43,8 +43,19 @@ export const sandboxTransactions: {
 
 export const realDbWrite = realHelpers.dbWrite as unknown as object;
 
+// Direct (non-transactional) dbWrite reads, e.g. executeSuspend's retirement
+// routing probe, would fall through the Proxy to a real connection. A test
+// that drives such a path sets this to a chainable stub; null (the default)
+// preserves passthrough so existing fixtures are unaffected.
+export const sandboxDirectReads: {
+  select: ((columns: unknown) => unknown) | null;
+} = { select: null };
+
 export const upgradeDbWrite = new Proxy(realDbWrite, {
   get(target, property, receiver) {
+    if (property === "select" && sandboxDirectReads.select) {
+      return sandboxDirectReads.select;
+    }
     if (property === "transaction") {
       return async <T>(fn: (tx: UpgradeTx) => Promise<T>): Promise<T> => {
         if (!sandboxTransactions.implementation) {

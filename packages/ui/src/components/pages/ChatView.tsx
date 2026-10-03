@@ -12,7 +12,6 @@
  * terminal, and a user-initiated dismissal sticks.
  */
 
-import { logger } from "@elizaos/logger";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -42,6 +41,7 @@ import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { useRealtimeVoiceMint } from "../../hooks/useRealtimeVoiceMint";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { useViewEvent } from "../../hooks/useViewEvent";
+import { logger } from "../../logger.ts";
 import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
@@ -85,6 +85,7 @@ import {
   isLikelyAccountRequiredError,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { PersonalAccountStateBanner } from "../chat/PersonalAccountStateBanner";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
@@ -386,11 +387,31 @@ export function ChatView({
   // runtime is ready, then streams its reply) — only a genuinely missing
   // inference provider hard-locks the composer.
   const isComposerLocked = isMissingInferenceProvider;
-  const composerPlaceholderOverride = isMissingInferenceProvider
-    ? t("chat.setupProviderToChat", {
-        defaultValue: "Set up an LLM provider in Settings to start chatting",
-      })
-    : undefined;
+  // An invalid configured model (#30228) is not a missing provider: name the
+  // setting so the owner can fix it instead of re-running provider setup.
+  const unavailableModel =
+    agentStatus?.modelReadiness?.status === "model_not_available"
+      ? agentStatus.modelReadiness.missing[0]
+      : undefined;
+  const localTextModelNotLoaded =
+    agentStatus?.localModelReadiness?.status === "model_not_loaded";
+  const composerPlaceholderOverride = !isMissingInferenceProvider
+    ? undefined
+    : unavailableModel
+      ? t("chat.configuredModelUnavailable", {
+          defaultValue:
+            "Model {{model}} ({{setting}}) is unavailable. Update it in Settings to start chatting",
+          model: unavailableModel.modelId,
+          setting:
+            unavailableModel.configKey ??
+            `default ${unavailableModel.modelType}`,
+        })
+      : localTextModelNotLoaded
+        ? "Text model not loaded. Check model settings to start chatting"
+        : t("chat.setupProviderToChat", {
+            defaultValue:
+              "Set up an LLM provider in Settings to start chatting",
+          });
   // Resolve the realtime-voice mint inputs (agent UUID + consent nonce) from the
   // same auth/runtime source the app uses for every other /api/v1 call. A
   // self-hosted runtime arms only when its gateway proves the active
@@ -1011,6 +1032,7 @@ export function ChatView({
       shellRef={composerRef}
       before={
         <>
+          <PersonalAccountStateBanner t={t} locale={uiLanguage} />
           <CodingAgentControlChip />
           {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
@@ -1084,6 +1106,7 @@ export function ChatView({
       style={defaultComposerShellStyle}
       before={
         <>
+          <PersonalAccountStateBanner t={t} locale={uiLanguage} />
           <CodingAgentControlChip />
           {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">

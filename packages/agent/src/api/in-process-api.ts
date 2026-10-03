@@ -4,10 +4,10 @@ import {
   capturedToResult,
   type DispatchRouteArgs,
 } from "./dispatch-route.ts";
+import { markAuthenticatedInProcessRequest } from "./in-process-request.ts";
 import type { RouteKernel } from "./route-kernel.ts";
 
 const kernels = new WeakMap<object, RouteKernel>();
-
 /** Register the already-created server kernel for a local runtime. */
 export function registerInProcessApi(
   runtime: object,
@@ -18,7 +18,6 @@ export function registerInProcessApi(
     if (kernels.get(runtime) === kernel) kernels.delete(runtime);
   };
 }
-
 /** Use the full server routing and authentication boundary without a TCP listener. */
 export async function dispatchApiRoute(
   args: DispatchRouteArgs,
@@ -47,6 +46,7 @@ export async function dispatchApiRoute(
     body: args.body,
   });
   try {
+    markAuthenticatedInProcessRequest(req);
     await kernel.handle(req, res);
     if (!captured.ended)
       throw new Error("Local API handler did not finish its response");

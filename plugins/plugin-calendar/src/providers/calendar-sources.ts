@@ -16,10 +16,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/core";
-import type {
-  LifeOpsCalendarSourceAdministrationEntry,
-  LifeOpsCalendarSourceAdministrationSnapshot,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarSourceAdministrationEntry,
+  type LifeOpsCalendarSourceAdministrationSnapshot,
+} from "@elizaos/core/contracts/calendar";
 import { listCalendarSourceAdministration } from "../source-administration/adapter.js";
 
 const OWNER_ONLY_EMPTY: ProviderResult = {

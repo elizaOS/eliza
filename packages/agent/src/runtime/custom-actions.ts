@@ -17,21 +17,18 @@ import { request as requestHttps } from "node:https";
 import net from "node:net";
 import {
   type Action,
+  type CustomActionDef,
+  type CustomActionHandler,
+  createSelfApiRequestHeaders,
   type HandlerOptions,
   type IAgentRuntime,
   isPrivateIpAddress,
   normalizeHostLike,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  createSelfApiRequestHeaders,
-  resolveServerOnlyPort,
-} from "@elizaos/shared";
+import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-} from "../config/types.eliza.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
@@ -109,8 +106,9 @@ type DnsLookupAllFn = (
 
 let dnsLookupImpl: DnsLookupAllFn = dnsLookup as DnsLookupAllFn;
 
+/** Port of this process's own API listener (same resolver as self-calls). */
 function getApiPort(): string {
-  return String(resolveServerOnlyPort(process.env));
+  return new URL(resolveSelfApiBaseUrl(process.env)).port;
 }
 
 async function fetchWithTimeout(
@@ -851,7 +849,7 @@ function buildHandler(
         }
 
         const response = await fetchWithTimeout(
-          `http://localhost:${getApiPort()}/api/terminal/run`,
+          `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
           {
             method: "POST",
             headers: {

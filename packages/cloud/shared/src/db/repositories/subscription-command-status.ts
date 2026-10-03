@@ -1,7 +1,7 @@
 /** Reads paginated pending schedule commands and their current-source relationship from one primary snapshot, without claiming provider completion. */
 import { Buffer } from "node:buffer";
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { PendingSubscriptionCommandsDto } from "../../lib/types/cloud-api";
 import { sqlRows } from "../execute-helpers";
@@ -121,6 +121,7 @@ export async function readPendingSubscriptionCommands(input: {
               .from(billingSubscriptions)
               .where(
                 and(
+                  isNull(billingSubscriptions.billing_scope_id),
                   eq(billingSubscriptions.organization_id, input.organizationId),
                   eq(billingSubscriptions.id, authority.subscription_id),
                 ),
@@ -141,6 +142,8 @@ export async function readPendingSubscriptionCommands(input: {
         .from(commands)
         .where(
           and(
+            isNull(commands.billing_scope_id),
+            isNull(commands.app_id),
             eq(commands.organization_id, input.organizationId),
             inArray(commands.kind, ["cancel", "resume"]),
             inArray(commands.status, ["PREPARED", "OUTCOME_UNKNOWN"]),

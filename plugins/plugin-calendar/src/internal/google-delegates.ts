@@ -10,6 +10,18 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarEventAttendee,
+  type LifeOpsCalendarSummary,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsGoogleCapability,
+  type LifeOpsGoogleConnectorStatus,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
   GoogleCalendarAttendee,
   GoogleCalendarAttendeeInput,
@@ -19,16 +31,6 @@ import type {
   GoogleCalendarListEntry,
   IGoogleWorkspaceService,
 } from "@elizaos/plugin-google-workspace";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventAttendee,
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGoogleCapability,
-  LifeOpsGoogleConnectorStatus,
-} from "@elizaos/shared";
 import { fail } from "./errors.js";
 import { normalizeGoogleCapabilities } from "./normalize.js";
 

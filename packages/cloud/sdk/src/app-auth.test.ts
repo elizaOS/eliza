@@ -35,4 +35,27 @@ describe("buildAppAuthorizeUrl", () => {
     expect(url.origin).toBe("https://elizacloud.ai");
     expect(url.pathname).toBe(APP_AUTHORIZE_PATH);
   });
+  it("requires caller-bound state for delegated authorization", () => {
+    expect(() =>
+      buildAppAuthorizeUrl({
+        appId: "app_123",
+        redirectUri: "https://example.app/callback",
+        delegation: { clientId: "client_123", scopes: ["identity"] },
+      }),
+    ).toThrow("state");
+    const url = new URL(
+      buildAppAuthorizeUrl({
+        appId: "app_123",
+        redirectUri: "https://example.app/callback",
+        state: "session-bound-nonce",
+        delegation: {
+          clientId: "client_123",
+          scopes: ["identity", "billing:read"],
+        },
+      }),
+    );
+    expect(url.searchParams.get("state")).toBe("session-bound-nonce");
+    expect(url.searchParams.get("flow")).toBe("app_delegation");
+    expect(url.searchParams.get("scopes")).toBe("identity billing:read");
+  });
 });

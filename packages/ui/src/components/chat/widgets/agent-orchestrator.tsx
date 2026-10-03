@@ -1,7 +1,7 @@
 /**
  * Chat-sidebar widgets for the `agent-orchestrator` plugin (app runs, coding
  * accounts, and activity). This file lives in `@elizaos/ui` (not in
- * `@elizaos/plugin-agent-orchestrator`) because the widget depends on app-core
+ * `@elizaos/plugin-agent-orchestrator`) because the widget depends on app
  * internals that the runtime plugin does not own and does not re-export:
  * the host API client, `AppRunSummary` / `ActivityEvent` types, the
  * `useApp` store, `TranslateFn`, `getRunAttentionReasons`, and the widget
@@ -11,12 +11,11 @@
  * The runtime plugin is a pure Node package (actions, providers, services,
  * api, types) with no React build target or widget-publication mechanism.
  * Moving this file into the plugin would require standing up a React build,
- * publishing app-core internals, and adding a widget-registration hook — a
+ * publishing app internals, and adding a widget-registration hook — a
  * reverse coupling we don't want. The widget is owned by the app shell; the
  * plugin just provides the backend capabilities it consumes.
  */
 
-import { logger } from "@elizaos/logger";
 import {
   Activity,
   AlertTriangle,
@@ -57,6 +56,7 @@ import type {
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
+import { logger } from "../../../logger.ts";
 import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";

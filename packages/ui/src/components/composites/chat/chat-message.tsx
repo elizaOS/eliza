@@ -16,7 +16,7 @@
  * Presentation only — actions are delegated to callbacks.
  */
 
-import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
+import { isRetryableChatFailureKind } from "@elizaos/core/contracts/chat";
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import { motion } from "motion/react";
 import type * as React from "react";
@@ -69,11 +69,8 @@ import type {
   ChatMessageReaction,
   ChatMessageRenderContext,
 } from "./chat-types";
-
 export type ChatMessageAppearance = "panel" | "glass";
-
 const MotionMessageRow = motion.create(MessageRow);
-
 export interface ChatMessageProps {
   /**
    * Live, non-message state that shares the glass action lane. The continuous
@@ -109,11 +106,11 @@ export interface ChatMessageProps {
    */
   onLongPressCopy?: (text: string) => void;
   /**
-   * Retry a recoverable failed assistant turn (glass) — re-sends the preceding
-   * user turn. Rendered as an always-visible pill (not gated behind the reveal
-   * row) so a stalled turn isn't a dead end.
+   * Recover a failed assistant turn using its typed retry contract. Durable
+   * reply recovery must not resend the user turn. The control remains visible
+   * without opening the message action row.
    */
-  onRetry?: (messageId: string) => void;
+  onRetry?: (messageId: string) => void | Promise<void>;
   /** True while THIS message's audio is playing (glass Play ↔ Stop). */
   playing?: boolean;
   /** Collapse glass motion to quick fades (OS reduce-motion). */
@@ -140,7 +137,6 @@ export interface ChatMessageProps {
   renderContext?: ChatMessageRenderContext;
   userMessagesOnRight?: boolean;
 }
-
 // Narrow layouts use the touch interaction even when a responsive desktop
 // preview supplies a fine pointer; the affordance follows the surface the user
 // is reviewing, while wider desktop layouts retain hover discovery.
@@ -152,7 +148,6 @@ const HOVER_MEDIA_QUERY =
 const hoverSupportListeners = new Set<() => void>();
 let hoverMediaQuery: MediaQueryList | null = null;
 let hoverMediaQueryUnsubscribe: (() => void) | null = null;
-
 function getHoverMediaQuery(): MediaQueryList | null {
   if (hoverMediaQuery) return hoverMediaQuery;
   if (
@@ -164,11 +159,9 @@ function getHoverMediaQuery(): MediaQueryList | null {
   hoverMediaQuery = window.matchMedia(HOVER_MEDIA_QUERY);
   return hoverMediaQuery;
 }
-
 function readSupportsHover(): boolean {
   return getHoverMediaQuery()?.matches ?? true;
 }
-
 function subscribeSupportsHover(listener: () => void): () => void {
   hoverSupportListeners.add(listener);
   const mediaQuery = getHoverMediaQuery();
@@ -185,7 +178,6 @@ function subscribeSupportsHover(listener: () => void): () => void {
       hoverMediaQueryUnsubscribe = () => mediaQuery.removeListener(notify);
     }
   }
-
   return () => {
     hoverSupportListeners.delete(listener);
     if (hoverSupportListeners.size === 0) {
@@ -194,7 +186,6 @@ function subscribeSupportsHover(listener: () => void): () => void {
     }
   };
 }
-
 function useSupportsHover(): boolean {
   return useSyncExternalStore(
     subscribeSupportsHover,
@@ -202,7 +193,6 @@ function useSupportsHover(): boolean {
     () => true,
   );
 }
-
 /**
  * The DOM id a rendered chat message carries, so keyword-search jump-to-message
  * can scroll a result into view. Shared with the message-search UI.
@@ -210,7 +200,6 @@ function useSupportsHover(): boolean {
 export function getChatMessageAnchorId(messageId: string): string {
   return `chat-message-${messageId}`;
 }
-
 /** Single-line, length-capped preview of a message for the "Replying to" pill. */
 const REPLY_PILL_SNIPPET_MAX = 140;
 function replyPillSnippet(text: string): string {
@@ -219,7 +208,6 @@ function replyPillSnippet(text: string): string {
     ? `${collapsed.slice(0, REPLY_PILL_SNIPPET_MAX)}…`
     : collapsed;
 }
-
 /**
  * Build the composer reply target from a rendered row. The surface passes its
  * `agentName` so an assistant turn is labeled by the agent rather than the
@@ -229,7 +217,11 @@ function replyPillSnippet(text: string): string {
 export function buildReplyTargetFromMessage(
   message: ChatMessageData,
   agentName: string,
-): { messageId: string; senderName: string; snippet: string } {
+): {
+  messageId: string;
+  senderName: string;
+  snippet: string;
+} {
   const senderName =
     message.role === "user"
       ? (resolveSenderDisplayName(message) ??
@@ -242,14 +234,12 @@ export function buildReplyTargetFromMessage(
     snippet: replyPillSnippet(message.text ?? ""),
   };
 }
-
 function normalizeSenderHandle(handle?: string): string | null {
   if (typeof handle !== "string") return null;
   const trimmed = handle.trim();
   if (!trimmed) return null;
   return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
 }
-
 function resolveSenderDisplayName(message: ChatMessageData): string | null {
   const from = typeof message.from === "string" ? message.from.trim() : "";
   if (from) return from;
@@ -257,7 +247,6 @@ function resolveSenderDisplayName(message: ChatMessageData): string | null {
   if (voiceLabel) return voiceLabel;
   return normalizeSenderHandle(message.fromUserName);
 }
-
 function resolveSenderHandle(
   message: ChatMessageData,
   displayName: string | null,
@@ -272,7 +261,6 @@ function resolveSenderHandle(
   }
   return handle;
 }
-
 function resolveReplySenderDisplayName(
   message: ChatMessageData,
   replyTarget?: ChatMessageData | null,
@@ -281,20 +269,16 @@ function resolveReplySenderDisplayName(
     const targetDisplayName = resolveSenderDisplayName(replyTarget);
     if (targetDisplayName) return targetDisplayName;
   }
-
   const replyToSenderName =
     typeof message.replyToSenderName === "string"
       ? message.replyToSenderName.trim()
       : "";
   if (replyToSenderName) return replyToSenderName;
-
   return normalizeSenderHandle(message.replyToSenderUserName);
 }
-
 function formatPossessiveLabel(label: string): string {
   return /s$/i.test(label) ? `${label}'` : `${label}'s`;
 }
-
 function normalizeMessageReactions(
   reactions: ChatMessageReaction[] | undefined,
 ): ChatMessageReaction[] {
@@ -310,7 +294,6 @@ function normalizeMessageReactions(
       reaction.count > 0,
   );
 }
-
 function ReactionEmoji({ emoji }: { emoji: string }) {
   const rendered = renderChatReactionEmoji(emoji);
   if (rendered) {
@@ -318,7 +301,6 @@ function ReactionEmoji({ emoji }: { emoji: string }) {
   }
   return <span className="text-chat-body leading-none">{emoji}</span>;
 }
-
 function ReactionStrip({
   alignRight,
   reactions,
@@ -329,7 +311,6 @@ function ReactionStrip({
   if (reactions.length === 0) {
     return null;
   }
-
   return (
     <div
       className={cn(
@@ -357,7 +338,6 @@ function ReactionStrip({
     </div>
   );
 }
-
 function isNestedInteractiveTarget(
   currentTarget: HTMLElement,
   target: EventTarget | null,
@@ -368,7 +348,6 @@ function isNestedInteractiveTarget(
   );
   return !!interactive && interactive !== currentTarget;
 }
-
 /**
  * True when an assistant turn's content carries an inline interactive widget
  * (a `[CHOICE:…]` / `[FORM:…]` / `[FOLLOWUPS:…]` / `[CONNECTOR:…]` block —
@@ -388,7 +367,6 @@ function messageHasInteractiveWidget(content: string): boolean {
     findConnectorCardRegions(content).length > 0
   );
 }
-
 /** A transient "copied" confirmation: returns the flag plus a trigger that
  * shows it for `durationMs` (re-triggering restarts the window). */
 function useCopiedFlash(durationMs: number): [boolean, () => void] {
@@ -410,7 +388,6 @@ function useCopiedFlash(durationMs: number): [boolean, () => void] {
   }, [durationMs]);
   return [copied, flash];
 }
-
 function arePropsEqual(
   prev: ChatMessageProps,
   next: ChatMessageProps,
@@ -442,13 +419,11 @@ function arePropsEqual(
     prev.userMessagesOnRight === next.userMessagesOnRight &&
     prev.children === next.children;
   if (!sharedEqual) return false;
-
   // The transcript re-renders the full list on every streamed token. Without
   // a per-row comparator React.memo's shallow check trips on the inline
   // `message`/`replyTarget` references that are rebuilt on every parent
   // render even when nothing about a given row changed.
   if (prev.message === next.message) return true;
-
   const a = prev.message;
   const b = next.message;
   return (
@@ -468,6 +443,7 @@ function arePropsEqual(
     a.voiceSpeaker === b.voiceSpeaker &&
     a.failureKind === b.failureKind &&
     a.terminalFailure === b.terminalFailure &&
+    a.replyRecoveryAvailable === b.replyRecoveryAvailable &&
     a.attachments === b.attachments &&
     // Inline tool-call rows: a mode:"tool" stream update replaces `toolEvents`
     // by reference while every other compared field stays identical, so without
@@ -480,7 +456,6 @@ function arePropsEqual(
     a.secretRequest === b.secretRequest
   );
 }
-
 export const ChatMessage = memo(function ChatMessage({
   message,
   actionAccessory,
@@ -514,9 +489,13 @@ export const ChatMessage = memo(function ChatMessage({
   const [editBubbleWidth, setEditBubbleWidth] = useState<number | null>(null);
   const [draftText, setDraftText] = useState(message.text);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [retryPending, setRetryPending] = useState(false);
   const articleRef = useRef<HTMLDivElement | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const tapStartRef = useRef<{ x: number; y: number } | null>(null);
+  const tapStartRef = useRef<{
+    x: number;
+    y: number;
+  } | null>(null);
   const accessoryModeRef = useRef<"actions" | "edit">("actions");
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -581,7 +560,6 @@ export const ChatMessage = memo(function ChatMessage({
   const showSenderHeader =
     isUser && !isGrouped && Boolean(senderDisplayName || senderHandle);
   const visibleReactions = normalizeMessageReactions(message.reactions);
-
   const focusMessageSurface = useCallback(() => {
     const messageElement = articleRef.current;
     const focusTarget = glass
@@ -591,12 +569,10 @@ export const ChatMessage = memo(function ChatMessage({
       : messageElement;
     focusTarget?.focus({ preventScroll: true });
   }, [glass]);
-
   const handleCopy = useCallback(() => {
     onCopy?.(message.text);
     flashCopied();
   }, [message.text, onCopy, flashCopied]);
-
   const handleReply = useCallback(() => {
     // Focus the stable message surface before hiding the touch/glass actions;
     // otherwise the browser can retain focus inside controls being unmounted.
@@ -607,7 +583,6 @@ export const ChatMessage = memo(function ChatMessage({
     }
     onReply?.(message);
   }, [message, onReply, glass, supportsHover, focusMessageSurface]);
-
   // Press-and-hold shares the action row's existing confirmation state so copy
   // feedback never creates a second floating surface over nearby messages.
   const canHoldCopy =
@@ -622,7 +597,6 @@ export const ChatMessage = memo(function ChatMessage({
     },
   });
   const holdHandlers = canHoldCopy ? holdBinding : null;
-
   const handleStartEditing = useCallback(() => {
     if (!canEdit || savingEdit) return;
     const bubble = articleRef.current?.querySelector<HTMLElement>(
@@ -634,7 +608,6 @@ export const ChatMessage = memo(function ChatMessage({
     setShowActions(false);
     setIsEditing(true);
   }, [canEdit, message.text, savingEdit]);
-
   const handleCancelEditing = useCallback(() => {
     if (savingEdit) return;
     setDraftText(message.text);
@@ -642,7 +615,6 @@ export const ChatMessage = memo(function ChatMessage({
     setIsEditing(false);
     setShowActions(glass);
   }, [glass, message.text, savingEdit]);
-
   const handleSaveEdit = useCallback(async () => {
     if (!onEdit) return;
     const nextText = draftText.trim();
@@ -654,7 +626,6 @@ export const ChatMessage = memo(function ChatMessage({
       setShowActions(false);
       return;
     }
-
     setSavingEdit(true);
     try {
       const saved = await onEdit(message.id, nextText);
@@ -667,12 +638,10 @@ export const ChatMessage = memo(function ChatMessage({
       setSavingEdit(false);
     }
   }, [draftText, message.id, message.text, onEdit]);
-
   const handleTapStart = useCallback((event: TouchEvent<HTMLElement>) => {
     const touch = event.touches[0];
     tapStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
   }, []);
-
   const handleTapReveal = useCallback(
     (event: TouchEvent<HTMLElement>) => {
       const tapStart = tapStartRef.current;
@@ -705,7 +674,6 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [isEditing, supportsHover],
   );
-
   const handleActionsMouseLeave = useCallback(
     (event: MouseEvent<HTMLElement>) => {
       const activeElement = event.currentTarget.ownerDocument.activeElement;
@@ -719,7 +687,6 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [],
   );
-
   const handleActionsPointerMove = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       if (event.pointerType === "touch") return;
@@ -730,14 +697,12 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [],
   );
-
   const handleActionsFocus = useCallback((event: FocusEvent<HTMLElement>) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.matches(":focus-visible")) {
       setShowActions(true);
     }
   }, []);
-
   const handleEditKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Escape") {
@@ -756,7 +721,6 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [handleCancelEditing, handleSaveEdit, glass],
   );
-
   useEffect(() => {
     if (!isEditing) return;
     const textarea = editTextareaRef.current;
@@ -764,7 +728,6 @@ export const ChatMessage = memo(function ChatMessage({
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }, [isEditing]);
-
   // Outside pointerdown dismisses a revealed action row/rail (touch panel +
   // glass). Also closes an in-progress glass edit, mirroring the shell rule.
   const outsideDismissActive = glass
@@ -774,7 +737,6 @@ export const ChatMessage = memo(function ChatMessage({
     if (!outsideDismissActive || typeof document === "undefined") {
       return;
     }
-
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) {
@@ -789,13 +751,10 @@ export const ChatMessage = memo(function ChatMessage({
         }
       }
     };
-
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [outsideDismissActive, glass]);
-
   const actionsVisible = showActions;
-
   const handleReplyReferenceClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
       if (!replyTargetId || typeof document === "undefined") return;
@@ -808,7 +767,6 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [replyTargetId],
   );
-
   const editSaveDisabled =
     savingEdit || !draftText.trim() || draftText.trim() === message.text.trim();
   const inlineEditControls = (
@@ -897,7 +855,6 @@ export const ChatMessage = memo(function ChatMessage({
       )}
     </ChatMessageActionSurface>
   );
-
   const inlineEditor = (
     <div
       data-testid={
@@ -922,7 +879,6 @@ export const ChatMessage = memo(function ChatMessage({
       {glass ? null : inlineEditControls}
     </div>
   );
-
   // ── Glass chrome (the continuous overlay's floating row) ──────────────────
   if (glass) {
     const initial = enterOnMount ? { opacity: 0 } : false;
@@ -937,6 +893,7 @@ export const ChatMessage = memo(function ChatMessage({
     // hook the shell tests key off.
     if (
       isAssistant &&
+      !message.replyRecoveryAvailable &&
       (message.failureKind === "no_provider" ||
         message.failureKind === "insufficient_credits")
     ) {
@@ -957,7 +914,6 @@ export const ChatMessage = memo(function ChatMessage({
         </motion.div>
       );
     }
-
     const canRowCopy = !isFirstRun && !!onCopy && trimmedText.length > 0;
     // A first-run greeting is chromeless — no rail, no tap-to-reveal. Every
     // capability above already excludes it, so hasActions is false and the
@@ -998,17 +954,16 @@ export const ChatMessage = memo(function ChatMessage({
     const hasInteractiveWidget =
       isAssistant && messageHasInteractiveWidget(message.text);
     const bubbleInteractive = hasActions && !isEditing && !hasInteractiveWidget;
-    // A recoverable assistant failure gets a one-tap Retry that re-sends the
-    // preceding user turn. Permanent gates stay on the shared non-retry
-    // contract (`no_provider`, credits, missing capability).
+    // Durable reply recovery is distinct from retrying an action. The server
+    // advertises it only when authoritative stored results can ground a reply.
     const canRetry =
       isAssistant &&
       !!onRetry &&
-      !!message.failureKind &&
-      (message.terminalFailure
-        ? message.terminalFailure.transient
-        : isRetryableChatFailureKind(message.failureKind));
-
+      (message.replyRecoveryAvailable === true ||
+        (!!message.failureKind &&
+          (message.terminalFailure
+            ? message.terminalFailure.transient
+            : isRetryableChatFailureKind(message.failureKind))));
     const toggleRevealed = () => {
       if (!hasActions || isEditing) return;
       // Never hijack a text-selection drag: a click that finishes a highlight
@@ -1036,7 +991,6 @@ export const ChatMessage = memo(function ChatMessage({
       e.preventDefault();
       toggleRevealed();
     };
-
     const bubbleContent =
       isUser && isEditing ? (
         inlineEditor
@@ -1105,7 +1059,6 @@ export const ChatMessage = memo(function ChatMessage({
           ) : null}
         </>
       );
-
     const bubbleExtraClassName = cn(
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
@@ -1117,13 +1070,11 @@ export const ChatMessage = memo(function ChatMessage({
       // text edge so the reserved action lane has the same visual rhythm.
       isUser && "py-[3px]",
     );
-
     const bubbleAppearance = isFirstRun
       ? "firstRun"
       : isSuggestion
         ? "suggestion"
         : "default";
-
     return (
       <MotionMessageRow
         ref={articleRef}
@@ -1159,7 +1110,7 @@ export const ChatMessage = memo(function ChatMessage({
         }
       >
         {/* Bubble + its click-to-reveal action row stack vertically, aligned to
-            the turn's side (#10713). */}
+                the turn's side (#10713). */}
         <MessageRowContent
           className={cn(
             "relative flex flex-col",
@@ -1302,29 +1253,41 @@ export const ChatMessage = memo(function ChatMessage({
               </MessageRowFooter>
             </motion.div>
           ) : null}
-          {/* Retry a recoverable failure by re-sending the preceding user turn.
-              Always visible on the failed turn (not gated behind the reveal
-              row) so a stalled turn isn't a dead end the user has to retype. */}
+          {/* Recovery stays visible beside the failed turn. */}
           {canRetry ? (
             <Button
               variant="surfaceAccent"
               size="badge"
               data-testid="thread-line-retry"
-              aria-label="Retry"
-              onClick={(e) => {
+              aria-label={
+                message.replyRecoveryAvailable ? "Regenerate reply" : "Retry"
+              }
+              disabled={retryPending}
+              onClick={async (e) => {
                 e.stopPropagation();
-                onRetry?.(message.id);
+                if (retryPending) return;
+                setRetryPending(true);
+                try {
+                  await onRetry?.(message.id);
+                } finally {
+                  setRetryPending(false);
+                }
               }}
             >
               <RotateCcw className="size-3.5" aria-hidden />
-              Retry
+              {retryPending
+                ? message.replyRecoveryAvailable
+                  ? "Regenerating reply…"
+                  : "Working…"
+                : message.replyRecoveryAvailable
+                  ? "Regenerate reply"
+                  : "Retry"}
             </Button>
           ) : null}
         </MessageRowContent>
       </MotionMessageRow>
     );
   }
-
   // ── Panel chrome (ChatView / detached windows) ─────────────────────────────
   return (
     <MessageRow
@@ -1366,9 +1329,7 @@ export const ChatMessage = memo(function ChatMessage({
       } message`}
     >
       <div
-        className={`max-w-[88%] min-w-0 sm:max-w-[80%] ${
-          isRightAligned ? "mr-1" : "ml-1"
-        }`}
+        className={`max-w-[88%] min-w-0 sm:max-w-[80%] ${isRightAligned ? "mr-1" : "ml-1"}`}
       >
         {!isUser && !isGrouped ? (
           <div

@@ -225,8 +225,10 @@ function readAliasedDiscriminator(
   const discriminator = action.parameters?.find(
     (parameter) => parameter.name === "action",
   );
-  return discriminator?.schema.enum?.find((value) =>
-    candidates.includes(normalizeActionName(value)),
+  return discriminator?.schema.enum?.find(
+    (value): value is string =>
+      typeof value === "string" &&
+      candidates.includes(normalizeActionName(value)),
   );
 }
 

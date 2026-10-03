@@ -1,8 +1,7 @@
 // Stub for `node:events` in the Storybook browser catalog. Provides a working
 // minimal EventEmitter (used at load by core modules pulled via the
-// @elizaos/shared barrel) so module init and any benign listener wiring work.
+// @elizaos/core barrel) so module init and any benign listener wiring work.
 type Listener = (...args: unknown[]) => void;
-
 export class EventEmitter {
   private listeners = new Map<string | symbol, Listener[]>();
   on(event: string | symbol, fn: Listener): this {
@@ -51,12 +50,10 @@ export class EventEmitter {
     return this;
   }
 }
-
 export const once = (emitter: EventEmitter, event: string | symbol) =>
   new Promise<unknown[]>((res) => emitter.once(event, (...args) => res(args)));
 export const on = () => {
   throw new Error("node:events.on async iterator unavailable in Storybook");
 };
 export const defaultMaxListeners = 10;
-
 export default EventEmitter;

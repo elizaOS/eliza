@@ -11,11 +11,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  formatElapsed,
-  TurnStatus,
-  turnStatusLabel,
-} from "./chat-typing-indicator";
+import { TurnStatus, turnStatusLabel } from "./chat-typing-indicator";
 
 afterEach(cleanup);
 
@@ -40,16 +36,6 @@ describe("turnStatusLabel", () => {
   });
 });
 
-describe("formatElapsed", () => {
-  it("shows seconds under a minute and m/ss beyond", () => {
-    expect(formatElapsed(0)).toBe("0s");
-    expect(formatElapsed(8)).toBe("8s");
-    expect(formatElapsed(59)).toBe("59s");
-    expect(formatElapsed(60)).toBe("1m 00s");
-    expect(formatElapsed(125)).toBe("2m 05s");
-  });
-});
-
 describe("TurnStatus working indicator", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -66,33 +52,16 @@ describe("TurnStatus working indicator", () => {
     );
   });
 
-  it("reveals the elapsed clock only after the grace window, then ticks", () => {
-    render(<TurnStatus status={{ kind: "thinking" }} />);
-    // Before the grace window: no timer chip yet (avoids a "0s" flash).
-    expect(screen.queryByTestId("turn-status-elapsed")).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(screen.getByTestId("turn-status-elapsed").textContent).toContain(
-      "1s",
+  it("keeps progress visible without a running timer", () => {
+    render(
+      <TurnStatus status={{ kind: "thinking", label: "Let me check." }} />,
     );
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(65000);
     });
-    expect(screen.getByTestId("turn-status-elapsed").textContent).toContain(
-      "4s",
+    expect(screen.getByTestId("turn-status-label").textContent).toBe(
+      "Let me check.",
     );
-  });
-
-  it("resets the clock when the status clears between turns", () => {
-    const { rerender } = render(<TurnStatus status={{ kind: "thinking" }} />);
-    act(() => {
-      vi.advanceTimersByTime(2000);
-    });
-    expect(screen.getByTestId("turn-status-elapsed").textContent).toContain(
-      "2s",
-    );
-    rerender(<TurnStatus status={null} />);
     expect(screen.queryByTestId("turn-status-elapsed")).toBeNull();
   });
 

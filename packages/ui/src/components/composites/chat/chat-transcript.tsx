@@ -21,6 +21,7 @@ import type {
 export interface ChatTranscriptProps {
   agentName?: string;
   carryoverMessages?: ChatMessageData[];
+  /** Positive values retain readable prior turns; zero expires their preview. */
   carryoverOpacity?: number;
   labels?: ChatMessageLabels;
   messages: ChatMessageData[];
@@ -190,31 +191,31 @@ export const ChatTranscript = memo(function ChatTranscript({
   if (variant === "game-modal") {
     return (
       <div className="flex min-h-full w-full flex-col justify-end gap-4 px-1 py-4">
-        {carryoverMessages.map((message) => {
-          const isUser = message.role === "user";
-          return (
-            <div
-              key={`carryover-${messageRenderKey(message)}`}
-              data-testid="companion-message-row"
-              data-companion-carryover="true"
-              className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
-              style={{ opacity: carryoverOpacity }}
-            >
-              <ChatBubble
-                appearance="game"
-                tone={isUser ? "user" : "assistant"}
-                className="max-w-[min(85%,24rem)] px-4 py-3 text-chat-body"
+        {carryoverOpacity > 0 &&
+          carryoverMessages.map((message) => {
+            const isUser = message.role === "user";
+            return (
+              <div
+                key={`carryover-${messageRenderKey(message)}`}
+                data-testid="companion-message-row"
+                data-companion-carryover="true"
+                className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
               >
-                <div className="break-words font-chat">
-                  {renderTranscriptMessageContent(
-                    message,
-                    renderMessageContent,
-                  )}
-                </div>
-              </ChatBubble>
-            </div>
-          );
-        })}
+                <ChatBubble
+                  appearance="game"
+                  tone={isUser ? "user" : "assistant"}
+                  className="max-w-[min(85%,24rem)] px-4 py-3 text-chat-body"
+                >
+                  <div className="break-words font-chat italic text-muted-strong">
+                    {renderTranscriptMessageContent(
+                      message,
+                      renderMessageContent,
+                    )}
+                  </div>
+                </ChatBubble>
+              </div>
+            );
+          })}
         {normalizedMessages.map((message) => {
           const isUser = message.role === "user";
           return (

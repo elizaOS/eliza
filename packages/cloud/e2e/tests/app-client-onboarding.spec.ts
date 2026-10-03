@@ -25,7 +25,7 @@ import {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
 import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "@elizaos/ui/api/direct-cloud-endpoints";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";

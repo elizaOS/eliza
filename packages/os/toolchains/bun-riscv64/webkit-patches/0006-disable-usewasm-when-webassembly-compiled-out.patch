@@ -1,0 +1,33 @@
+Subject: [PATCH] Options: skip the wasm coherence check when WebAssembly is off
+
+riscv64 C_LOOP builds compile WebAssembly out (WebKit forbids
+ENABLE_WEBASSEMBLY together with ENABLE_C_LOOP, see webkit-patches/0004),
+but Options::useWasm() still defaults to true. assertOptionsAreCoherent()
+then reports
+
+    INCOHERENT OPTIONS: at least one of useWasmIPInt, or useBBQJIT must be true
+
+at VM initialization, because both wasm interpreters are compiled out.
+That aborts before executing ANY JavaScript (only `bun --version`, which
+never spins up the VM, works). The check is meaningless when WebAssembly
+is not built, so compile it out under #if ENABLE(WEBASSEMBLY). The agent
+shipped on this runtime uses Postgres rather than the WebAssembly PGlite
+build, so no wasm execution is required.
+
+diff --git a/Source/JavaScriptCore/runtime/Options.cpp b/Source/JavaScriptCore/runtime/Options.cpp
+index d9ebf57..de661a4 100644
+--- a/Source/JavaScriptCore/runtime/Options.cpp
++++ b/Source/JavaScriptCore/runtime/Options.cpp
+@@ -1392,10 +1392,12 @@ void Options::assertOptionsAreCoherent()
+         coherent = false;
+         dataLog("INCOHERENT OPTIONS: at least one of useLLInt or useJIT must be true\n");
+     }
++#if ENABLE(WEBASSEMBLY)
+     if (useWasm() && !(useWasmIPInt() || useBBQJIT())) {
+         coherent = false;
+         dataLog("INCOHERENT OPTIONS: at least one of useWasmIPInt, or useBBQJIT must be true\n");
+     }
++#endif
+     if (useProfiler() && useConcurrentJIT()) {
+         coherent = false;
+         dataLogLn("Bytecode profiler is not concurrent JIT safe.");

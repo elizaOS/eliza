@@ -840,7 +840,7 @@ export function ConnectorsSection() {
     void loadPlugins();
   }, [loadPlugins]);
 
-  // The local app-core route intentionally answers 503 + Retry-After while its
+  // The local app route intentionally answers 503 + Retry-After while its
   // registry module cold-loads. The shared plugin loader preserves that as an
   // error, so this connector-owned surface performs one bounded follow-up once
   // the advertised two-second window has elapsed.

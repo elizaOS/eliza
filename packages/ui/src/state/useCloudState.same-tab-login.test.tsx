@@ -10,7 +10,7 @@
 // intact for the round trip. A live popup handle keeps the device-code popup
 // flow. jsdom pinned to a hosted elizacloud origin with the API client mocked.
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
@@ -27,6 +27,23 @@ import {
 import { registerStewardLoginLauncher } from "./cloud-steward-login";
 import { savePersistedActiveServer } from "./persistence";
 import { useCloudState } from "./useCloudState";
+
+const externalUrl = vi.hoisted(() => ({
+  actual: null as
+    | null
+    | ((
+        url: string,
+        options?: { extraSchemes?: readonly string[] },
+      ) => Promise<boolean>),
+  open: vi.fn(),
+}));
+
+vi.mock("../utils/openExternalUrl", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../utils/openExternalUrl")>();
+  externalUrl.actual = actual.openExternalUrl;
+  return { ...actual, openExternalUrl: externalUrl.open };
+});
 
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
 const originalBootConfig = structuredClone(getBootConfig());
@@ -88,6 +105,13 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
   let setTokenSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    externalUrl.open.mockReset();
+    externalUrl.open.mockImplementation(
+      (url: string, options?: { extraSchemes?: readonly string[] }) => {
+        if (!externalUrl.actual) throw new Error("openExternalUrl not loaded");
+        return externalUrl.actual(url, options);
+      },
+    );
     localStorage.clear();
     setBootConfig(structuredClone(originalBootConfig));
     // jsdom's window.focus logs "Not implemented" through console.error; the
@@ -124,6 +148,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
   });
 
   afterEach(() => {
+    cleanup();
     localStorage.clear();
     setBootConfig(structuredClone(originalBootConfig));
     delete globalWithPlatform.Capacitor;
@@ -411,42 +436,48 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     unmount();
   });
 
-  it("opens from a prepared desktop session without another click-time network round-trip", async () => {
-    const browserUrl =
-      "https://eliza.app/auth/cli-login?session=desktop-prepared";
-    const desktopOpenExternal = vi.fn().mockResolvedValue(undefined);
-    windowWithElectrobun.__electrobunWindowId = 1;
-    windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__ = {
-      request: { desktopOpenExternal },
-      onMessage: vi.fn(),
-      offMessage: vi.fn(),
-    };
-    cloudLoginDirectSpy.mockResolvedValue({
-      ok: true,
-      apiBase: "https://api.eliza.app",
-      browserUrl,
-      sessionId: "desktop-prepared",
-    });
+  it.each([null, "local-runtime-token"])(
+    "opens a prepared desktop sign-in despite cached connection state (backend=%s)",
+    async (backendToken) => {
+      vi.spyOn(client, "getRestAuthToken").mockReturnValue(backendToken);
+      const browserUrl =
+        "https://eliza.app/auth/cli-login?session=desktop-prepared";
+      const desktopOpenExternal = vi.fn().mockResolvedValue(undefined);
+      windowWithElectrobun.__electrobunWindowId = 1;
+      windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__ = {
+        request: { desktopOpenExternal },
+        onMessage: vi.fn(),
+        offMessage: vi.fn(),
+      };
+      cloudLoginDirectSpy.mockResolvedValue({
+        ok: true,
+        apiBase: "https://api.eliza.app",
+        browserUrl,
+        sessionId: "desktop-prepared",
+      });
 
-    const prepared = prepareDesktopCloudLoginSession("https://eliza.app", () =>
-      client.cloudLoginDirect("https://eliza.app"),
-    );
-    await prepared;
-    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+      const prepared = prepareDesktopCloudLoginSession(
+        "https://eliza.app",
+        () => client.cloudLoginDirect("https://eliza.app"),
+      );
+      await prepared;
+      expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
 
-    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
-    await act(async () => {
-      void result.current.handleCloudLogin(null, { requireClientAuth: true });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      act(() => result.current.setElizaCloudConnected(true));
+      await act(async () => {
+        void result.current.handleCloudLogin(null, { requireClientAuth: true });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
 
-    await waitFor(() => {
-      expect(desktopOpenExternal).toHaveBeenCalledWith({ url: browserUrl });
-    });
-    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
-    unmount();
-  });
+      await waitFor(() => {
+        expect(desktopOpenExternal).toHaveBeenCalledWith({ url: browserUrl });
+      });
+      expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+      unmount();
+    },
+  );
 
   it("does not navigate the auth popup until CLI-session creation completes", async () => {
     vi.useFakeTimers();
@@ -1004,7 +1035,10 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       expect(cloudLoginDirectSpy).toHaveBeenCalledWith(
         "https://api.elizacloud.ai",
       );
-      expect(popup.location.href).toBe(
+      // Native sign-in is owned by the Capacitor Browser surface, never a
+      // renderer popup (#30853).
+      expect(popup.location.href).toBe("");
+      expect(externalUrl.open).toHaveBeenCalledWith(
         "https://elizacloud.ai/auth/cli-login?session=sess-native",
       );
       expect(result.current.elizaCloudLoginFallbackUrl).toBe(
@@ -1028,6 +1062,78 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       vi.clearAllTimers();
     } finally {
       unregister();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries persistence of a claimed native CLI token without polling the consumed session again", async () => {
+    vi.useFakeTimers();
+    globalWithPlatform.Capacitor = { isNativePlatform: () => true };
+    externalUrl.open.mockResolvedValue(true);
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api.elizacloud.ai",
+    });
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api.elizacloud.ai",
+      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-once",
+      sessionId: "sess-once",
+    });
+    // The CLI session hands its token out exactly once.
+    cloudLoginPollDirectSpy
+      .mockResolvedValueOnce({
+        status: "authenticated",
+        token: "claimed-session-token",
+        userId: "user-native",
+      })
+      .mockResolvedValue({ status: "expired", error: "already consumed" });
+    const originalSetItem = Storage.prototype.setItem;
+    let failedWrites = 0;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key === "steward_session_token" && failedWrites === 0) {
+        failedWrites += 1;
+        throw new Error("Keychain write failed");
+      }
+      return originalSetItem.call(this, key, value);
+    });
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      let login: Promise<void> = Promise.resolve();
+      await act(async () => {
+        login = result.current.handleCloudLogin(null);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(externalUrl.open).toHaveBeenCalledWith(
+        "https://elizacloud.ai/auth/cli-login?session=sess-once",
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(failedWrites).toBe(1);
+      expect(localStorage.getItem("steward_session_token")).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+        await login;
+      });
+
+      expect(cloudLoginPollDirectSpy).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem("steward_session_token")).toBe(
+        "claimed-session-token",
+      );
+      expect(result.current.elizaCloudConnected).toBe(true);
+
+      unmount();
+      vi.clearAllTimers();
+    } finally {
       vi.useRealTimers();
     }
   });
@@ -1256,6 +1362,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
   });
 
   afterEach(() => {
+    cleanup();
     localStorage.clear();
     delete globalWithPlatform.Capacitor;
     restorePinnedRemote();

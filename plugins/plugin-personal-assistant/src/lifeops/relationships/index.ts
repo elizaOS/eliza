@@ -1,4 +1,6 @@
 /** Barrel for the relationship store and edge extraction (who-relates-to-whom graph over owner entities). */
+
+export { RelationshipStore } from "@elizaos/plugin-relationships";
 export {
   applyExtractedEdges,
   type ExtractedEdge,
@@ -6,7 +8,6 @@ export {
   type ExtractionResult,
   managerOfAtCompany,
 } from "./extraction.js";
-export { RelationshipStore } from "./store.js";
 export {
   BUILT_IN_RELATIONSHIP_TYPES,
   type BuiltInRelationshipType,

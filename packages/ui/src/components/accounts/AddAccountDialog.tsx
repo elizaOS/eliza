@@ -5,14 +5,14 @@
  * to their supported coding surfaces.
  */
 
-import type {
-  LinkedAccountConfig,
-  LinkedAccountProviderId,
-} from "@elizaos/shared";
 import {
   codingProviderSubscriptionAuthMode,
   isCodingSubscriptionProvider,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/coding-agent-capabilities";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
+} from "@elizaos/core/contracts/service-routing";
 import {
   type FormEvent,
   useCallback,
@@ -62,7 +62,6 @@ interface AddAccountDialogProps {
   onClose: () => void;
   onCreated: (account: LinkedAccountConfig) => void;
 }
-
 type DialogStep =
   | "provider-select"
   | "choose"
@@ -73,13 +72,11 @@ type DialogStep =
   | "apikey-submitting"
   | "unavailable"
   | "error";
-
 interface SseFlowState {
   status: "pending" | "success" | "error" | "cancelled" | "timeout";
   account?: LinkedAccountConfig;
   error?: string;
 }
-
 type SubscriptionAddMode =
   | "oauth"
   | "coding-plan-key"
@@ -103,7 +100,6 @@ function getSubscriptionAddMode(
   if (!isCodingSubscriptionProvider(providerId)) return "none";
   return codingProviderSubscriptionAuthMode(providerId);
 }
-
 function initialStepForProvider(
   providerId: LinkedAccountProviderId,
 ): DialogStep {
@@ -112,7 +108,6 @@ function initialStepForProvider(
   if (mode === "external-cli" || mode === "unavailable") return "unavailable";
   return "apikey";
 }
-
 function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
   if (providerId === "anthropic-subscription") return "Claude account";
   if (providerId === "openai-codex") return "Codex account";
@@ -121,7 +116,6 @@ function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
   }
   return "API account";
 }
-
 function providerDisplayName(
   providerId: LinkedAccountProviderId,
   t: (k: string, v?: Record<string, unknown>) => string,
@@ -187,7 +181,6 @@ function providerDisplayName(
       return providerId;
   }
 }
-
 export function AddAccountDialog({
   open,
   providerId,
@@ -202,7 +195,6 @@ export function AddAccountDialog({
   const subscriptionAddMode = activeProviderId
     ? getSubscriptionAddMode(activeProviderId)
     : "none";
-
   const [step, setStep] = useState<DialogStep>(
     activeProviderId
       ? initialStepForProvider(activeProviderId)
@@ -224,7 +216,6 @@ export function AddAccountDialog({
   // localhost-callback flow auto-opens a window; every other flow shows this
   // link so the user opens it wherever they want (a second device / browser).
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
-
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const restoredSessionRef = useRef<string | null>(null);
@@ -234,7 +225,6 @@ export function AddAccountDialog({
       eventSourceRef.current = null;
     }
   }, []);
-
   const cancelInflightFlow = useCallback(async () => {
     closeEventSource();
     const id = sessionIdRef.current;
@@ -247,7 +237,6 @@ export function AddAccountDialog({
       }
     }
   }, [closeEventSource, activeProviderId]);
-
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
@@ -277,7 +266,6 @@ export function AddAccountDialog({
     credentialRepairAccount?.id,
     credentialRepairAccount?.label,
   ]);
-
   const copyDeviceCode = useCallback(async (code: string) => {
     try {
       await copyTextToClipboard(code);
@@ -287,19 +275,16 @@ export function AddAccountDialog({
       setDeviceCodeCopied(false);
     }
   }, []);
-
   useEffect(() => {
     if (!deviceCode) return;
     setDeviceCodeCopied(false);
     void copyDeviceCode(deviceCode);
   }, [copyDeviceCode, deviceCode]);
-
   useEffect(() => {
     return () => {
       closeEventSource();
     };
   }, [closeEventSource]);
-
   const subscribeToFlow = useCallback(
     (newSessionId: string) => {
       if (!activeProviderId) return;
@@ -318,7 +303,6 @@ export function AddAccountDialog({
         setStep("error");
         return;
       }
-
       // EventSource auto-reconnects on transient network blips, which
       // is fine. But persistent failures (server gone, route 404) just
       // toggle readyState=2 forever and the user is stuck on "Waiting
@@ -332,12 +316,10 @@ export function AddAccountDialog({
           persistentErrorTimer = null;
         }
       };
-
       source.onopen = () => {
         connectedOnce = true;
         cancelPersistentErrorTimer();
       };
-
       source.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as SseFlowState;
@@ -374,7 +356,6 @@ export function AddAccountDialog({
           // error-policy:J3 Invalid status events cannot advance the OAuth state machine.
         }
       };
-
       source.onerror = () => {
         // EventSource readyState: 0=connecting, 1=open, 2=closed.
         // If we're at 2 and never got an `onopen`, the route is
@@ -397,12 +378,11 @@ export function AddAccountDialog({
             );
             setStep("error");
           }
-        }, 5_000);
+        }, 5000);
       };
     },
     [closeEventSource, onClose, onCreated, activeProviderId, t],
   );
-
   useEffect(() => {
     if (!open || !activeProviderId) return;
     const pending = readSubscriptionOAuth(activeProviderId);
@@ -433,7 +413,6 @@ export function AddAccountDialog({
     );
     subscribeToFlow(pending.sessionId);
   }, [open, activeProviderId, subscribeToFlow, t]);
-
   const startOAuth = useCallback(
     async (mode: "localhost" | "device") => {
       if (!activeProviderId) {
@@ -446,7 +425,6 @@ export function AddAccountDialog({
       }
       setErrorMessage(null);
       setStep("oauth-starting");
-
       // Auto-open a real browser window ONLY for the Codex localhost-callback
       // flow, where the :1455 listener catches the redirect and completes login
       // hands-free. Every other flow — Codex device code, and Anthropic's
@@ -552,7 +530,6 @@ export function AddAccountDialog({
       t,
     ],
   );
-
   const submitOAuthCode = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
@@ -585,7 +562,6 @@ export function AddAccountDialog({
     },
     [oauthCode, activeProviderId, t],
   );
-
   const submitApiKey = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
@@ -628,14 +604,12 @@ export function AddAccountDialog({
       t,
     ],
   );
-
   const handleClose = useCallback(() => {
     if (activeProviderId) clearSubscriptionOAuth(activeProviderId);
     void cancelInflightFlow();
     reset();
     onClose();
   }, [cancelInflightFlow, onClose, activeProviderId, reset]);
-
   const chooseProvider = useCallback(
     (nextProviderId: LinkedAccountProviderId) => {
       setSelectedProviderId(nextProviderId);
@@ -650,7 +624,6 @@ export function AddAccountDialog({
     },
     [],
   );
-
   useEffect(() => {
     if (!open) return;
     setSelectedProviderId(providerId ?? null);
@@ -683,7 +656,6 @@ export function AddAccountDialog({
     credentialRepairAccount?.id,
     credentialRepairAccount?.label,
   ]);
-
   const dialogDescription = credentialRepairAccount
     ? credentialRepairAccount.source === "oauth"
       ? t("accounts.reauthenticate.description", {
@@ -723,17 +695,14 @@ export function AddAccountDialog({
                   defaultValue:
                     "Paste your API key. It's stored locally and only used to call the provider.",
                 });
-
   const apiKeyLabel =
     subscriptionAddMode === "coding-plan-key"
       ? t("accounts.add.codingPlanKey", {
           defaultValue: "Coding-plan key",
         })
       : t("accounts.add.apiKey", { defaultValue: "API key" });
-
   const apiKeyPlaceholder =
     activeProviderId === "zai-coding" ? "zai-..." : "sk-...";
-
   const unavailableCopy =
     activeProviderId === "gemini-cli"
       ? t("accounts.add.geminiCliHint", {
@@ -749,7 +718,6 @@ export function AddAccountDialog({
             defaultValue:
               "This provider cannot be linked through this dialog right now.",
           });
-
   const labelInput = (
     <div className="grid gap-1.5">
       <Label htmlFor="add-account-label">
@@ -767,7 +735,6 @@ export function AddAccountDialog({
       />
     </div>
   );
-
   return (
     <Dialog
       open={open}

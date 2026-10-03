@@ -49,6 +49,7 @@ import {
   tryHandleTutorialText,
 } from "../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../utils";
+import { scrubRevokedRemoteCredential } from "./active-server-credential";
 import { applyAgentProfileConnection } from "./agent-profile-connection";
 import {
   activeServerIdForAgentProfile,
@@ -67,7 +68,10 @@ import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
-import { createPersistedActiveServer } from "./persistence";
+import {
+  createPersistedActiveServer,
+  loadPersistedActiveServer,
+} from "./persistence";
 import {
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
@@ -275,7 +279,7 @@ function AppProviderInner({
 
   // --- Pairing ---
   // --- Pairing (via usePairingState) ---
-  const pairingHook = usePairingState();
+  const pairingHook = usePairingState(retryStartup);
   const {
     state: {
       pairingEnabled,
@@ -888,6 +892,8 @@ function AppProviderInner({
     setElizaCloudStatusReason,
     cloudDashboardView,
     setCloudDashboardView,
+    elizaCloudStatusLoading,
+    elizaCloudStatusUnavailable,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
     setElizaCloudLoginError,
@@ -977,6 +983,9 @@ function AppProviderInner({
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    reconcileRestoredConversationMessages,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,
@@ -1008,9 +1017,6 @@ function AppProviderInner({
     updateChannelSaving,
     loadUpdateStatus,
     handleChannelChange,
-    extensionStatus,
-    extensionChecking,
-    checkExtensionStatus,
   } = dataLoaders;
 
   // pollCloudCredits is now provided by useCloudState (cloudHook — wired below)
@@ -1075,6 +1081,7 @@ function AppProviderInner({
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    reconcileRestoredConversationMessages,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,
@@ -1449,6 +1456,10 @@ function AppProviderInner({
   // during the post-(re)start window before those services finish starting.
   const agentRunningRef = useRef(agentStatus?.state === "running");
   agentRunningRef.current = agentStatus?.state === "running";
+  const codingAgentsEnabledRef = useRef(false);
+  codingAgentsEnabledRef.current = plugins.some(
+    (plugin) => plugin.id === "agent-orchestrator" && plugin.enabled,
+  );
 
   // ── StartupCoordinator (sole startup authority) ──────────────────────
   // Called after all dependency hooks so every setter/callback is available.
@@ -1484,7 +1495,6 @@ function AppProviderInner({
     loadWalletConfig,
     loadInventory,
     loadUpdateStatus,
-    checkExtensionStatus,
     pollCloudCredits,
     fetchAutonomyReplay,
     appendAutonomousEvent,
@@ -1494,6 +1504,7 @@ function AppProviderInner({
     setPtySessions,
     hasPtySessionsRef,
     agentRunningRef,
+    codingAgentsEnabledRef,
     setTab,
     setTabRaw,
     setConversationMessages,
@@ -1517,6 +1528,46 @@ function AppProviderInner({
   coordinatorRetryRef.current = startupCoordinator.retry;
   coordinatorResetRef.current = startupCoordinator.reset;
   coordinatorFirstRunCompleteRef.current = startupCoordinator.firstRunComplete;
+
+  useEffect(
+    () =>
+      client.onWsEvent("auth-revoked", (event) => {
+        const apiBase =
+          typeof event.apiBase === "string" ? event.apiBase : null;
+        const token = client.getRestAuthToken();
+        const activeServer = loadPersistedActiveServer();
+        if (
+          !apiBase ||
+          !token ||
+          activeServer?.kind !== "remote" ||
+          activeServer.apiBase?.replace(/\/+$/, "") !==
+            apiBase.replace(/\/+$/, "") ||
+          activeServer.accessToken !== token
+        ) {
+          return;
+        }
+        const cleared = scrubRevokedRemoteCredential(token, apiBase);
+        client.setToken(null);
+        setPairingCodeInput("");
+        setActionNotice(
+          "This device's session ended. Pair it again.",
+          "error",
+          8000,
+        );
+        void cleared
+          .then((didClear) => {
+            if (didClear && client.getBaseUrl() === apiBase) retryStartup();
+          })
+          .catch(() => {
+            setActionNotice(
+              "Session ended, but the saved credential could not be cleared. Check device storage before re-pairing.",
+              "error",
+              12000,
+            );
+          });
+      }),
+    [retryStartup, setActionNotice, setPairingCodeInput],
+  );
 
   // Memoize the coordinator handle so that unrelated re-renders (e.g. chatInput
   // keystrokes) don't produce a new object reference and bust the value useMemo below.
@@ -1711,12 +1762,16 @@ function AppProviderInner({
       removeConversationMessage,
       setConversationMessages,
       prependConversationMessages,
+      getConversationMessagesSnapshot,
+      applyConversationMessageStream,
     }),
     [
       conversationMessages,
       removeConversationMessage,
       setConversationMessages,
       prependConversationMessages,
+      getConversationMessagesSnapshot,
+      applyConversationMessageStream,
     ],
   );
 
@@ -1910,6 +1965,9 @@ function AppProviderInner({
       elizaCloudStatusReason,
       ownerName,
       cloudDashboardView,
+      elizaCloudStatusLoading,
+      elizaCloudStatusUnavailable,
+      refreshCloudStatus: pollCloudCredits,
       elizaCloudLoginBusy,
       elizaCloudLoginError,
       elizaCloudLoginFallbackUrl,
@@ -1918,8 +1976,6 @@ function AppProviderInner({
       updateStatus,
       updateLoading,
       updateChannelSaving,
-      extensionStatus,
-      extensionChecking,
       storePlugins,
       storeSearch,
       storeFilter,
@@ -2109,7 +2165,6 @@ function AppProviderInner({
       switchAgentProfile,
       loadUpdateStatus,
       handleChannelChange,
-      checkExtensionStatus,
       openEmotePicker,
       closeEmotePicker,
       loadWorkbench,
@@ -2281,6 +2336,9 @@ function AppProviderInner({
       elizaCloudStatusReason,
       ownerName,
       cloudDashboardView,
+      elizaCloudStatusLoading,
+      elizaCloudStatusUnavailable,
+      pollCloudCredits,
       elizaCloudLoginBusy,
       elizaCloudLoginError,
       elizaCloudLoginFallbackUrl,
@@ -2288,8 +2346,6 @@ function AppProviderInner({
       updateStatus,
       updateLoading,
       updateChannelSaving,
-      extensionStatus,
-      extensionChecking,
       storePlugins,
       storeSearch,
       storeFilter,
@@ -2473,7 +2529,6 @@ function AppProviderInner({
       switchAgentProfile,
       loadUpdateStatus,
       handleChannelChange,
-      checkExtensionStatus,
       openEmotePicker,
       closeEmotePicker,
       loadWorkbench,

@@ -3,20 +3,21 @@
  * owner approval queue, durable food repository, and Instacart link boundary.
  * It never treats a generated link as a cart, checkout, order, or delivery.
  */
+
+import { type IAgentRuntime, Service } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/plugin-relationships";
 import { createApprovalQueue } from "../approval-queue.js";
-import type {
-  ApprovalExecutionClaim,
-  ApprovalExecutionMutation,
-  ApprovalQueue,
-  ApprovalRequest,
+import {
+  type ApprovalExecutionClaim,
+  type ApprovalExecutionMutation,
+  type ApprovalQueue,
+  type ApprovalRequest,
 } from "../approval-queue.types.js";
 import { InstacartProductsLinkClient } from "./instacart.js";
 import {
@@ -46,7 +47,6 @@ const DEFAULT_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PROVIDER_LEASE_MS = 2 * 60 * 1000;
 const HOUSEHOLD_ROLE_METADATA_KEY = "householdRole";
 const HOUSEHOLD_SUBJECTS_METADATA_KEY = "householdSubjectEntityIds";
-
 export interface FoodDomainDependencies {
   runtime: IAgentRuntime;
   agentId: string;
@@ -57,7 +57,6 @@ export interface FoodDomainDependencies {
   instacart: InstacartProductsLinkClient | null;
   now?: () => Date;
 }
-
 function exactApprovalPayloadMatches(
   request: ApprovalRequest | null,
   handoff: FoodShoppingHandoff,
@@ -72,7 +71,6 @@ function exactApprovalPayloadMatches(
     request.payload.input.contentSha256 === handoff.contentSha256
   );
 }
-
 function relationshipRole(
   relationships: Awaited<ReturnType<RelationshipStore["list"]>>,
 ): string | null {
@@ -82,7 +80,6 @@ function relationshipRole(
   }
   return null;
 }
-
 function relationshipSubjects(
   relationships: Awaited<ReturnType<RelationshipStore["list"]>>,
 ): string[] {
@@ -100,19 +97,15 @@ function relationshipSubjects(
     ),
   );
 }
-
 export class FoodDomainService {
   private readonly now: () => Date;
-
   constructor(private readonly deps: FoodDomainDependencies) {
     this.now = deps.now ?? (() => new Date());
   }
-
   async initialize(): Promise<void> {
     await this.deps.repository.ensureSchema();
     await this.deps.repository.recoverStaleHandoffs(this.now().toISOString());
   }
-
   private assertOwnerPrincipal(principalEntityId: string): void {
     if (principalEntityId !== SELF_ENTITY_ID) {
       throw new FoodDomainError(
@@ -122,7 +115,6 @@ export class FoodDomainService {
       );
     }
   }
-
   private async requireProfile(
     householdId: string,
   ): Promise<FoodHouseholdProfile> {
@@ -136,7 +128,6 @@ export class FoodDomainService {
     }
     return profile;
   }
-
   private async assertKnownEntity(entityId: string): Promise<void> {
     if (!(await this.deps.entityStore.get(entityId))) {
       throw new FoodDomainError(
@@ -146,7 +137,6 @@ export class FoodDomainService {
       );
     }
   }
-
   private async assertHouseholdRelationship(entityId: string): Promise<void> {
     if (entityId === SELF_ENTITY_ID) return;
     const relationships = await this.deps.relationshipStore.list({
@@ -161,7 +151,6 @@ export class FoodDomainService {
       );
     }
   }
-
   private async assertProfileMember(
     profile: FoodHouseholdProfile,
     entityId: string,
@@ -176,7 +165,6 @@ export class FoodDomainService {
     await this.assertKnownEntity(entityId);
     await this.assertHouseholdRelationship(entityId);
   }
-
   async putHouseholdProfile(input: {
     principalEntityId: string;
     householdId: string;
@@ -195,7 +183,6 @@ export class FoodDomainService {
       now: this.now().toISOString(),
     });
   }
-
   async putConstraint(input: {
     principalEntityId: string;
     constraint: HardFoodConstraint;
@@ -215,7 +202,6 @@ export class FoodDomainService {
       this.now().toISOString(),
     );
   }
-
   async putPreference(input: {
     principalEntityId: string;
     preference: FoodPreference;
@@ -235,7 +221,6 @@ export class FoodDomainService {
       this.now().toISOString(),
     );
   }
-
   async recordInventoryObservation(input: {
     principalEntityId: string;
     observation: InventoryObservation;
@@ -250,7 +235,6 @@ export class FoodDomainService {
       this.now().toISOString(),
     );
   }
-
   async evaluateMeal(input: {
     principalEntityId: string;
     householdId: string;
@@ -278,7 +262,6 @@ export class FoodDomainService {
       inventory,
     });
   }
-
   async publishMealPlan(input: {
     principalEntityId: string;
     planId: string;
@@ -303,7 +286,6 @@ export class FoodDomainService {
       this.now().toISOString(),
     );
   }
-
   private async currentCanonicalEvaluation(
     evaluation: MealPlanEvaluation,
   ): Promise<MealPlanEvaluation> {
@@ -341,7 +323,6 @@ export class FoodDomainService {
     }
     return canonical;
   }
-
   async requestShoppingHandoffApproval(input: {
     principalEntityId: string;
     evaluation: MealPlanEvaluation;
@@ -409,7 +390,6 @@ export class FoodDomainService {
     );
     return { handoff, approvalRequest, replayed: false };
   }
-
   private async approvedRequestFor(
     handoff: FoodShoppingHandoff,
   ): Promise<ApprovalRequest> {
@@ -438,7 +418,6 @@ export class FoodDomainService {
     }
     return request;
   }
-
   private async reconcileCompletedApproval(
     handoff: FoodShoppingHandoff,
   ): Promise<void> {
@@ -485,7 +464,6 @@ export class FoodDomainService {
       { handoffId: handoff.handoffId, approvalState: request.state },
     );
   }
-
   private executionClaimFor(
     request: ApprovalRequest,
     handoff: FoodShoppingHandoff,
@@ -497,7 +475,6 @@ export class FoodDomainService {
       providerIdempotencyKey: `approval:${request.id}:${handoff.provider}`,
     };
   }
-
   private executionMutationFor(
     request: ApprovalRequest,
     handoff: FoodShoppingHandoff,
@@ -515,7 +492,6 @@ export class FoodDomainService {
       attemptId: request.execution.attemptId,
     };
   }
-
   /** The receipt a completed handoff row already carries, replayed verbatim. */
   private persistedProviderReceipt(
     handoff: FoodShoppingHandoff,
@@ -532,7 +508,6 @@ export class FoodDomainService {
       productsLinkUrl: handoff.providerLinkUrl,
     };
   }
-
   async materializeApprovedShoppingHandoff(input: {
     principalEntityId: string;
     handoffId: string;
@@ -668,7 +643,6 @@ export class FoodDomainService {
     });
     return completed;
   }
-
   async getView(input: {
     principalEntityId: string;
     householdId: string;
@@ -728,9 +702,7 @@ export class FoodDomainService {
     return childView;
   }
 }
-
 export const FOOD_DOMAIN_SERVICE = "lifeops_food_domain";
-
 export function createFoodDomainService(
   runtime: IAgentRuntime,
 ): FoodDomainService {
@@ -774,15 +746,11 @@ export function createFoodDomainService(
     instacart,
   });
 }
-
 export class FoodDomainRuntimeService extends Service {
   static override serviceType = FOOD_DOMAIN_SERVICE;
-
   override capabilityDescription =
     "Constraint-safe meal, inventory, and approval-bound shopping-list coordination";
-
   readonly food: FoodDomainService;
-
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (!runtime) {
@@ -793,7 +761,6 @@ export class FoodDomainRuntimeService extends Service {
     }
     this.food = createFoodDomainService(runtime);
   }
-
   static async start(
     runtime: IAgentRuntime,
   ): Promise<FoodDomainRuntimeService> {
@@ -802,10 +769,8 @@ export class FoodDomainRuntimeService extends Service {
     await service.food.initialize();
     return service;
   }
-
   async stop(): Promise<void> {}
 }
-
 export function getFoodDomainService(
   runtime: IAgentRuntime,
 ): FoodDomainService {
@@ -819,7 +784,6 @@ export function getFoodDomainService(
   }
   return runtimeService.food;
 }
-
 export {
   DEFAULT_APPROVAL_TTL_MS,
   DEFAULT_PROVIDER_LEASE_MS,

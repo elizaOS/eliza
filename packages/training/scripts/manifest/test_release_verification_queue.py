@@ -234,7 +234,7 @@ def test_build_queue_expands_imagegen_hardware_evidence() -> None:
     assert all(item.requires_hardware for item in items)
     assert all(item.category == "imagegenEvidence" for item in items)
     assert items[0].command.startswith("python3 packages/training/scripts/manifest/release_process_guard.py && ")
-    assert "plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json" in items[0].command
+    assert "packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.ts --json" in items[0].command
     assert "p.get('requiredAccelerator') == 'vulkan'" in items[0].command
     assert "'vulkan' in p.get('accelerators', [])" in items[0].command
     assert "evidence/imagegen/sd-cpp-runtime.json" in items[0].evidence

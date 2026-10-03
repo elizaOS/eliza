@@ -5,35 +5,32 @@
  * auth files and global provider bridges. Cloud only needs deterministic
  * metadata selection over Drizzle-backed rows, so this implementation keeps the
  * strategy, affinity, and health semantics local to cloud-shared without a
- * runtime dependency on app-core.
+ * runtime dependency on app.
  */
-import type { LinkedAccountConfig } from "@elizaos/core";
-import type {
-  AccountPool,
-  AccountPoolDeps,
-  PoolProviderId,
-  SelectInput,
-  Strategy,
+
+import { type LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
+import {
+  type AccountPool,
+  type AccountPoolDeps,
+  type PoolProviderId,
+  type SelectInput,
+  type Strategy,
 } from "./account-pool-contract";
 
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
-const MAX_AFFINITY_ENTRIES = 10_000;
-const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
-
+const MAX_AFFINITY_ENTRIES = 10000;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60000;
 interface AffinityEntry {
   accountId: string;
   attempts: number;
 }
-
 function accountSessionPct(account: LinkedAccountConfig): number {
   return typeof account.usage?.sessionPct === "number" ? account.usage.sessionPct : 0;
 }
-
 function accountLastUsedAt(account: LinkedAccountConfig): number {
   return typeof account.lastUsedAt === "number" ? account.lastUsedAt : 0;
 }
-
 function isAccountSelectableNow(account: LinkedAccountConfig, now: number = Date.now()): boolean {
   if (account.health === "ok") return true;
   return (
@@ -42,11 +39,9 @@ function isAccountSelectableNow(account: LinkedAccountConfig, now: number = Date
     account.healthDetail.until < now
   );
 }
-
 function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
   return `${providerId}:${accountId}`;
 }
-
 function findAccountById(
   all: Record<string, LinkedAccountConfig>,
   accountId: string,
@@ -65,30 +60,24 @@ function findAccountById(
   if (direct) return direct;
   return Object.values(all).find((account) => account.id === accountId) ?? null;
 }
-
 function byPriorityThenAge(a: LinkedAccountConfig, b: LinkedAccountConfig): number {
   if (a.priority !== b.priority) return a.priority - b.priority;
   return accountLastUsedAt(a) - accountLastUsedAt(b);
 }
-
 function byPriorityThenStableIdentity(a: LinkedAccountConfig, b: LinkedAccountConfig): number {
   if (a.priority !== b.priority) return a.priority - b.priority;
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
-
 export class TeamCredentialAccountPool implements AccountPool {
   private readonly affinity = new Map<string, AffinityEntry>();
   private readonly roundRobinCursor = new Map<PoolProviderId, number>();
   private readonly recentlySelectedAt = new Map<string, number>();
   private selectionClock = 0;
-
   constructor(private readonly deps: AccountPoolDeps) {}
-
   async select(input: SelectInput): Promise<LinkedAccountConfig | null> {
     const eligible = this.filterEligible(this.deps.readAccounts(), input);
     if (eligible.length === 0) return null;
-
     if (input.sessionKey) {
       const cached = this.affinity.get(input.sessionKey);
       if (
@@ -100,11 +89,9 @@ export class TeamCredentialAccountPool implements AccountPool {
         return eligible.find((account) => account.id === cached.accountId) ?? null;
       }
     }
-
     const picked = this.applyStrategy(input.strategy ?? "priority", eligible, input.providerId);
     if (!picked) return null;
     this.stampSelection(picked.id);
-
     if (input.sessionKey) {
       this.affinity.set(input.sessionKey, { accountId: picked.id, attempts: 1 });
       while (this.affinity.size > MAX_AFFINITY_ENTRIES) {
@@ -115,21 +102,20 @@ export class TeamCredentialAccountPool implements AccountPool {
     }
     return picked;
   }
-
   list(providerId?: PoolProviderId): LinkedAccountConfig[] {
     const all = Object.values(this.deps.readAccounts());
     return providerId ? all.filter((account) => account.providerId === providerId) : all;
   }
-
   get(accountId: string, providerId?: PoolProviderId): LinkedAccountConfig | null {
     return findAccountById(this.deps.readAccounts(), accountId, providerId);
   }
-
   async markRateLimited(
     accountId: string,
     untilMs: number,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(this.deps.readAccounts(), accountId, opts?.providerId);
     if (!account) return;
@@ -151,11 +137,12 @@ export class TeamCredentialAccountPool implements AccountPool {
       },
     });
   }
-
   async markNeedsReauth(
     accountId: string,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(this.deps.readAccounts(), accountId, opts?.providerId);
     if (!account) return;
@@ -168,7 +155,6 @@ export class TeamCredentialAccountPool implements AccountPool {
       },
     });
   }
-
   async reprobeFlagged(): Promise<string[]> {
     const ready: string[] = [];
     const now = Date.now();
@@ -182,7 +168,6 @@ export class TeamCredentialAccountPool implements AccountPool {
     }
     return ready;
   }
-
   private filterEligible(
     all: Record<string, LinkedAccountConfig>,
     input: SelectInput,
@@ -199,7 +184,6 @@ export class TeamCredentialAccountPool implements AccountPool {
       return isAccountSelectableNow(account, now);
     });
   }
-
   private applyStrategy(
     strategy: Strategy,
     eligible: LinkedAccountConfig[],
@@ -207,7 +191,6 @@ export class TeamCredentialAccountPool implements AccountPool {
   ): LinkedAccountConfig | null {
     if (eligible.length === 0) return null;
     if (eligible.length === 1) return eligible[0] ?? null;
-
     switch (strategy) {
       case "round-robin": {
         const sorted = [...eligible].sort(byPriorityThenStableIdentity);
@@ -229,7 +212,6 @@ export class TeamCredentialAccountPool implements AccountPool {
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
     }
   }
-
   private stampSelection(accountId: string): void {
     this.selectionClock = Math.max(Date.now(), this.selectionClock + 1);
     this.recentlySelectedAt.set(accountId, this.selectionClock);
@@ -239,11 +221,9 @@ export class TeamCredentialAccountPool implements AccountPool {
       this.recentlySelectedAt.delete(oldest);
     }
   }
-
   private effectiveLastUsed(account: LinkedAccountConfig): number {
     return Math.max(accountLastUsedAt(account), this.recentlySelectedAt.get(account.id) ?? 0);
   }
-
   private byLeastUsedEffective(a: LinkedAccountConfig, b: LinkedAccountConfig): number {
     const aPct = accountSessionPct(a);
     const bPct = accountSessionPct(b);

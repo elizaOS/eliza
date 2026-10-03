@@ -452,6 +452,46 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["hidden", true, "background"],
+    ["visible", false, "background"],
+    ["visible", true, "active"],
+  ] as const)(
+    "reports startup presence for %s with focus=%s",
+    async (visibility, focused, state) => {
+      const visibilityBefore = Object.getOwnPropertyDescriptor(
+        document,
+        "visibilityState",
+      );
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: visibility,
+      });
+      const focus = vi.spyOn(document, "hasFocus").mockReturnValue(focused);
+      try {
+        stop = startLifeOpsActivitySignalCapture(true);
+        await settle();
+        for (const source of ["app_lifecycle", "page_visibility"]) {
+          expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledWith(
+            expect.objectContaining({ source, state }),
+          );
+        }
+        if (state === "background") {
+          expect(
+            h.captureLifeOpsActivitySignal.mock.calls.some(
+              ([signal]) => signal.state === "active",
+            ),
+          ).toBe(false);
+        }
+      } finally {
+        focus.mockRestore();
+        if (visibilityBefore)
+          Object.defineProperty(document, "visibilityState", visibilityBefore);
+        else Reflect.deleteProperty(document, "visibilityState");
+      }
+    },
+  );
+
   it("posts the current web presence once the runtime reports running", async () => {
     stop = startLifeOpsActivitySignalCapture(true);
     await settle();

@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TRAJECTORY_CLI = path.resolve(SCRIPT_DIR, "../trajectory.ts");

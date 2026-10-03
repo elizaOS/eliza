@@ -14,6 +14,7 @@
  * exercised on the actual fire path, not a stub.
  */
 
+import { createGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -37,7 +38,6 @@ import {
   TestNoopScheduledTaskDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
-import { createGlobalPauseStore } from "../src/lifeops/global-pause/store.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.js";
 import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.js";

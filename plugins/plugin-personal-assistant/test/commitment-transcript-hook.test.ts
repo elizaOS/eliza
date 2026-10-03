@@ -6,7 +6,7 @@
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import type { MeetingTranscriptFinalizedPayload } from "@elizaos/shared";
+import { type MeetingTranscriptFinalizedPayload } from "@elizaos/core/meetings";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

@@ -25,14 +25,26 @@ export const CRON_ROUTES: Record<string, string> = {
 export const CRON_FANOUT: Record<string, string[]> = {
   "0 0 * * *": ["/api/cron/container-billing"],
   "0 1 * * *": ["/api/cron/compute-metrics"],
-  "0 2 * * *": ["/api/cron/cleanup-webhook-events"],
+  "0 2 * * *": [
+    "/api/cron/cleanup-webhook-events",
+    // Delete recorded model calls past LLM_TRAJECTORY_RETENTION_DAYS.
+    "/api/cron/llm-trajectory-purge",
+    // Delete audit rows past their expires_at (7-year default retention).
+    "/api/cron/audit-log-purge",
+  ],
   "0 3 * * *": [
     "/api/cron/domain-renewals",
     // #11058: release external domain rows still unverified after the reclaim
     // TTL (48h default, MANAGED_DOMAIN_UNVERIFIED_TTL_MS override).
     "/api/cron/reclaim-stale-domains",
   ],
-  "0 * * * *": ["/api/cron/agent-billing", "/api/cron/process-account-deletions"],
+  "0 * * * *": [
+    "/api/cron/agent-billing",
+    "/api/cron/process-account-deletions",
+    // #22967: funding-stop retention clock (notices, 30-day container
+    // deletion, 90-day backup pin).
+    "/api/cron/agent-funding-retention",
+  ],
   "*/5 * * * *": [
     // Keep the cache-only shared first-turn gates warm for recently active
     // agents (admission snapshot / pricing / character projection) so idle
@@ -42,7 +54,6 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/shared-agent-keepwarm",
     "/api/cron/social-automation",
     "/api/cron/sample-eliza-price",
-    "/api/cron/process-redemptions",
     "/api/cron/reconcile-domain-purchases",
     "/api/cron/cleanup-stuck-provisioning",
     // #14808 CLOUD lane: drain pending pii_scrub jobs (content-hash-idempotent,
@@ -81,6 +92,12 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // V3 backup admission is independently fenced and defaults OFF in every
     // Worker environment. Keep the legacy six-hour caller below until an
     // explicitly authorized staging run proves this replacement end to end.
+    // #24407: admission is fair (64 sharded cursors, per-invocation claim and
+    // enrollment budgets, deferral with bounded reasons) but it only enrolls
+    // agents whose activation is `active` with published activation
+    // authority. Today only coordinator restores write that state, so legacy
+    // agents are covered solely by the six-hour caller; retiring it now would
+    // leave them with no scheduled backup at all.
     "/api/v1/cron/agent-backup-admission",
     "/api/v1/cron/deployment-monitor",
     "/api/v1/cron/health-check",
@@ -90,6 +107,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/provisioning-worker-health",
     "/api/v1/cron/process-provisioning-jobs",
     "/api/cron/process-stripe-queue",
+    "/api/cron/reconcile-app-billing",
     "/api/v1/cron/pool-replenish",
     // #9899 Tier-2 optimistic-billing backstop (no-op when the flag is off).
     "/api/cron/sweep-inference-charges",

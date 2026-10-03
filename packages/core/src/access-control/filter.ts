@@ -12,7 +12,9 @@
  * least-privileged `USER` tier.
  */
 import type { RoleName } from "../roles";
-import type { AccessContext, MemoryScope, UUID } from "../types";
+import type { AccessContext } from "../types/access-context.js";
+import type { MemoryScope } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 
 interface AccessScopedRecord {
 	agentId?: UUID;

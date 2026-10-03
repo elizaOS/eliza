@@ -1,22 +1,20 @@
 /**
  * The UI message catalogs, with lazy per-language loading over the bundled
- * locale JSON. Language codes themselves are owned by @elizaos/shared and
+ * locale JSON. Language codes themselves are owned by @elizaos/core and
  * re-exported here.
  */
 import {
   DEFAULT_UI_LANGUAGE,
   UI_LANGUAGES,
   type UiLanguage,
-} from "@elizaos/shared";
+} from "@elizaos/core/i18n/language";
 import en from "./locales/en.json" with { type: "json" };
 
-// Canonical language codes live in @elizaos/shared (React-free, Node-safe).
+// Canonical language codes live in @elizaos/core (React-free, Node-safe).
 // Re-exported here so renderer consumers keep importing them from
 // `@elizaos/ui/i18n` alongside the message dictionaries below.
 export { DEFAULT_UI_LANGUAGE, UI_LANGUAGES, type UiLanguage };
-
 export type MessageDict = Record<string, string>;
-
 /**
  * Locale dictionaries. Only `en` (the fallback) is bundled eagerly. All other
  * locales are dynamically imported on first use via {@link ensureLanguageLoaded}.
@@ -34,7 +32,6 @@ export const MESSAGES: Record<UiLanguage, MessageDict> = {
   tl: {},
   ja: {},
 };
-
 const loaders: Record<Exclude<UiLanguage, "en">, () => Promise<MessageDict>> = {
   "zh-CN": () =>
     import("./locales/zh-CN.json").then((m) => m.default as MessageDict),
@@ -45,9 +42,7 @@ const loaders: Record<Exclude<UiLanguage, "en">, () => Promise<MessageDict>> = {
   tl: () => import("./locales/tl.json").then((m) => m.default as MessageDict),
   ja: () => import("./locales/ja.json").then((m) => m.default as MessageDict),
 };
-
 const inflight = new Map<UiLanguage, Promise<void>>();
-
 /**
  * Ensure the message dictionary for `lang` is loaded. Resolves immediately if
  * the dictionary is already populated (English is always ready). Safe to call

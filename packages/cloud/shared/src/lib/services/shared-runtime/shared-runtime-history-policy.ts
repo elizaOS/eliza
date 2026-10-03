@@ -5,7 +5,7 @@
  */
 
 import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/network/ssrf";
-import { stringToUuid } from "@elizaos/core/utils";
+import { stringToUuid } from "@elizaos/core/utils/string-to-uuid";
 import type { ModelMessage } from "ai";
 import type {
   SharedRuntimeHistoryMessage,

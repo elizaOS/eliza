@@ -622,6 +622,14 @@ function stubRegister(domain: string): RegistrationStartResult {
 }
 
 function stubStatus(domain: string): RegistrationStatus {
+  if (domain.startsWith("fail-")) {
+    return {
+      domain,
+      status: "failed",
+      completedAt: null,
+      failureReason: "stub: simulated registration failure",
+    };
+  }
   return {
     domain,
     status: "active",

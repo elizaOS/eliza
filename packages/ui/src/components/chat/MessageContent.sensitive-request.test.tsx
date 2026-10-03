@@ -9,7 +9,7 @@
 // opens the auth URL in a popup and never prints the URL in chat. jsdom render
 // with the typed ElizaClient mocked (no backend).
 
-import type { PermissionState } from "@elizaos/shared";
+import type { PermissionState } from "@elizaos/core/contracts/permissions";
 import {
   act,
   cleanup,
@@ -28,6 +28,7 @@ import {
 } from "../../events";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
+import { MessageContent, SensitiveRequestBlock } from "./MessageContent";
 
 const { clientMock, tunnelCredentialMock, updateSecretsMock } = vi.hoisted(
   () => ({
@@ -42,7 +43,6 @@ const { clientMock, tunnelCredentialMock, updateSecretsMock } = vi.hoisted(
     updateSecretsMock: vi.fn(),
   }),
 );
-
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
@@ -52,15 +52,10 @@ vi.mock("@elizaos/ui", () => ({
     <button {...props}>{children}</button>
   ),
 }));
-
 vi.mock("../../api/client", () => ({
   client: clientMock,
 }));
-
-import { MessageContent, SensitiveRequestBlock } from "./MessageContent";
-
 const connectionCleanups: Array<() => void> = [];
-
 function baseMessage(
   overrides: Partial<ConversationMessage>,
 ): ConversationMessage {
@@ -72,7 +67,6 @@ function baseMessage(
     ...overrides,
   };
 }
-
 function permissionState(
   overrides: Partial<PermissionState> = {},
 ): PermissionState {
@@ -85,7 +79,6 @@ function permissionState(
     ...overrides,
   };
 }
-
 function renderWithApp(
   message: ConversationMessage,
   sendActionMessage = vi.fn(),
@@ -103,7 +96,6 @@ function renderWithApp(
   );
   return { sendActionMessage };
 }
-
 function pendingPublicSecretRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "OPENAI_API_KEY",
@@ -116,7 +108,6 @@ function pendingPublicSecretRequest(): ConversationMessage["secretRequest"] {
     },
   };
 }
-
 function pendingOwnerInlineSecretRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "OPENAI_API_KEY",
@@ -145,7 +136,6 @@ function pendingOwnerInlineSecretRequest(): ConversationMessage["secretRequest"]
     },
   };
 }
-
 function pendingTunnelSecretRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "SUB_AGENT_CREDENTIALS",
@@ -185,7 +175,6 @@ function pendingTunnelSecretRequest(): ConversationMessage["secretRequest"] {
     },
   };
 }
-
 function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "GITHUB_OAUTH",
@@ -210,7 +199,6 @@ function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
     },
   };
 }
-
 function pendingImageSecretRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "TOTP_SEED_PHOTO",
@@ -233,7 +221,7 @@ function pendingImageSecretRequest(): ConversationMessage["secretRequest"] {
           input: "image",
           required: true,
           mimeTypes: ["image/png"],
-          maxBytes: 1_000_000,
+          maxBytes: 1000000,
         },
       ],
       submitLabel: "Upload",
@@ -241,7 +229,6 @@ function pendingImageSecretRequest(): ConversationMessage["secretRequest"] {
     },
   };
 }
-
 function pendingRemoteConnectRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "remote-agent",
@@ -273,14 +260,12 @@ function pendingRemoteConnectRequest(): ConversationMessage["secretRequest"] {
     },
   };
 }
-
 describe("MessageContent sensitive requests", () => {
   afterEach(() => {
     cleanup();
     for (const stop of connectionCleanups.splice(0)) stop();
     __setAppValueForTests(null);
   });
-
   beforeEach(() => {
     updateSecretsMock.mockReset();
     tunnelCredentialMock.mockReset();
@@ -292,14 +277,12 @@ describe("MessageContent sensitive requests", () => {
     );
     clientMock.openPermissionSettings.mockResolvedValue(undefined);
   });
-
   it("renders public requests as status-only without an input", () => {
     render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingPublicSecretRequest() })}
       />,
     );
-
     expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
       "Pending",
     );
@@ -313,7 +296,6 @@ describe("MessageContent sensitive requests", () => {
       ),
     ).toBeNull();
   });
-
   it("renders owner-private inline requests as a private form descriptor", () => {
     render(
       <MessageContent
@@ -322,7 +304,6 @@ describe("MessageContent sensitive requests", () => {
         })}
       />,
     );
-
     const input = screen.getByLabelText("OPENAI_API_KEY") as HTMLInputElement;
     expect(input.type).toBe("password");
     expect(screen.getByRole("button", { name: "Save secret" })).toBeTruthy();
@@ -342,24 +323,20 @@ describe("MessageContent sensitive requests", () => {
       screen.getByTestId("sensitive-request-security-note").textContent,
     ).not.toContain("encrypted");
   });
-
   it("labels the submit button 'Save securely' when the form omits submitLabel", () => {
     const request = pendingOwnerInlineSecretRequest();
     if (request?.form) request.form.submitLabel = undefined;
     render(
       <MessageContent message={baseMessage({ secretRequest: request })} />,
     );
-
     expect(screen.getByRole("button", { name: "Save securely" })).toBeTruthy();
   });
-
   it("describes the tunnel delivery (send-once, not stored) on tunneled requests", () => {
     render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingTunnelSecretRequest() })}
       />,
     );
-
     expect(
       screen.getByTestId("sensitive-request-security-note").textContent,
     ).toContain("Sent once to the waiting session");
@@ -369,7 +346,6 @@ describe("MessageContent sensitive requests", () => {
       "Masked input. It never lands in the transcript.",
     );
   });
-
   it("shows success status without rendering the submitted value", async () => {
     updateSecretsMock.mockResolvedValueOnce({
       ok: true,
@@ -383,18 +359,15 @@ describe("MessageContent sensitive requests", () => {
         })}
       />,
     );
-
     fireEvent.change(screen.getByLabelText("OPENAI_API_KEY"), {
       target: { value: rawSecret },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
-
     await waitFor(() => {
       expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
         "Saved",
       );
     });
-
     expect(updateSecretsMock).toHaveBeenCalledTimes(1);
     expect(Object.keys(updateSecretsMock.mock.calls[0]?.[0] ?? {})).toEqual([
       "OPENAI_API_KEY",
@@ -404,7 +377,6 @@ describe("MessageContent sensitive requests", () => {
     // Mutual exclusivity: a normal secret request never tunnels.
     expect(tunnelCredentialMock).not.toHaveBeenCalled();
   });
-
   it("submits tunneled sub-agent credentials through the tunnel endpoint instead of saving global secrets", async () => {
     tunnelCredentialMock.mockResolvedValue({
       ok: true,
@@ -418,7 +390,6 @@ describe("MessageContent sensitive requests", () => {
       />,
     );
     expect(screen.getByText("Sub-agent credentials")).toBeTruthy();
-
     const openAiValue = ["sk", "openai", String(Date.now())].join("-");
     const stripeValue = ["sk", "stripe", String(Date.now())].join("-");
     fireEvent.change(screen.getByLabelText("OPENAI_API_KEY"), {
@@ -428,13 +399,11 @@ describe("MessageContent sensitive requests", () => {
       target: { value: stripeValue },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send to sub-agent" }));
-
     await waitFor(() => {
       expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
         "Saved",
       );
     });
-
     expect(updateSecretsMock).not.toHaveBeenCalled();
     expect(tunnelCredentialMock).toHaveBeenCalledTimes(2);
     expect(tunnelCredentialMock).toHaveBeenNthCalledWith(1, {
@@ -454,7 +423,6 @@ describe("MessageContent sensitive requests", () => {
     expect(screen.queryByLabelText("OPENAI_API_KEY")).toBeNull();
     expect(screen.queryByLabelText("STRIPE_KEY")).toBeNull();
   });
-
   it("renders an image field as a file input and delivers it via updateSecrets (#8910)", async () => {
     updateSecretsMock.mockResolvedValueOnce({
       ok: true,
@@ -465,19 +433,16 @@ describe("MessageContent sensitive requests", () => {
         message={baseMessage({ secretRequest: pendingImageSecretRequest() })}
       />,
     );
-
     const input = screen.getByTestId(
       "sensitive-request-file-seed_photo",
     ) as HTMLInputElement;
     expect(input.type).toBe("file");
     expect(input.accept).toBe("image/png");
     expect(input.getAttribute("capture")).toBe("environment");
-
     const file = new File([new Uint8Array([1, 2, 3])], "seed.png", {
       type: "image/png",
     });
     fireEvent.change(input, { target: { files: [file] } });
-
     // FileReader populates the value asynchronously; wait for the submit to enable.
     await waitFor(() => {
       expect(
@@ -486,7 +451,6 @@ describe("MessageContent sensitive requests", () => {
       ).toBe(false);
     });
     fireEvent.click(screen.getByTestId("sensitive-request-submit"));
-
     await waitFor(() => {
       expect(updateSecretsMock).toHaveBeenCalledTimes(1);
     });
@@ -498,7 +462,6 @@ describe("MessageContent sensitive requests", () => {
     // Delivered as a data URL through the existing submit path.
     expect(payload.seed_photo.startsWith("data:image/png")).toBe(true);
   });
-
   it("renders a non-image file field as a file input without camera capture (#8910)", async () => {
     updateSecretsMock.mockResolvedValueOnce({ ok: true, updated: ["doc"] });
     const request = pendingImageSecretRequest();
@@ -513,7 +476,6 @@ describe("MessageContent sensitive requests", () => {
     render(
       <MessageContent message={baseMessage({ secretRequest: request })} />,
     );
-
     const input = screen.getByTestId(
       "sensitive-request-file-doc",
     ) as HTMLInputElement;
@@ -521,7 +483,6 @@ describe("MessageContent sensitive requests", () => {
     expect(input.accept).toBe("application/json");
     // Non-image uploads must NOT force the rear camera.
     expect(input.getAttribute("capture")).toBeNull();
-
     const file = new File([new Uint8Array([1, 2, 3])], "backup.json", {
       type: "application/json",
     });
@@ -542,7 +503,6 @@ describe("MessageContent sensitive requests", () => {
     >;
     expect(payload.doc.startsWith("data:application/json")).toBe(true);
   });
-
   it("rejects an upload over maxBytes and does not submit (#8910)", async () => {
     const request = pendingImageSecretRequest();
     const field = request?.form?.fields?.[0];
@@ -550,7 +510,6 @@ describe("MessageContent sensitive requests", () => {
     render(
       <MessageContent message={baseMessage({ secretRequest: request })} />,
     );
-
     const input = screen.getByTestId(
       "sensitive-request-file-seed_photo",
     ) as HTMLInputElement;
@@ -558,7 +517,6 @@ describe("MessageContent sensitive requests", () => {
       type: "image/png",
     });
     fireEvent.change(input, { target: { files: [tooBig] } });
-
     // The error surfaces and no value is captured, so submit stays disabled.
     await waitFor(() => {
       expect(screen.getByTestId("sensitive-request").textContent).toContain(
@@ -571,14 +529,12 @@ describe("MessageContent sensitive requests", () => {
     ).toBe(true);
     expect(updateSecretsMock).not.toHaveBeenCalled();
   });
-
   it("renders an OAuth request with a Connect button and never shows the URL in chat", () => {
     const { container } = render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingOAuthRequest() })}
       />,
     );
-
     const button = screen.getByTestId("sensitive-request-oauth-start");
     expect(button.textContent).toBe("Connect GitHub");
     expect(container.textContent).toContain("Scopes: repo, read:user");
@@ -593,19 +549,16 @@ describe("MessageContent sensitive requests", () => {
     // lands in the vault via the callback, never via chat.
     expect(updateSecretsMock).not.toHaveBeenCalled();
   });
-
   it("opens the authorization URL in a popup when the Connect button is clicked", () => {
     const fakePopup = { opener: { real: true } } as unknown as Window;
     const openMock = vi.fn().mockReturnValue(fakePopup);
     const originalOpen = window.open;
     window.open = openMock as typeof window.open;
-
     render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingOAuthRequest() })}
       />,
     );
-
     fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
     expect(openMock).toHaveBeenCalledTimes(1);
     expect(openMock.mock.calls[0]?.[0]).toBe(
@@ -619,15 +572,19 @@ describe("MessageContent sensitive requests", () => {
     const features = String(openMock.mock.calls[0]?.[2] ?? "");
     expect(features).toContain("noreferrer");
     expect(features).not.toContain("noopener");
-    expect((fakePopup as { opener: unknown }).opener).toBeNull();
+    expect(
+      (
+        fakePopup as {
+          opener: unknown;
+        }
+      ).opener,
+    ).toBeNull();
     // The button flips to "Authorizing..." after a successful popup open.
     expect(
       screen.getByTestId("sensitive-request-oauth-start").textContent,
     ).toContain("Authorizing");
-
     window.open = originalOpen;
   });
-
   it.each(["https://agent.example.com:31337/", "agent.example.com:31337/"])(
     "remote_connect submits %s without writing the secret store",
     async (address) => {
@@ -639,7 +596,6 @@ describe("MessageContent sensitive requests", () => {
         connectEvents.push((event as CustomEvent).detail);
       };
       document.addEventListener(CONNECT_EVENT, onConnect);
-
       render(
         <MessageContent
           message={baseMessage({
@@ -647,7 +603,6 @@ describe("MessageContent sensitive requests", () => {
           })}
         />,
       );
-
       const urlInput = screen.getByLabelText(
         "Remote agent URL",
       ) as HTMLInputElement;
@@ -656,20 +611,17 @@ describe("MessageContent sensitive requests", () => {
         "Access token (optional)",
       ) as HTMLInputElement;
       expect(tokenInput.type).toBe("password");
-
       // Trailing slash proves normalizeRemoteAgentUrl ran before dispatch.
       fireEvent.change(urlInput, {
         target: { value: address },
       });
       fireEvent.change(tokenInput, { target: { value: "tok-123" } });
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
       await waitFor(() => {
         expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
           "Saved",
         );
       });
-
       expect(connectEvents).toEqual([
         {
           gatewayUrl: "https://agent.example.com:31337",
@@ -682,11 +634,9 @@ describe("MessageContent sensitive requests", () => {
       // written to the agent secret store or tunneled.
       expect(updateSecretsMock).not.toHaveBeenCalled();
       expect(tunnelCredentialMock).not.toHaveBeenCalled();
-
       document.removeEventListener(CONNECT_EVENT, onConnect);
     },
   );
-
   it("remote_connect omits an empty token from the CONNECT_EVENT detail", async () => {
     connectionCleanups.push(
       listenForConnectRequests(() => ({ status: "connected" })),
@@ -696,25 +646,21 @@ describe("MessageContent sensitive requests", () => {
       connectEvents.push((event as CustomEvent).detail);
     };
     document.addEventListener(CONNECT_EVENT, onConnect);
-
     render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingRemoteConnectRequest() })}
       />,
     );
-
     // The token field is optional — a URL alone can submit.
     fireEvent.change(screen.getByLabelText("Remote agent URL"), {
       target: { value: "agent.example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
     await waitFor(() => {
       expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
         "Saved",
       );
     });
-
     expect(connectEvents).toEqual([
       {
         gatewayUrl: "https://agent.example.com",
@@ -724,10 +670,8 @@ describe("MessageContent sensitive requests", () => {
       },
     ]);
     expect(updateSecretsMock).not.toHaveBeenCalled();
-
     document.removeEventListener(CONNECT_EVENT, onConnect);
   });
-
   it("keeps remote credentials editable until adoption succeeds and permits retry after failure", async () => {
     let finish!: (result: ConnectRequestResult) => void;
     const attempts: string[] = [];
@@ -788,7 +732,6 @@ describe("MessageContent sensitive requests", () => {
     ]);
     expect(updateSecretsMock).not.toHaveBeenCalled();
   });
-
   it("does not apply an old completion or finally to a replaced form request", async () => {
     const completions: Array<(result: ConnectRequestResult) => void> = [];
     connectionCleanups.push(
@@ -835,7 +778,6 @@ describe("MessageContent sensitive requests", () => {
       "Saved",
     );
   });
-
   it.each([
     ["ftp://agent.example.com", "Remote agents must use HTTP or HTTPS."],
     [
@@ -850,7 +792,6 @@ describe("MessageContent sensitive requests", () => {
         connectEvents.push((event as CustomEvent).detail);
       };
       document.addEventListener(CONNECT_EVENT, onConnect);
-
       const { container } = render(
         <MessageContent
           message={baseMessage({
@@ -858,16 +799,13 @@ describe("MessageContent sensitive requests", () => {
           })}
         />,
       );
-
       fireEvent.change(screen.getByLabelText("Remote agent URL"), {
         target: { value: address },
       });
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
       await waitFor(() => {
         expect(container.textContent).toContain(message);
       });
-
       // No dispatch, no secret-store write, and the form is still pending +
       // editable so the user can correct the typo.
       expect(connectEvents).toEqual([]);
@@ -876,11 +814,9 @@ describe("MessageContent sensitive requests", () => {
         "Pending",
       );
       expect(screen.getByLabelText("Remote agent URL")).toBeTruthy();
-
       document.removeEventListener(CONNECT_EVENT, onConnect);
     },
   );
-
   it("degrades a blocked OAuth popup to same-tab navigation on plain web (#15143)", () => {
     const openMock = vi.fn().mockReturnValue(null);
     const originalOpen = window.open;
@@ -894,7 +830,6 @@ describe("MessageContent sensitive requests", () => {
       configurable: true,
       value: { ...window.location, assign: assignSpy },
     });
-
     const { container } = render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingOAuthRequest() })}
@@ -910,13 +845,11 @@ describe("MessageContent sensitive requests", () => {
     expect(container.textContent).not.toContain("Pop-up blocked");
     // No fallback message-stream emission on popup block.
     expect(updateSecretsMock).not.toHaveBeenCalled();
-
     window.open = originalOpen;
     if (originalLocationDescriptor) {
       Object.defineProperty(window, "location", originalLocationDescriptor);
     }
   });
-
   it("keeps the visible popup-blocked error where same-tab navigation is unavailable (desktop shell)", () => {
     const openMock = vi.fn().mockReturnValue(null);
     const originalOpen = window.open;
@@ -925,7 +858,6 @@ describe("MessageContent sensitive requests", () => {
       __electrobunWindowId?: number;
     };
     windowWithElectrobun.__electrobunWindowId = 1;
-
     const { container } = render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingOAuthRequest() })}
@@ -934,18 +866,15 @@ describe("MessageContent sensitive requests", () => {
     fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
     expect(container.textContent).toContain("Pop-up blocked");
     expect(updateSecretsMock).not.toHaveBeenCalled();
-
     window.open = originalOpen;
     delete windowWithElectrobun.__electrobunWindowId;
   });
 });
-
 describe("MessageContent permission cards", () => {
   afterEach(() => {
     cleanup();
     __setAppValueForTests(null);
   });
-
   beforeEach(() => {
     vi.clearAllMocks();
     clientMock.getPermission.mockResolvedValue(permissionState());
@@ -954,7 +883,6 @@ describe("MessageContent permission cards", () => {
     );
     clientMock.openPermissionSettings.mockResolvedValue(undefined);
   });
-
   it("renders permission_request as an inline card and hides the JSON block", async () => {
     const text =
       "I need access before I can add that.\n```json\n" +
@@ -967,9 +895,7 @@ describe("MessageContent permission cards", () => {
         fallback_offered: true,
       }) +
       "\n```";
-
     renderWithApp(baseMessage({ text }));
-
     expect(await screen.findByTestId("permission-card")).toBeTruthy();
     expect(screen.getByText("Apple Reminders")).toBeTruthy();
     expect(
@@ -980,7 +906,6 @@ describe("MessageContent permission cards", () => {
       screen.getByTestId("permission-card-fallback").textContent,
     ).toContain("Use internal reminder");
   });
-
   it("sends fallback and granted action messages back through chat", async () => {
     const text =
       "I need access before I can add that.\n```json\n" +
@@ -993,18 +918,14 @@ describe("MessageContent permission cards", () => {
       }) +
       "\n```";
     const sendActionMessage = vi.fn();
-
     renderWithApp(baseMessage({ text }), sendActionMessage);
     fireEvent.click(await screen.findByTestId("permission-card-fallback"));
-
     expect(sendActionMessage).toHaveBeenCalledWith(
       "__permission_card__:use_fallback feature=lifeops.reminders.create permission=reminders",
     );
-
     cleanup();
     renderWithApp(baseMessage({ text }), sendActionMessage);
     fireEvent.click(await screen.findByTestId("permission-card-primary"));
-
     await waitFor(() =>
       expect(sendActionMessage).toHaveBeenCalledWith(
         "__permission_card__:granted feature=lifeops.reminders.create permission=reminders",

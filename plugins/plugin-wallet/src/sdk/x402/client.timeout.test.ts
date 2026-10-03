@@ -171,21 +171,40 @@ describe("X402Client fetch timeout (real server)", () => {
     const client = new X402Client(createWallet(), {
       supportedAssets: { "base:8453": [PAYMENT_OPTION.asset] },
     });
+    const deadlines: AbortController[] = [];
+    const timeout = () => new DOMException("Deadline expired", "TimeoutError");
     Object.defineProperty(client, "executePayment", {
-      value: vi.fn(async () => ({
-        txHash:
-          "0x0000000000000000000000000000000000000000000000000000000000000001",
-      })),
+      value: vi.fn(async () => {
+        const first = deadlines[0];
+        if (!first)
+          throw new Error("Initial request did not create a deadline");
+        first.abort(timeout());
+        return {
+          txHash:
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+        };
+      }),
     });
-    const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
     const timeoutSpy = vi
       .spyOn(AbortSignal, "timeout")
-      .mockImplementation(() => originalTimeout(25));
+      .mockImplementation(() => {
+        const controller = new AbortController();
+        deadlines.push(controller);
+        return controller.signal;
+      });
 
     try {
       const response = await client.fetch(`http://127.0.0.1:${addr.port}/data`);
       expect(requestCount).toBe(2);
       expect(retryPaymentHeader).toBeTruthy();
+      expect(deadlines).toHaveLength(2);
+      const retry = deadlines[1];
+      if (!retry) throw new Error("Paid retry did not create a fresh deadline");
+      expect(deadlines[0]?.signal.aborted).toBe(true);
+      expect(retry.signal.aborted).toBe(false);
+      // Abort only once retry headers arrived; CI scheduling cannot accidentally
+      // expire the deadline before the body-lifetime assertion starts.
+      retry.abort(timeout());
       await expect(response.json()).rejects.toMatchObject({
         name: "TimeoutError",
       });
@@ -193,6 +212,7 @@ describe("X402Client fetch timeout (real server)", () => {
       expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_X402_FETCH_TIMEOUT_MS);
     } finally {
       timeoutSpy.mockRestore();
+      for (const deadline of deadlines) deadline.abort(timeout());
       await close(server);
     }
   });

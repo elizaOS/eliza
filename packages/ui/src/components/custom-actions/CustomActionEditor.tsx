@@ -7,7 +7,10 @@
  * the client's action generation, then let the user refine the parsed result.
  */
 
-import type { CustomActionDef, CustomActionHandler } from "@elizaos/shared";
+import type {
+  CustomActionDef,
+  CustomActionHandler,
+} from "@elizaos/core/contracts/config";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../api/client";
@@ -55,7 +58,6 @@ interface CustomActionEditorProps {
   onSave: (action: CustomActionDef) => void;
   onClose: () => void;
 }
-
 export function CustomActionEditor({
   open,
   action,
@@ -67,7 +69,6 @@ export function CustomActionEditor({
   const [description, setDescription] = useState("");
   const [similesInput, setSimilesInput] = useState("");
   const [handlerType, setHandlerType] = useState<HandlerType>("http");
-
   // HTTP handler fields
   const [httpMethod, setHttpMethod] = useState<HttpMethod>("GET");
   const [httpUrl, setHttpUrl] = useState("");
@@ -75,20 +76,15 @@ export function CustomActionEditor({
     { key: "", value: "" },
   ]);
   const [httpBody, setHttpBody] = useState("");
-
   // Shell handler fields
   const [shellCommand, setShellCommand] = useState("");
-
   // Code handler fields
   const [code, setCode] = useState("");
-
   // Parameters
   const [parameters, setParameters] = useState<ParamDef[]>([]);
-
   // AI generate
   const [aiPrompt, setAiPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
-
   // Test section
   const [testExpanded, setTestExpanded] = useState(false);
   const [testParams, setTestParams] = useState<Record<string, string>>({});
@@ -98,16 +94,12 @@ export function CustomActionEditor({
     duration?: number;
   } | null>(null);
   const [testing, setTesting] = useState(false);
-
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-
   // Populate form when action changes
   useEffect(() => {
     if (!open) return;
-
     setFormError("");
-
     if (action) {
       setName(action.name);
       setDescription(action.description || "");
@@ -119,7 +111,6 @@ export function CustomActionEditor({
           required: p.required || false,
         })) || [],
       );
-
       const handler = action.handler;
       if (handler.type === "http") {
         setHandlerType("http");
@@ -161,22 +152,18 @@ export function CustomActionEditor({
       setTestResult(null);
     }
   }, [open, action]);
-
   const setNormalizedName = (value: string) => {
     setName(normalizeActionName(value));
     setFormError("");
   };
-
   const setDescriptionValue = (value: string) => {
     setDescription(value);
     setFormError("");
   };
-
   const applyGenerated = (parsed: ParsedGeneration) => {
     setName(parsed.name);
     setDescription(parsed.description);
     setSimilesInput(parsed.similes.join(", "));
-
     if (parsed.handlerType === "http") {
       const handler = parsed.handler as CustomActionHandler & {
         type: "http";
@@ -195,32 +182,32 @@ export function CustomActionEditor({
           : [{ key: "", value: "" }],
       );
     } else if (parsed.handlerType === "shell") {
-      const handler = parsed.handler as CustomActionHandler & { type: "shell" };
+      const handler = parsed.handler as CustomActionHandler & {
+        type: "shell";
+      };
       setHandlerType("shell");
       setShellCommand(handler.command);
     } else {
-      const handler = parsed.handler as CustomActionHandler & { type: "code" };
+      const handler = parsed.handler as CustomActionHandler & {
+        type: "code";
+      };
       setHandlerType("code");
       setCode(handler.code);
     }
-
     setParameters(parsed.parameters);
     setFormError("");
     setAiPrompt("");
   };
-
   const handleGenerate = async () => {
     if (!aiPrompt.trim()) return;
     setGenerating(true);
     setFormError("");
-
     try {
       const result = await client.generateCustomAction(aiPrompt.trim());
       if (!result.ok || !result.generated) {
         setFormError("AI generation returned no action definition.");
         return;
       }
-
       const parsed = parseGeneratedAction(result.generated);
       if (!parsed.ok || !parsed.action) {
         setFormError(
@@ -230,7 +217,6 @@ export function CustomActionEditor({
         );
         return;
       }
-
       applyGenerated(parsed.action);
     } catch (err: unknown) {
       setFormError(
@@ -240,18 +226,15 @@ export function CustomActionEditor({
       setGenerating(false);
     }
   };
-
   const addParameter = () => {
     setParameters([
       ...parameters,
       { name: "", description: "", required: false },
     ]);
   };
-
   const removeParameter = (index: number) => {
     setParameters(parameters.filter((_, i) => i !== index));
   };
-
   const updateParameter = (
     index: number,
     field: keyof ParamDef,
@@ -262,14 +245,12 @@ export function CustomActionEditor({
         if (i !== index) {
           return parameter;
         }
-
         if (field === "name") {
           return {
             ...parameter,
             [field]: normalizeParamName(value as string),
           };
         }
-
         return {
           ...parameter,
           [field]: value,
@@ -278,15 +259,12 @@ export function CustomActionEditor({
     );
     setFormError("");
   };
-
   const addHeader = () => {
     setHttpHeaders([...httpHeaders, { key: "", value: "" }]);
   };
-
   const removeHeader = (index: number) => {
     setHttpHeaders(httpHeaders.filter((_, i) => i !== index));
   };
-
   const updateHeader = (
     index: number,
     field: "key" | "value",
@@ -299,56 +277,44 @@ export function CustomActionEditor({
     );
     setFormError("");
   };
-
   const buildHeaders = (): Record<string, string> | undefined => {
     const headers: Record<string, string> = {};
-
     for (const header of httpHeaders) {
       const key = header.key.trim();
       if (key) {
         headers[key] = header.value;
       }
     }
-
     return Object.keys(headers).length > 0 ? headers : undefined;
   };
-
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
     setFormError("");
-
     try {
       const actionName = normalizeActionName(name);
       const actionDescription = description.trim();
-
       if (!actionName) {
         setFormError("Name is required.");
         return;
       }
-
       if (!actionDescription) {
         setFormError("Description is required.");
         return;
       }
-
       const normalizedParameters = [...parameters];
       const validationError = validateParameters(normalizedParameters);
       if (validationError) {
         setFormError(validationError);
         return;
       }
-
       let handler: CustomActionHandler;
-
       if (handlerType === "http") {
         if (!httpUrl.trim()) {
           setFormError("HTTP URL is required.");
           return;
         }
-
         const headers = buildHeaders();
-
         handler = {
           type: "http",
           method: normalizeMethod(httpMethod),
@@ -361,7 +327,6 @@ export function CustomActionEditor({
           setFormError("Shell command is required.");
           return;
         }
-
         handler = {
           type: "shell",
           command: shellCommand,
@@ -371,15 +336,12 @@ export function CustomActionEditor({
           setFormError("Code is required.");
           return;
         }
-
         handler = {
           type: "code",
           code,
         };
       }
-
       const similes = parseSimilesInput(similesInput);
-
       const actionDef = {
         name: actionName,
         description: actionDescription,
@@ -388,11 +350,9 @@ export function CustomActionEditor({
         handler,
         enabled: action?.enabled ?? true,
       };
-
       const saved = action?.id
         ? await client.updateCustomAction(action.id, actionDef)
         : await client.createCustomAction(actionDef);
-
       onSave(saved);
       setAiPrompt("");
       setFormError("");
@@ -404,11 +364,9 @@ export function CustomActionEditor({
       setSaving(false);
     }
   };
-
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
-
     // Auto-save if the action hasn't been saved yet
     let actionId = action?.id;
     if (!actionId) {
@@ -432,9 +390,7 @@ export function CustomActionEditor({
         return;
       }
     }
-
     const startTime = Date.now();
-
     try {
       const result = await client.testCustomAction(actionId, testParams);
       const duration = Date.now() - startTime;
@@ -453,9 +409,7 @@ export function CustomActionEditor({
       setTesting(false);
     }
   };
-
   if (!open) return null;
-
   return (
     <Dialog
       open={open}

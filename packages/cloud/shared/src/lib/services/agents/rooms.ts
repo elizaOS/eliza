@@ -4,6 +4,7 @@
  */
 
 import type { Memory } from "@elizaos/core";
+import { entityTable, participantTable, roomTable } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { dbWrite } from "../../../db/client";
 import {
@@ -14,7 +15,6 @@ import {
   type Room,
   roomsRepository,
 } from "../../../db/repositories";
-import { entityTable, participantTable, roomTable } from "../../../db/schemas/eliza";
 import { isVisibleDialogueMessage, parseMessageContent } from "../../types/message-content";
 
 /**

@@ -1,16 +1,15 @@
 /** Enqueues owner-authenticated commands and leases them to the bound host. */
 
-import { parseEncryptedRemoteControlEnvelope } from "@elizaos/shared/contracts/remote-control";
+import { parseEncryptedRemoteControlEnvelope } from "@elizaos/core/contracts/remote-control";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteCommandEnvelopesRepository } from "@/db/repositories/remote-command-envelopes";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../host-auth";
 
 const app = new Hono<AppEnv>();
-
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -48,7 +47,6 @@ app.post("/", async (c) => {
     if (envelope.ownerId !== user.id) {
       return c.json({ success: false, error: "Remote session not found" }, 404);
     }
-
     const result = await remoteCommandEnvelopesRepository.enqueue({
       organizationId: user.organization_id,
       ownerId: user.id,
@@ -112,7 +110,6 @@ app.post("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 app.get("/", async (c) => {
   try {
     const sessionId = c.req.param("id")?.trim() ?? "";
@@ -154,5 +151,4 @@ app.get("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 export default app;

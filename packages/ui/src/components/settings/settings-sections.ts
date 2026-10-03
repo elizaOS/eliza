@@ -215,7 +215,7 @@ export const SECTION_HUE_MEDALLION_CLASS: Record<SettingsSectionHue, string> = {
  * in {@link BUILTIN_SECTION_DEFINITIONS}, which a single loop registers.
  *
  * Invariant: the catalog subset (`catalog !== false`) is the pure-data set that
- * app-core's `dev-route-catalog` parity test mirrors through
+ * app's `dev-route-catalog` parity test mirrors through
  * `SETTINGS_SECTION_META`; {@link assertMetaCatalogParity} enforces that those
  * definitions match META in id, order, label, group, and aliases (both
  * directions) at module load. `catalog: false` marks a section that registers
@@ -273,7 +273,7 @@ interface BuiltinSectionDefinition {
   order?: number;
   /**
    * Whether this section is part of the pinned pure-data catalog mirrored by
-   * app-core's `dev-route-catalog` test (`SETTINGS_SECTION_META`). `true` (the
+   * app's `dev-route-catalog` test (`SETTINGS_SECTION_META`). `true` (the
    * default) = a built-in local section that MUST appear in META in the same
    * order/label/group. `false` = a section that registers into Settings but is
    * intentionally outside the QA catalog (Cloud group upsell/agents, cockpit
@@ -546,7 +546,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
   // ---------------------------------------------------------------------------
   // Non-catalog sections (`catalog: false`): declared in this one canonical list
   // + registered by the shared loop, but kept OUT of the pinned
-  // `SETTINGS_SECTION_META` that app-core's dev-route-catalog test mirrors. They
+  // `SETTINGS_SECTION_META` that app's dev-route-catalog test mirrors. They
   // live in the late-registered Cloud group / cockpit runtime registry, not the
   // built-in QA route catalog.
   // ---------------------------------------------------------------------------
@@ -656,7 +656,7 @@ function isCatalogSection(def: BuiltinSectionDefinition): boolean {
 /**
  * Two-way drift guard between the catalog subset of the merged per-id
  * definitions and the pinned pure-data `SETTINGS_SECTION_META` list that
- * app-core mirrors. A catalog section whose id / label / group / aliases /
+ * app mirrors. A catalog section whose id / label / group / aliases /
  * order falls out of sync with META fails loudly at module load (and is
  * asserted by a focused test), so the two sources cannot silently diverge.
  */

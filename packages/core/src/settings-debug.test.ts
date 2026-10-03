@@ -1,48 +1,49 @@
-import { describe, expect, it } from "vitest";
-import {
-	isElizaSettingsDebugEnabled,
-	MAX_STRING,
-	sanitizeDebugString,
-} from "./settings-debug.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getBootConfig, setBootConfig } from "./config/boot-config-store.js";
+import { isElizaSettingsDebugEnabled } from "./settings-debug.js";
 
-describe("settings-debug", () => {
-	it("exposes MAX_STRING constant", () => {
-		expect(MAX_STRING).toBe(120);
+const originalBootConfig = getBootConfig();
+
+describe("host settings debug flags", () => {
+	beforeEach(() => {
+		vi.stubEnv("ELIZA_SETTINGS_DEBUG", undefined);
+		vi.stubEnv("VITE_ELIZA_SETTINGS_DEBUG", undefined);
+		setBootConfig({ ...originalBootConfig, envAliases: [] });
 	});
 
-	it("detects enabled via env", () => {
-		expect(
-			isElizaSettingsDebugEnabled({ env: { ELIZA_SETTINGS_DEBUG: "1" } }),
-		).toBe(true);
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		setBootConfig(originalBootConfig);
+	});
+
+	it("uses the host flag without accepting renderer build flags", () => {
+		vi.stubEnv("VITE_ELIZA_SETTINGS_DEBUG", "true");
+		expect(isElizaSettingsDebugEnabled()).toBe(false);
 		expect(
 			isElizaSettingsDebugEnabled({
 				env: { VITE_ELIZA_SETTINGS_DEBUG: "true" },
 			}),
-		).toBe(true);
-		expect(isElizaSettingsDebugEnabled({ env: {} })).toBe(false);
+		).toBe(false);
+		vi.stubEnv("ELIZA_SETTINGS_DEBUG", "enabled");
+		expect(isElizaSettingsDebugEnabled()).toBe(true);
 	});
 
-	it("detects enabled via importMetaEnv", () => {
+	it("preserves explicit host opt-in and process fallback", () => {
 		expect(
-			isElizaSettingsDebugEnabled({
-				importMetaEnv: { ELIZA_SETTINGS_DEBUG: "1" },
-			}),
+			isElizaSettingsDebugEnabled({ env: { ELIZA_SETTINGS_DEBUG: "yes" } }),
 		).toBe(true);
-		expect(
-			isElizaSettingsDebugEnabled({
-				importMetaEnv: { VITE_ELIZA_SETTINGS_DEBUG: "on" },
-			}),
-		).toBe(true);
-		expect(isElizaSettingsDebugEnabled({ importMetaEnv: {} })).toBe(false);
+		vi.stubEnv("ELIZA_SETTINGS_DEBUG", "on");
+		expect(isElizaSettingsDebugEnabled({ env: {} })).toBe(true);
 	});
 
-	it("sanitizes strings", () => {
-		expect(sanitizeDebugString("")).toBe("");
-		expect(sanitizeDebugString("[REDACTED]")).toBe("[REDACTED]");
-		expect(sanitizeDebugString("  hello  ")).toBe("hello");
-		const long = `sk-${"a".repeat(60)}`;
-		const masked = sanitizeDebugString(long);
-		expect(masked).toContain("chars)");
-		expect(masked).not.toBe(long);
+	it("resolves a branded host alias while preserving canonical precedence", () => {
+		setBootConfig({
+			...originalBootConfig,
+			envAliases: [["FIXTURE_SETTINGS_DEBUG", "ELIZA_SETTINGS_DEBUG"]],
+		});
+		vi.stubEnv("FIXTURE_SETTINGS_DEBUG", "true");
+		expect(isElizaSettingsDebugEnabled()).toBe(true);
+		vi.stubEnv("ELIZA_SETTINGS_DEBUG", "false");
+		expect(isElizaSettingsDebugEnabled()).toBe(false);
 	});
 });

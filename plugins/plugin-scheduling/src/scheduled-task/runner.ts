@@ -18,7 +18,7 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
-import { ElizaError, stableStringify } from "@elizaos/core/edge";
+import { ElizaError, stableStringify } from "@elizaos/core";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -108,6 +108,42 @@ export interface ScheduledTaskUpsertOptions {
   nextFireAtIso: string | null;
 }
 
+/** Every modeled definition field, excluding mutable lifecycle and host metadata. */
+export type ScheduledTaskDefinition = Omit<ScheduledTask, "state" | "metadata">;
+
+function taskDefinition(
+  task: ScheduledTaskDefinition,
+): ScheduledTaskDefinition {
+  return {
+    taskId: task.taskId,
+    kind: task.kind,
+    promptInstructions: task.promptInstructions,
+    contextRequest: task.contextRequest,
+    trigger: task.trigger,
+    priority: task.priority,
+    shouldFire: task.shouldFire,
+    completionCheck: task.completionCheck,
+    escalation: task.escalation,
+    output: task.output,
+    pipeline: task.pipeline,
+    subject: task.subject,
+    idempotencyKey: task.idempotencyKey,
+    respectsGlobalPause: task.respectsGlobalPause,
+    source: task.source,
+    createdBy: task.createdBy,
+    ownerVisible: task.ownerVisible,
+    executionProfile: task.executionProfile,
+  };
+}
+
+export interface ScheduledTaskConditionalUpsertOptions
+  extends ScheduledTaskUpsertOptions {
+  expectedStatus: ScheduledTask["state"]["status"];
+  expectedState?: ScheduledTask["state"];
+  expectedMetadata?: NonNullable<ScheduledTask["metadata"]>;
+  expectedDefinition?: ScheduledTaskDefinition;
+}
+
 /**
  * Outcome of the atomic fire-claim. Exactly one parallel call resolves to
  * `"fired"` for a given `(taskId, status="scheduled")` row; concurrent
@@ -168,9 +204,7 @@ export interface ScheduledTaskStore {
    */
   upsertIfStatus(
     task: ScheduledTask,
-    options: ScheduledTaskUpsertOptions & {
-      expectedStatus: ScheduledTask["state"]["status"];
-    },
+    options: ScheduledTaskConditionalUpsertOptions,
   ): Promise<boolean>;
   /**
    * Atomically transition a row to `"fired"`, returning the resulting row.
@@ -192,6 +226,12 @@ export interface ScheduledTaskStore {
     taskId: string;
     firedAtIso: string;
     expected?: ScheduledTaskClaimExpectation;
+    /** Metadata observed by host admission; a changed row must be admitted again. */
+    expectedMetadata?: NonNullable<ScheduledTask["metadata"]>;
+    expectedState?: ScheduledTask["state"];
+    expectedDefinition?: ScheduledTaskDefinition;
+    /** Replace metadata in the same atomic update as the fire claim. */
+    claimedMetadata?: NonNullable<ScheduledTask["metadata"]>;
   }): Promise<ScheduledTaskClaimResult>;
   /**
    * Persist one receipt-anchored mutation only when this task does not already
@@ -204,6 +244,9 @@ export interface ScheduledTaskStore {
     receiptKey: string;
     commit: ScheduledTaskLogEntry;
     nextFireAtIso: string | null;
+    expectedState?: ScheduledTask["state"];
+    expectedMetadata?: NonNullable<ScheduledTask["metadata"]>;
+    expectedDefinition?: ScheduledTaskDefinition;
   }): Promise<ScheduledTaskApplyCommitResult>;
   /** Atomically reserve one non-mutating, idempotency-keyed apply intent. */
   reserveApplyIntent(args: {
@@ -228,12 +271,67 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       if (!existing || existing.state.status !== options.expectedStatus) {
         return false;
       }
+      if (
+        (options.expectedState !== undefined &&
+          stableStringify(existing.state) !==
+            stableStringify(options.expectedState)) ||
+        (options.expectedMetadata !== undefined &&
+          stableStringify(existing.metadata ?? {}) !==
+            stableStringify(options.expectedMetadata))
+      ) {
+        return false;
+      }
+      if (
+        options.expectedDefinition !== undefined &&
+        stableStringify(taskDefinition(existing)) !==
+          stableStringify(taskDefinition(options.expectedDefinition))
+      )
+        return false;
       map.set(task.taskId, structuredClone(task));
       return true;
     },
-    async claimForFire({ taskId, firedAtIso, expected }) {
+    async claimForFire({
+      taskId,
+      firedAtIso,
+      expected,
+      expectedMetadata,
+      expectedState,
+      expectedDefinition,
+      claimedMetadata,
+    }) {
+      if (
+        claimedMetadata !== undefined &&
+        (expectedMetadata === undefined ||
+          expectedState === undefined ||
+          expectedDefinition === undefined)
+      ) {
+        throw new ElizaError(
+          "Claim metadata requires the observed state, metadata, and definition",
+          {
+            code: "SCHEDULED_TASK_CLAIM_EXPECTATION_REQUIRED",
+            context: { taskId },
+          },
+        );
+      }
       const existing = map.get(taskId);
       if (!existing) return { kind: "raced" };
+      if (
+        expectedMetadata !== undefined &&
+        stableStringify(existing.metadata ?? {}) !==
+          stableStringify(expectedMetadata)
+      )
+        return { kind: "raced" };
+      if (
+        expectedState !== undefined &&
+        stableStringify(existing.state) !== stableStringify(expectedState)
+      )
+        return { kind: "raced" };
+      if (
+        expectedDefinition !== undefined &&
+        stableStringify(taskDefinition(existing)) !==
+          stableStringify(taskDefinition(expectedDefinition))
+      )
+        return { kind: "raced" };
       const cutoverStatus = (
         existing.metadata?.sharedCutoverImport as
           | { status?: unknown }
@@ -253,12 +351,27 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       const next: ScheduledTask = structuredClone(existing);
       next.state.status = "fired";
       next.state.firedAt = firedAtIso;
+      if (claimedMetadata !== undefined)
+        next.metadata = structuredClone(claimedMetadata);
       map.set(taskId, next);
       return { kind: "fired", task: structuredClone(next) };
     },
-    async commitApply({ task, receiptKey, commit }) {
+    async commitApply({
+      task,
+      receiptKey,
+      commit,
+      expectedState,
+      expectedMetadata,
+      expectedDefinition,
+    }) {
       const existing = map.get(task.taskId);
       if (!existing) {
+        if (
+          expectedState !== undefined ||
+          expectedMetadata !== undefined ||
+          expectedDefinition !== undefined
+        )
+          throw scheduledTaskMutationRace(task.taskId);
         throw new Error(`commitApply: task ${task.taskId} not found`);
       }
       const storedReceipts = existing.metadata?.schedulingApplyReceipts;
@@ -281,6 +394,21 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
           commit: structuredClone(replayedCommit),
         };
       }
+      if (
+        (expectedState !== undefined &&
+          stableStringify(existing.state) !== stableStringify(expectedState)) ||
+        (expectedMetadata !== undefined &&
+          stableStringify(existing.metadata ?? {}) !==
+            stableStringify(expectedMetadata))
+      ) {
+        throw scheduledTaskMutationRace(task.taskId);
+      }
+      if (
+        expectedDefinition !== undefined &&
+        stableStringify(taskDefinition(existing)) !==
+          stableStringify(taskDefinition(expectedDefinition))
+      )
+        throw scheduledTaskMutationRace(task.taskId);
       // The caller proposal may predate another distinct-key commit. Its task
       // mutation remains authoritative, but receipt identity is monotonic and
       // must merge from the current stored row just like the SQL adapter does.
@@ -401,6 +529,11 @@ export interface ScheduledTaskDispatchRecord {
   eventPayload?: unknown;
   resolvedContext?: import("./types.js").ScheduledTaskResolvedContext;
   consolidationBatchId?: string;
+  /** Commit the exact payload through the fire's guarded snapshot before egress. */
+  persistPreparedDelivery?: (
+    message: string,
+    idempotencyKey: string,
+  ) => Promise<void>;
   output?: ScheduledTask["output"];
   metadata?: ScheduledTask["metadata"];
 }
@@ -429,7 +562,58 @@ export const TestNoopScheduledTaskDispatcher: ScheduledTaskDispatcher = {
 // Runner deps (factory)
 // ---------------------------------------------------------------------------
 
+/** Manual calls do not consume host-owned automatic admission. */
+export type ScheduledTaskFireCause = "automatic" | "manual";
+
+/** Reconcile durable task definitions before execution admission; never dispatch from this hook. */
+export type ScheduledTaskExecutionPreparation = (input: {
+  task: ScheduledTask;
+  cause: ScheduledTaskFireCause;
+  nowIso: string;
+}) => void | Promise<void>;
+
+/** Check current owner policy without consuming an automatic occurrence. */
+export type ScheduledTaskAutomaticAdmission = (input: {
+  task: ScheduledTask;
+  nowIso: string;
+}) =>
+  | { kind: "admitted" }
+  | { kind: "denied"; reason: string }
+  | Promise<{ kind: "admitted" } | { kind: "denied"; reason: string }>;
+
+/** Return claim metadata for a managed initial automatic occurrence; throw to deny admission. */
+export type ScheduledTaskAutomaticFirePolicy = (input: {
+  task: ScheduledTask;
+  nowIso: string;
+}) =>
+  | NonNullable<ScheduledTask["metadata"]>
+  | null
+  | Promise<NonNullable<ScheduledTask["metadata"]> | null>;
+
+/** Host-owned domain policy; null leaves the proposal unmanaged and unchanged. */
+export type ScheduledTaskMutationPolicy = (input: {
+  previous: ScheduledTask | null;
+  proposed: ScheduledTask;
+  verb: ScheduledTaskVerb | "schedule";
+  nowIso: string;
+}) => ScheduledTask | null | Promise<ScheduledTask | null>;
+
+/** A managed control must be retried against the latest durable task. */
+export function scheduledTaskMutationRace(taskId: string): ElizaError {
+  return new ElizaError(
+    "Scheduled item changed while applying this control; reload it and retry",
+    {
+      code: "SCHEDULED_TASK_MUTATION_RACED",
+      context: { taskId },
+    },
+  );
+}
+
 export interface ScheduledTaskRunnerDeps {
+  prepareMutation?: ScheduledTaskMutationPolicy;
+  prepareExecution?: ScheduledTaskExecutionPreparation;
+  automaticAdmission?: ScheduledTaskAutomaticAdmission;
+  prepareAutomaticFire?: ScheduledTaskAutomaticFirePolicy;
   agentId: string;
   store: ScheduledTaskStore;
   logStore: ScheduledTaskLogStore;
@@ -443,6 +627,11 @@ export interface ScheduledTaskRunnerDeps {
   activity: ActivitySignalBusView;
   subjectStore: SubjectStoreView;
   dispatcher: ScheduledTaskDispatcher;
+  /** Host admission spans claim, dispatch, receipt persistence, and follow-up work. */
+  executionBoundary?: (
+    task: ScheduledTask,
+    execute: () => Promise<ScheduledTaskFireResult>,
+  ) => Promise<ScheduledTaskFireResult>;
   /**
    * Lookup of registered `ChannelRegistry` keys. When supplied, `schedule()`
    * validates each `escalation.steps[].channelKey` against this set and
@@ -465,7 +654,7 @@ export interface ScheduledTaskRunnerDeps {
    * recorded. Default (when not provided): all four profiles available —
    * appropriate for tests and Node desktop. Mobile / Capacitor callers
    * inject a real probe from
-   * `@elizaos/app-core/services/local-inference/host-capabilities`.
+   * `@elizaos/app/services/local-inference/host-capabilities`.
    */
   hostCapabilities?: () => ReadonlySet<TaskExecutionProfile>;
   /** Override for tests. */
@@ -891,6 +1080,7 @@ export interface ScheduledTaskRunnerExtras {
     taskId: string,
     args?: {
       eventPayload?: unknown;
+      cause?: ScheduledTaskFireCause;
       allowTerminalRefire?: boolean;
       recoverFiredAtIso?: string;
     },
@@ -906,6 +1096,7 @@ export interface ScheduledTaskRunnerExtras {
     taskId: string,
     args?: {
       eventPayload?: unknown;
+      cause?: ScheduledTaskFireCause;
       allowTerminalRefire?: boolean;
       recoverFiredAtIso?: string;
     },
@@ -985,6 +1176,43 @@ export function createScheduledTaskRunner(
   const newTaskId = deps.newTaskId ?? defaultTaskIdGenerator;
   const now = deps.now ?? (() => new Date());
   const dispatcher = deps.dispatcher;
+  const fireSnapshots = new WeakMap<ScheduledTask, ScheduledTask>();
+  const mutationSnapshots = new WeakMap<
+    ScheduledTask,
+    { previous: ScheduledTask; verb: ScheduledTaskVerb; conditional?: boolean }
+  >();
+
+  function expectation(task: ScheduledTask) {
+    return {
+      expectedState: task.state,
+      expectedMetadata: task.metadata ?? {},
+      expectedDefinition: taskDefinition(task),
+    };
+  }
+
+  async function prepareMutation(
+    proposed: ScheduledTask,
+    previous: ScheduledTask | null,
+    verb: ScheduledTaskVerb | "schedule",
+  ) {
+    const prepared = await deps.prepareMutation?.({
+      proposed: structuredClone(proposed),
+      previous: previous ? structuredClone(previous) : null,
+      verb,
+      nowIso: now().toISOString(),
+    });
+    if (prepared && prepared.taskId !== proposed.taskId) {
+      throw new ElizaError(
+        "Scheduled mutation policy must preserve task identity",
+        {
+          code: "SCHEDULED_TASK_MUTATION_INVALID",
+          context: { taskId: proposed.taskId },
+        },
+      );
+    }
+    return prepared ?? null;
+  }
+
   const logger = createStateLogger({
     store: deps.logStore,
     agentId: deps.agentId,
@@ -1076,12 +1304,27 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     opts?: { expectedStatus?: ScheduledTask["state"]["status"] },
   ): Promise<ScheduledTask | null> {
+    const mutation = mutationSnapshots.get(task);
+    const prepared = mutation
+      ? await prepareMutation(task, mutation.previous, mutation.verb)
+      : null;
+    if (prepared) Object.assign(task, prepared);
+    const observed =
+      mutation && (prepared || mutation.conditional)
+        ? mutation.previous
+        : fireSnapshots.get(task);
     const nextFireAtIso = await resolveNextFireAt(task);
-    if (opts?.expectedStatus) {
+    const expectedStatus = opts?.expectedStatus ?? observed?.state.status;
+    if (expectedStatus !== undefined) {
       const applied = await deps.store.upsertIfStatus(task, {
         nextFireAtIso,
-        expectedStatus: opts.expectedStatus,
+        expectedStatus,
+        ...(observed ? expectation(observed) : {}),
       });
+      if (!applied && (prepared || mutation?.conditional))
+        throw scheduledTaskMutationRace(task.taskId);
+      if (applied && fireSnapshots.has(task))
+        fireSnapshots.set(task, structuredClone(task));
       return applied ? structuredClone(task) : null;
     }
     await deps.store.upsert(task, { nextFireAtIso });
@@ -1251,7 +1494,7 @@ export function createScheduledTaskRunner(
     };
     const inputMetadata = { ...(withApprovalDefaults.metadata ?? {}) };
     delete inputMetadata[APPLY_RECEIPTS_METADATA_KEY];
-    const task: ScheduledTask = {
+    let task: ScheduledTask = {
       taskId,
       ...withApprovalDefaults,
       metadata: {
@@ -1260,6 +1503,7 @@ export function createScheduledTaskRunner(
       },
       state: initialState,
     };
+    task = (await prepareMutation(task, null, "schedule")) ?? task;
     try {
       await persist(task);
     } catch (error) {
@@ -1571,12 +1815,31 @@ export function createScheduledTaskRunner(
         throw new Error(`edit: ${key} is read-only`);
       }
     }
-    Object.assign(task, payload);
-    await persist(task);
+    const edited = structuredClone(task);
+    Object.assign(edited, payload);
+    const { taskId: _taskId, state: _state, ...input } = edited;
+    const validationIssues = validateScheduledTaskInput(input, deps);
+    if (validationIssues.length > 0) {
+      throw new ScheduledTaskValidationError(validationIssues);
+    }
+    if (deps.channelKeys && input.escalation?.steps) {
+      const registered = deps.channelKeys();
+      for (const step of input.escalation.steps) {
+        if (!registered.has(step.channelKey)) {
+          throw new ChannelKeyError(
+            step.channelKey,
+            Array.from(registered).sort(),
+          );
+        }
+      }
+    }
+    const mutation = mutationSnapshots.get(task);
+    if (mutation) mutationSnapshots.set(edited, mutation);
+    await persist(edited);
     await logger.log(task.taskId, "edited", {
       detail: { keys: Object.keys(payload) },
     });
-    return task;
+    return edited;
   }
 
   async function applyReopen(
@@ -1742,6 +2005,10 @@ export function createScheduledTaskRunner(
         options.receiptContext,
       );
     }
+    const prepared = replayCandidate
+      ? null
+      : await prepareMutation(mutation.task, existingTask, verb);
+    if (prepared) mutation.task = prepared;
     const proposedCommit: ScheduledTaskLogEntry = {
       logId: await applyReceiptLogId({
         agentId: deps.agentId,
@@ -1766,6 +2033,7 @@ export function createScheduledTaskRunner(
       receiptKey,
       commit: proposedCommit,
       nextFireAtIso: await resolveNextFireAt(mutation.task),
+      ...(prepared ? expectation(existingTask) : {}),
     });
     if (
       committed.commit.logId !== proposedCommit.logId ||
@@ -1839,11 +2107,23 @@ export function createScheduledTaskRunner(
     taskId: string,
     verb: ScheduledTaskVerb,
     payload?: unknown,
+    options?: { expectedTask: ScheduledTask },
   ): Promise<ScheduledTask> {
     const task = await deps.store.get(taskId);
     if (!task) {
       throw new Error(`apply: task ${taskId} not found`);
     }
+    if (
+      options &&
+      stableStringify(task) !== stableStringify(options.expectedTask)
+    ) {
+      throw scheduledTaskMutationRace(taskId);
+    }
+    mutationSnapshots.set(task, {
+      previous: structuredClone(task),
+      verb,
+      conditional: options !== undefined,
+    });
     switch (verb) {
       case "snooze":
         return applySnooze(
@@ -1901,6 +2181,7 @@ export function createScheduledTaskRunner(
       if (child.trigger.taskId !== parent.taskId) continue;
       if (child.trigger.outcome !== outcome) continue;
       await fireWithResult(child.taskId, {
+        cause: "automatic",
         eventPayload: { afterTask: { taskId: parent.taskId, outcome } },
       });
     }
@@ -2024,6 +2305,7 @@ export function createScheduledTaskRunner(
     taskId: string,
     args?: {
       eventPayload?: unknown;
+      cause?: ScheduledTaskFireCause;
       allowTerminalRefire?: boolean;
       recoverFiredAtIso?: string;
     },
@@ -2102,12 +2384,54 @@ export function createScheduledTaskRunner(
     taskId: string,
     args?: {
       eventPayload?: unknown;
+      cause?: ScheduledTaskFireCause;
       allowTerminalRefire?: boolean;
       recoverFiredAtIso?: string;
     },
   ): Promise<ScheduledTaskFireResult> {
-    const task = await deps.store.get(taskId);
+    let task = await deps.store.get(taskId);
     if (!task) throw new Error(`fire: task ${taskId} not found`);
+    if (deps.prepareExecution) {
+      await deps.prepareExecution({
+        task: structuredClone(task),
+        cause: args?.cause ?? "manual",
+        nowIso: now().toISOString(),
+      });
+      task = await deps.store.get(taskId);
+      if (!task) return { kind: "raced", taskId };
+    }
+    if (args?.cause === "automatic" && deps.automaticAdmission) {
+      const admission = await deps.automaticAdmission({
+        task: structuredClone(task),
+        nowIso: now().toISOString(),
+      });
+      if (admission.kind === "denied")
+        return { kind: "skipped", task, reason: admission.reason };
+    }
+    if (deps.prepareAutomaticFire)
+      fireSnapshots.set(task, structuredClone(task));
+    const expectedMetadata =
+      deps.executionBoundary || deps.prepareAutomaticFire
+        ? structuredClone(task.metadata ?? {})
+        : undefined;
+    return deps.executionBoundary
+      ? deps.executionBoundary(task, () =>
+          fireLoadedTaskWithResult(task, args, expectedMetadata),
+        )
+      : fireLoadedTaskWithResult(task, args, expectedMetadata);
+  }
+
+  async function fireLoadedTaskWithResult(
+    task: ScheduledTask,
+    args?: {
+      eventPayload?: unknown;
+      cause?: ScheduledTaskFireCause;
+      allowTerminalRefire?: boolean;
+      recoverFiredAtIso?: string;
+    },
+    expectedMetadata?: NonNullable<ScheduledTask["metadata"]>,
+  ): Promise<ScheduledTaskFireResult> {
+    const taskId = task.taskId;
     const hasEventPayload =
       Object.hasOwn(args ?? {}, "eventPayload") &&
       args?.eventPayload !== undefined;
@@ -2137,6 +2461,12 @@ export function createScheduledTaskRunner(
     ) {
       return { kind: "raced", taskId: task.taskId };
     }
+    const manualHostClaim =
+      args?.cause !== "automatic" &&
+      args?.allowTerminalRefire === true &&
+      task.state.status !== "dismissed" &&
+      task.trigger.kind === "relative_to_anchor" &&
+      deps.anchors.get(task.trigger.anchorKey)?.consumption === "host_claim";
     const refireClaim =
       args?.allowTerminalRefire === true &&
       task.state.status !== "scheduled" &&
@@ -2151,7 +2481,7 @@ export function createScheduledTaskRunner(
         reason: `terminal:${task.state.status}`,
       };
     }
-    if (refireClaim) {
+    if (refireClaim && !manualHostClaim) {
       // Re-verify dueness on the FRESH row before claiming. The scheduler
       // tick evaluated dueness against a candidate row read at tick entry;
       // if a parallel tick already claimed this occurrence and fully
@@ -2183,7 +2513,7 @@ export function createScheduledTaskRunner(
     if (pause.paused) {
       task.state.status = "skipped";
       task.state.lastDecisionLog = pause.reason ?? "global_pause";
-      await persist(task);
+      if (!(await persist(task))) return { kind: "raced", taskId };
       await logger.log(task.taskId, "skipped", {
         reason: pause.reason ?? "global_pause",
       });
@@ -2199,7 +2529,7 @@ export function createScheduledTaskRunner(
     if (gateOutcome.decision.kind === "deny") {
       task.state.status = "skipped";
       task.state.lastDecisionLog = `${gateOutcome.gateKind ?? "gate"}: ${gateOutcome.decision.reason}`;
-      await persist(task);
+      if (!(await persist(task))) return { kind: "raced", taskId };
       await logger.log(task.taskId, "skipped", {
         reason: task.state.lastDecisionLog,
       });
@@ -2250,7 +2580,7 @@ export function createScheduledTaskRunner(
         clearPendingDispatch(task);
       }
       task.state.firedAt = new Date(newFireMs).toISOString();
-      await persist(task);
+      if (!(await persist(task))) return { kind: "raced", taskId };
       await logger.log(task.taskId, "snoozed", {
         reason: `gate-defer: ${gateOutcome.decision.reason}`,
         detail: { offsetMinutes: offset },
@@ -2268,9 +2598,33 @@ export function createScheduledTaskRunner(
     // CASes on the observed `(status, firedAt)` pair instead. Concurrent
     // ticks see `kind: "raced"` and bail.
     const fireAtIso = now().toISOString();
+    const initialAutomatic =
+      args?.cause === "automatic" &&
+      !recoveryClaim &&
+      (refireClaim || readPendingDispatch(task) === null);
+    const hostClaim =
+      task.trigger.kind === "relative_to_anchor" &&
+      deps.anchors.get(task.trigger.anchorKey)?.consumption === "host_claim";
+    const claimedMetadata =
+      initialAutomatic && deps.prepareAutomaticFire
+        ? await deps.prepareAutomaticFire({
+            task: structuredClone(task),
+            nowIso: fireAtIso,
+          })
+        : null;
+    if (initialAutomatic && hostClaim && claimedMetadata === null) {
+      throw new ElizaError("This anchor requires atomic host admission", {
+        code: "SCHEDULED_TASK_ANCHOR_CLAIM_POLICY_REQUIRED",
+        context: { taskId },
+      });
+    }
+    const observed = fireSnapshots.get(task);
     const claim = await deps.store.claimForFire({
       taskId: task.taskId,
       firedAtIso: fireAtIso,
+      ...(observed ? expectation(observed) : {}),
+      ...(claimedMetadata !== null ? { claimedMetadata } : {}),
+      ...(expectedMetadata !== undefined ? { expectedMetadata } : {}),
       ...(refireClaim || recoveryClaim
         ? {
             expected: {
@@ -2284,6 +2638,8 @@ export function createScheduledTaskRunner(
       return { kind: "raced", taskId: task.taskId };
     }
     const claimed = claim.task;
+    if (fireSnapshots.has(task))
+      fireSnapshots.set(claimed, structuredClone(claimed));
     if (recoveryClaim && args?.recoverFiredAtIso) {
       const persistedDispatchKey = claimed.metadata?.dispatchIdempotencyKey;
       const dispatchIdempotencyKey =
@@ -2399,6 +2755,27 @@ export function createScheduledTaskRunner(
           : {}),
         output: claimed.output,
         metadata: claimed.metadata,
+        persistPreparedDelivery: async (message, idempotencyKey) => {
+          claimed.metadata ??= {};
+          Object.assign(claimed.metadata, {
+            dispatchPreparedMessage: message,
+            dispatchIdempotencyKey: idempotencyKey,
+            dispatchAttempt: {
+              status: "prepared",
+              preparedAtIso: now().toISOString(),
+              firedAtIso: fireAtIso,
+            },
+          });
+          if (!(await persist(claimed, { expectedStatus: "fired" }))) {
+            throw new ElizaError(
+              "Scheduled task changed before delivery preparation",
+              {
+                code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+                context: { taskId: claimed.taskId },
+              },
+            );
+          }
+        },
       });
     } catch (error) {
       const wrapped = error instanceof Error ? error : new Error(String(error));
@@ -2740,6 +3117,10 @@ export function createScheduledTaskRunner(
     if (!task.completionCheck) return task;
     const contrib = deps.completionChecks.get(task.completionCheck.kind);
     if (!contrib) return task;
+    mutationSnapshots.set(task, {
+      previous: structuredClone(task),
+      verb: "complete",
+    });
     const ownerFacts = await deps.ownerFacts();
     const ctx: CompletionCheckContext = {
       task,

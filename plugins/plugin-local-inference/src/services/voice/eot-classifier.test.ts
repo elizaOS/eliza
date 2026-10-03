@@ -1,7 +1,7 @@
-// Coverage for the pure end-of-turn decision helpers (#9147, "eot" matrix
-// class). turnSignalFromProbability maps an EOT probability onto the
-// agent/user/unknown next-speaker decision via the commit/tentative thresholds;
-// these boundaries gate whether the agent speaks, so they are pinned here.
+/**
+ * Tests real probability normalization and turn-signal mapping, including decision
+ * boundaries, invalid scores, and preservation of caller telemetry.
+ */
 
 import { describe, expect, it } from "vitest";
 import {
@@ -51,14 +51,21 @@ describe("turnSignalFromProbability", () => {
 		expect(sig.agentShouldSpeak).toBeNull();
 	});
 
-	it("clamps a non-finite probability into the unknown band", () => {
-		const sig = turnSignalFromProbability({
-			...base,
-			probability: Number.NaN,
-		});
-		expect(sig.endOfTurnProbability).toBe(0.5);
-		expect(sig.nextSpeaker).toBe("unknown");
-	});
+	it.each([
+		[Number.NaN, 0.5, "unknown"],
+		[-1, 0, "user"],
+		[9.5, 1, "agent"],
+	] as const)(
+		"normalizes %s into a %s probability for %s",
+		(input, expected, speaker) => {
+			const sig = turnSignalFromProbability({
+				...base,
+				probability: input,
+			});
+			expect(sig.endOfTurnProbability).toBe(expected);
+			expect(sig.nextSpeaker).toBe(speaker);
+		},
+	);
 
 	it("passes transcript through and includes model/latency only when supplied", () => {
 		const withOpts = turnSignalFromProbability({
@@ -68,6 +75,7 @@ describe("turnSignalFromProbability", () => {
 			latencyMs: 12,
 		});
 		expect(withOpts.transcript).toBe("are we done");
+		expect(withOpts.source).toBe(base.source);
 		expect(withOpts.model).toBe("eot-v2");
 		expect(withOpts.latencyMs).toBe(12);
 

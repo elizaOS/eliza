@@ -40,39 +40,6 @@ def _make_upstream(tmp_path: Path) -> Path:
     return src
 
 
-def test_synthetic_smoke_writes_full_schema(tmp_path: Path) -> None:
-    out = tmp_path / "out"
-    rc = stage_same_corpus.main(["--synthetic-smoke", "--out", str(out)])
-    assert rc == 0
-
-    metadata = out / "metadata.csv"
-    source = out / "source.json"
-    raw = out / "raw"
-    wavs = out / "wavs"
-    for p in (metadata, source, raw, wavs):
-        assert p.exists(), f"missing {p}"
-
-    # 3 metadata rows.
-    with metadata.open("r", encoding="utf-8") as fh:
-        rows = list(csv.reader(fh, delimiter="|", quoting=csv.QUOTE_NONE, escapechar="\\"))
-    assert len(rows) == 3
-    for row in rows:
-        assert len(row) == 3
-        assert row[0].startswith("samantha_")
-
-    # source.json schema.
-    src_data = json.loads(source.read_text())
-    assert src_data["kind"] == "same-corpus-source"
-    assert src_data["schemaVersion"] == 1
-    assert src_data["clipCount"] == 3
-    assert src_data["synthetic"] is True
-    assert len(src_data["clips"]) == 3
-    for clip in src_data["clips"]:
-        assert clip["sample_rate"] == 44100
-        assert clip["channels"] == 1
-        assert clip["bit_depth"] == 16
-
-
 def test_real_path_handles_suspicious_transcript(tmp_path: Path) -> None:
     src = _make_upstream(tmp_path)
     out = tmp_path / "out"

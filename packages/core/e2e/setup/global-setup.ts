@@ -5,16 +5,25 @@
  * same runner-to-worker env channel as __E2E_SKIP__). A fixed port collides
  * when CI fan-out places concurrent jobs on one runner host (#18359).
  */
+
+import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
-import { v4 as uuidv4 } from "uuid";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing";
-import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
+import {
+	ChannelType,
+	type Character,
+	type Memory,
+	type Plugin,
+	type UUID,
+} from "@elizaos/core";
+import {
+	createOllamaModelHandlers,
+	detectInferenceProviders,
+	SQLiteDatabaseAdapter,
+} from "@elizaos/testing";
+import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing.js";
 import { AgentRuntime } from "../../src/runtime";
-import { detectInferenceProviders } from "../../src/testing/inference-provider";
-import { createOllamaModelHandlers } from "../../src/testing/ollama-provider";
-import type { Character, Memory, Plugin, UUID } from "../../src/types";
-import { ChannelType } from "../../src/types";
-import { loadEnvFile } from "../../src/utils/environment";
+import { loadEnvFile } from "./env";
 
 const TEST_CHARACTER: Character = {
 	name: "E2ETestAgent",
@@ -32,7 +41,6 @@ const TEST_CHARACTER: Character = {
 	secrets: {},
 	settings: {},
 };
-
 /**
  * Resolve the correct model-provider plugin.
  *
@@ -70,7 +78,6 @@ async function importWorkspacePlugin(
 		}
 	}
 }
-
 async function resolveProviderPlugin(
 	providerName: string,
 ): Promise<Plugin | null> {
@@ -101,19 +108,10 @@ async function resolveProviderPlugin(
 			if (!mod) return null;
 			return ((mod.groqPlugin ?? mod.default) as Plugin | undefined) ?? null;
 		}
-		case "google": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-google-genai/index.ts",
-				"@elizaos/plugin-google-genai",
-			);
-			if (!mod) return null;
-			return (mod.default as Plugin | undefined) ?? null;
-		}
 		default:
 			return null;
 	}
 }
-
 /** Tiny JSON body parser. */
 function readBody(req: http.IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -123,14 +121,6 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 		req.on("error", reject);
 	});
 }
-
-async function verifyInferenceProvider(runtime: AgentRuntime): Promise<void> {
-	await runtime.generateText("Reply with OK.", {
-		modelType: "TEXT_LARGE" as "TEXT_LARGE",
-		maxTokens: 8,
-	});
-}
-
 function applyProviderSettings(
 	runtime: AgentRuntime,
 	providerName: string,
@@ -145,7 +135,6 @@ function applyProviderSettings(
 				explicitElizaProvider?.toLowerCase() === "cerebras" ||
 				/^csk-/i.test(openAiKey || cerebrasKey) ||
 				/(^|\.)cerebras\.ai(\/|$)/i.test(explicitBase ?? "");
-
 			runtime.setSetting(
 				"OPENAI_API_KEY",
 				openAiKey || (isCerebras ? cerebrasKey : ""),
@@ -207,16 +196,6 @@ function applyProviderSettings(
 				true,
 			);
 			break;
-		case "google":
-			runtime.setSetting(
-				"GOOGLE_GENERATIVE_AI_API_KEY",
-				process.env.GOOGLE_API_KEY ??
-					process.env.GOOGLE_AI_API_KEY ??
-					process.env.GOOGLE_GENERATIVE_AI_API_KEY ??
-					"",
-				true,
-			);
-			break;
 		case "groq":
 			runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
 			runtime.setSetting(
@@ -230,14 +209,11 @@ function applyProviderSettings(
 			break;
 	}
 }
-
 export default async function globalSetup(): Promise<void> {
 	process.env.ELIZA_PLAYWRIGHT_E2E = "1";
-
 	// Load repo-local credentials before provider detection so Playwright e2e
 	// behaves the same way as the rest of the workspace.
 	loadEnvFile();
-
 	// ── 1. Detect inference provider ───────────────────────────────────────
 	const detection = await detectInferenceProviders();
 	if (!detection.hasProvider || !detection.primaryProvider) {
@@ -248,23 +224,18 @@ export default async function globalSetup(): Promise<void> {
 		process.env.__E2E_SKIP__ = "1";
 		return;
 	}
-
 	const provider = detection.primaryProvider;
 	console.log(`\n[e2e] Using provider: ${provider.name}\n`);
-
 	// ── 2. Load provider plugin ────────────────────────────────────────────
 	const providerPlugin = await resolveProviderPlugin(provider.name);
-
 	// ── 3. Create runtime ──────────────────────────────────────────────────
 	const agentId = uuidv4() as UUID;
-	const plugins: Plugin[] = [];
+	const plugins: Plugin[] = [createAssistantPlugin()];
 	if (providerPlugin) {
 		plugins.push(providerPlugin);
 	}
-
-	const adapter = new InMemoryDatabaseAdapter(agentId);
+	const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
 	await adapter.init();
-
 	const runtime = new AgentRuntime({
 		agentId,
 		character: { ...TEST_CHARACTER, id: agentId },
@@ -273,9 +244,7 @@ export default async function globalSetup(): Promise<void> {
 		checkShouldRespond: false, // always respond in tests
 		logLevel: "warn",
 	});
-
 	applyProviderSettings(runtime, provider.name);
-
 	// For Ollama without a plugin package, register model handlers directly.
 	if (provider.name === "ollama" && !providerPlugin) {
 		const handlers = createOllamaModelHandlers();
@@ -292,22 +261,8 @@ export default async function globalSetup(): Promise<void> {
 			}
 		}
 	}
-
 	await runtime.initialize();
 	console.log("[e2e] Runtime initialized");
-
-	try {
-		await verifyInferenceProvider(runtime);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.error(
-			`\n[e2e] Provider preflight failed. Skipping E2E tests.\n${message}\n`,
-		);
-		process.env.__E2E_SKIP__ = "1";
-		await runtime.stop();
-		return;
-	}
-
 	// ── 4. Prepare a default room & entity for chat ────────────────────────
 	const worldId = uuidv4() as UUID;
 	await runtime.createWorld({ id: worldId, name: "e2e-world", agentId });
@@ -320,7 +275,6 @@ export default async function globalSetup(): Promise<void> {
 		worldId,
 	});
 	await runtime.ensureParticipantInRoom(agentId, roomId);
-
 	const testEntityId = uuidv4() as UUID;
 	await runtime.createEntity({
 		id: testEntityId,
@@ -328,33 +282,10 @@ export default async function globalSetup(): Promise<void> {
 		agentId,
 	});
 	await runtime.ensureParticipantInRoom(testEntityId, roomId);
-
 	// ── 5. Start HTTP server ───────────────────────────────────────────────
 	const server = http.createServer(async (req, res) => {
 		res.setHeader("Content-Type", "application/json");
-
 		try {
-			// GET /health
-			if (req.method === "GET" && req.url === "/health") {
-				res.writeHead(200);
-				res.end(JSON.stringify({ ok: true }));
-				return;
-			}
-
-			// GET /status
-			if (req.method === "GET" && req.url === "/status") {
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						agentId,
-						name: TEST_CHARACTER.name,
-						provider: provider.name,
-						ready: true,
-					}),
-				);
-				return;
-			}
-
 			// POST /chat — drives the FULL agent message pipeline via
 			// runtime.messageService.handleMessage so providers, evaluators, and
 			// trajectory recording all run. No generateText shortcut here.
@@ -365,13 +296,11 @@ export default async function globalSetup(): Promise<void> {
 					roomId?: string;
 					entityId?: string;
 				};
-
 				if (!body.text || typeof body.text !== "string" || !body.text.trim()) {
 					res.writeHead(400);
 					res.end(JSON.stringify({ error: "text is required" }));
 					return;
 				}
-
 				if (!runtime.messageService) {
 					res.writeHead(500);
 					res.end(
@@ -379,10 +308,8 @@ export default async function globalSetup(): Promise<void> {
 					);
 					return;
 				}
-
 				const chatRoomId = (body.roomId as UUID) ?? roomId;
 				const chatEntityId = (body.entityId as UUID) ?? testEntityId;
-
 				const message: Memory = {
 					id: uuidv4() as UUID,
 					entityId: chatEntityId,
@@ -393,7 +320,6 @@ export default async function globalSetup(): Promise<void> {
 					},
 					createdAt: Date.now(),
 				};
-
 				let responseText = "";
 				const callback = async (content: { text: string }) => {
 					if (typeof content?.text === "string") {
@@ -401,9 +327,7 @@ export default async function globalSetup(): Promise<void> {
 					}
 					return [];
 				};
-
 				await runtime.messageService.handleMessage(runtime, message, callback);
-
 				res.writeHead(200);
 				res.end(
 					JSON.stringify({
@@ -414,7 +338,6 @@ export default async function globalSetup(): Promise<void> {
 				);
 				return;
 			}
-
 			// fallback
 			res.writeHead(404);
 			res.end(JSON.stringify({ error: "not found" }));
@@ -428,7 +351,6 @@ export default async function globalSetup(): Promise<void> {
 			);
 		}
 	});
-
 	// Bind port 0 so the kernel assigns a free port at bind time; the socket is
 	// never probed and released, so concurrent suites cannot steal it (#18359).
 	await new Promise<void>((resolve) => {
@@ -443,7 +365,6 @@ export default async function globalSetup(): Promise<void> {
 	// re-evaluates in each worker and reads it as `use.baseURL`.
 	process.env.CORE_E2E_BASE_URL = baseURL;
 	console.log(`[e2e] Test server listening on ${baseURL}`);
-
 	// Store for teardown
 	(globalThis as Record<string, unknown>).__e2eServer = server;
 	(globalThis as Record<string, unknown>).__e2eRuntime = runtime;

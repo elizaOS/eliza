@@ -119,13 +119,14 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   const foldControl = browserWorkspaceView.getByTestId(
     "browser-workspace-tab-fold-control",
   );
-  await expect(goButton).toBeVisible({ timeout: 120_000 });
   await expect(foldControl).toBeVisible({ timeout: 120_000 });
   const compactToolbar = await mobileMoreButton.isVisible();
   if (compactToolbar) {
+    await expect(goButton).toBeHidden();
     await expect(newTabButton).toBeHidden();
     await expect(closeAllButton).toBeHidden();
   } else {
+    await expect(goButton).toBeVisible({ timeout: 120_000 });
     await expect(newTabButton).toBeVisible({ timeout: 120_000 });
     await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
   }
@@ -241,7 +242,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await addressInput.fill("");
   await addressInput.pressSequentially("example.com");
   await expect(addressInput).toHaveValue("example.com");
-  await goButton.click();
+  if (compactToolbar) await addressInput.press("Enter");
+  else await goButton.click();
 
   // The new tab is now the active one; the fold control names it and counts 1.
   await expect(
@@ -276,7 +278,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
 
   await addressInput.fill("docs.elizaos.ai");
   await expect(addressInput).toHaveValue("docs.elizaos.ai");
-  await goButton.click();
+  if (compactToolbar) await addressInput.press("Enter");
+  else await goButton.click();
   await expect(addressInput).toHaveValue("https://docs.elizaos.ai/");
 
   // Shell navigation plus browser back/forward preserves the folded browser
@@ -317,6 +320,43 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await resetBrowserWorkspaceTabs(request);
+  // Focusing an empty composer deliberately stays collapsed. This geometry
+  // case needs a restored thread to exercise the expanded overlay.
+  const conversation = {
+    id: "browser-geometry-thread",
+    roomId: "browser-geometry-room",
+    title: "Browser review",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const threadText = "The browser review is ready to continue.";
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({ json: { conversations: [conversation] } });
+  });
+  await page.route(`**/api/conversations/${conversation.id}`, async (route) => {
+    if (!["GET", "PATCH"].includes(route.request().method()))
+      return route.fallback();
+    await route.fulfill({ json: { conversation } });
+  });
+  await page.route(
+    `**/api/conversations/${conversation.id}/messages**`,
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: {
+          messages: [
+            {
+              id: "browser-review-message",
+              role: "assistant",
+              text: threadText,
+              timestamp: Date.now(),
+            },
+          ],
+        },
+      });
+    },
+  );
   await openAppPath(page, "/browser");
   const browserWorkspaceView = page.getByTestId("browser-workspace-view");
   await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
@@ -478,14 +518,38 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       shellBottomGap: 84,
     });
 
+  // The synthetic inset phase precedes a viewport resize. Wait for the real
+  // resting composer publisher before comparing the closed and open layouts.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const sheet = document.querySelector<HTMLElement>(
+          '[data-testid="chat-sheet"]',
+        );
+        if (!sheet || sheet.dataset.detent !== "collapsed") return false;
+        const clearance = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--eliza-chat-clearance",
+          ),
+        );
+        // Routed content reserves the resting composer and its 8px gap.
+        const restingFootprint = sheet.getBoundingClientRect().height + 8;
+        return Math.abs(clearance - restingFootprint) < 1;
+      }),
+    )
+    .toBe(true);
+
   const surfaceBeforeChatOpen = await pageSurface.boundingBox();
   const surfaceBeforeChatOpenBottom =
     (surfaceBeforeChatOpen?.y ?? 0) + (surfaceBeforeChatOpen?.height ?? 0);
 
-  const composer = page.getByRole("combobox", { name: "message" });
+  const composer = page.getByRole("textbox", { name: "message" });
   await composer.focus();
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
+  await expect(
+    chatOverlay.getByText(threadText, { exact: true }),
+  ).toBeVisible();
   const expandedGeometry = await page.evaluate(() => {
     const surface = document.querySelector<HTMLElement>(
       '[data-testid="browser-workspace-surface-panel"]',
@@ -758,7 +822,7 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   if (!isBrowserWorkspaceSmokeSnapshot(snapshot) || !snapshot.tabs[0]) return;
   const tabId = snapshot.tabs[0].id;
 
-  const composer = page.getByRole("combobox", { name: "message" });
+  const composer = page.getByRole("textbox", { name: "message" });
   // The page may remain under a stationary pointer while the user types in
   // chat. Hover alone must not authorize a later page autofocus.
   await iframe.hover();
@@ -825,4 +889,154 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   await expect
     .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
     .toBe("IFRAME");
+});
+
+test("mobile browser menu keeps its gesture when a loading iframe takes focus", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+  const fixtureOrigin = `http://localhost:${new URL(page.url()).port}`;
+  const fixtureUrl = `${fixtureOrigin}/__browser-menu-focus`;
+  let releaseLoad = () => {};
+  const loadRelease = new Promise<void>((resolve) => {
+    releaseLoad = resolve;
+  });
+  await page.route(`${fixtureOrigin}/__browser-menu-*`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/__browser-menu-load.svg") {
+      await loadRelease;
+      await route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><html><body>
+        <input aria-label="Embedded page input" />
+        ${url.searchParams.has("held") ? '<img src="/__browser-menu-load.svg" alt="delayed" />' : ""}
+      </body></html>`,
+    });
+  });
+  try {
+    const workspace = page.getByTestId("browser-workspace-view");
+    const address = workspace.getByTestId("browser-workspace-address-input");
+    const more = workspace.getByTestId("browser-workspace-mobile-more");
+    const menu = page.getByRole("menu");
+    const close = page.getByRole("menuitem", {
+      name: "Close all tabs",
+      exact: true,
+    });
+    const iframe = workspace.locator("iframe");
+    const embeddedInput = page
+      .frameLocator("iframe")
+      .getByRole("textbox", { name: "Embedded page input" });
+    const closeRequests: string[] = [];
+    page.on("request", (outgoing) => {
+      if (
+        outgoing.method() === "DELETE" &&
+        outgoing.url().includes("/api/browser-workspace/tabs/")
+      ) {
+        closeRequests.push(outgoing.url());
+      }
+    });
+    await address.fill(fixtureUrl);
+    await address.press("Enter");
+    await expect(embeddedInput).toBeVisible();
+
+    // Keyboard selection still runs the menu action through its normal path.
+    await more.press("ArrowDown");
+    await expect(
+      page.getByRole("menuitem", { name: "New tab", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(
+      page.getByRole("menuitem", { name: "Refresh", exact: true }),
+    ).toBeFocused();
+    await Promise.all([
+      page.waitForRequest(
+        (outgoing) =>
+          outgoing.isNavigationRequest() && outgoing.url() === fixtureUrl,
+      ),
+      page.keyboard.press("Enter"),
+    ]);
+    await expect(menu).toBeHidden();
+    await expect(embeddedInput).toBeVisible();
+
+    await more.click();
+    await expect(close).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await embeddedInput.click();
+    await expect(embeddedInput).toBeFocused();
+
+    const addressBounds = await address.boundingBox();
+    if (!addressBounds)
+      throw new Error("Browser address control has no bounds");
+    const outside = {
+      x: addressBounds.x + addressBounds.width / 2,
+      y: addressBounds.y + addressBounds.height / 2,
+    };
+    await more.click();
+    await expect(close).toBeVisible();
+    await page.mouse.click(outside.x, outside.y);
+    await expect(menu).toBeHidden();
+    await embeddedInput.click();
+    await expect(embeddedInput).toBeFocused();
+
+    // A press dragged away from Close all tabs must not perform that mutation.
+    await more.click();
+    await close.hover();
+    const cancelBounds = await close.boundingBox();
+    if (!cancelBounds) throw new Error("Close menu item has no bounds");
+    await page.mouse.move(
+      cancelBounds.x + cancelBounds.width / 2,
+      cancelBounds.y + cancelBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(outside.x, outside.y);
+    await page.mouse.up();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    expect(closeRequests).toEqual([]);
+
+    const heldUrl = `${fixtureUrl}?held=1`;
+    await address.fill(heldUrl);
+    await address.press("Enter");
+    await expect(iframe).toHaveAttribute("src", heldUrl, { timeout: 10_000 });
+    await more.click();
+    await close.hover();
+    const bounds = await close.boundingBox();
+    if (!bounds) throw new Error("Close menu item has no bounds");
+    await page.mouse.move(
+      bounds.x + bounds.width / 2,
+      bounds.y + bounds.height / 2,
+    );
+    await page.mouse.down();
+    releaseLoad();
+    const frame = page
+      .frames()
+      .find((candidate) => candidate.url() === heldUrl);
+    if (!frame) throw new Error("Controlled loading frame is missing");
+    await frame.waitForLoadState("load");
+    await frame
+      .getByRole("textbox", { name: "Embedded page input" })
+      .evaluate((element) => {
+        if (!(element instanceof HTMLInputElement))
+          throw new Error("Fixture input missing");
+        element.focus();
+      });
+    await page.mouse.up();
+    await expect(menu).toBeHidden();
+    await expect.poll(() => closeRequests.length).toBe(1);
+    await more.click();
+    await expect(close).toBeDisabled();
+    await page.keyboard.press("Escape");
+  } finally {
+    releaseLoad();
+  }
 });

@@ -26,6 +26,7 @@
  * revoke — same-worker or cross-device — stops uplink to Cartesia in <=500ms.
  */
 
+import { type VoiceUiContext } from "@elizaos/core/voice";
 import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
@@ -330,6 +331,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     readonly transcript: string;
     readonly abort: AbortController;
     replyText: string | null;
+    uiContext: VoiceUiContext;
     handoffRequested: boolean;
     viewHandoff?: {
       viewId: string;
@@ -518,7 +520,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // The session-level trace span id is stable until the first turn mints its own.
     const sessionTrace = this.mintTraceId("session");
     this.currentTraceId = sessionTrace;
-    this.send({ t: "ready", sessionId: this.sessionId, traceId: sessionTrace });
+    this.send({
+      t: "ready",
+      sessionId: this.sessionId,
+      traceId: sessionTrace,
+      uiContext: true,
+    });
     if (this.config.openingPrompt?.trim()) {
       const traceId = this.mintTraceId("turn");
       this.currentTraceId = traceId;
@@ -534,6 +541,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } else if (this.config.openingGreeting?.trim()) {
       this.speakOpeningGreeting(this.config.openingGreeting.trim());
     }
+  }
+
+  private uiContext: VoiceUiContext = {};
+
+  setUiContext(context: VoiceUiContext): void {
+    this.uiContext = { ...context };
   }
 
   setAudioCapabilities(capabilities: {
@@ -1385,6 +1398,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const pending = {
       traceId,
       transcript,
+      uiContext: { ...this.uiContext },
       abort,
       replyText: null,
       handoffRequested: false,
@@ -1423,6 +1437,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           authorization: this.config.elizaAuthorization,
           model: this.config.elizaModel,
           transcript: pending.transcript,
+          uiContext: pending.uiContext,
           agentId: this.config.agentId,
           conversationId: this.config.conversationId,
           organizationId: this.config.organizationId,
@@ -1450,6 +1465,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.pendingOverlapTurn !== pending
       )
         return;
+      if (result.completed) {
+        this.send({ t: "reply_complete", traceId: pending.traceId });
+      }
       const speakable = replyText.trim();
       if (!SPOKEN_TRANSCRIPT_RE.test(speakable)) {
         this.send({
@@ -1742,6 +1760,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } = {},
   ): Promise<void> {
     const responseStartedAt = this.now();
+    const uiContext = { ...this.uiContext };
     this.assistantReferenceText = "";
     this.beginTurnMetrics(traceId, responseStartedAt);
     let firstModelTextAt: number | null = null;
@@ -1860,13 +1879,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       stream: RealtimeTtsStream,
       input: RealtimeTtsPhraseInput,
     ): void => {
+      // Count every submitted phrase once, including progress spoken before
+      // the final reply. Buffered phrases are not submitted until this point.
+      this.turnTtsChars += input.text.length;
       this.noteSonicRequest(traceId, ttsTransportReadyAt !== null);
       stream.sendPhrase(input);
     };
     const queueStreamingPhrases = (phrases: readonly string[]): void => {
       for (const p of phrases) {
         if (!SPOKEN_TRANSCRIPT_RE.test(p)) continue;
-        this.turnTtsChars += p.length;
         const stream = ensureTts();
         if (pendingPhrase !== null) {
           sendTtsPhrase(stream, {
@@ -1887,7 +1908,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         const completeShortReply = initialReplyBuffer.trim();
         initialReplyBuffer = "";
         if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
-          this.turnTtsChars += completeShortReply.length;
           sendTtsPhrase(ensureTts(), {
             text: completeShortReply,
             continueContext: false,
@@ -1908,7 +1928,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           });
           pendingPhrase = null;
         }
-        this.turnTtsChars += tail.length;
         sendTtsPhrase(ensureTts(), {
           text: tail,
           continueContext: false,
@@ -1946,6 +1965,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         authorization: this.config.elizaAuthorization,
         model: this.config.elizaModel,
         transcript,
+        uiContext,
         ...(options.messageRole ? { messageRole: options.messageRole } : {}),
         ...(options.clientMessageId
           ? { clientMessageId: options.clientMessageId }
@@ -1988,6 +2008,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         onProgress: (text: string) => {
           if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
             return;
+          this.send({ t: "progress", text, traceId });
           // Progress cues are deliberately non-authoritative: they keep a slow
           // action audible without entering the reply buffer or being persisted
           // as an assistant answer. The next authoritative delta continues the
@@ -2081,6 +2102,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // Interruption already handled the teardown of this turn's TTS.
         return;
       }
+
+      // Canonical conversation completion is independent of TTS playback.
+      // Let the renderer reconcile the saved reply even when an earlier
+      // acknowledgement already consumed the first speaking_start event.
+      if (result.completed) this.send({ t: "reply_complete", traceId });
 
       if (result.viewHandoff) {
         this.send({
@@ -2308,6 +2334,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return;
     this.clearAssistantPlaybackSuppression();
     this.closed = true;
+    // Expiry/disconnect can bypass finishResponseTurn. Preserve the bounded
+    // timing receipt before aborting callbacks, without labeling lost audio as
+    // completed or recording transcript/audio payloads.
+    if (this.turnMetrics) {
+      this.emitTurnMetrics(this.turnMetrics.traceId, "interrupted");
+    }
     for (const abort of this.overlapRequests) abort.abort();
     this.overlapRequests.clear();
     this.pendingOverlapTurn = null;

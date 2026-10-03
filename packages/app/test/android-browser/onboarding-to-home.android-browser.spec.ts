@@ -2,6 +2,7 @@
  * Android-browser Playwright spec for the Onboarding To Home Android Browser
  * mobile app onboarding flow.
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -12,8 +13,9 @@ import {
   test,
 } from "@playwright/test";
 import { _android } from "playwright";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
-import { adbReverse, resolveAdb } from "../../scripts/lib/android-device.mjs";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.ts";
+import { adbReverse, resolveAdb } from "../../scripts/lib/android-device.ts";
 import {
   expectNoPageDiagnostics,
   installPageDiagnosticsGuard,
@@ -31,9 +33,8 @@ const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const ANDROID_BROWSER_BASE_URL =
   process.env.ELIZA_ANDROID_BROWSER_BASE_URL?.trim() ||
   `http://127.0.0.1:${uiSmokePort}`;
-const ARTIFACT_DIR = path.join(
-  process.cwd(),
-  "test-results",
+const ARTIFACT_DIR = testOutputPath(
+  "app",
   "android-browser-onboarding-to-home",
 );
 

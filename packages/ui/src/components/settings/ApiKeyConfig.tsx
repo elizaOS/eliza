@@ -5,7 +5,7 @@
  * ConfigRenderer, and gates saving behind OWNER role. Server-side validation
  * warnings/errors flow in as props and surface inline.
  */
-
+import { API_KEY_PREFIX_HINTS } from "@elizaos/core/config/api-key-prefix-hints";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type PluginParamDef } from "../../api";
@@ -14,13 +14,12 @@ import {
   defaultRegistry,
   useConfigValidation,
 } from "../../components/config-ui/config-renderer.helpers";
-import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useAppSelector } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
-import { autoLabel } from "../../utils/labels";
+import { autoLabel } from "../../utils/labels.js";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
@@ -34,10 +33,15 @@ interface ProviderPlugin {
   enabled: boolean;
   category: string;
   /** Server-side validation against the currently-saved config. */
-  validationWarnings?: Array<{ field: string; message: string }>;
-  validationErrors?: Array<{ field: string; message: string }>;
+  validationWarnings?: Array<{
+    field: string;
+    message: string;
+  }>;
+  validationErrors?: Array<{
+    field: string;
+    message: string;
+  }>;
 }
-
 export interface ApiKeyConfigProps {
   selectedProvider: ProviderPlugin | null;
   pluginSaving: Set<string>;
@@ -48,10 +52,8 @@ export interface ApiKeyConfigProps {
   ) => void;
   loadPlugins: () => Promise<void>;
 }
-
 const CREDENTIAL_KEY_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD)/;
-const API_KEY_REVEAL_FETCH_TIMEOUT_MS = 15_000;
-
+const API_KEY_REVEAL_FETCH_TIMEOUT_MS = 15000;
 /** Splits fields into Credentials (required + sensitive) and Advanced. */
 function partitionParams(params: PluginParamDef[]): {
   credentials: PluginParamDef[];
@@ -67,7 +69,6 @@ function partitionParams(params: PluginParamDef[]): {
   }
   return { credentials, advanced };
 }
-
 function buildSchemaForParams(
   params: PluginParamDef[],
   selectedProvider: ProviderPlugin,
@@ -82,7 +83,6 @@ function buildSchemaForParams(
   const required: string[] = [];
   const hints: Record<string, ConfigUiHint> = {};
   const serverHints = selectedProvider.configUiHints ?? {};
-
   for (const p of params) {
     const prop: Record<string, unknown> = {};
     if (p.type === "boolean") prop.type = "boolean";
@@ -95,7 +95,6 @@ function buildSchemaForParams(
     if (k.includes("URL") || k.includes("ENDPOINT")) prop.format = "uri";
     properties[p.key] = prop;
     if (p.required) required.push(p.key);
-
     // Inline prefix validation, mirroring API_KEY_PREFIX_HINTS in
     // packages/agent/src/api/plugin-validation.ts.
     const prefixHint = API_KEY_PREFIX_HINTS[p.key];
@@ -113,7 +112,6 @@ function buildSchemaForParams(
     hints[p.key] = fieldHint;
     if (p.description && !hints[p.key].help) hints[p.key].help = p.description;
   }
-
   const values: Record<string, unknown> = {};
   const setKeys = new Set<string>();
   for (const p of params) {
@@ -125,7 +123,6 @@ function buildSchemaForParams(
     }
     if (p.isSet) setKeys.add(p.key);
   }
-
   const schema: JsonSchemaObject = {
     type: "object",
     properties,
@@ -133,7 +130,6 @@ function buildSchemaForParams(
   };
   return { schema, hints, values, setKeys };
 }
-
 async function revealSecret(
   pluginId: string,
   key: string,
@@ -149,7 +145,9 @@ async function revealSecret(
       },
       async (response) => {
         if (!response.ok) return null;
-        const json = (await response.json()) as { value?: string | null };
+        const json = (await response.json()) as {
+          value?: string | null;
+        };
         return typeof json.value === "string" ? json.value : null;
       },
       { signal, timeoutMs: API_KEY_REVEAL_FETCH_TIMEOUT_MS },
@@ -160,7 +158,6 @@ async function revealSecret(
     return null;
   }
 }
-
 /**
  * Registers one credential field on the agent surface so chat can read and set
  * it ("set my OpenRouter key to …"). The {@link ConfigRenderer} owns the visible
@@ -187,7 +184,6 @@ function CredentialFieldAgentBinding({
   });
   return <span ref={ref} hidden aria-hidden {...agentProps} />;
 }
-
 /**
  * Provider API keys are OWNER-tier credentials (#12087 Item 24): only the
  * workspace owner may view or set them. Gated at the surface boundary via the
@@ -200,7 +196,6 @@ export function ApiKeyConfig(props: ApiKeyConfigProps) {
     </RoleGate>
   );
 }
-
 function ApiKeyConfigBody({
   selectedProvider,
   pluginSaving,
@@ -211,7 +206,6 @@ function ApiKeyConfigBody({
   const { setTimeout } = useTimeout();
   const { configRef, validateAll } = useConfigValidation();
   const revealControllerRef = useRef<AbortController | null>(null);
-
   const t = useAppSelector((s) => s.t);
   const [pluginFieldValues, setPluginFieldValues] = useState<
     Record<string, Record<string, string>>
@@ -221,7 +215,6 @@ function ApiKeyConfigBody({
     tone: "error" | "success";
     message: string;
   } | null>(null);
-
   useEffect(() => {
     return () => {
       revealControllerRef.current?.abort(
@@ -233,7 +226,6 @@ function ApiKeyConfigBody({
       revealControllerRef.current = null;
     };
   }, [selectedProvider?.id]);
-
   const revealSelectedSecret = useCallback(
     async (pluginId: string, key: string): Promise<string | null> => {
       revealControllerRef.current?.abort(
@@ -251,7 +243,6 @@ function ApiKeyConfigBody({
     },
     [],
   );
-
   const handlePluginFieldChange = useCallback(
     (pluginId: string, key: string, value: string) => {
       setPluginFieldValues((prev) => ({
@@ -261,7 +252,6 @@ function ApiKeyConfigBody({
     },
     [],
   );
-
   const handlePluginSave = useCallback(
     (pluginId: string) => {
       if (!validateAll()) return;
@@ -270,7 +260,6 @@ function ApiKeyConfigBody({
     },
     [pluginFieldValues, handlePluginConfigSave, validateAll],
   );
-
   const handleFetchModels = useCallback(
     async (providerId: string) => {
       setModelsFetching(true);
@@ -297,7 +286,6 @@ function ApiKeyConfigBody({
     },
     [loadPlugins, setTimeout, t],
   );
-
   const partitions = useMemo(
     () =>
       selectedProvider
@@ -305,7 +293,6 @@ function ApiKeyConfigBody({
         : { credentials: [], advanced: [] },
     [selectedProvider],
   );
-
   const credentialsForm = useMemo(
     () =>
       selectedProvider
@@ -317,7 +304,6 @@ function ApiKeyConfigBody({
         : null,
     [partitions.credentials, pluginFieldValues, selectedProvider],
   );
-
   const advancedForm = useMemo(
     () =>
       selectedProvider && partitions.advanced.length > 0
@@ -329,14 +315,11 @@ function ApiKeyConfigBody({
         : null,
     [partitions.advanced, pluginFieldValues, selectedProvider],
   );
-
   if (!selectedProvider || selectedProvider.parameters.length === 0)
     return null;
-
   const isSaving = pluginSaving.has(selectedProvider.id);
   const saveSuccess = pluginSaveSuccess.has(selectedProvider.id);
   const configured = selectedProvider.configured;
-
   return (
     <div className="border-t border-border/40 pt-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -463,9 +446,7 @@ function ApiKeyConfigBody({
           {modelsFetchResult && (
             <span
               aria-live="polite"
-              className={`truncate text-xs ${
-                modelsFetchResult.tone === "error" ? "text-danger" : "text-ok"
-              }`}
+              className={`truncate text-xs ${modelsFetchResult.tone === "error" ? "text-danger" : "text-ok"}`}
             >
               {modelsFetchResult.message}
             </span>

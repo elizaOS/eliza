@@ -148,32 +148,42 @@ export function resolveInferenceCredentialAdmissionDenial(
   logContext?: { route: string; traceId?: string },
 ): InferenceAuthStandingDenial | null {
   let credentialError = error;
-  if (
-    error instanceof Error &&
-    error.name === "SuppressedError" &&
-    "error" in error &&
-    error.error instanceof InferenceCredentialRevokedError
-  ) {
-    credentialError = error.error;
-    const suppressed = "suppressed" in error ? error.suppressed : undefined;
-    const suppressedError =
-      suppressed instanceof Error
-        ? {
-            name: suppressed.name,
-            ...(suppressed instanceof ApiError
-              ? { code: suppressed.code, status: suppressed.status }
-              : {}),
-          }
-        : { name: typeof suppressed };
-    logger.error(
-      "[InferenceAuth] deferred revocation suppressed an earlier route failure",
-      {
-        route: logContext?.route ?? "unavailable",
-        traceId: logContext?.traceId ?? "unavailable",
-        credentialReason: error.error.reason,
-        suppressedError,
-      },
-    );
+  if (error instanceof Error && error.name === "SuppressedError") {
+    // `SuppressedError.error` is the newer disposal failure and `.suppressed`
+    // the one it displaced, so the revocation can land in either slot: a
+    // disposal revocation after a failed body lands in `.error`, while a body
+    // revocation followed by an unrelated disposal failure lands in
+    // `.suppressed`.
+    const raised = "error" in error ? error.error : undefined;
+    const displaced = "suppressed" in error ? error.suppressed : undefined;
+    const revocation =
+      raised instanceof InferenceCredentialRevokedError
+        ? raised
+        : displaced instanceof InferenceCredentialRevokedError
+          ? displaced
+          : undefined;
+    if (revocation) {
+      credentialError = revocation;
+      const companion = revocation === raised ? displaced : raised;
+      const suppressedError =
+        companion instanceof Error
+          ? {
+              name: companion.name,
+              ...(companion instanceof ApiError
+                ? { code: companion.code, status: companion.status }
+                : {}),
+            }
+          : { name: typeof companion };
+      logger.error(
+        "[InferenceAuth] deferred revocation suppressed an earlier route failure",
+        {
+          route: logContext?.route ?? "unavailable",
+          traceId: logContext?.traceId ?? "unavailable",
+          credentialReason: revocation.reason,
+          suppressedError,
+        },
+      );
+    }
   }
   if (!(credentialError instanceof InferenceCredentialRevokedError)) {
     return null;
@@ -504,6 +514,7 @@ export async function requireGenerativeRouteCaller(
               resolution.ctx.admission,
               options.rateLimitEndpoint,
             ),
+            apiKeyId: resolution.ctx.apiKeyId,
           },
         );
         if (limited) {

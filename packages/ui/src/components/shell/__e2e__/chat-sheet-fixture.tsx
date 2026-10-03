@@ -1,7 +1,6 @@
-// Self-contained fixture for the pull-up chat-sheet e2e. Mounts the real
-// ChatOverlay with a stateful mock controller over a fake "view"
-// background, so a headless browser can drive real drag gestures and capture
-// styled screenshots without an app server. Paired with run-chat-sheet-e2e.mjs.
+/** Renders the real chat overlay with a controlled controller and view for
+ * browser gesture and transient-state checks. URL parameters seed observable
+ * states without requiring an app server or model provider. */
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
@@ -86,6 +85,7 @@ const params =
     ? new URLSearchParams(location.search)
     : new URLSearchParams();
 const startEmpty = params.has("empty");
+const initialVoiceProgress = params.get("voiceProgress");
 // `?firstrun` pins the sheet at FULL and freezes the composer (in-chat
 // onboarding). `?few` seeds only a couple of short messages so the bottom-anchor
 // behavior (few messages sit near the composer, first fades into the top edge)
@@ -416,15 +416,33 @@ function Harness(): React.JSX.Element {
     // speaking`. In the fixture, "responding" phase stands in for chatSending and
     // `?speaking` for the spoken reply, so the trailing control + voice-gating
     // behave exactly as they do in the app.
-    responding: phase === "responding" || initialSpeaking,
+    responding:
+      phase === "responding" || initialSpeaking || Boolean(initialVoiceProgress),
     // Rich status (#8813): mirror the real controller's derivation so the
     // screenshots show the phase-aware indicator. Speaking wins; otherwise a
     // responding phase reads as "thinking" in the fixture (no token stream).
-    turnStatus: initialSpeaking
-      ? { kind: "speaking" as const }
-      : phase === "responding"
-        ? { kind: "thinking" as const }
-        : null,
+    turnStatus: initialVoiceProgress
+      ? { kind: "speaking" as const, label: initialVoiceProgress }
+      : initialSpeaking
+        ? { kind: "speaking" as const }
+        : phase === "responding"
+          ? { kind: "thinking" as const }
+          : null,
+    ...(initialVoiceProgress
+      ? {
+          realtimeVoice: {
+            enabled: true,
+            active: true,
+            connecting: false,
+            paused: false,
+            microphoneMuted: false,
+            status: "speaking" as const,
+            progressText: initialVoiceProgress,
+            error: null,
+            toggleMicrophoneMute: () => {},
+          },
+        }
+      : {}),
     messages,
     // Mirrors the real controller: true once the latest assistant turn carries
     // `failureKind: "no_provider"`. Drives the overlay to keep boot trouble

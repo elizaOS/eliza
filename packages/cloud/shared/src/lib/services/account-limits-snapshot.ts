@@ -1187,7 +1187,9 @@ export async function buildAccountBillingSnapshot(
                     excluded: [],
                   }
                 : {
-                    included: ["bytes represented by org_storage_quota.bytes_used"],
+                    included: [
+                      "uploads, avatars and generated media reserved in org_storage_quota.bytes_used",
+                    ],
                     excluded: [],
                   },
             ),
@@ -1488,6 +1490,7 @@ export async function buildAccountBillingSnapshot(
         primary.subscription,
         observedAt,
         primary.allowanceFunding,
+        sources.cancellationAuthority,
       ),
       snapshotStartedAt,
       snapshotCompletedAt,

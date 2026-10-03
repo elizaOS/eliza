@@ -1,8 +1,26 @@
+/** Exercises the real non-Android phone fallback, distinguishing unavailable capabilities from empty history and granted permissions. */
 import { describe, expect, it } from "vitest";
 
 import { PhoneWeb } from "./web";
 
 describe("PhoneWeb fallback", () => {
+  it("rejects unavailable operations without pretending history or permissions exist", async () => {
+    const phone = new PhoneWeb();
+    for (const operation of [
+      () => phone.listRecentCalls(),
+      () => phone.checkPermissions(),
+      () => phone.requestPermissions(),
+      () => phone.placeCall({ number: "+15555550100" }),
+      () => phone.openDialer(),
+      () =>
+        phone.saveCallTranscript({
+          callId: "synthetic",
+          transcript: "complete text",
+        }),
+    ]) {
+      await expect(operation()).rejects.toMatchObject({ code: "UNAVAILABLE" });
+    }
+  });
   it("returns disabled phone status on non-Android runtimes", async () => {
     await expect(new PhoneWeb().getStatus()).resolves.toEqual({
       hasTelecom: false,
@@ -49,9 +67,11 @@ describe("PhoneWeb fallback", () => {
   it("accepts explicit limits above the former arbitrary ceiling", async () => {
     const phone = new PhoneWeb();
 
-    await expect(phone.listRecentCalls({ limit: 5_000 })).resolves.toEqual({
-      calls: [],
-    });
+    await expect(phone.listRecentCalls({ limit: 5_000 })).rejects.toMatchObject(
+      {
+        code: "UNAVAILABLE",
+      },
+    );
   });
 
   it("rejects non-object recent-call options without poisoning later calls", async () => {
@@ -60,8 +80,8 @@ describe("PhoneWeb fallback", () => {
     await expect(
       phone.listRecentCalls("limit=1" as unknown as { limit: number }),
     ).rejects.toThrow("options must be an object");
-    await expect(phone.listRecentCalls({ limit: 1 })).resolves.toEqual({
-      calls: [],
+    await expect(phone.listRecentCalls({ limit: 1 })).rejects.toMatchObject({
+      code: "UNAVAILABLE",
     });
   });
 
@@ -92,7 +112,7 @@ describe("PhoneWeb fallback", () => {
 
     await expect(
       phone.listRecentCalls({ number: "%' OR 1=1 --", limit: 2 }),
-    ).resolves.toEqual({ calls: [] });
+    ).rejects.toMatchObject({ code: "UNAVAILABLE" });
     await expect(
       phone.saveCallTranscript({
         callId: "__proto__",

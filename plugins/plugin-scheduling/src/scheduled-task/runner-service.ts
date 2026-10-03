@@ -15,14 +15,13 @@
  * plus production dispatcher, real owner-facts / channel-keys /
  * host-capability probes. When PA is loaded its deps win; when absent, the
  * default deps run. This keeps `@elizaos/plugin-scheduling` free of any
- * `@elizaos/app-core` / `@elizaos/agent` / `@elizaos/plugin-personal-assistant`
+ * `@elizaos/app` / `@elizaos/agent` / `@elizaos/plugin-personal-assistant`
  * import.
  *
  * One runner/store invariant: there is exactly one service
  * (serviceType `"lifeops_scheduled_task_runner"`, runtime first-wins dedup) and
  * exactly one set of injected deps per runtime.
  */
-
 import {
   ElizaError,
   type IAgentRuntime,
@@ -30,8 +29,8 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { resolvePlatform } from "@elizaos/core/runtime-env";
 import { createDrizzleCarveOutDatabase } from "@elizaos/plugin-sql";
-import { resolvePlatform } from "@elizaos/shared/runtime-env";
 import {
   createCodingAgentScheduleDispatcher,
   PR_SHEPHERD_DISPATCH_CHANNEL,
@@ -76,9 +75,15 @@ import {
 } from "./gate-registry.js";
 import { migrateSchedulingTables } from "./migration.js";
 import {
+  createSchedulingRecordStores,
+  ensureSchedulingRecordSchema,
+  getSchedulingRecordStore,
+} from "./record-store.js";
+import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   type ScheduledTaskDispatcher,
+  type ScheduledTaskRunnerDeps,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "./runner.js";
@@ -101,7 +106,6 @@ import {
 } from "./types.js";
 
 const SERVICE_TYPE = "lifeops_scheduled_task_runner" as const;
-
 /**
  * Everything the runner needs that is host-specific. A consumer injects a
  * provider via {@link registerScheduledTaskRunnerDeps}; the default provider
@@ -115,6 +119,11 @@ export interface ScheduledTaskRunnerDepsBundle {
   store: ScheduledTaskStore;
   logStore: ScheduledTaskLogStore;
   dispatcher: ScheduledTaskDispatcher;
+  executionBoundary?: ScheduledTaskRunnerDeps["executionBoundary"];
+  prepareMutation?: ScheduledTaskRunnerDeps["prepareMutation"];
+  prepareExecution?: ScheduledTaskRunnerDeps["prepareExecution"];
+  automaticAdmission?: ScheduledTaskRunnerDeps["automaticAdmission"];
+  prepareAutomaticFire?: ScheduledTaskRunnerDeps["prepareAutomaticFire"];
   ownerFacts: () => OwnerFactsView | Promise<OwnerFactsView>;
   globalPause: GlobalPauseView;
   activity: ActivitySignalBusView;
@@ -128,7 +137,6 @@ export interface ScheduledTaskRunnerDepsBundle {
   anchors?: AnchorRegistry;
   consolidation?: ConsolidationRegistry;
 }
-
 /**
  * A consumer registers a provider that builds the deps bundle for a given
  * `(runtime, agentId)`. The provider is resolved lazily — once per runner
@@ -138,12 +146,10 @@ export type ScheduledTaskRunnerDepsProvider = (
   runtime: IAgentRuntime,
   agentId: string,
 ) => ScheduledTaskRunnerDepsBundle;
-
 const depsProvidersByRuntime = new WeakMap<
   IAgentRuntime,
   ScheduledTaskRunnerDepsProvider
 >();
-
 /**
  * Register the production deps provider on the runtime. First-wins: a later
  * call does NOT override an earlier registration, so the consumer (PA) that
@@ -165,15 +171,12 @@ export function registerScheduledTaskRunnerDeps(
   }
   depsProvidersByRuntime.set(runtime, provider);
 }
-
 export function getScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
 ): ScheduledTaskRunnerDepsProvider | null {
   return depsProvidersByRuntime.get(runtime) ?? null;
 }
-
 // --- Runner boot hooks ------------------------------------------------------
-
 /**
  * A hook invoked with the freshly constructed runner service the moment
  * `ScheduledTaskRunnerService.start` produces it. This is the structural
@@ -184,7 +187,6 @@ export function getScheduledTaskRunnerDeps(
 export type ScheduledTaskRunnerBootHook = (
   service: ScheduledTaskRunnerService,
 ) => Promise<void> | void;
-
 const bootHooksByRuntime = new WeakMap<
   IAgentRuntime,
   ScheduledTaskRunnerBootHook[]
@@ -193,7 +195,6 @@ const startedServiceByRuntime = new WeakMap<
   IAgentRuntime,
   ScheduledTaskRunnerService
 >();
-
 function runBootHook(
   runtime: IAgentRuntime,
   service: ScheduledTaskRunnerService,
@@ -210,7 +211,6 @@ function runBootHook(
       });
     });
 }
-
 /**
  * Register a hook to run when this runtime's runner service starts. If the
  * service has already started, the hook runs immediately against the live
@@ -230,19 +230,15 @@ export function registerScheduledTaskRunnerBootHook(
   hooks.push(hook);
   bootHooksByRuntime.set(runtime, hooks);
 }
-
 // --- Default deps provider (no-PA path) ------------------------------------
-
 const ALL_PROFILES: ReadonlySet<TaskExecutionProfile> = new Set(
   TASK_EXECUTION_PROFILES,
 );
-
 const MOBILE_PROFILES: ReadonlySet<TaskExecutionProfile> =
   new Set<TaskExecutionProfile>(["foreground", "bg-light-30s", "notify-only"]);
-
 /**
  * Lightweight host-capability predicate that reads `ELIZA_PLATFORM` instead of
- * importing `@elizaos/app-core` (which would pull app-core into the mobile
+ * importing `@elizaos/app` (which would pull app into the mobile
  * bundle). Mobile hosts (android/ios) advertise the restricted profile set;
  * everything else (Node desktop, tests) advertises all profiles. A consumer
  * that needs the precise BackgroundRunner / FGS probe injects its own
@@ -253,7 +249,6 @@ function platformHostCapabilities(): ReadonlySet<TaskExecutionProfile> {
   if (platform === "android" || platform === "ios") return MOBILE_PROFILES;
   return ALL_PROFILES;
 }
-
 interface NotificationEmitter {
   notify: (input: {
     title: string;
@@ -266,14 +261,12 @@ interface NotificationEmitter {
     data?: Record<string, unknown>;
   }) => Promise<unknown>;
 }
-
 function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   const svc = runtime.getService(
     ServiceType.NOTIFICATION,
   ) as NotificationEmitter | null;
   return svc && typeof svc.notify === "function" ? svc : null;
 }
-
 /**
  * Default dispatcher with no channel registry: channel-destination dispatches
  * whose channel key matches a live message connector go out through the
@@ -315,7 +308,6 @@ function createDefaultScheduledTaskDispatcher(
           message: `Channel "${connectorTarget.source}" has no registered message connector.`,
         };
       }
-
       let body: string;
       try {
         const preparedMessage = connectorTarget
@@ -443,7 +435,6 @@ function createDefaultScheduledTaskDispatcher(
     },
   };
 }
-
 function makeMissingActivityBusView(
   runtime: IAgentRuntime,
 ): ActivitySignalBusView {
@@ -461,7 +452,6 @@ function makeMissingActivityBusView(
     },
   };
 }
-
 function makeMissingSubjectStoreView(runtime: IAgentRuntime): SubjectStoreView {
   let warned = false;
   return {
@@ -477,13 +467,11 @@ function makeMissingSubjectStoreView(runtime: IAgentRuntime): SubjectStoreView {
     },
   };
 }
-
 const ALWAYS_ALLOW_GLOBAL_PAUSE: GlobalPauseView = {
   async current() {
     return { active: false };
   },
 };
-
 /**
  * The default (no-PA) deps provider. Uses scheduling-owned SQL persistence
  * when the runtime DB is present, then falls back to in-memory for isolated
@@ -495,15 +483,23 @@ function defaultRunnerDeps(
   runtime: IAgentRuntime,
   agentId: string,
 ): ScheduledTaskRunnerDepsBundle {
+  const recordStorage = getSchedulingRecordStore(runtime);
+  const durable = recordStorage
+    ? createSchedulingRecordStores(recordStorage, agentId)
+    : null;
   const hasRuntimeDb = getRuntimeDb(runtime) !== null;
-  const store = hasRuntimeDb
-    ? createSchedulingSqlScheduledTaskStore({ runtime, agentId })
-    : createInMemoryScheduledTaskStore();
+  const store =
+    durable?.store ??
+    (hasRuntimeDb
+      ? createSchedulingSqlScheduledTaskStore({ runtime, agentId })
+      : createInMemoryScheduledTaskStore());
   return {
     store,
-    logStore: hasRuntimeDb
-      ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
-      : createInMemoryScheduledTaskLogStore(),
+    logStore:
+      durable?.logStore ??
+      (hasRuntimeDb
+        ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
+        : createInMemoryScheduledTaskLogStore()),
     dispatcher: createDefaultScheduledTaskDispatcher(runtime, store),
     ownerFacts: () => ({}) as OwnerFactsView,
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
@@ -512,41 +508,32 @@ function defaultRunnerDeps(
     hostCapabilities: platformHostCapabilities,
   };
 }
-
 // --- Runner construction ----------------------------------------------------
-
 export interface GetScheduledTaskRunnerOptions {
   agentId: string;
   now?: () => Date;
 }
-
 function buildRunner(
   runtime: IAgentRuntime,
   opts: GetScheduledTaskRunnerOptions,
 ): ScheduledTaskRunnerHandle {
   const provider = getScheduledTaskRunnerDeps(runtime);
   const deps = (provider ?? defaultRunnerDeps)(runtime, opts.agentId);
-
   const gates = deps.gates ?? createTaskGateRegistry();
   if (!deps.gates) registerBuiltInGates(gates);
-
   const completionChecks =
     deps.completionChecks ?? createCompletionCheckRegistry();
   if (!deps.completionChecks) {
     registerBuiltInCompletionChecks(completionChecks);
   }
-
   const ladders = deps.ladders ?? createEscalationLadderRegistry();
   if (!deps.ladders) registerDefaultEscalationLadders(ladders);
-
   let anchors = deps.anchors;
   if (!anchors) {
     anchors = createAnchorRegistry();
     registerFallbackAnchors(anchors);
   }
-
   const consolidation = deps.consolidation ?? createConsolidationRegistry();
-
   const codingAgentDispatcher = createCodingAgentScheduleDispatcher(runtime, {
     delegate: deps.dispatcher,
   });
@@ -583,7 +570,6 @@ function buildRunner(
           ? true
           : hostChannelAvailable(channelKey)
     : undefined;
-
   return createScheduledTaskRunner({
     agentId: opts.agentId,
     store: deps.store,
@@ -598,6 +584,19 @@ function buildRunner(
     activity: deps.activity,
     subjectStore: deps.subjectStore,
     dispatcher,
+    ...(deps.prepareMutation ? { prepareMutation: deps.prepareMutation } : {}),
+    ...(deps.prepareExecution
+      ? { prepareExecution: deps.prepareExecution }
+      : {}),
+    ...(deps.automaticAdmission
+      ? { automaticAdmission: deps.automaticAdmission }
+      : {}),
+    ...(deps.prepareAutomaticFire
+      ? { prepareAutomaticFire: deps.prepareAutomaticFire }
+      : {}),
+    ...(deps.executionBoundary
+      ? { executionBoundary: deps.executionBoundary }
+      : {}),
     ...(channelKeys ? { channelKeys } : {}),
     ...(channelAvailable ? { channelAvailable } : {}),
     ...(deps.hostCapabilities
@@ -606,15 +605,14 @@ function buildRunner(
     ...(opts.now ? { now: opts.now } : {}),
   });
 }
-
 const SYSTEM_CLOCK = (): Date => new Date();
-
 interface RunnerCacheEntry {
   runner: ScheduledTaskRunnerHandle;
   /** Mutable clock the cached runner reads through on every `now()` call. */
-  clock: { now: () => Date };
+  clock: {
+    now: () => Date;
+  };
 }
-
 /**
  * Long-lived runner host. Builds the runner ONCE per `agentId` from the
  * injected deps provider and caches it. The runner construction work
@@ -641,12 +639,9 @@ interface RunnerCacheEntry {
  */
 export class ScheduledTaskRunnerService extends Service {
   static override serviceType = SERVICE_TYPE;
-
   override capabilityDescription =
     "Long-lived ScheduledTask runner host. Builds the runner from the runtime-injected deps provider (or the built-in default deps) once per agent and caches it with a rebindable clock; the scheduler tick reads the cached runner instead of reconstructing it every minute.";
-
   private readonly runners = new Map<string, RunnerCacheEntry>();
-
   override async stop(): Promise<void> {
     this.runners.clear();
     const runtime = this.runtime;
@@ -654,14 +649,15 @@ export class ScheduledTaskRunnerService extends Service {
       startedServiceByRuntime.delete(runtime);
     }
   }
-
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<ScheduledTaskRunnerService> {
     // This service is the boot barrier used by routes and seed packs. Copy
     // legacy rows before either can insert an idempotency-key collision.
+    const recordStore = getSchedulingRecordStore(runtime);
+    if (recordStore) await ensureSchedulingRecordSchema(recordStore);
     const runtimeDb = getRuntimeDb(runtime);
-    if (runtimeDb) {
+    if (!recordStore && runtimeDb) {
       await migrateSchedulingTables(
         await createDrizzleCarveOutDatabase(runtimeDb),
       );
@@ -682,7 +678,6 @@ export class ScheduledTaskRunnerService extends Service {
     }
     return service;
   }
-
   getRunner(opts: GetScheduledTaskRunnerOptions): ScheduledTaskRunnerHandle {
     let entry = this.runners.get(opts.agentId);
     if (!entry) {
@@ -706,7 +701,6 @@ export class ScheduledTaskRunnerService extends Service {
     return entry.runner;
   }
 }
-
 /**
  * Module-level accessor. Resolves the service via the runtime's service
  * registry and returns its cached runner. Throws when the service is not

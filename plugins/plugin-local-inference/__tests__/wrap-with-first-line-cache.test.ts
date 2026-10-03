@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
+import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/core/voice/first-sentence-snip";
 import {
 	fingerprintVoiceSettings,
 	FirstLineCache,
@@ -59,7 +59,12 @@ afterEach(() => {
 	// Close caches before rmSync — an open SQLite (WAL) handle blocks directory
 	// removal on Windows (EBUSY/EPERM). close() is idempotent.
 	for (const cache of openCaches.splice(0)) cache.close();
-	rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+	rmSync(tmpRoot, {
+		recursive: true,
+		force: true,
+		maxRetries: 5,
+		retryDelay: 50,
+	});
 });
 
 describe("wrapWithFirstLineCache — short-circuit conditions", () => {
@@ -152,8 +157,7 @@ describe("wrapWithFirstLineCache — miss path populates the cache", () => {
 		const outU8 =
 			out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
 		expect(Array.from(outU8)).toEqual(Array.from(fullBytes));
-		// Allow the background populate to run (microtask + small delay).
-		await new Promise((r) => setTimeout(r, 25));
+		await vi.waitFor(() => expect(cache.stats().entries).toBe(1));
 		// At least two inner calls: one for the full text, one for the snip-only populate.
 		expect(inner.mock.calls.length).toBeGreaterThanOrEqual(2);
 
@@ -168,6 +172,15 @@ describe("wrapWithFirstLineCache — miss path populates the cache", () => {
 			normalizedText: "got it",
 		};
 		expect(cache.has(key)).toBe(true);
+		const callsBeforeHit = inner.mock.calls.length;
+		expect(
+			Array.from((await wrapped(makeRuntime(), "Got it.")) as Uint8Array),
+		).toEqual(Array.from(snipBytes));
+		expect(inner).toHaveBeenCalledTimes(callsBeforeHit);
+		expect(cache.stats()).toMatchObject({
+			entries: 1,
+			bytes: snipBytes.length,
+		});
 	});
 });
 
@@ -199,7 +212,8 @@ describe("wrapWithFirstLineCache — hit path concat", () => {
 		});
 		const out = await wrapped(makeRuntime(), { text: "Got it." });
 		// Cached returned exactly; inner not called.
-		const outU8 = out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
+		const outU8 =
+			out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
 		expect(Array.from(outU8)).toEqual(Array.from(cached));
 		expect(inner).not.toHaveBeenCalled();
 	});
@@ -283,8 +297,11 @@ describe("wrapWithFirstLineCache — hit path concat", () => {
 		const out = (await wrapped(makeRuntime(), {
 			text: "Got it. And more.",
 		})) as Uint8Array;
+		expect(
+			Array.from((await wrapped(makeRuntime(), "Got it.")) as Uint8Array),
+		).toEqual(Array.from(cachedBytes));
 		// Concat disabled for wav → falls back to full synth.
-		expect(out.length).toBe(96);
+		expect(out).toEqual(bytesOfLen(96, 0x99));
 		expect(inner).toHaveBeenCalledTimes(1);
 	});
 });
@@ -322,7 +339,8 @@ describe("wrapWithFirstLineCache — F3 voice-swap regression", () => {
 				}),
 		});
 		const out = await wrapped(makeRuntime(), { text: "Got it." });
-		const outU8 = out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
+		const outU8 =
+			out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
 		// Must NOT return the Kokoro cached bytes.
 		expect(Array.from(outU8)).not.toEqual(Array.from(kokoroBytes));
 		expect(Array.from(outU8)).toEqual(Array.from(elevenBytes));

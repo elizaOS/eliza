@@ -115,7 +115,7 @@ export function SandboxProbeView() {
 export function registerSandboxProbeView(): void {
   registerAppShellPage({
     id: SANDBOX_PROBE_VIEW_ID,
-    pluginId: "app-core",
+    pluginId: "app",
     label: "Sandbox Probe",
     icon: "shield",
     path: `/apps/${SANDBOX_PROBE_VIEW_ID}`,

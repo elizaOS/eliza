@@ -31,7 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { VoiceCancellationReason } from "@elizaos/shared";
+import type { VoiceCancellationReason } from "@elizaos/core/voice/voice-cancellation-token";
 import { localInferenceRoot } from "../paths";
 import {
 	type CoordinatorRuntime,
@@ -354,7 +354,7 @@ export class StubTtsBackend implements TtsBackend, StreamingTtsBackend {
 /**
  * FFI-backed TTS backend. Forwards each `synthesize()` call through the
  * fused `libelizainference` ABI declared in
- * `packages/app-core/scripts/omnivoice-fuse/ffi.h`. The library handle
+ * `packages/app/scripts/omnivoice-fuse/ffi.h`. The library handle
  * + a per-engine context pointer are held by the bridge and passed in
  * at construction so this backend stays a thin adapter.
  *
@@ -1124,7 +1124,7 @@ export class EngineVoiceBridge {
 			if (!existsSync(libPath)) {
 				throw new VoiceStartupError(
 					"missing-ffi",
-					`[voice] Fused omnivoice library not found under ${path.join(opts.bundleRoot, "lib")} (tried ${libraryFilenames().join(", ")}). Build via packages/app-core/scripts/build-llama-cpp-mtp.mjs (omnivoice-fuse target).`,
+					`[voice] Fused omnivoice library not found under ${path.join(opts.bundleRoot, "lib")} (tried ${libraryFilenames().join(", ")}). Build via packages/app/scripts/build-llama-cpp-mtp.ts (omnivoice-fuse target).`,
 				);
 			}
 			ffiHandle = loadElizaInferenceFfi(libPath);

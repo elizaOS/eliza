@@ -7,6 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { taskOperationSchemaOverrides } from "../../src/actions/task-operation-schemas.js";
 // SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
 import { spawnAgentAction } from "../../src/actions/tasks.js";
 import { workspaceDiskBudgetError } from "../../src/services/workspace-registry.js";
@@ -24,9 +25,9 @@ const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 
 describe("TASKS:spawn_agent", () => {
   it("rejects a list_agents alias on the promoted spawn tool before spawning", async () => {
-    const spawn = promoteSubactionsToActions(spawnAgentAction).find(
-      (action) => action.name === "TASKS_SPAWN_AGENT",
-    );
+    const spawn = promoteSubactionsToActions(spawnAgentAction, {
+      overrides: taskOperationSchemaOverrides(spawnAgentAction),
+    }).find((action) => action.name === "TASKS_SPAWN_AGENT");
     if (!spawn) throw new Error("TASKS_SPAWN_AGENT was not promoted");
     const svc = serviceMock();
 

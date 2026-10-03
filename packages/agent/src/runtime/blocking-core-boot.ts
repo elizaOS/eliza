@@ -3,15 +3,15 @@
  * barrier for readiness-critical services. Required plugins fail boot closed;
  * already registered plugins are skipped across blocking and deferred phases.
  */
-import { type AgentRuntime, ElizaError, logger } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
+import {
+  type AgentRuntime,
+  ElizaError,
+  formatError,
+  logger,
+} from "@elizaos/core";
 import { CORE_PLUGINS } from "./core-plugins.ts";
+import { selectDatabasePluginNames } from "./database-selection.ts";
 import type { ResolvedPlugin } from "./plugin-types.ts";
-import { applyHostActionOwnership } from "./runtime-action-ownership.ts";
-
-const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
-  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-coding-tools"]],
-]);
 
 export async function preregisterCorePluginsInDependencyWaves(args: {
   runtime: AgentRuntime;
@@ -28,7 +28,7 @@ export async function preregisterCorePluginsInDependencyWaves(args: {
       .filter((name): name is string => typeof name === "string"),
   ]);
   const pending = new Map<string, ResolvedPlugin>();
-  for (const name of CORE_PLUGINS) {
+  for (const name of selectDatabasePluginNames(CORE_PLUGINS)) {
     if (registered.has(name)) continue;
     const resolved = args.resolvedPlugins.find(
       (plugin) => plugin.name === name,
@@ -61,9 +61,7 @@ export async function preregisterCorePluginsInDependencyWaves(args: {
       args.abortSignal?.throwIfAborted();
       const startedAt = Date.now();
       logger.debug(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await args.runtime.registerPlugin(
-        applyHostActionOwnership(args.runtime, resolved.plugin),
-      );
+      await args.runtime.registerPlugin(resolved.plugin);
       registered.add(name);
       logger.debug(
         `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - startedAt}ms)`,
@@ -94,10 +92,7 @@ export async function preregisterCorePluginsInDependencyWaves(args: {
     args.abortSignal?.throwIfAborted();
     const ready: Array<[string, ResolvedPlugin]> = [];
     for (const [name, resolved] of pending) {
-      const dependencies = [
-        ...(resolved.plugin.dependencies ?? []),
-        ...(CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? []),
-      ];
+      const dependencies = resolved.plugin.dependencies ?? [];
       if (
         !dependencies.some(
           (dependency) =>
@@ -134,10 +129,12 @@ export async function initializeBlockingCoreRuntimeForBoot(args: {
   await preregisterCorePluginsInDependencyWaves({
     runtime: args.runtime,
     resolvedPlugins: args.resolvedPlugins,
-    alreadyPreRegistered: new Set<string>([
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-local-inference",
-    ]),
+    alreadyPreRegistered: new Set<string>(
+      selectDatabasePluginNames([
+        "@elizaos/plugin-sql",
+        "@elizaos/plugin-local-inference",
+      ]),
+    ),
     requiredPluginNames: args.requiredPluginNames,
     label: "blocking",
     ...(args.abortSignal ? { abortSignal: args.abortSignal } : {}),

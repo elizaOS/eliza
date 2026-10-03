@@ -9,13 +9,17 @@
  * the `/api/lifeops/...` prefix exactly).
  */
 
-import type { IncomingMessage, ServerResponse } from "node:http";
-import type { IAgentRuntime, LegacyRouteHandler, Route } from "@elizaos/core";
+import { type IncomingMessage, type ServerResponse } from "node:http";
+import { type IAgentRuntime } from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson,
   sendJsonError,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/http-helpers";
+import {
+  type LegacyRouteHandler,
+  type Route,
+} from "@elizaos/core/api/http-plugin";
 import { getScheduledTaskRunner } from "../scheduled-task/runner-service.js";
 import {
   makeScheduledTasksRouteHandler,
@@ -29,15 +33,12 @@ function requestBaseUrl(req: IncomingMessage): string {
     (req.headers["x-forwarded-proto"] as string | undefined) ?? "http";
   return `${proto}://${host}`;
 }
-
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 function isIncomingMessage(value: unknown): value is IncomingMessage {
   return isRecord(value) && isRecord(value.headers) && isRecord(value.socket);
 }
-
 function isServerResponse(value: unknown): value is ServerResponse {
   return (
     isRecord(value) &&
@@ -45,7 +46,6 @@ function isServerResponse(value: unknown): value is ServerResponse {
     typeof value.setHeader === "function"
   );
 }
-
 function buildContext(
   req: IncomingMessage,
   res: ServerResponse,
@@ -64,7 +64,6 @@ function buildContext(
       httpReadJsonBody<T>(r, s),
   };
 }
-
 function scheduledTasksLegacyHandler(): LegacyRouteHandler {
   const runtimeByContext = new WeakMap<SchedulingRouteContext, IAgentRuntime>();
   const handle = makeScheduledTasksRouteHandler({
@@ -83,7 +82,6 @@ function scheduledTasksLegacyHandler(): LegacyRouteHandler {
         "Scheduled-tasks legacy route requires Node HTTP request/response objects",
       );
     }
-
     const ctx = buildContext(req, res);
     runtimeByContext.set(ctx, runtime);
     const handled = await handle(ctx);
@@ -92,7 +90,6 @@ function scheduledTasksLegacyHandler(): LegacyRouteHandler {
     }
   };
 }
-
 /**
  * The `routes:` entries for the scheduling plugin. One shared handler matches
  * every scheduled-task path; each route entry points at it so the runtime's

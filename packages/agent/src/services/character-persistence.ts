@@ -8,29 +8,22 @@
  */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
+  CHARACTER_PERSISTENCE_SERVICE,
+  type CharacterPersistenceServiceLike,
+  type PersistCharacterParams,
+  type PersistCharacterResult,
+} from "@elizaos/plugin-assistant/character-persistence";
+import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.ts";
 import {
-  type CharacterHistorySource,
   type RuntimeCharacterLike,
   recordCharacterHistory,
 } from "./character-history.ts";
 
-export const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
-
-type PersistCharacterParams = {
-  character?: RuntimeCharacterLike;
-  previousCharacter?: RuntimeCharacterLike;
-  previousName?: string;
-  source?: CharacterHistorySource;
-};
-
-type PersistCharacterResult = {
-  success: boolean;
-  error?: string;
-};
+export { CHARACTER_PERSISTENCE_SERVICE } from "@elizaos/plugin-assistant/character-persistence";
 
 type AgentConfigLike = NonNullable<ElizaConfig["agents"]>["list"] extends
   | Array<infer T>
@@ -168,7 +161,10 @@ function buildPersistedCharacterData(
   return persisted;
 }
 
-export class ElizaCharacterPersistenceService extends Service {
+export class ElizaCharacterPersistenceService
+  extends Service
+  implements CharacterPersistenceServiceLike
+{
   static serviceType = CHARACTER_PERSISTENCE_SERVICE;
 
   static async start(

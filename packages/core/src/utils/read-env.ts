@@ -2,13 +2,6 @@
 
 import { parseBooleanValue } from "./boolean.js";
 
-/** Process env, or an empty object in non-Node runtimes (browser). */
-function defaultEnv(): NodeJS.ProcessEnv {
-	return typeof process !== "undefined" && process.env
-		? process.env
-		: ({} as NodeJS.ProcessEnv);
-}
-
 /** Trim and treat empty strings as unset, matching dotenv semantics. */
 function readRaw(env: NodeJS.ProcessEnv, key: string): string | undefined {
 	const value = env[key];
@@ -28,7 +21,7 @@ export function readEnv(
 	canonicalKey: string,
 	options: ReadEnvOptions = {},
 ): string | undefined {
-	const env = options.env ?? defaultEnv();
+	const env = options.env ?? process.env;
 	return readRaw(env, canonicalKey) ?? options.defaultValue;
 }
 

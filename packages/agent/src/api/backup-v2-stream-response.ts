@@ -6,20 +6,22 @@
  */
 
 import type http from "node:http";
-import { logger, readRequestBody } from "@elizaos/core";
 import {
   AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupCaptureV2Request,
+  logger,
   parseAgentBackupCaptureV2Request,
-} from "@elizaos/shared";
+  readRequestBody,
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import {
   type AgentBackupV2CaptureComponentSource,
   AgentBackupV2CaptureError,
   type AgentBackupV2CaptureRuntime,
   createAgentBackupV2Capture,
-} from "../services/agent-backup-v2-capture.ts";
+} from "../services/agent-backup.ts";
 
 export interface AgentBackupV2WritableResponse {
   statusCode: number;

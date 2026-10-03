@@ -26,6 +26,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { apiKeys } from "./api-keys";
+import { billingFundingReservations } from "./billing-funding-reservations";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
 
@@ -188,6 +189,8 @@ export const containerBillingRecords = pgTable(
     billing_period_end: timestamp("billing_period_end").notNull(),
     status: text("status").default("success").notNull(), // success, uncollected, failed, insufficient_credits
     credit_transaction_id: uuid("credit_transaction_id"),
+    /** Finalized allowance-first funding reservation for a subscriber's charge. */
+    funding_reservation_id: uuid("funding_reservation_id"),
     error_message: text("error_message"),
     created_at: timestamp("created_at").defaultNow().notNull(),
   },
@@ -197,9 +200,19 @@ export const containerBillingRecords = pgTable(
       foreignColumns: [creditTransactions.id, creditTransactions.organization_id],
       name: "container_billing_records_credit_transaction_tenant_fk",
     }).onDelete("restrict"),
+    funding_reservation_tenant_fk: foreignKey({
+      columns: [table.funding_reservation_id, table.organization_id],
+      foreignColumns: [billingFundingReservations.id, billingFundingReservations.organization_id],
+      name: "container_billing_records_funding_reservation_tenant_fk",
+    }).onDelete("restrict"),
+    funding_reservation_unique: uniqueIndex("container_billing_records_funding_reservation_idx")
+      .on(table.funding_reservation_id)
+      .where(sql`${table.funding_reservation_id} IS NOT NULL`),
+    // A successful charge is receipted by its purchased-credit debit, its
+    // allowance-first funding reservation, or both (earnings plus funding).
     success_ledger_check: check(
       "container_billing_records_success_ledger_check",
-      sql`${table.status} <> 'success' OR ${table.credit_transaction_id} IS NOT NULL`,
+      sql`${table.status} <> 'success' OR ${table.credit_transaction_id} IS NOT NULL OR ${table.funding_reservation_id} IS NOT NULL`,
     ),
     container_idx: index("container_billing_records_container_idx").on(table.container_id),
     org_idx: index("container_billing_records_org_idx").on(table.organization_id),

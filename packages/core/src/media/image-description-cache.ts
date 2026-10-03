@@ -9,19 +9,17 @@
  * the served/remote URL) means identical bytes resolve to one cached
  * description reused everywhere.
  */
-import type { IAgentRuntime } from "../types/index.ts";
-import { ModelType } from "../types/index.ts";
-import { createHash } from "../utils/crypto-compat";
-import { parseJSONObjectFromText } from "../utils.ts";
 
+import { parseJSONObjectFromText } from "../text/model-output.js";
+import { ModelType } from "../types/model.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import { createHash } from "../utils/crypto-compat.js";
 export interface CachedImageDescription {
 	title: string;
 	description: string;
 	text: string;
 }
-
 const CACHE_VERSION = "v2";
-
 export function imageDescriptionCacheKey(imageUrl: string): string {
 	// SHA-256, not a truncated non-crypto hash: this key is a persistent
 	// content address across agents' cache namespaces, so a collision would
@@ -30,7 +28,6 @@ export function imageDescriptionCacheKey(imageUrl: string): string {
 		.update(imageUrl)
 		.digest("hex")}`;
 }
-
 /** Coerce any IMAGE_DESCRIPTION model response into a uniform description shape. */
 export function normalizeImageDescription(
 	response: unknown,
@@ -79,7 +76,6 @@ export function normalizeImageDescription(
 	}
 	return null;
 }
-
 export async function getCachedImageDescription(
 	runtime: IAgentRuntime,
 	imageUrl: string,
@@ -95,7 +91,6 @@ export async function getCachedImageDescription(
 		});
 	return cached ? (normalizeImageDescription(cached) ?? undefined) : undefined;
 }
-
 export async function setCachedImageDescription(
 	runtime: IAgentRuntime,
 	imageUrl: string,
@@ -111,7 +106,6 @@ export async function setCachedImageDescription(
 			runtime.reportError("ImageDescriptionCache.set", err, { imageUrl }),
 		);
 }
-
 /**
  * Describe an image, reusing and populating the shared cache. Returns the
  * cached result on a hit; otherwise calls the vision model once, caches, and
@@ -125,10 +119,8 @@ export async function describeImageCached(
 ): Promise<CachedImageDescription | null> {
 	const url = imageUrl.trim();
 	if (!url) return null;
-
 	const cached = await getCachedImageDescription(runtime, url);
 	if (cached) return cached;
-
 	let response: unknown;
 	try {
 		response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
@@ -144,7 +136,6 @@ export async function describeImageCached(
 		});
 		return null;
 	}
-
 	const normalized = normalizeImageDescription(response);
 	if (!normalized) return null;
 	await setCachedImageDescription(runtime, url, normalized);

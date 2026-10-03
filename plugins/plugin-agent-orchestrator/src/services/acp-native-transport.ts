@@ -357,7 +357,14 @@ export class NativeAcpClient {
         ? "bypassPermissions"
         : this.opts.approvalPreset === "readonly"
           ? "plan"
-          : "dontAsk";
+          : this.opts.approvalPreset === "verifier"
+            ? // Prefer a permission-requesting mode so direct writes surface as
+              // permission requests the verifier gate denies; agents that
+              // advertise neither keep the prior "dontAsk" selection.
+              (["read-only", "default"].find((mode) =>
+                availableModes.includes(mode),
+              ) ?? "dontAsk")
+            : "dontAsk";
     if (availableModes.includes(requestedMode)) {
       await this.request("session/set_mode", {
         sessionId,

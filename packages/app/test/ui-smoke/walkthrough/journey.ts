@@ -32,11 +32,10 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import {
-  DEFAULT_NETWORK_POLICY_PREFERENCES,
-  VOICE_MODEL_VERSIONS,
-} from "@elizaos/shared";
-import type { AccountsListResponse } from "@elizaos/ui/api/client-agent";
+import { EDGE_BACKUP_VOICES } from "@elizaos/core/voice";
+import { DEFAULT_NETWORK_POLICY_PREFERENCES } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
+import { VOICE_MODEL_VERSIONS } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { type AccountsListResponse } from "@elizaos/ui/api/client-agent";
 import { expect, type Page, type Route, type TestInfo } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -45,13 +44,10 @@ import {
   seedAppStorage,
   seedFirstRunCompleteBeforeLoad,
 } from "../helpers";
-
 export type Lane = "mock" | "live";
-
 export const WALKTHROUGH_ACCOUNTS_RESPONSE = {
   providers: [],
 } satisfies AccountsListResponse;
-
 const WALKTHROUGH_VOICE_MODEL_INSTALLATIONS = Array.from(
   new Set(VOICE_MODEL_VERSIONS.map((version) => version.id)),
 )
@@ -62,14 +58,15 @@ const WALKTHROUGH_VOICE_MODEL_INSTALLATIONS = Array.from(
     pinned: false,
     lastError: null,
   }));
-
 export interface ViewportProfile {
   id: "desktop" | "mobile";
-  size: { width: number; height: number };
+  size: {
+    width: number;
+    height: number;
+  };
   isMobile: boolean;
   hasTouch: boolean;
 }
-
 export const VIEWPORT_PROFILES: Record<"desktop" | "mobile", ViewportProfile> =
   {
     desktop: {
@@ -85,12 +82,10 @@ export const VIEWPORT_PROFILES: Record<"desktop" | "mobile", ViewportProfile> =
       hasTouch: true,
     },
   };
-
 const CHAT_COMPOSER_SELECTOR =
   '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 const CHAT_SEND_SELECTOR =
   '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]';
-
 /** Console-error substrings that are known-benign in the live lane and must not
  * fail the run. Empty for the mock lane (the keyless stub emits none). Populated
  * only with verified, documented noise — never as a catch-all. */
@@ -99,7 +94,6 @@ const LIVE_CONSOLE_ERROR_ALLOWLIST: readonly string[] = [
   // headless GPU; it does not affect any asserted surface.
   "THREE.WebGLRenderer",
 ];
-
 /** Optional resources whose non-2xx probe is expected and handled gracefully by
  * the app, so a browser "Failed to load resource" console line for them is not a
  * defect. Matched against the console message *location* (URL), in both lanes —
@@ -109,18 +103,15 @@ const OPTIONAL_RESOURCE_ALLOWLIST: readonly string[] = [
   // avatar the app falls back to the default and the probe's 404 is expected.
   "/api/avatar/vrm",
 ];
-
 // ---------------------------------------------------------------------------
 // Diagnostics + capture recorder
 // ---------------------------------------------------------------------------
-
 interface ConsoleRecord {
   type: string;
   text: string;
   location: string;
   atStep: string | null;
 }
-
 interface NetworkRecord {
   method: string;
   url: string;
@@ -128,7 +119,6 @@ interface NetworkRecord {
   failure: string | null;
   atStep: string | null;
 }
-
 interface StepRecord {
   n: string;
   id: string;
@@ -137,7 +127,10 @@ interface StepRecord {
   lane: Lane;
   viewport: "desktop" | "mobile";
   url: string;
-  viewportSize: { width: number; height: number };
+  viewportSize: {
+    width: number;
+    height: number;
+  };
   dom: Record<string, unknown>;
   assertions: string[];
   screenshotRelPath: string | null;
@@ -147,22 +140,18 @@ interface StepRecord {
   newServerErrors: string[];
   capturedAt: string;
 }
-
 function isIgnorableUrl(url: string): boolean {
   return url.startsWith("data:") || url.startsWith("blob:");
 }
-
 export class WalkthroughRecorder {
   readonly steps: StepRecord[] = [];
   readonly console: ConsoleRecord[] = [];
   readonly network: NetworkRecord[] = [];
   trajectory: Record<string, unknown> | null = null;
-
   private currentStep: string | null = null;
   private consoleCursor = 0;
   private serverErrorCursor = 0;
   private readonly serverErrors: NetworkRecord[] = [];
-
   constructor(
     readonly page: Page,
     readonly lane: Lane,
@@ -170,7 +159,6 @@ export class WalkthroughRecorder {
     readonly runDir: string,
     private readonly nowIso: () => string,
   ) {}
-
   attach(): void {
     this.page.on("console", (message) => {
       if (message.type() !== "error" && message.type() !== "warning") return;
@@ -218,13 +206,11 @@ export class WalkthroughRecorder {
       if (status >= 500) this.serverErrors.push(rec);
     });
   }
-
   beginStep(step: JourneyStep): void {
     this.currentStep = step.id;
     this.consoleCursor = this.console.length;
     this.serverErrorCursor = this.serverErrors.length;
   }
-
   /** Console errors that are real failures (errors, not warnings; not allowlisted). */
   private gateConsoleErrors(): ConsoleRecord[] {
     const allow = this.lane === "live" ? LIVE_CONSOLE_ERROR_ALLOWLIST : [];
@@ -235,7 +221,6 @@ export class WalkthroughRecorder {
         !OPTIONAL_RESOURCE_ALLOWLIST.some((url) => c.location.includes(url)),
     );
   }
-
   async captureStep(
     step: JourneyStep,
     result: StepRunResult,
@@ -253,7 +238,6 @@ export class WalkthroughRecorder {
       });
       screenshotRelPath = `${this.viewport.id}/${fileName}`;
     }
-
     const newConsoleErrors = this.console
       .slice(this.consoleCursor)
       .filter((c) => c.type === "console.error" || c.type === "pageerror")
@@ -261,7 +245,6 @@ export class WalkthroughRecorder {
     const newServerErrors = this.serverErrors
       .slice(this.serverErrorCursor)
       .map((r) => `${r.status} ${r.method} ${r.url}`);
-
     this.steps.push({
       n: step.n,
       id: step.id,
@@ -280,10 +263,8 @@ export class WalkthroughRecorder {
       newServerErrors,
       capturedAt: this.nowIso(),
     });
-
     if (result.trajectory) this.trajectory = result.trajectory;
   }
-
   gateSummary(): {
     pageAndConsoleErrors: string[];
     serverErrors: string[];
@@ -302,7 +283,6 @@ export class WalkthroughRecorder {
       ok: consoleErrors.length === 0 && serverErrors.length === 0,
     };
   }
-
   async finalize(): Promise<void> {
     const dir = join(this.runDir, this.viewport.id);
     await mkdir(join(dir, "logs"), { recursive: true });
@@ -350,11 +330,9 @@ export class WalkthroughRecorder {
     }
   }
 }
-
 // ---------------------------------------------------------------------------
 // Route installers
 // ---------------------------------------------------------------------------
-
 async function fulfillJson(
   route: Route,
   status: number,
@@ -366,11 +344,9 @@ async function fulfillJson(
     body: JSON.stringify(body),
   });
 }
-
 export interface FirstRunControl {
   setComplete(complete: boolean): void;
 }
-
 /** A mutable `/api/first-run/status` so the onboarding capture steps can show
  * the fresh-device shell and then flip to complete to reach chat-ready — in BOTH
  * lanes (the onboarding UI is identical; real cloud provisioning is out of scope
@@ -393,7 +369,6 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
     },
   };
 }
-
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const secureStore = new Map<string, string>();
@@ -432,14 +407,12 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
     };
   });
 }
-
 export interface ConversationStore {
   /** Names of the conversations the mock has created, in order. */
   ids(): string[];
   /** Text of the assistant reply the mock returns (deterministic). */
   readonly assistantText: string;
 }
-
 /** Keyless conversation store for the mock lane. Supports multiple
  * conversations (the journey's "new chat" step) and SSE streaming, so the chat
  * round-trip is fully deterministic with no provider key. The live lane does NOT
@@ -448,7 +421,10 @@ async function installConversationStore(
   page: Page,
 ): Promise<ConversationStore> {
   const assistantText = "Saved — walkthrough reply captured.";
-  const conversations: Array<{ id: string; title: string }> = [];
+  const conversations: Array<{
+    id: string;
+    title: string;
+  }> = [];
   const messagesById = new Map<
     string,
     Array<{
@@ -463,7 +439,6 @@ async function installConversationStore(
   // placeholder date on the conversation card in the home dashboard.
   const seedMs = Date.now();
   const seedIso = new Date(seedMs).toISOString();
-
   await page.route("**/api/conversations", async (route) => {
     const method = route.request().method();
     if (method === "GET") {
@@ -495,7 +470,6 @@ async function installConversationStore(
     }
     await route.fallback();
   });
-
   await page.route(
     /\/api\/conversations\/([^/?#]+)(\/[^?#]*)?(\?.*)?$/,
     async (route) => {
@@ -506,7 +480,6 @@ async function installConversationStore(
       const method = route.request().method();
       if (!messagesById.has(id)) messagesById.set(id, []);
       const messages = messagesById.get(id) ?? [];
-
       if (suffix.startsWith("/messages/stream")) {
         const body = JSON.parse(route.request().postData() ?? "{}") as {
           text?: string;
@@ -568,18 +541,15 @@ async function installConversationStore(
       await route.fallback();
     },
   );
-
   return {
     ids: () => conversations.map((c) => c.id),
     assistantText,
   };
 }
-
 export interface JourneyRoutes {
   firstRun: FirstRunControl;
   store: ConversationStore | null;
 }
-
 /** Install the route surface for a lane. Shared shell-stability mocks in both;
  * conversation determinism only in mock; first-run is controllable in both. */
 export async function installJourneyRoutes(
@@ -643,7 +613,6 @@ export async function installJourneyRoutes(
   }
   return { firstRun, store };
 }
-
 /** In the keyless mock lane the deterministic stub stack returns a catch-all 501
  * for write endpoints whose specs are live-gated (e.g. `PUT /api/character`).
  * Mock those writes to 200 so the journey's edit steps exercise the UI without a
@@ -746,18 +715,15 @@ async function installMockLaneWrites(page: Page): Promise<void> {
     await route.fallback();
   });
 }
-
 // ---------------------------------------------------------------------------
 // Step model
 // ---------------------------------------------------------------------------
-
 export interface StepContext {
   page: Page;
   lane: Lane;
   viewport: ViewportProfile;
   routes: JourneyRoutes;
 }
-
 export interface StepRunResult {
   assertions: string[];
   dom?: Record<string, unknown>;
@@ -765,7 +731,6 @@ export interface StepRunResult {
   skipped?: boolean;
   skipReason?: string;
 }
-
 export interface JourneyStep {
   n: string;
   id: string;
@@ -776,20 +741,16 @@ export interface JourneyStep {
   desktopOnly?: boolean;
   run(ctx: StepContext): Promise<StepRunResult>;
 }
-
 // --- small driving helpers -------------------------------------------------
-
 function composer(page: Page) {
   return page.locator(CHAT_COMPOSER_SELECTOR).first();
 }
-
 async function sendChatMessage(page: Page, text: string): Promise<void> {
   const input = composer(page);
-  await expect(input).toBeVisible({ timeout: 30_000 });
+  await expect(input).toBeVisible({ timeout: 30000 });
   await input.fill(text);
   await page.locator(CHAT_SEND_SELECTOR).first().click();
 }
-
 /**
  * Drive the open chat sheet to its FULL detent with a real upward flick on the
  * grabber — the pull gesture that REPLACED the removed `chat-full-maximize`
@@ -806,7 +767,7 @@ async function pullChatSheetToFull(page: Page): Promise<void> {
   const overlay = page.getByTestId("chat-overlay");
   const sheet = page.getByTestId("chat-sheet");
   await expect(overlay).toHaveAttribute("data-open", "true", {
-    timeout: 15_000,
+    timeout: 15000,
   });
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if ((await sheet.getAttribute("data-detent")) === "full") return;
@@ -824,10 +785,9 @@ async function pullChatSheetToFull(page: Page): Promise<void> {
     await page.waitForTimeout(400);
   }
   await expect(sheet).toHaveAttribute("data-detent", "full", {
-    timeout: 5_000,
+    timeout: 5000,
   });
 }
-
 async function navigateViaAgentEvent(
   page: Page,
   detail: Record<string, unknown>,
@@ -836,18 +796,15 @@ async function navigateViaAgentEvent(
     window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail: d }));
   }, detail);
 }
-
 async function reachChatReady(ctx: StepContext): Promise<void> {
   ctx.routes.firstRun.setComplete(true);
   await seedFirstRunCompleteBeforeLoad(ctx.page);
   await openAppPath(ctx.page, "/chat");
   await expect(ctx.page.getByTestId("chat-overlay")).toBeVisible({
-    timeout: 60_000,
+    timeout: 60000,
   });
 }
-
 // --- tutorial driving -------------------------------------------------------
-
 /** The chat-native tour's five steps, in order (tutorial-script.ts). */
 const TUTORIAL_STEP_ORDER = [
   "welcome",
@@ -857,19 +814,17 @@ const TUTORIAL_STEP_ORDER = [
   "done",
 ] as const;
 const FIRST_RUN_READY_TIMEOUT_MS = {
-  mock: 20_000,
-  live: 60_000,
+  mock: 20000,
+  live: 60000,
 } satisfies Record<Lane, number>;
 const FIRST_RUN_TEXT_TIMEOUT_MS = {
-  mock: 15_000,
-  live: 45_000,
+  mock: 15000,
+  live: 45000,
 } satisfies Record<Lane, number>;
-
 /** Choice-button locator for a tour step's `__tutorial__:` action value. */
 function tutorialChoice(page: Page, verb: string, stepId: string) {
   return page.getByTestId(`choice-__tutorial__:${verb}:${stepId}`);
 }
-
 /**
  * Drive the chat-native tour through every step and return the ordered step
  * ids actually walked (read from the seeded turns' choice widgets). The
@@ -881,7 +836,7 @@ async function driveTutorial(page: Page): Promise<string[]> {
   const seen: string[] = [];
   for (const [index, stepId] of TUTORIAL_STEP_ORDER.entries()) {
     const next = tutorialChoice(page, "next", stepId).last();
-    await expect(next).toBeVisible({ timeout: 15_000 });
+    await expect(next).toBeVisible({ timeout: 15000 });
     seen.push(stepId);
     if (stepId === "send-message") {
       // The step's real action: sending any message auto-advances it.
@@ -892,7 +847,7 @@ async function driveTutorial(page: Page): Promise<string[]> {
       const following = TUTORIAL_STEP_ORDER[index + 1];
       const advanced = await tutorialChoice(page, "next", following)
         .last()
-        .waitFor({ state: "visible", timeout: 8_000 })
+        .waitFor({ state: "visible", timeout: 8000 })
         .then(
           () => true,
           () => false,
@@ -903,7 +858,6 @@ async function driveTutorial(page: Page): Promise<string[]> {
   }
   return seen;
 }
-
 async function domMarkers(
   page: Page,
   markers: Record<string, string>,
@@ -916,11 +870,9 @@ async function domMarkers(
     return out;
   }, markers);
 }
-
 // ---------------------------------------------------------------------------
 // The ordered journey
 // ---------------------------------------------------------------------------
-
 export const JOURNEY_STEPS: readonly JourneyStep[] = [
   {
     n: "01",
@@ -1010,11 +962,11 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         await local.click().catch(() => undefined);
         await page
           .getByTestId("choice-__first_run__:provider:on-device")
-          .waitFor({ state: "visible", timeout: 15_000 })
+          .waitFor({ state: "visible", timeout: 15000 })
           .catch(() => undefined);
       }
       await reachChatReady(ctx);
-      await expect(composer(page)).toBeVisible({ timeout: 30_000 });
+      await expect(composer(page)).toBeVisible({ timeout: 30000 });
       return {
         assertions: [
           "Selected the local runtime choice → on-device provider step",
@@ -1038,7 +990,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       // The tour is chat-native — no dedicated view. Start it from the composer.
       await openAppPath(page, "/chat");
       const box = composer(page);
-      await expect(box).toBeVisible({ timeout: 20_000 });
+      await expect(box).toBeVisible({ timeout: 20000 });
       await box.click();
       await box.fill("start tutorial");
       await page.getByTestId("chat-composer-action").click();
@@ -1046,12 +998,10 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       // or locks the shell.
       await expect(page.getByTestId("tutorial-card")).toHaveCount(0);
       await expect(page.getByText(/Want a quick tour\?/i)).toBeVisible({
-        timeout: 15_000,
+        timeout: 15000,
       });
-
       const walked = await driveTutorial(page);
       expect(walked).toEqual([...TUTORIAL_STEP_ORDER]);
-
       return {
         assertions: [
           "'start tutorial' started the chat-native tour (welcome turn in transcript)",
@@ -1073,19 +1023,18 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       "Typing 'restart tutorial' in the composer starts a fresh run (new welcome turn) and 'stop tutorial' ends it with a stopped acknowledgment — neither reaches the agent as a chat message.",
     async run({ page }) {
       const box = composer(page);
-      await expect(box).toBeVisible({ timeout: 15_000 });
+      await expect(box).toBeVisible({ timeout: 15000 });
       await box.click();
       await box.fill("restart tutorial");
       await page.getByTestId("chat-composer-action").click();
       await expect(tutorialChoice(page, "stop", "welcome").last()).toBeVisible({
-        timeout: 15_000,
+        timeout: 15000,
       });
-
       await box.click();
       await box.fill("stop tutorial");
       await page.getByTestId("chat-composer-action").click();
       await expect(page.getByText(/Tutorial stopped/i).last()).toBeVisible({
-        timeout: 15_000,
+        timeout: 15000,
       });
       return {
         assertions: [
@@ -1109,20 +1058,20 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         (response) =>
           response.request().method() === "GET" &&
           new URL(response.url()).pathname === "/api/accounts",
-        { timeout: 30_000 },
+        { timeout: 30000 },
       );
       await openAppPath(page, "/settings");
       await expect(page.getByTestId("settings-shell")).toBeVisible({
-        timeout: 30_000,
+        timeout: 30000,
       });
       await openSettingsSection(page, /Models & Providers/);
       await accountsResponse;
       const accountPanel = page.getByTestId("account-management-panel");
-      await expect(accountPanel).toBeVisible({ timeout: 30_000 });
+      await expect(accountPanel).toBeVisible({ timeout: 30000 });
       await expect(accountPanel).toHaveAttribute(
         "data-state",
         /^(ready|error)$/,
-        { timeout: 30_000 },
+        { timeout: 30000 },
       );
       return {
         assertions: [
@@ -1149,9 +1098,9 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       const shell = page
         .getByTestId("wallet-shell")
         .or(page.getByRole("heading", { name: /Wallet/i }));
-      await expect(shell.first()).toBeVisible({ timeout: 30_000 });
+      await expect(shell.first()).toBeVisible({ timeout: 30000 });
       await expect(page.getByTestId("wallets-sidebar").first()).toBeVisible({
-        timeout: 30_000,
+        timeout: 30000,
       });
       return {
         assertions: [
@@ -1178,7 +1127,6 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         lane === "live"
           ? "In one short sentence, what is elizaOS?"
           : "walkthrough: remember this conversation";
-
       const streamBodies: string[] = [];
       const onRequest = (req: import("@playwright/test").Request) => {
         if (req.url().includes("/messages/stream") && req.method() === "POST") {
@@ -1186,29 +1134,25 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         }
       };
       page.on("request", onRequest);
-
       await sendChatMessage(page, userText);
       const overlay = page.getByTestId("chat-overlay");
       await expect(overlay).toHaveAttribute("data-open", "true", {
-        timeout: 15_000,
+        timeout: 15000,
       });
       const userLine = page
         .getByTestId("thread-line")
         .filter({ hasText: userText })
         .first();
-      await expect(userLine).toBeVisible({ timeout: 30_000 });
-
+      await expect(userLine).toBeVisible({ timeout: 30000 });
       // Assistant reply: any thread-line that is not the user's own text.
       const assistantLine = page
         .getByTestId("thread-line")
         .filter({ hasNotText: userText })
         .first();
-      await expect(assistantLine).toBeVisible({ timeout: 90_000 });
+      await expect(assistantLine).toBeVisible({ timeout: 90000 });
       const assistantText = (await assistantLine.innerText()).trim();
       expect(assistantText.length).toBeGreaterThan(0);
-
       page.off("request", onRequest);
-
       const trajectory: Record<string, unknown> = {
         lane,
         userText,
@@ -1224,7 +1168,6 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             ? "Assistant reply produced by the real backend agent + model."
             : "Assistant reply produced by the deterministic keyless conversation mock.",
       };
-
       return {
         assertions: [
           `Sent user message: "${userText}"`,
@@ -1277,9 +1220,9 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         action: undefined,
         alwaysOnTop: false,
       });
-      await expect(page).toHaveURL(/character/, { timeout: 20_000 });
+      await expect(page).toHaveURL(/character/, { timeout: 20000 });
       await expect(page.getByTestId("character-editor-view")).toBeVisible({
-        timeout: 30_000,
+        timeout: 30000,
       });
       return {
         assertions: [
@@ -1301,7 +1244,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run({ page, lane }) {
       await openAppPath(page, "/character");
       await expect(page.getByTestId("character-editor-view")).toBeVisible({
-        timeout: 30_000,
+        timeout: 30000,
       });
       const openPersonality = page
         .getByRole("button", { name: /Open Personality/i })
@@ -1332,13 +1275,13 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
           await save.click();
           if (lane === "live") {
             await expect
-              .poll(() => putCount, { timeout: 20_000 })
+              .poll(() => putCount, { timeout: 20000 })
               .toBeGreaterThan(0);
             assertions.push("PUT /api/character observed (live persistence)");
             await openAppPath(page, "/character");
             await expect(page.getByTestId("character-editor-view")).toBeVisible(
               {
-                timeout: 30_000,
+                timeout: 30000,
               },
             );
             const reopen = page
@@ -1350,7 +1293,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
               .getByRole("textbox", { name: /About Me/i })
               .or(page.getByPlaceholder(/Describe who your agent is/i))
               .first();
-            await expect(bioAfter).toHaveValue(unique, { timeout: 15_000 });
+            await expect(bioAfter).toHaveValue(unique, { timeout: 15000 });
             assertions.push("Reload read-back matched the saved value");
           } else {
             assertions.push("Saved (mock lane: no real persistence asserted)");
@@ -1397,7 +1340,9 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             );
           }
           const body = (await response.json()) as {
-            conversation?: { id?: unknown };
+            conversation?: {
+              id?: unknown;
+            };
           };
           if (typeof body.conversation?.id !== "string") {
             throw new Error(
@@ -1412,7 +1357,9 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
               const response = await fetch("/api/conversations");
               if (!response.ok) return false;
               const body = (await response.json()) as {
-                conversations?: Array<{ id?: unknown }>;
+                conversations?: Array<{
+                  id?: unknown;
+                }>;
               };
               return Boolean(
                 body.conversations?.some(
@@ -1423,7 +1370,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
           )
           .toBe(true);
       }
-      await expect(composer(page)).toBeVisible({ timeout: 20_000 });
+      await expect(composer(page)).toBeVisible({ timeout: 20000 });
       const value = await composer(page)
         .inputValue()
         .catch(() => "");
@@ -1451,7 +1398,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       const home = page
         .getByTestId("widget-host-home")
         .or(page.getByTestId("home-launcher-surface"));
-      await expect(home.first()).toBeVisible({ timeout: 30_000 });
+      await expect(home.first()).toBeVisible({ timeout: 30000 });
       const overlay = page.getByTestId("chat-overlay");
       const open = await overlay.getAttribute("data-open").catch(() => null);
       expect(open === "true").toBeFalsy();
@@ -1476,7 +1423,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       const { page } = ctx;
       await openAppPath(page, "/chat");
       const overlay = page.getByTestId("chat-overlay");
-      await expect(overlay).toBeVisible({ timeout: 30_000 });
+      await expect(overlay).toBeVisible({ timeout: 30000 });
       const grabber = page.getByTestId("chat-sheet-grabber");
       if (await grabber.isVisible().catch(() => false)) {
         await grabber.focus().catch(() => undefined);
@@ -1484,7 +1431,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       }
       const anyLine = page.getByTestId("thread-line").first();
       const restored = await anyLine
-        .isVisible({ timeout: 20_000 })
+        .isVisible({ timeout: 20000 })
         .catch(() => false);
       return {
         assertions: [
@@ -1508,7 +1455,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run({ page }) {
       const line = page.getByTestId("thread-line").first();
       const present = await line
-        .isVisible({ timeout: 10_000 })
+        .isVisible({ timeout: 10000 })
         .catch(() => false);
       if (!present) {
         return {
@@ -1518,7 +1465,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       }
       const selectable = page.locator('[data-chat-selectable="true"]').first();
       const hasSelectable = await selectable
-        .isVisible({ timeout: 5_000 })
+        .isVisible({ timeout: 5000 })
         .catch(() => false);
       const text = hasSelectable
         ? (await selectable.innerText()).trim()
@@ -1541,7 +1488,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       "Pasting a large block into the composer collapses it into a pasted-text.md attachment chip rather than a huge composer value.",
     async run({ page }) {
       const input = composer(page);
-      await expect(input).toBeVisible({ timeout: 15_000 });
+      await expect(input).toBeVisible({ timeout: 15000 });
       await input.click();
       const bigText = "The quick brown fox jumps over the lazy dog. ".repeat(
         60,
@@ -1567,7 +1514,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       );
       const chip = page.getByText("pasted-text.md");
       const chipVisible = await chip
-        .isVisible({ timeout: 8_000 })
+        .isVisible({ timeout: 8000 })
         .catch(() => false);
       const value = await input.inputValue().catch(() => "");
       return {
@@ -1594,7 +1541,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       const remove = page
         .getByRole("button", { name: /Remove|Delete attachment|✕/i })
         .first();
-      if (await remove.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      if (await remove.isVisible({ timeout: 2000 }).catch(() => false)) {
         await remove.click().catch(() => undefined);
       }
       const value = await input.inputValue().catch(() => "");
@@ -1616,7 +1563,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       const composerEl = composer(page);
       await composerEl.press("Escape").catch(() => undefined);
       const backdrop = page.getByTestId("chat-sheet-backdrop");
-      if (await backdrop.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      if (await backdrop.isVisible({ timeout: 1500 }).catch(() => false)) {
         await backdrop
           .click({ position: { x: 14, y: 14 }, force: true })
           .catch(() => undefined);
@@ -1641,12 +1588,12 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run({ page }) {
       const grabber = page.getByTestId("chat-sheet-grabber");
       const overlay = page.getByTestId("chat-overlay");
-      if (await grabber.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      if (await grabber.isVisible({ timeout: 3000 }).catch(() => false)) {
         await grabber.focus().catch(() => undefined);
         await page.keyboard.press("ArrowUp").catch(() => undefined);
       } else {
         const pill = page.getByTestId("chat-pill");
-        if (await pill.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        if (await pill.isVisible({ timeout: 3000 }).catch(() => false)) {
           // A pill tap steps only to the INPUT bar; the grabber tap then
           // reveals the thread (the deliberate two-step).
           await pill.click().catch(() => undefined);
@@ -1655,7 +1602,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         }
       }
       await expect(overlay).toHaveAttribute("data-open", "true", {
-        timeout: 10_000,
+        timeout: 10000,
       });
       return {
         assertions: ["Overlay re-opened (data-open=true)"],
@@ -1695,11 +1642,11 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run({ page }) {
       await openAppPath(page, "/views");
       await expect(page.getByTestId("launcher")).toBeVisible({
-        timeout: 30_000,
+        timeout: 30000,
       });
       await expect(
         page.locator('[data-testid^="launcher-tile-"]').first(),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: 15000 });
       const tileCount = await page
         .locator('[data-testid^="launcher-tile-"]')
         .count();
@@ -1727,7 +1674,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       await firstTile.locator("button").first().click();
       await expect
         .poll(() => new URL(page.url()).hash + new URL(page.url()).pathname, {
-          timeout: 20_000,
+          timeout: 20000,
         })
         .not.toContain("/views");
       expect(viewId.length).toBeGreaterThan(0);
@@ -1737,7 +1684,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       await page
         .getByText(/^Loading/i)
         .first()
-        .waitFor({ state: "hidden", timeout: 20_000 })
+        .waitFor({ state: "hidden", timeout: 20000 })
         .catch(() => undefined);
       await expect(page.locator("#root")).toBeVisible();
       return {
@@ -1763,14 +1710,14 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       const url = page.url();
       const input = composer(page);
       const reachable = await input
-        .isVisible({ timeout: 10_000 })
+        .isVisible({ timeout: 10000 })
         .catch(() => false);
       if (reachable) {
-        await input.click({ timeout: 10_000 }).catch(() => undefined);
+        await input.click({ timeout: 10000 }).catch(() => undefined);
       }
       const overlay = page.getByTestId("chat-overlay");
       const overlayVisible = await overlay
-        .isVisible({ timeout: 10_000 })
+        .isVisible({ timeout: 10000 })
         .catch(() => false);
       // The launched view must remain mounted behind the overlay (no remount):
       // the route should not have collapsed back to the dashboard.
@@ -1799,64 +1746,118 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "settings-edit",
     title: "Edit a setting (persist + read-back)",
     expectation:
-      "A settings toggle is changed and persists: in the live lane the change writes (PUT /api/config) and survives a reload; the mock lane confirms the toggle flips.",
+      "A voice selection is saved through PUT /api/config, survives a reload, and is restored. The mock lane uses a stateful config fixture; the live lane uses the backend.",
     async run({ page, lane }) {
       await openAppPath(page, "/settings");
-      await expect(page.getByTestId("settings-shell")).toBeVisible({
-        timeout: 30_000,
-      });
-      await openSettingsSection(page, /Capabilities/);
-      const walletToggle = page.locator('[data-agent-id="capability-wallet"]');
-      const assertions: string[] = ["Opened Capabilities section"];
-      let configPuts = 0;
-      page.on("response", (r) => {
-        if (
-          r.url().includes("/api/config") &&
-          r.request().method() === "PUT" &&
-          r.status() < 400
-        )
-          configPuts += 1;
-      });
-      if (
-        await walletToggle
-          .first()
-          .isVisible({ timeout: 8_000 })
-          .catch(() => false)
-      ) {
-        const before = await walletToggle
-          .first()
-          .getAttribute("aria-checked")
-          .catch(() => null);
-        await walletToggle.first().click();
-        const after = await walletToggle
-          .first()
-          .getAttribute("aria-checked")
-          .catch(() => null);
-        assertions.push(`capability-wallet aria-checked ${before} → ${after}`);
-        if (lane === "live") {
-          await expect
-            .poll(() => configPuts, { timeout: 20_000 })
-            .toBeGreaterThan(0);
-          assertions.push("PUT /api/config observed (live persistence)");
-          await openAppPath(page, "/settings");
-          await openSettingsSection(page, /Capabilities/);
-          const persisted = await page
-            .locator('[data-agent-id="capability-wallet"]')
-            .first()
-            .getAttribute("aria-checked")
-            .catch(() => null);
-          assertions.push(`Read-back after reload: aria-checked=${persisted}`);
-        }
-        // Restore original state so the run is idempotent.
-        await walletToggle
-          .first()
-          .click()
-          .catch(() => undefined);
+      if (lane === "mock") {
+        const initial = await page.evaluate(async () => {
+          const response = await fetch("/api/config");
+          if (!response.ok)
+            throw new Error("Initial settings config unavailable");
+          return response.json();
+        });
+        const seedVoice = EDGE_BACKUP_VOICES[0];
+        if (!seedVoice) throw new Error("No supported voice fixture available");
+        let config = {
+          ...initial,
+          messages: {
+            ...initial.messages,
+            tts: { provider: "edge", edge: { voice: seedVoice.voiceId } },
+          },
+        };
+        await page.route("**/api/config", async (route) => {
+          const method = route.request().method();
+          if (method === "PUT") {
+            const update = route.request().postDataJSON();
+            config = {
+              ...config,
+              ...update,
+              messages: { ...config.messages, ...update.messages },
+            };
+          } else if (method !== "GET") {
+            await route.fallback();
+            return;
+          }
+          await fulfillJson(route, 200, config);
+        });
       } else {
-        assertions.push("Capability toggle not reachable on this surface");
+        await page.unroute("**/api/config");
+      }
+      await openAppPath(page, "/settings");
+      await openSettingsSection(page, /^Voice$/);
+      const selection = page.locator('[data-agent-id="identity-voice"]');
+      await expect(selection).toBeVisible();
+      await selection.click();
+      const selected = page.getByRole("option", { selected: true });
+      await expect(selected).toHaveCount(1);
+      const before = (await selected.textContent())?.trim();
+      if (!before) throw new Error("Selected voice is unnamed");
+      const alternative = page.getByRole("option", { selected: false }).first();
+      const after = (await alternative.textContent())?.trim();
+      if (!after) throw new Error("Alternative voice is unnamed");
+      expect(after).not.toBe(before);
+      await alternative.click();
+      const save = async () => {
+        const [response] = await Promise.all([
+          page.waitForResponse(
+            (r) =>
+              new URL(r.url()).pathname === "/api/config" &&
+              r.request().method() === "PUT",
+            { timeout: 15000 },
+          ),
+          page
+            .getByRole("button", { name: "Save Changes", exact: true })
+            .click(),
+        ]);
+        expect(response.ok()).toBe(true);
+      };
+      try {
+        await save();
+        await openAppPath(page, "/settings");
+        await openSettingsSection(page, /^Voice$/);
+        await selection.click();
+        await expect(
+          page
+            .getByRole("option", { selected: true })
+            .filter({ hasText: after }),
+        ).toBeVisible();
+      } finally {
+        // Restore through the same UI even when the changed-value assertion fails.
+        await openAppPath(page, "/settings");
+        await openSettingsSection(page, /^Voice$/);
+        await selection.click();
+        if (
+          !(await page
+            .getByRole("option", { selected: true })
+            .filter({ hasText: before })
+            .isVisible())
+        ) {
+          await page
+            .getByRole("option")
+            .filter({ hasText: before })
+            .click({ timeout: 10000 });
+          await save();
+        } else {
+          await page.keyboard.press("Escape");
+        }
+        await openAppPath(page, "/settings");
+        await openSettingsSection(page, /^Voice$/);
+        await selection.click();
+        await expect(
+          page
+            .getByRole("option", { selected: true })
+            .filter({ hasText: before }),
+        ).toBeVisible();
+        await page.keyboard.press("Escape");
       }
       return {
-        assertions,
+        assertions: [
+          "Opened Voice settings",
+          `Saved voice ${before} → ${after}`,
+          "PUT /api/config succeeded",
+          "Reload preserved the new selection",
+          "Original voice restored and verified after reload",
+        ],
         dom: await domMarkers(page, {
           settingsShell: '[data-testid="settings-shell"]',
         }),
@@ -1874,7 +1875,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       const home = page
         .getByTestId("widget-host-home")
         .or(page.getByTestId("home-launcher-surface"));
-      await expect(home.first()).toBeVisible({ timeout: 30_000 });
+      await expect(home.first()).toBeVisible({ timeout: 30000 });
       return {
         assertions: ["Returned to home/dashboard", "Journey complete"],
         dom: await domMarkers(page, {

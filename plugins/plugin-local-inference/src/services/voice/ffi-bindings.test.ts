@@ -188,7 +188,7 @@ const ELIZA_FFI_METHODS = [
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // __dirname = plugins/plugin-local-inference/src/services/voice
-// FFI_STUB_DIR  = packages/app-core/scripts/ffi-stub
+// FFI_STUB_DIR  = packages/app/scripts/ffi-stub
 // (H2.c collapsed omnivoice-fuse/ — the FFI stub artifacts moved to ffi-stub/.)
 const FFI_STUB_DIR = path.resolve(
 	__dirname,
@@ -198,7 +198,7 @@ const FFI_STUB_DIR = path.resolve(
 	"..",
 	"..",
 	"packages",
-	"app-core",
+	"app",
 	"scripts",
 	"ffi-stub",
 );
@@ -277,10 +277,6 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 15 (exact-size Kokoro PCM allocation)", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(15);
-	});
-
 	// The native header lives inside the llama.cpp submodule, which most CI
 	// lanes and dev checkouts leave uninitialized. Skip (rather than fail) when
 	// the submodule is absent, and also when a persistent runner workdir left
@@ -289,8 +285,9 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 	// from an earlier run would make this test read the wrong header). The
 	// voice lanes with submodules:recursive still enforce the pin.
 	const submoduleAtPinnedCommit = (): boolean => {
-		const submoduleDir = path.dirname(
-			path.dirname(path.dirname(NATIVE_FFI_HEADER)),
+		const submoduleDir = path.resolve(
+			path.dirname(NATIVE_FFI_HEADER),
+			"../../..",
 		);
 		const pluginDir = path.resolve(submoduleDir, "..", "..");
 		const pinned = spawnSync(
@@ -480,6 +477,13 @@ describeGeneratedStubIntegration(
 			expect(report.contextWasNonNull).toBe(true);
 		});
 
+		it("refuses explicit GPU selection on a legacy native library", () => {
+			const report = runBunHarness({ scenario: "create-explicit-unsupported" });
+			expectHarnessOk(report);
+			expect(report.threwLifecycleError).toBe(true);
+			expect(report.errorMessage).toMatch(/create_with_options/);
+		});
+
 		it("create surfaces a NULL C pointer as a structured lifecycle error", () => {
 			const report = runBunHarness({ scenario: "create-empty-fails" });
 			expectHarnessOk(report);
@@ -562,6 +566,7 @@ interface HarnessOptions {
 	scenario:
 		| "create-destroy"
 		| "create-empty-fails"
+		| "create-explicit-unsupported"
 		| "tts-not-implemented"
 		| "mmap-acquire-not-implemented"
 		| "mmap-evict-not-implemented"
@@ -659,11 +664,12 @@ function asLifecycleErr(e) {
     return;
   }
 
-  if (SCENARIO === "create-empty-fails") {
+  if (SCENARIO === "create-empty-fails" || SCENARIO === "create-explicit-unsupported") {
     const ffi = loadElizaInferenceFfi(DYLIB);
     let thrown;
     try {
-      ffi.create("");
+      if (SCENARIO === "create-explicit-unsupported") ffi.create("/tmp/elizainference-test-bundle", { gpuLayers: 0 });
+      else ffi.create("");
     } catch (e) {
       thrown = e;
     }

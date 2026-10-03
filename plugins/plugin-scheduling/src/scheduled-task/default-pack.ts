@@ -4,7 +4,7 @@
  * `@elizaos/plugin-scheduling` ships ZERO domain content — the rich first-run
  * pack (gm / gn / daily check-in / morning-brief watcher + a paused weekly
  * review) belongs to `@elizaos/plugin-personal-assistant`, the consumer. But PA
- * is not loaded on a stock mobile boot (it pulls `@elizaos/app-core`,
+ * is not loaded on a stock mobile boot (it pulls `@elizaos/app`,
  * `@elizaos/agent`, `@elizaos/plugin-google-workspace`, and `@capacitor/core`), so on a
  * phone the scheduling spine + routes load with NO pack registered and the home
  * "Tasks" widget would have nothing to show.

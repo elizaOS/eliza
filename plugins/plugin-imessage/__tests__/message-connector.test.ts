@@ -101,7 +101,7 @@ describe("iMessage message connector registration", () => {
       getChats: vi.fn(async () => []),
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
@@ -160,7 +160,7 @@ describe("iMessage message connector registration", () => {
           hasAttachments: false,
         },
       ]),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
@@ -182,7 +182,7 @@ describe("iMessage message connector registration", () => {
       getChats: vi.fn(async () => []),
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);

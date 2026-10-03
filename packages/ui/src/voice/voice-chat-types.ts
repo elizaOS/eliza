@@ -6,6 +6,7 @@ import type { VoiceConfig, VoiceMode } from "../api/client";
 import { resolveApiUrl } from "../utils";
 import { ttsDebug } from "../utils/tts-debug";
 import type { Emotion } from "./emotion";
+import type { VoicePlaybackObserver } from "./voice-playback-evidence";
 
 // ── Speech Recognition types ──────────────────────────────────────────
 
@@ -175,6 +176,8 @@ export interface VoiceTranscriptPreviewEvent {
 }
 
 export interface VoiceChatOptions {
+  /** Opt-in complete buffered-audio provenance; excludes native/browser synthesis and credentials. */
+  onPlaybackEvidence?: VoicePlaybackObserver;
   /** Called when a final transcript is ready to send */
   onTranscript: (text: string, event: VoiceTranscriptEvent) => void;
   /** Called whenever the live transcript buffer changes */
@@ -479,7 +482,7 @@ export function describeTtsFetchTargetForDebug(target: string): string {
   const origin =
     typeof window !== "undefined" ? window.location.origin : "(no-window)";
   const path = target.startsWith("/") ? target : `/${target}`;
-  return `${origin}${path} — relative URL (TTS fetch goes to the UI host, not the app API). Set __ELIZAOS_API_BASE__ / session elizaos_api_base / boot apiBase to http://127.0.0.1:<apiPort>`;
+  return `${origin}${path} — relative URL (TTS fetch goes to the UI host, not the app API). Set boot-config apiBase to http://127.0.0.1:<apiPort>`;
 }
 
 /** For ELIZA_TTS_DEBUG: shows whether cloud TTS hits the API or the wrong (page) origin. */

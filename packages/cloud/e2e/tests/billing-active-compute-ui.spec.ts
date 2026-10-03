@@ -218,13 +218,16 @@ test("fresh dedicated compute reaches Billing without an early debit", async ({
     },
   );
 
-  const runtimeReady = authenticatedPage.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname === "/api/status" &&
-      response.status() === 200,
-  );
-  await authenticatedPage.goto(stack.urls.frontend, { timeout: 60_000 });
-  await runtimeReady;
+  // The response includes cold app boot, so use the navigation budget.
+  await Promise.all([
+    authenticatedPage.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/status" &&
+        response.status() === 200,
+      { timeout: 60_000 },
+    ),
+    authenticatedPage.goto(stack.urls.frontend, { timeout: 60_000 }),
+  ]);
   await expect(
     authenticatedPage.getByTestId("home-launcher-surface"),
   ).toBeVisible();

@@ -190,7 +190,7 @@ describe("ConnectorsSection", () => {
     expect(appMock.value.loadPlugins).toHaveBeenCalledOnce();
   });
 
-  it("retries once after the app-core plugin registry cold-load window", async () => {
+  it("retries once after the app plugin registry cold-load window", async () => {
     vi.useFakeTimers();
     appMock.value.pluginsLoaded = false;
     appMock.value.pluginsLoadError = "Plugin registry is still loading";

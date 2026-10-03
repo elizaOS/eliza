@@ -24,6 +24,7 @@ interface ProviderLatencyReport {
 	reusedComposeWallMs: { count: number };
 }
 
+// Leave time for setup and assertions beyond the subprocess's 120-second limit.
 describe("provider latency report process", () => {
 	it("rejects invalid sample settings instead of silently using defaults", () => {
 		const script = path.resolve(
@@ -45,7 +46,7 @@ describe("provider latency report process", () => {
 		expect(result.stderr).toContain(
 			"ELIZA_PROVIDER_LATENCY_SAMPLES must be a positive integer",
 		);
-	});
+	}, 150_000);
 
 	it("executes every provider in parallel and proves the warm-cache pass", () => {
 		const script = path.resolve(
@@ -101,5 +102,5 @@ describe("provider latency report process", () => {
 		expect(report.reusedProviderResultsPerSample.max).toBe(
 			report.providerCount,
 		);
-	});
+	}, 150_000);
 });

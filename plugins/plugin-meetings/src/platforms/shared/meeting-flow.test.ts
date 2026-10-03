@@ -3,7 +3,7 @@
  * admission, active, race(record, removal, abort), and leave with no
  * per-platform branching. Deterministic: scripted strategies, opaque page.
  */
-import type { MeetingEndReason } from "@elizaos/shared";
+import { type MeetingEndReason } from "@elizaos/core/meetings";
 import type { Page } from "playwright-core";
 import { describe, expect, it, vi } from "vitest";
 import type { MeetingBotSession, MeetingSessionStatus } from "../../types.js";

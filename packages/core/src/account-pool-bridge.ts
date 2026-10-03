@@ -2,17 +2,16 @@
  * `globalThis` `Symbol.for` account-selection bridges — the single source of
  * truth for their symbols and contracts.
  *
- * The account pool and credential store live in `@elizaos/app-core`; the
+ * The account pool and credential store live in `@elizaos/app`; the
  * plugins that must select a credentialed account
- * (`@elizaos/plugin-anthropic`, `@elizaos/plugin-agent-orchestrator`,
- * `@elizaos/plugin-cli-inference`) depend only on `@elizaos/core` and cannot
- * import app-core. `runtime.getService(...)` is not viable either — these
+ * (`@elizaos/plugin-anthropic`, `@elizaos/plugin-agent-orchestrator`) depend only on `@elizaos/core` and cannot
+ * import app. `runtime.getService(...)` is not viable either — these
  * consumers run at spawn/token-resolve time without a runtime handle. So
- * app-core publishes a narrow contract on a `globalThis` symbol and the
+ * app publishes a narrow contract on a `globalThis` symbol and the
  * plugins read it back.
  *
  * This module defines each bridge's symbol, contract interface, and typed
- * get/set accessors ONCE. The producer (app-core) and every plugin consumer
+ * get/set accessors ONCE. The producer (app) and every plugin consumer
  * import from here so there is exactly one symbol string and one interface per
  * bridge. Provider ids cross the `globalThis` boundary as plain strings (they
  * round-trip through session metadata as strings), so the contracts type them
@@ -96,7 +95,7 @@ export type CodingAccountStrategy =
 	// consumer of this strategy in the coding bridge lives in
 	// plugin-cli-inference (#16203). The type accepts it here so the
 	// settings picker can persist it; the actual reset-soonest ordering is
-	// implemented in AccountPool.applyStrategy (app-core).
+	// implemented in AccountPool.applyStrategy (app).
 	| "reset-soonest"
 	| "drain-soonest-reset";
 

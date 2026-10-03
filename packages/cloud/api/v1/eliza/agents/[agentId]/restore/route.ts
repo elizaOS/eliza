@@ -160,12 +160,37 @@ async function __hono_POST(
           : result.error === "No backup found"
             ? 404
             : result.error ===
-                "Stopped agents can only restore the latest backup"
+                  "Stopped agents can only restore the latest backup" ||
+                result.error ===
+                  "Backup is not in a restorable catalogue state" ||
+                result.error === "Another restore of this backup is in progress"
               ? 409
               : 500;
 
       return applyCorsHeaders(
         Response.json({ success: false, error: result.error }, { status }),
+        CORS_METHODS,
+      );
+    }
+
+    if (result.restoreOperation) {
+      // Manifest-v3 restores run in the restore coordinator: the agent keeps
+      // its current route until the restored runtime is attested and probed.
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: true,
+            data: {
+              status: "accepted",
+              restoredFromBackupId: result.restoreOperation.backupId,
+              restoreOperationId: result.restoreOperation.operationId,
+              restoreAttemptId: result.restoreOperation.restoreAttemptId,
+              phase: result.restoreOperation.phase,
+              alreadyInProgress: result.restoreOperation.replayed,
+            },
+          },
+          { status: 202 },
+        ),
         CORS_METHODS,
       );
     }

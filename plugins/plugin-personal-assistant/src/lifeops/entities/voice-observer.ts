@@ -16,8 +16,10 @@
  */
 
 import type { VoiceSpeakerNameInferencePayload } from "@elizaos/core";
-import type { RelationshipStore } from "../relationships/store.js";
-import type { EntityStore } from "./store.js";
+import type {
+  EntityStore,
+  RelationshipStore,
+} from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "./types.js";
 import {
   type BindVoiceTurnResult,

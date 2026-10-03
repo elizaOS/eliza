@@ -45,7 +45,7 @@ import { attachLogCapture } from "./log-capture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(here, "../..");
-const rmRecursiveScript = resolve(pkgRoot, "../scripts/rm-path-recursive.mjs");
+const rmRecursiveScript = resolve(pkgRoot, "../scripts/rm-path-recursive.ts");
 
 // ---------------------------------------------------------------------------
 // args

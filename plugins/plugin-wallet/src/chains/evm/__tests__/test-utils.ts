@@ -5,7 +5,7 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 
-import { createTestRuntime as createPgliteRuntime } from "../../../../../../packages/core/src/testing/pglite-runtime";
+import { createTestRuntime as createPgliteRuntime } from "../../../../../../packages/testing/src/pglite-runtime";
 
 const runtimeCleanup = new WeakMap<AgentRuntime, () => Promise<void>>();
 

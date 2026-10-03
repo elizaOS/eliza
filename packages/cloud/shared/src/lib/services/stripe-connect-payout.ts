@@ -1,14 +1,14 @@
 /**
- * Stripe Connect fiat payout for creators (#8922).
+ * Stripe Connect fiat payout for affiliates (#8922).
  *
- * Business logic for paying creator earnings to a connected bank account via
- * Stripe Connect Express, as an alternative to the on-chain token-redemption
- * path (`payout-processor.ts`). The money math + balance debit stays in the
- * redeemable-earnings ledger (the single source of truth) — this module only
- * orchestrates the Stripe side: onboarding, transfers, and webhook status.
+ * Creator payouts are retired (#23022); this rail now pays affiliate earnings
+ * only, gated by `affiliate-payouts.ts` so a frozen creator balance can never
+ * be transferred. The money math and balance debit stay in the redeemable
+ * earnings ledger; this module only orchestrates the Stripe side: onboarding,
+ * transfers and webhook status.
  *
  * The Stripe SDK is injected (`StripeConnectClient`) rather than imported, so the
- * flow is fully unit-testable without a live key and the route layer passes
+ * flow is testable without a live key and the route layer passes
  * `requireStripe()` at the boundary.
  */
 

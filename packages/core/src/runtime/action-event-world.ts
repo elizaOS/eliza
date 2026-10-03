@@ -6,7 +6,9 @@
  */
 
 import { ElizaError } from "../errors";
-import type { IAgentRuntime, Memory, UUID } from "../types";
+import type { Memory } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 
 type ActionEventWorldRuntime = Pick<
 	IAgentRuntime,

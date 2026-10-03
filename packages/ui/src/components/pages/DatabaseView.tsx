@@ -355,7 +355,6 @@ export function DatabaseView({
         className="rounded-lg bg-surface p-1"
         buttonClassName="h-9 flex-1 px-3"
         activeButtonClassName="bg-card shadow-sm hover:bg-card"
-        inactiveButtonClassName="text-muted"
       />
     </div>
   );

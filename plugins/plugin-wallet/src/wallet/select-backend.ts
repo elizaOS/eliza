@@ -4,10 +4,8 @@
  * preferring Steward when the agent is cloud-provisioned.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  readAliasedEnv,
-  resolveDevCloudStewardOperationalTuple,
-} from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import type { WalletBackend } from "./backend.js";
 import { StewardUnavailableError } from "./errors.js";
 import { LocalEoaBackend } from "./local-eoa-backend.js";

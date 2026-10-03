@@ -14,7 +14,7 @@
  * osascript shellouts are loaded lazily on first `check()`/`request()`.
  */
 
-import type { PermissionId, Prober } from "../contracts.js";
+import type { PermissionId, Prober } from "@elizaos/core";
 import { accessibilityProber } from "./accessibility.js";
 import { automationProber } from "./automation.js";
 import { calendarProber } from "./calendar.js";

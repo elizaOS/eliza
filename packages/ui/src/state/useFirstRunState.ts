@@ -10,7 +10,7 @@
  * The deleted wizard's 35+ step/connector/feature fields died with it (#12178).
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared";
+import { getDefaultStylePreset } from "@elizaos/core/character-presets";
 import { useReducer, useRef } from "react";
 import type { FirstRunOptions } from "../api";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";
@@ -23,39 +23,29 @@ import {
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
 } from "./persistence";
-
 // ── Remote connection state ────────────────────────────────────────────
-
 export interface RemoteConnectionState {
   status: "idle" | "connecting" | "connected" | "error";
   error: string | null;
 }
-
 // ── State shape ────────────────────────────────────────────────────────
-
 export interface FirstRunState {
   deferredTasks: string[];
   postChecklistDismissed: boolean;
   options: FirstRunOptions | null;
-
   // Identity
   name: string;
   style: string;
-
   // Hosting
   serverTarget: FirstRunRuntimeTarget;
-
   // Provider
   provider: string;
-
   // Remote connection
   remote: RemoteConnectionState;
   remoteApiBase: string;
   remoteToken: string;
-
   cloudProvisionedContainer: boolean;
 }
-
 function isRemoteApiBase(baseUrl: string): boolean {
   if (!baseUrl || typeof window === "undefined") return false;
   try {
@@ -72,7 +62,6 @@ function isRemoteApiBase(baseUrl: string): boolean {
     return false;
   }
 }
-
 function loadInitialServerSelection(): Pick<
   FirstRunState,
   "serverTarget" | "remote" | "remoteApiBase" | "remoteToken"
@@ -89,7 +78,6 @@ function loadInitialServerSelection(): Pick<
       remoteToken: "",
     };
   }
-
   if (activeServer.kind === "local") {
     return {
       serverTarget: activeServerKindToFirstRunRuntimeTarget(activeServer.kind),
@@ -101,7 +89,6 @@ function loadInitialServerSelection(): Pick<
       remoteToken: "",
     };
   }
-
   if (activeServer.kind === "cloud") {
     const serverTarget =
       readPersistedMobileRuntimeMode() === "cloud-hybrid"
@@ -117,7 +104,6 @@ function loadInitialServerSelection(): Pick<
       remoteToken: activeServer.accessToken?.trim() ?? "",
     };
   }
-
   const apiBase = activeServer.apiBase?.trim() ?? "";
   return {
     serverTarget: activeServerKindToFirstRunRuntimeTarget(activeServer.kind),
@@ -129,7 +115,6 @@ function loadInitialServerSelection(): Pick<
     remoteToken: activeServer.accessToken?.trim() ?? "",
   };
 }
-
 function createInitialState(cloudOnly?: boolean): FirstRunState {
   const defaultStyle = getDefaultStylePreset();
   const initialServer = loadInitialServerSelection();
@@ -138,7 +123,6 @@ function createInitialState(cloudOnly?: boolean): FirstRunState {
       ? "elizacloud-hybrid"
       : "elizacloud"
     : initialServer.serverTarget;
-
   return {
     deferredTasks: [],
     postChecklistDismissed: false,
@@ -153,24 +137,45 @@ function createInitialState(cloudOnly?: boolean): FirstRunState {
     cloudProvisionedContainer: false,
   };
 }
-
 // ── Actions ────────────────────────────────────────────────────────────
-
 type FirstRunAction =
-  | { type: "ADD_DEFERRED_TASK"; task: string }
-  | { type: "SET_DEFERRED_TASKS"; tasks: string[] }
-  | { type: "SET_POST_CHECKLIST_DISMISSED"; value: boolean }
-  | { type: "SET_OPTIONS"; options: FirstRunOptions | null }
-  | { type: "SET_FIELD"; field: string; value: unknown }
+  | {
+      type: "ADD_DEFERRED_TASK";
+      task: string;
+    }
+  | {
+      type: "SET_DEFERRED_TASKS";
+      tasks: string[];
+    }
+  | {
+      type: "SET_POST_CHECKLIST_DISMISSED";
+      value: boolean;
+    }
+  | {
+      type: "SET_OPTIONS";
+      options: FirstRunOptions | null;
+    }
+  | {
+      type: "SET_FIELD";
+      field: string;
+      value: unknown;
+    }
   | {
       type: "SET_REMOTE_STATUS";
       status: RemoteConnectionState["status"];
       error?: string | null;
     }
-  | { type: "SET_REMOTE_API_BASE"; value: string }
-  | { type: "SET_REMOTE_TOKEN"; value: string }
-  | { type: "RESET_FOR_NEW_FIRST_RUN" };
-
+  | {
+      type: "SET_REMOTE_API_BASE";
+      value: string;
+    }
+  | {
+      type: "SET_REMOTE_TOKEN";
+      value: string;
+    }
+  | {
+      type: "RESET_FOR_NEW_FIRST_RUN";
+    };
 function firstRunReducer(
   state: FirstRunState,
   action: FirstRunAction,
@@ -199,7 +204,6 @@ function firstRunReducer(
           serverTarget: action.value as FirstRunRuntimeTarget,
         };
       }
-
       return { ...state, [action.field]: action.value };
     }
     case "SET_REMOTE_STATUS":
@@ -217,22 +221,17 @@ function firstRunReducer(
       return state;
   }
 }
-
 // ── Hook ───────────────────────────────────────────────────────────────
-
 export interface FirstRunStateHook {
   state: FirstRunState;
   dispatch: React.Dispatch<FirstRunAction>;
-
   /** Tracks whether first-run completion has been committed durably. */
   completionCommittedRef: React.RefObject<boolean>;
 }
-
 export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
   const [state, dispatch] = useReducer(firstRunReducer, cloudOnly, (co) =>
     createInitialState(co),
   );
-
   // Rehydrate from the durable completion flag (issue #11506): a fresh app
   // process (mobile relaunch / desktop restart) starts with no in-memory
   // completion state, so without this the ref would read false and the startup
@@ -251,12 +250,10 @@ export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
   const completionCommittedRef = useRef(
     loadPersistedFirstRunComplete(cloudOnly) && !isOnboardingReplayRequested(),
   );
-
   return {
     state,
     dispatch,
     completionCommittedRef,
   };
 }
-
 export type { FirstRunAction as FirstRunDispatchAction };

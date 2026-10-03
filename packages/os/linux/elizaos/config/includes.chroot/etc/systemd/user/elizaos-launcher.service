@@ -1,0 +1,32 @@
+[Unit]
+Description=elizaOS desktop agent and chat pill
+PartOf=graphical-session.target
+After=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=ELIZAOS_AGENT_URL=http://127.0.0.1:31337
+Environment=ELIZAOS_CAPABILITY_RUNNER=/usr/local/lib/elizaos/capability-runner
+Environment=ELIZA_DESKTOP_BOTTOM_BAR=1
+Environment=ELIZAOS_ALWAYS_ON_VOICE=1
+# Keep the QEMU/software-GPU proof deterministic. Real hardware may override
+# these in /etc/environment.d once a working Vulkan/GL device is available.
+Environment=LIBGL_ALWAYS_SOFTWARE=1
+Environment=GALLIUM_DRIVER=llvmpipe
+Environment=WEBKIT_DISABLE_DMABUF_RENDERER=1
+Environment=WEBKIT_DISABLE_COMPOSITING_MODE=1
+Environment=ELECTROBUN_WGPU_PATH=/nonexistent
+Environment=VK_LOADER_DRIVERS_DISABLE=*
+ExecStart=/usr/local/lib/elizaos/start-launcher
+Restart=always
+RestartSec=2
+SyslogIdentifier=elizaos-launcher
+KillMode=mixed
+Nice=5
+# The application intentionally crosses the audited sudo capability-runner
+# boundary. NoNewPrivileges would make that setuid transition impossible and
+# silently leave every privileged ELIZAOS action unwired.
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,6 +1,7 @@
 /** Covers `TranscriptService` transcript lifecycle. Deterministic. */
+
 import type { AccessContext, Memory, UUID } from "@elizaos/core";
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/core/transcripts";
 import { describe, expect, it, vi } from "vitest";
 import {
 	type CreateTranscriptInput,
@@ -12,7 +13,6 @@ const WORLD = "00000000-0000-0000-0000-0000000000ww" as UUID;
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
 const OTHER_ENTITY = "33333333-3333-3333-3333-333333333333" as UUID;
-
 function makeTranscript(over: Partial<Transcript> = {}): Transcript {
 	return {
 		id: "aaaaaaaa-0000-0000-0000-000000000001",
@@ -37,7 +37,6 @@ function makeTranscript(over: Partial<Transcript> = {}): Transcript {
 		...over,
 	};
 }
-
 function fakeRuntime(opts: {
 	withDocuments: boolean;
 }): TranscriptServiceRuntime & {
@@ -79,14 +78,12 @@ function fakeRuntime(opts: {
 		},
 	};
 }
-
 const input = (transcript: Transcript): CreateTranscriptInput => ({
 	worldId: WORLD,
 	roomId: ROOM,
 	entityId: ENTITY,
 	transcript,
 });
-
 const access = (
 	requesterEntityId: UUID,
 	role: AccessContext["role"] = "USER",
@@ -96,21 +93,25 @@ const access = (
 	role,
 	isOwner: role === "OWNER",
 });
-
 describe("TranscriptService", () => {
 	it("mirrors the transcript into knowledge and links the document id", async () => {
 		const rt = fakeRuntime({ withDocuments: true });
 		const svc = new TranscriptService(rt);
 		const t = makeTranscript();
 		const saved = await svc.create(input(t));
-
 		// Mirror called with the searchable text + transcript link metadata.
 		expect(rt.addDocument).toHaveBeenCalledTimes(1);
 		const opts = rt.addDocument.mock.calls[0][0];
 		expect(opts.content).toBe("Alice: hi");
 		expect(opts.scope).toBe("owner-private");
 		expect(opts.clientDocumentId).toBe(t.id);
-		expect((opts.metadata as { transcriptId: string }).transcriptId).toBe(t.id);
+		expect(
+			(
+				opts.metadata as {
+					transcriptId: string;
+				}
+			).transcriptId,
+		).toBe(t.id);
 		expect(opts.fragments).toEqual([
 			expect.objectContaining({
 				metadata: expect.objectContaining({
@@ -120,7 +121,6 @@ describe("TranscriptService", () => {
 				}),
 			}),
 		]);
-
 		// The stored record carries the knowledge link.
 		expect(saved.knowledgeDocumentId).toBe(
 			"dddddddd-0000-0000-0000-000000000001",
@@ -130,7 +130,6 @@ describe("TranscriptService", () => {
 			"dddddddd-0000-0000-0000-000000000001",
 		);
 	});
-
 	it("still persists the record when no documents service is loaded", async () => {
 		const rt = fakeRuntime({ withDocuments: false });
 		const svc = new TranscriptService(rt);
@@ -140,7 +139,6 @@ describe("TranscriptService", () => {
 		expect(saved.knowledgeDocumentId).toBeUndefined();
 		expect(await svc.get(t.id as UUID)).toEqual(t);
 	});
-
 	it("persists the record even if the mirror throws (recording is never lost)", async () => {
 		const rt = fakeRuntime({ withDocuments: true });
 		rt.addDocument.mockRejectedValueOnce(new Error("docs down"));
@@ -150,7 +148,6 @@ describe("TranscriptService", () => {
 		expect(saved.knowledgeDocumentId).toBeUndefined();
 		expect(await svc.get(t.id as UUID)).not.toBeNull();
 	});
-
 	it("removes the knowledge mirror on delete", async () => {
 		const rt = fakeRuntime({ withDocuments: true });
 		const svc = new TranscriptService(rt);
@@ -162,7 +159,6 @@ describe("TranscriptService", () => {
 		expect(rt.rows.has(t.id)).toBe(false);
 		expect(rt.rows.has(docId)).toBe(false);
 	});
-
 	it("applies an edit, re-derives metadata, and re-mirrors to knowledge", async () => {
 		const rt = fakeRuntime({ withDocuments: true });
 		const svc = new TranscriptService(rt);
@@ -174,7 +170,6 @@ describe("TranscriptService", () => {
 		rt.addDocument.mockResolvedValueOnce({
 			storedDocumentMemoryId: "dddddddd-0000-0000-0000-000000000002" as UUID,
 		});
-
 		const updated = await svc.update(t.id as UUID, {
 			worldId: WORLD,
 			roomId: ROOM,
@@ -185,14 +180,13 @@ describe("TranscriptService", () => {
 					{
 						...t.segments[0],
 						startMs: 250,
-						endMs: 2_400,
+						endMs: 2400,
 						text: "corrected words here",
 						words: [],
 					},
 				],
 			},
 		});
-
 		expect(updated?.title).toBe("Edited title");
 		expect(updated?.editedAt).toBeGreaterThan(0);
 		expect(updated?.segments[0].text).toBe("corrected words here");
@@ -204,7 +198,7 @@ describe("TranscriptService", () => {
 				metadata: expect.objectContaining({
 					segmentIds: ["s1"],
 					startMs: 250,
-					endMs: 2_400,
+					endMs: 2400,
 				}),
 			}),
 		]);
@@ -214,7 +208,6 @@ describe("TranscriptService", () => {
 		// The store now round-trips the edited record.
 		expect((await svc.get(t.id as UUID))?.title).toBe("Edited title");
 	});
-
 	it("returns null when updating a transcript that does not exist", async () => {
 		const rt = fakeRuntime({ withDocuments: true });
 		const svc = new TranscriptService(rt);
@@ -229,7 +222,6 @@ describe("TranscriptService", () => {
 		);
 		expect(result).toBeNull();
 	});
-
 	it("filters list/get by transcript scope when a requester context is supplied", async () => {
 		const rt = fakeRuntime({ withDocuments: false });
 		const svc = new TranscriptService(rt);
@@ -269,7 +261,6 @@ describe("TranscriptService", () => {
 			entityId: OTHER_ENTITY,
 			transcript: records[4],
 		});
-
 		expect((await svc.list(ROOM)).map((t) => t.title).sort()).toEqual([
 			"Agent private",
 			"Global",
@@ -297,7 +288,6 @@ describe("TranscriptService", () => {
 				(t) => t.title,
 			),
 		).toHaveLength(5);
-
 		expect(await svc.get(records[0].id as UUID, access(ENTITY))).toBeNull();
 		expect((await svc.get(records[3].id as UUID, access(ENTITY)))?.title).toBe(
 			"User owned",

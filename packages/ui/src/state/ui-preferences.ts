@@ -4,14 +4,12 @@
  * Owned by useDisplayPreferences; persisted to localStorage.
  */
 export type UiTheme = "light" | "dark";
-
 /**
  * User-selectable theme mode. `system` follows the OS `prefers-color-scheme`
  * and resolves to a concrete {@link UiTheme} at apply time. This is the
  * default for new users.
  */
 export type UiThemeMode = "light" | "dark" | "system";
-
 export type UiShellMode = "native";
 
 import {
@@ -19,7 +17,7 @@ import {
   type BackgroundCatalogKind,
   type BackgroundCatalogMeta,
   DEFAULT_BACKGROUND_CATALOG_ID as SHARED_DEFAULT_BACKGROUND_CATALOG_ID,
-} from "@elizaos/shared/backgrounds/catalog-index";
+} from "../backgrounds/catalog-index.js";
 import {
   DEFAULT_SHADER_UNIFORMS,
   normalizeUniforms,
@@ -28,7 +26,6 @@ import {
 } from "../backgrounds/shader-schema";
 
 export type { BackgroundCatalogKind, BackgroundCatalogMeta };
-
 /**
  * How the unified app background is rendered. `shader` paints the animated
  * warm-glow field in a user-chosen color; `image` paints a cover image the
@@ -36,7 +33,6 @@ export type { BackgroundCatalogKind, BackgroundCatalogMeta };
  * (#10694) with typed, clamped uniforms.
  */
 export type BackgroundMode = "shader" | "image" | "glsl";
-
 /** A repository-owned GLSL preset resolved to source plus tunable uniforms. */
 export interface ShaderConfig {
   /** Canonical library preset id used to re-resolve persisted source. */
@@ -46,7 +42,6 @@ export interface ShaderConfig {
   /** Tunable uniform values (validated + clamped). */
   uniforms: ShaderUniformValues;
 }
-
 /**
  * The user's chosen home/app background. It is read once at the shell root and
  * shared (unchanged) across the home and every view, so navigating never
@@ -61,7 +56,6 @@ export interface BackgroundConfig {
   /** Programmable shader + uniforms when `mode === "glsl"`. */
   shader?: ShaderConfig;
 }
-
 /**
  * The default shader base: pure black. The brand palette is orange / blue /
  * black / white — the field is black so the orange ember glow
@@ -72,7 +66,6 @@ export interface BackgroundConfig {
  * never flashes a foreign color and any bleed-through is invisible.
  */
 export const DEFAULT_BACKGROUND_COLOR = "#000000";
-
 /**
  * The ember glow hue the shader layers over {@link DEFAULT_BACKGROUND_COLOR}:
  * the warm orange that gives the dark field its banked-fire warmth without
@@ -81,7 +74,6 @@ export const DEFAULT_BACKGROUND_COLOR = "#000000";
  * rather than a flat color wall.
  */
 export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
-
 /**
  * The shader-mode config for the black ember field: the fallback when an
  * image background is cleared or fails to load, and the base the color
@@ -92,7 +84,6 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
   color: DEFAULT_BACKGROUND_COLOR,
 };
-
 /**
  * The curated "Ember Night" wallpaper is both the gallery tile and the
  * fresh-install background. Serving this code-free asset from the app origin
@@ -100,7 +91,6 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
  * The shader field remains the fallback when the image cannot render.
  */
 const SUNSET_WALLPAPER_URL = "/bg-sunset.webp";
-
 /**
  * The curated photo wallpapers (#14 default-wallpapers): five painterly scenes
  * shipped as compressed WebP static assets from `packages/app/public/
@@ -117,7 +107,6 @@ const SUNSET_WALLPAPER_URL = "/bg-sunset.webp";
 function photoWallpaperUrl(id: string): string {
   return `/wallpapers/${id}.webp`;
 }
-
 /** The catalog ids that resolve to a served `/wallpapers/<id>.webp` asset. */
 const PHOTO_WALLPAPER_IDS: ReadonlySet<string> = new Set([
   "dusk-dunes",
@@ -126,7 +115,6 @@ const PHOTO_WALLPAPER_IDS: ReadonlySet<string> = new Set([
   "ember-dunes",
   "canopy",
 ]);
-
 /**
  * Fresh installs use the "Ember Night" sunset wallpaper over the same black
  * base used by host chrome and native launch surfaces, preventing a bright
@@ -140,9 +128,7 @@ export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   color: DEFAULT_BACKGROUND_COLOR,
   imageUrl: SUNSET_WALLPAPER_URL,
 };
-
 /* ── Background catalog (curated + metadata) ──────────────────────────── */
-
 /**
  * How a catalog entry paints. `color` = a shader color field (a preset), `glsl`
  * = a named repository-owned shader preset, `image` = a served/vetted cover-image
@@ -153,10 +139,9 @@ export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
  * enforces this: naming a catalog entry can never smuggle arbitrary shader code
  * or an unvetted client URL through the broker.
  */
-
 /**
  * One entry in the curated background catalog: the shared metadata
- * ({@link BackgroundCatalogMeta} from `@elizaos/shared`) plus the concrete
+ * ({@link BackgroundCatalogMeta} from `@elizaos/core`) plus the concrete
  * render `source` the renderer attaches (this package is the only place that
  * knows how to paint an entry). The metadata half is the single source of truth
  * the gallery picker AND the agent read; the `source` never crosses the broker.
@@ -175,7 +160,6 @@ export interface BackgroundCatalogEntry extends BackgroundCatalogMeta {
   /** Optional author ("curated", or an agent/user attribution). */
   author?: string;
 }
-
 /**
  * Build a tiny, self-contained SVG gradient as a data URL — a curated "natural"
  * wallpaper with ZERO committed binary bytes. The whole catalog of natural
@@ -200,7 +184,6 @@ function gradientDataUrl(palette: readonly string[]): string {
     `<rect width='16' height='24' fill='url(#g)'/></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
-
 /**
  * Attach a concrete render `source` to each shared metadata entry, building the
  * full catalog the gallery + apply channel use. Natural images become code-free
@@ -239,21 +222,17 @@ export const BACKGROUND_CATALOG: readonly BackgroundCatalogEntry[] =
       author: "curated",
     };
   });
-
 /**
  * The curated natural (image) catalog entries — the gallery leads with these.
  */
 export const CURATED_NATURAL_BACKGROUNDS: readonly BackgroundCatalogEntry[] =
   BACKGROUND_CATALOG.filter((e) => e.kind === "image");
-
 /** The animated GLSL catalog entries, mirrored from the shader preset library. */
 export const GLSL_CATALOG_BACKGROUNDS: readonly BackgroundCatalogEntry[] =
   BACKGROUND_CATALOG.filter((e) => e.kind === "glsl");
-
 /** The boot-default catalog id (re-exported from the shared index). */
 export const DEFAULT_BACKGROUND_CATALOG_ID =
   SHARED_DEFAULT_BACKGROUND_CATALOG_ID;
-
 /**
  * Normalize a free-text / id / label reference to a catalog entry. Case- and
  * whitespace-insensitive; matches by id first, then exact label, then a label
@@ -283,7 +262,6 @@ export function resolveCatalogEntry(
     return label.includes(needle) || needle.includes(label);
   });
 }
-
 /**
  * Resolve a catalog entry to a concrete `BackgroundConfig`. Color/image entries
  * map directly; a glsl entry is resolved to its shader source by the provided
@@ -309,7 +287,6 @@ export function catalogEntryToConfig(
   if (!source) return undefined;
   return makeGlslConfig({ source, presetId: entry.source });
 }
-
 /** Structural equality for two background configs (skips history no-ops). */
 export function backgroundConfigsEqual(
   a: BackgroundConfig,
@@ -322,7 +299,6 @@ export function backgroundConfigsEqual(
     shaderConfigsEqual(a.shader, b.shader)
   );
 }
-
 function shaderConfigsEqual(a?: ShaderConfig, b?: ShaderConfig): boolean {
   if (!a && !b) return true;
   if (!a || !b) return false;
@@ -332,15 +308,12 @@ function shaderConfigsEqual(a?: ShaderConfig, b?: ShaderConfig): boolean {
     uniformsEqual(a.uniforms, b.uniforms)
   );
 }
-
 /* ── Accent color presets ─────────────────────────────────────────────── */
-
 /**
  * The default accent id — keeps the app's built-in brand accent (orange) by
  * applying no `--accent` override, so base.css / the host brand theme wins.
  */
 export const DEFAULT_ACCENT_ID = "default";
-
 /**
  * A named accent color the user can pick for the app's `--accent` token. The
  * `default` preset carries `color: null` (clears the override → brand accent).
@@ -360,7 +333,6 @@ export interface AccentPreset {
   /** Emoji swatch used where only text labels render (in-chat onboarding). */
   swatch: string;
 }
-
 /**
  * The curated accent choices. Single source of truth shared by the Appearance
  * settings swatches and the first-run onboarding accent step, so both drive the
@@ -374,14 +346,12 @@ export const ACCENT_PRESETS: readonly AccentPreset[] = [
   { id: "green", label: "Green", color: "#059669", swatch: "🟢" },
   { id: "olive", label: "Olive", color: "#65a30d", swatch: "🫒" },
 ];
-
 /** Coerce an unknown persisted value to a valid accent id (default fallback). */
 export function normalizeAccentId(value: unknown): string {
   return typeof value === "string" && ACCENT_PRESETS.some((p) => p.id === value)
     ? value
     : DEFAULT_ACCENT_ID;
 }
-
 /**
  * Resolve an accent id to its hex color, or `null` for the built-in brand
  * accent (the `default` preset, or any unknown id).
@@ -389,7 +359,6 @@ export function normalizeAccentId(value: unknown): string {
 export function resolveAccentColor(id: string): string | null {
   return ACCENT_PRESETS.find((p) => p.id === id)?.color ?? null;
 }
-
 /** Build a normalized glsl `BackgroundConfig` from a shader source + partials.
  * `uniforms` accepts unknown-valued partials (agent/persisted input);
  * `normalizeUniforms` clamps + coerces them to finite numbers. */

@@ -23,8 +23,8 @@ import {
   CODING_AGENT_BACKEND_PREFLIGHTS,
   CODING_AGENT_BACKENDS,
   type CodingAgentBackend,
-  readAliasedEnv,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/coding-agent-capabilities";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import {
   isSubscriptionCodingAdapter,

@@ -3,7 +3,7 @@
  * source context is unavailable; provider CRUD is never a fallback.
  */
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -119,12 +119,18 @@ describe("calendar conversational mutation gateway guardrails", () => {
       getConditionalCalendarMutationTarget: vi.fn(async () => TARGET),
       updateCalendarEvent: vi.fn(),
     };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner({
+      ...deps(),
+      runJsonModel: vi.fn(async () => ({
+        rawResponse: "{}",
+        parsed: { title: "Pediatrician follow-up" },
+      })),
+    });
     const callback = vi.fn(async () => []);
 
     const result = await action.handler(
       runtime(service),
-      message("rename the pediatrician appointment"),
+      message("rename the pediatrician appointment to Pediatrician follow-up"),
       undefined,
       {
         parameters: {
@@ -167,6 +173,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
     };
     const service = {
       getCalendarFeed: vi.fn(async () => feed),
+      listCalendars: vi.fn(async () => []),
       prepareCalendarEventCreate: vi.fn(),
       createCalendarEvent: vi.fn(),
     };

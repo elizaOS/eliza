@@ -33,7 +33,7 @@ import {
 	type VoiceCancellationReason,
 	VoiceCancellationRegistry,
 	type VoiceCancellationToken,
-} from "@elizaos/shared";
+} from "@elizaos/core/voice/voice-cancellation-token";
 
 /**
  * Minimum runtime surface this coordinator needs. Matches a subset of

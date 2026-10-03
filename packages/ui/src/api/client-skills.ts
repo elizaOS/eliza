@@ -3,12 +3,10 @@
  * custom actions, WhatsApp, agent events.
  */
 
-import type {
-  AppPermissionsView,
-  CustomActionDef,
-  PutAppPermissionsRequest,
-} from "@elizaos/shared";
-import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import type { AppPermissionsView } from "@elizaos/core/contracts/app-permissions";
+import type { PutAppPermissionsRequest } from "@elizaos/core/contracts/app-permissions-routes";
+import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
+import type { CustomActionDef } from "@elizaos/core/contracts/config";
 import { ElizaClient } from "./client-base";
 import type {
   AppLaunchResult,
@@ -28,18 +26,11 @@ import type {
   SkillInfo,
   SkillScanReportSummary,
 } from "./client-types";
-import type {
-  CommandSurface,
-  CommandsCatalogResponse,
-  SlashCommandCatalogItem,
-} from "./client-types-commands";
-
 export type AppRunSteeringDisposition =
   | "accepted"
   | "queued"
   | "rejected"
   | "unsupported";
-
 export interface AppRunSteeringResult {
   success: boolean;
   message: string;
@@ -48,12 +39,11 @@ export interface AppRunSteeringResult {
   run?: AppRunSummary | null;
   session?: AppSessionState | null;
 }
-
 /**
  * Wrapped response shape for `/api/setup/telegram-account/*` routes.
  *
  * Matches the canonical `SetupStatusResponse` in
- * `eliza/packages/app-core/src/api/setup-contract.ts` plus the connector-
+ * `eliza/packages/app/src/api/setup-contract.ts` plus the connector-
  * specific detail block that drives the multi-step login wizard.
  */
 export interface TelegramAccountSetupStatus {
@@ -78,15 +68,18 @@ export interface TelegramAccountSetupStatus {
     error: string | null;
   };
 }
-
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-
 declare module "./client-base" {
   interface ElizaClient {
-    getSkills(): Promise<{ skills: SkillInfo[] }>;
-    refreshSkills(): Promise<{ ok: boolean; skills: SkillInfo[] }>;
+    getSkills(): Promise<{
+      skills: SkillInfo[];
+    }>;
+    refreshSkills(): Promise<{
+      ok: boolean;
+      skills: SkillInfo[];
+    }>;
     installSkillFromGitHub(githubUrl: string): Promise<{
       ok: boolean;
       message: string;
@@ -95,7 +88,9 @@ declare module "./client-base" {
       count: number;
       plugins: RegistryPlugin[];
     }>;
-    getRegistryPluginInfo(name: string): Promise<{ plugin: RegistryPlugin }>;
+    getRegistryPluginInfo(name: string): Promise<{
+      plugin: RegistryPlugin;
+    }>;
     getInstalledPlugins(): Promise<{
       count: number;
       plugins: InstalledPlugin[];
@@ -103,17 +98,27 @@ declare module "./client-base" {
     installRegistryPlugin(
       name: string,
       autoRestart?: boolean,
-      options?: { stream?: "latest" | "beta"; version?: string },
+      options?: {
+        stream?: "latest" | "beta";
+        version?: string;
+      },
     ): Promise<PluginInstallResult>;
     updateRegistryPlugin(
       name: string,
       autoRestart?: boolean,
-      options?: { stream?: "latest" | "beta"; version?: string },
+      options?: {
+        stream?: "latest" | "beta";
+        version?: string;
+      },
     ): Promise<PluginInstallResult>;
     uninstallRegistryPlugin(
       name: string,
       autoRestart?: boolean,
-    ): Promise<PluginMutationResult & { pluginName: string }>;
+    ): Promise<
+      PluginMutationResult & {
+        pluginName: string;
+      }
+    >;
     enableSkill(skillId: string): Promise<{
       ok: boolean;
       skill: SkillInfo;
@@ -127,8 +132,15 @@ declare module "./client-base" {
     createSkill(
       name: string,
       description: string,
-    ): Promise<{ ok: boolean; skill: SkillInfo; path: string }>;
-    openSkill(id: string): Promise<{ ok: boolean; path: string }>;
+    ): Promise<{
+      ok: boolean;
+      skill: SkillInfo;
+      path: string;
+    }>;
+    openSkill(id: string): Promise<{
+      ok: boolean;
+      path: string;
+    }>;
     getSkillSource(id: string): Promise<{
       ok: boolean;
       skillId: string;
@@ -138,10 +150,16 @@ declare module "./client-base" {
     saveSkillSource(
       id: string,
       content: string,
-    ): Promise<{ ok: boolean; skillId: string; skill: SkillInfo }>;
-    deleteSkill(
-      id: string,
-    ): Promise<{ ok: boolean; skillId: string; source: string }>;
+    ): Promise<{
+      ok: boolean;
+      skillId: string;
+      skill: SkillInfo;
+    }>;
+    deleteSkill(id: string): Promise<{
+      ok: boolean;
+      skillId: string;
+      source: string;
+    }>;
     getSkillScanReport(id: string): Promise<{
       ok: boolean;
       report: SkillScanReportSummary | null;
@@ -178,9 +196,10 @@ declare module "./client-base" {
      * if the run no longer exists (e.g. the sweeper already reaped it,
      * or another window pressed Stop).
      */
-    heartbeatAppRun(
-      runId: string,
-    ): Promise<{ ok: boolean; run: AppRunSummary }>;
+    heartbeatAppRun(runId: string): Promise<{
+      ok: boolean;
+      run: AppRunSummary;
+    }>;
     getAppInfo(name: string): Promise<RegistryAppInfo>;
     launchApp(name: string): Promise<AppLaunchResult>;
     /**
@@ -227,10 +246,6 @@ declare module "./client-base" {
     ): Promise<AppSessionActionResult>;
     listRegistryPlugins(): Promise<RegistryPluginItem[]>;
     searchRegistryPlugins(query: string): Promise<RegistryPluginItem[]>;
-    listCommands(
-      surface?: CommandSurface,
-      init?: RequestInit,
-    ): Promise<SlashCommandCatalogItem[]>;
     listCustomActions(init?: RequestInit): Promise<CustomActionDef[]>;
     createCustomAction(
       action: Omit<CustomActionDef, "id" | "createdAt" | "updatedAt">,
@@ -249,12 +264,15 @@ declare module "./client-base" {
       error?: string;
       durationMs: number;
     }>;
-    generateCustomAction(
-      prompt: string,
-    ): Promise<{ ok: boolean; generated: Record<string, unknown> }>;
+    generateCustomAction(prompt: string): Promise<{
+      ok: boolean;
+      generated: Record<string, unknown>;
+    }>;
     getWhatsAppStatus(
       accountId?: string,
-      options?: { authScope?: "platform" | "lifeops" },
+      options?: {
+        authScope?: "platform" | "lifeops";
+      },
     ): Promise<{
       accountId: string;
       authScope?: "platform" | "lifeops";
@@ -278,7 +296,9 @@ declare module "./client-base" {
     }>;
     stopWhatsAppPairing(
       accountId?: string,
-      options?: { authScope?: "platform" | "lifeops" },
+      options?: {
+        authScope?: "platform" | "lifeops";
+      },
     ): Promise<{
       ok: boolean;
       accountId: string;
@@ -338,9 +358,14 @@ declare module "./client-base" {
       lastError: string | null;
       ipcPath: string | null;
     }>;
-    disconnectDiscordLocal(): Promise<{ ok: boolean }>;
+    disconnectDiscordLocal(): Promise<{
+      ok: boolean;
+    }>;
     listDiscordLocalGuilds(): Promise<{
-      guilds: Array<{ id: string; name: string }>;
+      guilds: Array<{
+        id: string;
+        name: string;
+      }>;
       count: number;
     }>;
     listDiscordLocalChannels(guildId: string): Promise<{
@@ -363,19 +388,15 @@ declare module "./client-base" {
     }>;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Prototype augmentation
 // ---------------------------------------------------------------------------
-
 ElizaClient.prototype.getSkills = async function (this: ElizaClient) {
   return this.fetch("/api/skills");
 };
-
 ElizaClient.prototype.refreshSkills = async function (this: ElizaClient) {
   return this.fetch("/api/skills/refresh", { method: "POST" });
 };
-
 ElizaClient.prototype.installSkillFromGitHub = async function (
   this: ElizaClient,
   githubUrl,
@@ -385,22 +406,18 @@ ElizaClient.prototype.installSkillFromGitHub = async function (
     body: JSON.stringify({ githubUrl }),
   });
 };
-
 ElizaClient.prototype.getRegistryPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/registry/plugins");
 };
-
 ElizaClient.prototype.getRegistryPluginInfo = async function (
   this: ElizaClient,
   name,
 ) {
   return this.fetch(`/api/registry/plugins/${encodeURIComponent(name)}`);
 };
-
 ElizaClient.prototype.getInstalledPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/plugins/installed");
 };
-
 ElizaClient.prototype.installRegistryPlugin = async function (
   this: ElizaClient,
   name,
@@ -413,10 +430,9 @@ ElizaClient.prototype.installRegistryPlugin = async function (
       method: "POST",
       body: JSON.stringify({ name, autoRestart, ...options }),
     },
-    { timeoutMs: 120_000 },
+    { timeoutMs: 120000 },
   );
 };
-
 ElizaClient.prototype.updateRegistryPlugin = async function (
   this: ElizaClient,
   name,
@@ -429,10 +445,9 @@ ElizaClient.prototype.updateRegistryPlugin = async function (
       method: "POST",
       body: JSON.stringify({ name, autoRestart, ...options }),
     },
-    { timeoutMs: 120_000 },
+    { timeoutMs: 120000 },
   );
 };
-
 ElizaClient.prototype.uninstallRegistryPlugin = async function (
   this: ElizaClient,
   name,
@@ -443,7 +458,6 @@ ElizaClient.prototype.uninstallRegistryPlugin = async function (
     body: JSON.stringify({ name, autoRestart }),
   });
 };
-
 ElizaClient.prototype.enableSkill = async function (
   this: ElizaClient,
   skillId,
@@ -452,7 +466,6 @@ ElizaClient.prototype.enableSkill = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.disableSkill = async function (
   this: ElizaClient,
   skillId,
@@ -461,7 +474,6 @@ ElizaClient.prototype.disableSkill = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.createSkill = async function (
   this: ElizaClient,
   name,
@@ -472,17 +484,14 @@ ElizaClient.prototype.createSkill = async function (
     body: JSON.stringify({ name, description }),
   });
 };
-
 ElizaClient.prototype.openSkill = async function (this: ElizaClient, id) {
   return this.fetch(`/api/skills/${encodeURIComponent(id)}/open`, {
     method: "POST",
   });
 };
-
 ElizaClient.prototype.getSkillSource = async function (this: ElizaClient, id) {
   return this.fetch(`/api/skills/${encodeURIComponent(id)}/source`);
 };
-
 ElizaClient.prototype.saveSkillSource = async function (
   this: ElizaClient,
   id,
@@ -493,20 +502,17 @@ ElizaClient.prototype.saveSkillSource = async function (
     body: JSON.stringify({ content }),
   });
 };
-
 ElizaClient.prototype.deleteSkill = async function (this: ElizaClient, id) {
   return this.fetch(`/api/skills/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.getSkillScanReport = async function (
   this: ElizaClient,
   id,
 ) {
   return this.fetch(`/api/skills/${encodeURIComponent(id)}/scan`);
 };
-
 ElizaClient.prototype.acknowledgeSkill = async function (
   this: ElizaClient,
   id,
@@ -517,56 +523,45 @@ ElizaClient.prototype.acknowledgeSkill = async function (
     body: JSON.stringify({ enable }),
   });
 };
-
 ElizaClient.prototype.listApps = async function (this: ElizaClient) {
   return this.fetch("/api/apps");
 };
-
 ElizaClient.prototype.listCatalogApps = async function (this: ElizaClient) {
   return this.fetch("/api/catalog/apps");
 };
-
 ElizaClient.prototype.searchApps = async function (this: ElizaClient, query) {
   return this.fetch(`/api/apps/search?q=${encodeURIComponent(query)}`);
 };
-
 ElizaClient.prototype.listInstalledApps = async function (this: ElizaClient) {
   return this.fetch("/api/apps/installed");
 };
-
 ElizaClient.prototype.listAppRuns = async function (this: ElizaClient) {
   return this.fetch("/api/apps/runs");
 };
-
 ElizaClient.prototype.getAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}`);
 };
-
 ElizaClient.prototype.attachAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/attach`, {
     method: "POST",
   });
 };
-
 ElizaClient.prototype.detachAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/detach`, {
     method: "POST",
   });
 };
-
 ElizaClient.prototype.stopApp = async function (this: ElizaClient, name) {
   return this.fetch("/api/apps/stop", {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 };
-
 ElizaClient.prototype.stopAppRun = async function (this: ElizaClient, runId) {
   return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/stop`, {
     method: "POST",
   });
 };
-
 ElizaClient.prototype.heartbeatAppRun = async function (
   this: ElizaClient,
   runId,
@@ -575,29 +570,24 @@ ElizaClient.prototype.heartbeatAppRun = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.getAppInfo = async function (this: ElizaClient, name) {
   return this.fetch(`/api/apps/info/${encodeURIComponent(name)}`);
 };
-
 ElizaClient.prototype.launchApp = async function (this: ElizaClient, name) {
   return this.fetch("/api/apps/launch", {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 };
-
 ElizaClient.prototype.listAppPermissions = async function (this: ElizaClient) {
   return this.fetch("/api/apps/permissions");
 };
-
 ElizaClient.prototype.getAppPermissions = async function (
   this: ElizaClient,
   slug,
 ) {
   return this.fetch(`/api/apps/permissions/${encodeURIComponent(slug)}`);
 };
-
 ElizaClient.prototype.setAppPermissions = async function (
   this: ElizaClient,
   slug,
@@ -605,7 +595,7 @@ ElizaClient.prototype.setAppPermissions = async function (
 ) {
   // Body shape derived from the zod schema so a server-side rename
   // surfaces as a TS error here at compile time. See
-  // packages/shared/src/contracts/app-permissions-routes.ts for the
+  // packages/core/src/contracts/app-permissions-routes.ts for the
   // schema this type comes from.
   const body: PutAppPermissionsRequest = {
     namespaces: Array.from(namespaces),
@@ -615,7 +605,6 @@ ElizaClient.prototype.setAppPermissions = async function (
     body: JSON.stringify(body),
   });
 };
-
 ElizaClient.prototype.sendAppRunMessage = async function (
   this: ElizaClient,
   runId,
@@ -667,7 +656,6 @@ ElizaClient.prototype.sendAppRunMessage = async function (
         : null,
   };
 };
-
 ElizaClient.prototype.controlAppRun = async function (
   this: ElizaClient,
   runId,
@@ -719,7 +707,6 @@ ElizaClient.prototype.controlAppRun = async function (
         : null,
   };
 };
-
 ElizaClient.prototype.getAppSessionState = async function (
   this: ElizaClient,
   appName,
@@ -730,7 +717,6 @@ ElizaClient.prototype.getAppSessionState = async function (
     `/api/apps/${encodeURIComponent(routeSlug)}/session/${encodeURIComponent(sessionId)}`,
   );
 };
-
 ElizaClient.prototype.sendAppSessionMessage = async function (
   this: ElizaClient,
   appName,
@@ -746,7 +732,6 @@ ElizaClient.prototype.sendAppSessionMessage = async function (
     },
   );
 };
-
 ElizaClient.prototype.controlAppSession = async function (
   this: ElizaClient,
   appName,
@@ -762,65 +747,48 @@ ElizaClient.prototype.controlAppSession = async function (
     },
   );
 };
-
 ElizaClient.prototype.listRegistryPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/apps/plugins");
 };
-
 ElizaClient.prototype.searchRegistryPlugins = async function (
   this: ElizaClient,
   query,
 ) {
   return this.fetch(`/api/apps/plugins/search?q=${encodeURIComponent(query)}`);
 };
-
-ElizaClient.prototype.listCommands = async function (
-  this: ElizaClient,
-  surface,
-  init,
-) {
-  const query = surface ? `?surface=${encodeURIComponent(surface)}` : "";
-  const data = await this.fetch<CommandsCatalogResponse>(
-    `/api/commands${query}`,
-    init,
-  );
-  return data.commands;
-};
-
 ElizaClient.prototype.listCustomActions = async function (
   this: ElizaClient,
   init,
 ) {
-  const data = await this.fetch<{ actions: CustomActionDef[] }>(
-    "/api/custom-actions",
-    init,
-  );
+  const data = await this.fetch<{
+    actions: CustomActionDef[];
+  }>("/api/custom-actions", init);
   return data.actions;
 };
-
 ElizaClient.prototype.createCustomAction = async function (
   this: ElizaClient,
   action,
 ) {
-  const data = await this.fetch<{ ok: boolean; action: CustomActionDef }>(
-    "/api/custom-actions",
-    { method: "POST", body: JSON.stringify(action) },
-  );
+  const data = await this.fetch<{
+    ok: boolean;
+    action: CustomActionDef;
+  }>("/api/custom-actions", { method: "POST", body: JSON.stringify(action) });
   return data.action;
 };
-
 ElizaClient.prototype.updateCustomAction = async function (
   this: ElizaClient,
   id,
   action,
 ) {
-  const data = await this.fetch<{ ok: boolean; action: CustomActionDef }>(
-    `/api/custom-actions/${encodeURIComponent(id)}`,
-    { method: "PUT", body: JSON.stringify(action) },
-  );
+  const data = await this.fetch<{
+    ok: boolean;
+    action: CustomActionDef;
+  }>(`/api/custom-actions/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(action),
+  });
   return data.action;
 };
-
 ElizaClient.prototype.deleteCustomAction = async function (
   this: ElizaClient,
   id,
@@ -829,7 +797,6 @@ ElizaClient.prototype.deleteCustomAction = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.testCustomAction = async function (
   this: ElizaClient,
   id,
@@ -840,7 +807,6 @@ ElizaClient.prototype.testCustomAction = async function (
     body: JSON.stringify({ params }),
   });
 };
-
 ElizaClient.prototype.generateCustomAction = async function (
   this: ElizaClient,
   prompt,
@@ -850,7 +816,6 @@ ElizaClient.prototype.generateCustomAction = async function (
     body: JSON.stringify({ prompt }),
   });
 };
-
 ElizaClient.prototype.getWhatsAppStatus = async function (
   this: ElizaClient,
   accountId = "default",
@@ -862,7 +827,6 @@ ElizaClient.prototype.getWhatsAppStatus = async function (
   }
   return this.fetch(`/api/whatsapp/status?${params.toString()}`);
 };
-
 ElizaClient.prototype.startWhatsAppPairing = async function (
   this: ElizaClient,
   accountId = "default",
@@ -873,7 +837,6 @@ ElizaClient.prototype.startWhatsAppPairing = async function (
     body: JSON.stringify({ ...options, accountId }),
   });
 };
-
 ElizaClient.prototype.stopWhatsAppPairing = async function (
   this: ElizaClient,
   accountId = "default",
@@ -884,7 +847,6 @@ ElizaClient.prototype.stopWhatsAppPairing = async function (
     body: JSON.stringify({ ...options, accountId }),
   });
 };
-
 ElizaClient.prototype.disconnectWhatsApp = async function (
   this: ElizaClient,
   accountId = "default",
@@ -895,13 +857,11 @@ ElizaClient.prototype.disconnectWhatsApp = async function (
     body: JSON.stringify({ ...options, accountId }),
   });
 };
-
 ElizaClient.prototype.getTelegramAccountStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/setup/telegram-account/status");
 };
-
 ElizaClient.prototype.startTelegramAccountAuth = async function (
   this: ElizaClient,
   phone,
@@ -915,7 +875,6 @@ ElizaClient.prototype.startTelegramAccountAuth = async function (
     ),
   });
 };
-
 ElizaClient.prototype.submitTelegramAccountAuth = async function (
   this: ElizaClient,
   input,
@@ -925,7 +884,6 @@ ElizaClient.prototype.submitTelegramAccountAuth = async function (
     body: JSON.stringify(input),
   });
 };
-
 ElizaClient.prototype.disconnectTelegramAccount = async function (
   this: ElizaClient,
 ) {
@@ -933,13 +891,11 @@ ElizaClient.prototype.disconnectTelegramAccount = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.getDiscordLocalStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/discord-local/status");
 };
-
 ElizaClient.prototype.authorizeDiscordLocal = async function (
   this: ElizaClient,
 ) {
@@ -947,7 +903,6 @@ ElizaClient.prototype.authorizeDiscordLocal = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.disconnectDiscordLocal = async function (
   this: ElizaClient,
 ) {
@@ -955,13 +910,11 @@ ElizaClient.prototype.disconnectDiscordLocal = async function (
     method: "POST",
   });
 };
-
 ElizaClient.prototype.listDiscordLocalGuilds = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/discord-local/guilds");
 };
-
 ElizaClient.prototype.listDiscordLocalChannels = async function (
   this: ElizaClient,
   guildId,
@@ -970,7 +923,6 @@ ElizaClient.prototype.listDiscordLocalChannels = async function (
     `/api/discord-local/channels?guildId=${encodeURIComponent(guildId)}`,
   );
 };
-
 ElizaClient.prototype.saveDiscordLocalSubscriptions = async function (
   this: ElizaClient,
   channelIds,

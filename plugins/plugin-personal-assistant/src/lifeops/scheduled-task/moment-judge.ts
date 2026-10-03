@@ -39,6 +39,8 @@ import {
   runQuietUserWatcher,
 } from "../../default-packs/quiet-user-watcher.js";
 import { createRecentTaskStatesProvider } from "../../providers/recent-task-states.js";
+import { DEFAULT_PACK_IDEMPOTENCY_KEYS } from "../first-run/defaults.js";
+import { createFirstRunStateStore } from "../first-run/state.js";
 import { readActivityProfile } from "./activity-gates.js";
 
 export const MOMENT_JUDGE_TRAJECTORY_PURPOSE = "scheduled-moment-judge";
@@ -350,6 +352,20 @@ export function makeModelMomentCheckGate(
       task: ScheduledTask,
       context: GateEvaluationContext,
     ): Promise<GateDecision> {
+      // Boot-seeded rows from older profiles remain durable, but do not imply
+      // that the owner completed setup or opted into a daily briefing.
+      if (
+        task.source === "first_run" &&
+        task.idempotencyKey === DEFAULT_PACK_IDEMPOTENCY_KEYS.morningBrief &&
+        (await createFirstRunStateStore(runtime).read()).status !== "complete"
+      ) {
+        return {
+          // Settle this occurrence through the scheduler's normal recurrence
+          // path instead of retrying an unconfigured default every five minutes.
+          kind: "deny",
+          reason: "LifeOps owner setup is incomplete",
+        };
+      }
       const morningWindowDecision = morningBriefWindowDecision(task, context);
       if (morningWindowDecision) return morningWindowDecision;
       // Safety rail, not judgment: urgent sends are never model-vetoed.

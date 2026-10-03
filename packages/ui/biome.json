@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "root": false,
   "extends": ["../../biome.json"],
   "files": {
@@ -8,7 +8,9 @@
       "!src/**/*.d.ts",
       "!src/**/*.d.ts.map",
       "!src/**/__e2e__",
-      "!src/components/views/view-icons/ionicons"
+      "!src/components/views/view-icons/ionicons",
+      "scripts/**",
+      "!scripts/.*"
     ]
   },
   "overrides": [

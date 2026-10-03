@@ -256,6 +256,27 @@ export class SandboxReplacementCreateSettlementCleanupUnresolvedError extends Sa
 }
 
 export interface SandboxProvider {
+  /** Removes only the verified immutable runtime; its caller owns transactional capacity reconciliation. */
+  stopObservedRuntime?(
+    sandboxId: string,
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /**
+   * Stops the verified immutable runtime in place with its restart policy
+   * disabled, retaining the container, mounts and node-local state. Absence,
+   * replacement or an unconfirmed stop rejects; it never removes anything.
+   */
+  retainObservedRuntimeStopped?(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /** Starts the exact retained runtime in place; absence or replacement rejects. */
+  startRetainedRuntime?(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /** Exact read-only identity observation; unsupported or unknown never means absent. */
+  observeRuntime?(
+    input: import("./sandbox-runtime-observation").SandboxRuntimeObservationRequest,
+  ): Promise<import("./sandbox-runtime-observation").SandboxRuntimeObservation>;
   /** Remote paid compute supports a caller-owned, committed-funding start instead of raw Docker start. */
   readonly computeFundingCapability?: "host-lease-v1";
   /**
@@ -290,7 +311,10 @@ export interface SandboxProvider {
   stopForReplacement?(
     sandboxId: string,
     /** A lifecycle caller that transactionally recounts capacity owns its release. */
-    options?: { readonly releaseCapacity?: false },
+    options?: {
+      readonly releaseCapacity?: false;
+      readonly expectedRuntime?: import("./sandbox-runtime-observation").SandboxRuntimeIdentity;
+    },
   ): Promise<void>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This

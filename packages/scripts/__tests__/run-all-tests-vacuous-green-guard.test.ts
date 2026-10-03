@@ -1,5 +1,5 @@
 /**
- * Pins the run-all-tests.mjs vacuous-green guards (#12342/#13620).
+ * Pins the run-all-tests.ts vacuous-green guards (#12342/#13620).
  *
  * The suite spawns the real runner against temporary workspace packages so a
  * lane that collects no tasks, swallows a failure as "no tests found", or hides
@@ -15,9 +15,9 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
-const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
+const runner = fileURLToPath(new URL("../run-all-tests.ts", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 // Each case spawns the real runner (workspace discovery over the whole repo),
@@ -129,7 +129,7 @@ describe("root test lane require-work wiring (#13620)", () => {
     for (const file of readdirSync(workflowDir)) {
       if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
       const source = readFileSync(join(workflowDir, file), "utf8");
-      if (!source.includes("run-all-tests.mjs")) continue;
+      if (!source.includes("run-all-tests.ts")) continue;
       expect(
         source,
         `${file} passes the retired --min-tasks flag`,
@@ -139,26 +139,6 @@ describe("root test lane require-work wiring (#13620)", () => {
         `${file} sets the retired MIN_TEST_TASKS env`,
       ).not.toContain("MIN_TEST_TASKS");
     }
-  });
-
-  test("the standalone guard installs the Bun contract dependency first", () => {
-    const workflow = readFileSync(
-      join(repoRoot, ".github", "workflows", "test.yml"),
-      "utf8",
-    );
-    const jobStart = workflow.indexOf("  test-runner-vacuous-green-guard:");
-    const nextJob = workflow.indexOf("\n  server-tests:", jobStart);
-    expect(jobStart).toBeGreaterThan(-1);
-    expect(nextJob).toBeGreaterThan(jobStart);
-    const job = workflow.slice(jobStart, nextJob);
-    const install = job.indexOf(
-      "bun install --frozen-lockfile --ignore-scripts",
-    );
-    const contract = job.indexOf(
-      "node packages/scripts/ci-bun-version-contract.mjs",
-    );
-    expect(install).toBeGreaterThan(-1);
-    expect(contract).toBeGreaterThan(install);
   });
 });
 
@@ -332,7 +312,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
               private: true,
               type: "module",
               scripts: {
-                test: "node ../../packages/scripts/run-with-flake-retry.mjs 'never-match' -- node ../../packages/scripts/run-with-deadline.mjs 5000 -- node scripts/run-isolated-tests.mjs",
+                test: "node ../../packages/scripts/run-with-flake-retry.ts 'never-match' -- node ../../packages/scripts/run-with-deadline.ts 5000 -- node scripts/run-isolated-tests.ts",
               },
             },
             null,
@@ -343,7 +323,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
           join(
             ISOLATED_WRAPPER_PACKAGE_DIR,
             "scripts",
-            "run-isolated-tests.mjs",
+            "run-isolated-tests.ts",
           ),
           [
             'import { writeFileSync } from "node:fs";',
@@ -370,6 +350,62 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
           recursive: true,
           force: true,
         });
+      }
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "reconciles agent batch evidence after its required mobile preflight",
+    () => {
+      const directory = join(repoRoot, "packages", "__agent_batch_preflight__");
+      rmSync(directory, { recursive: true, force: true });
+      mkdirSync(join(directory, "scripts"), { recursive: true });
+      try {
+        writeFileSync(
+          join(directory, "package.json"),
+          JSON.stringify({
+            name: "@elizaos/agent-batch-preflight-fixture",
+            private: true,
+            type: "module",
+            scripts: {
+              test: "bun run test:mobile-workspace-entry && node scripts/run-vitest-batches.ts",
+              "test:mobile-workspace-entry": "node scripts/preflight.mjs",
+            },
+          }),
+        );
+        writeFileSync(
+          join(directory, "scripts", "preflight.mjs"),
+          'import { writeFileSync } from "node:fs"; if (process.env.REJECT_PREFLIGHT === "1") process.exit(7); writeFileSync("admitted", "yes");',
+        );
+        writeFileSync(
+          join(directory, "scripts", "run-vitest-batches.ts"),
+          [
+            'import { readFileSync, writeFileSync } from "node:fs";',
+            'if (readFileSync("admitted", "utf8") !== "yes") throw new Error("preflight missing");',
+            "const args = process.argv.slice(2);",
+            'const output = args.find(arg => arg.startsWith("--outputFile.junit="))?.slice("--outputFile.junit=".length);',
+            'if (!args.includes("--reporter=junit") || !output) throw new Error("missing batch evidence arguments");',
+            'writeFileSync(output, `<testsuites tests="1" failures="0" errors="0" skipped="0"><testsuite name="batch" tests="1" failures="0" errors="0" skipped="0"><testcase name="observed batch" /></testsuite></testsuites>`);',
+          ].join("\n"),
+        );
+        const args = [
+          "--only=test",
+          "--no-cloud",
+          "--filter=@elizaos/agent-batch-preflight-fixture",
+          "--require-work",
+        ];
+        const result = run(args);
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain(
+          "EVIDENCE reports=1 tests=1 executed=1 skipped=0 unobserved-tasks=0",
+        );
+        rmSync(join(directory, "admitted"));
+        const rejected = run(args, { REJECT_PREFLIGHT: "1" });
+        expect(rejected.status).not.toBe(0);
+        expect(rejected.stdout).not.toContain("executed=1");
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
       }
     },
     SPAWN_TIMEOUT_MS,

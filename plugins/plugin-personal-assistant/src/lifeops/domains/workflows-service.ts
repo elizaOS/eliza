@@ -4,7 +4,7 @@
  * registry and whose cron/relative schedules compute the next run instant. Runs
  * and audit events are persisted for owner review.
  */
-import { computeNextCronRunAtMs } from "@elizaos/agent";
+import { computeNextCronRunAtMs } from "@elizaos/core";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsAuditEvent,

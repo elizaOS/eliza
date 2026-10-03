@@ -12,19 +12,21 @@
 import { createHash, createHmac } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { ElizaError } from "@elizaos/core";
+import { type AgentBackupManifestV3 } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import {
   AGENT_BACKUP_RECORD_STREAM_V1_LIMITS,
+  parseAgentBackupRecordStreamV1,
+} from "@elizaos/core/contracts/agent-backup-record-stream-v1";
+import {
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
-  type AgentBackupManifestV3,
   AgentBackupRestoreV3ComponentReceiptSchema,
   type AgentBackupRestoreV3ExactReadReceiptProof,
   type AgentBackupRestoreV3IsolatedCandidateStaging,
   type AgentBackupRestoreV3SourceObjectReceipt,
   AgentBackupRestoreV3StageRecordReceiptSchema,
   type AgentBackupRestoreV3StagingSession,
-  parseAgentBackupRecordStreamV1,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
 import { logger } from "../utils/logger";
 import type { AgentBackupRestoreV3Control } from "./agent-backup-restore-v3-control";
 

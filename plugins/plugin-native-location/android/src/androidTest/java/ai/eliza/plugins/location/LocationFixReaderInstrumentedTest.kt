@@ -1,82 +1,168 @@
+/**
+ * Exercises production framework location requests on an Android emulator.
+ * A real LocationManager test provider supplies fixes; no Google services,
+ * external GPS injection, skipped assertions or mocked readers are involved.
+ */
 package ai.eliza.plugins.location
 
 import android.Manifest
 import android.content.Context
+import android.location.Criteria
+import android.location.Location
+import android.location.LocationManager
+import android.os.Build
+import android.os.SystemClock
+import androidx.test.core.app.ActivityScenario
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
-import com.google.android.gms.location.Priority
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * On-device read test for the fused current-location fetch (issue #9967).
- *
- * Drives the real Play Services `FusedLocationProviderClient.getCurrentLocation`
- * via [LocationFixReader] — the same path [LocationPlugin.getCurrentPosition]
- * uses — and asserts a well-formed [android.location.Location] is read back.
- *
- * The fix is injected host-side on an **emulator** (`adb -s <emulator> emu geo
- * fix <lon> <lat>`, with `settings put secure location_mode 3`) before the run,
- * so the test is orchestrated, not dependent on a real GPS lock. It `Assume`-
- * skips when no fix arrives (e.g. a device with no geo orchestration / location
- * off), so it never hard-fails on an environment it can't control.
- */
 @RunWith(AndroidJUnit4::class)
 class LocationFixReaderInstrumentedTest {
-
     @get:Rule
-    val permissionRule: GrantPermissionRule =
-        GrantPermissionRule.grant(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-        )
+    val permissionRule = GrantPermissionRule.grant(
+        Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION,
+    )
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val context: Context get() = instrumentation.targetContext
+    private val manager get() = context.getSystemService(LocationManager::class.java)
+    private val reader get() = LocationFixReader(context)
+    private val handles = mutableListOf<LocationFixReader.RequestHandle>()
+    private var providerAdded = false
+    private var scenario: ActivityScenario<LocationReaderShowcaseActivity>? = null
 
-    private val context: Context
-        get() = InstrumentationRegistry.getInstrumentation().targetContext
+    @Before
+    fun createProvider() {
+        check(Build.HARDWARE.contains("cutf") || Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) {
+            "Framework location fixture requires a disposable emulator"
+        }
+        // Foreground location permission requires a resumed host on stock Android.
+        scenario = ActivityScenario.launch(LocationReaderShowcaseActivity::class.java).also {
+            assertEquals(Lifecycle.State.RESUMED, it.state)
+        }
+        shell("appops set ${context.packageName} android:mock_location allow")
+        check(manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) { "Enable emulator location before this test" }
+        @Suppress("DEPRECATION")
+        manager.addTestProvider(LocationManager.GPS_PROVIDER, false, true, false, false, true, true, true,
+            Criteria.POWER_LOW, Criteria.ACCURACY_FINE)
+        providerAdded = true
+        manager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+    }
 
-    @Test
-    fun mapAccuracyToPriority_coversEveryTier() {
-        // Pure mapping the plugin delegates here — exact, no device needed.
-        val reader = LocationFixReader(context)
-        assertEquals(Priority.PRIORITY_HIGH_ACCURACY, reader.mapAccuracyToPriority("best"))
-        assertEquals(Priority.PRIORITY_HIGH_ACCURACY, reader.mapAccuracyToPriority("high"))
-        assertEquals(Priority.PRIORITY_BALANCED_POWER_ACCURACY, reader.mapAccuracyToPriority("medium"))
-        assertEquals(Priority.PRIORITY_LOW_POWER, reader.mapAccuracyToPriority("low"))
-        assertEquals(Priority.PRIORITY_PASSIVE, reader.mapAccuracyToPriority("passive"))
-        assertEquals(Priority.PRIORITY_HIGH_ACCURACY, reader.mapAccuracyToPriority("unknown"))
+    @After
+    fun cleanup() {
+        instrumentation.runOnMainSync { handles.forEach { it.cancel() } }
+        if (providerAdded) manager.removeTestProvider(LocationManager.GPS_PROVIDER)
+        shell("appops set ${context.packageName} android:mock_location default")
+        scenario?.close()
+        scenario = null
     }
 
     @Test
-    fun awaitNextLocation_readsBackAFusedFix() {
-        val reader = LocationFixReader(context)
-        // Keep the fused provider actively warm (requestLocationUpdates) until a
-        // fix arrives — the path an emulator's injected `geo fix` actually
-        // delivers on, and the same continuous API the plugin's watchPosition
-        // uses. 20s window so a slow GPS/network settle still lands.
-        val location = reader.awaitNextLocation(accuracy = "high", timeoutMs = 20000)
+    fun currentFixAndCacheReadBackExactFrameworkCoordinates() {
+        val delivered = CountDownLatch(1)
+        val result = AtomicReference<Location>()
+        instrumentation.runOnMainSync {
+            handles += reader.getCurrentPosition("high", 3000, 0, { fix, cached ->
+                assertFalse(cached)
+                result.set(fix)
+                delivered.countDown()
+            }, { code, message -> fail("$code: $message") })
+        }
+        inject(37.4219999)
+        assertTrue("Framework fix must be delivered", delivered.await(4, TimeUnit.SECONDS))
+        assertEquals(37.4219999, result.get().latitude, 0.000001)
+        assertEquals(-122.0840575, result.get().longitude, 0.000001)
+        val cachedResult = CountDownLatch(1)
+        instrumentation.runOnMainSync {
+            handles += reader.getCurrentPosition("high", 3000, 60000, { fix, cached ->
+                assertTrue(cached)
+                assertEquals(result.get().latitude, fix.latitude, 0.000001)
+                cachedResult.countDown()
+            }, { code, message -> fail("$code: $message") })
+        }
+        assertTrue("Cached read must settle", cachedResult.await(1, TimeUnit.SECONDS))
+    }
 
-        // Skip (don't fail) when no fix arrived — meaningful only where a fix is
-        // obtainable: a real device with a GPS/network lock, or an emulator with
-        // a continuously-injected `geo fix`. Never a hard fail on an environment
-        // whose GPS/network the test can't control.
-        assumeTrue(
-            "no location fix obtainable in this environment (no GPS lock / connectivity / emulator geo fix)",
-            location != null,
-        )
+    @Test
+    fun timeoutSettlesOnceAndRemovesTheListener() {
+        val settled = CountDownLatch(1)
+        val callbacks = AtomicInteger()
+        instrumentation.runOnMainSync {
+            handles += reader.getCurrentPosition("high", 100, 0, { _, _ ->
+                callbacks.incrementAndGet()
+                fail("No fix was injected before timeout")
+            }, { code, _ ->
+                assertEquals("TIMEOUT", code)
+                callbacks.incrementAndGet()
+                settled.countDown()
+            })
+        }
+        assertTrue(settled.await(2, TimeUnit.SECONDS))
+        inject(38.0)
+        instrumentation.waitForIdleSync()
+        SystemClock.sleep(200)
+        assertEquals(1, callbacks.get())
+    }
 
-        val fix = location!!
-        assertTrue("latitude ${fix.latitude} in [-90,90]", fix.latitude in -90.0..90.0)
-        assertTrue("longitude ${fix.longitude} in [-180,180]", fix.longitude in -180.0..180.0)
-        assertTrue("a real fix has a monotonic timestamp", fix.elapsedRealtimeNanos > 0)
-        // Not the null-island default the emulator reports before any geo fix.
-        assertTrue(
-            "fix is not (0,0) — a geo fix was actually applied",
-            fix.latitude != 0.0 || fix.longitude != 0.0,
-        )
+    @Test
+    fun watchDeliversUpdatesAndCancellationStopsDelivery() {
+        val delivered = CountDownLatch(1)
+        val callbacks = AtomicInteger()
+        lateinit var watch: LocationFixReader.RequestHandle
+        instrumentation.runOnMainSync {
+            watch = reader.watchPosition("high", 0, 0f, {
+                callbacks.incrementAndGet()
+                delivered.countDown()
+            }, { fail(it) })
+            handles += watch
+        }
+        inject(36.0)
+        assertTrue(delivered.await(3, TimeUnit.SECONDS))
+        instrumentation.runOnMainSync { watch.cancel(); watch.cancel() }
+        val count = callbacks.get()
+        inject(35.0)
+        SystemClock.sleep(200)
+        instrumentation.waitForIdleSync()
+        assertEquals(count, callbacks.get())
+    }
+
+    @Test
+    fun invalidDurationsRejectBeforeRegistering() {
+        instrumentation.runOnMainSync {
+            assertThrows(IllegalArgumentException::class.java) {
+                reader.getCurrentPosition("high", 0, 0, { _, _ -> fail() }, { _, _ -> fail() })
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                reader.watchPosition("high", -1, 0f, { fail() }, { fail() })
+            }
+        }
+    }
+
+    private fun inject(latitude: Double) {
+        manager.setTestProviderLocation(LocationManager.GPS_PROVIDER, Location(LocationManager.GPS_PROVIDER).apply {
+            this.latitude = latitude
+            longitude = -122.0840575
+            accuracy = 1f
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        })
+    }
+
+    private fun shell(command: String) {
+        instrumentation.uiAutomation.executeShellCommand(command).use { descriptor ->
+            java.io.FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
+        }
     }
 }

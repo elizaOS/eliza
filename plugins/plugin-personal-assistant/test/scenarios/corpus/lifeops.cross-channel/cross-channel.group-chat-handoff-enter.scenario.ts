@@ -14,11 +14,9 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   expectScenarioToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 
 function checkHandoffRoomPersisted(ctx: ScenarioContext): string | undefined {
   const runtime = ctx.runtime as AgentRuntime | undefined;
@@ -43,7 +41,7 @@ export default scenario({
   tags: ["lifeops", "cross-channel", "handoff", "group-chat"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

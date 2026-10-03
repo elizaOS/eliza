@@ -1,0 +1,31 @@
+#!/bin/sh
+# Start the one elizaOS desktop process.
+#
+# Surface selection:
+#   - amd64: the Electrobun app (/opt/elizaos/app/elizaos). It owns its
+#     embedded runtime and defaults to the chat-overlay pill, so it must start
+#     immediately and must not be forced into a second shell mode.
+#   - any arch lacking the Electrobun prebuild: GNOME Web in application mode,
+#     rendering the same agent home web UI the
+#     Electrobun app embeds, served by the agent at the root path.
+set -eu
+
+AGENT_URL="${ELIZAOS_AGENT_URL:-http://127.0.0.1:31337}"
+
+if [ -x /opt/elizaos/app/elizaos ]; then
+    exec /opt/elizaos/app/elizaos
+fi
+
+# Only the non-Electrobun fallback depends on the separate agent service.
+for _ in $(seq 1 60); do
+    if curl -fsS "${AGENT_URL}/api/health" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+# Fallback: GNOME Web in application mode renders the agent home without
+# browser chrome. A dedicated profile keeps it isolated from interactive web
+# browsing.
+exec epiphany-browser --application-mode \
+    --profile=/tmp/elizaos-launcher "${AGENT_URL}/"

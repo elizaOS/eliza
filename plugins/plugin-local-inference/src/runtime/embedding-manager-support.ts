@@ -1,8 +1,15 @@
+/**
+ * Resolves embedding model files and downloads them for runtime warmup.
+ * A completed download replaces the final path only after its file closes;
+ * failed replacements preserve the existing model for concurrent readers.
+ */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import { formatByteSize, getLogPrefix } from "@elizaos/shared";
+import { formatByteSize } from "@elizaos/core/utils/format-bytes";
+import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
 import { EMBEDDING_PRESETS } from "./embedding-presets.js";
 
 /**
@@ -319,12 +326,15 @@ function downloadFile(
 	dest: string,
 	maxRedirects = 5,
 	onProgress?: DownloadProgressCallback,
+	signal?: AbortSignal,
 ): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		let settled = false;
 		let redirectCount = 0;
+		let activeHop = 0;
 
 		const request = (reqUrl: string) => {
+			const hop = ++activeHop;
 			let validatedUrl: URL;
 			try {
 				validatedUrl = validateDownloadUrl(reqUrl);
@@ -335,21 +345,29 @@ function downloadFile(
 				return;
 			}
 
-			const file = fs.createWriteStream(dest);
+			let file: fs.WriteStream | undefined;
 			let bytesReceived = 0;
 			let expectedBytes: number | null = null;
 			let lastProgressPercent = -1;
 
 			const settleError = (err: Error) => {
-				if (settled) return;
+				if (settled || hop !== activeHop) return;
 				settled = true;
-				file.close();
-				safeUnlink(dest);
-				reject(err);
+				const finish = () => {
+					safeUnlink(dest);
+					reject(err);
+				};
+				if (!file || file.closed) finish();
+				else {
+					// Opening may still be pending. Wait for close before unlinking,
+					// otherwise the later open can recreate a rejected download.
+					file.once("close", finish);
+					file.destroy();
+				}
 			};
 
 			const settleSuccess = () => {
-				if (settled) return;
+				if (settled || hop !== activeHop || !file) return;
 				if (expectedBytes != null && bytesReceived !== expectedBytes) {
 					settleError(
 						new Error(
@@ -360,8 +378,10 @@ function downloadFile(
 					return;
 				}
 				settled = true;
-				file.close();
-				resolve();
+				file.close((error) => {
+					if (error) reject(error);
+					else resolve();
+				});
 			};
 
 			// Gated HuggingFace repos (and ungated ones whose LFS redirects hit
@@ -381,68 +401,76 @@ function downloadFile(
 				downloadHeaders.Authorization = `Bearer ${hfToken}`;
 			}
 			https
-				.get(validatedUrl.toString(), { headers: downloadHeaders }, (res) => {
-					expectedBytes = parseContentLength(res.headers["content-length"]);
-					if (
-						res.statusCode &&
-						res.statusCode >= 300 &&
-						res.statusCode < 400 &&
-						res.headers.location
-					) {
-						res.resume();
-						file.close();
-						safeUnlink(dest);
-						redirectCount += 1;
-						if (redirectCount > maxRedirects) {
-							settleError(
-								new Error(
-									`Download failed: too many redirects (>${maxRedirects})`,
-								),
-							);
-							return;
-						}
-						let next: string;
-						try {
-							next = new URL(
-								res.headers.location,
-								validatedUrl.toString(),
-							).toString();
-						} catch {
-							settleError(
-								new Error(
-									`Download failed: malformed redirect URL "${res.headers.location}"`,
-								),
-							);
-							return;
-						}
-						request(next);
-						return;
-					}
-					if (res.statusCode !== 200) {
-						settleError(
-							new Error(
-								`Download failed: HTTP ${res.statusCode} for ${validatedUrl.toString()}`,
-							),
-						);
-						return;
-					}
-					res.on("data", (chunk: Buffer) => {
-						bytesReceived += chunk.length;
-						if (onProgress) {
-							// Throttle callbacks to every 2% to avoid excessive updates
-							const pct = expectedBytes
-								? Math.floor((bytesReceived / expectedBytes) * 50)
-								: -1;
-							if (pct !== lastProgressPercent) {
-								lastProgressPercent = pct;
-								onProgress(bytesReceived, expectedBytes);
+				.get(
+					validatedUrl.toString(),
+					{ headers: downloadHeaders, signal },
+					(res) => {
+						// A response can fail after the request succeeds; pipe does not
+						// forward that failure to the destination file.
+						res.on("error", settleError);
+						expectedBytes = parseContentLength(res.headers["content-length"]);
+						if (
+							res.statusCode &&
+							res.statusCode >= 300 &&
+							res.statusCode < 400 &&
+							res.headers.location
+						) {
+							res.resume();
+							redirectCount += 1;
+							if (redirectCount > maxRedirects) {
+								settleError(
+									new Error(
+										`Download failed: too many redirects (>${maxRedirects})`,
+									),
+								);
+								return;
 							}
+							let next: string;
+							try {
+								next = new URL(
+									res.headers.location,
+									validatedUrl.toString(),
+								).toString();
+							} catch {
+								settleError(
+									new Error(
+										`Download failed: malformed redirect URL "${res.headers.location}"`,
+									),
+								);
+								return;
+							}
+							request(next);
+							return;
 						}
-					});
-					res.pipe(file);
-					file.on("finish", settleSuccess);
-					file.on("error", settleError);
-				})
+						if (res.statusCode !== 200) {
+							settleError(
+								new Error(
+									`Download failed: HTTP ${res.statusCode} for ${validatedUrl.toString()}`,
+								),
+							);
+							return;
+						}
+						// Redirect bodies never own the output path. Only the final
+						// admitted response may open or publish downloaded bytes.
+						file = fs.createWriteStream(dest);
+						file.on("error", settleError);
+						res.on("data", (chunk: Buffer) => {
+							bytesReceived += chunk.length;
+							if (onProgress) {
+								// Throttle callbacks to every 2% to avoid excessive updates
+								const pct = expectedBytes
+									? Math.floor((bytesReceived / expectedBytes) * 50)
+									: -1;
+								if (pct !== lastProgressPercent) {
+									lastProgressPercent = pct;
+									onProgress(bytesReceived, expectedBytes);
+								}
+							}
+						});
+						res.pipe(file);
+						file.on("finish", settleSuccess);
+					},
+				)
 				.on("error", settleError);
 		};
 		request(url);
@@ -455,15 +483,16 @@ export async function ensureModel(
 	filename: string,
 	force?: boolean,
 	onProgress?: EmbeddingProgressCallback,
+	signal?: AbortSignal,
 ): Promise<string> {
+	signal?.throwIfAborted();
 	const safeRepo = sanitizeModelRepo(repo);
 	const safeFilename = sanitizeModelFilename(filename);
 	const modelPath = resolveModelPath(modelsDir, safeFilename);
-	if (force) safeUnlink(modelPath);
 
 	onProgress?.("checking", safeFilename);
 
-	if (fs.existsSync(modelPath)) {
+	if (!force && fs.existsSync(modelPath)) {
 		onProgress?.("ready", "model already downloaded");
 		return modelPath;
 	}
@@ -491,7 +520,16 @@ export async function ensureModel(
 			}
 		: undefined;
 
-	await downloadFile(url, modelPath, 5, downloadOnProgress);
+	// A concurrent warmup/probe treats the final path as a ready model. Never
+	// expose in-progress bytes there, or replace a working model on failed refresh.
+	const temporaryPath = `${modelPath}.${randomUUID()}.download`;
+	try {
+		await downloadFile(url, temporaryPath, 5, downloadOnProgress, signal);
+		signal?.throwIfAborted();
+		await fs.promises.rename(temporaryPath, modelPath);
+	} finally {
+		safeUnlink(temporaryPath);
+	}
 	log.info(`${getLogPrefix()} Embedding model downloaded: ${modelPath}`);
 	return modelPath;
 }

@@ -8,7 +8,6 @@
  * Gated to the owner role and to the screen_time / tasks / health contexts.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -16,7 +15,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { hasRoleAccess, logger } from "@elizaos/core";
 import {
   type ActivityAppBreakdown,
   type ActivityForegroundApp,
@@ -222,7 +221,7 @@ export const activityProfileProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return { text: "", values: {}, data: {} };
     }
 

@@ -21,6 +21,18 @@ export interface VerifyCheckoutResult {
   alreadyApplied: boolean;
 }
 
+/**
+ * Server-computed auto top-up charge lines (#23020): credited base, affiliate
+ * markup, platform fee and the total the card was charged.
+ */
+export interface ChargeBreakdownDto {
+  creditedBaseUsd: string;
+  affiliateMarkupUsd: string;
+  platformFeeUsd: string;
+  totalChargeUsd: string;
+  surchargeApplies: boolean;
+}
+
 /** GET /api/invoices/:id — single invoice scoped to the caller's org. */
 export interface InvoiceDto {
   id: string;
@@ -38,6 +50,7 @@ export interface InvoiceDto {
   hosted_invoice_url: string | null;
   credits_added: string | number | null;
   metadata: Record<string, unknown> | null;
+  charge_breakdown?: ChargeBreakdownDto | null;
   created_at: DateLike;
   updated_at: DateLike;
   due_date: DateLike | null;
@@ -64,6 +77,7 @@ export interface InvoiceApiPayload {
   hostedInvoiceUrl: string | null;
   creditsAdded?: number;
   metadata: Record<string, unknown> | null;
+  chargeBreakdown?: ChargeBreakdownDto | null;
   createdAt: string;
   updatedAt: string;
   dueDate?: string;
@@ -128,6 +142,8 @@ export interface BillingUser {
   id: string;
   organization_id: string;
   wallet_address?: string | null;
+  /** Advisory only: the server re-checks billing-manager authority on every mutation. */
+  role?: string | null;
 }
 
 /** Envelope returned by GET /api/v1/user. */
@@ -137,6 +153,7 @@ export interface CurrentUserResponse {
     id: string;
     organization_id: string | null;
     wallet_address: string | null;
+    role?: string | null;
     organization: {
       credit_balance: string;
     } | null;

@@ -12,7 +12,7 @@
  * Everywhere else (localhost, desktop/mobile local agents, self-hosted remotes)
  * the same-origin agent needs no cloud auth, so probes fire immediately — no
  * auth round-trip is inserted into those hot paths. Consumers:
- * `notifications-boot`, `useWeather`, `useRuntimeMode`, `useSlashCommandController`.
+ * `notifications-boot`, `useWeather`, `useRuntimeMode`.
  */
 
 import { Capacitor } from "@capacitor/core";

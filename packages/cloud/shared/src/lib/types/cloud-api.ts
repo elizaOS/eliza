@@ -448,6 +448,8 @@ export interface SubscriptionResourceCeilingsDto {
   containers: number;
   storageGiB: number;
   apps: number;
+  /** Active user-created API keys; keys themselves are free. */
+  apiKeys: number;
 }
 
 export interface SubscriptionAllowanceDto {
@@ -470,35 +472,13 @@ export interface SubscriptionPlanDto {
   allowance: SubscriptionAllowanceDto;
   fundingClasses: readonly SubscriptionFundingClass[];
   rateLimits: SubscriptionRateEnvelopeDto;
-  /** Unavailable until the resource-enforcement policy is ratified. */
-  resourceCeilings: null;
+  /** Enforced resource ceilings; paid plans are never below the Free ceilings. */
+  resourceCeilings: SubscriptionResourceCeilingsDto;
 }
 
 export interface SubscriptionPlansDto {
   catalogVersion: SubscriptionCatalogVersion;
   plans: readonly SubscriptionPlanDto[];
-}
-
-export type SubscriptionPublicState = "active" | "grace" | "past_due" | "unpaid" | "canceled";
-
-/**
- * Public lifecycle projection for later subscription APIs. Provider object,
- * product, price, invoice, and payment identifiers never cross this boundary.
- */
-export interface SubscriptionDto {
-  catalogVersion: SubscriptionCatalogVersion;
-  planKey: SubscriptionPlanKey;
-  state: SubscriptionPublicState;
-  currentPeriodStartsAt: IsoDateString;
-  currentPeriodEndsAt: IsoDateString;
-  cancelAtPeriodEnd: boolean;
-  pendingPlanKey: SubscriptionPlanKey | null;
-  allowanceGrantedUsd: string;
-  allowanceRemainingUsd: string;
-  allowanceExpiresAt: IsoDateString;
-  rateLimits: SubscriptionRateEnvelopeDto;
-  /** Unavailable (`null`) until the resource-enforcement policy is ratified. */
-  resourceCeilings: SubscriptionResourceCeilingsDto | null;
 }
 
 // Transport mirror of the DB `AgentSandboxStatus` in

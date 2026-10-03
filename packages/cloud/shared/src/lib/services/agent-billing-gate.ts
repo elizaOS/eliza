@@ -5,9 +5,10 @@
  * allowing agent creation, provisioning, or resume.
  */
 
-import { organizationsRepository } from "../../db/repositories";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
+import { readAgentFundingAccount } from "./agent-funding-account";
+import { BillingHoldActiveError, billingHoldService } from "./billing-hold";
 import {
   readWelcomeBonusWithheldSettings,
   type SignupGrantWithheldReason,
@@ -17,6 +18,10 @@ export interface CreditGateResult {
   allowed: boolean;
   balance: number;
   error?: string;
+  /** Set when an underfunding payment reversal holds paid admission (#22930). */
+  paymentReversalHold?: true;
+  /** USD still owed on the reversal shortfall while {@link paymentReversalHold} is set. */
+  paymentReversalOutstandingUsd?: string;
   /**
    * Set only for organizations carrying historical welcome-credit withholding
    * metadata. New accounts start at zero and never write this legacy state.
@@ -91,7 +96,7 @@ async function runCreditGate(
   insufficientMessage: (balance: number) => string,
 ): Promise<CreditGateResult> {
   try {
-    const org = await organizationsRepository.findById(organizationId);
+    const org = await readAgentFundingAccount(organizationId);
     if (!org) {
       return {
         allowed: false,
@@ -100,7 +105,23 @@ async function runCreditGate(
       };
     }
 
-    const balance = parseGateCreditBalance(org.credit_balance);
+    const balance =
+      parseGateCreditBalance(org.credit_balance) +
+      parseGateCreditBalance(org.eligible_subscription_allowance);
+    if (!Number.isFinite(balance)) throw new CorruptCreditBalanceError(balance);
+
+    // An underfunding refund or dispute holds paid admission regardless of
+    // subscription allowance until repayment or reinstatement clears it (#22930).
+    const hold = await billingHoldService.getState(organizationId);
+    if (hold.status === "held") {
+      return {
+        allowed: false,
+        balance,
+        paymentReversalHold: true,
+        paymentReversalOutstandingUsd: hold.outstandingUsd,
+        error: new BillingHoldActiveError(organizationId, hold.outstandingUsd).message,
+      };
+    }
 
     if (balance < minimumBalance) {
       // A successful credit transaction removes this marker atomically with
@@ -122,6 +143,7 @@ async function runCreditGate(
 
     return { allowed: true, balance };
   } catch (error) {
+    // error-policy:J1 Funding authority failures deny admission at the billing boundary.
     if (error instanceof CorruptCreditBalanceError) {
       // error-policy:J1 — corrupt stored money value: deny, surface for repair.
       logger.error("[agent-billing-gate] Corrupt credit_balance — failing closed", {

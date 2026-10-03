@@ -6,7 +6,7 @@
  * skipped/terminal states. The harness is a real AgentRuntime with the
  * personal-assistant schema migrated into PGlite — no mocked repository.
  */
-import type { LifeOpsDefinitionRecord } from "@elizaos/shared";
+import { type LifeOpsDefinitionRecord } from "@elizaos/core/contracts/personal-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

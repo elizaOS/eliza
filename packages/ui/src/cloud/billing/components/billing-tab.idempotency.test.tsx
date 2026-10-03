@@ -768,7 +768,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     await submitAmount(actor, "0");
 
     await waitFor(() => {
-      expect(screen.getByText(/Minimum amount is \$1/i)).toBeTruthy();
+      expect(screen.getByText(/Minimum amount is \$5/i)).toBeTruthy();
     });
     expect(checkoutCalls()).toHaveLength(0);
   });
@@ -778,7 +778,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     renderBillingTab();
     await screen.findAllByTestId("invoice-row");
 
-    submitFormAmount("1.001");
+    submitFormAmount("10.001");
 
     expect(
       await screen.findByText("Amount must use exact whole cents"),

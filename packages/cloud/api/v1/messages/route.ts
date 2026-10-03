@@ -29,6 +29,12 @@ import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
+import {
+  type FinishedStepUsageSource,
+  firstNumber,
+  modelNotAvailableMessage,
+  summarizeFinishedStepUsage,
+} from "@/api-app/lib/inference-usage";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -67,8 +73,11 @@ import {
   estimateInputTokens,
   InsufficientCreditsError,
   normalizeUsage,
-  recordUsageAnalytics,
 } from "@/lib/services/ai-billing";
+import {
+  type RecordSettledInferenceBillingInput,
+  recordSettledInferenceBilling,
+} from "@/lib/services/ai-billing-settled";
 import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
@@ -87,6 +96,7 @@ import type {
   CreditReservation,
 } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
+import { isInferenceAdmissionGateWarmingError } from "@/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
@@ -522,14 +532,22 @@ function anthropicError(
   );
 }
 
-/**
- * Client-facing message for an unresolvable model. Mirrors the
- * /v1/chat/completions boundary (#13913): when `getLanguageModel` /
- * provider resolution raises a configuration error, the caller must see a clean, model-scoped
- * error — never the internal provider/gateway config detail.
- */
-function modelNotAvailableMessage(model: string): string {
-  return `model '${model}' is not available on this deployment`;
+/** A post-settlement audit failure must not re-enter credit settlement. */
+async function recordMessagesBillingLedgerRow(
+  input: RecordSettledInferenceBillingInput,
+): Promise<void> {
+  try {
+    await recordSettledInferenceBilling(input);
+  } catch (error) {
+    // error-policy:J7 Preserve the already settled charge and delivered response;
+    // report a failed ledger receipt without claiming that bookkeeping succeeded.
+    logger.error("[Messages API] billing ledger record failed", {
+      requestId: input.context.requestId,
+      organizationId: input.context.organizationId,
+      idempotencyKey: input.idempotencyKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 const app = new Hono<AppEnv>();
@@ -715,6 +733,7 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+          apiKeyId: apiKey?.id,
         },
       );
     } catch (error) {
@@ -1185,7 +1204,9 @@ app.post("/", async (c) => {
         return attachPreforwardTelemetry(
           anthropicError(
             "api_error",
-            "Inference admission is temporarily unavailable. Retry shortly.",
+            isInferenceAdmissionGateWarmingError(error)
+              ? "Billing authorization is warming. Retry shortly."
+              : "Inference admission is temporarily unavailable. Retry shortly.",
             503,
           ),
         );
@@ -1336,20 +1357,24 @@ async function handleNonStream(
           result.usage,
           billingReservation,
         );
-        await settleReservation(billing.totalCost);
+        const reconciliation = await settleReservation(billing.totalCost);
 
-        await recordUsageAnalytics(
-          {
+        await recordMessagesBillingLedgerRow({
+          context: {
             organizationId: user.organization_id,
             userId: user.id,
             apiKeyId: apiKey?.id,
             model,
             provider,
             billingSource,
+            affiliateCode,
+            requestId,
           },
           billing,
-          { type: "chat", content: result.text },
-        );
+          reconciliation,
+          idempotencyKey: requestId,
+          analytics: { type: "chat", content: result.text },
+        });
 
         logger.info("[Messages API] Non-streaming complete", {
           durationMs: Date.now() - startTime,
@@ -1446,27 +1471,6 @@ async function handleNonStream(
 }
 
 /**
- * The abort-settlement helpers only read `usage` off the SDK's finished steps.
- * `StepResult` is invariant in its tools generic, so this structural view lets
- * the streamText callback's concrete `StepResult<convertedTools>[]` flow in
- * without a cast (`usage` itself does not depend on the tools generic).
- */
-type FinishedStepUsageSource = {
-  readonly usage: StepResult<ToolSet>["usage"];
-};
-
-function firstNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return undefined;
-}
-
-/**
  * True when the SDK's finish usage carries at least one provider-reported
  * token count (an explicit zero counts as reported). Mirrors the
  * chat-completions `hasReportedUsageTokens` guard so a stream that finished
@@ -1490,58 +1494,6 @@ function hasReportedFinishUsage(usage: unknown): boolean {
       record.totalTokens,
     ) !== undefined
   );
-}
-
-function summarizeFinishedStepUsage(
-  steps: readonly FinishedStepUsageSource[],
-): AIUsage | null {
-  let sawUsage = false;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let totalTokens = 0;
-  let cacheReadInputTokens = 0;
-  let cacheWriteInputTokens = 0;
-
-  for (const step of steps) {
-    const usage = step.usage;
-    const stepInputTokens = firstNumber(usage.inputTokens) ?? 0;
-    const stepOutputTokens = firstNumber(usage.outputTokens) ?? 0;
-    const stepTotalTokens =
-      firstNumber(usage.totalTokens) ?? stepInputTokens + stepOutputTokens;
-    const stepCacheReadTokens =
-      firstNumber(
-        usage.inputTokenDetails?.cacheReadTokens,
-        usage.cachedInputTokens,
-      ) ?? 0;
-    const stepCacheWriteTokens =
-      firstNumber(usage.inputTokenDetails?.cacheWriteTokens) ?? 0;
-
-    if (
-      stepInputTokens > 0 ||
-      stepOutputTokens > 0 ||
-      stepTotalTokens > 0 ||
-      stepCacheReadTokens > 0 ||
-      stepCacheWriteTokens > 0
-    ) {
-      sawUsage = true;
-    }
-
-    inputTokens += stepInputTokens;
-    outputTokens += stepOutputTokens;
-    totalTokens += stepTotalTokens;
-    cacheReadInputTokens += stepCacheReadTokens;
-    cacheWriteInputTokens += stepCacheWriteTokens;
-  }
-
-  if (!sawUsage) return null;
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    cacheReadInputTokens,
-    cacheWriteInputTokens,
-  };
 }
 
 /**
@@ -1615,23 +1567,27 @@ async function settleStreamingAbortReservation(params: {
     );
     const reconciliation = await params.settleReservation(billing.totalCost);
 
-    await recordUsageAnalytics(
-      {
+    await recordMessagesBillingLedgerRow({
+      context: {
         organizationId: params.user.organization_id,
         userId: params.user.id,
         apiKeyId: params.apiKey?.id,
         model: params.model,
         provider: params.provider,
         billingSource: params.billingSource,
+        affiliateCode: params.affiliateCode,
+        requestId: params.requestId,
       },
       billing,
-      {
+      reconciliation,
+      idempotencyKey: params.requestId,
+      analytics: {
         type: "chat",
         isSuccessful: false,
         errorMessage: "client_aborted_stream",
         content: params.deliveredText,
       },
-    );
+    });
 
     logger.info(
       "[Messages API] Stream aborted; reservation partially settled",
@@ -1823,18 +1779,22 @@ async function handleStream(
           );
           const reconciliation = await settleReservation(billing.totalCost);
 
-          await recordUsageAnalytics(
-            {
+          await recordMessagesBillingLedgerRow({
+            context: {
               organizationId: user.organization_id,
               userId: user.id,
               apiKeyId: apiKey?.id,
               model,
               provider,
               billingSource,
+              affiliateCode,
+              requestId,
             },
             billing,
-            { type: "chat", content: text },
-          );
+            reconciliation,
+            idempotencyKey: requestId,
+            analytics: { type: "chat", content: text },
+          });
 
           logger.info("[Messages API] Streaming complete", {
             durationMs: Date.now() - startTime,
