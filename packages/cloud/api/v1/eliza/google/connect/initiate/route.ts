@@ -49,6 +49,7 @@ app.post("/", async (c) => {
       try {
         bodyValue = JSON.parse(rawBody);
       } catch {
+        // error-policy:J3 malformed JSON is invalid request input.
         return c.json(
           {
             error: "Invalid Google connector request: body is not valid JSON.",

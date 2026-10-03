@@ -49,16 +49,12 @@ mock.module("@/lib/services/agent-google-connector", () => ({
 
 const { default: initiateRoute } = await import("./route");
 
-function mounted<E extends Parameters<typeof Hono>[0]>(
-  route: Hono<E>,
-  path: string,
-): Hono {
-  return new Hono<E>().route(path, route);
-}
+const app = new Hono().route(
+  "/api/v1/eliza/google/connect/initiate",
+  initiateRoute,
+);
 
-const app = mounted(initiateRoute, "/api/v1/eliza/google/connect/initiate");
-
-function post(body: string) {
+async function post(body: string): Promise<Response> {
   return app.request("/api/v1/eliza/google/connect/initiate", {
     method: "POST",
     headers: { "content-type": "application/json" },
