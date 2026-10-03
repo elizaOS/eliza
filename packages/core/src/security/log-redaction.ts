@@ -120,11 +120,16 @@ const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
  * a known token prefix — no entropy heuristics — so ordinary prose does not
  * false-positive, while credentials interpolated into free text are caught.
  */
-export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
+/** Broad assignment detection for runtime logs; source reviewers classify literals separately. */
+export const SENSITIVE_ASSIGNMENT_PATTERNS: readonly string[] = [
 	// Named credential assignments are case-insensitive; avoid broad suffix matches on ordinary words.
 	String.raw`/\b(?:password|passwd|passphrase|mnemonic|seed|credential|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bot[_-]?token|session[_-]?key|private[_-]?key|client[_-]?secret|seed[_-]?phrase)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/gi`,
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
 	String.raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/g`,
+];
+
+export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
+	...SENSITIVE_ASSIGNMENT_PATTERNS,
 	// JSON fields.
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
 	// Quoted credential keys with arbitrary naming — a closing quote sits where
