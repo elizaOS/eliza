@@ -17,7 +17,10 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "android/build.gradle",
+    "android/src/main",
+    "android/README.md"
   ],
   "engines": {
     "node": ">=24.0.0"
