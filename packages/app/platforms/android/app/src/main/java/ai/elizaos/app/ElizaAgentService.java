@@ -453,6 +453,29 @@ public class ElizaAgentService extends Service {
         return payload;
     }
 
+    /** Closes this transport only; committed runtime effects are not rolled back. */
+    public static final class LocalStreamHandle {
+        private LocalSocket socket;
+        private boolean closed;
+        public synchronized void cancel() {
+            closed = true;
+            // close alone need not wake a read blocked on the Unix socket's open
+            // file description. Shutdown both directions before releasing it.
+            if (socket != null) {
+                try { socket.shutdownInput(); } catch (IOException ignored) { }
+                try { socket.shutdownOutput(); } catch (IOException ignored) { }
+                closeQuietly(socket);
+                socket = null;
+            }
+        }
+        private synchronized void attach(LocalSocket value) throws IOException {
+            if (closed) { closeQuietly(value); throw new IOException("Stream transport closed"); }
+            socket = value;
+        }
+        private synchronized void check() throws IOException {
+            if (closed) throw new IOException("Stream transport closed");
+        }
+    }
     /**
      * Streaming variant of {@link #requestLocalAgent}. Where that returns one
      * buffered result, this sends an {@code http_request_stream} frame and reads
@@ -462,16 +485,19 @@ public class ElizaAgentService extends Service {
      *   {"type":"chunk","dataBase64":".."}                              (per frame)
      *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
      *
-     * Single attempt by design: a connect failure emits a terminal error event
-     * and the WebView falls back to the buffered {@link #requestLocalAgent}
-     * (which carries the cold-load connect retry), so non-idempotent POSTs are
-     * never replayed here. Runs on the caller's thread (AgentPlugin spawns one).
+     * Connect retries happen only before dispatch. A dispatched request is never
+     * replayed here; cancellation and premature EOF report an uncertain outcome.
+     * Runs on the caller's thread (AgentPlugin spawns one).
      */
     public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
+        requestLocalAgentStream(requestJson, onEvent, new LocalStreamHandle());
+    }
+    public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent, LocalStreamHandle handle) {
         try {
             LocalAgentRequest req = parseLocalAgentRequest(requestJson);
             JSONObject payload = buildRequestPayload(req);
-            streamOverSocket(payload, req.timeoutMs, onEvent);
+            handle.check();
+            streamOverSocket(payload, req.timeoutMs, onEvent, handle);
         } catch (Exception error) {
             emitStreamComplete(onEvent, error.getMessage() == null ? "Local agent stream failed" : error.getMessage());
         }
@@ -488,7 +514,7 @@ public class ElizaAgentService extends Service {
     private static void streamOverSocket(
         JSONObject payload,
         int timeoutMs,
-        java.util.function.Consumer<String> onEvent
+        java.util.function.Consumer<String> onEvent, LocalStreamHandle handle
     ) throws IOException, JSONException {
         JSONObject frame = new JSONObject()
             .put("id", nextFrameId())
@@ -497,8 +523,9 @@ public class ElizaAgentService extends Service {
             .put("payload", payload);
 
         long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
-        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
+        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs, handle);
         try {
+            handle.attach(socket);
             writeFrameLine(socket.getOutputStream(), frame);
             InputStream in = socket.getInputStream();
             for (
@@ -532,8 +559,8 @@ public class ElizaAgentService extends Service {
                     return;
                 }
             }
-            // Socket closed without a terminal frame — treat as completion.
-            emitStreamComplete(onEvent, null);
+            // Transport EOF is not proof of completed runtime work.
+            emitStreamComplete(onEvent, "Stream ended without terminal frame; outcome unknown");
         } finally {
             closeQuietly(socket);
         }
@@ -610,14 +637,20 @@ public class ElizaAgentService extends Service {
      * connected {@link LocalSocket}; the caller owns closing it.
      */
     private static LocalSocket connectLocalAgentSocket(long deadlineElapsedMs) throws IOException {
+        return connectLocalAgentSocket(deadlineElapsedMs, null);
+    }
+    private static LocalSocket connectLocalAgentSocket(long deadlineElapsedMs, LocalStreamHandle handle) throws IOException {
         final int connectRetries = 15;
         IOException lastError = null;
         for (int attempt = 0; attempt <= connectRetries; attempt++) {
+            if (handle != null) handle.check();
             remainingSocketTimeout(deadlineElapsedMs);
             LocalSocket socket = new LocalSocket();
             try {
+                if (handle != null) handle.attach(socket);
                 socket.connect(new LocalSocketAddress(
                     LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+                requireTrustedLocalAgentPeer(socket);
                 return socket;
             } catch (IOException connectError) {
                 closeQuietly(socket);
@@ -630,7 +663,15 @@ public class ElizaAgentService extends Service {
                 }
                 long retryDelayMs = Math.min(250L * (attempt + 1), remainingMs);
                 try {
-                    Thread.sleep(retryDelayMs);
+                    if (handle == null) Thread.sleep(retryDelayMs);
+                    else {
+                        long until = SystemClock.elapsedRealtime() + retryDelayMs;
+                        while (SystemClock.elapsedRealtime() < until) {
+                            handle.check();
+                            Thread.sleep(Math.min(50L, Math.max(1L, until - SystemClock.elapsedRealtime())));
+                        }
+                        handle.check();
+                    }
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw lastError;
@@ -638,6 +679,18 @@ public class ElizaAgentService extends Service {
             }
         }
         throw lastError != null ? lastError : new IOException("local agent socket unreachable");
+    }
+
+    /** Authenticate the kernel-reported peer before writing any bearer/body bytes. */
+    static void requireTrustedLocalAgentPeer(LocalSocket socket) {
+        try {
+            if (socket.getPeerCredentials().getUid() == android.os.Process.myUid()) return;
+        } catch (IOException unavailable) {
+            // An unverifiable peer must never receive a request or trigger POST fallback.
+        }
+        closeQuietly(socket);
+        // Deliberately not IOException: connect retry must not retry a rejected peer.
+        throw new SecurityException("Local agent peer identity rejected");
     }
 
     private static int remainingSocketTimeout(long deadlineElapsedMs) throws SocketTimeoutException {
@@ -3451,8 +3504,9 @@ public class ElizaAgentService extends Service {
         try {
             socket.connect(new LocalSocketAddress(
                 LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+            requireTrustedLocalAgentPeer(socket);
             return true;
-        } catch (IOException ignored) {
+        } catch (IOException | SecurityException ignored) {
             return false;
         } finally {
             closeQuietly(socket);
