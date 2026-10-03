@@ -1966,7 +1966,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return this.withMemoryMutationLock(async () => {
-      const threshold = params.match_threshold ?? 0.5;
+      const requestedThreshold = params.match_threshold;
+      // SQL treats an absent or zero threshold as "no similarity floor"
+      // (memory-search-threshold-postfilter). Defaulting the omission to 0.5
+      // dropped eligible local matches the Postgres path returns.
+      const threshold =
+        typeof requestedThreshold === "number" &&
+        Number.isFinite(requestedThreshold) &&
+        requestedThreshold !== 0
+          ? requestedThreshold
+          : Number.NEGATIVE_INFINITY;
       // An absent count/limit means the caller asked for the COMPLETE eligible
       // result, not a default page: silently capping it would drop eligible
       // matches without any signal to the caller.
