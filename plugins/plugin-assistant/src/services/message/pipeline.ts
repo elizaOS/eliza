@@ -965,7 +965,16 @@ export async function runV5MessageRuntimeStage1(
     ) {
       messageHandler.plan.candidateActions =
         directPlannerInference.kind === "owner-reads"
-          ? directPlannerCandidateActions
+          ? uniqueActionNames([
+              ...getMessageHandlerCandidateActions(messageHandler).filter(
+                (name) =>
+                  (name === "VIEWS" || name === "VIEWS_SHOW") &&
+                  responseHandlerEvaluation.candidateActionsAddedByEvaluators.includes(
+                    name,
+                  ),
+              ),
+              ...directPlannerCandidateActions,
+            ])
           : uniqueActionNames([
               ...getMessageHandlerCandidateActions(messageHandler),
               ...directPlannerCandidateActions,

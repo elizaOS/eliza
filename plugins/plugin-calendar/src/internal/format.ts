@@ -175,7 +175,7 @@ export function formatNextEventContext(
 ): string {
   if (!context.event) {
     if (context.readScope?.exhaustive === false) {
-      return "No upcoming event was found in the checked calendar window. Its end is exclusive. This bounded search does not establish that the calendar is clear.";
+      return `No upcoming event was found in the checked connected calendar window from ${context.readScope.timeMin} to ${context.readScope.timeMax}. Its end is exclusive. Checked connected sources: ${context.calendarSources ? JSON.stringify(context.calendarSources.map((source) => source.summary)) : "(not reported)"}. This bounded, non-exhaustive search does not establish that the calendar is clear. Report absence only in these checked sources and this window; do not generalize to other calendars or events outside these bounds.`;
     }
     return "No upcoming event was found in the checked calendar window.";
   }

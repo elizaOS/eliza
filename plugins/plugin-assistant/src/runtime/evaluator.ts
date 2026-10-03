@@ -1322,11 +1322,17 @@ export function parseEvaluatorOutput(
     };
   }
   const decision = normalizeEvaluatorRoute(parsed.decision ?? parsed.route);
+  const incompleteTerminalCoverage =
+    decision === "FINISH" &&
+    Array.isArray(parsed.outcomeCoverage) &&
+    parsed.outcomeCoverage.some((entry) => entry.status !== "completed");
   return {
-    success: parsed.success === true,
-    ...(typeof parsed.requestFullyCovered === "boolean"
-      ? { requestFullyCovered: parsed.requestFullyCovered }
-      : {}),
+    success: parsed.success === true && !incompleteTerminalCoverage,
+    ...(incompleteTerminalCoverage
+      ? { requestFullyCovered: false }
+      : typeof parsed.requestFullyCovered === "boolean"
+        ? { requestFullyCovered: parsed.requestFullyCovered }
+        : {}),
     ...(Array.isArray(parsed.outcomeCoverage)
       ? {
           outcomeCoverage:
