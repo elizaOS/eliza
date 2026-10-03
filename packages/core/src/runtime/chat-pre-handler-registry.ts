@@ -23,6 +23,10 @@ export class ChatPreHandlerRegistry {
 		for (const handler of handlers) this.register(handler);
 	}
 
+	has(id: string): boolean {
+		return this.byId.has(id);
+	}
+
 	unregister(id: string): void {
 		this.byId.delete(id);
 	}
