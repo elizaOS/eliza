@@ -249,8 +249,7 @@ it("persists a routine fired with no conversation into the owner's conversation 
     const unmappedBeforeReplay = await runtime.getMemoryById(messageId);
     const unmappedReplay = await dispatcher.dispatch(replayRecord);
     expect(unmappedReplay?.ok).toBe(true);
-    if (!unmappedReplay?.ok)
-      throw new Error("Legacy replay failed");
+    if (!unmappedReplay?.ok) throw new Error("Legacy replay failed");
     expect(unmappedReplay.metadata?.ownerChatConversationId).toBeUndefined();
     expect(await runtime.getMemoryById(messageId)).toEqual(
       unmappedBeforeReplay,
