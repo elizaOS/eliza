@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ChannelType,
+  compareMemoryIds,
   type Memory,
   MemoryType,
   ROLE_WRITE_AUDIT_LOG_TYPE,
@@ -674,6 +675,39 @@ describe("durable SQLite agent adapter", () => {
         embedding: [0, 1, 0],
       }),
     ).toBe(false);
+  });
+
+  it("pages same-millisecond logs in UUID order without repeating a row", async () => {
+    const adapter = await open();
+    const storage = await adapter.getConnection();
+    const createdAt = new Date("2026-08-20T16:00:00.000Z");
+    const lowerId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+    const upperId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID;
+    // Storage lists records by ascending id. A time-only sort keeps that
+    // order, so the lower id would occupy the first page.
+    for (const logId of [lowerId, upperId]) {
+      await storage.set("logs", logId, {
+        id: logId,
+        entityId,
+        roomId,
+        type: "export-page",
+        body: { logId },
+        createdAt,
+      });
+    }
+    const first = await adapter.getLogs({
+      type: "export-page",
+      limit: 1,
+      offset: 0,
+    });
+    const second = await adapter.getLogs({
+      type: "export-page",
+      limit: 1,
+      offset: 1,
+    });
+    expect(first.map((log) => log.id)).toEqual([upperId]);
+    expect(second.map((log) => log.id)).toEqual([lowerId]);
+    expect(compareMemoryIds(upperId, lowerId)).toBeGreaterThan(0);
   });
 
   it("persists audit payloads and retention deletions without leaking between per-agent files", async () => {
