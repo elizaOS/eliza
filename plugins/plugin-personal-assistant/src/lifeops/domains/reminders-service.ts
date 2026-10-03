@@ -20,6 +20,7 @@ import {
 import {
   createReminderPresentation,
   ElizaError,
+  extractUserText,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
@@ -30,6 +31,7 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
   ServiceType,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import type { LifeOpsScheduleMealLabel } from "@elizaos/core/contracts/personal-assistant";
 import {
@@ -1490,10 +1492,7 @@ export class RemindersDomain {
         .filter((memory) => memory.entityId === ownerEntityId)
         .map((memory) => {
           const createdAt = readMemoryCreatedAtMs(memory);
-          const text =
-            typeof memory.content.text === "string"
-              ? memory.content.text.trim()
-              : "";
+          const text = extractUserText(unwrapUserMessageText(memory));
           const roomId =
             typeof memory.roomId === "string" ? memory.roomId : null;
           return {

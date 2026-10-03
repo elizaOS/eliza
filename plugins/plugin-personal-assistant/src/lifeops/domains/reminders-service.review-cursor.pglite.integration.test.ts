@@ -1,6 +1,7 @@
 /** Durable owner-response review consumption against the real repository. */
 import {
   ChannelType,
+  hardenIncomingUserMessage,
   type Memory,
   TaskService,
   type UUID,
@@ -434,3 +435,50 @@ it.each(["done", "skip"])(
     expect(attempt.reviewStatus).toBe("resolved");
   },
 );
+
+it("vetoes stored externally wrapped done before semantic inference", async () => {
+  const message = { content: { text: "done", source: "discord" } } as Memory;
+  hardenIncomingUserMessage(message);
+  expect(message.content.text).not.toBe("done");
+  expect(message.content.metadata).toMatchObject({
+    userPayloadText: "done",
+    externalContentWrapped: true,
+  });
+  const f = await reviewFixture(
+    message.content.text as string,
+    message.content,
+  );
+  const judge = vi
+    .spyOn(service.remindersDomain, "classifyReminderOwnerResponseSemantically")
+    .mockResolvedValue({
+      decision: "explicit_resolution",
+      resolution: "completed",
+      snoozeRequest: null,
+      confidence: 0.95,
+      reason: "false wrapped completion",
+    });
+  const review = await service.reviewOwnerResponseAfterReminderAttempt({
+    subjectType: "owner",
+    attempt: f.attempt,
+    now: f.now,
+  });
+  expect(review.decision).toBe("unrelated");
+  expect(review.responseText).toBe("done");
+  expect(review.reason).toBe("standalone_resolution_not_allowed");
+  expect(judge).not.toHaveBeenCalled();
+  const [persisted] = await service.repository.listReminderAttempts(
+    fixture.runtime.agentId,
+    { ownerType: "occurrence", ownerId: f.occurrence.id },
+  );
+  expect(persisted.deliveryMetadata.reminderReviewRespondedAt).toBe(
+    review.respondedAt,
+  );
+  expect(
+    (
+      await service.repository.getOccurrence(
+        fixture.runtime.agentId,
+        f.occurrence.id,
+      )
+    )?.metadata.reminderAcknowledgedAt,
+  ).toBeUndefined();
+});
