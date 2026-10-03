@@ -841,7 +841,7 @@ export async function executeTriggerTask(
 
   let taskToPersist = task;
   let triggerToPersist = trigger;
-  if (options.source === "event") {
+  {
     const currentTask = await runtime.getTask(task.id);
     if (!currentTask) {
       const finishedAt = Date.now();
