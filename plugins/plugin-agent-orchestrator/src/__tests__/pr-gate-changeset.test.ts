@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { redactSensitiveText } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { reviewDiff } from "../services/diff-review-gate.js";
 import { capturePrGateChangeSet } from "../services/workspace-diff.js";
@@ -38,6 +39,41 @@ describe("capturePrGateChangeSet → reviewDiff (real git)", () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("distinguishes source expressions from literals while runtime logs stay redacted", async () => {
+    git("checkout", "-q", "-b", "credential-source");
+    const code = [
+      "this.apiKey = config.apiKey;",
+      "password === expected",
+      "secret => handler(secret)",
+      "const credential = await resolveCredential();",
+    ];
+    writeFileSync(join(dir, "credentials.ts"), `${code.join("\n")}\n`);
+    git("add", "-A");
+    git("commit", "-q", "-m", "read configured credential");
+    const clean = await capturePrGateChangeSet(dir, "main");
+    expect(clean).toBeDefined();
+    if (!clean) throw new Error("Expected complete source changeset");
+    expect(reviewDiff(clean).passed).toBe(true);
+    // Runtime output has no source-code authority and must still mask assignments.
+    expect(
+      redactSensitiveText("password=ordinary-value", { mode: "tools" }),
+    ).not.toContain("ordinary-value");
+    writeFileSync(
+      join(dir, "credentials.ts"),
+      'this.apiKey = "synthetic-fixture";\n',
+    );
+    git("add", "-A");
+    git("commit", "-q", "-m", "introduce credential literal");
+    const literal = await capturePrGateChangeSet(dir, "main");
+    expect(literal).toBeDefined();
+    if (!literal) throw new Error("Expected complete literal changeset");
+    expect(
+      reviewDiff(literal).blocking.some(
+        (finding) => finding.check === "secret",
+      ),
+    ).toBe(true);
   });
 
   it("captures only the feature branch's changes vs base", async () => {
