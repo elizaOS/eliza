@@ -2,6 +2,9 @@
  * Data hooks for the crypto terminal: the polled live market list, one asset's
  * price history, and the per-browser paper ledger and watchlist.
  *
+ * It also owns the persisted HUNT / SLEEP / OFF operating mode and the
+ * on-demand Solana token safety lookup.
+ *
  * Market reads go through the authenticated app client to the plugin's
  * read-only `/api/wallet/terminal/*` routes. Loading, error, and ready are
  * distinct states; a failed refresh keeps the last list visible but marks it
@@ -15,7 +18,14 @@ import type {
   WalletTerminalChartDays,
   WalletTerminalChartResponse,
   WalletTerminalMarketsResponse,
+  WalletTerminalTokenSafetyResponse,
 } from "../../contracts.ts";
+import {
+  changeOperatingMode,
+  type OperatingModeState,
+  parseOperatingModeState,
+  type TerminalOperatingMode,
+} from "./operating-mode.ts";
 import {
   type PaperLedger,
   type ParsedPaperLedger,
@@ -26,6 +36,7 @@ import {
 export const TERMINAL_MARKETS_POLL_MS = 60_000;
 export const PAPER_LEDGER_STORAGE_KEY = "eliza:wallet:paper-terminal:v1";
 export const WATCHLIST_STORAGE_KEY = "eliza:wallet:terminal-watchlist:v1";
+export const OPERATING_MODE_STORAGE_KEY = "eliza:wallet:terminal-mode:v1";
 const DEFAULT_WATCHLIST = ["bitcoin", "ethereum", "solana"];
 
 export type RemoteState<T> =
@@ -39,39 +50,63 @@ function describeError(error: unknown): string {
     : "Request failed";
 }
 
-export function useTerminalMarkets(): RemoteState<WalletTerminalMarketsResponse> {
-  const [state, setState] = useState<
-    RemoteState<WalletTerminalMarketsResponse>
-  >({ status: "loading" });
+/** Market list state; `idle` means nothing was requested yet (mode OFF). */
+export type TerminalMarketsState =
+  | RemoteState<WalletTerminalMarketsResponse>
+  | { status: "idle" };
+
+/**
+ * The live market list. With `autoRefresh` it loads at once and polls; without
+ * it (mode OFF) it makes no request until `refresh` is called.
+ */
+export function useTerminalMarkets(autoRefresh: boolean): {
+  state: TerminalMarketsState;
+  refresh: () => void;
+} {
+  const [state, setState] = useState<TerminalMarketsState>(
+    autoRefresh ? { status: "loading" } : { status: "idle" },
+  );
+  const mounted = useRef(true);
 
   useEffect(() => {
-    let active = true;
-    const load = () => {
-      client
-        .fetch<WalletTerminalMarketsResponse>("/api/wallet/terminal/markets")
-        .then((data) => {
-          if (active) setState({ status: "ready", data, refreshError: null });
-        })
-        .catch((error: unknown) => {
-          // error-policy:J4 the view renders a distinct unavailable state.
-          if (!active) return;
-          const message = describeError(error);
-          setState((previous) =>
-            previous.status === "ready"
-              ? { ...previous, refreshError: message }
-              : { status: "error", message },
-          );
-        });
-    };
-    load();
-    const timer = setInterval(load, TERMINAL_MARKETS_POLL_MS);
+    mounted.current = true;
     return () => {
-      active = false;
-      clearInterval(timer);
+      mounted.current = false;
     };
   }, []);
 
-  return state;
+  const refresh = useCallback(() => {
+    setState((previous) =>
+      previous.status === "idle" || previous.status === "error"
+        ? { status: "loading" }
+        : previous,
+    );
+    client
+      .fetch<WalletTerminalMarketsResponse>("/api/wallet/terminal/markets")
+      .then((data) => {
+        if (mounted.current)
+          setState({ status: "ready", data, refreshError: null });
+      })
+      .catch((error: unknown) => {
+        // error-policy:J4 the view renders a distinct unavailable state.
+        if (!mounted.current) return;
+        const message = describeError(error);
+        setState((previous) =>
+          previous.status === "ready"
+            ? { ...previous, refreshError: message }
+            : { status: "error", message },
+        );
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    refresh();
+    const timer = setInterval(refresh, TERMINAL_MARKETS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [autoRefresh, refresh]);
+
+  return { state, refresh };
 }
 
 export function useTerminalChart(
@@ -189,4 +224,78 @@ export function useWatchlist(): {
     });
   }, []);
   return { ids: useMemo(() => new Set(ids), [ids]), toggle };
+}
+
+export interface OperatingModeHandle extends OperatingModeState {
+  /** Set when the stored mode could not be read and SLEEP was restored. */
+  loadError: string | null;
+  change: (to: TerminalOperatingMode) => void;
+}
+
+export function useOperatingMode(): OperatingModeHandle {
+  const initial = useMemo(
+    () => parseOperatingModeState(readStorage(OPERATING_MODE_STORAGE_KEY)),
+    [],
+  );
+  const [state, setState] = useState<OperatingModeState>(initial.state);
+  const [loadError, setLoadError] = useState<string | null>(
+    initial.status === "invalid" ? initial.error : null,
+  );
+  const change = useCallback((to: TerminalOperatingMode) => {
+    setState((current) => {
+      const next = changeOperatingMode(current, to, Date.now());
+      if (next !== current) {
+        shellLocalStorage.setItem(
+          OPERATING_MODE_STORAGE_KEY,
+          JSON.stringify(next),
+        );
+      }
+      return next;
+    });
+    setLoadError(null);
+  }, []);
+  return { ...state, loadError, change };
+}
+
+export type TokenSafetyState =
+  | { status: "idle" }
+  | { status: "loading"; mint: string }
+  | { status: "error"; mint: string; message: string }
+  | { status: "ready"; data: WalletTerminalTokenSafetyResponse };
+
+/** On-demand GoPlus safety report for one Solana mint. */
+export function useTokenSafety(): {
+  state: TokenSafetyState;
+  check: (mint: string) => void;
+} {
+  const [state, setState] = useState<TokenSafetyState>({ status: "idle" });
+  const latest = useRef<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const check = useCallback((mint: string) => {
+    latest.current = mint;
+    setState({ status: "loading", mint });
+    const query = new URLSearchParams({ mint });
+    client
+      .fetch<WalletTerminalTokenSafetyResponse>(
+        `/api/wallet/terminal/token-safety?${query.toString()}`,
+      )
+      .then((data) => {
+        if (mounted.current && latest.current === mint)
+          setState({ status: "ready", data });
+      })
+      .catch((error: unknown) => {
+        // error-policy:J4 the panel renders a distinct unavailable state.
+        if (mounted.current && latest.current === mint)
+          setState({ status: "error", mint, message: describeError(error) });
+      });
+  }, []);
+
+  return { state, check };
 }

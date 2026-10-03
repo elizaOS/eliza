@@ -1,12 +1,15 @@
 /**
  * The crypto terminal: live market browsing, watchlist, per-asset price
- * history, a paper order ticket, and a paper portfolio, alongside the real
- * wallet dashboard.
+ * history, a paper order ticket, a paper portfolio, a Solana token safety
+ * check, and the HUNT / SLEEP / OFF operating mode, alongside the real wallet
+ * dashboard.
  *
  * Prices and history come from the plugin's read-only terminal routes and are
  * never fabricated: while they load or fail, the view says so and the order
  * ticket stays disabled. Every order here is a paper order applied to a local
- * practice ledger; the terminal never signs or submits a transaction. Real
+ * practice ledger; the terminal never signs or submits a transaction, in any
+ * mode. A mode changes only after the user confirms it, and OFF stops every
+ * automatic market request. Real
  * balances stay in {@link InventoryAppView}, which owns the wallet pipeline.
  */
 import {
@@ -22,13 +25,14 @@ import {
 } from "@elizaos/ui";
 import { Escape } from "@elizaos/ui/spatial";
 import { cn } from "@elizaos/ui/utils";
-import { ArrowLeft, Search, Star } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, ShieldCheck, Star } from "lucide-react";
 import * as React from "react";
 import { useId, useMemo, useState } from "react";
 import type {
   WalletTerminalChartDays,
   WalletTerminalMarket,
-  WalletTerminalMarketsResponse,
+  WalletTokenSafetySeverity,
+  WalletTokenSafetyVerdict,
 } from "../contracts.ts";
 import { InventoryAppView } from "./components/InventoryAppView.tsx";
 import {
@@ -36,6 +40,13 @@ import {
   formatTerminalUnits,
   formatTerminalUsd,
 } from "./terminal/format.ts";
+import {
+  OPERATING_MODES,
+  type OperatingModeChange,
+  pollsMarkets,
+  rankScoutCandidates,
+  type TerminalOperatingMode,
+} from "./terminal/operating-mode.ts";
 import { PriceChart } from "./terminal/PriceChart.tsx";
 import {
   availableCashUsd,
@@ -52,21 +63,29 @@ import {
 } from "./terminal/paper-ledger.ts";
 import {
   type PaperLedgerState,
-  type RemoteState,
+  type TerminalMarketsState,
+  useOperatingMode,
   usePaperLedger,
   useTerminalChart,
   useTerminalMarkets,
+  useTokenSafety,
   useWatchlist,
 } from "./terminal/terminal-data.ts";
 
 void React;
 
-type TerminalSection = "markets" | "watchlist" | "portfolio" | "wallet";
+type TerminalSection =
+  | "markets"
+  | "watchlist"
+  | "portfolio"
+  | "safety"
+  | "wallet";
 
 const SECTIONS: Array<{ value: TerminalSection; label: string }> = [
   { value: "markets", label: "Markets" },
   { value: "watchlist", label: "Watchlist" },
   { value: "portfolio", label: "Paper portfolio" },
+  { value: "safety", label: "Token safety" },
   { value: "wallet", label: "Wallet" },
 ];
 
@@ -112,21 +131,387 @@ function AssetMark({ market }: { market: WalletTerminalMarket }) {
 
 function MarketStatus({
   state,
+  mode,
+  onRefresh,
 }: {
-  state: RemoteState<WalletTerminalMarketsResponse>;
+  state: TerminalMarketsState;
+  mode: TerminalOperatingMode;
+  onRefresh: () => void;
 }) {
-  if (state.status !== "ready") return null;
-  const { data, refreshError } = state;
-  const stale = data.stale || refreshError !== null;
+  const off = mode === "off";
+  let text: string | null = null;
+  let warn = false;
+  if (state.status === "ready") {
+    const { data, refreshError } = state;
+    const updated = new Date(data.generatedAt).toLocaleTimeString();
+    warn = data.stale || refreshError !== null;
+    text = warn
+      ? `Prices may be outdated — last updated ${updated}`
+      : off
+        ? `Prices from ${data.source.providerName} as of ${updated} · automatic updates are off`
+        : `Live prices from ${data.source.providerName} · ${updated}`;
+  } else if (off && state.status === "idle") {
+    text = "Terminal is off. Automatic price updates are stopped.";
+  }
+  if (text === null && !off) return null;
   return (
-    <p
-      className={cn("text-xs", stale ? "text-warn" : "text-muted")}
-      data-testid="terminal-market-status"
+    <div className="flex flex-wrap items-center gap-2">
+      {text !== null ? (
+        <p
+          className={cn("text-xs", warn ? "text-warn" : "text-muted")}
+          data-testid="terminal-market-status"
+        >
+          {text}
+        </p>
+      ) : null}
+      {off ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRefresh}
+          disabled={state.status === "loading"}
+          data-testid="terminal-refresh-prices"
+        >
+          <RefreshCw className="size-3.5" /> Refresh prices
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+const MODE_LABEL: Record<TerminalOperatingMode, string> = {
+  hunt: "HUNT",
+  sleep: "SLEEP",
+  off: "OFF",
+};
+
+function ModeControl({
+  mode,
+  history,
+  loadError,
+  onChange,
+}: {
+  mode: TerminalOperatingMode;
+  history: OperatingModeChange[];
+  loadError: string | null;
+  onChange: (to: TerminalOperatingMode) => void;
+}) {
+  const [pending, setPending] = useState<TerminalOperatingMode | null>(null);
+  const pendingInfo = OPERATING_MODES.find((entry) => entry.value === pending);
+  const since = history[0];
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[0.68rem] font-medium uppercase tracking-[0.12em] text-muted">
+          Mode
+        </span>
+        <SegmentedControl
+          value={mode}
+          onValueChange={(next) => {
+            if (next !== mode) setPending(next);
+          }}
+          items={OPERATING_MODES.map((entry) => ({
+            value: entry.value,
+            label: entry.label,
+          }))}
+          aria-label="Operating mode"
+        />
+        <span className="text-xs text-muted" data-testid="terminal-mode-status">
+          {MODE_LABEL[mode]}
+          {since ? ` since ${new Date(since.at).toLocaleTimeString()}` : ""}
+        </span>
+      </div>
+      {loadError ? (
+        <p role="alert" className="text-xs text-warn">
+          {loadError}. The terminal restarted in SLEEP.
+        </p>
+      ) : null}
+      <Dialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) setPending(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Switch to {pending ? MODE_LABEL[pending] : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              {pendingInfo?.summary} No mode signs or sends a real trade.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPending(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (pending) onChange(pending);
+                setPending(null);
+              }}
+              data-testid="terminal-mode-confirm"
+            >
+              Switch to {pending ? MODE_LABEL[pending] : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ScoutPanel({
+  markets,
+  onOpen,
+}: {
+  markets: WalletTerminalMarket[];
+  onOpen: (id: string) => void;
+}) {
+  const picks = rankScoutCandidates(markets);
+  return (
+    <section
+      aria-labelledby="terminal-scout-title"
+      className="flex flex-col gap-2 rounded-md border border-accent/40 bg-accent-subtle/40 p-3"
+      data-testid="terminal-scout"
     >
-      {stale
-        ? `Prices may be outdated — last updated ${new Date(data.generatedAt).toLocaleTimeString()}`
-        : `Live prices from ${data.source.providerName} · ${new Date(data.generatedAt).toLocaleTimeString()}`}
-    </p>
+      <div className="flex items-center justify-between gap-2">
+        <h2
+          id="terminal-scout-title"
+          className="text-sm font-semibold text-txt"
+        >
+          Scout · biggest 24h moves
+        </h2>
+        <span className="text-[0.68rem] uppercase tracking-wide text-muted">
+          Review only
+        </span>
+      </div>
+      {picks.length === 0 ? (
+        <p className="text-xs text-muted">
+          Nothing in the live list moved more than 2% in 24 hours.
+        </p>
+      ) : (
+        <ul className="flex flex-wrap gap-2">
+          {picks.map((market) => (
+            <li key={market.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(market.id)}
+                className="rounded-md border border-border/70 bg-bg px-2.5 py-1.5 text-left text-xs hover:bg-bg-hover"
+                data-testid={`terminal-scout-${market.id}`}
+              >
+                <span className="font-medium text-txt">{market.symbol}</span>{" "}
+                <span className={changeTone(market.change24hPct)}>
+                  {formatTerminalChange(market.change24hPct)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs text-muted">
+        A big move is not a reason to buy. Check token safety and the chart,
+        then decide yourself.
+      </p>
+    </section>
+  );
+}
+
+const VERDICT_COPY: Record<
+  WalletTokenSafetyVerdict,
+  { label: string; tone: string; detail: string }
+> = {
+  avoid: {
+    label: "Avoid",
+    tone: "border-danger/50 bg-danger/10 text-danger",
+    detail: "At least one power can take, lock, or block your tokens.",
+  },
+  caution: {
+    label: "Caution",
+    tone: "border-warn/50 bg-warn/10 text-warn",
+    detail: "Some risks or unreported fields need a closer look.",
+  },
+  "no-major-flags": {
+    label: "No major flags",
+    tone: "border-ok/50 bg-ok/10 text-ok",
+    detail: "Nothing GoPlus reported stands out. That is not proof of safety.",
+  },
+};
+
+const SEVERITY_TONE: Record<WalletTokenSafetySeverity, string> = {
+  danger: "text-danger",
+  warn: "text-warn",
+  unknown: "text-muted",
+  ok: "text-ok",
+};
+
+const SEVERITY_LABEL: Record<WalletTokenSafetySeverity, string> = {
+  danger: "Danger",
+  warn: "Warning",
+  unknown: "Not reported",
+  ok: "OK",
+};
+
+const SOLANA_MINT_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+function TokenSafetyPanel() {
+  const [mint, setMint] = useState("");
+  const [touched, setTouched] = useState(false);
+  const { state, check } = useTokenSafety();
+  const inputId = useId();
+  const trimmed = mint.trim();
+  const valid = SOLANA_MINT_PATTERN.test(trimmed);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setTouched(true);
+          if (valid) check(trimmed);
+        }}
+      >
+        <label htmlFor={inputId} className="text-xs text-muted">
+          Solana token mint address
+        </label>
+        <div className="flex gap-2">
+          <Input
+            id={inputId}
+            value={mint}
+            onChange={(event) => setMint(event.target.value)}
+            placeholder="Paste a mint address"
+            autoComplete="off"
+            spellCheck={false}
+            data-testid="token-safety-mint"
+          />
+          <Button
+            type="submit"
+            disabled={state.status === "loading"}
+            data-testid="token-safety-check"
+          >
+            <ShieldCheck className="size-4" /> Check
+          </Button>
+        </div>
+        {touched && !valid ? (
+          <p role="alert" className="text-xs text-danger">
+            Enter a Solana mint address (32 to 44 base58 characters).
+          </p>
+        ) : null}
+      </form>
+      {state.status === "loading" ? (
+        <p role="status" className="text-sm text-muted">
+          Checking token safety…
+        </p>
+      ) : state.status === "error" ? (
+        <p
+          role="alert"
+          className="rounded-md border border-border/70 px-4 py-6 text-center text-sm text-muted"
+        >
+          Token safety report unavailable: {state.message}
+        </p>
+      ) : state.status === "ready" ? (
+        <section
+          aria-labelledby="token-safety-title"
+          className="flex flex-col gap-3"
+          data-testid="token-safety-report"
+        >
+          <div
+            className={cn(
+              "rounded-md border px-4 py-3",
+              VERDICT_COPY[state.data.verdict].tone,
+            )}
+          >
+            <h2 id="token-safety-title" className="text-base font-semibold">
+              {VERDICT_COPY[state.data.verdict].label}
+              {state.data.symbol ? ` · ${state.data.symbol}` : ""}
+            </h2>
+            <p className="text-xs text-txt">
+              {VERDICT_COPY[state.data.verdict].detail}
+            </p>
+          </div>
+          <ul className="divide-y divide-border/70 rounded-md border border-border/70">
+            {state.data.checks.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex items-start justify-between gap-3 px-3 py-2.5"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-txt">
+                    {entry.label}
+                  </span>
+                  <span className="text-xs text-muted">{entry.detail}</span>
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 text-xs font-medium",
+                    SEVERITY_TONE[entry.severity],
+                  )}
+                >
+                  {SEVERITY_LABEL[entry.severity]}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p
+            className={cn(
+              "text-xs",
+              state.data.stale ? "text-warn" : "text-muted",
+            )}
+          >
+            {state.data.stale
+              ? `Report may be outdated (${state.data.source.error ?? "refresh failed"}) — checked ${new Date(state.data.generatedAt).toLocaleString()}`
+              : `From ${state.data.source.providerName} · checked ${new Date(state.data.generatedAt).toLocaleString()}`}
+            {state.data.holderCount !== null
+              ? ` · ${state.data.holderCount.toLocaleString("en-US")} holders`
+              : ""}
+          </p>
+        </section>
+      ) : (
+        <p className="rounded-md border border-border/70 px-4 py-8 text-center text-sm text-muted">
+          Paste a Solana mint to check mint and freeze authority, Token-2022
+          extensions, holder concentration, and liquidity before you trade it.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ModeHistory({ history }: { history: OperatingModeChange[] }) {
+  return (
+    <section aria-labelledby="mode-history-title">
+      <h2
+        id="mode-history-title"
+        className="mb-2 text-sm font-semibold text-txt"
+      >
+        Mode history
+      </h2>
+      {history.length === 0 ? (
+        <p className="rounded-md border border-border/70 px-4 py-6 text-center text-sm text-muted">
+          The terminal has stayed in SLEEP. Mode changes you confirm are listed
+          here.
+        </p>
+      ) : (
+        <ul
+          className="divide-y divide-border/70 rounded-md border border-border/70"
+          data-testid="mode-history"
+        >
+          {history.map((change) => (
+            <li
+              key={`${change.at}-${change.to}`}
+              className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+            >
+              <span className="text-txt">
+                {MODE_LABEL[change.from]} → {MODE_LABEL[change.to]}
+              </span>
+              <span className="text-xs text-muted">
+                {new Date(change.at).toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -534,11 +919,13 @@ function PaperPortfolio({
   prices,
   marketsById,
   onOpen,
+  modeHistory,
 }: {
   paper: PaperLedgerState;
   prices: ReadonlyMap<string, number>;
   marketsById: ReadonlyMap<string, WalletTerminalMarket>;
   onOpen: (id: string) => void;
+  modeHistory: OperatingModeChange[];
 }) {
   const valuation = valuePaperLedger(paper.ledger, prices);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -694,6 +1081,7 @@ function PaperPortfolio({
           </ul>
         )}
       </section>
+      <ModeHistory history={modeHistory} />
       <Button
         variant="outline"
         size="sm"
@@ -735,7 +1123,10 @@ function PaperPortfolio({
 export function CryptoTerminalView() {
   const [section, setSection] = useState<TerminalSection>("markets");
   const [assetId, setAssetId] = useState<string | null>(null);
-  const marketsState = useTerminalMarkets();
+  const mode = useOperatingMode();
+  const { state: marketsState, refresh: refreshMarkets } = useTerminalMarkets(
+    pollsMarkets(mode.mode),
+  );
   const watchlist = useWatchlist();
   const markets =
     marketsState.status === "ready" ? marketsState.data.markets : null;
@@ -761,6 +1152,15 @@ export function CryptoTerminalView() {
   let body: React.ReactNode;
   if (section === "wallet") {
     body = <InventoryAppView />;
+  } else if (section === "safety") {
+    body = <TokenSafetyPanel />;
+  } else if (marketsState.status === "idle" && section !== "portfolio") {
+    body = (
+      <p className="rounded-md border border-border/70 px-4 py-8 text-center text-sm text-muted">
+        The terminal is off, so no prices have loaded. Refresh prices to trade
+        manually, or switch to SLEEP for live updates.
+      </p>
+    );
   } else if (marketsState.status === "loading") {
     body = (
       <p role="status" className="px-1 py-8 text-center text-sm text-muted">
@@ -797,18 +1197,24 @@ export function CryptoTerminalView() {
           setSection("markets");
           setAssetId(id);
         }}
+        modeHistory={mode.history}
       />
     );
   } else {
     body = (
-      <MarketList
-        key={section}
-        markets={markets ?? []}
-        watchlist={watchlist.ids}
-        onToggleWatch={watchlist.toggle}
-        onOpen={open}
-        watchOnly={section === "watchlist"}
-      />
+      <div className="flex flex-col gap-4">
+        {mode.mode === "hunt" && section === "markets" ? (
+          <ScoutPanel markets={markets ?? []} onOpen={open} />
+        ) : null}
+        <MarketList
+          key={section}
+          markets={markets ?? []}
+          watchlist={watchlist.ids}
+          onToggleWatch={watchlist.toggle}
+          onOpen={open}
+          watchOnly={section === "watchlist"}
+        />
+      </div>
     );
   }
 
@@ -841,7 +1247,19 @@ export function CryptoTerminalView() {
             aria-label="Terminal sections"
             className="max-w-full overflow-x-auto"
           />
-          {section !== "wallet" ? <MarketStatus state={marketsState} /> : null}
+          <ModeControl
+            mode={mode.mode}
+            history={mode.history}
+            loadError={mode.loadError}
+            onChange={mode.change}
+          />
+          {section !== "wallet" && section !== "safety" ? (
+            <MarketStatus
+              state={marketsState}
+              mode={mode.mode}
+              onRefresh={refreshMarkets}
+            />
+          ) : null}
         </header>
         <div
           className={cn(

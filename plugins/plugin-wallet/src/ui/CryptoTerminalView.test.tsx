@@ -5,7 +5,9 @@
  * payloads. Only the shared `@elizaos/ui` primitives are replaced with plain
  * DOM stand-ins, and the separately tested wallet dashboard with a marker.
  * Covers loading, live list, search, watchlist, chart, paper market and limit
- * orders, reservations, persistence, and the unavailable-data state.
+ * orders, reservations, persistence, the unavailable-data state, confirmed
+ * HUNT / SLEEP / OFF mode changes, and the GoPlus token safety check (served
+ * by the real token safety route over a recorded payload).
  */
 import { readFileSync } from "node:fs";
 import type http from "node:http";
@@ -25,6 +27,11 @@ import {
   __setWalletTerminalFetchForTests,
   handleWalletTerminalMarketRoute,
 } from "../routes/wallet-terminal-market-route";
+import {
+  __resetWalletTerminalTokenSafetyRouteForTests,
+  __setWalletTerminalTokenSafetyFetchForTests,
+  handleWalletTerminalTokenSafetyRoute,
+} from "../routes/wallet-terminal-token-safety-route";
 
 const routeClient = vi.hoisted(() => ({
   fetch: async (path: string): Promise<unknown> => {
@@ -108,7 +115,10 @@ vi.mock("./components/InventoryAppView.tsx", () => ({
 }));
 
 import { CryptoTerminalView } from "./CryptoTerminalView";
-import { PAPER_LEDGER_STORAGE_KEY } from "./terminal/terminal-data";
+import {
+  OPERATING_MODE_STORAGE_KEY,
+  PAPER_LEDGER_STORAGE_KEY,
+} from "./terminal/terminal-data";
 
 const recorded = JSON.parse(
   readFileSync(
@@ -120,7 +130,18 @@ const recorded = JSON.parse(
   ),
 ) as { coinGeckoMarkets: Array<Record<string, unknown>> };
 
+const goplus = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../routes/__fixtures__/goplus-solana-token-security.recorded.json",
+    ),
+    "utf8",
+  ),
+) as { mint: string; goplus: unknown };
+
 let upstreamDown = false;
+let routeCalls: string[] = [];
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -140,15 +161,23 @@ async function viaRoute(path: string): Promise<unknown> {
       if (typeof body === "string") this.body = body;
     },
   };
-  await handleWalletTerminalMarketRoute(
-    {
-      method: "GET",
-      url: path,
-      headers: {},
-      socket: { remoteAddress: "127.0.0.1" },
-    } as unknown as http.IncomingMessage,
+  routeCalls.push(path);
+  const req = {
+    method: "GET",
+    url: path,
+    headers: {},
+    socket: { remoteAddress: "127.0.0.1" },
+  } as unknown as http.IncomingMessage;
+  const handled = await handleWalletTerminalMarketRoute(
+    req,
     res as unknown as http.ServerResponse,
   );
+  if (!handled) {
+    await handleWalletTerminalTokenSafetyRoute(
+      req,
+      res as unknown as http.ServerResponse,
+    );
+  }
   const body = JSON.parse(res.body) as { error?: string };
   if (res.statusCode !== 200) {
     throw new Error(body.error ?? `HTTP ${res.statusCode}`);
@@ -158,7 +187,11 @@ async function viaRoute(path: string): Promise<unknown> {
 
 beforeEach(() => {
   upstreamDown = false;
+  routeCalls = [];
   routeClient.fetch = viaRoute;
+  __setWalletTerminalTokenSafetyFetchForTests(async () =>
+    jsonResponse(goplus.goplus),
+  );
   __setWalletTerminalFetchForTests(async (input) => {
     if (upstreamDown) return jsonResponse({}, 503);
     const href = String(input);
@@ -188,6 +221,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   __resetWalletTerminalMarketRouteForTests();
+  __resetWalletTerminalTokenSafetyRouteForTests();
 });
 
 async function openBitcoin() {
@@ -318,5 +352,87 @@ describe("CryptoTerminalView", () => {
     render(<CryptoTerminalView />);
     fireEvent.click(screen.getByRole("button", { name: "Wallet" }));
     expect(screen.getByTestId("wallet-rich-dashboard")).toBeTruthy();
+  });
+
+  it("switches mode only after confirmation and records the change", async () => {
+    render(<CryptoTerminalView />);
+    await screen.findByTestId("terminal-market-row-bitcoin");
+    expect(screen.getByTestId("terminal-mode-status").textContent).toBe(
+      "SLEEP",
+    );
+    expect(screen.queryByTestId("terminal-scout")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hunt" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toMatch(/No mode signs or sends a real trade/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.getByTestId("terminal-mode-status").textContent).toBe(
+      "SLEEP",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Hunt" }));
+    fireEvent.click(screen.getByTestId("terminal-mode-confirm"));
+    expect(screen.getByTestId("terminal-mode-status").textContent).toMatch(
+      /^HUNT since /,
+    );
+    expect(screen.getByTestId("terminal-scout")).toBeTruthy();
+    const saved = JSON.parse(
+      window.localStorage.getItem(OPERATING_MODE_STORAGE_KEY) ?? "null",
+    );
+    expect(saved.mode).toBe("hunt");
+    expect(saved.history[0]).toMatchObject({ from: "sleep", to: "hunt" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Paper portfolio" }));
+    expect(screen.getByTestId("mode-history").textContent).toContain(
+      "SLEEP → HUNT",
+    );
+  });
+
+  it("makes no market request in OFF until prices are refreshed", async () => {
+    window.localStorage.setItem(
+      OPERATING_MODE_STORAGE_KEY,
+      JSON.stringify({ mode: "off", history: [] }),
+    );
+    render(<CryptoTerminalView />);
+    expect(screen.getByTestId("terminal-market-status").textContent).toMatch(
+      /Terminal is off/,
+    );
+    await new Promise((settle) => setTimeout(settle, 20));
+    expect(routeCalls).toEqual([]);
+
+    fireEvent.click(screen.getByTestId("terminal-refresh-prices"));
+    await screen.findByTestId("terminal-market-row-bitcoin");
+    expect(routeCalls).toEqual(["/api/wallet/terminal/markets"]);
+    expect(screen.getByTestId("terminal-market-status").textContent).toMatch(
+      /automatic updates are off/,
+    );
+  });
+
+  it("checks a Solana mint and shows the GoPlus verdict and checks", async () => {
+    render(<CryptoTerminalView />);
+    fireEvent.click(screen.getByRole("button", { name: "Token safety" }));
+
+    fireEvent.change(screen.getByTestId("token-safety-mint"), {
+      target: { value: "not a mint" },
+    });
+    fireEvent.click(screen.getByTestId("token-safety-check"));
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /Enter a Solana mint address/,
+    );
+    expect(routeCalls.some((path) => path.includes("token-safety"))).toBe(
+      false,
+    );
+
+    fireEvent.change(screen.getByTestId("token-safety-mint"), {
+      target: { value: `  ${goplus.mint} ` },
+    });
+    fireEvent.click(screen.getByTestId("token-safety-check"));
+    const report = await screen.findByTestId("token-safety-report");
+    expect(report.textContent).toContain("Caution · Bonk");
+    expect(report.textContent).toMatch(/Top 10 holders own 38\.4%/);
+    expect(report.textContent).toContain("From GoPlus Security");
+    expect(routeCalls).toContain(
+      `/api/wallet/terminal/token-safety?mint=${goplus.mint}`,
+    );
   });
 });
