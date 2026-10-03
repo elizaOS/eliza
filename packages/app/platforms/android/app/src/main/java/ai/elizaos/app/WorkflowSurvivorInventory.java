@@ -111,7 +111,16 @@ final class WorkflowSurvivorInventory {
   // The full UID/start/executable identity is rechecked immediately before signaling.
   if(observePresent(target.pid,()->{Os.kill(target.pid,OsConstants.SIGTERM);return Boolean.TRUE;})==null)return;
   while(SystemClock.elapsedRealtime()<deadline){
-   Identity current=observePresent(target.pid,()->processIdentity(target.pid,deadline));if(current==null)return;
+   Identity current;
+   try {current=observePresent(target.pid,()->processIdentity(target.pid,deadline));}
+   catch(android.system.ErrnoException transition){
+    // SIGTERM can remove /proc/PID/exe before the process becomes terminal.
+    // Retry observation only: no additional signal and no success without proof.
+    if(transition.errno!=OsConstants.ENOENT)throw transition;
+    SystemClock.sleep(50);continue;
+   }
+   catch(FileNotFoundException transition){SystemClock.sleep(50);continue;}
+   if(current==null)return;
    check(target.key().equals(current.key()),"resident PID changed after signal");
    SystemClock.sleep(50);
   }
