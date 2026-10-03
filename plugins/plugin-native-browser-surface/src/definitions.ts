@@ -143,10 +143,7 @@ export interface BrowserDockState {
 
 export interface ElizaSurfaceManagerPlugin {
   /** Android: explicit navigation with a requested right helper pane. Dispatch is not proof of a split. */
-  openDockedBrowser(options: {
-    url: string;
-    panelWidthDp?: number;
-  }): Promise<{
+  openDockedBrowser(options: { url: string; panelWidthDp?: number }): Promise<{
     packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
     status: "dispatched";
   }>;
