@@ -1,5 +1,5 @@
 /**
- * Revokes only the first-party mobile credential authenticating this request.
+ * Revokes only the credential proven by the secret in this request.
  * The presented mobile-prefixed secret and authenticated database row must
  * agree on one exact identity; a response-loss retry can recover only that
  * credential's durable tombstone.
@@ -64,6 +64,18 @@ function selfRevocationAudit(c: AppContext) {
 
 app.delete("/", async (c) => {
   try {
+    const standardSecret = readSinglePresentedApiKey(c);
+    if (standardSecret && /^eliza_[0-9a-f]{64}$/.test(standardSecret)) {
+      const selfAudit = selfRevocationAudit(c);
+      const result = await apiKeysService.revokePresentedStandardCredential(
+        standardSecret,
+        selfAudit.write,
+      );
+      if (!result)
+        throw AuthenticationError("API key identity could not be proven");
+      await selfAudit.audit.publish();
+      return c.json({ success: true, ...result.receipt });
+    }
     let credential: Awaited<ReturnType<typeof requireApiKeyCredential>>;
     try {
       credential = await requireApiKeyCredential(c);
