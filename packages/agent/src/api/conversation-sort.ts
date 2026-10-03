@@ -1,3 +1,5 @@
+import { compareMemoryIds } from "@elizaos/core";
+
 /**
  * Total-order comparators used by the conversation HTTP routes to order
  * conversation summaries and message memories.
@@ -29,6 +31,8 @@ function finiteOrZero(value: number | undefined): number {
 /**
  * Orders conversations newest-updated first. An unparseable `updatedAt` sorts
  * as epoch 0 (oldest) rather than poisoning the comparison with `NaN`.
+ * Same-millisecond ties follow UUID order, higher id first, so the owner
+ * conversation picker and ambient delivery select the later chat.
  */
 export function compareConversationsByRecency(
   a: ConversationSortInput,
@@ -36,7 +40,7 @@ export function compareConversationsByRecency(
 ): number {
   const bVal = finiteOrZero(new Date(b.updatedAt).getTime());
   const aVal = finiteOrZero(new Date(a.updatedAt).getTime());
-  return bVal - aVal || a.id.localeCompare(b.id);
+  return bVal - aVal || compareMemoryIds(b.id, a.id);
 }
 
 /**
