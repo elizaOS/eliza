@@ -4136,6 +4136,13 @@ export class RemindersDomain {
           now: args.now,
         },
       );
+      if (
+        responseReview.classifierSource === "none" &&
+        responseReview.reason === "no_semantic_verdict"
+      ) {
+        // Preserve unknown evidence before due-review transitions or closure.
+        return null;
+      }
       const reviewTransition = decideReminderReviewTransition({
         reviewDue,
         ownerType: args.ownerType,

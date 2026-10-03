@@ -568,3 +568,154 @@ it("retries an unavailable semantic verdict without consuming it or later eviden
     respondedAt: new Date(f.message.createdAt ?? 0).toISOString(),
   });
 });
+
+it("keeps an unavailable due review open through processReminders and retries it after restart", async () => {
+  const isolated = await createLifeOpsTestRuntime({ withLLM: false });
+  await TaskService.stop(isolated.runtime);
+  const local = new LifeOpsService(isolated.runtime);
+  const network = vi
+    .spyOn(isolated.runtime, "useModel")
+    .mockRejectedValue(Error("No model network"));
+  try {
+    const attemptedAt = "2026-10-03T06:00:00.000Z";
+    const ownerId = local.ownerEntityId() as UUID;
+    const ownerRoom = crypto.randomUUID() as UUID;
+    const worldId = crypto.randomUUID() as UUID;
+    await isolated.runtime.ensureConnection({
+      entityId: ownerId,
+      roomId: ownerRoom,
+      worldId,
+      userName: "Owner",
+      name: "Owner",
+      source: "client_chat",
+      type: ChannelType.DM,
+    });
+    await isolated.runtime.ensureParticipantInRoom(
+      isolated.runtime.agentId,
+      ownerRoom,
+    );
+    const created = await local.createDefinition({
+      title: "Check final reminder notification",
+      kind: "habit",
+      timezone: "UTC",
+      cadence: { kind: "once", dueAt: attemptedAt },
+      metadata: {
+        ownerSurface: "OWNER_REMINDERS",
+        nativeProjection: "in_app_only",
+      },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    if (!created.reminderPlan) throw Error("Missing plan");
+    const [occurrence] = await local.repository.listOccurrencesForDefinition(
+      isolated.runtime.agentId,
+      created.definition.id,
+    );
+    const priorMetadata = {
+      title: created.definition.title,
+      lifecycle: "plan",
+      reminderReviewAt: "2026-10-03T06:07:00.000Z",
+      reminderReviewStatus: "unrelated",
+      reminderReviewDecision: "unrelated",
+      reminderReviewRespondedAt: "2026-10-03T06:01:00.000Z",
+      reminderReviewResponseText: "Earlier unrelated reply",
+      reviewReason: "semantic_abstain",
+      reminderReviewClassifierSource: "semantic_abstain",
+      preservedEvidence: "keep",
+    };
+    const attempt = createLifeOpsReminderAttempt({
+      agentId: isolated.runtime.agentId,
+      planId: created.reminderPlan.id,
+      ownerType: "occurrence",
+      ownerId: occurrence.id,
+      occurrenceId: occurrence.id,
+      channel: "in_app",
+      stepIndex: 0,
+      scheduledFor: occurrence.relevanceStartAt,
+      attemptedAt,
+      outcome: "delivered",
+      connectorRef: "system:in_app",
+      deliveryMetadata: priorMetadata,
+    });
+    await local.repository.createReminderAttempt(attempt);
+    const reply = {
+      id: crypto.randomUUID() as UUID,
+      agentId: isolated.runtime.agentId,
+      entityId: ownerId,
+      roomId: ownerRoom,
+      createdAt: Date.parse("2026-10-03T06:05:00.000Z"),
+      content: {
+        text: "I finished the final reminder notification check.",
+        source: "client_chat",
+      },
+    } as Memory;
+    await isolated.runtime.createMemory(reply, "messages");
+    const unavailable = vi
+      .spyOn(local.remindersDomain, "classifyReminderOwnerResponseSemantically")
+      .mockResolvedValue(null);
+    const first = await local.processReminders({
+      now: "2026-10-03T06:08:00.000Z",
+      scope: "definitions",
+    });
+    expect(first.attempts).toHaveLength(0);
+    expect(unavailable).toHaveBeenCalled();
+    const [after] = await local.repository.listReminderAttempts(
+      isolated.runtime.agentId,
+      { ownerType: "occurrence", ownerId: occurrence.id },
+    );
+    expect(after.deliveryMetadata).toEqual(priorMetadata);
+    expect(after.reviewStatus).toBe("unrelated");
+    expect(
+      (
+        await local.repository.getOccurrence(
+          isolated.runtime.agentId,
+          occurrence.id,
+        )
+      )?.metadata.reminderAcknowledgedAt,
+    ).toBeUndefined();
+    // The existing claim expires after five minutes; use its normal retry window.
+    const restarted = new LifeOpsService(isolated.runtime);
+    const restored = vi
+      .spyOn(
+        restarted.remindersDomain,
+        "classifyReminderOwnerResponseSemantically",
+      )
+      .mockResolvedValue({
+        decision: "explicit_resolution",
+        resolution: "completed",
+        snoozeRequest: null,
+        confidence: 0.95,
+        reason: "restored_named_completed",
+      });
+    const recovered = await restarted.processReminders({
+      now: "2026-10-03T06:14:00.000Z",
+      scope: "definitions",
+    });
+    expect(recovered.attempts).toHaveLength(0);
+    expect(restored).toHaveBeenCalledTimes(1);
+    expect(restored.mock.calls[0][0].text).toBe(reply.content.text);
+    const [resolved] = await restarted.repository.listReminderAttempts(
+      isolated.runtime.agentId,
+      { ownerType: "occurrence", ownerId: occurrence.id },
+    );
+    expect(resolved.reviewStatus).toBe("resolved");
+    expect(resolved.deliveryMetadata).toMatchObject({
+      reminderReviewDecision: "completed",
+      reminderReviewRespondedAt: new Date(reply.createdAt ?? 0).toISOString(),
+      preservedEvidence: "keep",
+    });
+    const acknowledged = await restarted.repository.getOccurrence(
+      isolated.runtime.agentId,
+      occurrence.id,
+    );
+    expect(acknowledged?.metadata.reminderAcknowledgedResolution).toBe(
+      "completed",
+    );
+    expect(acknowledged?.completionPayload).toBeNull();
+    expect(network).not.toHaveBeenCalled();
+  } finally {
+    network.mockRestore();
+    await isolated.cleanup();
+  }
+}, 120_000);
