@@ -31,6 +31,9 @@ describe("BrowserSurfaceWeb", () => {
     await expect(
       web.openDockedBrowser({ url: "https://example.test" }),
     ).rejects.toThrow(/native-only/i);
+    await expect(web.setBrowserDockVisible({ visible: false })).rejects.toThrow(
+      /native-only/i,
+    );
     await expect(web.getBrowserDockState()).rejects.toThrow(/native-only/i);
     await expect(web.presentBrowser()).rejects.toThrow(/native-only/i);
     await expect(

@@ -4,6 +4,10 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Build
+import androidx.window.WindowSdkExtensions
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.WeakHashMap
 import androidx.window.embedding.ActivityEmbeddingController
 import androidx.window.embedding.RuleController
 import androidx.window.embedding.SplitAttributes
@@ -17,6 +21,33 @@ import com.getcapacitor.JSObject
 /** Native activity bounds only; never grants task authority or emulates the website. */
 internal object BrowserDockController {
     private const val TAG = "eliza-browser-dock"
+    private class Session(val panelWidthDp: Int)
+    private val sessions = WeakHashMap<Activity, Session>()
+
+    /** Resize the existing split only. Never launch, reload, or recreate a website. */
+    suspend fun setVisible(activity: Activity, visible: Boolean) {
+        if (Build.VERSION.SDK_INT < 33 || WindowSdkExtensions.getInstance().extensionVersion < 3)
+            throw BrowserLaunchException("BROWSER_DOCK_RESIZE_UNAVAILABLE", "This device cannot resize the existing browser split.")
+        val session = sessions[activity]
+            ?: throw BrowserLaunchException("BROWSER_DOCK_SESSION_UNAVAILABLE", "No browser split was opened by this host session.")
+        val controller = SplitController.getInstance(activity)
+        val splits = withTimeoutOrNull(2000) { controller.splitInfoList(activity).first { it.isNotEmpty() } }
+        val split = splits?.singleOrNull()?.takeIf { it.primaryActivityStack.contains(activity) }
+            ?: throw BrowserLaunchException("BROWSER_DOCK_SESSION_UNAVAILABLE", "The current browser split could not be identified.")
+        if (sessions[activity] !== session || activity.isDestroyed)
+            throw BrowserLaunchException("BROWSER_DOCK_SESSION_UNAVAILABLE", "The browser host session changed.")
+        ChromiumBrowserLauncher.requireTrustedBrowser(activity)
+        BrowserEmbeddingTrust.requireInstalledTrust(activity)
+        val type = if (visible) {
+            val metrics = WindowMetricsCalculator.getOrCreate().computeMaximumWindowMetrics(activity)
+            SplitAttributes.SplitType.ratio(ratio(metrics.bounds.width() / activity.resources.displayMetrics.density, session.panelWidthDp))
+        } else SplitAttributes.SplitType.SPLIT_TYPE_EXPAND
+        controller.updateSplitAttributes(split, SplitAttributes.Builder().setSplitType(type)
+            .setLayoutDirection(SplitAttributes.LayoutDirection.RIGHT_TO_LEFT).build())
+    }
+
+    fun release(activity: Activity) { sessions.remove(activity) }
+
 
     fun ratio(totalWidthDp: Float, panelWidthDp: Int): Float {
         if (!totalWidthDp.isFinite() || panelWidthDp < 320 || panelWidthDp > 640 || totalWidthDp - panelWidthDp < 480) {
@@ -79,6 +110,7 @@ internal object BrowserDockController {
         try {
             // Explicit navigation; dispatch alone does not prove a split or select a task tab.
             ChromiumBrowserLauncher.launch(activity, url)
+            sessions[activity] = Session(panelWidthDp)
         } catch (error: RuntimeException) {
             // error-policy:J1 Restore host rules when Android rejects the launch.
             controller.removeRule(rule)

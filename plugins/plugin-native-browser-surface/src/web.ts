@@ -31,6 +31,12 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async setBrowserDockVisible(_options: {
+    visible: boolean;
+  }): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+
   async openDockedBrowser(_options: {
     url: string;
     panelWidthDp?: number;
