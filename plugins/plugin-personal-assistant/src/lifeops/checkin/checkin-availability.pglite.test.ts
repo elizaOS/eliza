@@ -198,8 +198,9 @@ describe("check-in source availability and generation failures", () => {
       expect(winsQuery).toContain(`occ.updated_at <= '${end}'`);
       expect(prompts).toHaveLength(0);
       expect(report.collectorErrors.habitSummaries).toContain("does not exist");
-      expect(report.summaryText).toContain("I couldn't check:");
+      expect(report.summaryText).toContain("unavailable.");
       expect(report.summaryText).not.toContain("No meetings listed");
+      expect(report.summaryText).not.toContain("Your calendar is clear");
       expect(
         (await db.query("SELECT id FROM app_lifeops.life_checkin_reports"))
           .rows,
@@ -227,7 +228,7 @@ describe("check-in source availability and generation failures", () => {
       timezone: "America/Los_Angeles",
       now: new Date("2026-10-03T20:23:00Z"),
     });
-    expect(report.summaryText).toContain("October 3, 2026");
+    expect(report.summaryText).toContain("Oct 3, 2026");
     expect(report.summaryText).not.toContain("October 3, 2025");
     expect(prompts).toHaveLength(0);
   });
@@ -237,7 +238,7 @@ describe("check-in source availability and generation failures", () => {
       timezone: "America/Los_Angeles",
       now: new Date("2026-01-01T01:00:00Z"),
     });
-    expect(report.summaryText).toContain("December 31, 2025");
+    expect(report.summaryText).toContain("Dec 31, 2025");
     expect(report.timezone).toBe("America/Los_Angeles");
     expect(prompts).toHaveLength(0);
   });

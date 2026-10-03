@@ -309,13 +309,22 @@ export function renderMorningCheckinReport(
   const reference = report.timezone
     ? `${new Intl.DateTimeFormat("en-US", {
         timeZone: report.timezone,
-        dateStyle: "full",
-        timeStyle: "short",
-      }).format(new Date(report.generatedAt))} (${report.timezone})`
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(new Date(report.generatedAt))}`
     : report.generatedAt;
-  const paragraphs = ["Good morning.", `As of ${reference}.`];
+  const paragraphs = ["Good morning."];
   const unavailable: string[] = [];
   const emptySummaries: string[] = [];
+  const clearDay =
+    !report.collectorErrors.todaysMeetings &&
+    !report.collectorErrors.overdueTodos &&
+    report.todaysMeetings.length === 0 &&
+    report.overdueTodos.length === 0;
   const lists = [
     {
       key: "todaysMeetings" as const,
@@ -331,7 +340,7 @@ export function renderMorningCheckinReport(
     },
     {
       key: "yesterdaysWins" as const,
-      title: "Completions recorded yesterday",
+      title: "Finished yesterday",
       empty: "No completed items were recorded yesterday.",
       rows: report.yesterdaysWins,
     },
@@ -342,7 +351,8 @@ export function renderMorningCheckinReport(
       continue;
     }
     if (list.rows.length === 0) {
-      emptySummaries.push(list.empty);
+      if (list.key !== "yesterdaysWins" && !clearDay)
+        emptySummaries.push(list.empty);
       continue;
     }
     const highlights = list.rows.slice(0, 3).map((row) => {
@@ -359,24 +369,46 @@ export function renderMorningCheckinReport(
     });
     const extra = list.rows.length - highlights.length;
     paragraphs.push(
-      `${list.title}: ${list.rows.length}.${highlights.length ? `\n${highlights.join("\n")}` : ""}${extra ? `\n${extra} more collected items.` : ""}`,
+      `${list.title}: ${list.rows.length}.${highlights.length ? `\n${highlights.join("\n")}` : ""}${extra ? `\n${extra} more items.` : ""}`,
     );
   }
-  if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
-  if (report.collectorErrors.habitSummaries) {
-    unavailable.push("Habit tracking");
-  } else if (report.habitSummaries.length > 0) {
-    const missed = report.habitSummaries.filter(
-      (habit) => habit.missedOccurrenceStreak > 0,
-    ).length;
+  if (clearDay)
     paragraphs.push(
-      `Habit tracking: ${missed} of ${report.habitSummaries.length} records have recorded misses. These tracking states do not prove that work or notification delivery failed.`,
+      "Your calendar is clear today, with no overdue tasks listed.",
     );
-  }
-  const emptySourceSummaries: string[] = [];
+  if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
+  const xUnavailable: { label: string; setupUnavailable: boolean }[] = [];
+  let gmailDisconnected = false;
   for (const section of report.briefingSections) {
     if (section.error) {
-      unavailable.push(section.title);
+      if (
+        section.key === "gmail" &&
+        section.error === "Google Gmail is not connected."
+      ) {
+        gmailDisconnected = true;
+      } else if (
+        section.key === "x_dms" ||
+        section.key === "x_timeline" ||
+        section.key === "x_mentions"
+      ) {
+        const expectedError =
+          section.key === "x_dms"
+            ? "[x_read_dms] X runtime service fetchConnectorMessages is not registered."
+            : section.key === "x_timeline"
+              ? "[x_read_feed_home_timeline] X runtime service fetchFeedForAccount is not registered."
+              : "[x_read_feed_mentions] X runtime service fetchFeedForAccount is not registered.";
+        xUnavailable.push({
+          label:
+            section.key === "x_dms"
+              ? "DMs"
+              : section.key === "x_timeline"
+                ? "timeline"
+                : "mentions",
+          setupUnavailable: section.error === expectedError,
+        });
+      } else {
+        unavailable.push(section.title);
+      }
       continue;
     }
     const highlights = section.items
@@ -386,20 +418,38 @@ export function renderMorningCheckinReport(
           `- ${morningBriefExcerpt(item.title)}${item.detail ? `: ${morningBriefExcerpt(item.detail)}` : ""}`,
       );
     const extra = section.items.length - highlights.length;
-    if (highlights.length === 0) {
-      emptySourceSummaries.push(section.summary);
-    } else {
+    if (highlights.length > 0) {
       paragraphs.push(
-        `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more collected items.` : ""}`,
+        `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more items.` : ""}`,
       );
     }
   }
-  if (emptySourceSummaries.length > 0)
-    paragraphs.push(emptySourceSummaries.join(" "));
-  if (unavailable.length > 0)
+  if (report.collectorErrors.habitSummaries) {
+    unavailable.push("Habit tracking");
+  } else if (report.habitSummaries.length > 0) {
+    const missed = report.habitSummaries.filter(
+      (habit) => habit.missedOccurrenceStreak > 0,
+    ).length;
     paragraphs.push(
-      `I couldn't check: ${unavailable.join(", ")}. This brief does not cover those sources.`,
+      `${missed} of ${report.habitSummaries.length} tracked items have missed check-ins.`,
     );
+  }
+  const coverage = [
+    ...(gmailDisconnected ? ["Gmail isn't connected"] : []),
+    ...(xUnavailable.length > 0
+      ? [
+          xUnavailable.length === 3 &&
+          xUnavailable.every((source) => source.setupUnavailable)
+            ? "X isn't available in this setup"
+            : `X (${xUnavailable.map((source) => source.label).join(", ")}) couldn't be checked`,
+        ]
+      : []),
+    ...(unavailable.length > 0
+      ? [`${unavailable.join(", ")} unavailable`]
+      : []),
+  ];
+  if (coverage.length > 0) paragraphs.push(`${coverage.join(". ")}.`);
+  paragraphs.push(`As of ${reference}.`);
   return paragraphs.join("\n\n");
 }
 export function clip(text: string, maxLength = 220): string {

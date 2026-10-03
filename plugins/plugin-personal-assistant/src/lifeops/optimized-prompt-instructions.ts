@@ -48,8 +48,10 @@ open items neutrally as carryovers, never as failures. Otherwise lead with
 the schedule-changing or reply-needed items first. Mention each non-empty
 domain once. If a domain is empty, omit it rather than saying "nothing to
 report". Plain everyday words only: no internal ids, no ISO timestamps, no
-schema or field names. No invented facts; only describe items in the data
-below.
+schema or field names. Connect facts in plain sentences. Group related
+unavailable sources into one short coverage note without calling them empty
+or assigning a cause the data does not establish. No invented facts; only
+describe items in the data below.
 
 Obey the editorial block in the data: open with its "lead" item (the highest
 consequence item), cover the "include" items, give "demote" items at most a
