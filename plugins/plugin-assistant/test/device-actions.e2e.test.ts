@@ -1218,7 +1218,13 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           expect(historical.status).toBe(200);
           expect(historical.body.action.data.result.status).toBe("opened");
           expect(historical.body.action.text).toContain(
-            "never that an alarm was created",
+            "not proof of its final alarm state",
+          );
+          expect(historical.body.action.text).toContain(
+            "The request may already have changed an alarm",
+          );
+          expect(historical.body.action.text).toContain(
+            "No new dispatch occurred.",
           );
           expect(historical.body.action.data.executed).toBe(false);
         }

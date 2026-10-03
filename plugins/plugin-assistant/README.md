@@ -134,3 +134,9 @@ registered action and canonical successful, non-replayed noop receipts. They
 follow their original request through source-bound history selection and full
 restoration. Mutation outcomes, undeclared operations and ambiguous bindings
 remain inline; stored receipts are unchanged.
+
+## Reviewed Clock handoffs
+
+`@elizaos/plugin-assistant/device-clock-review` exposes the renderer-safe review coordinator. The host supplies durable approved-journal checks, one-use native consent, dispatch and receipts. Await `retire()` before changing the session owner; failed cancellation remains retryable. An opened receipt confirms dispatch, not final alarm state. Set, dismiss and snooze may mutate alarms immediately after approval.
+
+Run `bun run --cwd plugins/plugin-assistant test:clock-review-export` for source and packed-consumer checks. This uses a controlled host adapter and does not qualify Android Clock behavior.
