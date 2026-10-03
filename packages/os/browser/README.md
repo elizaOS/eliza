@@ -162,3 +162,15 @@ activation. Run `node --conditions=eliza-source
 packages/os/browser/scripts/test-protected-fill.mjs` for controlled Chromium
 field-policy and snapshot-redaction checks; native transport and provider
 qualification remain separate.
+
+
+Android component generation accepts `--embed-host` only as an explicit build
+option. It adds `knownActivityEmbeddingCerts` to the standard Custom Tab and main
+tabbed activities, using the same provisioned host certificate as native messaging.
+It does not enable untrusted embedding or change activity exports/launch modes.
+Android enforces this opt-in by signer, not package name: every app sharing that
+signer is trusted for embedding. Use a dedicated host signer for a production
+distribution. Native messaging still checks its separate host application ID.
+The default remains disabled. Host WindowManager support, actual split bounds,
+existing-tab continuity, input and lifecycle must be qualified on the installed
+browser; a generated manifest is only one prerequisite for a native dock.
