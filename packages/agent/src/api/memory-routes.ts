@@ -671,7 +671,7 @@ async function searchMemoryNotes(
     const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
     const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
     if (bTime !== aTime) return bTime - aTime;
-    return a.id.localeCompare(b.id);
+    return compareMemoryIds(b.id, a.id);
   });
   return hits.slice(0, limit);
 }
