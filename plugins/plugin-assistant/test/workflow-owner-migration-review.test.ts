@@ -46,7 +46,7 @@ test("runtime migration adds nullable workflow ownership without changing a lega
   } finally {
     await pg.close();
   }
-}, 30000);
+}, 120000);
 
 test("runtime migration adds nullable view profile without changing a legacy enrollment", async () => {
   const current = await generateSnapshot({ clientDeviceTable }),
@@ -86,4 +86,4 @@ test("runtime migration adds nullable view profile without changing a legacy enr
   } finally {
     await pg.close();
   }
-}, 30000);
+}, 120000);

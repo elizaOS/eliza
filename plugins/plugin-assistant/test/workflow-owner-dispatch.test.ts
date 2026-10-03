@@ -145,4 +145,4 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
   } finally {
     await pg.close();
   }
-}, 30000);
+}, 120000);

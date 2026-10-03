@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { ElizaError, redactSensitiveText } from '@elizaos/core';
+import { resolveAliasedEnvValue } from '@elizaos/core/config/boot-config-store';
 import type {
   WorkflowDefinitionResponse,
   WorkflowExecutionMode,
@@ -35,7 +36,10 @@ import { workerLeasePrelude } from './workflow-worker-lease-prelude';
 export async function publishWorkflowSource(sourcePath: string, source: string): Promise<void> {
   if (process.platform === 'win32')
     return windowsWorkflowBackend.publishWorkflowSource(sourcePath, source);
-  if (process.env.ELIZA_PLATFORM === 'android' || process.env.ELIZA_MOBILE_PLATFORM === 'android')
+  if (
+    resolveAliasedEnvValue('ELIZA_PLATFORM') === 'android' ||
+    process.env.ELIZA_MOBILE_PLATFORM === 'android'
+  )
     return publishAndroidWorkflowSource(sourcePath, source);
   const temporary = `${sourcePath}.${randomUUID()}.pending`;
   const handle = await open(temporary, 'wx', 0o600);

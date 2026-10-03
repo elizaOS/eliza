@@ -9,9 +9,12 @@ const payload = JSON.parse(readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, '
 const mode = payload.input.fixtureMode;
 const emit = (message) => process.stdout.write(`${prefix}${JSON.stringify(message)}\n`);
 
-if (mode === 'exit-seven') { process.exit(7);
-} else if (mode === 'self-term') { process.kill(process.pid, 'SIGTERM');
-} else if (mode === 'empty-success') { process.exit(0);
+if (mode === 'exit-seven') {
+  process.exit(7);
+} else if (mode === 'self-term') {
+  process.kill(process.pid, 'SIGTERM');
+} else if (mode === 'empty-success') {
+  process.exit(0);
 } else if (mode === 'exit-without-result') {
   process.exit(17);
 } else if (mode === 'signal-without-result') {
