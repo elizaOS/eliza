@@ -51,6 +51,59 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("deletes document fragments when the document is deleted", async () => {
+    const adapter = await open();
+    const documentId = id();
+    const fragmentId = id();
+    const unrelatedId = id();
+    const base = {
+      agentId,
+      entityId,
+      roomId,
+      embedding: undefined,
+      createdAt: 1_700_000_000_000,
+    };
+    await adapter.createMemories([
+      {
+        memory: {
+          ...base,
+          id: documentId,
+          content: { text: "source document" },
+        },
+        tableName: "documents",
+      },
+      {
+        memory: {
+          ...base,
+          id: fragmentId,
+          content: { text: "chunk that should disappear" },
+          metadata: { type: MemoryType.FRAGMENT, documentId },
+        },
+        tableName: "document_fragments",
+      },
+      {
+        memory: {
+          ...base,
+          id: unrelatedId,
+          content: { text: "keep this chunk" },
+          metadata: { type: MemoryType.FRAGMENT, documentId: id() },
+        },
+        tableName: "document_fragments",
+      },
+    ]);
+
+    await adapter.deleteMemories([documentId]);
+
+    expect(await adapter.getMemoriesByIds([documentId, fragmentId])).toEqual(
+      [],
+    );
+    const remaining = await adapter.getMemories({
+      roomId,
+      tableName: "document_fragments",
+    });
+    expect(remaining.map((row) => row.id)).toEqual([unrelatedId]);
+  });
+
   it("preserves complete sources and the selected embedding space across restarts", async () => {
     const adapter = await open();
     const record = memory(

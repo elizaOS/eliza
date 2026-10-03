@@ -2301,7 +2301,38 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     return this.withMemoryMutationLock(async () => {
-      for (const id of memoryIds) {
+      if (memoryIds.length === 0) return;
+      // Retention and a full wipe delete document rows through this method.
+      // deleteDocumentWithSnapshot already removes chunks; this path did not,
+      // so a pruned document stayed searchable through its fragments.
+      const roots = new Set(memoryIds);
+      const fragments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) => {
+          if (!memory.id || roots.has(memory.id as UUID)) return false;
+          const metadata = memory.metadata as
+            | Record<string, unknown>
+            | undefined;
+          const documentId = metadata?.documentId;
+          if (
+            typeof documentId !== "string" ||
+            !roots.has(documentId as UUID)
+          ) {
+            return false;
+          }
+          return (
+            metadata?.type === MemoryType.FRAGMENT ||
+            storedMemoryTableName(memory) === "document_fragments"
+          );
+        },
+      );
+      const ids = [
+        ...memoryIds,
+        ...fragments.flatMap((memory) =>
+          memory.id ? [memory.id as UUID] : [],
+        ),
+      ];
+      for (const id of ids) {
         await this.storage.delete(COLLECTIONS.MEMORIES, id);
         await this.vectorIndex.remove(id);
       }
