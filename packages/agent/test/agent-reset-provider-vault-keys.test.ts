@@ -96,6 +96,12 @@ it("removes stored provider API keys so boot cannot rehydrate them", async () =>
     sensitive: true,
     caller: "test",
   });
+  for (const key of ["GOOGLE_API_KEY", "KIMI_API_KEY"]) {
+    await vault.set(key, `${key}-old-owner`, {
+      sensitive: true,
+      caller: "test",
+    });
+  }
   await setEntryMeta(vault, "ANTHROPIC_API_KEY", {
     profiles: [{ id: "default", label: "Default", createdAt: Date.now() }],
     activeProfile: "default",
@@ -121,6 +127,8 @@ it("removes stored provider API keys so boot cannot rehydrate them", async () =>
   expect(await vault.has("providers.anthropic.api-key")).toBe(false);
   expect(await vault.has("ANTHROPIC_API_KEY")).toBe(false);
   expect(await vault.has("ZAI_API_KEY")).toBe(false);
+  expect(await vault.has("GOOGLE_API_KEY")).toBe(false);
+  expect(await vault.has("KIMI_API_KEY")).toBe(false);
   const overlay: Record<string, string> = {};
   const hydration = await hydrateSelectedProviderCredentialFromVault({
     providerId: "anthropic",

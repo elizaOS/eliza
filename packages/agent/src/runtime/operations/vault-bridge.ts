@@ -328,11 +328,19 @@ export async function removeResetCredentialsFromVault(
     "ELIZAOS_CLOUD_API_KEY",
     "ELIZAOS_CLOUD_BASE_URL",
     "ELIZAOS_CLOUD_ENABLED",
-    vaultKeyForProviderApiKey("zai"),
-    ...getFirstRunProviderSignalEnvKeys("zai"),
   ]);
+  const providerIds = new Set<string>([
+    ...FIRST_RUN_PROVIDER_CATALOG.map((provider) => provider.id),
+    "gemini",
+    "zai",
+  ]);
+  for (const providerId of providerIds) {
+    keys.add(vaultKeyForProviderApiKey(providerId));
+    for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
+      keys.add(envKey);
+    }
+  }
   for (const provider of FIRST_RUN_PROVIDER_CATALOG) {
-    keys.add(vaultKeyForProviderApiKey(provider.id));
     if (provider.envKey) keys.add(provider.envKey);
   }
   const failedKeys: string[] = [];
