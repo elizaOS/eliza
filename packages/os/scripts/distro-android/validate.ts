@@ -320,7 +320,13 @@ export function validateProductLayer(vendorDir, brand) {
 
   const common = read(path.join(vendorDir, brand.commonMakefile));
   assertIncludes(common, "PRODUCT_PACKAGES +=", brand.commonMakefile);
-  assertIncludes(common, "PRODUCT_PACKAGES -=", brand.commonMakefile);
+  // `-=` is not a make (or kati) operator: it removes nothing, and GNU make
+  // refuses to parse the file, which breaks the tests that evaluate it.
+  if (/^\s*PRODUCT_PACKAGES\s*-=/m.test(common)) {
+    fail(
+      `${brand.commonMakefile} uses PRODUCT_PACKAGES -=, which is not a make operator and removes nothing`,
+    );
+  }
   assertIncludes(common, brand.appName, brand.commonMakefile);
   assertLocallyOwnedProductModulesResolve(common, vendorDir, brand);
   assertIncludes(
@@ -364,7 +370,7 @@ export function validateProductLayer(vendorDir, brand) {
     assertIncludes(
       common,
       marker,
-      `${brand.commonMakefile} PRODUCT_PACKAGES -= strip list`,
+      `${brand.commonMakefile} stock-package list`,
     );
   }
   assertIncludes(common, "ro.setupwizard.mode=DISABLED", brand.commonMakefile);
