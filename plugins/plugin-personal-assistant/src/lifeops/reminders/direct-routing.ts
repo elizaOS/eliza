@@ -119,7 +119,8 @@ export const ownerReminderChoiceDirectRoutingRules: readonly DirectActionRouting
 
 export const ownerReminderChoiceRoutingEvaluator: ResponseHandlerEvaluator = {
   name: "lifeops.bound-reminder-choice",
-  priority: 16,
+  // Own the typed envelope after the current core/PA routing enrichers (<=30).
+  priority: 100,
   deterministicActions: ownerReminderChoiceDirectRoutingRules.flatMap(
     (rule) => rule.actionNames,
   ),
@@ -140,6 +141,7 @@ export const ownerReminderChoiceRoutingEvaluator: ResponseHandlerEvaluator = {
       return {
         processMessage: "RESPOND",
         requiresTool: false,
+        replyEffectStatus: "non_applied",
         setContexts: ["simple"],
         clearCandidateActions: true,
         clearParentActionHints: true,

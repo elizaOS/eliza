@@ -7,6 +7,7 @@ import {
   type Memory,
   type MessageHandlerResult,
   ModelType,
+  type ResponseHandlerPatch,
   runResponseHandlerEvaluators,
   TaskService,
   type UUID,
@@ -837,6 +838,113 @@ it("does not take ownership of ordinary done text without typed control metadata
   ]);
   expect(messageHandler.plan.deterministicToolCall).toBeUndefined();
 });
+
+it.each(["applied", "pending"] as const)(
+  "keeps malformed control terminal after FULL routing with inherited %s status",
+  async (replyEffectStatus) => {
+    const handler = vi.fn(async () => ({
+      success: true,
+      text: "Unrelated write",
+    }));
+    fixture.runtime.registerAction({
+      name: "UNRELATED_WRITER",
+      description: "Perform an unrelated write",
+      contexts: ["general", "tasks"],
+      similes: ["UNRELATED_WRITER"],
+      validate: async () => true,
+      handler,
+    });
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      agentId: fixture.runtime.agentId,
+      entityId: service.ownerEntityId() as UUID,
+      roomId,
+      content: {
+        text: "UNRELATED_WRITER",
+        source: "client_chat",
+        metadata: { reminderChoiceId: "source-choice" },
+      },
+    } as Memory;
+    await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, message);
+    const messageHandler = {
+      processMessage: "RESPOND",
+      thought: "Inherited model claim",
+      plan: {
+        contexts: ["tasks"],
+        requiresTool: true,
+        candidateActions: ["HOUSEHOLD_OPERATIONS"],
+        parentActionHints: ["HOUSEHOLD_OPERATIONS"],
+        replyEffectStatus,
+        reply: "Done, unrelated state was updated.",
+      },
+    } as MessageHandlerResult;
+    const definitionsBefore = await service.listDefinitions();
+    await runResponseHandlerEvaluators({
+      runtime: fixture.runtime,
+      message,
+      state: { values: {}, data: {}, text: "" },
+      messageHandler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+    });
+    expect(messageHandler.plan.requiresTool).toBe(false);
+    expect(messageHandler.plan.replyEffectStatus).toBe("non_applied");
+    expect(messageHandler.plan.candidateActions).toBeUndefined();
+    expect(messageHandler.plan.parentActionHints).toBeUndefined();
+    expect(messageHandler.plan.deterministicToolCall).toBeUndefined();
+    expect(handler).not.toHaveBeenCalled();
+    expect(await service.listDefinitions()).toEqual(definitionsBefore);
+  },
+);
+
+it.each([
+  ["non_applied", "non_applied"],
+  ["applied", "pending"],
+  ["omitted", "pending"],
+] as const)(
+  "the patch status setter accepts only terminal no-effect: %s",
+  async (requested, expected) => {
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      agentId: fixture.runtime.agentId,
+      entityId: service.ownerEntityId() as UUID,
+      roomId,
+      content: { text: "neutral text", source: "client_chat" },
+    } as Memory;
+    const messageHandler = {
+      processMessage: "RESPOND",
+      thought: "Patch compatibility",
+      plan: {
+        contexts: ["simple"],
+        requiresTool: false,
+        replyEffectStatus: "pending",
+      },
+    } as MessageHandlerResult;
+    await runResponseHandlerEvaluators({
+      runtime: fixture.runtime,
+      message,
+      state: { values: {}, data: {}, text: "" },
+      messageHandler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: [
+        {
+          name: "fixture.status-patch",
+          shouldRun: () => true,
+          evaluate: () =>
+            ({
+              ...(requested === "omitted"
+                ? {}
+                : { replyEffectStatus: requested }),
+            }) as unknown as ResponseHandlerPatch,
+        },
+      ],
+    });
+    expect(messageHandler.plan.replyEffectStatus).toBe(expected);
+    expect(messageHandler.plan.requiresTool).toBe(false);
+  },
+);
 
 it.each([
   ["done", "completed"],
