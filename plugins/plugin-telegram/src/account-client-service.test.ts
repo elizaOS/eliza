@@ -288,6 +288,18 @@ describe("personal service account-bound history", () => {
     ]);
     await service.stop();
   });
+  it("matches the trimmed query it validated", async () => {
+    const { runtime, service } = await harness();
+    await service.refreshAccount("me:personal");
+    const result = await service.searchConnectorMessages(
+      { runtime, accountId: "me:personal", target },
+      { target, query: "  owner  ", limit: 1 },
+    );
+    expect(result.map((row) => row.content.text)).toEqual([
+      "final-page owner fact",
+    ]);
+    await service.stop();
+  });
   it("does not turn an unsupported room-only scope into an account-wide search", async () => {
     const { runtime, service, clients } = await harness();
     await service.refreshAccount("me:personal");
