@@ -148,6 +148,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
 
   describe("compose_morning", () => {
     it("collects each captured reminder occurrence once without merging distinct same-title items", async () => {
+      // These fixtures drive occurrence and delivery transitions explicitly.
+      // A live scheduler would also deliver reminders and infer device travel.
+      vi.stubEnv("ELIZA_DISABLE_LIFEOPS_SCHEDULER", "1");
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-10-02T22:00:00.000Z"));
       const fixture = await createLifeOpsTestRuntime();
@@ -290,6 +293,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
     });
 
     it("preserves canonical visible and overdue facts after sent attempts until actual lifecycle transitions", async () => {
+      // These fixtures drive occurrence and delivery transitions explicitly.
+      // A live scheduler would also deliver reminders and infer device travel.
+      vi.stubEnv("ELIZA_DISABLE_LIFEOPS_SCHEDULER", "1");
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-10-02T22:00:00.000Z"));
       const fixture = await createLifeOpsTestRuntime();
