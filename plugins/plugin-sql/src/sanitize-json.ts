@@ -1,9 +1,10 @@
 /**
- * Shared jsonb sanitizer for SQL writes. Strips NULs (PostgreSQL rejects
- * JSON.stringify's `\u0000` escape), breaks cycles, and fails closed on
- * hostile nesting and metadata size before the jsonb bind. Serialization for
- * memory content preserves complete source text only at declared text paths;
- * unsupported NUL characters are rejected rather than silently removed.
+ * Shared jsonb sanitizer for SQL writes. Strips NULs and replaces lone UTF-16
+ * surrogates (PostgreSQL rejects JSON.stringify's `\u0000` and `\ud83d`
+ * escapes), breaks cycles, and fails closed on hostile nesting and metadata
+ * size before the jsonb bind. Serialization for memory content preserves
+ * complete source text only at declared text paths; unsupported NUL characters
+ * and lone surrogates are rejected there rather than silently rewritten.
  *
  * `utils.ts` re-exports this so the
  * three platform builds cannot drift.
@@ -50,13 +51,32 @@ interface SanitizeContext {
 // These states follow container edges, not arbitrary property names or depths.
 type SourceTextPath = "memory-content" | "attachments" | "attachment" | "source-text";
 
-function rejectUnsupportedNul(value: string, context: SanitizeContext): void {
-  if (context.rejectNul && value.includes(NUL)) {
+/**
+ * Strict writes reject text jsonb cannot store with a typed error instead of
+ * PostgreSQL's raw "unsupported Unicode escape sequence" / "invalid input
+ * syntax for type json". A lone surrogate is half of a UTF-16 pair, typically
+ * a truncated emoji, and has no UTF-8 encoding.
+ */
+function rejectUnsupportedJsonText(value: string, context: SanitizeContext): void {
+  if (!context.rejectNul) return;
+  if (value.includes(NUL)) {
     throw new ElizaError(
       "Memory JSON contains NUL, which PostgreSQL jsonb cannot preserve; remove it explicitly before retrying the unchanged write",
       { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" }
     );
   }
+  if (!value.isWellFormed()) {
+    throw new ElizaError(
+      "Memory JSON contains a lone UTF-16 surrogate, which PostgreSQL jsonb cannot store; repair the text before retrying the write",
+      { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" }
+    );
+  }
+}
+
+/** Lenient writes drop NUL and replace lone surrogates with U+FFFD. */
+function normalizeUnsupportedJsonText(value: string): string {
+  const withoutNul = value.includes(NUL) ? value.replaceAll(NUL, "") : value;
+  return withoutNul.isWellFormed() ? withoutNul : withoutNul.toWellFormed();
 }
 
 function chargeBytes(context: SanitizeContext, bytes: number, reason: string): void {
@@ -247,7 +267,7 @@ function sanitizeJsonValue(
   }
 
   if (typeof value === "string") {
-    rejectUnsupportedNul(value, context);
+    rejectUnsupportedJsonText(value, context);
     // Known source scalars remain complete; visits, depth, keys, accessors and
     // NUL validation still apply. Only their bytes bypass the metadata budget.
     if (sourcePath === "source-text") return value;
@@ -266,7 +286,7 @@ function sanitizeJsonValue(
       ),
       "string"
     );
-    return value.includes(NUL) ? value.replaceAll(NUL, "") : value;
+    return normalizeUnsupportedJsonText(value);
   }
 
   if (typeof value === "bigint") {
@@ -384,7 +404,7 @@ function sanitizeJsonValue(
           "object-property-descriptor"
         );
         if (!descriptor?.enumerable) continue;
-        rejectUnsupportedNul(key, context);
+        rejectUnsupportedJsonText(key, context);
         if ("get" in descriptor || "set" in descriptor) {
           failUnbounded({ reason: "object-accessor" });
         }
@@ -396,7 +416,7 @@ function sanitizeJsonValue(
           "object-property-syntax"
         );
         serializedProperties += 1;
-        const sanitizedKey = key.includes(NUL) ? key.replaceAll(NUL, "") : key;
+        const sanitizedKey = normalizeUnsupportedJsonText(key);
         // Exempt only declared source paths: document.text, memory content.text,
         // and memory content.attachments[array index].text. A nested metadata
         // property called text or an object posing as the attachments array
