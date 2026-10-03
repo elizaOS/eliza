@@ -2906,7 +2906,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: conversations omitted to limit rerenders
   const sendActionMessage = useCallback(
-    async (text: string) => {
+    async (text: string, options?: Pick<ChatSendTextOptions, "metadata">) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       const viewHandoffOwner: ChatViewHandoffOwner = {
@@ -3099,7 +3099,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             "DM",
             controller.signal,
             undefined,
-            buildChatViewMetadata(tab),
+            buildChatViewMetadata(tab, options?.metadata),
             // No overlay status on the action/DM path (its finally doesn't clear
             // it); still stream inline tool rows onto the turn (#13535),
             // coalesced into the current transport burst with the text.
