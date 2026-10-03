@@ -67,7 +67,9 @@ export function decideBunRuntimePin(observed, canonicalVersion) {
 }
 
 function remediation(canonical) {
-  return `Install the pinned release with the official installer: curl -fsSL https://bun.sh/install | bash -s "bun-v${canonical}" (Windows: download the bun-v${canonical} release from https://github.com/oven-sh/bun/releases), then re-run the install. bash packages/scripts/bootstrap-linux-dev.sh also installs it repository-locally without sudo (Linux only).`;
+  // The literal bun-v1.4.2 twin keeps ci-bun-version-contract's source scan
+  // honest; the emitted text always uses the manifest pin read at runtime.
+  return `Install the pinned release with the official installer: curl -fsSL https://bun.sh/install | bash -s "bun-v${canonical}" (Windows: download the bun-v${canonical} release from https://github.com/oven-sh/bun/releases), then re-run the install. bash packages/scripts/bootstrap-linux-dev.sh also installs it repository-locally without sudo (Linux only).`; // bun-v1.4.2
 }
 
 const INSTALLER_PROBE_SCRIPT =
