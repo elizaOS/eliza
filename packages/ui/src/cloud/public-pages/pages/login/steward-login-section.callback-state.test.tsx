@@ -15,6 +15,7 @@
 
 import { StewardSessionError } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +25,12 @@ const callbackState = vi.hoisted(() => ({
   expectedState: "state-1" as string | null,
   pkceVerifier: "verifier-1" as string | undefined,
   exchangeCalls: 0,
+  recover: vi.fn(),
+  sync: vi.fn(),
+  token: "old-account-token",
+  destination: vi.fn(
+    (_params: unknown, pending?: string | null) => pending ?? "/join",
+  ),
   exchange: (): Promise<{ token?: string }> => new Promise(() => {}),
 }));
 
@@ -36,9 +43,9 @@ vi.mock("../../lib/steward-session", () => ({
     callbackState.exchangeCalls += 1;
     return callbackState.exchange();
   },
-  recoverStewardSessionViaCookie: () => Promise.resolve(null),
+  recoverStewardSessionViaCookie: callbackState.recover,
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
-  syncStewardSessionCookie: () => Promise.resolve(),
+  syncStewardSessionCookie: callbackState.sync,
 }));
 
 vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
@@ -47,6 +54,11 @@ vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
   >("@elizaos/plugin-elizacloud/steward-session-client");
   return {
     ...actual,
+    hasStewardAuthedCookie: () => true,
+    readStoredStewardToken: () => callbackState.token,
+    writeStoredStewardToken: async (token: string) => {
+      callbackState.token = token;
+    },
     peekStewardOAuthState: () => callbackState.expectedState,
   };
 });
@@ -101,8 +113,8 @@ vi.mock("../../lib/steward-oauth-url", async () => {
 });
 
 vi.mock("../../lib/login-return-to", () => ({
-  resolveLoginReturnTo: () => "/cloud",
-  consumePendingOAuthReturnTo: () => null,
+  resolveLoginReturnTo: callbackState.destination,
+  consumePendingOAuthReturnTo: () => "/auth/cli-login?session=pending-attempt",
   storePendingOAuthReturnTo: () => undefined,
 }));
 
@@ -123,6 +135,9 @@ describe("StewardLoginSection — OAuth callback completion state (#13519)", () 
     callbackState.expectedState = "state-1";
     callbackState.pkceVerifier = "verifier-1";
     callbackState.exchangeCalls = 0;
+    callbackState.token = "old-account-token";
+    callbackState.recover.mockResolvedValue(null);
+    callbackState.sync.mockResolvedValue(undefined);
     callbackState.exchange = () => new Promise(() => {});
   });
 
@@ -144,6 +159,36 @@ describe("StewardLoginSection — OAuth callback completion state (#13519)", () 
     expect(screen.queryByRole("button", { name: /Magic Link/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Google/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Discord/i })).toBeNull();
+  });
+
+  it("gives a fragment callback exclusive session ownership across StrictMode replay", async () => {
+    render(
+      <StrictMode>
+        <MemoryRouter
+          initialEntries={["/login#code=callback-code&state=state-1"]}
+        >
+          <StewardLoginSection />
+        </MemoryRouter>
+      </StrictMode>,
+    );
+    await screen.findByText("Completing sign-in…");
+    expect(callbackState.exchangeCalls).toBe(1);
+    expect(callbackState.recover).not.toHaveBeenCalled();
+    expect(callbackState.sync).not.toHaveBeenCalled();
+  });
+
+  it("preserves the pending destination and the selected identity after a fragment exchange", async () => {
+    callbackState.exchange = async () => ({ token: "selected-account-token" });
+    renderSection("/login#code=callback-code&state=state-1");
+    await waitFor(() =>
+      expect(callbackState.destination).toHaveBeenCalledWith(
+        expect.anything(),
+        "/auth/cli-login?session=pending-attempt",
+      ),
+    );
+    expect(callbackState.token).toBe("selected-account-token");
+    expect(callbackState.sync).not.toHaveBeenCalled();
+    expect(callbackState.recover).not.toHaveBeenCalled();
   });
 
   it("clears the completing state and surfaces the error when the callback exchange fails", async () => {
