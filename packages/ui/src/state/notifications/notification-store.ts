@@ -43,6 +43,7 @@ import {
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,
 } from "../../utils/cloud-agent-base";
+import { hasAndroidPushDelivery } from "./push-registration";
 
 /**
  * Notification center store.
@@ -205,6 +206,19 @@ function upsert(
 /** Deliver interrupt-worthy arrivals once; the inbox remains available under OS suppression. */
 async function deliver(notification: AgentNotification): Promise<void> {
   if (notification.priority === "low") return;
+  const deliveryAuthorityEpoch = authorityEpoch;
+  // FCM remains independent of WebSocket/JS liveness. Once this Android
+  // authority confirms native push delivery, it owns the OS projection; the
+  // arrival was already committed to the durable in-app center by ingest().
+  if (Capacitor.getPlatform() === "android") {
+    const remotePush = await hasAndroidPushDelivery();
+    if (
+      deliveryAuthorityEpoch !== authorityEpoch ||
+      remotePush ||
+      !state.notifications.some((current) => current.id === notification.id)
+    )
+      return;
+  }
   await deliverSystemNotification(
     {
       id: notification.id,
