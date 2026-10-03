@@ -495,6 +495,17 @@ function compareStoredMemoriesNewestFirst(
 
 const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
 
+function storedTaskCreatedAt(task: Task): number {
+  if (typeof task.createdAt === "number" && Number.isFinite(task.createdAt)) {
+    return task.createdAt;
+  }
+  if (typeof task.createdAt === "bigint") {
+    const asNumber = Number(task.createdAt);
+    if (Number.isSafeInteger(asNumber)) return asNumber;
+  }
+  return Date.now();
+}
+
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -3258,7 +3269,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const ids: UUID[] = [];
     for (const task of tasks) {
       const id = (task.id ?? randomUUID()) as UUID;
-      await this.storage.set(COLLECTIONS.TASKS, id, { ...task, id });
+      await this.storage.set(COLLECTIONS.TASKS, id, {
+        ...task,
+        id,
+        createdAt: storedTaskCreatedAt(task),
+      });
       ids.push(id);
     }
     return ids;

@@ -15,7 +15,7 @@ import {
   type UUID,
   WORLD_METADATA_REVISION_KEY,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SQLiteDatabaseAdapter } from "./adapter";
 import { SQLiteStorage } from "./storage";
 
@@ -51,6 +51,28 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("pages tasks by creation time when the later id sorts first", async () => {
+    const adapter = await open();
+    const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
+    const lateId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValueOnce(1_700_000_000_000);
+    now.mockReturnValueOnce(1_700_000_000_005);
+    try {
+      await adapter.createTasks([
+        { id: earlyId, name: "early", agentId, tags: ["queue"], metadata: {} },
+      ]);
+      await adapter.createTasks([
+        { id: lateId, name: "late", agentId, tags: ["queue"], metadata: {} },
+      ]);
+    } finally {
+      now.mockRestore();
+    }
+    const page = await adapter.getTasks({ agentIds: [agentId], limit: 1 });
+    expect(page.map((task) => task.id)).toEqual([earlyId]);
+    expect(page[0]?.createdAt).toBe(1_700_000_000_000);
+  });
+
   it("preserves complete sources and the selected embedding space across restarts", async () => {
     const adapter = await open();
     const record = memory(
