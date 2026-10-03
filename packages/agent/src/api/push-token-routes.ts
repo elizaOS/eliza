@@ -11,7 +11,7 @@
  *
  *   POST   /api/notifications/push-tokens
  *     Register (upsert) a device token. Body: { platform: "ios"|"android",
- *     token: string }. Returns `{ ok: true }`.
+ *     token: string }. Returns `{ ok: true, deliveryEnabled: boolean }`.
  *
  *   DELETE /api/notifications/push-tokens
  *     Unregister a device token from `{ token }`. The legacy token path remains
@@ -38,9 +38,11 @@ export interface PushTokenRouteState {
   } | null;
 }
 const PUSH_TOKENS_PREFIX = "/api/notifications/push-tokens";
-function getRegistry(state: PushTokenRouteState): PushTokenRegistry | null {
+function getPushService(
+  state: PushTokenRouteState,
+): NotificationPushService | null {
   const svc = state.runtime?.getService(NOTIFICATION_PUSH_SERVICE_TYPE);
-  return svc instanceof NotificationPushService ? svc.getRegistry() : null;
+  return svc instanceof NotificationPushService ? svc : null;
 }
 function parsePlatform(value: unknown): PushPlatform | null {
   return value === "ios" || value === "android" ? value : null;
@@ -54,7 +56,8 @@ export async function handlePushTokenRoute(
   helpers: RouteHelpers,
 ): Promise<boolean> {
   if (!pathname.startsWith(PUSH_TOKENS_PREFIX)) return false;
-  const registry = getRegistry(state);
+  const service = getPushService(state);
+  const registry = service?.getRegistry();
   if (!registry) {
     helpers.error(res, "push delivery service not ready", 503);
     return true;
@@ -101,7 +104,14 @@ export async function handlePushTokenRoute(
       }
       throw err;
     }
-    helpers.json(res, { ok: true }, 201);
+    helpers.json(
+      res,
+      {
+        ok: true,
+        deliveryEnabled: service?.isDeliveryEnabled(platform) === true,
+      },
+      201,
+    );
     return true;
   }
   // ── DELETE /api/notifications/push-tokens ─────────────────────────

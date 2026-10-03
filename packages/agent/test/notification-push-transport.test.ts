@@ -127,6 +127,9 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
       NOTIFICATION_PUSH_SERVICE_TYPE,
     )) as NotificationPushService;
 
+    expect(push.isDeliveryEnabled("android")).toBe(true);
+    expect(push.isDeliveryEnabled("ios")).toBe(false);
+
     const cases: Array<{
       input: NotificationInput;
       androidPriority: "HIGH" | "NORMAL";
@@ -260,11 +263,13 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
     ]);
 
     await push.stop();
+    expect(push.isDeliveryEnabled("android")).toBe(false);
     push = new NotificationPushService(runtime, {
       registry,
       providers: { android: new FcmProvider({}), ios: new ApnsProvider({}) },
     });
     await push.attach();
+    expect(push.isDeliveryEnabled("android")).toBe(false);
     const beforeUnconfigured = requests.length;
     const unavailable = await notifier.notify({
       title: "Unconfigured due reminder",

@@ -161,6 +161,11 @@ export class NotificationPushService extends Service {
     return this.registry;
   }
 
+  /** Registration only claims OS delivery when this host can fan out pushes. */
+  isDeliveryEnabled(platform: PushPlatform): boolean {
+    return this.unsubscribe !== null && this.providers[platform].isConfigured();
+  }
+
   private async onNotification(event: AgentEventPayload): Promise<void> {
     // Read-state updates synchronize the inbox; they must not re-alert devices.
     // Older producers without an event type retain their delivery behavior.

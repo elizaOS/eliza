@@ -102,8 +102,14 @@ let activeAuthorityKey: string | null = null;
 let authorityEpoch = 0;
 let authorityTransition: Promise<void> = Promise.resolve();
 let registrationTransition: Promise<void> = Promise.resolve();
+let registrationOutcome: Promise<void> | null = null;
+let settleRegistrationOutcome: (() => void) | null = null;
 interface RegisteredPushToken {
   value: string;
+  platform?: "ios" | "android";
+  deliveryEnabled?: boolean;
+  epoch?: number;
+  captureAuthority?: PushRegistrationDeps["captureAuthority"];
   authorityKey: string;
   unregister: PushRegistrationDeps["unregisterToken"];
   sleep?: PushRegistrationDeps["sleep"];
@@ -217,8 +223,9 @@ async function onRegistration(
     if (delayMs > 0) {
       await (deps.sleep ?? defaultDeps.sleep)?.(delayMs);
     }
+    let registration: unknown;
     try {
-      await authority.registerToken(platform, value);
+      registration = await authority.registerToken(platform, value);
     } catch (error) {
       lastError = error;
       continue;
@@ -236,6 +243,14 @@ async function onRegistration(
     const previous = registeredToken;
     registeredToken = {
       value,
+      platform,
+      deliveryEnabled:
+        typeof registration === "object" &&
+        registration !== null &&
+        "deliveryEnabled" in registration &&
+        registration.deliveryEnabled === true,
+      epoch,
+      captureAuthority: deps.captureAuthority,
       authorityKey: authority.key,
       unregister: authority.unregisterToken,
       sleep: deps.sleep,
@@ -262,6 +277,7 @@ function enqueueRegistration(
   platform: "ios" | "android",
   token: PushRegistrationToken,
 ): void {
+  const settle = settleRegistrationOutcome;
   registrationTransition = registrationTransition
     .then(() => onRegistration(deps, platform, token))
     .catch((error: unknown) => {
@@ -271,6 +287,11 @@ function enqueueRegistration(
         { src: "push-registration", platform, error },
         "[push-registration] failed to register device push token",
       );
+    })
+    .finally(() => {
+      settle?.();
+      if (settleRegistrationOutcome === settle)
+        settleRegistrationOutcome = null;
     });
 }
 
@@ -289,6 +310,8 @@ export async function initPushRegistration(
     })
     .catch((error: unknown) => {
       startPromise = null;
+      settleRegistrationOutcome?.();
+      settleRegistrationOutcome = null;
       throw error;
     });
   await startPromise;
@@ -318,6 +341,9 @@ async function startPushRegistration(
     if (status.receive !== "granted") return false;
   }
 
+  registrationOutcome = new Promise((resolve) => {
+    settleRegistrationOutcome = resolve;
+  });
   await ensurePushListeners(deps, plugin, platform);
 
   await plugin.register();
@@ -352,6 +378,9 @@ async function addPushListeners(
   });
 
   await addListener("registrationError", (error: PushRegistrationError) => {
+    if (registeredToken) registeredToken.deliveryEnabled = false;
+    settleRegistrationOutcome?.();
+    settleRegistrationOutcome = null;
     logger.error(
       { src: "push-registration", platform, error: error.error },
       "[push-registration] OS push registration failed",
@@ -364,6 +393,26 @@ async function addPushListeners(
       const deepLink = deepLinkFromAction(action);
       if (deepLink) deps.navigate(deepLink);
     },
+  );
+}
+
+/** The current Android backend owns OS delivery; WS still owns inbox ingress. */
+export async function hasAndroidPushDelivery(): Promise<boolean> {
+  try {
+    await initPushRegistration();
+    await registrationOutcome;
+    await registrationTransition;
+  } catch (error) {
+    // error-policy:J4 registration/provider failure keeps renderer fallback.
+    logger.warn({ error }, "[push-registration] Android push unavailable");
+  }
+  return (
+    registeredToken?.platform === "android" &&
+    registeredToken.deliveryEnabled === true &&
+    registeredToken.epoch === authorityEpoch &&
+    registeredToken.authorityKey === activeAuthorityKey &&
+    registeredToken.authorityKey ===
+      (registeredToken.captureAuthority?.() ?? { key: "default" }).key
   );
 }
 
@@ -391,6 +440,8 @@ export function refreshPushRegistrationAuthority(
     return authorityTransition;
   }
   authorityEpoch += 1;
+  settleRegistrationOutcome?.();
+  settleRegistrationOutcome = null;
   const performTransition = async () => {
     const nextAuthorityKey = (deps.captureAuthority?.() ?? { key: "default" })
       .key;
@@ -424,6 +475,9 @@ export function __resetPushRegistrationForTests(): void {
   authorityEpoch = 0;
   authorityTransition = Promise.resolve();
   registrationTransition = Promise.resolve();
+  settleRegistrationOutcome?.();
+  settleRegistrationOutcome = null;
+  registrationOutcome = null;
   registeredToken = null;
   pendingRevocations = [];
 }

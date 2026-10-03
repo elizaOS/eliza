@@ -46,7 +46,7 @@ declare module "./client-base" {
     registerPushToken(
       platform: PushTokenPlatform,
       token: string,
-    ): Promise<{ ok: boolean }>;
+    ): Promise<{ ok: boolean; deliveryEnabled?: boolean }>;
     unregisterPushToken(token: string): Promise<{ ok: boolean }>;
   }
 }
@@ -117,11 +117,14 @@ ElizaClient.prototype.registerPushToken = async function (
   this: ElizaClient,
   platform: PushTokenPlatform,
   token: string,
-): Promise<{ ok: boolean }> {
-  return this.fetch<{ ok: boolean }>("/api/notifications/push-tokens", {
-    method: "POST",
-    body: JSON.stringify({ platform, token }),
-  });
+): Promise<{ ok: boolean; deliveryEnabled?: boolean }> {
+  return this.fetch<{ ok: boolean; deliveryEnabled?: boolean }>(
+    "/api/notifications/push-tokens",
+    {
+      method: "POST",
+      body: JSON.stringify({ platform, token }),
+    },
+  );
 };
 
 // Drop this device's push token (e.g. on logout / permission revocation).
