@@ -216,6 +216,10 @@ export interface ElizaSurfaceManagerPlugin {
     listener: (event: { code: string }) => void,
   ): Promise<PluginListenerHandle>;
 
+  addListener(
+    eventName: "browserHelperWindowClosed",
+    listener: (event: { reason: "website-opened" }) => void,
+  ): Promise<PluginListenerHandle>;
   /** Signals a native page change; consumers read current state before applying it. */
   addListener(
     eventName: "navigationChanged",

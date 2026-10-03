@@ -106,3 +106,8 @@ launched. `restoreBrowserDockFromEntry` returns the same view to the existing
 split. The host owns pause, microphone shutdown, saved context and explicit Resume.
 These windows are removed when this plugin instance is destroyed; process-death
 recovery and device lifecycle qualification remain host integration requirements.
+
+A successful explicit `openDockedBrowser` releases an existing return badge or
+full-screen helper window and emits `browserHelperWindowClosed`. The consumer
+updates its presentation state without resuming a task. Failed navigation
+preflight leaves the existing helper window intact.

@@ -204,6 +204,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             try {
                 BrowserDockController.open(activity, url, width)
+                helperEntry?.release()
+                notifyListeners("browserHelperWindowClosed", JSObject().apply { put("reason", "website-opened") })
                 call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME); put("status", "dispatched") })
             } catch (error: BrowserLaunchException) {
                 // error-policy:J1 Host support, identity or size can prevent docking.
