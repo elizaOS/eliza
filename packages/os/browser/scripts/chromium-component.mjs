@@ -351,6 +351,7 @@ export async function generateComponentOverlay({
         // Only the provisioned native host signer may embed browser activities.
         // Keep exports, launch modes and unrelated authentication activities intact.
         for (const activity of [
+          "org.chromium.chrome.browser.document.ChromeLauncherActivity",
           "org.chromium.chrome.browser.customtabs.CustomTabActivity",
           "org.chromium.chrome.browser.ChromeTabbedActivity",
         ]) {

@@ -135,7 +135,24 @@ export interface NativePageRead {
   truncated: boolean;
 }
 
+export interface BrowserDockState {
+  supported: boolean;
+  embedded: boolean;
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
 export interface ElizaSurfaceManagerPlugin {
+  /** Android: explicit navigation with a requested right helper pane. Dispatch is not proof of a split. */
+  openDockedBrowser(options: {
+    url: string;
+    panelWidthDp?: number;
+  }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    status: "dispatched";
+  }>;
+  /** Actual host activity embedding/bounds. No browser tab or task authority is implied. */
+  getBrowserDockState(): Promise<BrowserDockState>;
+
   /** Android: present the build-pinned browser without a URL or new website tab.
    * Dispatch receipt only; callers must re-observe before any task action.
    * Requires an explicit user interaction. Other platforms reject as unavailable.

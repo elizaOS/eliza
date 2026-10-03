@@ -404,7 +404,7 @@ test("Android embedding is opt-in and restricted to the provisioned native host 
   const output = embedded.files[manifest];
   assert.equal(
     (output.match(/android:knownActivityEmbeddingCerts=/g) ?? []).length,
-    2,
+    3,
   );
   assert.equal(
     (
@@ -412,7 +412,7 @@ test("Android embedding is opt-in and restricted to the provisioned native host 
         new RegExp(`android:knownActivityEmbeddingCerts="${certificate}"`, "g"),
       ) ?? []
     ).length,
-    2,
+    3,
   );
   assert.equal(
     output.replaceAll(

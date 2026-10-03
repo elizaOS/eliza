@@ -165,7 +165,7 @@ qualification remain separate.
 
 
 Android component generation accepts `--embed-host` only as an explicit build
-option. It adds `knownActivityEmbeddingCerts` to the standard Custom Tab and main
+option. It adds `knownActivityEmbeddingCerts` to the intent dispatcher target, standard Custom Tab and main
 tabbed activities, using the same provisioned host certificate as native messaging.
 It does not enable untrusted embedding or change activity exports/launch modes.
 Android enforces this opt-in by signer, not package name: every app sharing that
