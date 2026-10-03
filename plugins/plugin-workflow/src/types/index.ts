@@ -170,6 +170,11 @@ export interface WorkflowExecution {
   input: Record<string, unknown>;
   output?: unknown;
   error?: { message: string; stack?: string };
+  /** Host process reconciliation; never a replacement for canonical Smithers receipts. */
+  reconciliation?: {
+    state: 'worker-running' | 'outcome-unknown';
+    message: string;
+  };
   parentRunId?: string | null;
   nextRunId?: string;
   events?: WorkflowRunEvent[];

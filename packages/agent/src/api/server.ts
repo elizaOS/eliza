@@ -1660,6 +1660,12 @@ async function handleRequestForViewClient(
   ) {
     return;
   }
+  const handleHostAuthRoutes = getAgentHostBridge().handleAuthRoutes;
+  if (
+    handleHostAuthRoutes &&
+    (await handleHostAuthRoutes(req, res, state.runtime))
+  )
+    return;
   // Serve dashboard static assets before the auth gates. serveStaticUi already
   // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected
   // while steward-managed containers can still reach the built-in dashboard.
