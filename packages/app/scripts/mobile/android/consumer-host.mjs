@@ -102,6 +102,10 @@ export function generateAndroidConsumerHost({
       );
   }
   requireValue(
+    !fs.existsSync(output) || fs.statSync(output).isDirectory(),
+    "Generated Android output must be a directory",
+  );
+  requireValue(
     identity && /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(identity.appId),
     "Invalid Android application identity",
   );

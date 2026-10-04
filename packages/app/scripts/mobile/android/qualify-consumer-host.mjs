@@ -23,6 +23,7 @@ const directory = testOutputPath(
   new Date().toISOString().replace(/[:.]/g, "-"),
 );
 fs.mkdirSync(directory, { recursive: true });
+console.log(`Evidence: ${directory}`);
 const temporary = fs.mkdtempSync(
   path.join(os.tmpdir(), "android-host-qualification-"),
 );
@@ -37,11 +38,33 @@ try {
     );
     fixture.identity.appName =
       brand === "first" ? '@Independent\'s "One"' : "?Deux & Café %s %s";
+    let runtimeDirectory;
+    if (brand === "second") {
+      runtimeDirectory = path.join(consumerRoot, "packaging-fixture");
+      const main = path.join(runtimeDirectory, "android/app/src/main");
+      fs.mkdirSync(path.join(main, "assets/agent/arm64-v8a"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(main, "jniLibs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(main, "assets/agent/agent-bundle.js"),
+        "// packaging fixture only; not an executable runtime\n",
+      );
+      fs.writeFileSync(
+        path.join(main, "assets/agent-runtime.inventory"),
+        "packaging qualification only\n",
+      );
+      fs.writeFileSync(
+        path.join(main, "assets/agent/arm64-v8a/excluded.bin"),
+        "must not enter APK assets",
+      );
+    }
     generateAndroidConsumerHost({
       consumerRoot,
       upstreamRoot,
       output,
       ...fixture,
+      runtimeDirectory,
     });
     const log = fs.openSync(path.join(directory, `${brand}.log`), "w");
     try {
@@ -79,14 +102,37 @@ try {
           build,
           name,
         );
+        const bytes = fs.readFileSync(apk),
+          artifact = `${brand}-${name}`;
+        fs.writeFileSync(path.join(directory, artifact), bytes);
         const aapt = path.join(sdk, "build-tools/36.0.0/aapt");
         const badging = execFileSync(aapt, ["dump", "badging", apk], {
           encoding: "utf8",
         });
+        // AAPT badging escapes embedded double quotes in its displayed label.
         assert.equal(
           /^application-label:'(.*)'$/m.exec(badging)?.[1],
-          fixture.identity.appName,
+          fixture.identity.appName.replaceAll('"', '\\"'),
         );
+        assert.equal(
+          /^launchable-activity: name='example\.host\.MainActivity'\s+label='([^']*)'/m.exec(
+            badging,
+          )?.[1],
+          variant,
+        );
+        if (runtimeDirectory) {
+          const entries = execFileSync("unzip", ["-Z1", apk], {
+            encoding: "utf8",
+          }).split("\n");
+          assert.ok(entries.includes("assets/agent/agent-bundle.js"));
+          assert.ok(entries.includes("assets/agent-runtime.inventory"));
+          assert.equal(
+            entries.some((entry) =>
+              entry.startsWith("assets/agent/arm64-v8a/"),
+            ),
+            false,
+          );
+        }
         const manifest = execFileSync(
           aapt,
           ["dump", "xmltree", apk, "AndroidManifest.xml"],
@@ -102,11 +148,10 @@ try {
         );
         assert.ok(manifest.includes("android.intent.category.LAUNCHER"));
         assert.ok(!manifest.includes("ai.elizaos.app"));
-        const bytes = fs.readFileSync(apk),
-          artifact = `${brand}-${name}`;
-        fs.writeFileSync(path.join(directory, artifact), bytes);
         receipts.push({
           appId: fixture.identity.appId,
+          appName: fixture.identity.appName,
+          runtimePackagingFixture: Boolean(runtimeDirectory),
           variant,
           build,
           artifact,
@@ -116,7 +161,7 @@ try {
   }
   fs.writeFileSync(
     path.join(directory, "verification.json"),
-    `${JSON.stringify({ scope: "Two independent generated hosts; real debug/release APK identity and HOME manifest checks. No installation, native runtime, AOSP or user acceptance.", receipts }, null, 2)}\n`,
+    `${JSON.stringify({ scope: "Two independent generated hosts; real debug/release APK identity and HOME manifest checks. The second host configures synthetic runtime assets and verifies ABI-asset exclusion; no executable runtime is supplied. No installation, native runtime, AOSP or user acceptance.", receipts }, null, 2)}\n`,
   );
   console.log(`Qualified ${receipts.length} APKs: ${directory}`);
 } finally {

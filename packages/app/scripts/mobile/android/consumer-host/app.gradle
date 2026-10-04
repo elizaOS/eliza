@@ -15,9 +15,6 @@ android {
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
   profile.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
  }
- profile.sourceSets.each { name, inputs ->
-  inputs.each { kind, directories -> sourceSets.getByName(name).getProperty(kind).srcDirs(directories) }
- }
  buildFeatures { buildConfig true }
  flavorDimensions += 'distribution'
  productFlavors {
@@ -27,6 +24,9 @@ android {
     flavor.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
    }
   }
+ }
+ profile.sourceSets.each { name, inputs ->
+  inputs.each { kind, directories -> sourceSets.getByName(name).getProperty(kind).srcDirs(directories) }
  }
  buildTypes {
   debug { debuggable true }

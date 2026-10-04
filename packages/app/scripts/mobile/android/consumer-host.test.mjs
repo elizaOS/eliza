@@ -211,3 +211,15 @@ test("changing dependency selectors are refused before generating any files", (t
     assert.equal(fs.existsSync(options.output), false);
   }
 });
+
+test("a regular file cannot become a generated output directory", (t) => {
+  const { options, generate } = setup(t);
+  fs.writeFileSync(options.output, "user file");
+  assert.throws(
+    generate,
+    (error) =>
+      error instanceof AndroidConsumerHostError &&
+      /directory/.test(error.message),
+  );
+  assert.equal(fs.readFileSync(options.output, "utf8"), "user file");
+});
