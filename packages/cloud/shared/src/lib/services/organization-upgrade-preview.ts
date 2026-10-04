@@ -10,6 +10,10 @@ import { requireStripe } from "../stripe";
 import { GENERIC_BILLING_STRIPE_API_VERSION } from "./generic-billing-provider-types";
 import { organizationUpgradeReviewSchema } from "./organization-plan-change-contract";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import {
+  assertOrganizationUpgradeProviderBindingCurrent,
+  resolveOrganizationUpgradeProviderBinding,
+} from "./organization-upgrade-provider-binding";
 import { invoiceSchema, projectSubscriptionUpdateInvoice } from "./stripe-invoice-observation";
 import {
   validateCancellationCustomer,
@@ -207,6 +211,11 @@ export async function createOrganizationUpgradeQuote(
     reject("upgrade_target_required");
   const stripe = requireStripe(),
     environment = getCloudAwareEnv();
+  const providerBinding = resolveOrganizationUpgradeProviderBinding(
+    source,
+    target.key,
+    environment,
+  );
   await getVerifiedSubscriptionPlans({
     env: environment,
     provider: adaptStripeSubscriptionCatalogProvider(stripe),
@@ -263,5 +272,11 @@ export async function createOrganizationUpgradeQuote(
     recurring,
   });
   await revalidateSession();
-  return saveOrganizationUpgradeQuote({ identity: input, captured, review });
+  assertOrganizationUpgradeProviderBindingCurrent(
+    providerBinding,
+    source,
+    target.key,
+    getCloudAwareEnv(),
+  );
+  return saveOrganizationUpgradeQuote({ identity: input, captured, review, providerBinding });
 }
