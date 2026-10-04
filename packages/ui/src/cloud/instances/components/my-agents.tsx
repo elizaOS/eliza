@@ -22,6 +22,7 @@ import { Button } from "../../../components/ui/button";
  */
 import { logger } from "../../../logger.ts";
 import { useT } from "../lib/i18n";
+import { shouldReleaseAnonSessionToken } from "./affiliate-claim-session";
 import { CharacterFilters } from "./character-filters";
 import type { AgentWithOwnership } from "./character-library-grid";
 import { CharacterLibraryGrid } from "./character-library-grid";
@@ -363,7 +364,7 @@ export function MyAgentsClient() {
           );
           fetchCharacters();
 
-          if (sessionToken) {
+          if (sessionToken && shouldReleaseAnonSessionToken(data)) {
             try {
               localStorage.removeItem("eliza-anon-session-token");
             } catch {
