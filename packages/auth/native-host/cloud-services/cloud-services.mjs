@@ -75,6 +75,7 @@ export function projectCheckout(data, presentation, forget) {
   if (status === "completed") return { status };
   if (presentation === "embedded") {
     if (
+      data.uiMode !== "embedded" ||
       typeof data.clientSecret !== "string" ||
       !/^cs_(live|test)_[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(
         data.clientSecret,
@@ -85,7 +86,7 @@ export function projectCheckout(data, presentation, forget) {
       throw fail("Invalid payment response", 502);
     return {
       status,
-      uiMode: data.uiMode === "embedded" ? "embedded" : "elements",
+      uiMode: data.uiMode,
       clientSecret: data.clientSecret,
       publishableKey: data.publishableKey,
       ...(Number.isSafeInteger(data.amountDueCents) &&
