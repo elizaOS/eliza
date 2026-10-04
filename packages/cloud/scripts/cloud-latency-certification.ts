@@ -195,6 +195,11 @@ export function validatePairedEvidence(
       throw new Error("Paired latency evidence contains an unexpected target");
     }
     counts[record.target]++;
+    if (record.temperature !== 0) {
+      throw new Error(
+        "Paired latency evidence must use zero-temperature proof sampling",
+      );
+    }
     if (
       record.ok !== true ||
       record.transportOk !== true ||
