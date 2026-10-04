@@ -2,7 +2,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { MiddlewareHandler } from "hono";
 
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { debug: () => {}, error: () => {}, info: () => {}, warn: () => {} },
 }));
 

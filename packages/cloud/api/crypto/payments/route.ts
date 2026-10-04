@@ -1,3 +1,4 @@
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 /**
  * /api/crypto/payments
  * POST: create a new crypto payment (OxaPay) for the authed org. Strict
@@ -5,27 +6,26 @@
  * GET: list all crypto payments for the authed org. Standard rate limit.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
   requireUserOrApiKeyWithOrg,
   requireUserWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
+} from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { SUPPORTED_PAY_CURRENCIES } from "@elizaos/cloud-shared/lib/config/crypto";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   CryptoPaymentError,
   cryptoPaymentsService,
-} from "@/lib/services/crypto-payments";
-import { isOxaPayConfigured } from "@/lib/services/oxapay";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/crypto-payments";
+import { isOxaPayConfigured } from "@elizaos/cloud-shared/lib/services/oxapay";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const createPaymentSchema = z.object({
   amount: z

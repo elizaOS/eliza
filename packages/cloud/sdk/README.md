@@ -9,6 +9,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/cloud/sdk build  # build
+bun run --cwd packages/cloud/sdk test  # keyless unit and transport tests
 bun run --cwd packages/cloud/sdk test:e2e  # live integration tests
 ```
 
@@ -41,3 +42,6 @@ Service-only consumers set `hostPolicy.accountBilling: false` to exclude billing
 routes. Enrollment requires its factory when a pending credential store is supplied.
 Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`
 uses provider language detection. Omitting these choices retains policy validation.
+
+Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
+setup-session mock exports remain compatible; the client root does not load them.

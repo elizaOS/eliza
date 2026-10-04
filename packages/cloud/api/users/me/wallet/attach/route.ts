@@ -15,19 +15,19 @@
  * index on `users.wallet_address` and avoids any account-merge logic.
  */
 
-import { Hono } from "hono";
-import { getAddress } from "viem";
-import { requireUser } from "@/lib/auth/workers-hono-auth";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { requireUser } from "@elizaos/cloud-shared/auth";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { usersService } from "@/lib/services/users";
-import { getAppHost } from "@/lib/utils/app-url";
-import { logger } from "@/lib/utils/logger";
-import { validateAndConsumeSIWE } from "@/lib/utils/siwe-helpers";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { getAppHost } from "@elizaos/cloud-shared/lib/utils/app-url";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { validateAndConsumeSIWE } from "@elizaos/cloud-shared/lib/utils/siwe-helpers";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { getAddress } from "viem";
 
 interface AttachBody {
   message: string;

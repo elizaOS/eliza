@@ -6,17 +6,23 @@
  * DELETE: clears all messages (used when resetting edit-mode rooms).
  */
 
+import { requireUserOrApiKey } from "@elizaos/cloud-shared/auth";
+import {
+  entitiesRepository,
+  memoriesRepository,
+} from "@elizaos/cloud-shared/db/repositories";
+import { roomsService } from "@elizaos/cloud-shared/lib/services/agents/rooms";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { v4 as uuidv4 } from "uuid";
-import { entitiesRepository, memoriesRepository } from "@/db/repositories";
-import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { roomsService } from "@/lib/services/agents/rooms";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const DEFAULT_AGENT_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 const ANON_SESSION_COOKIE = "eliza-anon-session";

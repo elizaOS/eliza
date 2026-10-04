@@ -15,8 +15,8 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { billingHoldService } from "@/lib/services/billing-hold";
-import * as quotaPolicyActual from "@/lib/services/organization-quota-policy";
+import { billingHoldService } from "@elizaos/cloud-shared/lib/services/billing-hold";
+import * as quotaPolicyActual from "@elizaos/cloud-shared/lib/services/organization-quota-policy";
 import { purchasedCreditPolicyFixture } from "./purchased-credit-policy-fixture";
 
 // These route billing fixtures model purchased-credit funding with no subscription
@@ -39,11 +39,11 @@ afterEach(() => {
   holdLookup.mockRestore();
 });
 
-import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
-import * as aiPricingActual from "@/lib/services/ai-pricing";
-import * as contentSafetyActual from "@/lib/services/content-safety";
-import * as creditsActual from "@/lib/services/credits";
-import * as generationsActual from "@/lib/services/generations";
+import * as workersHonoAuthActual from "@elizaos/cloud-shared/auth";
+import * as aiPricingActual from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import * as contentSafetyActual from "@elizaos/cloud-shared/lib/services/content-safety";
+import * as creditsActual from "@elizaos/cloud-shared/lib/services/credits";
+import * as generationsActual from "@elizaos/cloud-shared/lib/services/generations";
 
 const falActual = require("@fal-ai/client") as typeof import("@fal-ai/client");
 const { ApiError: FalApiError } = falActual;
@@ -58,12 +58,12 @@ const FAL_COST = 0.8;
 const ATLAS_COST = 0.3;
 
 const requireUserOrApiKeyWithOrg = mock();
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   ...workersHonoAuthActual,
   requireUserOrApiKeyWithOrg,
 }));
 
-mock.module("@/lib/services/content-safety", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/content-safety", () => ({
   ...contentSafetyActual,
   contentSafetyService: {
     ...contentSafetyActual.contentSafetyService,
@@ -81,7 +81,7 @@ const calculateVideoGenerationCostFromCatalog = mock(
     };
   },
 );
-mock.module("@/lib/services/ai-pricing", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
   ...aiPricingActual,
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions: (model: string) => ({
@@ -95,18 +95,21 @@ mock.module("@/lib/services/ai-pricing", () => ({
 
 // This provider failover fixture uses prepaid credits; subscription funding
 // is exercised by the billing authority integration suite.
-mock.module("@/db/repositories/subscription-entitlements", () => ({
-  subscriptionEntitlementsRepository: { find: async () => undefined },
-}));
+mock.module(
+  "@elizaos/cloud-shared/db/repositories/subscription-entitlements",
+  () => ({
+    subscriptionEntitlementsRepository: { find: async () => undefined },
+  }),
+);
 
 const reserve = mock();
-mock.module("@/lib/services/credits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   ...creditsActual,
   creditsService: { ...creditsActual.creditsService, reserve },
 }));
 
 const generationsCreate = mock();
-mock.module("@/lib/services/generations", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/generations", () => ({
   ...generationsActual,
   generationsService: {
     ...generationsActual.generationsService,
@@ -138,11 +141,23 @@ const videoRoute = (await import("../v1/generate-video/route")).default;
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
-  mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
-  mock.module("@/lib/services/content-safety", () => contentSafetyActual);
-  mock.module("@/lib/services/ai-pricing", () => aiPricingActual);
-  mock.module("@/lib/services/credits", () => creditsActual);
-  mock.module("@/lib/services/generations", () => generationsActual);
+  mock.module("@elizaos/cloud-shared/auth", () => workersHonoAuthActual);
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/content-safety",
+    () => contentSafetyActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/ai-pricing",
+    () => aiPricingActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/credits",
+    () => creditsActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/generations",
+    () => generationsActual,
+  );
   mock.module("@fal-ai/client", () => falActual);
 });
 

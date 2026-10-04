@@ -16,36 +16,39 @@ const initiateCalls: Array<{
   capabilities?: string[];
 }> = [];
 
-mock.module("@/lib/api/cloud-worker-errors", () => ({
+mock.module("@elizaos/cloud-shared/lib/api/cloud-worker-errors", () => ({
   failureResponse: (_c: unknown, error: unknown) =>
     new Response(JSON.stringify({ error: String(error) }), { status: 500 }),
 }));
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({
     id: "user-1",
     organization_id: "org-1",
   }),
 }));
 
-mock.module("@/lib/services/agent-google-connector", () => ({
-  AgentGoogleConnectorError: class AgentGoogleConnectorError extends Error {
-    status = 400;
-  },
-  initiateManagedGoogleConnection: async (args: {
-    organizationId: string;
-    userId: string;
-    side: "owner" | "agent";
-    redirectUrl?: string;
-    capabilities?: string[];
-  }) => {
-    initiateCalls.push(args);
-    return {
-      ok: true,
-      url: "https://accounts.google.com/o/oauth2/auth?state=test",
-    };
-  },
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/agent-google-connector",
+  () => ({
+    AgentGoogleConnectorError: class AgentGoogleConnectorError extends Error {
+      status = 400;
+    },
+    initiateManagedGoogleConnection: async (args: {
+      organizationId: string;
+      userId: string;
+      side: "owner" | "agent";
+      redirectUrl?: string;
+      capabilities?: string[];
+    }) => {
+      initiateCalls.push(args);
+      return {
+        ok: true,
+        url: "https://accounts.google.com/o/oauth2/auth?state=test",
+      };
+    },
+  }),
+);
 
 const { default: initiateRoute } = await import("./route");
 

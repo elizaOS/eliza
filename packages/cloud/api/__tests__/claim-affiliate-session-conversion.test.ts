@@ -46,18 +46,18 @@ function createDeps(overrides: Partial<Deps> = {}): Deps {
 
 let deps = createDeps();
 
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { debug: () => {}, error: () => {}, info: () => {}, warn: () => {} },
 }));
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserWithOrg: async () => ({
     id: USER_ID,
     organization_id: ORG_ID,
   }),
 }));
 
-mock.module("@/db/repositories", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories", () => ({
   participantsRepository: {
     findRoomsByEntityId: async () => deps.roomCharacters.map(() => "room-1"),
   },
@@ -73,7 +73,7 @@ mock.module("@/db/repositories", () => ({
   },
 }));
 
-mock.module("@/lib/services/users", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/users", () => ({
   usersService: {
     getById: async (userId: string) => {
       if (userId === ANON_ID) {
@@ -95,7 +95,7 @@ mock.module("@/lib/services/users", () => ({
   },
 }));
 
-mock.module("@/lib/services/anonymous-sessions", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/anonymous-sessions", () => ({
   anonymousSessionsService: {
     getByToken: async () => deps.session,
     markConverted: async (sessionId: string) => {
@@ -105,7 +105,7 @@ mock.module("@/lib/services/anonymous-sessions", () => ({
   },
 }));
 
-mock.module("@/lib/services/characters/characters", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/characters/characters", () => ({
   charactersService: {
     claimAffiliateCharacter: async (
       characterId: string,

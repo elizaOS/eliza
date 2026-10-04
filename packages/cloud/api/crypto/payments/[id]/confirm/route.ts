@@ -1,3 +1,4 @@
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 /**
  * POST /api/crypto/payments/:id/confirm
  *
@@ -7,19 +8,18 @@
  * verification (status, confirmations, amount).
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { cryptoPaymentsRepository } from "@elizaos/cloud-shared/db/repositories/crypto-payments";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger, redact } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { cryptoPaymentsService } from "@elizaos/cloud-shared/lib/services/crypto-payments";
+import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const ethereumTxHashRegex = /^0x[a-fA-F0-9]{64}$/;
 const tronTxHashRegex = /^[A-Za-z0-9]{64}$/;

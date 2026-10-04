@@ -1,10 +1,11 @@
 /** Exchanges a bound mobile authorization code for an inactive credential. */
-import { Hono } from "hono";
+
 import {
   exchangeMobileAppAuthCode,
   MobileAppAuthProtocolError,
-} from "@/lib/services/mobile-app-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import {
   MOBILE_APP_AUTH_TOKEN_RATE_LIMIT,
   mobileAppAuthRateLimitMiddleware,

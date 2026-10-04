@@ -1,14 +1,15 @@
 /** Handles v1 cloud API PII scrub job enqueue traffic with route-local auth expectations. */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { resolveCloudPiiScrubEscalationHandler } from "@/lib/services/pii-scrub-executor";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { resolveCloudPiiScrubEscalationHandler } from "@elizaos/cloud-shared/lib/services/pii-scrub-executor";
 import {
   enqueuePiiScrubBatch,
   PII_SCRUB_INSPECTION_SCOPES,
@@ -17,9 +18,11 @@ import {
   PII_SCRUB_MAX_RULESET_VERSION_LENGTH,
   PiiScrubJobDataError,
   toPiiScrubJobDto,
-} from "@/lib/services/pii-scrub-jobs";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/pii-scrub-jobs";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const enqueueSchema = z.object({
   rulesetVersion: z.string().min(1).max(PII_SCRUB_MAX_RULESET_VERSION_LENGTH),

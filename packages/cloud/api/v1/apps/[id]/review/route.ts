@@ -9,24 +9,27 @@
  * `isAppMonetizationApproved`). Owners can edit + resubmit after a rejection.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  getLatestAppReview,
+  runAppReview,
+} from "@elizaos/cloud-shared/lib/services/app-review";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getLatestAppReview, runAppReview } from "@/lib/services/app-review";
-import { appsService } from "@/lib/services/apps";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
