@@ -625,60 +625,6 @@ export function submitProviderFlowCode(
   return matching[0]?.handle ?? null;
 }
 
-/**
- * Remove every flow from the registry. Tests use this to reset
- * between cases without resetting the whole module.
- */
-export function _resetFlowRegistry(): void {
-  for (const entry of flows.values()) {
-    if (entry.gcTimer) clearTimeout(entry.gcTimer);
-  }
-  flows.clear();
-}
-
-/**
- * Test-only helper to seed a synthetic flow without going through the
- * vendor layer. Used by `accounts-routes.test.ts` to assert the SSE
- * surface streams `success` / `error` payloads correctly.
- */
-export function _registerSyntheticFlow(args: {
-  sessionId?: string;
-  providerId: SubscriptionProvider;
-  authUrl: string;
-  needsCodeSubmission?: boolean;
-}): { sessionId: string; complete: (state: FlowState) => void } {
-  const sessionId = args.sessionId ?? newSessionId();
-  const state: FlowState = {
-    sessionId,
-    providerId: args.providerId,
-    status: "pending",
-    authUrl: args.authUrl,
-    needsCodeSubmission: Boolean(args.needsCodeSubmission),
-    startedAt: Date.now(),
-  };
-  const entry: InternalFlowEntry = {
-    state,
-    handle: {
-      sessionId,
-      authUrl: args.authUrl,
-      needsCodeSubmission: Boolean(args.needsCodeSubmission),
-      completion: new Promise<{ account: AccountCredentialRecord }>(
-        () => undefined,
-      ),
-      submitCode: () => undefined,
-      cancel: () => undefined,
-    },
-    listeners: new Set(),
-  };
-  flows.set(sessionId, entry);
-  const complete = (next: FlowState) => {
-    entry.state = { ...next, endedAt: next.endedAt ?? Date.now() };
-    emit(entry);
-    scheduleGc(sessionId);
-  };
-  return { sessionId, complete };
-}
-
 /** OpenAI Codex JWT carries `chatgpt_account_id` under a vendor claim. */
 function extractCodexAccountId(accessToken: string): string | null {
   try {

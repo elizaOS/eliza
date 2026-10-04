@@ -36,6 +36,64 @@ let nextRegistrationId = 0;
 
 const TICK_INTERVAL_MS = 1000;
 
+interface ProcessTask {
+	controller: AbortController;
+	run: (signal: AbortSignal) => Promise<void>;
+	active?: Promise<void>;
+}
+const processTasks = new Map<string, ProcessTask>();
+
+/** Register host-owned work on the existing process timer. The disposer drains its active run. */
+export function registerScheduledProcessTask(
+	name: string,
+	run: (signal: AbortSignal) => Promise<void>,
+): () => Promise<void> {
+	if (processTasks.has(name)) {
+		throw new ElizaError("Scheduled process task is already registered", {
+			code: "TASK_SCHEDULER_DUPLICATE_PROCESS_TASK",
+			context: { name },
+		});
+	}
+	const task: ProcessTask = { controller: new AbortController(), run };
+	processTasks.set(name, task);
+	ensureTimer();
+	return async () => {
+		if (processTasks.get(name) === task) processTasks.delete(name);
+		task.controller.abort();
+		if (!adapter && processTasks.size === 0 && timer) {
+			clearInterval(timer);
+			timer = null;
+		}
+		await task.active;
+	};
+}
+
+function runProcessTasks(): void {
+	for (const [name, task] of processTasks) {
+		if (task.active || task.controller.signal.aborted) continue;
+		task.active = Promise.resolve()
+			.then(() => {
+				if (!task.controller.signal.aborted)
+					return task.run(task.controller.signal);
+			})
+			.catch((cause) =>
+				logger.error(
+					{
+						err: new ElizaError("Scheduled process task failed", {
+							code: "TASK_SCHEDULER_PROCESS_TASK_FAILED",
+							context: { name },
+							cause,
+						}),
+					},
+					"[TaskScheduler] process task failed",
+				),
+			)
+			.finally(() => {
+				task.active = undefined;
+			});
+	}
+}
+
 /**
  * One tick: fetch queue tasks for all dirty agents in one call, group by agentId, runTick per runtime.
  * WHY single getTasks(agentIds): one DB round-trip for many agents instead of N round-trips.
@@ -218,7 +276,14 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 		for (const agentId of registry.keys()) dirtyAgents.add(agentId);
 		return;
 	}
+	ensureTimer();
+}
+
+function ensureTimer(): void {
+	if (timer) return;
 	timer = setInterval(() => {
+		runProcessTasks();
+		if (!adapter) return;
 		if (activeTick) return;
 		// error-policy:J1 The process timer is the outer scheduler boundary; per-agent
 		// failures are reported inside tick, while adapter-level failure is logged here.
@@ -234,7 +299,7 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 
 export function stopTaskScheduler(): void {
 	schedulerGeneration += 1;
-	if (timer) {
+	if (timer && processTasks.size === 0) {
 		clearInterval(timer);
 		timer = null;
 	}

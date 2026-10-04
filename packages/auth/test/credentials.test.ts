@@ -3,6 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createTestVault, type TestVault } from "../src/testing/index.js";
 import {
   deleteSavedLogin,
   getAutofillAllowed,
@@ -12,7 +13,6 @@ import {
   setAutofillAllowed,
   setSavedLogin,
 } from "../src/vault/credentials.js";
-import { createTestVault, type TestVault } from "../src/vault/testing.js";
 
 let test: TestVault;
 
@@ -55,10 +55,10 @@ describe("credentials — round-trip", () => {
     // The describe() result confirms it is stored as sensitive.
     const keys = await test.vault.list();
     const passwordKey = keys.find((k) => k.includes("github.com"));
-    if (passwordKey) {
-      const desc = await test.vault.describe(passwordKey);
-      expect(desc?.sensitive).toBe(true);
-    }
+    expect(passwordKey).toBeDefined();
+    if (!passwordKey) throw new Error("Saved password entry missing");
+    const desc = await test.vault.describe(passwordKey);
+    expect(desc?.sensitive).toBe(true);
   });
 
   it("normalises domain casing", async () => {
