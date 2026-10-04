@@ -142,7 +142,8 @@ export const SENSITIVE_ASSIGNMENT_PATTERNS: readonly string[] = [
 	// Named credential assignments are case-insensitive; avoid broad suffix matches on ordinary words.
 	// A `_`/`-`-joined prefix (db_password, openai_api_key, github_token) names the same credential,
 	// as the uppercase ENV-style row already allows; `turnkey` has no separator and stays unmatched.
-	String.raw`/\b(?:[a-z0-9]+[_-])*(?:password|passwd|passphrase|mnemonic|seed|credential|secret|token|api[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bot[_-]?token|session[_-]?key|private[_-]?key|client[_-]?secret|seed[_-]?phrase)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/gi`,
+	// Match only the start of the whole assignment key.
+	String.raw`/(?<![A-Za-z0-9_-])(?:[a-z0-9]+[_-])*(?:password|passwd|passphrase|mnemonic|seed|credential|secret|token|api[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bot[_-]?token|session[_-]?key|private[_-]?key|client[_-]?secret|seed[_-]?phrase)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/gi`,
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
 	String.raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/g`,
 ];
