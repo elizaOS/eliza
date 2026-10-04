@@ -2034,15 +2034,6 @@ export default defineConfig(({ command, mode }) => ({
             enforce: "pre" as const,
             load(id: string) {
               const p = id.split("?")[0]?.split(path.sep).join("/") ?? "";
-              // The agent app's SettingsView pulls `listExtraSettingsGroups` from
-              // the cloud settings barrel, which in turn imports the broken cloud
-              // feature subtrees. Provide it directly (no cloud groups when the
-              // cloud surface is excluded) so the whole subtree drops out.
-              if (
-                /\/packages\/ui\/src\/cloud\/settings\/index\.tsx?$/.test(p)
-              ) {
-                return "export function listExtraSettingsGroups() { return []; }";
-              }
               const uiCloudRoot = path
                 .join(uiPkgRoot, "src/cloud")
                 .split(path.sep)
