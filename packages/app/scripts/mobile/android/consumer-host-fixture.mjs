@@ -5,7 +5,7 @@ export function createConsumerFixture(root, appId) {
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
   fs.writeFileSync(
     path.join(root, "src/MainActivity.java"),
-    "package example.host; public final class MainActivity extends android.app.Activity {}\n",
+    "package example.host; public final class MainActivity extends example.library.BaseActivity {}\n",
   );
   fs.writeFileSync(
     path.join(root, "main.xml"),
@@ -27,6 +27,39 @@ export function createConsumerFixture(root, appId) {
       );
     }
   }
+  // The library must link into the host; the companion must build separately.
+  for (const [name, plugin, namespace] of [
+    ["library", "library", "example.library"],
+    ["companion", "application", `${appId}.companion`],
+  ]) {
+    const module = path.join(root, name);
+    fs.mkdirSync(path.join(module, "src/main/java"), { recursive: true });
+    fs.writeFileSync(
+      path.join(module, "src/main/AndroidManifest.xml"),
+      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application/></manifest>',
+    );
+    fs.writeFileSync(
+      path.join(module, "build.gradle"),
+      `apply plugin: 'com.android.${plugin}'
+android {
+ namespace '${namespace}'
+ compileSdk 36
+ defaultConfig { minSdk 29; targetSdk 36 }
+}
+`,
+    );
+  }
+  fs.writeFileSync(
+    path.join(root, "library/src/main/java/BaseActivity.java"),
+    "package example.library; public class BaseActivity extends android.app.Activity {}\n",
+  );
+  fs.mkdirSync(path.join(root, "companion/src/main/assets"), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(root, "companion/src/main/assets/companion-only.txt"),
+    "separate APK",
+  );
   const source = (relative) => ({ root: "consumer", path: relative });
   return {
     identity: {
@@ -39,7 +72,14 @@ export function createConsumerFixture(root, appId) {
       schema: 1,
       sdk: { min: 29, target: 36, compile: 36 },
       releaseMinify: false,
-      modules: [],
+      modules: [
+        { name: "library", source: source("library") },
+        {
+          name: "companion",
+          source: source("companion"),
+          appDependency: false,
+        },
+      ],
       dependencies: [],
       manifest: source("main.xml"),
       flavors: [

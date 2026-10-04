@@ -212,6 +212,42 @@ test("independent host selects its plan and speech policy without exposing autho
         error: "Invalid payment response",
       });
     }
+    const factorRoutes = {
+      "/cloud/account/methods": ["account-methods", {}],
+      "/cloud/account/methods/unlink": [
+        "account-unlink",
+        { reviewId: "review", methodId: "method" },
+      ],
+      "/cloud/account/methods/phone/start": [
+        "account-phone-start",
+        { phone: "+15555550123" },
+      ],
+      "/cloud/account/methods/phone/verify": [
+        "account-phone-verify",
+        { sessionId: "phone", code: "123456" },
+      ],
+      "/cloud/account/security/status": ["account-security-status", {}],
+      "/cloud/account/security/enroll/start": [
+        "account-security-enroll-start",
+        { phone: "+15555550123" },
+      ],
+      "/cloud/account/security/enroll/verify": [
+        "account-security-enroll-verify",
+        { sessionId: "enrollment", code: "123456" },
+      ],
+      "/cloud/account/security/start": [
+        "account-security-start",
+        { method: "totp" },
+      ],
+      "/cloud/account/security/verify": [
+        "account-security-verify",
+        { sessionId: "security", code: "123456" },
+      ],
+    };
+    for (const [route, [operation, input]] of Object.entries(factorRoutes)) {
+      assert.equal((await post(route, input)).status, 200);
+      assert.deepEqual(handled.at(-1), { operation, input });
+    }
     const mfa = await post("/cloud/account/billing/mfa", {
       sessionId: "billing-attempt",
       code: "123456",
@@ -429,6 +465,8 @@ test("a service-only host composes CLI login and provider-default voice without 
     "/cloud/account/plans",
     "/cloud/account/checkout",
     "/cloud/account/billing/start",
+    "/cloud/account/methods",
+    "/cloud/account/security/start",
   ])
     assert.equal((await post(route, {})).status, 404);
   assert.equal(calls.length, 0);

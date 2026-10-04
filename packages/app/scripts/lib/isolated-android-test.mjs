@@ -13,7 +13,13 @@ import {
   dumpAndroidArtifactBadgingAsync,
   dumpAndroidArtifactManifestAsync,
 } from "../mobile/artifact-inspection/android-tools.ts";
-import { acquireDeviceLease, deviceLeaseStateDir } from "./device-lease.ts";
+import {
+  acquireDeviceLease,
+  activeLeaseStatus,
+  deviceLeasePath,
+  deviceLeaseStateDir,
+  readDeviceLease,
+} from "./device-lease.ts";
 import { requireInstrumentationSuccess } from "./instrumentation-result.mjs";
 
 const sha256 = (file) =>
@@ -34,6 +40,7 @@ export async function runIsolatedAndroidTest({
   requiredAbi,
   expectedAvdName,
   androidUser,
+  deviceLease,
   signal,
   commandTimeoutMs,
   cleanupTimeoutMs,
@@ -202,11 +209,36 @@ export async function runIsolatedAndroidTest({
       [packageName, testPackage].some((name) => line === `package:${name}`),
     );
   // The canonical lease still reclaims dead PIDs. It must not expire under a live caller's work.
-  const lease = await acquireDeviceLease(`android:${serial}`, {
-    waitMs: 0,
-    ttlMs: Number.MAX_SAFE_INTEGER,
-    stateDir: deviceLeaseStateDir(env),
-  });
+  const deviceKey = `android:${serial}`;
+  const stateDir = deviceLeaseStateDir(env);
+  if (deviceLease) {
+    assert.equal(deviceLease.path, deviceLeasePath(deviceKey, stateDir));
+    assert.equal(
+      deviceLease.lease.pid,
+      process.pid,
+      "Caller must own the lease",
+    );
+    assert.equal(
+      deviceLease.lease.ttlMs,
+      Number.MAX_SAFE_INTEGER,
+      "Caller lease must cover the live fixture lifecycle",
+    );
+    assert.deepEqual(
+      readDeviceLease(deviceKey, { stateDir }),
+      deviceLease.lease,
+    );
+    assert.ok(
+      activeLeaseStatus(deviceLease.lease).active,
+      "Caller lease is stale",
+    );
+  }
+  const lease =
+    deviceLease ??
+    (await acquireDeviceLease(deviceKey, {
+      waitMs: 0,
+      ttlMs: Number.MAX_SAFE_INTEGER,
+      stateDir,
+    }));
   const report = {
     serial,
     packageName,
@@ -382,7 +414,7 @@ export async function runIsolatedAndroidTest({
           );
       }
     } finally {
-      lease.release();
+      if (!deviceLease) lease.release();
     }
   }
   if (failure) throw failure;

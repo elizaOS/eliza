@@ -1574,8 +1574,12 @@ describe("durable background memory", () => {
     expect(prompt).toContain(next.content.text);
     expect(prompt.match(/evidence-set-1:/g)).toHaveLength(1);
     expect(
-      prompt.match(/only the exact source IDs in evidence-set-1/g),
-    ).toHaveLength(2);
+      JSON.parse(
+        prompt.match(
+          /Evaluators (\[[^\n]+\]) below: Incremental evidence contract: process only the exact source IDs in evidence-set-1 defined above\./,
+        )?.[1] ?? "null",
+      ),
+    ).toEqual(["leadA", "leadB"]);
     expect(prompt).not.toContain("evidence-set-2");
     expect(
       JSON.parse(prompt.match(/evidence-set-1: (\[[\s\S]*?\])/)?.[1] ?? "null"),
