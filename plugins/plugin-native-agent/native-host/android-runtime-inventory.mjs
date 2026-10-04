@@ -77,6 +77,11 @@ export function stageAndroidRuntimeInventory({
     )
       fail("Invalid runtime inventory entry");
     if (kind === "asset") {
+      if (
+        !destination.startsWith("bundle/") &&
+        !/^[A-Za-z0-9_.+-]+\.tar\.gz$/.test(destination)
+      )
+        fail("Invalid runtime archive destination");
       if (destinations.has(destination)) fail("Duplicate runtime destination");
       destinations.add(destination);
       assetBytes += bytes.length;
@@ -141,6 +146,18 @@ export function stageAndroidRuntimeInventory({
   if (!fs.existsSync(blobDirectory))
     fs.mkdirSync(blobDirectory, { mode: 0o700 });
   directory(blobDirectory);
+  const blobDescriptor = fs.openSync(
+    blobDirectory,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+  );
+  try {
+    const stat = fs.fstatSync(blobDescriptor);
+    if (process.getuid && stat.uid !== process.getuid())
+      fail("Runtime blob directory must be host-owned");
+    fs.fchmodSync(blobDescriptor, 0o700);
+  } finally {
+    fs.closeSync(blobDescriptor);
+  }
   for (const [digest, bytes] of blobs) {
     const file = path.join(blobDirectory, `${digest}.bin`);
     if (fs.existsSync(file)) {

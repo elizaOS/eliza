@@ -130,3 +130,22 @@ test("host exclusions apply to exact directories, without skipping sibling asset
     /Invalid runtime asset exclusions/,
   );
 });
+
+test("archive names match Java admission and existing blob directories become private", (t) => {
+  const f = fixture(t),
+    blobs = path.join(f.assetsDirectory, "runtime-blobs");
+  fs.mkdirSync(blobs);
+  fs.chmodSync(blobs, 0o777);
+  const first = stageAndroidRuntimeInventory(f);
+  assert.equal(fs.statSync(blobs).mode & 0o777, 0o700);
+  const original = fs.readFileSync(first.manifestPath);
+  fs.writeFileSync(
+    path.join(f.assetsDirectory, "agent/pglite@0.3.tar"),
+    "synthetic tar fixture",
+  );
+  assert.throws(
+    () => stageAndroidRuntimeInventory(f),
+    /Invalid runtime archive destination/,
+  );
+  assert.deepEqual(fs.readFileSync(first.manifestPath), original);
+});
