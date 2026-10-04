@@ -1,8 +1,10 @@
 /** Shared host configuration and HTTP contracts; safe to import in a browser. */
+export * from "./api/app-route-plugin-registry.js";
 export * from "./api/http-plugin.js";
 export * from "./api/http-plugin-runtime.js";
 export * from "./api/route-helpers.js";
 export * from "./api/runtime-route-context.js";
+export * from "./automation-node-contributors.js";
 export * from "./boot-env.js";
 export * from "./character-presets.characters.js";
 
@@ -23,6 +25,7 @@ export {
 export * from "./character-presets.shared.js";
 export * from "./checkout/index.js";
 export * from "./config/allowed-hosts.js";
+export * from "./config/api-key-prefix-hints.js";
 export * from "./config/app-config.js";
 export {
   type AppBootConfig,
@@ -49,6 +52,7 @@ export {
   buildPluginConfigUiSpec,
   buildPluginListUiSpec,
 } from "./config/plugin-ui-spec.js";
+export * from "./config/public-endpoints.js";
 export * from "./config/runtime-mode.js";
 export * from "./config/schema.js";
 export type {

@@ -1,7 +1,7 @@
 /**
  * Re-exports the shared UI types.
  */
-export {
+export type {
   ActionBinding,
   AgentFileEntry,
   AgentIdentityResult,
