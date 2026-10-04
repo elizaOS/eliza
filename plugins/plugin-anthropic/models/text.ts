@@ -1659,6 +1659,9 @@ async function generateTextWithModel(
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
     ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
     ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
+    // The runtime's cancellation signal (GenerateTextParams.signal) must reach
+    // the HTTP request, or a stopped turn keeps generating to maxOutputTokens.
+    ...(paramsWithAttachments.signal ? { abortSignal: paramsWithAttachments.signal } : {}),
   };
 
   const operationName = `${modelType} request using ${modelName}`;
@@ -1790,7 +1793,12 @@ async function generateTextWithModel(
   }
 
   try {
-    const response = await executeWithRetry(operationName, () => generateText(generateParams));
+    const response = await executeWithRetry(
+      operationName,
+      () => generateText(generateParams),
+      undefined,
+      paramsWithAttachments.signal
+    );
 
     assertModelOutputComplete({
       finishReason: response.finishReason,

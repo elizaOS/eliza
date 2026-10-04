@@ -1551,7 +1551,12 @@ function buildBoundedNumberRule(
 		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
 			const literals: string[] = [];
 			for (let i = min; i <= max; i++) {
-				literals.push(gbnfJsonStringLiteral(String(i)));
+				// Emit a bare JSON numeric literal (e.g. `5`), not a JSON string
+				// (`"5"`): this rule constrains an integer parameter, so quoting
+				// it would force the model to emit `{"count":"5"}` and violate the
+				// declared {type:"integer"} schema. Matches the float / large-range
+				// branches, which both use the bare `jsonnumber` rule.
+				literals.push(gbnfLiteral(String(i)));
 			}
 			builder.rule(ruleName, literals.join(" | "));
 			return ruleName;

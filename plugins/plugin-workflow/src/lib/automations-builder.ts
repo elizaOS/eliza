@@ -15,8 +15,9 @@
 import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
 import { ElizaError, stringToUuid } from '@elizaos/core';
 import { getRouteOwnerEntityId } from '../routes/_helpers';
-import type { WorkflowStatusResponse } from '../routes/workflow-routes';
+import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import { workflowRuntimeStatus } from '../services/workflow-status';
 import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
@@ -474,20 +475,6 @@ function getWorkflowService(runtime: AgentRuntime): WorkflowService | null {
   return (candidate as WorkflowService | null) ?? null;
 }
 
-function buildWorkflowStatus(service: WorkflowService | null): WorkflowStatusResponse {
-  return {
-    mode: service ? 'cloud' : 'disabled',
-    host: service ? 'eliza-cloud' : null,
-    status: service ? 'ready' : 'error',
-    cloudConnected: Boolean(service),
-    localEnabled: false,
-    platform: 'cloud',
-    cloudHealth: service ? 'healthy' : 'unknown',
-    engine: 'smthrs',
-    errorMessage: service ? null : 'Workflow service is not registered',
-  };
-}
-
 async function loadWorkflowList(
   service: WorkflowService | null,
   ownerEntityId: string
@@ -611,7 +598,10 @@ export async function buildAutomationListResponse(
     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
   const service = getWorkflowService(runtime);
-  const workflowStatus = buildWorkflowStatus(service);
+  const workflowStatus = workflowRuntimeStatus(
+    Boolean(service),
+    Boolean(runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+  );
   const { workflows: workflowList, workflowFetchError } = await loadWorkflowList(
     service,
     ownerEntityId

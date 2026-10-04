@@ -63,6 +63,7 @@ describe("BRIEF narrative — OptimizedPromptService routing", () => {
       kind: "morning",
       period: "today",
       sections: SECTIONS,
+      sourceErrors: { calendar: "unavailable" },
       runtime,
     });
     expect(prompt).toContain(
@@ -73,6 +74,8 @@ describe("BRIEF narrative — OptimizedPromptService routing", () => {
     // The dynamic header + data scaffold is preserved around the instructions.
     expect(prompt).toContain("composing the owner's morning briefing");
     expect(prompt).toContain("Data:");
+    expect(prompt).toContain('"calendar": "unavailable"');
+    expect(prompt).toContain("are unavailable, not empty");
   });
 
   it("swaps in the optimized meeting_prep artifact for meeting prep briefs", () => {
