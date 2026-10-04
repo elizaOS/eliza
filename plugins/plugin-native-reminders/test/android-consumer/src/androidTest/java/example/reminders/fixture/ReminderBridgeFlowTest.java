@@ -29,12 +29,17 @@ public final class ReminderBridgeFlowTest {
  private JSONObject call(String method,JSONObject args)throws Exception {start(method,args);JSONObject value=result();assertFalse(value.toString(),value.has("bridgeError"));return value;}
  private JSONObject bound(JSONObject operation)throws Exception{return new JSONObject().put("operationId",UUID.randomUUID().toString()).put("bindingHash","a".repeat(64)).put("operation",operation);}
  private void permission(String resourceId)throws Exception {
+  android.app.UiAutomation ui=InstrumentationRegistry.getInstrumentation().getUiAutomation();
+  android.accessibilityservice.AccessibilityServiceInfo service=ui.getServiceInfo();int flags=service.flags;
+  service.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;ui.setServiceInfo(service);
+  try {
   for(int i=0;i<120;i++){
    if(!"null".equals(evaluate("window.__result")))fail("Resolved before permission control: "+evaluate("window.__result"));
    AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
-   if(root!=null){java.util.ArrayDeque<AccessibilityNodeInfo> nodes=new java.util.ArrayDeque<>();nodes.add(root);while(!nodes.isEmpty()){AccessibilityNodeInfo node=nodes.removeFirst();String pkg=String.valueOf(node.getPackageName());if((pkg.equals("com.android.permissioncontroller")||pkg.equals("com.google.android.permissioncontroller"))&&(pkg+":id/"+resourceId).equals(node.getViewIdResourceName())&&node.isVisibleToUser()&&node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;for(int child=0;child<node.getChildCount();child++){AccessibilityNodeInfo value=node.getChild(child);if(value!=null)nodes.add(value);}}}
+   if(root!=null){java.util.ArrayDeque<AccessibilityNodeInfo> nodes=new java.util.ArrayDeque<>();nodes.add(root);while(!nodes.isEmpty()){AccessibilityNodeInfo node=nodes.removeFirst();String pkg=String.valueOf(node.getPackageName());if((pkg.equals("com.android.permissioncontroller")||pkg.equals("com.google.android.permissioncontroller"))&&java.util.Set.of("com.android.permissioncontroller:id/"+resourceId,"com.google.android.permissioncontroller:id/"+resourceId).contains(String.valueOf(node.getViewIdResourceName()))&&node.isVisibleToUser()&&node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;for(int child=0;child<node.getChildCount();child++){AccessibilityNodeInfo value=node.getChild(child);if(value!=null)nodes.add(value);}}}
    SystemClock.sleep(100);
   }fail("Missing permission control: "+resourceId);
+  } finally { service.flags=flags;ui.setServiceInfo(service); }
  }
  @Test public void permissionCallbackReviewedOperationsAndResume()throws Exception {
   assertEquals("1",InstrumentationRegistry.getArguments().getString("reminderBridge"));assertTrue("Owned secondary user required",Process.myUid()/100000>0);assertTrue("Notification permission runtime requires API33+",android.os.Build.VERSION.SDK_INT>=33);

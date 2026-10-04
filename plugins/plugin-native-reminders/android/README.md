@@ -23,3 +23,10 @@ Explicit null alert values persist tasks without scheduling an alarm. Inexact re
 The existing macOS package entrypoint is independent of this Android implementation. Real bridge/permission flows, failed-write and concurrent-instance tests, and lossless installed-app migration must be qualified before release. A Java or APK build is not device acceptance.
 
 This is a host-subclass Android API only. The Apple Reminders JavaScript API does not automatically map to these Android methods. The explicit typed `@elizaos/macosreminders/android` entrypoint registers only the chosen host name. Independent Capacitor permission/lifecycle verification and production encrypted-store/PendingIntent upgrade qualification remain required before release.
+
+Opaque tap capture, inspection, consumption and dismissal use a bounded serial
+background queue. Queue saturation rejects bridge calls and retains uncaptured
+intents for retry; it never falls back to storage on the UI thread. Foreground
+and unlocked-state admission happens on the UI thread before queued tap actions.
+Destroyed hosts reject queued actions. Notification delivery and engine operations
+retain their existing store lock and durable receipt semantics.
