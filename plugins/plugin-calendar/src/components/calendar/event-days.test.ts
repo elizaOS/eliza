@@ -1,5 +1,5 @@
 /** Exercises feed-to-day placement across timezone and exclusive all-day boundaries. */
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { calendarEventOccursOn } from "./event-days.js";
 
@@ -101,5 +101,15 @@ describe("calendar event day placement", () => {
     expect(
       calendarEventOccursOn(untilMidnight, "2026-06-16", "America/New_York"),
     ).toBe(false);
+  });
+  it("includes an end day occupied for a fraction of a second", () => {
+    const event = {
+      startAt: "2026-06-15T16:00:00.000Z",
+      endAt: "2026-06-16T04:00:00.001Z",
+      isAllDay: false,
+    } as LifeOpsCalendarEvent;
+    expect(calendarEventOccursOn(event, "2026-06-16", "America/New_York")).toBe(
+      true,
+    );
   });
 });
