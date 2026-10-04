@@ -289,6 +289,7 @@
         "set-cookie-parser": "^3.1.2",
         "stream-browserify": "^3.0.0",
         "style-to-js": "^1.1.21",
+        "tar": "7.5.22",
         "three": "^0.184.0",
         "util": "^0.12.5",
         "ws": "^8.21.3",
