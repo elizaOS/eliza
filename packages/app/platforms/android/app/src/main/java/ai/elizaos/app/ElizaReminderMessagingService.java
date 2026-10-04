@@ -99,6 +99,24 @@ public final class ElizaReminderMessagingService extends MessagingService {
                 || !NotificationManagerCompat.from(this).areNotificationsEnabled()) return;
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager == null) return;
+            if ("normal".equals(priority)) {
+                NotificationChannel previous = manager.getNotificationChannel("eliza_updates");
+                // Timed reminders alert by default; retain an existing user-selected
+                // quiet/blocked tier rather than moving it to another channel.
+                // Older Android cannot report user-selected sound provenance,
+                // so preserve its existing channel conservatively.
+                boolean customized = previous != null && (
+                    Build.VERSION.SDK_INT < 30
+                    || previous.getImportance() != NotificationManager.IMPORTANCE_DEFAULT
+                    || (Build.VERSION.SDK_INT >= 29 && previous.hasUserSetImportance())
+                    || (Build.VERSION.SDK_INT >= 30 && previous.hasUserSetSound())
+                );
+                if (!customized) {
+                    channel = "eliza_notifications";
+                    channelName = "Eliza";
+                    importance = NotificationManager.IMPORTANCE_HIGH;
+                }
+            }
             if (manager.getNotificationChannel(channel) == null) {
                 NotificationChannel nativeChannel = new NotificationChannel(channel, channelName, importance);
                 nativeChannel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
