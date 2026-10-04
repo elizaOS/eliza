@@ -180,6 +180,41 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     ).toEqual([command.id, reply.id]);
   });
 
+  it("orders durable UUIDs across interleaved local rows without reversing the local turn", async () => {
+    mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    const timestamp = 1_700_000_000_000;
+    const upper = {
+      ...userMsg("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+      timestamp,
+    };
+    const lower = {
+      ...userMsg("00000000-0000-0000-0000-000000000001"),
+      timestamp,
+    };
+    const command = { ...userMsg("local-user-T-nonce"), timestamp };
+    const reply = { ...assistantMsg("local-assistant-T-nonce"), timestamp };
+    act(() => {
+      result.current.applyConversationMessageStream(
+        "conv-a",
+        [upper, command, reply, lower],
+        [],
+      );
+    });
+    expect(conversationMessagesRef.current.map((row) => row.id)).toEqual([
+      lower.id,
+      command.id,
+      reply.id,
+      upper.id,
+    ]);
+  });
+
   it("keeps a relayed ephemeral final reply through history refresh, then honors its streamed removal", async () => {
     const persisted = { ...userMsg("server-user"), timestamp: 5 };
     mocks.client.getConversationMessages.mockResolvedValue({

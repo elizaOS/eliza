@@ -82,23 +82,36 @@ function hasConversationBootstrapMessage(
 }
 const STORE_MESSAGE_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/**
- * Same-millisecond order for streamed rows. Two store rows follow the store's
- * UUID tie-break; any client-generated id (`local-*`, `temp-*`) keeps arrival
- * order, since a local command and its reply share one timestamp and
- * `local-assistant-*` sorts before `local-user-*`.
- */
-function compareStreamedConversationMessages(
-  left: ConversationMessage,
-  right: ConversationMessage,
-): number {
-  if (left.timestamp !== right.timestamp)
-    return left.timestamp - right.timestamp;
-  if (!STORE_MESSAGE_ID_RE.test(left.id) || !STORE_MESSAGE_ID_RE.test(right.id))
-    return 0;
-  const leftId = left.id.toLowerCase();
-  const rightId = right.id.toLowerCase();
-  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+/** Keep local rows in their arrival slots while ordering durable UUIDs within each timestamp. */
+function orderStreamedConversationMessages(
+  messages: readonly ConversationMessage[],
+): ConversationMessage[] {
+  const ordered = [...messages].sort(
+    (left, right) => left.timestamp - right.timestamp,
+  );
+  for (let start = 0; start < ordered.length; ) {
+    let end = start + 1;
+    while (
+      end < ordered.length &&
+      ordered[end].timestamp === ordered[start].timestamp
+    )
+      end++;
+    const durable = ordered
+      .slice(start, end)
+      .filter((message) => STORE_MESSAGE_ID_RE.test(message.id))
+      .sort((left, right) => {
+        const leftId = left.id.toLowerCase(),
+          rightId = right.id.toLowerCase();
+        return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+      });
+    let next = 0;
+    for (let index = start; index < end; index++) {
+      if (STORE_MESSAGE_ID_RE.test(ordered[index].id))
+        ordered[index] = durable[next++];
+    }
+    start = end;
+  }
+  return ordered;
 }
 function localConversationMessageLineage(
   message: ConversationMessage,
@@ -1223,9 +1236,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       for (const row of changed) rows.set(row.id, row);
       // Streamed durable rows follow the store's UUID tie-break order. Local
       // optimistic rows retain insertion order in mergeMessagesChronologically.
-      const orderedRows = [...rows.values()].sort(
-        compareStreamedConversationMessages,
-      );
+      const orderedRows = orderStreamedConversationMessages([...rows.values()]);
       setConversationMessages(
         mergeMessagesChronologically(
           orderedRows.filter((row) => row.assistantEphemeral !== true),
