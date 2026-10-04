@@ -103,15 +103,23 @@ describe("POST /api/wallet/browser-solana-sign-message status contract", () => {
 
   it("rejects malformed messageBase64 instead of signing other bytes", async () => {
     // Buffer.from skips invalid base64 characters: "!!!" decodes to nothing.
-    for (const messageBase64 of ["!!!", "aGVsbG8!", "aGVs bG8="]) {
+    for (const messageBase64 of [
+      "!!!",
+      "aGVsbG8!",
+      "aGVs bG8=",
+      "Zg=",
+      "Zg===",
+    ]) {
       const res = await postSignMessage({ messageBase64 });
       expect(res.statusCode).toBe(400);
       expect(res.body).toMatchObject({
         error: "messageBase64 must be valid base64.",
       });
     }
-    const unpadded = await postSignMessage({ messageBase64: "aGVsbG8" });
-    expect(unpadded.statusCode).toBe(200);
+    for (const messageBase64 of ["aGVsbG8", "aGVsbG8=", "Zg", "Zg=="]) {
+      const res = await postSignMessage({ messageBase64 });
+      expect(res.statusCode).toBe(200);
+    }
   });
 
   it("rejects malformed transactionBase64 as a client error, not 503", async () => {

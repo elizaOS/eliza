@@ -664,12 +664,16 @@ function resolveLocalBrowserSolanaSeed(
 function decodeBrowserBase64(value: string, field: string): Buffer {
   const normalized = value.trim();
   const bytes = Buffer.from(normalized, "base64");
+  const canonical = bytes.toString("base64");
+  // Padded input must be fully padded ("Zg==", not "Zg="); unpadded input
+  // must be exactly the canonical encoding without its padding.
+  const padded = normalized.endsWith("=");
   if (
     !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) ||
-    normalized.length % 4 === 1 ||
     bytes.length === 0 ||
-    bytes.toString("base64").replace(/=+$/, "") !==
-      normalized.replace(/=+$/, "")
+    (padded
+      ? canonical !== normalized
+      : canonical.replace(/=+$/, "") !== normalized)
   )
     throw new BrowserWalletInputError(`${field} must be valid base64.`);
   return bytes;
