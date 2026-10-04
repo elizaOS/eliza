@@ -419,11 +419,11 @@ def cli() -> int:
         pairs = align_by_step(entries_a, entries_b)
         payload = [
             {
-                "step": idx,
+                "step": a.step_index if a is not None else b.step_index,
                 "a": asdict(a) if a is not None else None,
                 "b": asdict(b) if b is not None else None,
             }
-            for idx, (a, b) in enumerate(pairs)
+            for a, b in pairs
         ]
         json.dump(payload, sys.stdout, ensure_ascii=False)
         sys.stdout.write("\n")

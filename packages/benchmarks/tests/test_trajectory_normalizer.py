@@ -456,14 +456,15 @@ def test_cli_normalize_openclaw_from_json(tmp_path: Path) -> None:
     assert parsed[1]["step_index"] == 1
 
 
-def test_cli_diff_outputs_aligned_pairs(tmp_path: Path) -> None:
+@pytest.mark.parametrize("steps", [(0, 1, 2), (3, 7, 11)])
+def test_cli_diff_outputs_aligned_pairs(tmp_path: Path, steps: tuple[int, ...]) -> None:
     a_path = tmp_path / "a.jsonl"
     b_path = tmp_path / "b.jsonl"
     write_canonical_jsonl(
-        [CanonicalEntry(step_index=i, agent_id="a") for i in range(2)], a_path
+        [CanonicalEntry(step_index=i, agent_id="a") for i in steps[:2]], a_path
     )
     write_canonical_jsonl(
-        [CanonicalEntry(step_index=i, agent_id="b") for i in range(3)], b_path
+        [CanonicalEntry(step_index=i, agent_id="b") for i in steps], b_path
     )
 
     result = subprocess.run(
@@ -482,6 +483,7 @@ def test_cli_diff_outputs_aligned_pairs(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert len(payload) == 3
+    assert [pair["step"] for pair in payload] == list(steps)
     assert payload[2]["a"] is None
     assert payload[2]["b"]["agent_id"] == "b"
 
