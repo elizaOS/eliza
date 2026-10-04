@@ -85,18 +85,13 @@ try {
       receipt.ownedSecondaryUser = user;
       run("shell", "am", "start-user", "-w", String(user));
       run("shell", "am", "switch-user", String(user));
-      for (let attempt = 0; attempt < 120; attempt++) {
-        if (
-          run("shell", "am", "get-started-user-state", String(user)) ===
-          "RUNNING_UNLOCKED"
-        )
-          break;
+      while (
+        run("shell", "am", "get-started-user-state", String(user)) !==
+        "RUNNING_UNLOCKED"
+      ) {
+        hostCancellation.signal.throwIfAborted();
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
-      assert.equal(
-        run("shell", "am", "get-started-user-state", String(user)),
-        "RUNNING_UNLOCKED",
-      );
       const controller = new AbortController();
       const directory = path.join(parent, mode);
       const execute = () =>
