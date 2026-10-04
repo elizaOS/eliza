@@ -2,6 +2,7 @@
  * authenticates metadata nor grants installation authority. No caller may use
  * a parsed descriptor directly as a trusted update. */
 import { createHash } from "node:crypto";
+
 const HASH = /^[a-f0-9]{64}$/;
 const ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$/;
 function requireValue(ok, message) {

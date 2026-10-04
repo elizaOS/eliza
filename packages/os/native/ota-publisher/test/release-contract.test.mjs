@@ -1,6 +1,7 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 import { createReleaseContract } from "../release-contract.mjs";
+
 const host = {
   product: "example-app",
   packageId: "org.example.app",
@@ -8,8 +9,10 @@ const host = {
 };
 const { validateRelease, admitRelease, cohortBucket } =
   createReleaseContract(host);
+
 import { parseDescriptorJson } from "../strict-json.mjs";
-import { hash, fixture, invalid, deferred } from "./release-fixture.mjs";
+import { deferred, fixture, invalid } from "./release-fixture.mjs";
+
 test("complete release contract admits only a compatible candidate/recovery pair", () => {
   const { release, device, policy } = fixture();
   assert.equal(validateRelease(release, policy), release);
@@ -99,7 +102,7 @@ test("bounded JSON refuses duplicate keys, parser ambiguities and resource exhau
     "{} trailing",
     "/*comment*/{}",
     '["unterminated]',
-    "[".repeat(34) + "0" + "]".repeat(34),
+    `${"[".repeat(34)}0${"]".repeat(34)}`,
     JSON.stringify("x".repeat(4097)),
     JSON.stringify("\ud800"),
   ])
