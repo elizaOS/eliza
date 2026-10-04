@@ -148,3 +148,19 @@ changes during the authority read. It neither discovers nor installs releases;
 the installer must repeat current trust and APK checks at commit. Hosts retain
 security-floor policy, generated trust bindings and package identity. Its portable
 contract is included in `test:native-host`.
+
+`NativeProcessLog` drains child diagnostics with bounded line buffers, literal
+secret redaction before truncation, UTF-8 byte-limited rotation and serialized
+records across writers in one JVM. Hosts provide a private real parent directory,
+file/line limits, single-line secrets and thread/error policy. Newly created files
+are mode 0600; symlink/non-file destinations are refused. It does not store model
+context or durable events. The portable suite exercises a 32 MiB line under a
+12 MiB heap; `NativeProcessLogInstrumentedTest` covers Android file semantics.
+
+`PrivateOAuthCallback` admits a host-configured HTTPS callback and queues it to a
+private sink without persistence, logging or renderer output. Hosts must strip
+handled Intent data before passing lifecycle events to a WebView, use a bounded
+executor and supply coarse delivery-failure handling. The sink must validate state,
+PKCE, account identity and single-use exchange. `QUEUED` is transport admission,
+not authentication success. Portable JVM coverage is in `test:native-host`; Android
+intent/app-link delivery and provider callback registration need host qualification.
