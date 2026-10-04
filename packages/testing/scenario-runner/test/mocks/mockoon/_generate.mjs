@@ -24,11 +24,11 @@ for (const entry of ports) {
   );
   await writeFile(
     path.join(output, `${entry.connector}.json`),
-    JSON.stringify(
+    `${JSON.stringify(
       { ...environment, port: entry.port, hostname: "127.0.0.1" },
       null,
       2,
-    ) + "\n",
+    )}\n`,
   );
 }
 console.log(`Exported ${ports.length} environments to ${output}`);

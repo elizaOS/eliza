@@ -433,7 +433,8 @@ async function finalWorkflowCheck(
     WORKFLOW_ID,
     ctx.primaryUserId,
   );
-  const retained = await embedded.getExecution(seededExecutionId!);
+  if (!seededExecutionId) return "seeded execution ID was not recorded";
+  const retained = await embedded.getExecution(seededExecutionId);
   const retainedFailure = expectSeededExecution(retained);
   if (retainedFailure)
     return `removed workflow lost execution evidence: ${retainedFailure}`;

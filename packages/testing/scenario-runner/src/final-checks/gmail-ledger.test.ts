@@ -38,6 +38,14 @@ it("uses the runtime-owned Google endpoint and rejects malformed absence evidenc
       (await runFinalCheck(check, { runtime, ctx: { actionsCalled: [] } }))
         .status,
     ).toBe("failed");
+    expect(
+      (
+        await runFinalCheck(
+          { type: "gmailApproval", state: "confirmed" },
+          { runtime, ctx: { actionsCalled: [] } },
+        )
+      ).status,
+    ).toBe("passed");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>

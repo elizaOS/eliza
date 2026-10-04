@@ -592,6 +592,10 @@ export type ScenarioRoomSpec = {
  */
 export type ScenarioPersonalityExpect = {
   bucket: string;
+  expectedBehavior?: string;
+  judgeMode?: string;
+  forbiddenContent?: string[];
+  requiredContent?: string[];
   directiveTurn?: number;
   checkTurns?: number[];
   options?: Record<string, unknown>;
