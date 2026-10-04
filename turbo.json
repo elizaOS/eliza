@@ -414,7 +414,11 @@
       "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-native-settings#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/capacitor-system#build",
+        "@elizaos/ui#build"
+      ]
     },
     "@elizaos/plugin-native-wifi#typecheck": {
       "dependsOn": [
