@@ -51,7 +51,7 @@ export function createWebsiteReputation({
   now = Date.now,
   minEntries = 1000,
   cacheDir = null,
-  feeds,
+  feeds = [],
   userAgent = "Eliza-Browser-Protection",
 } = {}) {
   if (

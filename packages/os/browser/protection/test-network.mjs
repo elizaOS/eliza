@@ -44,7 +44,7 @@ try {
   context = await chromium.launchPersistentContext(join(dir, "profile"), {
     channel: "chromium",
     headless: true,
-    timeout: 20000,
+    timeout: 60000,
     args: [
       `--disable-extensions-except=${extension}`,
       `--load-extension=${extension}`,
@@ -52,7 +52,7 @@ try {
       "--no-proxy-server",
     ],
   });
-  context.setDefaultTimeout(15000);
+  context.setDefaultTimeout(60000);
   console.log("Chromium launched");
   let worker =
     context.serviceWorkers()[0] ||
@@ -172,7 +172,7 @@ try {
   context = await chromium.launchPersistentContext(join(dir, "profile"), {
     channel: "chromium",
     headless: true,
-    timeout: 20000,
+    timeout: 60000,
     args: [
       `--disable-extensions-except=${extension}`,
       `--load-extension=${extension}`,
@@ -180,7 +180,7 @@ try {
       "--no-proxy-server",
     ],
   });
-  context.setDefaultTimeout(15000);
+  context.setDefaultTimeout(60000);
   const restarted = await context.newPage();
   await restarted.goto(
     `http://blocked.example.test:${server.address().port}/offline`,

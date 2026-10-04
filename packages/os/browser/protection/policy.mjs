@@ -156,7 +156,12 @@ export async function readFeedBody(response, maximum = 24 * 1024 * 1024) {
 }
 export async function downloadThreatFeed(
   feed,
-  { fetchImpl = fetch, now = Date.now, minEntries = 1000, userAgent } = {},
+  {
+    fetchImpl = fetch,
+    now = Date.now,
+    minEntries = 1000,
+    userAgent = undefined,
+  } = {},
 ) {
   let body, publishedAt;
   try {
