@@ -1,14 +1,15 @@
 /** Verifies operation substitution, source provenance and future-window proof through real evaluation. */
+
+import type {
+  CalendarReadBinding,
+  LifeOpsCalendarFeed,
+} from "@elizaos/contracts";
 import {
   AgentRuntime,
   type ContextObject,
   type EvaluatorOutput,
   type PlannerTrajectory,
 } from "@elizaos/core";
-import type {
-  CalendarReadBinding,
-  LifeOpsCalendarFeed,
-} from "@elizaos/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../../../plugin-calendar/src/actions/calendar-handler.ts";
 import { CalendarService } from "../../../plugin-calendar/src/service/CalendarService.ts";
