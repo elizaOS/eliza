@@ -22,25 +22,27 @@
  */
 
 import { spawnSync } from "node:child_process";
-import {
-  HERE,
-  join,
-  mkdirSync,
-  ms,
-  RESULTS_ROOT,
-  readLatest,
-  writeFileSync,
-} from "./lib.mjs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { HERE, ms, RESULTS_ROOT, readLatest } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
 const JSON_ONLY = process.argv.includes("--json");
 const BUN_BIN = process.env.BUN_PATH || "bun";
 
 function runHarness() {
-  const res = spawnSync(BUN_BIN, [join(HERE, "memperf-kpi.ts")], {
-    stdio: JSON_ONLY ? ["ignore", "ignore", "inherit"] : "inherit",
-    env: process.env,
-  });
+  const res = spawnSync(
+    BUN_BIN,
+    [
+      "--conditions=eliza-source",
+      "--conditions=development",
+      join(HERE, "memperf-kpi.ts"),
+    ],
+    {
+      stdio: JSON_ONLY ? ["ignore", "ignore", "inherit"] : "inherit",
+      env: process.env,
+    },
+  );
   if (res.error) {
     console.error(`[memperf] failed to spawn bun: ${res.error.message}`);
     return 1;

@@ -4,8 +4,8 @@ Tests for BFCL Benchmark Runner
 
 import pytest
 
-from suites.bfcl.runner import BFCLRunner
-from suites.bfcl.types import (
+from benchmarks.bfcl.runner import BFCLRunner
+from benchmarks.bfcl.types import (
     BFCLCategory,
     BFCLConfig,
     BFCLTestCase,
@@ -13,7 +13,7 @@ from suites.bfcl.types import (
     FunctionDefinition,
     FunctionParameter,
 )
-from suites.bfcl.metrics import MetricsCalculator
+from benchmarks.bfcl.metrics import MetricsCalculator
 
 
 class TestBFCLRunner:
@@ -163,7 +163,7 @@ class TestMetricsCalculator:
 
     def test_calculate_perfect_results(self, calculator: MetricsCalculator) -> None:
         """Test metrics calculation with perfect results."""
-        from suites.bfcl.types import BFCLResult
+        from benchmarks.bfcl.types import BFCLResult
 
         results = [
             BFCLResult(
@@ -186,7 +186,7 @@ class TestMetricsCalculator:
 
     def test_calculate_mixed_results(self, calculator: MetricsCalculator) -> None:
         """Test metrics calculation with mixed results."""
-        from suites.bfcl.types import BFCLResult
+        from benchmarks.bfcl.types import BFCLResult
 
         results = [
             BFCLResult(
@@ -219,7 +219,7 @@ class TestMetricsCalculator:
 
     def test_latency_statistics(self, calculator: MetricsCalculator) -> None:
         """Test latency statistics calculation."""
-        from suites.bfcl.types import BFCLResult
+        from benchmarks.bfcl.types import BFCLResult
 
         results = [
             BFCLResult(
@@ -243,7 +243,7 @@ class TestMetricsCalculator:
 
     def test_baseline_comparison(self, calculator: MetricsCalculator) -> None:
         """Test baseline comparison."""
-        from suites.bfcl.types import BFCLMetrics
+        from benchmarks.bfcl.types import BFCLMetrics
 
         metrics = BFCLMetrics(
             overall_score=0.85,
@@ -252,16 +252,22 @@ class TestMetricsCalculator:
             relevance_accuracy=0.90,
         )
 
-        from suites.bfcl.types import BaselineScore
+        from benchmarks.bfcl.types import BaselineScore
+
         assert calculator.compare_to_baselines(metrics) == {}
-        comparison = calculator.compare_to_baselines(metrics, {
-            "measured-baseline": BaselineScore(model_name="measured-baseline", overall=0.9, ast=0.9, exec=0.9),
-        })
+        comparison = calculator.compare_to_baselines(
+            metrics,
+            {
+                "measured-baseline": BaselineScore(
+                    model_name="measured-baseline", overall=0.9, ast=0.9, exec=0.9
+                ),
+            },
+        )
         assert comparison["measured-baseline"] == pytest.approx(-0.05)
 
     def test_format_metrics_table(self, calculator: MetricsCalculator) -> None:
         """Test metrics table formatting."""
-        from suites.bfcl.types import BFCLMetrics
+        from benchmarks.bfcl.types import BFCLMetrics
 
         metrics = BFCLMetrics(
             overall_score=0.75,

@@ -2,7 +2,7 @@ import json
 from typing import List, Optional
 
 import numpy as np
-from suites.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
+from benchmarks.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
 
@@ -235,7 +235,6 @@ class MemoryAPI_vector(MemoryAPI):
 
 
 class VectorStore:
-
     def __init__(self, max_size, max_entry_length):
         self.max_size = max_size
         self.max_entry_length = max_entry_length

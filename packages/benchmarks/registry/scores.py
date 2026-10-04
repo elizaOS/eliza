@@ -6,80 +6,42 @@ import math
 import runpy
 from typing import cast
 
-try:
-    from benchmarks.action_calling_contract import (
-        ACTION_CALLING_METRIC_NAMES,
-        score_action_calling_case,
-    )
-    from benchmarks.bench_cli_types import (
-        JSONValue,
-        ScoreExtraction,
-        expect_dict,
-        expect_float,
-        expect_list,
-        get_optional,
-        get_required,
-    )
-    from benchmarks.publication_contracts import (
-        ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
-        ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
-        ACTION_CALLING_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
-        ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
-        ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
-        WEBSHOP_FULL_REPORT_CONTRACT,
-        action_calling_report_contract_reason,
-        canonical_identifier_manifest_sha256,
-        canonical_json_sha256,
-        webshop_report_contract_reason,
-    )
-except ImportError:
-    from action_calling_contract import (  # type: ignore[no-redef]
-        ACTION_CALLING_METRIC_NAMES,
-        score_action_calling_case,
-    )
-    from bench_cli_types import (  # type: ignore[no-redef]
-        JSONValue,
-        ScoreExtraction,
-        expect_dict,
-        expect_float,
-        expect_list,
-        get_optional,
-        get_required,
-    )
-    from publication_contracts import (  # type: ignore[no-redef]
-        ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
-        ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
-        ACTION_CALLING_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
-        ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
-        ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
-        WEBSHOP_FULL_REPORT_CONTRACT,
-        action_calling_report_contract_reason,
-        canonical_identifier_manifest_sha256,
-        canonical_json_sha256,
-        webshop_report_contract_reason,
-    )
+from benchmarks.action_calling_contract import (
+    ACTION_CALLING_METRIC_NAMES,
+    score_action_calling_case,
+)
+from benchmarks.bench_cli_types import (
+    JSONValue,
+    ScoreExtraction,
+    expect_dict,
+    expect_float,
+    expect_list,
+    get_optional,
+    get_required,
+)
+from benchmarks.publication_contracts import (
+    ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
+    ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
+    ACTION_CALLING_FULL_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
+    ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
+    ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
+    ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
+    ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
+    ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
+    WEBSHOP_FULL_REPORT_CONTRACT,
+    action_calling_report_contract_reason,
+    canonical_identifier_manifest_sha256,
+    canonical_json_sha256,
+    webshop_report_contract_reason,
+)
 
 
 def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
@@ -557,13 +519,27 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench:root")
     results = root.get("results")
-    if root.get("mock") is True or root.get("smoke") is True or root.get("baseline") or root.get("evaluator_feedback_repairs") or (
-        isinstance(root.get("dataset_provenance"), dict) and root["dataset_provenance"].get("dataset") == "synthetic"
-    ) or (
-        isinstance(results, list)
-        and any(isinstance(row, dict) and "smoke_validated" in str(row.get("status", "")) for row in results)
+    if (
+        root.get("mock") is True
+        or root.get("smoke") is True
+        or root.get("baseline")
+        or root.get("evaluator_feedback_repairs")
+        or (
+            isinstance(root.get("dataset_provenance"), dict)
+            and root["dataset_provenance"].get("dataset") == "synthetic"
+        )
+        or (
+            isinstance(results, list)
+            and any(
+                isinstance(row, dict)
+                and "smoke_validated" in str(row.get("status", ""))
+                for row in results
+            )
+        )
     ):
-        raise ValueError("swe_bench: structural smoke validation is not a publishable resolution score")
+        raise ValueError(
+            "swe_bench: structural smoke validation is not a publishable resolution score"
+        )
     summary = expect_dict(
         get_required(root, "summary", ctx="swe_bench:root"), ctx="swe_bench:summary"
     )
@@ -593,8 +569,13 @@ def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_swebench_orchestrated_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench_orchestrated:root")
     execution = root.get("execution")
-    if not isinstance(execution, dict) or execution.get("orchestration_verified") is not True:
-        raise ValueError("swe_bench_orchestrated: missing real TASKS/ACP orchestration evidence")
+    if (
+        not isinstance(execution, dict)
+        or execution.get("orchestration_verified") is not True
+    ):
+        raise ValueError(
+            "swe_bench_orchestrated: missing real TASKS/ACP orchestration evidence"
+        )
     _score_from_swebench_json(root)
     metrics_obj = get_optional(root, "metrics")
     if isinstance(metrics_obj, dict):
@@ -647,10 +628,7 @@ def _attest_installed_orchestrator_lifecycle_sources() -> None:
 
     from pathlib import Path
 
-    if __package__ is not None and __package__.startswith("benchmarks."):
-        from benchmarks.orchestrator_lifecycle import contract as lifecycle_contract
-    else:
-        from orchestrator_lifecycle import contract as lifecycle_contract  # type: ignore[no-redef]
+    from benchmarks.orchestrator_lifecycle import contract as lifecycle_contract
 
     loaded_hint = getattr(lifecycle_contract, "LIFECYCLE_SYSTEM_HINT", None)
     loaded_tools = getattr(lifecycle_contract, "LIFECYCLE_TASKS_TOOLS", None)
@@ -715,26 +693,13 @@ def _score_from_orchestrator_lifecycle_json(data: JSONValue) -> ScoreExtraction:
     from dataclasses import asdict
     from pathlib import Path
 
-    try:
-        from benchmarks.orchestrator_lifecycle.dataset import (
-            LifecycleDataset,
-            scenario_corpus_sha256,
-        )
-        from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
-        from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
-        from benchmarks.orchestrator_lifecycle.types import TurnRecord
-    except ImportError:
-        from orchestrator_lifecycle.dataset import (  # type: ignore[no-redef]
-            LifecycleDataset,
-            scenario_corpus_sha256,
-        )
-        from orchestrator_lifecycle.evaluator import (  # type: ignore[no-redef]
-            LifecycleEvaluator,
-        )
-        from orchestrator_lifecycle.events import (  # type: ignore[no-redef]
-            extract_lifecycle_events,
-        )
-        from orchestrator_lifecycle.types import TurnRecord  # type: ignore[no-redef]
+    from benchmarks.orchestrator_lifecycle.dataset import (
+        LifecycleDataset,
+        scenario_corpus_sha256,
+    )
+    from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+    from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
+    from benchmarks.orchestrator_lifecycle.types import TurnRecord
 
     _attest_installed_orchestrator_lifecycle_sources()
 
@@ -1287,10 +1252,6 @@ def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-
-
-
-
 def _score_from_osworld_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from OSWorld benchmark results."""
     root = expect_dict(data, ctx="osworld:root")
@@ -1337,15 +1298,15 @@ def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
         if not isinstance(entry, dict):
             continue
         name_raw = entry.get("handlerName")
-        if isinstance(name_raw, str) and "eliza" in name_raw.lower():
+        if isinstance(name_raw, str) and (
+            "eliza" in name_raw.lower() or "harness bridge" in name_raw.lower()
+        ):
             target = entry
             break
     if target is None:
         raise ValueError("configbench: no Eliza handler entry found")
     overall_raw = target.get("overallScore")
-    overall = expect_float(
-        overall_raw if overall_raw is not None else 0.0, ctx="configbench:overallScore"
-    )
+    overall = expect_float(overall_raw, ctx="configbench:overallScore")
     security_raw = target.get("securityScore")
     capability_raw = target.get("capabilityScore")
     return ScoreExtraction(
@@ -2201,10 +2162,6 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-
-
-
-
 def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from Solana Gauntlet benchmark results.
 
@@ -2247,8 +2204,6 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
             "capital": get_optional(components, "capital") or 0,
         },
     )
-
-
 
 
 def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction:

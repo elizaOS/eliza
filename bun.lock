@@ -465,17 +465,46 @@
         "bun-types": "1.4.2",
       },
     },
-    "packages/benchmarks/lib": {
-      "name": "@elizaos-benchmarks/lib",
+    "packages/benchmarks/harnesses/eliza/runner": {
+      "name": "@elizaos/benchmark-eliza-host",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/agent": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/lifeops-bench": "workspace:*",
+        "@elizaos/plugin-agent-orchestrator": "workspace:*",
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/plugin-calendar": "workspace:*",
+        "@elizaos/plugin-groq": "beta",
+        "@elizaos/plugin-local-inference": "workspace:*",
+        "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-personal-assistant": "workspace:*",
+        "@elizaos/plugin-relationships": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
+        "dotenv": "^17.2.3",
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "@types/node": "25.6.2",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.2",
+      },
+    },
+    "packages/benchmarks/harnesses/transports/claude-subscription-gateway": {
+      "name": "@elizaos/claude-subscription-gateway",
+      "version": "0.1.0",
+      "dependencies": {
+        "@anthropic-ai/claude-agent-sdk": "0.3.284",
         "zod": "^4.6.5",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "5.0.2",
+        "vitest": "^5.0.2",
       },
     },
     "packages/benchmarks/plugin-benchmarks": {
@@ -497,20 +526,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/agent": "workspace:*",
-      },
-    },
-    "packages/benchmarks/suites/claude-subscription-gateway": {
-      "name": "@elizaos/claude-subscription-gateway",
-      "version": "0.1.0",
-      "dependencies": {
-        "@anthropic-ai/claude-agent-sdk": "0.3.284",
-        "zod": "^4.6.5",
-      },
-      "devDependencies": {
-        "@types/node": "^25.0.3",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^5.0.2",
       },
     },
     "packages/benchmarks/suites/configbench": {
@@ -549,6 +564,7 @@
       "name": "@elizaos/bench-eliza-1-vision-cua-e2e",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/plugin-vision": "workspace:*",
         "sharp": "^0.35.3",
       },
       "devDependencies": {
@@ -556,7 +572,6 @@
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "5.0.2",
       },
     },
     "packages/benchmarks/suites/entity-voice-bench": {
@@ -576,11 +591,13 @@
     "packages/benchmarks/suites/interrupt-bench": {
       "name": "@elizaos/interrupt-bench",
       "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
       "devDependencies": {
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "5.0.2",
       },
     },
     "packages/benchmarks/suites/lifeops-bench/quality": {
@@ -596,28 +613,11 @@
     "packages/benchmarks/suites/lifeops-bench/runner": {
       "name": "@elizaos/lifeops-bench",
       "version": "0.1.0",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-agent-orchestrator": "workspace:*",
-        "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-assistant": "workspace:*",
-        "@elizaos/plugin-calendar": "workspace:*",
-        "@elizaos/plugin-groq": "beta",
-        "@elizaos/plugin-local-inference": "workspace:*",
-        "@elizaos/plugin-openai": "workspace:*",
-        "@elizaos/plugin-personal-assistant": "workspace:*",
-        "@elizaos/plugin-relationships": "workspace:*",
-        "@elizaos/plugin-sql": "workspace:*",
-        "dotenv": "^17.2.3",
-        "zod": "^4.6.5",
-      },
       "devDependencies": {
         "@types/node": "25.6.2",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.2",
       },
     },
     "packages/benchmarks/suites/memperf": {
@@ -627,7 +627,6 @@
       },
       "devDependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
         "@types/bun": "1.4.2",
         "@types/node": "^24.0.0",
@@ -685,7 +684,6 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
         "typescript": "^6.0.3",
-        "vitest": "5.0.2",
       },
     },
     "packages/benchmarks/suites/vision-language": {
@@ -3634,8 +3632,6 @@
 
     "@elizaos-benchmarks/eliza-benchmark-scripts": ["@elizaos-benchmarks/eliza-benchmark-scripts@workspace:packages/benchmarks/scripts/eliza-benchmark-scripts"],
 
-    "@elizaos-benchmarks/lib": ["@elizaos-benchmarks/lib@workspace:packages/benchmarks/lib"],
-
     "@elizaos/agent": ["@elizaos/agent@workspace:packages/agent"],
 
     "@elizaos/agent-server": ["@elizaos/agent-server@workspace:packages/cloud/services/agent-server"],
@@ -3649,6 +3645,8 @@
     "@elizaos/bench-eliza-1-vision-cua-e2e": ["@elizaos/bench-eliza-1-vision-cua-e2e@workspace:packages/benchmarks/suites/eliza-1/vision-cua-e2e"],
 
     "@elizaos/bench-vision-language": ["@elizaos/bench-vision-language@workspace:packages/benchmarks/suites/vision-language"],
+
+    "@elizaos/benchmark-eliza-host": ["@elizaos/benchmark-eliza-host@workspace:packages/benchmarks/harnesses/eliza/runner"],
 
     "@elizaos/benchmark-framework": ["@elizaos/benchmark-framework@workspace:packages/benchmarks/framework/typescript"],
 
@@ -3688,7 +3686,7 @@
 
     "@elizaos/capacitor-websiteblocker": ["@elizaos/capacitor-websiteblocker@workspace:plugins/plugin-native-websiteblocker"],
 
-    "@elizaos/claude-subscription-gateway": ["@elizaos/claude-subscription-gateway@workspace:packages/benchmarks/suites/claude-subscription-gateway"],
+    "@elizaos/claude-subscription-gateway": ["@elizaos/claude-subscription-gateway@workspace:packages/benchmarks/harnesses/transports/claude-subscription-gateway"],
 
     "@elizaos/cloud-api": ["@elizaos/cloud-api@workspace:packages/cloud/api"],
 
@@ -9585,6 +9583,8 @@
     "@elizaos/gateway-webhook/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 
     "@elizaos/lifeops-quality-bench/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@elizaos/macosreminders/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/operator/esbuild": ["esbuild@0.28.1", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.28.1", "@esbuild/android-arm": "0.28.1", "@esbuild/android-arm64": "0.28.1", "@esbuild/android-x64": "0.28.1", "@esbuild/darwin-arm64": "0.28.1", "@esbuild/darwin-x64": "0.28.1", "@esbuild/freebsd-arm64": "0.28.1", "@esbuild/freebsd-x64": "0.28.1", "@esbuild/linux-arm": "0.28.1", "@esbuild/linux-arm64": "0.28.1", "@esbuild/linux-ia32": "0.28.1", "@esbuild/linux-loong64": "0.28.1", "@esbuild/linux-mips64el": "0.28.1", "@esbuild/linux-ppc64": "0.28.1", "@esbuild/linux-riscv64": "0.28.1", "@esbuild/linux-s390x": "0.28.1", "@esbuild/linux-x64": "0.28.1", "@esbuild/netbsd-arm64": "0.28.1", "@esbuild/netbsd-x64": "0.28.1", "@esbuild/openbsd-arm64": "0.28.1", "@esbuild/openbsd-x64": "0.28.1", "@esbuild/openharmony-arm64": "0.28.1", "@esbuild/sunos-x64": "0.28.1", "@esbuild/win32-arm64": "0.28.1", "@esbuild/win32-ia32": "0.28.1", "@esbuild/win32-x64": "0.28.1" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw=="],
 
