@@ -39,7 +39,8 @@ describe("Gmail subject MIME round trip", () => {
       } else {
         const input = { ...common, to: ["self@example.com"], bodyText: body };
         if (operation === "message") await client.sendGmailMessage(input);
-        else if (operation === "reply") await client.sendGmailReply(input);
+        else if (operation === "reply")
+          await client.sendGmailReply({ ...input, threadId: "thread-1" });
         else await client.createGmailDraft(input);
       }
       if (!captured) throw new Error("Provider received no MIME message");
