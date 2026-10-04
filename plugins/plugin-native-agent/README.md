@@ -21,3 +21,13 @@ Hosts supply the inventory format, durability/clock adapters and release policy;
 these APIs neither authorize an installation nor expose renderer capabilities.
 File-based primitives require Android API 26 or newer. Run their portable JVM
 crash/recovery tests with JDK 21 and `bun run test:native-host`.
+
+`LocalCredentialBroker` is a private loopback HTTP transport for the embedded
+native process. Hosts inject separate primary and pending-enrollment stores plus
+a nonempty private token. It is not a Capacitor method: do not pass that token or
+credential responses to the renderer. The host owns token generation and broker
+lifetime. Storage failures return a generic error without credential logging.
+`LocalCredentialBrokerInstrumentedTest` exercises the TCP contract on Android;
+the same contract has a `main` entrypoint for JDK 21 with `org.json` on the classpath.
+Consumers should additionally test their real encrypted-store adapter and restart
+lifecycle. This transport does not authenticate a Cloud account by itself.
