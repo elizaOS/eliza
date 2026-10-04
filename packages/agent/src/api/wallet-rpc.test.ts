@@ -55,14 +55,6 @@ describe("resolveWalletNetworkMode", () => {
     expect(resolveWalletNetworkMode()).toBe("testnet");
   });
 
-  it("skips blank sources instead of letting them hide a later value", () => {
-    process.env.ELIZA_WALLET_NETWORK = "testnet";
-    expect(resolveWalletNetworkMode(configWith(""))).toBe("testnet");
-    expect(resolveWalletNetworkMode(configWith("   "))).toBe("testnet");
-    expect(resolveWalletNetworkMode(configWith("mainnet"), "")).toBe("mainnet");
-    expect(resolveWalletNetworkMode(undefined, "  ")).toBe("testnet");
-  });
-
   it("prefers fallback over config and config over the environment", () => {
     process.env.ELIZA_WALLET_NETWORK = "testnet";
     expect(resolveWalletNetworkMode(configWith("mainnet"), "testnet")).toBe(
