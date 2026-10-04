@@ -1,5 +1,6 @@
 import { createSyntheticTestRuntime } from "../../src/synthetic-runtime.ts";
 import type { SyntheticScenarioWorld } from "../../synthetic-world/src/scenario-world.ts";
+import { createMockEffectCapture } from "./effect-observation.ts";
 /** Executes a full scenario inside one owned SQL runtime and API world. */
 export async function runSyntheticScenario<T>(
   options: Parameters<typeof createSyntheticTestRuntime<T>>[0] & {
@@ -22,6 +23,9 @@ export async function runSyntheticScenario<T>(
       fixture.runtime,
       {
         ...options.executor,
+        captureActionEffects:
+          options.executor.captureActionEffects ??
+          createMockEffectCapture(fixture.world),
         worldId: fixture.world.namespace,
         abortSignal: options.executor.abortSignal
           ? AbortSignal.any([

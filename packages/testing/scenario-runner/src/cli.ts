@@ -976,6 +976,7 @@ export async function runCli(
       // tagged with the right scenarioId without changing internal APIs.
       process.env.ELIZA_LIFEOPS_SCENARIO_ID = scenario.id;
       const rawReport = await runScenario(scenario, runtime, {
+        captureActionEffects: runtimeResult.captureActionEffects,
         providerName,
         minJudgeScore,
         turnTimeoutMs,

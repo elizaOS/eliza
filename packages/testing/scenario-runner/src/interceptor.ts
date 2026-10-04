@@ -46,6 +46,10 @@ interface WrappedHandler {
   [INTERCEPTOR_MARKER]?: true;
 }
 
+export type ActionEffectCapture = (
+  signal?: AbortSignal,
+) => Promise<() => Promise<string[]>>;
+
 export interface ActionInterceptor {
   readonly actions: CapturedAction[];
   readonly approvalRequests: CapturedApprovalRequest[];
@@ -53,6 +57,7 @@ export interface ActionInterceptor {
   readonly memoryWrites: CapturedMemoryWrite[];
   readonly stateTransitions: CapturedStateTransition[];
   readonly artifacts: CapturedArtifact[];
+  settleEffects(): Promise<void>;
   reset(): void;
   detach(): void;
 }
@@ -400,7 +405,11 @@ export function captureConnectorDispatchesFromAction(
   }
 }
 
-export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
+export function attachInterceptor(
+  runtime: IAgentRuntime,
+  captureActionEffects?: ActionEffectCapture,
+  abortSignal?: AbortSignal,
+): ActionInterceptor {
   // Idempotency: if a live interceptor is already attached to this runtime,
   // return that exact instance. Its closures are the ones the wrapped handlers
   // push into, so returning a new object here would observe nothing.
@@ -410,6 +419,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   }
 
   const actions: CapturedAction[] = [];
+  const pendingEffects: Array<() => Promise<void>> = [];
   const approvalRequests: CapturedApprovalRequest[] = [];
   const connectorDispatches: CapturedConnectorDispatch[] = [];
   const memoryWrites: CapturedMemoryWrite[] = [];
@@ -457,6 +467,12 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         }) as HandlerCallback;
       }
       try {
+        const finishObservation = await captureActionEffects?.(abortSignal);
+        if (finishObservation) {
+          pendingEffects.push(async () => {
+            entry.apiEffects = await finishObservation();
+          });
+        }
         const result = (await (
           original as (...inner: unknown[]) => unknown
         ).apply(action, wrappedArgs)) as unknown;
@@ -603,7 +619,13 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     memoryWrites,
     stateTransitions,
     artifacts,
+    async settleEffects(): Promise<void> {
+      // Observe through turn quiescence, including tracked deferred writes.
+      // Overlapping actions share evidence conservatively; no write is ignored.
+      for (const finish of pendingEffects.splice(0)) await finish();
+    },
     reset(): void {
+      pendingEffects.length = 0;
       actions.length = 0;
       approvalRequests.length = 0;
       connectorDispatches.length = 0;

@@ -57,7 +57,7 @@ import {
   type FinalCheckHandlerContext,
   runFinalCheck,
 } from "./final-checks/index.ts";
-import { attachInterceptor } from "./interceptor.ts";
+import { type ActionEffectCapture, attachInterceptor } from "./interceptor.ts";
 import {
   type JudgeEvidence,
   JudgeParseError,
@@ -118,6 +118,7 @@ export function executorFetch(
   });
 }
 export interface ExecutorOptions {
+  captureActionEffects?: ActionEffectCapture;
   observeRejectedEffects?: FinalCheckHandlerContext["observeRejectedEffects"];
   providerName: string;
   minJudgeScore: number;
@@ -2969,7 +2970,11 @@ async function runObservedScenario(
   // responseJudge + judgeRubric final checks). The minimum — the binding
   // quality constraint — is serialized as report.judgeScore (#8795).
   const judgeScores: number[] = [];
-  let interceptor = attachInterceptor(runtime);
+  let interceptor = attachInterceptor(
+    runtime,
+    opts.captureActionEffects,
+    opts.abortSignal,
+  );
   const rooms = resolveScenarioRooms(scenario);
   const primaryRoom = getDefaultScenarioRoom(rooms);
   // Expose the owner conversation identity to seeds and custom checks:
@@ -3135,7 +3140,11 @@ async function runObservedScenario(
     await waitForScenarioRequiredServices(runtime, scenario, opts.abortSignal);
     // Re-attach interceptor so any actions registered by seed plugins are wrapped.
     interceptor.detach();
-    interceptor = attachInterceptor(runtime);
+    interceptor = attachInterceptor(
+      runtime,
+      opts.captureActionEffects,
+      opts.abortSignal,
+    );
     apiServer = await startScenarioApiServer(runtime);
     const activeApiServer = apiServer;
     ctx.apiBaseUrl = activeApiServer.baseUrl;
@@ -3299,9 +3308,10 @@ async function runObservedScenario(
       // Deterministic turn fixtures own their complete post-delivery effects.
       // Finish those effects before a later input becomes extraction evidence.
       if (
-        kind === "message" &&
-        executionProfile === "simulated" &&
-        (runtime as RuntimeWithScenarioModelFixtures).scenarioModelFixtures
+        opts.captureActionEffects ||
+        (kind === "message" &&
+          executionProfile === "simulated" &&
+          (runtime as RuntimeWithScenarioModelFixtures).scenarioModelFixtures)
       ) {
         const drainFailure = await drainScenarioPostDeliveryTasks(
           runtime,
@@ -3315,6 +3325,7 @@ async function runObservedScenario(
           });
           break;
         }
+        await interceptor.settleEffects();
       }
     }
     ctx.actionsCalled = interceptor.actions;

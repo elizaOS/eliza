@@ -1,6 +1,6 @@
 /** Public entry point for `@elizaos/testing/scenario-runner`: re-exports the execution, discovery, reporting, and native-export surface. */
 export { type ExecutorOptions, runScenario } from "./executor.ts";
-export { attachInterceptor } from "./interceptor.ts";
+export { type ActionEffectCapture, attachInterceptor } from "./interceptor.ts";
 export { judgeTextWithLlm } from "./judge.ts";
 export type {
   NativeBoundaryRow,
