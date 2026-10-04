@@ -34,6 +34,63 @@ import {
 
 const SHA = "a".repeat(40);
 
+test("intentional targeted placement admits remote headers without relaxing proof or identity checks", () => {
+  const policy = { mode: "targeted", region: "gcp:us-west2", deploySha: SHA };
+  const records = Array.from({ length: 44 }, (_, index) =>
+    pairedRecord(index, { headers: { "cf-placement": "remote-LAX" } }),
+  );
+  assert.equal(
+    validatePairedEvidence(jsonl(records), SHA, SHA, policy).counts.gateway,
+    22,
+  );
+  assert.throws(
+    () => validatePairedEvidence(jsonl(records), SHA),
+    /remote Worker placement/,
+  );
+  assert.throws(
+    () =>
+      validatePairedEvidence(jsonl(records), SHA, SHA, {
+        ...policy,
+        deploySha: "b".repeat(40),
+      }),
+    /placement policy/,
+  );
+  assert.throws(
+    () => validatePairedEvidence(jsonl(records), SHA, SHA, { mode: "smart" }),
+    /placement policy/,
+  );
+  for (const change of [
+    { proofMatched: false },
+    { transportOk: false },
+    { ci: { sha: "b".repeat(40), gatewayDeploySha: SHA } },
+    { headers: { "cf-placement": "banana" } },
+    { headers: { "cf-placement": "remote-XX" } },
+  ]) {
+    const invalid = records.map((record, index) =>
+      index === 1 ? { ...record, ...change } : record,
+    );
+    assert.throws(() =>
+      validatePairedEvidence(jsonl(invalid), SHA, SHA, policy),
+    );
+  }
+  const missingLocation = records.map((record) => ({
+    ...record,
+    headers: { "cf-placement": "remote-" },
+  }));
+  const result = validatePairedEvidence(
+    jsonl(missingLocation),
+    SHA,
+    SHA,
+    policy,
+  );
+  assert.deepEqual(result.placementLocations, { reported: 0, unavailable: 22 });
+  assert.equal(result.records[1].headers["cf-placement"], "remote-");
+  assert.throws(
+    () => validatePairedEvidence(jsonl(missingLocation), SHA),
+    /invalid Worker placement/,
+  );
+});
+
 function pairedRecord(index, overrides = {}) {
   return {
     schemaVersion: 1,
