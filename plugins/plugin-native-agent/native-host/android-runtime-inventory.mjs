@@ -67,7 +67,8 @@ export function stageAndroidRuntimeInventory({
     entries = [],
     destinations = new Set(),
     blobs = new Map();
-  let total = 0;
+  let total = 0,
+    assetBytes = 0;
   function add(kind, bytes, source, destination) {
     if (
       bytes.length > 512 * 1024 * 1024 ||
@@ -78,10 +79,11 @@ export function stageAndroidRuntimeInventory({
     if (kind === "asset") {
       if (destinations.has(destination)) fail("Duplicate runtime destination");
       destinations.add(destination);
-      total += bytes.length;
-      if (total > 2 * 1024 * 1024 * 1024)
-        fail("Runtime inventory exceeds extraction limit");
+      assetBytes += bytes.length;
     }
+    total += bytes.length;
+    if (total > 2 * 1024 * 1024 * 1024)
+      fail("Runtime inventory exceeds extraction limit");
     entries.push(
       [kind, bytes.length, hash(bytes), source, destination].join("\t"),
     );
@@ -157,6 +159,6 @@ export function stageAndroidRuntimeInventory({
     manifestPath: target,
     sha256: hash(manifest),
     files: entries.length,
-    assetBytes: total,
+    assetBytes,
   };
 }
