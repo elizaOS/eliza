@@ -7,6 +7,7 @@ import {
 } from "../../lib/services/organization-plan-change-contract";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import { settlementDigest } from "../../lib/services/settlement-digest";
+import { proratedAllowanceIncrease } from "../../lib/services/subscription-allowance-proration";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
 import { writeTransaction } from "../helpers";
 import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
@@ -41,16 +42,14 @@ export async function saveOrganizationUpgradeQuote(input: {
     const start = source.current_period_start?.getTime();
     const end = source.current_period_end?.getTime();
     if (start === undefined || end === undefined || end <= start) conflict();
-    const allowanceDelta =
-      BigInt(target.allowance.amountUsd.replace(".", "")) -
-      BigInt(previous.allowance.amountUsd.replace(".", ""));
-    const additionalMicros =
-      (allowanceDelta * BigInt(end - review.prorationDate * 1000)) / BigInt(end - start);
-    if (
-      allowanceDelta <= 0n ||
-      BigInt(review.additionalAllowanceUsd.replace(".", "")) !== additionalMicros
-    )
-      conflict();
+    const additionalAllowanceUsd = proratedAllowanceIncrease({
+      previousUsd: previous.allowance.amountUsd,
+      targetUsd: target.allowance.amountUsd,
+      periodStartMs: start,
+      periodEndMs: end,
+      effectiveAtMs: review.prorationDate * 1000,
+    });
+    if (review.additionalAllowanceUsd !== additionalAllowanceUsd) conflict();
     if (
       settlementDigest(current) !== settlementDigest(input.captured) ||
       review.subscriptionId !== source.id ||

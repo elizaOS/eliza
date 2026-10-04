@@ -186,3 +186,28 @@ test("only an exact prepared upgrade can consume the quote, once", async () => {
     ),
   ).rejects.toThrow();
 });
+
+test("expired provider review cannot be saved even with unchanged authority", async () => {
+  const f = await fixture();
+  const observed = new Date(Date.now() - 61_000);
+  const prorationDate = Math.floor(observed.getTime() / 1000);
+  const { proratedAllowanceIncrease } = await import(
+    "../../lib/services/subscription-allowance-proration"
+  );
+  const review = {
+    ...f.review,
+    observedAt: observed.toISOString(),
+    expiresAt: new Date(observed.getTime() + 60_000).toISOString(),
+    prorationDate,
+    additionalAllowanceUsd: proratedAllowanceIncrease({
+      previousUsd: "25.000000",
+      targetUsd: "90.000000",
+      periodStartMs: f.source.current_period_start.getTime(),
+      periodEndMs: f.source.current_period_end.getTime(),
+      effectiveAtMs: prorationDate * 1000,
+    }),
+  };
+  await expect(
+    quotes.saveOrganizationUpgradeQuote({ identity: f.input, captured: f.captured, review }),
+  ).rejects.toThrow();
+});
