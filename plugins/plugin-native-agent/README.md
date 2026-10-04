@@ -64,6 +64,13 @@ The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
 
 
+`ReconciliationScheduler` persists local package-readback jobs without network,
+charging or idle constraints. Hosts supply distinct job IDs and the declared
+service. `ReconciliationJobService` owns bounded workers and cancellation/late
+completion fencing through `JobRunRegistry`; hosts bind the readback operation.
+Neither component initiates an installation. The consumer must qualify actual
+Android job dispatch and reboot persistence alongside its install/recovery tests.
+
 `NativeHealthService`, `NativeHealthEvidence` and updater `NativeHealthClient`
 share native observation IPC on API 29+: signature/sender-UID checks,
 nonce/version/deadline binding, bounded worker admission and installed-identity

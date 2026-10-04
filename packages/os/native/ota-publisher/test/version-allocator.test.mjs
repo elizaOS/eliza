@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import { initializeAllocator, reservePair } from "../version-allocator.mjs";
 
+const execFileAsync = promisify(execFile);
 const sourceCommit = "a".repeat(40);
 const args = (releaseId) => ({ releaseId, sourceCommit, publishedCodes: [1] });
 const temporary = (fn) => {
@@ -59,36 +61,23 @@ test("concurrent release workers get nonoverlapping candidate/recovery codes", {
     file = path.join(dir, "allocator.db");
   try {
     initializeAllocator(file, 1);
-    const results = await Promise.all(
-      Array.from(
-        { length: 12 },
-        (_, i) =>
-          new Promise((resolve, reject) => {
-            const child = spawn(process.execPath, [
-              "--input-type=module",
-              "-e",
-              `import {reservePair} from ${JSON.stringify(moduleUrl)};console.log(JSON.stringify(reservePair(process.argv[1],JSON.parse(process.argv[2]))));`,
-              file,
-              JSON.stringify(args(`release-${i}`)),
-            ]);
-            let out = "",
-              err = "";
-            child.stdout.on("data", (s) => (out += s));
-            child.stderr.on("data", (s) => (err += s));
-            child.on("error", reject);
-            // "close" fires only after the child's stdio streams are drained;
-            // "exit" can precede the final stdout chunk on a loaded runner.
-            child.on("close", (code) => {
-              if (code !== 0) return reject(Error(err));
-              try {
-                resolve(JSON.parse(out));
-              } catch (error) {
-                reject(error);
-              }
-            });
-          }),
-      ),
+    const workers = await Promise.allSettled(
+      Array.from({ length: 12 }, async (_, i) => {
+        const { stdout } = await execFileAsync(process.execPath, [
+          "--input-type=module",
+          "-e",
+          `import {reservePair} from ${JSON.stringify(moduleUrl)};console.log(JSON.stringify(reservePair(process.argv[1],JSON.parse(process.argv[2]))));`,
+          file,
+          JSON.stringify(args(`release-${i}`)),
+        ]);
+        return JSON.parse(stdout);
+      }),
     );
+    // Drain every worker before deleting the shared database, including failures.
+    const results = workers.map((worker) => {
+      if (worker.status === "rejected") throw worker.reason;
+      return worker.value;
+    });
     const codes = results.flatMap((r) => [
       r.candidateVersionCode,
       r.recoveryVersionCode,

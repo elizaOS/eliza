@@ -369,7 +369,12 @@ function mergeMessagesChronologically(
     message: ConversationMessage;
     serverIndex: number | null;
   }> = serverMessages.map((message, serverIndex) => ({ message, serverIndex }));
-  const orderedOverlay = [...localOverlay].sort(compareConversationMessages);
+  // Overlay rows are client-local and not yet in the store, so the store's
+  // same-millisecond UUID tiebreak does not apply: a request and its reply are
+  // often stamped in the same millisecond, and the stable sort keeps send order.
+  const orderedOverlay = [...localOverlay].sort(
+    (left, right) => left.timestamp - right.timestamp,
+  );
   for (const message of orderedOverlay) {
     let insertionIndex = merged.findIndex(
       (candidate) => candidate.message.timestamp > message.timestamp,

@@ -7,3 +7,9 @@ Use JDK 21, Android SDK 36, Gradle 8.13 and the repository's Capacitor Android d
 Run only in a fresh disposable secondary Android user, never an existing user's calendar. Install both generated APKs in that user. `ConsumerCreationRecoveryTest` requires Calendar read/write permissions and instrumentation argument `calendarCreationRecovery=1`. `ConsumerBridgeFlowTest#permissionAndReviewedProviderLifecycle` requires initially ungranted Calendar permissions and `calendarBridge=1`. `ConsumerBridgeFlowTest#workflowPermissionCallback` requires a separate fresh user with `calendarWorkflowPermission=1`. All use `androidx.test.runner.AndroidJUnitRunner` in `example.calendar.consumer.test`.
 
 Recovery covers provider markers, ambiguous and missing markers, concurrent same-ID creation, journal isolation and conflicting configuration. Bridge flows exercise actual permission dialogs, reviewed CRUD, stale/concurrent edits and cancellation on Activity pause. Remove only fixture-owned rows/users/packages and restore the original foreground user after testing. Builds do not establish device acceptance.
+
+`ConsumerReadAccessTest` requires the same fresh secondary-user fixture, Calendar
+read/write grants for fixture setup, and `calendarReadAccess=1`. It inserts and
+removes only its uniquely named local calendar, verifies all 2,101 provider events
+are returned, and checks that constructing an editor intent makes no provider
+change. Production read-only hosts need no write permission.
