@@ -9,9 +9,16 @@
  */
 import { timingSafeEqual } from "node:crypto";
 
+/**
+ * The padded comparison itself, injectable so tests can prove it runs for
+ * every input instead of only where a fast path lets it.
+ */
+export type TimingSafeBufferCompare = (a: Buffer, b: Buffer) => boolean;
+
 export function browserSignTokenMatches(
   expected: string,
   provided: string,
+  compare: TimingSafeBufferCompare = timingSafeEqual,
 ): boolean {
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided, "utf8");
@@ -20,5 +27,9 @@ export function browserSignTokenMatches(
   const paddedB = Buffer.alloc(length);
   a.copy(paddedA);
   b.copy(paddedB);
-  return a.length === b.length && timingSafeEqual(paddedA, paddedB);
+  // The safe comparison runs before the length decision. Gating it on
+  // `a.length === b.length` would let mismatched-length probes skip the work
+  // entirely and measure the expected token's length through timing.
+  const equal = compare(paddedA, paddedB);
+  return a.length === b.length && equal;
 }
