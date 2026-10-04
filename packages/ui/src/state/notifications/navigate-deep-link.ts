@@ -21,7 +21,7 @@
  * and the OS/web notification click handler so the two cannot diverge.
  */
 
-import { validateUuid } from "@elizaos/core";
+import { validateUuid } from "@elizaos/core/protocol";
 import {
   dispatchChatPrefill,
   dispatchNavigateViewEvent,

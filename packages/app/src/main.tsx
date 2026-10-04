@@ -335,10 +335,15 @@ function importPersonalAssistant() {
 }
 
 function importAppPhone() {
-  return cachedDynamicImport("@elizaos/plugin-native-phone", async () => {
-    const { PhoneCompanionApp } = await import("@elizaos/plugin-native-phone");
-    return { PhoneCompanionApp };
-  });
+  return cachedDynamicImport(
+    "@elizaos/plugin-native-phone/companion/index",
+    async () => {
+      const { PhoneCompanionApp } = await import(
+        "@elizaos/plugin-native-phone/companion/index"
+      );
+      return { PhoneCompanionApp };
+    },
+  );
 }
 
 function importAppTaskCoordinatorRegister() {

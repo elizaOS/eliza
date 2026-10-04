@@ -1187,12 +1187,16 @@ async function main() {
     process.exit(1);
   }
 
+  const nativeSdkTests = new Set(
+    discoverSdkUnitTests(path.resolve(cloudSdkSrc, "../native-host")),
+  );
   const allTestFiles = [
     ...walkTests(cloudSharedSrc, EXCLUDED_DIRS),
     ...cloudApiUnitTests,
     ...cloudServicesTests,
     ...cloudMocksTests,
     ...discoverSdkUnitTests(cloudSdkSrc),
+    ...nativeSdkTests,
   ];
   if (allTestFiles.length === 0) {
     console.error(
@@ -1202,9 +1206,12 @@ async function main() {
     process.exit(1);
   }
 
-  const isolatedTestFiles = new Set(
-    TEST_FILES_REQUIRING_FRESH_PROCESS.map((file) => path.join(repoRoot, file)),
-  );
+  const isolatedTestFiles = new Set([
+    ...TEST_FILES_REQUIRING_FRESH_PROCESS.map((file) =>
+      path.join(repoRoot, file),
+    ),
+    ...nativeSdkTests,
+  ]);
   const missingIsolatedTestFiles = [...isolatedTestFiles].filter(
     (file) => !allTestFiles.includes(file),
   );
@@ -1256,8 +1263,10 @@ async function main() {
     },
   ) =>
     runCommandWithWatchdog(
-      "bun",
-      ["test", ...batch, "--timeout", "120000", "--isolate"],
+      nativeSdkTests.has(batch[0]) ? "node" : "bun",
+      nativeSdkTests.has(batch[0])
+        ? ["--test", "--test-concurrency=1", ...batch]
+        : ["test", ...batch, "--timeout", "120000", "--isolate"],
       {
         cwd,
         env: batchEnv,

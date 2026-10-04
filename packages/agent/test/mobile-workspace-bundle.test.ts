@@ -46,14 +46,14 @@ it("bundles unbuilt nested package exports into a runnable artifact without chan
     );
     await writeFile(
       path.join(directory, "browser.ts"),
-      'import {platform} from "@fixture/platform"; console.log(JSON.stringify({platform}));',
+      'import {platform} from "@fixture/platform"; import {LoginAuth} from "@elizaos/auth"; console.log(JSON.stringify({platform, loginBaseUrl: new LoginAuth({baseUrl:"https://login.example.test"}).getBaseUrl()}));',
     );
     await writeFile(
       path.join(directory, "build.ts"),
       `
       import {findWorkspaceSourceEntry} from ${JSON.stringify(path.join(root, "packages/agent/scripts/mobile-workspace-entry.ts"))};
       const target = process.argv[2];
-      const packages = ${JSON.stringify({ "@fixture/platform": fixture, "@elizaos/core": path.join(root, "packages/core"), "@elizaos/plugin-workflow": path.join(root, "plugins/plugin-workflow") })};
+      const packages = ${JSON.stringify({ "@fixture/platform": fixture, "@elizaos/core": path.join(root, "packages/core"), "@elizaos/auth": path.join(root, "packages/auth"), "@elizaos/plugin-workflow": path.join(root, "plugins/plugin-workflow") })};
       const result = await Bun.build({entrypoints:[${JSON.stringify(directory)}+"/"+(target === "browser" ? "browser.ts" : "entry.ts")],outdir:${JSON.stringify(directory)}+"/"+target,target,plugins:[{name:"mobile-source-entries",setup(build){build.onResolve({filter:/^@(?:elizaos|fixture)\\//},args=>{const parts=args.path.split("/");const dir=packages[parts.slice(0,2).join("/")];if(!dir)return;const entry=findWorkspaceSourceEntry(dir,parts.slice(2).join("/"),target);if(!entry)throw Error("Missing mobile export "+args.path);return {path:entry};});}}]});
       if(!result.success)throw new AggregateError(result.logs,"Bundle failed");
     `,
@@ -79,6 +79,9 @@ it("bundles unbuilt nested package exports into a runnable artifact without chan
         ),
       );
       expect(result.platform).toBe(target === "bun" ? "native" : "browser");
+      if (target === "browser") {
+        expect(result.loginBaseUrl).toBe("https://login.example.test");
+      }
       if (target === "bun") {
         expect(result.draft.active).toBe(false);
         expect(result.draft.source).toContain("review me");
