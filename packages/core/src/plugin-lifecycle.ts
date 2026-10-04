@@ -51,6 +51,13 @@ type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
 type RuntimeEvaluator = RegisteredEvaluator;
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = PluginEventRegistration["handler"];
+type RuntimeChatPreHandler = NonNullable<Plugin["chatPreHandlers"]>[number];
+type RuntimeResponseHandlerEvaluator = NonNullable<
+	Plugin["responseHandlerEvaluators"]
+>[number];
+type RuntimeResponseHandlerFieldEvaluator = NonNullable<
+	Plugin["responseHandlerFieldEvaluators"]
+>[number];
 type RuntimeEventRegistration = PluginEventRegistration;
 type RuntimeModelRegistration = PluginModelRegistration;
 type RuntimeServiceRegistration = PluginServiceRegistration;
@@ -108,6 +115,9 @@ type RuntimeWithPluginLifecycle = IAgentRuntime &
 	RuntimePrivateState & {
 		__elizaPluginLifecycleInstalled?: boolean;
 		__elizaPluginOwnership?: Map<string, PluginOwnership>;
+		// The concrete runtime owns the chat pre-handler registry; the lifecycle
+		// wrapper only needs to know whether an id is already registered.
+		chatPreHandlerRegistry?: { has(id: string): boolean };
 		registerDatabaseAdapter: (adapter: IAgentRuntime["adapter"]) => void;
 		unloadPlugin?: (pluginName: string) => Promise<PluginOwnership | null>;
 		reloadPlugin?: (plugin: Plugin) => Promise<void>;
@@ -482,6 +492,9 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		services: [],
 		sendHandlerSources: [],
 		hasAdapter: false,
+		chatPreHandlerIds: [],
+		responseHandlerEvaluatorNames: [],
+		responseHandlerFieldEvaluatorNames: [],
 		registeredAt: Date.now(),
 	};
 }
@@ -684,6 +697,15 @@ function removeOwnedComponents(
 	removeArrayItemsByReference(runtime.actions, ownership.actions);
 	removeArrayItemsByReference(runtime.providers, ownership.providers);
 	removeArrayItemsByReference(runtime.evaluators, ownership.evaluators);
+	for (const id of ownership.chatPreHandlerIds) {
+		runtime.unregisterChatPreHandler(id);
+	}
+	for (const name of ownership.responseHandlerEvaluatorNames) {
+		runtime.unregisterResponseHandlerEvaluator(name);
+	}
+	for (const name of ownership.responseHandlerFieldEvaluatorNames) {
+		runtime.unregisterResponseHandlerFieldEvaluator(name);
+	}
 }
 
 async function restoreAdapterIfNeeded(
@@ -819,6 +841,16 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerService.bind(runtimeWithLifecycle);
 	const originalRegisterDatabaseAdapter =
 		runtimeWithLifecycle.registerDatabaseAdapter.bind(runtimeWithLifecycle);
+	const originalRegisterChatPreHandler =
+		runtimeWithLifecycle.registerChatPreHandler.bind(runtimeWithLifecycle);
+	const originalRegisterResponseHandlerEvaluator =
+		runtimeWithLifecycle.registerResponseHandlerEvaluator.bind(
+			runtimeWithLifecycle,
+		);
+	const originalRegisterResponseHandlerFieldEvaluator =
+		runtimeWithLifecycle.registerResponseHandlerFieldEvaluator.bind(
+			runtimeWithLifecycle,
+		);
 	const originalRegisterSendHandler =
 		typeof privateState.registerSendHandler === "function"
 			? privateState.registerSendHandler.bind(runtimeWithLifecycle)
@@ -966,6 +998,80 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		}
 	}) as typeof runtimeWithLifecycle.registerDatabaseAdapter;
 
+	runtimeWithLifecycle.registerChatPreHandler = ((
+		handler: RuntimeChatPreHandler,
+	) => {
+		const capture = pluginRegistrationContext.getStore();
+		if (!capture) {
+			originalRegisterChatPreHandler(handler);
+			return;
+		}
+		// register() is an id-keyed upsert. Across plugin boundaries that would
+		// displace another owner's handler, which teardown cannot restore
+		// (#12658), so plugin registration is first-wins like actions/providers/
+		// evaluators. Re-registering an id this plugin already owns stays safe.
+		if (
+			runtimeWithLifecycle.chatPreHandlerRegistry?.has(handler.id) &&
+			!capture.ownership.chatPreHandlerIds.includes(handler.id)
+		) {
+			runtimeWithLifecycle.logger.warn(
+				{
+					src: "agent",
+					agentId: runtimeWithLifecycle.agentId,
+					plugin: capture.ownership.pluginName,
+					preHandler: handler.id,
+				},
+				"Chat pre-handler id already registered; keeping the existing handler",
+			);
+			return;
+		}
+		originalRegisterChatPreHandler(handler);
+		pushUniqueString(capture.ownership.chatPreHandlerIds, handler.id);
+	}) as typeof runtimeWithLifecycle.registerChatPreHandler;
+
+	runtimeWithLifecycle.registerResponseHandlerEvaluator = ((
+		evaluator: RuntimeResponseHandlerEvaluator,
+	) => {
+		const capture = pluginRegistrationContext.getStore();
+		const countBefore = runtimeWithLifecycle.responseHandlerEvaluators.length;
+		originalRegisterResponseHandlerEvaluator(evaluator);
+		if (
+			!capture ||
+			runtimeWithLifecycle.responseHandlerEvaluators.length <= countBefore
+		)
+			return;
+		for (const registered of runtimeWithLifecycle.responseHandlerEvaluators.slice(
+			countBefore,
+		)) {
+			pushUniqueString(
+				capture.ownership.responseHandlerEvaluatorNames,
+				registered.name,
+			);
+		}
+	}) as typeof runtimeWithLifecycle.registerResponseHandlerEvaluator;
+
+	runtimeWithLifecycle.registerResponseHandlerFieldEvaluator = ((
+		evaluator: RuntimeResponseHandlerFieldEvaluator,
+	) => {
+		const capture = pluginRegistrationContext.getStore();
+		const countBefore =
+			runtimeWithLifecycle.responseHandlerFieldEvaluators.length;
+		originalRegisterResponseHandlerFieldEvaluator(evaluator);
+		if (
+			!capture ||
+			runtimeWithLifecycle.responseHandlerFieldEvaluators.length <= countBefore
+		)
+			return;
+		for (const registered of runtimeWithLifecycle.responseHandlerFieldEvaluators.slice(
+			countBefore,
+		)) {
+			pushUniqueString(
+				capture.ownership.responseHandlerFieldEvaluatorNames,
+				registered.name,
+			);
+		}
+	}) as typeof runtimeWithLifecycle.registerResponseHandlerFieldEvaluator;
+
 	if (originalRegisterSendHandler) {
 		privateState.registerSendHandler = ((source, handler) => {
 			const hadSourceAlready = privateState.sendHandlers.has(source);
@@ -1047,6 +1153,9 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				capture.ownership.models.length > 0 ||
 				capture.ownership.services.length > 0 ||
 				capture.ownership.sendHandlerSources.length > 0 ||
+				capture.ownership.chatPreHandlerIds.length > 0 ||
+				capture.ownership.responseHandlerEvaluatorNames.length > 0 ||
+				capture.ownership.responseHandlerFieldEvaluatorNames.length > 0 ||
 				capture.ownership.hasAdapter
 			) {
 				getPluginOwnershipStore(runtimeWithLifecycle).set(
