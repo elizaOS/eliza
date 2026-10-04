@@ -12,7 +12,7 @@ def read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
     error; this staging helper only records what it finds.
     """
     try:
-        from gguf import GGUFReader  # type: ignore
+        from gguf import GGUFReader
     except ImportError:
         return None
     try:
