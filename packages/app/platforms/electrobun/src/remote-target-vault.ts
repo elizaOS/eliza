@@ -5,7 +5,12 @@
  */
 
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { canonicalizeRemoteControlValue, isRemoteTargetPublicIdentity, REMOTE_CONTROL_PROTOCOL_VERSION, type RemoteTargetPublicIdentity } from "@elizaos/contracts";
+import {
+	canonicalizeRemoteControlValue,
+	isRemoteTargetPublicIdentity,
+	REMOTE_CONTROL_PROTOCOL_VERSION,
+	type RemoteTargetPublicIdentity,
+} from "@elizaos/contracts";
 import type { PlatformSecureStore } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { resolveCanonicalStateDir } from "../../../src/security/agent-vault-id";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";

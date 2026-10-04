@@ -11,6 +11,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { createPreparedModelRequestGuard } from "@elizaos/core";
 import {
   applyProgressiveContentMutant,
   cleanupProgressiveContentOperationalFaults,
@@ -29,7 +30,6 @@ import {
   verifyProgressiveContentCorpus,
 } from "elizaos-benchmarks/content-context";
 import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
-import { createPreparedModelRequestGuard } from "@elizaos/core";
 import {
   createDeterministicTargetAdapter,
   traverseTarget,

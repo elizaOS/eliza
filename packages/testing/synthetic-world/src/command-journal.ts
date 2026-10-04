@@ -5,7 +5,11 @@ import { ElizaError } from "@elizaos/core";
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { isSyntheticEnvironmentNamespace, type SyntheticEnvironmentLeaseAuthority, type SyntheticEnvironmentLeaseStore } from "@elizaos/contracts";
+import {
+  isSyntheticEnvironmentNamespace,
+  type SyntheticEnvironmentLeaseAuthority,
+  type SyntheticEnvironmentLeaseStore,
+} from "@elizaos/contracts";
 import type {
   SyntheticCommandJournalExpected,
   SyntheticCommandJournalIdentity,

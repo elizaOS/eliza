@@ -11,6 +11,7 @@ import {
  */
 
 import { createHash, randomBytes } from "node:crypto";
+import type { LinkedAccountUsage } from "@elizaos/contracts";
 import type {
   AccountPoolBrokerAccountSnapshot,
   AccountPoolBrokerFailoverSnapshot,
@@ -18,10 +19,8 @@ import type {
   AccountPoolBrokerProviderSnapshot,
   AccountPoolBrokerSnapshot,
 } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { isLinkedAccountProviderId } from "@elizaos/host/protocol";
-import { type LinkedAccountUsage } from "@elizaos/contracts";
-import { logger } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/core";
 import { createRuntimeAccountStoragePolicy } from "../auth/account-storage.js";
 import { getAccessToken } from "../auth/credentials.js";
 import { type AccountPool, getDefaultAccountPool } from "./account-pool.js";

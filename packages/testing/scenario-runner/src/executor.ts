@@ -30,7 +30,11 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import type { RouteBodyValue, RouteRequest, RouteResponse } from "@elizaos/host/protocol";
+import type {
+  RouteBodyValue,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/host/protocol";
 import { getHttpRuntime } from "@elizaos/host/protocol";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import { computeIdentityRequestDigest } from "@elizaos/plugin-sql";

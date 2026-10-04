@@ -40,13 +40,20 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountHealth,
+  LinkedAccountHealthDetail,
+  LinkedAccountsConfig,
+  LinkedAccountUsage,
+} from "@elizaos/contracts";
 import type { AnthropicAccountPoolBridge } from "@elizaos/core";
-import { setAnthropicAccountPoolBridge } from "@elizaos/core/protocol";
+import { logger, resolveStateDir } from "@elizaos/core";
+import {
+  ElizaError,
+  setAnthropicAccountPoolBridge,
+} from "@elizaos/core/protocol";
 import { isLinkedAccountProviderId } from "@elizaos/host/protocol";
-import { type LinkedAccountConfig, type LinkedAccountHealth, type LinkedAccountHealthDetail, type LinkedAccountsConfig, type LinkedAccountUsage } from "@elizaos/contracts";
-import { ElizaError } from "@elizaos/core/protocol";
-import { logger } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   type AccountStoragePolicy,

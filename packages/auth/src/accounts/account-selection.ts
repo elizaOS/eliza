@@ -1,4 +1,7 @@
-import type { LinkedAccountConfig, LinkedAccountProviderId } from "@elizaos/contracts";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
+} from "@elizaos/contracts";
 import type { DirectAccountProvider } from "../auth/types.js";
 
 export type Strategy =

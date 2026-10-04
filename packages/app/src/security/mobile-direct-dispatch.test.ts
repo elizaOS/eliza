@@ -1,8 +1,8 @@
-import { startApiServer } from "@elizaos/agent/api/server";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { startApiServer } from "@elizaos/agent/api/server";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {

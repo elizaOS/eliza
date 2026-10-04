@@ -2,8 +2,11 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
+import type {
+  SyntheticEnvironmentLeaseAuthority,
+  SyntheticEnvironmentLeaseStore,
+} from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { SyntheticEnvironmentLeaseAuthority, SyntheticEnvironmentLeaseStore } from "@elizaos/contracts";
 import {
   MOCK_ENVIRONMENTS,
   type MockEnvironmentName,

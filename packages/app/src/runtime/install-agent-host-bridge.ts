@@ -27,8 +27,8 @@ import {
   startAccountPoolKeepAlive,
   updateAccountPoolConsumerKey,
 } from "@elizaos/auth/accounts";
-import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
 import { getBuildVariant, isStoreBuild } from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
 import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
 import {
   resolveAuthorizedRouteRole,

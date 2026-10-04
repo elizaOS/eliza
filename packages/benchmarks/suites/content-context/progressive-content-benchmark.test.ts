@@ -1,10 +1,10 @@
 /** Verifies benchmark traversal, cold/warm separation, distributions, and exact fresh-process matrix enforcement. */
 
-import type { ProgressiveContentTarget } from "@elizaos/testing/progressive-content";
 import {
   progressiveConformanceAdapter,
   progressiveConformanceFixture,
-} from "@elizaos/testing/progressive-content";
+} from "@elizaos/testing/fixtures";
+import type { ProgressiveContentTarget } from "@elizaos/testing/progressive-content";
 import { describe, expect, it } from "vitest";
 import {
   buildProgressiveContentBenchmarkReport,

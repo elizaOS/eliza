@@ -16,8 +16,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { LinkedAccountUsage } from "@elizaos/contracts";
-import { ElizaError } from "@elizaos/core/protocol";
 import { resolveStateDir } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import { fetchCodexUsage } from "../providers/codex-usage.ts";
 /**
  * Snapshot returned by the provider usage probes. Mirrors

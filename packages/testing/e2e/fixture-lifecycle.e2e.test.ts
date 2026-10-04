@@ -1,4 +1,5 @@
 import { expect, it } from "bun:test";
+import { createTestRuntimeWithModelProvider } from "../src/model-provider-runtime.ts";
 import { createTestRuntime } from "../src/pglite-runtime.ts";
 
 it("rejects invalid dimensions without changing process configuration", async () => {
@@ -43,20 +44,23 @@ it("keeps overlapping databases isolated and cleanup idempotent", async () => {
     expect(process.env[key]).toBe(value);
 }, 180_000);
 
-it("rolls back a failed host setup and removes its explicitly owned directory", async () => {
-  const { mkdtempSync, existsSync } = await import("node:fs");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  const directory = mkdtempSync(join(tmpdir(), "fixture-setup-rollback-"));
-  const error = new Error("host setup failed before plugin registration");
-  await expect(
-    createTestRuntime({
-      pgliteDir: directory,
-      removePgliteDirOnCleanup: true,
-      configureRuntime: () => {
-        throw error;
-      },
-    }),
-  ).rejects.toBe(error);
-  expect(existsSync(directory)).toBe(false);
-});
+it.each([createTestRuntime, createTestRuntimeWithModelProvider])(
+  "rolls back a failed host setup and removes its explicitly owned directory (%p)",
+  async (create) => {
+    const { mkdtempSync, existsSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const directory = mkdtempSync(join(tmpdir(), "fixture-setup-rollback-"));
+    const error = new Error("host setup failed before plugin registration");
+    await expect(
+      create({
+        pgliteDir: directory,
+        removePgliteDirOnCleanup: true,
+        configureRuntime: () => {
+          throw error;
+        },
+      }),
+    ).rejects.toBe(error);
+    expect(existsSync(directory)).toBe(false);
+  },
+);

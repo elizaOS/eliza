@@ -338,14 +338,9 @@ const config = {
       ],
     },
     "packages/core": {
-      "entry": [
-        "src/index.ts",
-        "src/protocol.ts",
-        "build.ts",
-        "scripts/**/*.ts"
-      ],
-      "project": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
-      "ignoreDependencies": [
+      entry: ["src/index.ts", "src/protocol.ts", "build.ts", "scripts/**/*.ts"],
+      project: ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
+      ignoreDependencies: [
         "@ai-sdk/anthropic",
         "@ai-sdk/google",
         "@ai-sdk/openai",

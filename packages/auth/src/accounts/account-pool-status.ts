@@ -22,9 +22,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import type { LinkedAccountConfig, LinkedAccountUsage } from "@elizaos/contracts";
-import { logger } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/core";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountUsage,
+} from "@elizaos/contracts";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { type AccountPool, getDefaultAccountPool } from "./account-pool.js";
 import {
   type AccountPoolConsumerUsageBreakdown,

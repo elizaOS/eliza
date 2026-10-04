@@ -1,7 +1,10 @@
 /** Adapts the existing control protocol to real leased API mock worlds. */
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import type { SyntheticEnvironmentLeaseAuthority, SyntheticEnvironmentLeaseStore } from "@elizaos/contracts";
+import type {
+  SyntheticEnvironmentLeaseAuthority,
+  SyntheticEnvironmentLeaseStore,
+} from "@elizaos/contracts";
 import { canonicalJson } from "../../evidence/canonical.ts";
 import { assertJsonValue } from "../../src/synthetic-control/codec.ts";
 import type {

@@ -1,4 +1,3 @@
-import { captureHostExecutionBaseline } from "@elizaos/host";
 /** Real terminal HTTP/action execution, rejection recovery and persisted output evidence. */
 import { randomUUID } from "node:crypto";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
@@ -10,6 +9,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/host";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { projectToolResultForModel } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";

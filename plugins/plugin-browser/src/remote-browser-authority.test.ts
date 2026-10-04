@@ -1,6 +1,11 @@
 /** Verifies real cryptographic authorization denies legacy grants and binds browser effects to one profile. */
 import { generateKeyPairSync } from "node:crypto";
-import type { RemoteCommandBody, RemoteControllerGrant, RemoteControllerPublicIdentity, RemoteTargetPublicIdentity } from "@elizaos/contracts";
+import type {
+  RemoteCommandBody,
+  RemoteControllerGrant,
+  RemoteControllerPublicIdentity,
+  RemoteTargetPublicIdentity,
+} from "@elizaos/contracts";
 import {
   digestRemotePayload,
   signRemoteCommand,

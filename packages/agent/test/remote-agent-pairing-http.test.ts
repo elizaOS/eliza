@@ -1,4 +1,3 @@
-import { createCharacter } from "@elizaos/core";
 /**
  * Real host HTTP for the remote-agent pairing contract used by the phone's
  * Remote mode against a hosted (e.g. dstack) agent without reachable loopback:
@@ -8,7 +7,12 @@ import { createCharacter } from "@elizaos/core";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildRemoteAgentPairingUri, parseRemoteAgentPairingUri, REMOTE_AGENT_ENDPOINTS } from "@elizaos/contracts";
+import {
+  buildRemoteAgentPairingUri,
+  parseRemoteAgentPairingUri,
+  REMOTE_AGENT_ENDPOINTS,
+} from "@elizaos/contracts";
+import { createCharacter } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";

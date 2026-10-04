@@ -28,7 +28,12 @@ import {
   resolveStateDir,
   SECRET_KEY_ALIASES,
 } from "@elizaos/core";
-import { getDirectAccountProviderForFirstRunProvider, getFirstRunProviderOption, getStoredSubscriptionProviderForRequest, normalizeFirstRunProviderId } from "@elizaos/host/protocol";
+import {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderOption,
+  getStoredSubscriptionProviderForRequest,
+  normalizeFirstRunProviderId,
+} from "@elizaos/host/protocol";
 
 // ── Credential source registry ───────────────────────────────────────
 interface CredentialSource {

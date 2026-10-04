@@ -38,16 +38,17 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { LinkedAccountProviderId } from "@elizaos/contracts";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/contracts";
 import type {
   CodingAgentSelectorBridge,
   CodingProviderAvailability,
 } from "@elizaos/core";
-import { setCodingAgentSelectorBridge } from "@elizaos/core/protocol";
-import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/contracts";
-import type { LinkedAccountProviderId } from "@elizaos/contracts";
-import { ElizaError } from "@elizaos/core/protocol";
-import { logger } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
+import {
+  ElizaError,
+  setCodingAgentSelectorBridge,
+} from "@elizaos/core/protocol";
 import {
   type AccountStoragePolicy,
   createRuntimeAccountStoragePolicy,
@@ -59,7 +60,6 @@ import {
   getAccessToken,
   saveCredentials,
 } from "../auth/credentials.js";
-import { probeDirectApiKey } from "../providers/direct-api-probe.ts";
 import { accountRefreshMutex } from "../auth/refresh-mutex.js";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
@@ -67,6 +67,7 @@ import {
   isDirectAccountProvider,
   isSubscriptionProvider,
 } from "../auth/types.js";
+import { probeDirectApiKey } from "../providers/direct-api-probe.ts";
 import type { AccountPool } from "./account-pool.js";
 import {
   configuredAccountStrategyForProvider,

@@ -1,20 +1,11 @@
 {
   "compilerOptions": {
-    "customConditions": [
-      "eliza-source"
-    ],
+    "customConditions": ["eliza-source"],
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "node",
-      "vitest"
-    ],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node", "vitest"],
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

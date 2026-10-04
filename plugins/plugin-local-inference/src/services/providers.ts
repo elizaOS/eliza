@@ -16,8 +16,13 @@
  * configuration navigable rather than centralised.
  */
 import fs from "node:fs/promises";
-import type { ProviderEnableState, ProviderId, ProviderMeta, ProviderStatus } from "@elizaos/contracts";
-import type { LinkedAccountProviderId } from "@elizaos/contracts";
+import type {
+	LinkedAccountProviderId,
+	ProviderEnableState,
+	ProviderId,
+	ProviderMeta,
+	ProviderStatus,
+} from "@elizaos/contracts";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";

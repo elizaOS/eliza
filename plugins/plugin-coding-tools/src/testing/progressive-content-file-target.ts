@@ -10,7 +10,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, ReadView, Service } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION, type ProgressiveContentTarget, type ProgressiveContentTargetFactory } from "@elizaos/testing/progressive-content";
+import {
+  PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION,
+  type ProgressiveContentTarget,
+  type ProgressiveContentTargetFactory,
+} from "@elizaos/testing/progressive-content";
 import { readFileHandler } from "../actions/read.js";
 import { FileStateService } from "../services/file-state-service.js";
 import { SandboxService } from "../services/sandbox-service.js";

@@ -51,6 +51,7 @@ export async function createTestRuntimeWithModelProvider(
     characterName: options.characterName ?? "ModelProviderTestAgent",
     settings: options.settings,
     enableAutonomy: options.enableAutonomy,
+    configureRuntime: options.configureRuntime,
     embeddingDimensions,
     plugins: [modelProvider, ...(options.plugins ?? [])],
     pgliteDir: options.pgliteDir,
