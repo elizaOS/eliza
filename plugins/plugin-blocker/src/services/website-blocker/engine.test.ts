@@ -78,6 +78,31 @@ describe("website-blocker engine", () => {
     });
   });
 
+  describe("public-suffix policy boundaries", () => {
+    it("preserves a subdomain whose labels resemble a country-code suffix", () => {
+      expect(
+        buildSelfControlBlockPolicy(["news.co.fr"]).blockedWebsites,
+      ).toEqual(["news.co.fr"]);
+    });
+    it("keeps a registrable domain named www instead of stripping its label", () => {
+      expect(
+        buildSelfControlBlockPolicy(["www.co.uk"]).blockedWebsites.toSorted(),
+      ).toEqual(["www.co.uk", "www.www.co.uk"]);
+      expect(
+        buildSelfControlBlockPolicy([
+          "www.www.co.uk",
+        ]).blockedWebsites.toSorted(),
+      ).toEqual(["www.co.uk", "www.www.co.uk"]);
+    });
+    it("recognizes a registrable country-code domain outside the former label list", () => {
+      expect(
+        buildSelfControlBlockPolicy([
+          "www.shop.firm.in",
+        ]).blockedWebsites.toSorted(),
+      ).toEqual(["shop.firm.in", "www.shop.firm.in"]);
+    });
+  });
+
   describe("normalizeWebsiteTargets", () => {
     it("strips scheme/path/case and drops invalid targets", () => {
       const out = normalizeWebsiteTargets([

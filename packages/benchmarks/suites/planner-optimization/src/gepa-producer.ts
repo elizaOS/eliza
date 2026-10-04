@@ -64,8 +64,12 @@ async function executeGepaPlannerOptimization(
 ) {
   z.string().min(1).parse(options.python);
   const caseTimeoutMs = options.caseTimeoutMs ?? 30_000;
-  if (!Number.isSafeInteger(caseTimeoutMs) || caseTimeoutMs <= 0)
-    throw fail("Positive case timeout required");
+  if (
+    !Number.isSafeInteger(caseTimeoutMs) ||
+    caseTimeoutMs <= 0 ||
+    caseTimeoutMs > 2_147_483_647
+  )
+    throw fail("Positive case timeout required (maximum 2147483647 ms)");
   const manifest = manifestSchema.parse(value);
   const partitions = {
     train: manifest.train.map(parseGepaPlannerCase),

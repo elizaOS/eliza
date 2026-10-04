@@ -174,8 +174,11 @@ export class TaskLifecycle {
       if (
         !result ||
         result.id !== task.id ||
-        result.revision < task.revision ||
-        result.epoch < task.epoch
+        result.revision <= task.revision ||
+        result.epoch < task.epoch ||
+        (command !== "resume" && result.epoch <= task.epoch) ||
+        result.status !==
+          { pause: "paused", resume: "active", cancel: "cancelled" }[command]
       )
         throw new Error("Invalid task transition");
       this.publish({ task: result, pending: false, error: "" });
