@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({
   initialize: vi.fn(),
   stop: vi.fn(),
+  close: vi.fn(),
   initStorage: vi.fn(),
 }));
 vi.mock("@elizaos/core", () => ({
@@ -10,6 +11,7 @@ vi.mock("@elizaos/core", () => ({
     agentId = "test-agent";
     initialize = fixture.initialize;
     stop = fixture.stop;
+    close = fixture.close;
     registerDatabaseAdapter() {}
     setSetting() {}
   },
@@ -39,6 +41,7 @@ it("restores provider overrides when an extra plugin cannot load", async () => {
   expect(process.env.OPENAI_API_KEY).toBe("");
   expect(process.env.OPENAI_BASE_URL).toBe("https://configured.example/v1");
   expect(fixture.stop).not.toHaveBeenCalled();
+  expect(fixture.close).not.toHaveBeenCalled();
 });
 
 it.each(["initialize", "initStorage"] as const)(
@@ -48,6 +51,7 @@ it.each(["initialize", "initStorage"] as const)(
     fixture[phase].mockRejectedValueOnce(failure);
     await expect(buildLiveHarness({ requiredEnv: [] })).rejects.toBe(failure);
     expect(fixture.stop).toHaveBeenCalledOnce();
+    expect(fixture.close).toHaveBeenCalledOnce();
     expect(process.env.OPENAI_API_KEY).toBe("");
   },
 );
@@ -68,5 +72,40 @@ it("keeps overrides until close, including when runtime stop fails", async () =>
   expect(process.env.OPENAI_API_KEY).toBe("test-cerebras-key");
   fixture.stop.mockRejectedValueOnce(new Error("stop failed"));
   await expect(harness.close()).rejects.toThrow("stop failed");
+  expect(process.env.OPENAI_API_KEY).toBe("");
+});
+
+it("closes storage after stop fails and preserves both cleanup failures", async () => {
+  const harness = await buildLiveHarness({ requiredEnv: [] });
+  const stop = new Error("stop failed");
+  const close = new Error("close failed");
+  fixture.stop.mockRejectedValueOnce(stop);
+  fixture.close.mockRejectedValueOnce(close);
+  await expect(harness.close()).rejects.toMatchObject({
+    errors: [stop, close],
+  });
+  expect(fixture.close).toHaveBeenCalledOnce();
+  expect(process.env.OPENAI_API_KEY).toBe("");
+});
+
+it("preserves startup, stop and close failures with environment restoration", async () => {
+  const startup = new Error("startup failed");
+  const stop = new Error("stop failed");
+  const close = new Error("close failed");
+  fixture.initialize.mockRejectedValueOnce(startup);
+  fixture.stop.mockRejectedValueOnce(stop);
+  fixture.close.mockRejectedValueOnce(close);
+  await expect(buildLiveHarness({ requiredEnv: [] })).rejects.toMatchObject({
+    errors: [startup, { errors: [stop, close] }],
+  });
+  expect(process.env.OPENAI_API_KEY).toBe("");
+});
+
+it("preserves a storage-close failure after normal stop", async () => {
+  const harness = await buildLiveHarness({ requiredEnv: [] });
+  const close = new Error("close failed");
+  fixture.close.mockRejectedValueOnce(close);
+  await expect(harness.close()).rejects.toBe(close);
+  expect(fixture.stop).toHaveBeenCalledOnce();
   expect(process.env.OPENAI_API_KEY).toBe("");
 });
