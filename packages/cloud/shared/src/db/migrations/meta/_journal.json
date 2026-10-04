@@ -3403,6 +3403,13 @@
       "when": 1796083200133,
       "tag": "0515_organization_upgrade_invoice_origins",
       "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1796083200134,
+      "tag": "0516_organization_upgrade_paid_finalization",
+      "breakpoints": true
     }
   ]
 }
