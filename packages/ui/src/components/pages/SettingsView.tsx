@@ -9,8 +9,8 @@
  * section. Also reusable in modal form (`inModal`).
  */
 
-import { isPermissionId, isViewVisible } from "@elizaos/core/protocol";
 import type { PermissionId } from "@elizaos/core/protocol";
+import { isPermissionId, isViewVisible } from "@elizaos/core/protocol";
 import {
   Suspense,
   useCallback,

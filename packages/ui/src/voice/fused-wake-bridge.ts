@@ -19,8 +19,9 @@
  * from the native bridge, a WebSocket push handler, or a synthetic test — which
  * is exactly how the Phase 2 integration test exercises it.
  */
-import { FUSED_WAKE_EVENT } from "@elizaos/core/protocol";
+
 import type { FusedWakeEventDetail } from "@elizaos/core/protocol";
+import { FUSED_WAKE_EVENT } from "@elizaos/core/protocol";
 /**
  * A single fused-wake stage forwarded from the native runtime to the UI. This
  * is the canonical {@link FusedWakeEventDetail} contract from `@elizaos/core`

@@ -5,13 +5,14 @@
  * a WebSocket or the data layer.
  */
 
-import type { Transcript, TranscriptSegment } from "@elizaos/core/protocol";
-import { MEETING_PLATFORMS } from "@elizaos/core/protocol";
 import type {
   MeetingParticipant,
   MeetingPlatform,
   MeetingTranscriptEvent,
+  Transcript,
+  TranscriptSegment,
 } from "@elizaos/core/protocol";
+import { MEETING_PLATFORMS } from "@elizaos/core/protocol";
 /** The live pane's view of an in-progress meeting transcript. */
 export interface LiveTranscriptState {
   /** Stable, LocalAgreement-confirmed segments (append-only). */

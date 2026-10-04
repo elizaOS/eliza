@@ -9,12 +9,7 @@
  * here widen the shared unions with those UI-only events, so the local
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
-import {
-  APP_EMOTE_EVENT,
-  CONNECT_EVENT,
-  ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  NAVIGATE_VIEW_EVENT,
-} from "@elizaos/core/protocol";
+
 import type {
   AppEmoteEventDetail,
   ElizaCloudStatusUpdatedDetail,
@@ -22,9 +17,24 @@ import type {
   ElizaDocumentEventName as SharedDocumentEventName,
   ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/core/protocol";
+import {
+  APP_EMOTE_EVENT,
+  CONNECT_EVENT,
+  ELIZA_CLOUD_STATUS_UPDATED_EVENT,
+  NAVIGATE_VIEW_EVENT,
+} from "@elizaos/core/protocol";
 import { logger } from "../logger.ts";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
+export type {
+  AppEmoteEventDetail,
+  ChatAvatarVoiceEventDetail,
+  ElizaCloudStatusUpdatedDetail,
+  NavigateViewDetail,
+  NavigateViewType,
+  NetworkStatusChangeDetail,
+  PushToTalkHoldDetail,
+} from "@elizaos/core/protocol";
 export {
   AGENT_READY_EVENT,
   APP_EMOTE_EVENT,
@@ -48,15 +58,6 @@ export {
   TRAY_ACTION_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/core/protocol";
-export type {
-  AppEmoteEventDetail,
-  ChatAvatarVoiceEventDetail,
-  ElizaCloudStatusUpdatedDetail,
-  NavigateViewDetail,
-  NavigateViewType,
-  NetworkStatusChangeDetail,
-  PushToTalkHoldDetail,
 } from "@elizaos/core/protocol";
 export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
 

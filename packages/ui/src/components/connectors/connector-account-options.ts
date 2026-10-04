@@ -10,14 +10,15 @@
  * roles-permissions); this module reads them from that catalog and only owns
  * the connector's presentation strings.
  */
+
+import type {
+  ConnectorAccountCatalogEntry,
+  ConnectorOAuthCapabilityDeclaration,
+} from "@elizaos/core/protocol";
 import {
   CONNECTOR_ACCOUNT_CATALOG,
   getConnectorAccountCatalogEntry,
   normalizeConnectorCatalogId as normalizeConnectorCatalogIdShared,
-} from "@elizaos/core/protocol";
-import type {
-  ConnectorAccountCatalogEntry,
-  ConnectorOAuthCapabilityDeclaration,
 } from "@elizaos/core/protocol";
 import type {
   ConnectorAccountCreateInput,

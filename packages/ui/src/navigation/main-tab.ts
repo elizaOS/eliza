@@ -10,8 +10,9 @@
  *
  * Phase 1 of the agent + app extraction.
  */
-import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
+
 import type { RegistryAppInfo } from "@elizaos/core/protocol";
+import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
 import { readAppsCache } from "../components/apps/apps-cache";
 /** Result of main-tab discovery. */
 export interface MainTabApp {

@@ -1,4 +1,3 @@
-import { removeProfileWithoutStaleSelection as removeProfileCanonically } from "../../state/runtime-profile-removal";
 import { Capacitor } from "@capacitor/core";
 import type { RemoteControllerPublicIdentity } from "@elizaos/contracts";
 import type {
@@ -24,13 +23,13 @@ import {
 import { subscribeRemoteControllerPairingIntents } from "../../platform/remote-target-pairing-intent";
 import { deleteRuntimeCredentialRecord } from "../../platform/runtime-credential-store";
 import { executeRuntimeManagementCommand } from "../../platform/runtime-management";
-import {
-  getSshRuntimeStatus,
-  startSshRuntime,
-} from "../../platform/ssh-runtime";
 import type {
   SshHostInspection,
   SshRuntimeStatus,
+} from "../../platform/ssh-runtime";
+import {
+  getSshRuntimeStatus,
+  startSshRuntime,
 } from "../../platform/ssh-runtime";
 import type {
   AgentProfile,
@@ -40,6 +39,7 @@ import {
   addAgentProfile,
   loadAgentProfileRegistry,
 } from "../../state/agent-profiles";
+import { removeProfileWithoutStaleSelection as removeProfileCanonically } from "../../state/runtime-profile-removal";
 import { switchRuntimeNonDestructive } from "../../state/switch-runtime";
 import type {
   ControllerPairingClaimView,
@@ -49,6 +49,7 @@ import type {
   SshConnectInput,
 } from "./DevicesRuntimesSection";
 import { DevicesRuntimesSection } from "./DevicesRuntimesSection";
+
 /** Live state and secure enrollment flows for Devices & Runtimes settings. */
 
 function messageFor(cause: unknown): string {

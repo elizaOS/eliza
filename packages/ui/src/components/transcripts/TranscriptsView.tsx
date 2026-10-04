@@ -11,10 +11,6 @@
  * detail pane renders the {@link LiveMeetingPane} for an in-progress meeting.
  */
 
-import {
-  MEETING_PLATFORM_LABELS,
-  transcriptCapturePrivacyState,
-} from "@elizaos/core/protocol";
 import type {
   MeetingJoinRequest,
   MeetingPlatform,
@@ -26,6 +22,10 @@ import type {
   TranscriptSharingState,
   TranscriptStatus,
   TranscriptSummary,
+} from "@elizaos/core/protocol";
+import {
+  MEETING_PLATFORM_LABELS,
+  transcriptCapturePrivacyState,
 } from "@elizaos/core/protocol";
 import { AudioLines } from "lucide-react";
 import type * as React from "react";
