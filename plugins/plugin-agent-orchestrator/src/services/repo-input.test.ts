@@ -57,10 +57,13 @@ describe("repo-input", () => {
       "https://gitlab.com/acme/platform/api.git",
     ],
     [
-      "https://gitlab.com/acme/platform/api/tree/main",
-      "https://gitlab.com/acme/platform/api.git",
+      "https://gitlab.com/acme/platform/issues/api",
+      "https://gitlab.com/acme/platform/issues/api.git",
     ],
-    ["https://gitlab.com/acme/api/issues/3", "https://gitlab.com/acme/api.git"],
+    [
+      "https://gitlab.com/acme/platform/releases/api",
+      "https://gitlab.com/acme/platform/releases/api.git",
+    ],
     ["https://gitlab.com/acme/api", "https://gitlab.com/acme/api.git"],
   ])("keeps the full GitLab namespace path: %s", (input, expected) => {
     const normalized = normalizeRepositoryInput(input);

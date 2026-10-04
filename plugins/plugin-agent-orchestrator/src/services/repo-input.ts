@@ -35,51 +35,11 @@ function normalizePathSegments(pathname: string): string[] {
 }
 
 /**
- * GitLab project page routes that end the project path in links without the
- * `/-/` separator. The first group is GitLab's reserved project wildcard
- * routes, which can never be project or group names; the second is the page
- * routes GitLab served before it moved them under `/-/` and still redirects,
- * kept so pasted legacy links (`group/project/issues/3`) still resolve to the
- * project, at the cost of misreading a subgroup literally named after one.
- */
-const GITLAB_PROJECT_PAGE_ROUTES = new Set([
-  "badges",
-  "blame",
-  "blob",
-  "builds",
-  "commits",
-  "create",
-  "create_dir",
-  "edit",
-  "files",
-  "find_file",
-  "new",
-  "preview",
-  "raw",
-  "refs",
-  "tree",
-  "update",
-  "wikis",
-  "branches",
-  "commit",
-  "compare",
-  "environments",
-  "issues",
-  "jobs",
-  "labels",
-  "merge_requests",
-  "milestones",
-  "pipelines",
-  "releases",
-  "tags",
-]);
-
-/**
  * The path segments naming the repository on a known host. GitHub and
  * Bitbucket repositories are always `owner/repo`, so deeper segments are page
  * routes. GitLab projects live under any depth of groups and subgroups, so the
- * project path runs up to the `-` separator that prefixes project pages (or a
- * page route in legacy links); keeping only two segments would turn
+ * project path runs up to the `-` separator that prefixes project pages;
+ * guessing legacy route names can truncate a valid subgroup. Two segments turn
  * `group/subgroup/project` into the non-project `group/subgroup`.
  */
 function repositoryPathSegments(
@@ -89,11 +49,7 @@ function repositoryPathSegments(
   if (host !== "gitlab.com") {
     return segments.length >= 2 ? segments.slice(0, 2) : null;
   }
-  const end = segments.findIndex(
-    (segment, index) =>
-      segment === "-" ||
-      (index >= 2 && GITLAB_PROJECT_PAGE_ROUTES.has(segment)),
-  );
+  const end = segments.indexOf("-");
   const projectPath = end === -1 ? segments : segments.slice(0, end);
   return projectPath.length >= 2 ? projectPath : null;
 }
