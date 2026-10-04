@@ -6859,7 +6859,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    beforeMessageId?: UUID
   ): Promise<
     Array<{
       id: UUID;
@@ -6878,14 +6879,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const conditions = [eq(messageTable.channelId, channelId)];
       if (beforeTimestamp) {
-        conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        // A bare timestamp cursor drops the rest of a same-timestamp group
+        // that straddled the previous page boundary. When the caller also
+        // names the last row's id, the cursor becomes the exact
+        // (createdAt, id) position this descending composite sort walks.
+        if (beforeMessageId) {
+          conditions.push(
+            or(
+              lt(messageTable.createdAt, beforeTimestamp),
+              and(eq(messageTable.createdAt, beforeTimestamp), lt(messageTable.id, beforeMessageId))
+            ) as SQL
+          );
+        } else {
+          conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        }
       }
 
       const query = this.db
         .select()
         .from(messageTable)
         .where(and(...conditions))
-        .orderBy(desc(messageTable.createdAt))
+        // The id tiebreak gives same-timestamp rows one deterministic order;
+        // without it two identical calls can return different pages.
+        .orderBy(desc(messageTable.createdAt), desc(messageTable.id))
         .limit(limit);
 
       const results = await query;
