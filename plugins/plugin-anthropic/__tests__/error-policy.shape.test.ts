@@ -137,6 +137,44 @@ describe("Anthropic retry + error translation (rate-limit / overload)", () => {
     expect(formatModelError("test op", overloaded).message).toContain("temporarily overloaded");
   });
 
+  it("does not retry once the caller's signal is aborted", async () => {
+    const controller = new AbortController();
+    const aborted = Object.assign(new Error("This operation was aborted"), {
+      name: "AbortError",
+    });
+    const fn = vi.fn(async () => {
+      controller.abort();
+      throw aborted;
+    });
+
+    await expect(executeWithRetry("test op", fn, fastRetry, controller.signal)).rejects.toBe(
+      aborted
+    );
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("ends the backoff and makes no further call when the caller aborts mid-backoff", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("turn cancelled", "AbortError");
+    const rateLimit = Object.assign(new Error("rate limited"), { statusCode: 429 });
+    const fn = vi.fn(async () => {
+      throw rateLimit;
+    });
+    const slowRetry = {
+      maxRetries: 2,
+      initialDelayMs: 60_000,
+      maxDelayMs: 60_000,
+      backoffFactor: 1,
+    };
+
+    const pending = executeWithRetry("test op", fn, slowRetry, controller.signal);
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(1));
+    controller.abort(reason);
+
+    await expect(pending).rejects.toBe(reason);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retry a non-retryable 403 and preserves the cause chain", async () => {
     const forbidden = Object.assign(new Error("forbidden"), {
       statusCode: 403,

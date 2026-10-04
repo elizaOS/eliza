@@ -131,6 +131,11 @@ app.post("/", async (c) => {
         }
       }
 
+      // Session claimed through its token, if the session is still retryable
+      // and every session-backed claim in this attempt succeeds.
+      let convertibleSessionId: string | null = null;
+      const sessionOwnedCharacterIds = new Set<string>();
+
       // Also find characters via session token if provided
       if (sessionToken) {
         logger.info(
@@ -156,6 +161,8 @@ app.post("/", async (c) => {
             );
 
             for (const char of sessionCharacters) {
+              sessionOwnedCharacterIds.add(char.id);
+
               // Only add if not already in the list and owned by the session owner
               if (
                 char.user_id === sessionOwner.id &&
@@ -173,11 +180,10 @@ app.post("/", async (c) => {
               }
             }
 
-            // Mark session as converted to prevent future claims
-            await anonymousSessionsService.markConverted(session.id);
-            logger.info(
-              `[Claim Affiliate Chars] Marked session as converted: ${session.id}`,
-            );
+            // Defer conversion until after the claim calls below: converting
+            // first would consume the token and turn a temporary
+            // ownership-transfer failure into a permanent one.
+            convertibleSessionId = session.id;
           }
         }
       }
@@ -186,6 +192,13 @@ app.post("/", async (c) => {
         logger.info(
           `[Claim Affiliate Chars] No claimable characters found for user ${user.id}`,
         );
+        if (convertibleSessionId) {
+          // Nothing was transferable, so conversion cannot strand a failed claim.
+          await anonymousSessionsService.markConverted(convertibleSessionId);
+          logger.info(
+            `[Claim Affiliate Chars] Marked session as converted: ${convertibleSessionId}`,
+          );
+        }
         return c.json({
           success: true,
           claimed: [],
@@ -228,6 +241,21 @@ app.post("/", async (c) => {
             `[Claim Affiliate Chars] ❌ Failed to claim ${char.characterName}: ${result.message}`,
           );
         }
+      }
+
+      // Convert the session only after every session-backed ownership transfer
+      // in this attempt succeeded; a returned or thrown claim failure leaves it
+      // unconverted so a retry can rediscover the remaining session characters.
+      // Failures on room-discovered characters unrelated to the session do not
+      // block conversion.
+      const sessionBackedFailure = failedClaims.some((claim) =>
+        sessionOwnedCharacterIds.has(claim.id),
+      );
+      if (convertibleSessionId && !sessionBackedFailure) {
+        await anonymousSessionsService.markConverted(convertibleSessionId);
+        logger.info(
+          `[Claim Affiliate Chars] Marked session as converted: ${convertibleSessionId}`,
+        );
       }
 
       return c.json({

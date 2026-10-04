@@ -465,3 +465,251 @@ test("cancellation journal failure does not clear the recovery proof or contact 
   await f.auth.cancel();
   assert.equal(raw, null);
 });
+
+const ACCOUNT = {
+  id: "11111111-1111-4111-8111-111111111111",
+  organization_id: "33333333-3333-4333-8333-333333333333",
+  email: "relative@example.com",
+  phone_number: "+12025550123",
+};
+const sessionToken = (exp = Math.floor(Date.now() / 1000) + 900) =>
+  [
+    "eyJhbGciOiJub25lIn0",
+    Buffer.from(JSON.stringify({ exp })).toString("base64url"),
+    "private-billing-signature",
+  ].join(".");
+/** Steward codes for the billing check resolve to `sessionAccount`; the stored key to ACCOUNT. */
+function billingFixture({
+  active = "eliza_mobile_" + "f".repeat(64),
+  sessionAccount = ACCOUNT,
+  token = sessionToken(),
+  fetch,
+} = {}) {
+  const writes = [];
+  const f = fixture({
+    active,
+    pendingStore: {
+      write: async (value) => {
+        writes.push(value);
+      },
+    },
+    fetch: async (path, body, init, state) => {
+      const custom = fetch && (await fetch(path, body, init, state));
+      if (custom) return custom;
+      if (path === "/api/v1/user") {
+        const bearer = init.headers.Authorization;
+        return Response.json({
+          success: true,
+          ...(bearer === `Bearer ${state.active}` ? ACCOUNT : sessionAccount),
+        });
+      }
+      if (path === "/auth/email/code/verify" || path === "/auth/sms/verify")
+        return Response.json({ ok: true, token });
+      if (path === "/auth/sms/send")
+        return Response.json({ ok: true, expiresAt: future() });
+    },
+  });
+  return Object.assign(f, { writes });
+}
+const billingStart = (f, input = {}) => f.auth.handle("billing-start", input);
+const billingVerify = (f, step) =>
+  f.auth.handle("billing-verify", {
+    sessionId: step.sessionId,
+    code: "123456",
+  });
+const enrollmentPaths = ["/connect", "/token", "/ack", "/current"];
+
+test("enrollment retains its session as memory-only billing authority bound to the new credential", async () => {
+  const token = sessionToken();
+  const g = fixture({
+    fetch: (path) =>
+      path === "/auth/email/code/verify"
+        ? Response.json({ ok: true, token })
+        : null,
+  });
+  assert.equal(await g.auth.billingAuthority(), null);
+  const result = await verify(g, await start(g));
+  assert.deepEqual(result, { status: "authenticated", connected: true });
+  const authority = await g.auth.billingAuthority();
+  assert.equal(authority.token, token);
+  assert.ok(Date.parse(authority.expiresAt) > Date.now());
+  assert.deepEqual(await g.auth.handle("billing-status"), {
+    status: "authorized",
+    expiresAt: authority.expiresAt,
+  });
+  // Never persisted, never in a renderer-facing result.
+  assert.equal(g.state.pending, null);
+  assert.ok(!JSON.stringify(result).includes(token));
+  // Account change (the active credential is replaced) drops it.
+  await g.auth.cancel({ disconnect: true });
+  assert.equal(await g.auth.billingAuthority(), null);
+});
+
+test("billing re-verification defaults to the account's own email and never re-enrolls", async () => {
+  const f = billingFixture();
+  assert.deepEqual(await f.auth.handle("billing-status"), {
+    status: "required",
+  });
+  const step = await billingStart(f);
+  assert.equal(step.status, "code");
+  assert.equal(step.method, "email");
+  assert.equal(step.destination, "r•••@example.com");
+  assert.ok(!JSON.stringify(step).includes("relative@"));
+  const send = f.calls.find((c) => c.path === "/auth/email/send");
+  assert.equal(send.body.email, ACCOUNT.email);
+  const result = await billingVerify(f, step);
+  assert.equal(result.status, "authorized");
+  assert.ok(!JSON.stringify(result).includes("private"));
+  const authority = await f.auth.billingAuthority();
+  assert.equal(authority.expiresAt, result.expiresAt);
+  assert.match(authority.token, /private-billing-signature$/);
+  // The stored inference credential and pending store are untouched.
+  assert.equal(f.state.active, "eliza_mobile_" + "f".repeat(64));
+  assert.deepEqual(f.writes, []);
+  assert.equal(
+    f.calls.some((c) => enrollmentPaths.some((p) => c.path.endsWith(p))),
+    false,
+  );
+});
+
+test("billing re-verification can use the account phone and masks it", async () => {
+  const f = billingFixture();
+  const step = await billingStart(f, { method: "phone" });
+  assert.equal(step.destination, "•••0123");
+  const send = f.calls.find((c) => c.path === "/auth/sms/send");
+  assert.equal(send.body.phone, ACCOUNT.phone_number);
+  assert.equal((await billingVerify(f, step)).status, "authorized");
+});
+
+test("a code for a different user or organization is rejected and grants nothing", async () => {
+  for (const sessionAccount of [
+    { ...ACCOUNT, id: "44444444-4444-4444-8444-444444444444" },
+    {
+      ...ACCOUNT,
+      organization_id: "55555555-5555-4555-8555-555555555555",
+    },
+  ]) {
+    const f = billingFixture({ sessionAccount });
+    const step = await billingStart(f, { email: "other@example.com" });
+    await assert.rejects(billingVerify(f, step), {
+      status: 403,
+      code: "billing_account_mismatch",
+    });
+    assert.equal(await f.auth.billingAuthority(), null);
+    // The attempt is spent; the same code cannot be retried.
+    await assert.rejects(billingVerify(f, step), {
+      code: "billing_session_expired",
+    });
+    assert.deepEqual(f.writes, []);
+  }
+});
+
+test("billing re-verification requires a connected account and a valid destination", async () => {
+  const none = billingFixture({ active: null });
+  await assert.rejects(billingStart(none), {
+    status: 409,
+    code: "billing_not_enrolled",
+  });
+  assert.equal(none.calls.length, 0);
+  const f = billingFixture({
+    fetch: (path) =>
+      path === "/api/v1/user"
+        ? Response.json({ success: true, ...ACCOUNT, phone_number: null })
+        : null,
+  });
+  await assert.rejects(billingStart(f, { method: "phone" }), {
+    status: 400,
+    code: "billing_destination_required",
+  });
+  assert.equal(
+    f.calls.some((c) => c.path.startsWith("/auth/")),
+    false,
+  );
+});
+
+test("billing authority is cleared by cancel, explicit clear and expiry", async () => {
+  const f = billingFixture();
+  await billingVerify(f, await billingStart(f));
+  assert.ok(await f.auth.billingAuthority());
+  await f.auth.cancel();
+  assert.equal(await f.auth.billingAuthority(), null);
+
+  const expiring = billingFixture({
+    token: sessionToken(Math.floor(Date.now() / 1000) + 20),
+  });
+  await assert.rejects(billingVerify(expiring, await billingStart(expiring)), {
+    status: 410,
+    code: "billing_session_expired",
+  });
+  assert.equal(await expiring.auth.billingAuthority(), null);
+
+  const cleared = billingFixture();
+  await billingVerify(cleared, await billingStart(cleared));
+  cleared.auth.clearBillingAuthority();
+  assert.equal(await cleared.auth.billingAuthority(), null);
+});
+
+test("billing authority follows the exact active credential, not just any credential", async () => {
+  let active = "eliza_mobile_" + "f".repeat(64);
+  // The host can replace the stored key outside this module (account change).
+  const swapped = createNativeCloudAuth({
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname;
+      if (path === "/api/v1/user")
+        return Response.json({ success: true, ...ACCOUNT });
+      if (path === "/auth/email/send")
+        return Response.json({ ok: true, expiresAt: future() });
+      if (path === "/auth/email/code/verify")
+        return Response.json({ ok: true, token: sessionToken() });
+      throw new Error(`Unexpected route ${path} ${init.method}`);
+    },
+    pendingStore: {
+      read: async () => null,
+      write: async () => assert.fail("billing must not persist"),
+      clear: async () => {},
+    },
+    activate: async () => assert.fail("billing must not activate"),
+    readActive: async () => active,
+  });
+  const step = await swapped.handle("billing-start");
+  await swapped.handle("billing-verify", {
+    sessionId: step.sessionId,
+    code: "123456",
+  });
+  assert.ok(await swapped.billingAuthority());
+  active = "eliza_mobile_" + "9".repeat(64);
+  assert.equal(await swapped.billingAuthority(), null);
+  active = "eliza_mobile_" + "f".repeat(64);
+  assert.equal(await swapped.billingAuthority(), null);
+});
+
+test("billing MFA completes before authority and unknown billing operations are refused", async () => {
+  const f = billingFixture({
+    fetch: (path) =>
+      path === "/auth/email/code/verify"
+        ? Response.json({
+            ok: true,
+            mfaRequired: true,
+            mfa: {
+              type: "totp",
+              challengeId: "private-mfa-challenge",
+              expiresAt: future(),
+            },
+          })
+        : path === "/auth/mfa/totp/complete"
+          ? Response.json({ ok: true, token: sessionToken() })
+          : null,
+  });
+  const step = await billingStart(f);
+  const mfa = await billingVerify(f, step);
+  assert.equal(mfa.status, "mfa");
+  assert.ok(!JSON.stringify(mfa).includes("private"));
+  assert.equal(await f.auth.billingAuthority(), null);
+  const result = await f.auth.handle("billing-mfa", {
+    sessionId: mfa.sessionId,
+    code: "234567",
+  });
+  assert.equal(result.status, "authorized");
+  assert.ok(await f.auth.billingAuthority());
+  await assert.rejects(f.auth.handle("billing-anything", {}), { status: 410 });
+});
