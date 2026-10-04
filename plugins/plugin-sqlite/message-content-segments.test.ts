@@ -117,4 +117,36 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
       }),
     ).resolves.toEqual({ status: "forbidden" });
   });
+
+  it.each(["deleteMemories", "deleteAllMemories"] as const)(
+    "%s removes the deleted message's content segments",
+    async (method) => {
+      const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
+      await adapter.initialize();
+      await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
+      const original = message(
+        "text that must go with its message 🙂\n".repeat(8_000),
+      );
+      const projection = buildMessageContentProjection(original);
+      await adapter.publishMessageContentSegments({
+        mode: "create",
+        parent: { ...original, content: projection.content },
+        segments: projection.segments,
+      });
+      const segmentIds = projection.segments.map(
+        (segment) => segment.id as UUID,
+      );
+      expect(segmentIds.length).toBeGreaterThan(0);
+      expect(await adapter.getMemoriesByIds(segmentIds)).toHaveLength(
+        segmentIds.length,
+      );
+
+      if (method === "deleteMemories")
+        await adapter.deleteMemories([MESSAGE_ID]);
+      else await adapter.deleteAllMemories([ROOM_ID], "messages");
+
+      expect(await adapter.getMemoriesByIds([MESSAGE_ID])).toEqual([]);
+      expect(await adapter.getMemoriesByIds(segmentIds)).toEqual([]);
+    },
+  );
 });

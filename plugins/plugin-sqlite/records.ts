@@ -530,6 +530,19 @@ function storedTaskCreatedAt(task: Task): number {
   return Date.now();
 }
 
+function isMessageContentSegmentOf(
+  memory: StoredMemory,
+  messageIds: ReadonlySet<string>,
+): boolean {
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  return (
+    storedMemoryTableName(memory) === "message_content_segments" &&
+    metadata?.type === "message-content-segment" &&
+    typeof metadata.messageId === "string" &&
+    messageIds.has(metadata.messageId)
+  );
+}
+
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -2396,6 +2409,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           const metadata = memory.metadata as
             | Record<string, unknown>
             | undefined;
+          // A segmented message keeps its text in segment rows; deleting the
+          // message must not leave that text behind (plugin-sql parity).
+          if (isMessageContentSegmentOf(memory, roots)) return true;
           const documentId = metadata?.documentId;
           if (
             typeof documentId !== "string" ||
@@ -2435,6 +2451,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const ids = memories
         .map((m) => m.id)
         .filter((id): id is string => id !== undefined) as UUID[];
+      // Segment rows use their own table name, so a "messages" wipe must
+      // collect them through their parent message id.
+      const deleted = new Set<string>(ids);
+      const segments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (m) =>
+          !deleted.has(m.id as string) && isMessageContentSegmentOf(m, deleted),
+      );
+      for (const segment of segments)
+        if (segment.id) ids.push(segment.id as UUID);
       for (const id of ids) {
         await this.storage.delete(COLLECTIONS.MEMORIES, id);
         await this.vectorIndex.remove(id);
