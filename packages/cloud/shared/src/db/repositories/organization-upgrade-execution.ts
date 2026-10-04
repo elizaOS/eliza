@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { organizationUpgradeReviewSchema } from "../../lib/services/organization-plan-change-contract";
+import {
+  organizationUpgradeIntentDigest,
+  organizationUpgradeProviderBindingSchema,
+} from "../../lib/services/organization-upgrade-provider-binding";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
@@ -66,14 +70,13 @@ async function lockExecution(tx: DbTransaction, input: Identity) {
     quote.target_plan_key !== command.target_plan_key ||
     quote.review_digest !== settlementDigest(quote.review) ||
     command.request_digest !==
-      settlementDigest({
-        version: 1,
-        kind: "organization_upgrade",
+      organizationUpgradeIntentDigest({
         organizationId: input.organizationId,
         actorId: input.actorId,
         quoteId: quote.id,
         reviewDigest: quote.review_digest,
         sourceDigest: quote.source_digest,
+        providerBinding: quote.provider_binding,
       })
   )
     reject("command_review_changed");
@@ -105,12 +108,18 @@ export async function claimOrganizationUpgrade(input: Identity) {
     if (command.status !== "PREPARED" && command.status !== "OUTCOME_UNKNOWN") return null;
     const now = await readPostLockDatabaseNow(tx);
     if (command.lease_expires_at && command.lease_expires_at > now) return null;
-    if (command.organization_upgrade_dispatch_state === "ready" && quote.expires_at <= now) {
+    if (
+      command.organization_upgrade_dispatch_state === "ready" &&
+      (quote.expires_at <= now || quote.provider_binding === null)
+    ) {
       await tx
         .update(commands)
         .set({
           status: command.status === "PREPARED" ? "SUPERSEDED" : "FAILED",
-          error_code: "UPGRADE_REVIEW_EXPIRED_BEFORE_DISPATCH",
+          error_code:
+            quote.provider_binding === null
+              ? "UPGRADE_BINDING_UNAVAILABLE_BEFORE_DISPATCH"
+              : "UPGRADE_REVIEW_EXPIRED_BEFORE_DISPATCH",
           completed_at: now,
           updated_at: now,
           state_revision: command.state_revision + 1,
@@ -179,7 +188,13 @@ export async function readOrganizationUpgradeDispatchSource(
       locked.quote.expires_at <= now
     )
       reject("review_unavailable_for_dispatch");
-    return { ...(await currentSource(tx, input, locked)), review: locked.quote.review };
+    return {
+      ...(await currentSource(tx, input, locked)),
+      review: locked.quote.review,
+      providerBinding: organizationUpgradeProviderBindingSchema.parse(
+        locked.quote.provider_binding,
+      ),
+    };
   });
 }
 /** Call after provider re-preview and session validation, immediately before the single provider write. */

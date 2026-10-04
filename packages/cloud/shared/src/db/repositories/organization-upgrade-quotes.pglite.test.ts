@@ -24,6 +24,7 @@ test("persists and rereads exact terms without creating a command", async () => 
   const quote = await quotes.saveOrganizationUpgradeQuote({
     identity: f.input,
     captured: f.captured,
+    providerBinding: f.providerBinding,
     review: f.review,
   });
   await expect(
@@ -45,6 +46,7 @@ test("quote id cannot transfer actor or organization authority", async () => {
   const quote = await quotes.saveOrganizationUpgradeQuote({
     identity: f.input,
     captured: f.captured,
+    providerBinding: f.providerBinding,
     review: f.review,
   });
   await expect(quotes.readOrganizationUpgradeQuote(other.input, quote.id)).rejects.toThrow();
@@ -58,6 +60,7 @@ test("changed source after provider review and invented allowance are rejected",
     quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: { ...f.review, additionalAllowanceUsd: "65.000000" },
     }),
   ).rejects.toThrow();
@@ -68,6 +71,7 @@ test("changed source after provider review and invented allowance are rejected",
     quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: f.review,
     }),
   ).rejects.toThrow();
@@ -78,6 +82,7 @@ test("database rejects changed terms and foreign-subscription transplants", asyn
   const quote = await quotes.saveOrganizationUpgradeQuote({
     identity: f.input,
     captured: f.captured,
+    providerBinding: f.providerBinding,
     review: f.review,
   });
   await expect(
@@ -109,6 +114,7 @@ test("only an exact prepared upgrade can consume the quote, once", async () => {
   const quote = await quotes.saveOrganizationUpgradeQuote({
     identity: f.input,
     captured: f.captured,
+    providerBinding: f.providerBinding,
     review: f.review,
   });
   const db = client.getPgliteClientForTests();
@@ -157,6 +163,51 @@ test("expired provider review cannot be saved even with unchanged authority", as
     }),
   };
   await expect(
-    quotes.saveOrganizationUpgradeQuote({ identity: f.input, captured: f.captured, review }),
+    quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      providerBinding: f.providerBinding,
+      review,
+    }),
+  ).rejects.toThrow();
+});
+
+test("provider binding is immutable and cannot contain credential-shaped extra fields", async () => {
+  const f = await fixture();
+  const quote = await quotes.saveOrganizationUpgradeQuote({
+    identity: f.input,
+    captured: f.captured,
+    review: f.review,
+    providerBinding: f.providerBinding,
+  });
+  expect(quote.provider_binding).toEqual(f.providerBinding);
+  const db = client.getPgliteClientForTests();
+  await expect(
+    db.query(
+      "UPDATE organization_plan_change_quotes SET provider_binding=jsonb_set(provider_binding,'{targetPriceId}','\"price_changed\"') WHERE id=$1",
+      [quote.id],
+    ),
+  ).rejects.toThrow();
+  await expect(
+    quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      review: f.review,
+      providerBinding: { ...f.providerBinding, livemode: true },
+    }),
+  ).rejects.toThrow();
+  await expect(
+    db.query(
+      `INSERT INTO organization_plan_change_quotes(organization_id,actor_id,subscription_id,subscription_revision,target_plan_key,catalog_version,source_digest,review_digest,review,created_at,expires_at,provider_binding)
+ SELECT organization_id,actor_id,subscription_id,subscription_revision,target_plan_key,catalog_version,source_digest,review_digest,review,created_at,expires_at,provider_binding||'{"credential":"synthetic"}'::jsonb FROM organization_plan_change_quotes WHERE id=$1`,
+      [quote.id],
+    ),
+  ).rejects.toThrow();
+  await expect(
+    db.query(
+      `INSERT INTO organization_plan_change_quotes(organization_id,actor_id,subscription_id,subscription_revision,target_plan_key,catalog_version,source_digest,review_digest,review,created_at,expires_at)
+ SELECT organization_id,actor_id,subscription_id,subscription_revision,target_plan_key,catalog_version,source_digest,review_digest,review,created_at,expires_at FROM organization_plan_change_quotes WHERE id=$1`,
+      [quote.id],
+    ),
   ).rejects.toThrow();
 });

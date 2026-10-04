@@ -6,12 +6,14 @@ import {
 } from "./subscription-cancellation-test-fixture";
 export async function installOrganizationUpgradeTestSchema(
   execute: (query: string) => Promise<unknown>,
+  includeProviderBinding = true,
 ) {
   await installCancellationTestSchema(execute);
   for (const name of [
     "0511_organization_plan_change_quotes",
     "0512_organization_upgrade_dispatch",
     "0513_organization_upgrade_live_lease",
+    ...(includeProviderBinding ? ["0514_organization_upgrade_quote_binding"] : []),
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}.sql`, import.meta.url), "utf8");
     for (const q of migration.split("--> statement-breakpoint"))
@@ -68,5 +70,14 @@ export async function seedOrganizationUpgradeTestAccount(
       observedAt: observedAt.toISOString(),
       expiresAt: new Date(observedAt.getTime() + 60_000).toISOString(),
     };
-  return { ...f, captured, review };
+  const providerBinding: import("../../lib/services/organization-upgrade-provider-binding").OrganizationUpgradeProviderBinding =
+    {
+      sourcePriceId: "price_plus",
+      targetPriceId: "price_pro",
+      sourceProductId: "prod_plus",
+      targetProductId: "prod_pro",
+      livemode: false,
+      apiVersion: "2024-11-20.acacia",
+    };
+  return { ...f, captured, review, providerBinding };
 }

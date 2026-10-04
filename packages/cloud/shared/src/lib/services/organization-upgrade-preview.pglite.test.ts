@@ -13,6 +13,7 @@ process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
 process.env.STRIPE_PRO_PRODUCT_ID = "prod_pro";
 let fixtureData: Awaited<ReturnType<typeof seedCancellationTestAccount>>;
 let afterPreview = async () => {};
+let afterCustomer = async () => {};
 let corrupt = (value: Record<string, unknown>) => value;
 const mutation = mock(async () => {
   throw new Error("Review attempted mutation");
@@ -91,11 +92,10 @@ const preview = mock(
 mock.module("../stripe", () => ({
   requireStripe: () => ({
     customers: {
-      retrieve: async () => ({
-        id: fixtureData.source.stripe_customer_id,
-        object: "customer",
-        livemode: false,
-      }),
+      retrieve: async () => {
+        await afterCustomer();
+        return { id: fixtureData.source.stripe_customer_id, object: "customer", livemode: false };
+      },
     },
     subscriptions: { retrieve: async () => fixtureData.provider, update: mutation },
     invoices: { createPreview: preview },
@@ -137,6 +137,7 @@ async function setup() {
   preview.mockClear();
   mutation.mockClear();
   afterPreview = async () => {};
+  afterCustomer = async () => {};
   corrupt = (x) => x;
   return { ...fixtureData.input, targetPlanKey: "pro_monthly" as const };
 }
@@ -154,6 +155,14 @@ test("pins provider proration, separates recurring estimate and persists complet
   const input = await setup();
   const session = mock(async () => {});
   const quote = await service.createOrganizationUpgradeQuote(input, session);
+  expect(quote.provider_binding).toEqual({
+    sourcePriceId: "price_plus",
+    targetPriceId: "price_pro",
+    sourceProductId: "prod_plus",
+    targetProductId: "prod_pro",
+    livemode: false,
+    apiVersion: "2024-11-20.acacia",
+  });
   expect(quote.review.dueNow.amountDueCents).toBe(3500);
   expect(quote.review.recurringEstimate.amountDueCents).toBe(10000);
   expect(quote.review.targetAllowanceUsd).toBe("90.000000");
@@ -257,4 +266,32 @@ test("foreign-currency invoice lines cannot inherit the invoice currency", async
   };
   await expect(service.createOrganizationUpgradeQuote(input, async () => {})).rejects.toThrow();
   expect(await quoteCount()).toBe(0);
+});
+
+test("configuration drift during provider I/O cannot become a newly bound quote", async () => {
+  const input = await setup();
+  const original = process.env.STRIPE_PRO_MONTHLY_PRICE_ID;
+  afterPreview = async () => {
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_reconfigured";
+  };
+  try {
+    await expect(service.createOrganizationUpgradeQuote(input, async () => {})).rejects.toThrow();
+    expect(await quoteCount()).toBe(0);
+    expect(mutation).not.toHaveBeenCalled();
+  } finally {
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = original;
+  }
+});
+test("configuration drift during customer observation cannot replace the originally verified binding", async () => {
+  const input = await setup();
+  const original = process.env.STRIPE_PRO_PRODUCT_ID;
+  afterCustomer = async () => {
+    process.env.STRIPE_PRO_PRODUCT_ID = "prod_reconfigured";
+  };
+  try {
+    await expect(service.createOrganizationUpgradeQuote(input, async () => {})).rejects.toThrow();
+    expect(await quoteCount()).toBe(0);
+  } finally {
+    process.env.STRIPE_PRO_PRODUCT_ID = original;
+  }
 });
