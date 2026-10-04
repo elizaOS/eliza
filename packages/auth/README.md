@@ -84,6 +84,13 @@ This does not enroll TOTP, link another email, or link Google OAuth; hosts must
 not advertise those capabilities through this adapter. Sign-in methods are separate from Gmail
 consent and inference credentials.
 
+For OAuth account linking, the SDK challenge API accepts a host-owned S256
+challenge and returns `authorizationUrl` from the configured provider. Keep the
+verifier private and supply it only to the account-link token exchange. Auth binds
+it to the single-use challenge before contacting the provider. The callback must
+be allowlisted by Auth and registered with the provider; this API does not supply
+native callback delivery. Existing native account adapters do not yet expose it.
+
 The protected App Live E2E workflow also offers an explicit staging credential
 fixture. It verifies single-use session PKCE, native credential acknowledgement,
 encrypted vault reopening, restored API access and exact-key revocation. Only a

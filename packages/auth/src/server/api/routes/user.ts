@@ -3095,6 +3095,23 @@ user.post("/me/accounts/oauth/:provider/challenge", async (c) => {
 
   const userId = c.get("userId");
   const state = randomOAuthLinkState();
+  // The host owns its verifier; Auth supplies the configured provider URL and
+  // scopes so clients never guess provider client IDs or request mail access.
+  let authorizationUrl: string | undefined;
+  if (codeChallenge) {
+    try {
+      const client = new OAuthClient(getProviderConfig(providerName));
+      authorizationUrl = client.generateAuthUrl(state, redirectUri, {
+        codeChallenge,
+        codeChallengeMethod: "S256",
+      }).url;
+    } catch (err) {
+      return c.json<ApiResponse>(
+        { ok: false, error: sanitizeErrorMessage(err) },
+        503,
+      );
+    }
+  }
   await oauthLinkChallenges.setIfNotExists(
     oauthLinkChallengeKey(userId, state),
     JSON.stringify({
@@ -3113,6 +3130,7 @@ user.post("/me/accounts/oauth/:provider/challenge", async (c) => {
       state: string;
       redirectUri: string;
       expiresIn: number;
+      authorizationUrl?: string;
     }>
   >({
     ok: true,
@@ -3120,6 +3138,7 @@ user.post("/me/accounts/oauth/:provider/challenge", async (c) => {
       state,
       redirectUri,
       expiresIn: Math.floor(OAUTH_LINK_CHALLENGE_TTL_MS / 1000),
+      ...(authorizationUrl ? { authorizationUrl } : {}),
     },
   });
 });
