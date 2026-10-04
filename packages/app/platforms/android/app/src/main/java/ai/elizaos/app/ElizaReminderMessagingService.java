@@ -47,6 +47,45 @@ public final class ElizaReminderMessagingService extends MessagingService {
             && ElizaReminderMessagingService.class.getName().equals(resolved.serviceInfo.name);
     }
 
+    /** One channel authority for cold FCM and foreground LocalNotifications. */
+    static NotificationChannel resolveReminderChannel(NotificationManager manager, String priority, String ownerType) {
+        if ("high".equals(priority) && "occurrence".equals(ownerType)) {
+            NotificationChannel previous = manager.getNotificationChannel("eliza_updates");
+            if (previous != null && (
+                Build.VERSION.SDK_INT < 30
+                || previous.getImportance() != NotificationManager.IMPORTANCE_DEFAULT
+                || (previous.getLockscreenVisibility() != android.app.Notification.VISIBILITY_PUBLIC
+                    && previous.getLockscreenVisibility() != android.service.notification.NotificationListenerService.Ranking.VISIBILITY_NO_OVERRIDE)
+                || previous.getGroup() != null
+                || (Build.VERSION.SDK_INT >= 29 && previous.hasUserSetImportance())
+                || (Build.VERSION.SDK_INT >= 30 && previous.hasUserSetSound())
+            )) return previous;
+        }
+        String id;
+        String name;
+        int importance;
+        if ("urgent".equals(priority)) {
+            id = "eliza_alerts"; name = "Eliza alerts"; importance = NotificationManager.IMPORTANCE_HIGH;
+        } else if ("high".equals(priority)) {
+            id = "eliza_notifications"; name = "Eliza"; importance = NotificationManager.IMPORTANCE_HIGH;
+        } else if ("normal".equals(priority)) {
+            id = "eliza_updates"; name = "Eliza updates"; importance = NotificationManager.IMPORTANCE_DEFAULT;
+        } else if ("low".equals(priority)) {
+            id = "eliza_quiet"; name = "Eliza background"; importance = NotificationManager.IMPORTANCE_LOW;
+        } else throw new IllegalArgumentException("Invalid reminder priority");
+        NotificationChannel existing = manager.getNotificationChannel(id);
+        return existing != null ? existing : new NotificationChannel(id, name, importance);
+    }
+
+    static boolean isReminderChannelBlocked(NotificationManager manager, NotificationChannel channel) {
+        if (channel == null || channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return true;
+        if (Build.VERSION.SDK_INT >= 28 && channel.getGroup() != null) {
+            android.app.NotificationChannelGroup group = manager.getNotificationChannelGroup(channel.getGroup());
+            return group != null && group.isBlocked();
+        }
+        return false;
+    }
+
     @Override
     public void onMessageReceived(RemoteMessage message) {
         if (message.getNotification() == null && "1".equals(message.getData().get("elizaReminderData"))) {
@@ -66,18 +105,8 @@ public final class ElizaReminderMessagingService extends MessagingService {
             || !NOTIFICATION_ID.matcher(id).matches() || title == null
             || title.trim().isEmpty() || title.length() > 512 || title.indexOf('\0') >= 0
             || body == null || body.length() > 4096 || body.indexOf('\0') >= 0) return;
-        String channel;
-        String channelName;
-        int importance;
-        if ("urgent".equals(priority)) {
-            channel = "eliza_alerts"; channelName = "Eliza alerts"; importance = 5;
-        } else if ("high".equals(priority)) {
-            channel = "eliza_notifications"; channelName = "Eliza"; importance = 4;
-        } else if ("normal".equals(priority)) {
-            channel = "eliza_updates"; channelName = "Eliza updates"; importance = 3;
-        } else if ("low".equals(priority)) {
-            channel = "eliza_quiet"; channelName = "Eliza background"; importance = 2;
-        } else return;
+        if (!"urgent".equals(priority) && !"high".equals(priority)
+            && !"normal".equals(priority) && !"low".equals(priority)) return;
         id = id.toLowerCase(java.util.Locale.ROOT);
         synchronized (DELIVERY_LOCK) {
             SharedPreferences receipts = getSharedPreferences(RECEIPTS, MODE_PRIVATE);
@@ -99,13 +128,14 @@ public final class ElizaReminderMessagingService extends MessagingService {
                 || !NotificationManagerCompat.from(this).areNotificationsEnabled()) return;
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager == null) return;
+            NotificationChannel selected = resolveReminderChannel(manager, priority, data.get("ownerType"));
+            String channel = selected.getId();
             if (manager.getNotificationChannel(channel) == null) {
-                NotificationChannel nativeChannel = new NotificationChannel(channel, channelName, importance);
-                nativeChannel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
-                manager.createNotificationChannel(nativeChannel);
+                selected.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+                manager.createNotificationChannel(selected);
             }
             NotificationChannel activeChannel = manager.getNotificationChannel(channel);
-            if (activeChannel == null || activeChannel.getImportance() == NotificationManager.IMPORTANCE_NONE) return;
+            if (isReminderChannelBlocked(manager, activeChannel)) return;
             // Only the app's own launcher is an intent target; data cannot name components/URLs.
             Intent tap = getPackageManager().getLaunchIntentForPackage(getPackageName());
             if (tap == null || tap.getComponent() == null

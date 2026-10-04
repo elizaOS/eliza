@@ -8,6 +8,11 @@ on:
         required: true
         default: false
         type: boolean
+      token_permissions_preflight:
+        description: Read identified protected token policy metadata only; no model calls or permission changes.
+        required: true
+        default: false
+        type: boolean
       expected_deploy_sha:
         description: Exact 40-character staging ancestor that staging must serve.
         required: false
@@ -43,7 +48,7 @@ concurrency:
 jobs:
   token-identity-preflight:
     # The protected staging environment selects the live canonical branch during cutover.
-    if: ${{ inputs.token_identity_preflight && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/staging') }}
+    if: ${{ (inputs.token_identity_preflight || inputs.token_permissions_preflight) && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/staging') }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: staging
@@ -61,6 +66,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_TOKEN_PERMISSION_REPORT: ${{ inputs.token_permissions_preflight }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/develop" && "$GITHUB_REF" != "refs/heads/staging" ]]; then
@@ -70,7 +76,7 @@ jobs:
           node packages/cloud/scripts/cloudflare-token-identity-preflight.ts
 
   certify-staging:
-    if: ${{ !inputs.token_identity_preflight }}
+    if: ${{ !inputs.token_identity_preflight && !inputs.token_permissions_preflight }}
     name: Certify staging gateway and auth latency
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -194,6 +200,7 @@ jobs:
             artifacts/cloud-latency-certification/deployment.json
             artifacts/cloud-latency-certification/placement.json
             artifacts/cloud-latency-certification/paired.jsonl
+            artifacts/cloud-latency-certification/auth-failure.json
             artifacts/cloud-latency-certification/inference-auth.jsonl
             artifacts/cloud-latency-certification/inference-auth-worker.jsonl
             artifacts/cloud-latency-certification/inference-traces.json

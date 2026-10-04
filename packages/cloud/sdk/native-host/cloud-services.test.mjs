@@ -212,6 +212,63 @@ test("independent host selects its plan and speech policy without exposing autho
         error: "Invalid payment response",
       });
     }
+    const factorRoutes = {
+      "/cloud/account/methods": ["account-methods", {}],
+      "/cloud/account/methods/google/start": ["account-google-start", {}],
+      "/cloud/account/methods/google/status": ["account-google-status", {}],
+      "/cloud/account/methods/google/return": [
+        "account-google-return",
+        {
+          callbackUrl:
+            "https://product.example/link?state=synthetic&code=synthetic",
+        },
+      ],
+      "/cloud/account/methods/google/cancel": ["account-google-cancel", {}],
+      "/cloud/account/methods/google/complete": [
+        "account-google-complete",
+        {
+          sessionId: "google-attempt",
+          callbackUrl:
+            "https://product.example/link?state=synthetic&code=synthetic",
+        },
+      ],
+      "/cloud/account/methods/unlink": [
+        "account-unlink",
+        { reviewId: "review", methodId: "method" },
+      ],
+      "/cloud/account/methods/phone/start": [
+        "account-phone-start",
+        { phone: "+15555550123" },
+      ],
+      "/cloud/account/methods/phone/verify": [
+        "account-phone-verify",
+        { sessionId: "phone", code: "123456" },
+      ],
+      "/cloud/account/security/status": ["account-security-status", {}],
+      "/cloud/account/security/enroll/start": [
+        "account-security-enroll-start",
+        { phone: "+15555550123" },
+      ],
+      "/cloud/account/security/enroll/verify": [
+        "account-security-enroll-verify",
+        { sessionId: "enrollment", code: "123456" },
+      ],
+      "/cloud/account/security/start": [
+        "account-security-start",
+        { method: "totp" },
+      ],
+      "/cloud/account/security/verify": [
+        "account-security-verify",
+        { sessionId: "security", code: "123456" },
+      ],
+    };
+    for (const [route, [operation, input]] of Object.entries(factorRoutes)) {
+      assert.equal((await post(route, input)).status, 200);
+      assert.deepEqual(handled.at(-1), { operation, input });
+      const before = handled.length;
+      assert.equal((await fetch(base + route)).status, 404);
+      assert.equal(handled.length, before);
+    }
     const mfa = await post("/cloud/account/billing/mfa", {
       sessionId: "billing-attempt",
       code: "123456",
@@ -429,6 +486,13 @@ test("a service-only host composes CLI login and provider-default voice without 
     "/cloud/account/plans",
     "/cloud/account/checkout",
     "/cloud/account/billing/start",
+    "/cloud/account/methods",
+    "/cloud/account/methods/google/start",
+    "/cloud/account/methods/google/return",
+    "/cloud/account/methods/google/status",
+    "/cloud/account/methods/google/complete",
+    "/cloud/account/methods/google/cancel",
+    "/cloud/account/security/start",
   ])
     assert.equal((await post(route, {})).status, 404);
   assert.equal(calls.length, 0);
@@ -442,4 +506,82 @@ test("a service-only host composes CLI login and provider-default voice without 
   );
   assert.doesNotMatch(calls.at(-1).options.body.toString(), /languageCode/);
   assert.equal((await post("/cloud/login", {})).status, 200);
+});
+
+test("a saved pending sign-in that becomes unparseable reports account recovery, not a service outage", async () => {
+  let pendingRaw = null;
+  const routes = createCloudRoutes({
+    hostPolicy: policy,
+    pendingCredentialStore: { read: async () => pendingRaw },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: async (url) => {
+      if (url.endsWith("/api/v1/user")) return Response.json({ id: "user" });
+      if (url.endsWith("/api/v1/billing/limits")) return Response.json({});
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const healthy = await fetch(base + "/cloud/account/access");
+    assert.equal(healthy.status, 200);
+    assert.deepEqual(await healthy.json(), { state: "active" });
+    // The journal corrupts after startup (partial write, editor, sync tool):
+    // `ready` already resolved, so the per-request read is what sees it.
+    pendingRaw = "{not json";
+    const corrupted = await fetch(base + "/cloud/account/access");
+    assert.equal(corrupted.status, 409);
+    assert.match(
+      (await corrupted.json()).error,
+      /savedSignInNeedsAccountRecovery/,
+    );
+    const gated = await fetch(base + "/cloud/account/invoices");
+    assert.equal(gated.status, 409);
+    assert.match((await gated.json()).error, /savedSignInNeedsAccountRecovery/);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("a JSON-null saved pending sign-in stays benign across cloud routes", async () => {
+  const routes = createCloudRoutes({
+    hostPolicy: policy,
+    pendingCredentialStore: { read: async () => "null" },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: async (url) => {
+      if (url.endsWith("/api/v1/user")) return Response.json({ id: "user" });
+      if (url.endsWith("/api/v1/billing/limits")) return Response.json({});
+      if (url.endsWith("/subscriptions/plans"))
+        return Response.json({ data: { plans: [] } });
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const status = await fetch(base + "/cloud/status");
+    assert.equal(status.status, 200);
+    assert.deepEqual(await status.json(), {
+      connected: true,
+      disconnectPending: false,
+      credentialPersistence: "process-memory",
+    });
+    const access = await fetch(base + "/cloud/account/access");
+    assert.equal(access.status, 200);
+    assert.deepEqual(await access.json(), { state: "active" });
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

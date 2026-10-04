@@ -19,6 +19,7 @@ try {
   );
   const shared = [
     "runtime/RuntimeBundleStore",
+    "runtime/PrivateOAuthCallback",
     "runtime/NativeProcessSupervisor",
     "runtime/NativeProcessLog",
     "runtime/RuntimeRequestDeadline",
@@ -45,6 +46,7 @@ try {
   });
   for (const [group, name] of [
     ["runtime.test", "RuntimeBundleStoreTest"],
+    ["runtime.test", "PrivateOAuthCallbackTest"],
     ["runtime.test", "NativeProcessSupervisorTest"],
     ["runtime.test", "NativeProcessLogTest"],
     ["runtime.test", "RuntimeRequestDeadlineTest"],

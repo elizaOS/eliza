@@ -98,22 +98,41 @@ function readJsonCredentialsFile(
   credentialsPath: string,
 ): PersistedStewardCredentials | null {
   try {
-    if (!fs.existsSync(credentialsPath)) return null;
     const parsed = JSON.parse(
       fs.readFileSync(credentialsPath, "utf8"),
-    ) as Record<string, unknown>;
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new ElizaError(
+        "Persisted Steward credentials have an invalid root shape",
+        {
+          code: "STEWARD_CREDENTIALS_CORRUPT",
+          context: { credentialsPath },
+          severity: "fatal",
+        },
+      );
+    }
+    const credentials = parsed as Record<string, unknown>;
     return {
-      apiUrl: normalizeOptionalString(parsed.apiUrl),
-      tenantId: normalizeOptionalString(parsed.tenantId),
-      agentId: normalizeOptionalString(parsed.agentId),
+      apiUrl: normalizeOptionalString(credentials.apiUrl),
+      tenantId: normalizeOptionalString(credentials.tenantId),
+      agentId: normalizeOptionalString(credentials.agentId),
       apiKey:
-        normalizeOptionalString(parsed.apiKey) ??
-        normalizeOptionalString(parsed.tenantApiKey),
-      agentToken: normalizeOptionalString(parsed.agentToken),
+        normalizeOptionalString(credentials.apiKey) ??
+        normalizeOptionalString(credentials.tenantApiKey),
+      agentToken: normalizeOptionalString(credentials.agentToken),
     };
-  } catch {
-    // error-policy:J4 Missing/corrupt persisted credentials make Steward unavailable.
-    return null;
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (cause instanceof ElizaError) throw cause;
+    throw new ElizaError(
+      "Persisted Steward credentials could not be read safely",
+      {
+        code: "STEWARD_CREDENTIALS_CORRUPT",
+        cause,
+        context: { credentialsPath },
+        severity: "fatal",
+      },
+    );
   }
 }
 function readPersistedStewardCredentials(): PersistedStewardCredentials | null {

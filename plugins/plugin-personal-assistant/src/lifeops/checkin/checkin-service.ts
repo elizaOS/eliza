@@ -32,6 +32,7 @@ import {
 } from "@elizaos/core/contracts/personal-assistant";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
+import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
@@ -309,13 +310,22 @@ export function renderMorningCheckinReport(
   const reference = report.timezone
     ? `${new Intl.DateTimeFormat("en-US", {
         timeZone: report.timezone,
-        dateStyle: "full",
-        timeStyle: "short",
-      }).format(new Date(report.generatedAt))} (${report.timezone})`
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(new Date(report.generatedAt))}`
     : report.generatedAt;
-  const paragraphs = ["Good morning.", `As of ${reference}.`];
+  const paragraphs = ["Good morning."];
   const unavailable: string[] = [];
   const emptySummaries: string[] = [];
+  const clearDay =
+    !report.collectorErrors.todaysMeetings &&
+    !report.collectorErrors.overdueTodos &&
+    report.todaysMeetings.length === 0 &&
+    report.overdueTodos.length === 0;
   const lists = [
     {
       key: "todaysMeetings" as const,
@@ -331,7 +341,7 @@ export function renderMorningCheckinReport(
     },
     {
       key: "yesterdaysWins" as const,
-      title: "Completions recorded yesterday",
+      title: "Finished yesterday",
       empty: "No completed items were recorded yesterday.",
       rows: report.yesterdaysWins,
     },
@@ -342,7 +352,8 @@ export function renderMorningCheckinReport(
       continue;
     }
     if (list.rows.length === 0) {
-      emptySummaries.push(list.empty);
+      if (list.key !== "yesterdaysWins" && !clearDay)
+        emptySummaries.push(list.empty);
       continue;
     }
     const highlights = list.rows.slice(0, 3).map((row) => {
@@ -359,24 +370,46 @@ export function renderMorningCheckinReport(
     });
     const extra = list.rows.length - highlights.length;
     paragraphs.push(
-      `${list.title}: ${list.rows.length}.${highlights.length ? `\n${highlights.join("\n")}` : ""}${extra ? `\n${extra} more collected items.` : ""}`,
+      `${list.title}: ${list.rows.length}.${highlights.length ? `\n${highlights.join("\n")}` : ""}${extra ? `\n${extra} more items.` : ""}`,
     );
   }
-  if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
-  if (report.collectorErrors.habitSummaries) {
-    unavailable.push("Habit tracking");
-  } else if (report.habitSummaries.length > 0) {
-    const missed = report.habitSummaries.filter(
-      (habit) => habit.missedOccurrenceStreak > 0,
-    ).length;
+  if (clearDay)
     paragraphs.push(
-      `Habit tracking: ${missed} of ${report.habitSummaries.length} records have recorded misses. These tracking states do not prove that work or notification delivery failed.`,
+      "No Calendar events or overdue tasks are listed for today.",
     );
-  }
-  const emptySourceSummaries: string[] = [];
+  if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
+  const xUnavailable: { label: string; setupUnavailable: boolean }[] = [];
+  let gmailDisconnected = false;
   for (const section of report.briefingSections) {
     if (section.error) {
-      unavailable.push(section.title);
+      if (
+        section.key === "gmail" &&
+        section.error === "Google Gmail is not connected."
+      ) {
+        gmailDisconnected = true;
+      } else if (
+        section.key === "x_dms" ||
+        section.key === "x_timeline" ||
+        section.key === "x_mentions"
+      ) {
+        const expectedError =
+          section.key === "x_dms"
+            ? "[x_read_dms] X runtime service fetchConnectorMessages is not registered."
+            : section.key === "x_timeline"
+              ? "[x_read_feed_home_timeline] X runtime service fetchFeedForAccount is not registered."
+              : "[x_read_feed_mentions] X runtime service fetchFeedForAccount is not registered.";
+        xUnavailable.push({
+          label:
+            section.key === "x_dms"
+              ? "DMs"
+              : section.key === "x_timeline"
+                ? "timeline"
+                : "mentions",
+          setupUnavailable: section.error === expectedError,
+        });
+      } else {
+        unavailable.push(section.title);
+      }
       continue;
     }
     const highlights = section.items
@@ -386,20 +419,38 @@ export function renderMorningCheckinReport(
           `- ${morningBriefExcerpt(item.title)}${item.detail ? `: ${morningBriefExcerpt(item.detail)}` : ""}`,
       );
     const extra = section.items.length - highlights.length;
-    if (highlights.length === 0) {
-      emptySourceSummaries.push(section.summary);
-    } else {
+    if (highlights.length > 0) {
       paragraphs.push(
-        `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more collected items.` : ""}`,
+        `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more items.` : ""}`,
       );
     }
   }
-  if (emptySourceSummaries.length > 0)
-    paragraphs.push(emptySourceSummaries.join(" "));
-  if (unavailable.length > 0)
+  if (report.collectorErrors.habitSummaries) {
+    unavailable.push("Habit tracking");
+  } else if (report.habitSummaries.length > 0) {
+    const missed = report.habitSummaries.filter(
+      (habit) => habit.missedOccurrenceStreak > 0,
+    ).length;
     paragraphs.push(
-      `I couldn't check: ${unavailable.join(", ")}. This brief does not cover those sources.`,
+      `${missed} of ${report.habitSummaries.length} tracked items have missed check-ins.`,
     );
+  }
+  const coverage = [
+    ...(gmailDisconnected ? ["Gmail isn't connected"] : []),
+    ...(xUnavailable.length > 0
+      ? [
+          xUnavailable.length === 3 &&
+          xUnavailable.every((source) => source.setupUnavailable)
+            ? "X isn't available in this setup"
+            : `X (${xUnavailable.map((source) => source.label).join(", ")}) couldn't be checked`,
+        ]
+      : []),
+    ...(unavailable.length > 0
+      ? [`${unavailable.join(", ")} unavailable`]
+      : []),
+  ];
+  if (coverage.length > 0) paragraphs.push(`${coverage.join(". ")}.`);
+  paragraphs.push(`As of ${reference}.`);
   return paragraphs.join("\n\n");
 }
 export function clip(text: string, maxLength = 220): string {
@@ -697,7 +748,11 @@ async function collectHabitSummaries(
       if (summary.isPaused) {
         pausedDefinitionIds.add(definitionId);
       }
-      summaries.push(summary);
+      if (
+        resolveOwnerDefinitionSurface({ kind, metadata }) !== "OWNER_REMINDERS"
+      ) {
+        summaries.push(summary);
+      }
     }
     return { rows: summaries, error: null, pausedDefinitionIds };
   } catch (error) {
@@ -803,27 +858,38 @@ async function collectCompletedWins(
   const day = localDayWindow(now, timezone, kind === "morning" ? -1 : 0);
   const start = day.start;
   const end = kind === "morning" ? day.end : now;
+  // Use the same canonical writer timestamp policy as dated owner recaps.
+  // This collector's existing joins/scopes differ from the overview repository.
+  const completedAt = `(occ.completion_payload_json::jsonb ->> 'completedAt')`;
   try {
     const rows = await executeRawSql(
       runtime,
       `SELECT occ.id AS id,
               COALESCE(def.title, '') AS title,
-              occ.updated_at AS completed_at
+              ${completedAt} AS completed_at
          FROM app_lifeops.life_task_occurrences occ
          LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
           AND occ.state = 'completed'
-          AND occ.updated_at >= ${sqlQuote(start.toISOString())}
-          AND occ.updated_at <= ${sqlQuote(end.toISOString())}
-        ORDER BY occ.updated_at DESC
+          AND jsonb_typeof(occ.completion_payload_json::jsonb -> 'completedAt') = 'string'
+          AND ${completedAt} ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9][.][0-9]{3}Z$'
+          AND ${completedAt} >= ${sqlQuote(start.toISOString())}
+          AND ${completedAt} ${kind === "morning" ? "<" : "<="} ${sqlQuote(end.toISOString())}
+        ORDER BY ${completedAt} DESC, occ.id ASC
         LIMIT 50`,
     );
     return {
-      rows: rows.map((row) => ({
-        id: toText(row.id),
-        title: toText(row.title) || "(untitled)",
-        completedAt: row.completed_at == null ? null : toText(row.completed_at),
-      })),
+      rows: rows
+        .filter((row) => {
+          const instant = toText(row.completed_at);
+          const ms = Date.parse(instant);
+          return Number.isFinite(ms) && new Date(ms).toISOString() === instant;
+        })
+        .map((row) => ({
+          id: toText(row.id),
+          title: toText(row.title) || "(untitled)",
+          completedAt: toText(row.completed_at),
+        })),
       error: null,
     };
   } catch (error) {

@@ -440,6 +440,7 @@ export async function createV5MessageContextObject(args: {
     metadata: {
       roomId: args.message.roomId,
       messageId: args.message.id,
+      actorId: args.message.entityId,
       selectedContexts: [...(args.selectedContexts ?? [])],
       ...(args.actionSurface
         ? { actionSurface: args.actionSurface.summary as JsonValue }

@@ -301,7 +301,9 @@ export function createCloudRoutes({
       } catch {
         throw fail(message("savedSignInNeedsAccountRecovery"), 409);
       }
-      if (saved.kind === "revocation")
+      // A JSON-null or primitive journal carries no revocation to apply; the
+      // per-request readers treat the same bytes as benign ("/cloud/status").
+      if (saved?.kind === "revocation")
         await mutateCredential(() => store.clear());
     }
   })();
@@ -315,7 +317,7 @@ export function createCloudRoutes({
       } catch {
         throw fail(message("savedSignInNeedsAccountRecovery"), 409);
       }
-      if (saved.kind === "revocation")
+      if (saved?.kind === "revocation")
         throw fail(message("finishDisconnectingBeforeUsingCloudServices"), 401);
     }
     return store.read();
@@ -421,8 +423,18 @@ export function createCloudRoutes({
     await credentialWrites;
     const pending = await pendingCredentialStore?.read();
     current(epoch);
-    if (pending && JSON.parse(pending).kind === "revocation")
-      return { state: "signed_out", disconnectPending: true };
+    if (pending) {
+      let saved;
+      try {
+        saved = JSON.parse(pending);
+      } catch {
+        // error-policy:J3 an unparseable saved sign-in is an explicit invalid
+        // state (account recovery), never a fake-valid default or an outage.
+        throw fail(message("savedSignInNeedsAccountRecovery"), 409);
+      }
+      if (saved?.kind === "revocation")
+        return { state: "signed_out", disconnectPending: true };
+    }
     const key = await usableCredential();
     current(epoch);
     if (!key) return { state: "signed_out" };
@@ -532,6 +544,33 @@ export function createCloudRoutes({
                 : {}),
             })),
         });
+        return true;
+      }
+      // Auth owns sign-in factors; keep this transport separate from Google
+      // connector consent. Auth validates callback data against its private attempt;
+      // callers never select an outbound destination or supply authority.
+      const accountMethods = {
+        "/cloud/account/methods": "account-methods",
+        "/cloud/account/methods/google/start": "account-google-start",
+        "/cloud/account/methods/google/return": "account-google-return",
+        "/cloud/account/methods/google/status": "account-google-status",
+        "/cloud/account/methods/google/complete": "account-google-complete",
+        "/cloud/account/methods/google/cancel": "account-google-cancel",
+        "/cloud/account/methods/unlink": "account-unlink",
+        "/cloud/account/methods/phone/start": "account-phone-start",
+        "/cloud/account/methods/phone/verify": "account-phone-verify",
+        "/cloud/account/security/status": "account-security-status",
+        "/cloud/account/security/enroll/start": "account-security-enroll-start",
+        "/cloud/account/security/enroll/verify":
+          "account-security-enroll-verify",
+        "/cloud/account/security/start": "account-security-start",
+        "/cloud/account/security/verify": "account-security-verify",
+      };
+      if (method === "POST" && Object.hasOwn(accountMethods, path)) {
+        if (!nativeAuth?.handle)
+          throw fail("Sign-in management is unavailable", 503);
+        const input = await body(req, 4096);
+        send(res, 200, await nativeAuth.handle(accountMethods[path], input));
         return true;
       }
       // Billing uses a short-lived signed-in session held only by the native

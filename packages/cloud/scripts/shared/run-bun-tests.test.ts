@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { runCommandWithWatchdog } from "../../../scripts/test-cloud-run.ts";
+import { supervisedBunExitStatus } from "./run-bun-tests-helpers.ts";
+
 const directory = mkdtempSync(join(tmpdir(), "cloud-test-runner-"));
 const probe = join(directory, "child.mjs");
 writeFileSync(
@@ -49,3 +52,21 @@ for (const exitCode of [0, 7]) {
     );
   });
 }
+
+test("watchdog termination cannot become a green test result through exit zero", async () => {
+  const result = await runCommandWithWatchdog(
+    "node",
+    [
+      "-e",
+      "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 100);",
+    ],
+    { timeoutMs: 1000 },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.terminationError).toBeUndefined();
+  expect(result.timedOut).toBe(true);
+  expect(supervisedBunExitStatus(result)).toBe(124);
+  expect(supervisedBunExitStatus({ ...result, status: 0, signal: null })).toBe(
+    124,
+  );
+});
