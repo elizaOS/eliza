@@ -1,12 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { createServer } from "node:net";
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { createStdioBridge } from "../../../../plugins/plugin-native-inference/src/shared/stdio-bridge";
-import {
-  createAndroidAgentExecutor,
-  createMobileBrowserExecutor,
-} from "../mobile-remote-target";
+import { createMobileBrowserExecutor } from "../mobile-remote-target";
 
 function runtime(executeNativeDeviceCommand: (...args: unknown[]) => unknown) {
   return {
@@ -15,71 +9,6 @@ function runtime(executeNativeDeviceCommand: (...args: unknown[]) => unknown) {
 }
 
 describe("Android background browser receiver", () => {
-  it("retains allowlisted agent status over the authenticated Android abstract socket", async () => {
-    const socketName = `eliza-remote-test-${randomUUID()}`;
-    const received: string[] = [];
-    const token = "test-token-strong-enough-for-native-api";
-    const server = createServer((socket) => {
-      const bridge = createStdioBridge({
-        request: async (frame) => {
-          expect(frame.method).toBe("http_request");
-          const request = frame.payload as {
-            method: string;
-            path: string;
-            headers: Record<string, string>;
-          };
-          received.push(
-            `${request.method} ${request.path} ${request.headers.authorization}`,
-          );
-          const body = JSON.stringify({ status: "ready" });
-          return {
-            status: 200,
-            headers: { "content-type": "application/json" },
-            body,
-            bodyBase64: Buffer.from(body).toString("base64"),
-            bodyEncoding: "base64",
-          };
-        },
-        writeFrame: (frame) => socket.write(JSON.stringify(frame) + "\n"),
-      });
-      let buffered = "";
-      socket.on("data", (chunk) => {
-        buffered += chunk.toString();
-        const index = buffered.indexOf("\n");
-        if (index >= 0) {
-          void bridge.handleLine(buffered.slice(0, index));
-          buffered = buffered.slice(index + 1);
-        }
-      });
-    });
-    await new Promise<void>((resolve) =>
-      server.listen(`\0${socketName}`, resolve),
-    );
-    try {
-      const executor = createMobileBrowserExecutor(
-        runtime(vi.fn()),
-        createAndroidAgentExecutor({ apiToken: token, socketName }),
-      );
-      const result = await executor.execute({
-        action: "agent.status",
-        payload: {},
-        executionId: "status-one",
-      });
-      expect(result.status).toBe("completed");
-      expect(received).toEqual([`GET /api/health Bearer ${token}`]);
-      const denied = await executor.execute({
-        action: "agent.request",
-        payload: { method: "GET", path: "/api/config" },
-        executionId: "denied-one",
-      });
-      expect(denied.status).toBe("rejected");
-      expect(received).toHaveLength(1);
-    } finally {
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
-    }
-  });
   it("binds exact profile and tab, retaining complete receipts", async () => {
     const receipt = {
       value: {

@@ -8,6 +8,7 @@ import {
 } from "../runtime/completion-context";
 import { hashStableJson } from "../runtime/context-hash";
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
+import { compactHistoricalReceiptSegments } from "../runtime/historical-receipt-wire";
 import type { ContextObject } from "../types/context-object";
 import type { Memory } from "../types/memory";
 import type { State } from "../types/state";
@@ -122,7 +123,9 @@ export function readTaskExtractionContext(
 			);
 		const rendered = render(binding.projected);
 		return {
-			text: rendered.promptSegments.map(segmentBlock).join("\n\n"),
+			text: compactHistoricalReceiptSegments(rendered.promptSegments)
+				.map(segmentBlock)
+				.join("\n\n"),
 			originalText: render(binding.original)
 				.promptSegments.map(segmentBlock)
 				.join("\n\n"),

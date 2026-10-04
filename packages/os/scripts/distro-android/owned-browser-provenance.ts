@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { androidNativeHost } from "../../browser/scripts/android-host.mjs";
 import {
-  assetNames,
+  componentAssetNames,
   validateAssets,
 } from "../../browser/scripts/chromium-component.mjs";
 
@@ -178,6 +178,7 @@ export function verifyOwnedProvenance(root, pin, architecture) {
     JSON.stringify(overlay.nativeHost) === JSON.stringify(expectedHost),
     "Owned component overlay launcher identity mismatch.",
   );
+  const assetNames = componentAssetNames(document.resources ?? {});
   const inventory = (value) =>
     Object.keys(value ?? {})
       .sort()

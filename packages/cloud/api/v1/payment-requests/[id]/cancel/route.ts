@@ -14,6 +14,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { toPaymentRequestDto } from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -36,8 +37,11 @@ app.post("/", async (c) => {
       );
     }
 
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsed = CancelSchema.safeParse(rawBody ?? {});
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = CancelSchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

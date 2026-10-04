@@ -6,6 +6,7 @@ import {
 	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
 	isSensitiveLogKey,
 	redactTrailingArgs,
+	SENSITIVE_ASSIGNMENT_PATTERNS,
 } from "./log-redaction.js";
 /** Masks credential patterns and configured character secrets before logging or display. */
 
@@ -207,10 +208,19 @@ export function redactToolDetail(detail: string): string {
 /**
  * Get the default redaction patterns.
  *
+ * Source reviewers may classify named assignments with their own literal parser.
+ * Runtime redaction keeps broad assignment matching by default. Provider token,
+ * quoted field, header and URL patterns remain present in both modes.
  * @returns Copy of default pattern strings
  */
-export function getDefaultRedactPatterns(): string[] {
-	return [...DEFAULT_REDACT_PATTERNS];
+export function getDefaultRedactPatterns(
+	options: { includeNamedAssignments?: boolean } = {},
+): string[] {
+	return options.includeNamedAssignments === false
+		? DEFAULT_REDACT_PATTERNS.filter(
+				(pattern) => !SENSITIVE_ASSIGNMENT_PATTERNS.includes(pattern),
+			)
+		: [...DEFAULT_REDACT_PATTERNS];
 }
 
 // ============================================================================

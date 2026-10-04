@@ -184,6 +184,10 @@ describe("LP3 direct Cloud build flag", () => {
       "SafePushNotificationsPlugin.java",
     );
     expect(resolveAndroidCloudStripPolicy({}).safePushNotifications).toBe(true);
+    const nativeManifest = fs.readFileSync(manifestPath, "utf8");
+    expect(
+      stripManifest(nativeManifest, resolveAndroidCloudStripPolicy({})),
+    ).toContain("ElizaReminderMessagingService");
 
     const fallbackEnv = {
       ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "yes",
@@ -198,6 +202,17 @@ describe("LP3 direct Cloud build flag", () => {
     expect(
       resolveAndroidCloudStripPolicy(fallbackEnv).safePushNotifications,
     ).toBe(false);
+    const strippedManifest = stripManifest(
+      nativeManifest,
+      resolveAndroidCloudStripPolicy(fallbackEnv),
+    );
+    expect(strippedManifest).not.toContain("ElizaReminderMessagingService");
+    expect(strippedManifest).not.toContain(
+      "com.capacitorjs.plugins.pushnotifications.MessagingService",
+    );
+    expect(resolveAndroidCloudStripPolicy(fallbackEnv).javaFiles).toContain(
+      "ElizaReminderMessagingService.java",
+    );
   });
 
   it("omits native FCM from a Firebase-independent VPS sidecar", () => {

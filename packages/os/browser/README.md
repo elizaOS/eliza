@@ -162,3 +162,76 @@ activation. Run `node --conditions=eliza-source
 packages/os/browser/scripts/test-protected-fill.mjs` for controlled Chromium
 field-policy and snapshot-redaction checks; native transport and provider
 qualification remain separate.
+
+
+Android component generation accepts `--embed-host` only as an explicit build
+option. It adds `knownActivityEmbeddingCerts` to the intent dispatcher target, standard Custom Tab and main
+tabbed activities, plus the dispatcher alias (Android 15 does not inherit its
+certificate set). It uses the provisioned host certificate from native messaging.
+It does not enable untrusted embedding or change activity exports/launch modes.
+Android enforces this opt-in by signer, not package name: every app sharing that
+signer is trusted for embedding. Use a dedicated host signer for a production
+distribution. Native messaging still checks its separate host application ID.
+The default remains disabled. Host WindowManager support, actual split bounds,
+existing-tab continuity, input and lifecycle must be qualified on the installed
+browser; a generated manifest is only one prerequisite for a native dock.
+
+The Android overlay includes full-origin Autofill transport (including ports and
+per-field origins). The original patch provenance is in `scripts/chromium/autofill`.
+The Java regression requires JDK 21. Consumers must not apply a second Autofill patch.
+
+Products may add the complete reviewed protection resource set exposed by
+`protectionAssetNames`. This opts the component into `declarativeNetRequest` and
+exposes only `warning.html`; partial inventories, extra permissions and other
+web-accessible resources reject. Products retain their policy and warning UI.
+Unprotected builds retain their existing permissions and resource inventory.
+
+Eliza OS owns Android Chromium compilation as well as source preparation. On a
+provisioned Linux Chromium/depot_tools host, run:
+
+```sh
+node packages/os/scripts/distro-android/build-chromium-browser.ts \
+  --source /absolute/chromium/src --extension /absolute/product/extension \
+  --out /absolute/new-overlay --build /absolute/chromium/src/out/Owned \
+  --args-file /absolute/reviewed-args.gn --jobs 8 \
+  --application PRODUCT_APP_ID --certificate APP_CERTIFICATE_SHA256 \
+  --embed-host true
+```
+
+The build requires the pinned pristine sources and a new output directory. GN args
+must explicitly select Android, arm64 or x64, Desktop Android, and package
+`ai.elizaos.chromium`. The command applies the verified overlay, runs GN and bounded
+Ninja, and records APK and GN-input hashes. It does not sign a release, install an
+APK, provision AOSP or qualify a device. Preserve `chromium-build.json` alongside
+the overlay and use the existing signed-artifact admission flow for release.
+
+## Shared host protection
+
+`protection/` provides an opt-in rule compiler, extension-worker engine and Node
+reputation cache. The host owns warning HTML/CSS/copy, reviewed feed selection,
+cache location, user-agent attribution and alarm names. `installBrowserProtection`
+is installed once per extension worker; its warning page must be a local HTML
+filename. The DNR engine reserves IDs 10000–11999 and one session exception at ID
+1; compose other rules outside those ranges. A temporary exception requires a
+message from the host warning page in its top-level tab and permits only the exact
+main-frame GET; navigation failure, commit, expiry or tab removal revokes it.
+
+`createWebsiteReputation` requires explicit feeds and accepts an optional private
+cache directory. It downloads the configured lists, never visited URLs, and never
+reports missing/expired feed data as clean. Feed configuration is trusted host
+policy, not model input. The Phishing.Database mirror adapter pins fallback bytes
+to an official commit. Hosts must ship the selected feeds' required attribution.
+
+These modules are not enabled automatically in Eliza's browser build. Consumers
+bundle the extension engine into their admitted worker resource and include the
+Node module in the verified native gateway dependency closure. Run the protection
+regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
+
+`buildBrowserProtection(output, {warningDirectory, feeds, refreshAlarm, exceptionAlarm})`
+builds the optional unpacked worker using the shared engine. HTML/CSS overrides
+preserve shared messaging and enforcement. The optional builder defaults to the
+reviewed Phishing.Database and HaGeZi lists and ships their license notices.
+`composeProtectionAssets` adds the complete admitted resource inventory to an
+existing component without changing its other capabilities. Keep existing alarm
+names when upgrading an installed consumer. Run `test:browser:protection:network`
+for real Chromium blocking, exception, offline-restart and capacity checks.

@@ -232,6 +232,8 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     "/api/asr/local-inference/status",
   ),
   sessionExact("asr.local-inference", "POST", "/api/asr/local-inference"),
+  sessionExact("tts.kokoro.status", "GET", "/api/tts/kokoro/status"),
+  sessionExact("tts.kokoro", "POST", "/api/tts/kokoro"),
   sessionExact("asr.whisper.status", "GET", "/api/asr/whisper/status"),
   sessionExact("asr.whisper", "POST", "/api/asr/whisper"),
   sessionPrefix("workbench", "/api/workbench"),

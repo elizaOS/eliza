@@ -52,9 +52,11 @@ vi.mock("../src/lifeops/repository.js", () => ({
 
 import {
   __resetDocumentStoreForTests,
+  dispatchApprovedSignatureRequest,
   getDocumentRequest,
   ownerDocumentsAction,
 } from "../src/actions/document.js";
+import { personalAssistantAction } from "../src/actions/owner-surfaces.js";
 
 function makeRuntime(): IAgentRuntime {
   return {
@@ -519,6 +521,72 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
       expect(emitEvent).toHaveBeenCalledWith(
         "document.obligation.observed",
         expect.objectContaining({ obligationKind: "renewal", deadline }),
+      );
+    });
+  });
+
+  describe("PERSONAL_ASSISTANT sign_document", () => {
+    async function signViaAssistant(text: string) {
+      const runtime = makeRuntime();
+      const result = await personalAssistantAction.handler(
+        runtime,
+        makeMessage(text),
+        undefined,
+        { parameters: { action: "sign_document" } } as HandlerOptions,
+      );
+      return { runtime, result };
+    }
+
+    it("creates the DocumentRequest its approval dispatches", async () => {
+      const { runtime, result } = await signViaAssistant(
+        "please sign the NDA at https://sign.example.com/abc in 3 days",
+      );
+
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          action: "sign_document",
+          approvalRequestId: "approval-document",
+        },
+      });
+      if (!result) throw new Error("sign_document returned no result");
+      const { documentRequestId } = result.data as {
+        documentRequestId: string;
+      };
+      const documentRequest = getDocumentRequest(runtime, documentRequestId);
+      expect(documentRequest).toMatchObject({
+        kind: "signature",
+        status: "pending",
+        title: "NDA",
+        approvalRequestId: "approval-document",
+      });
+      // This surface does not resolve the counterparty; the owner is not it.
+      expect(documentRequest?.requesteeEntityId).toBeUndefined();
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestedBy: "PERSONAL_ASSISTANT",
+          action: "sign_document",
+          payload: expect.objectContaining({
+            documentId: documentRequestId,
+            signatureUrl: "https://sign.example.com/abc",
+          }),
+        }),
+      );
+      // The approved row's dispatch finds the DocumentRequest instead of
+      // failing with DOCUMENT_REQUEST_NOT_FOUND.
+      expect(
+        dispatchApprovedSignatureRequest(runtime, documentRequestId),
+      ).toMatchObject({ status: "in_progress" });
+    });
+
+    it("does not invent a signature URL", async () => {
+      const { result } = await signViaAssistant("please sign the NDA");
+
+      expect(result?.success).toBe(true);
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({ signatureUrl: "" }),
+        }),
       );
     });
   });
