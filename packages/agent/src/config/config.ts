@@ -9,24 +9,22 @@
  * keystore is enabled — wallet private keys, then writes atomically via a temp
  * file + rename with 0600 permissions.
  */
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { ElizaError, logger } from "@elizaos/core";
 import {
   type ElizaConfig,
-  ElizaError,
   isElizaSettingsDebugEnabled,
-  logger,
   migrateLegacyRuntimeConfig,
   migrateRetiredSubscriptionChatRoute,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
-
+} from "@elizaos/host/protocol";
 import JSON5 from "json5";
 import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import { writeFileAtomically } from "../utils/atomic-file.ts";
 import { isProcessOnlyEnvKey } from "./blocked-env-keys.ts";
 import {
   captureDevCloudEnvAuthority,
@@ -47,7 +45,7 @@ import {
 } from "./paths.ts";
 import { assertNoRetiredToolRestrictions } from "./retired-tool-policy.ts";
 
-export type { ElizaConfig } from "@elizaos/core";
+export type { ElizaConfig } from "@elizaos/host/protocol";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -420,29 +418,6 @@ export function loadEffectiveElizaConfigSnapshot(): EffectiveElizaConfigSnapshot
   return snapshot;
 }
 
-function syncDirectory(dir: string): void {
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(dir, "r");
-    fs.fsyncSync(fd);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    // Directory fsync is unsupported on Windows and on a small set of
-    // filesystems. Real I/O failures must remain observable to the caller.
-    if (
-      process.platform !== "win32" &&
-      code !== "EINVAL" &&
-      code !== "ENOTSUP" &&
-      code !== "EOPNOTSUPP" &&
-      code !== "EISDIR"
-    ) {
-      throw error;
-    }
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd);
-  }
-}
-
 type RenameSync = (from: fs.PathLike, to: fs.PathLike) => void;
 
 let renameConfigFile: RenameSync = fs.renameSync.bind(fs);
@@ -452,36 +427,6 @@ export function __setConfigRenameSyncForTests(
   renameSync: RenameSync | null,
 ): void {
   renameConfigFile = renameSync ?? fs.renameSync.bind(fs);
-}
-
-function writeFileAtomically(targetPath: string, content: string): void {
-  const dir = path.dirname(targetPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  const tmpPath = `${targetPath}.tmp.${process.pid}.${randomUUID()}`;
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(
-      tmpPath,
-      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
-      0o600,
-    );
-    fs.writeFileSync(fd, content, "utf-8");
-    fs.fsyncSync(fd);
-    fs.closeSync(fd);
-    fd = undefined;
-    renameConfigFile(tmpPath, targetPath);
-    syncDirectory(dir);
-  } catch (error) {
-    if (fd !== undefined) fs.closeSync(fd);
-    try {
-      fs.unlinkSync(tmpPath);
-    } catch {
-      // Preserve the original write error. A stale uniquely named temp is safe.
-    }
-    throw error;
-  }
 }
 
 function stripIncludeDirectives(value: unknown): unknown {
@@ -620,16 +565,16 @@ export function saveElizaConfig(config: ElizaConfig): void {
   // every subsequent boot. Keep using an existing overlay so stale state can
   // never override a later write to the read-only base file.
   if (mayUseBindMountOverlay && fs.existsSync(bindMountOverlayPath)) {
-    writeFileAtomically(bindMountOverlayPath, content);
+    writeFileAtomically(bindMountOverlayPath, content, renameConfigFile);
     writtenPath = bindMountOverlayPath;
   } else {
     try {
-      writeFileAtomically(realConfigPath, content);
+      writeFileAtomically(realConfigPath, content, renameConfigFile);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EBUSY" || !mayUseBindMountOverlay) throw error;
       try {
-        writeFileAtomically(bindMountOverlayPath, content);
+        writeFileAtomically(bindMountOverlayPath, content, renameConfigFile);
         writtenPath = bindMountOverlayPath;
         logger.warn(
           `[eliza-config] ${realConfigPath} is not replaceable (EBUSY); persisted config atomically to ${bindMountOverlayPath}`,

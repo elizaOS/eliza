@@ -10,7 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { buildDefaultElizaCloudServiceRouting } from "@elizaos/core/contracts/service-routing";
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/host/protocol";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { WARM_POOL_ORG_ID } from "../../db/schemas/agent-sandboxes";

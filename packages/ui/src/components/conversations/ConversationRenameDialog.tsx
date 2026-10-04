@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { ChatConversationRenameDialog } from "../composites/chat/chat-conversation-rename-dialog";
 
 export interface ConversationRenameDialogProps {

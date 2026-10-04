@@ -7,7 +7,7 @@
  * every navigation.
  *
  * Responsibilities, kept deliberately small:
- *   - hold the last successful value per key (data only — loading/error live in
+ *   - hold the last successful value per key (plus the last revalidation failure; loading lives in
  *     the consuming hook),
  *   - de-duplicate concurrent revalidations for the same key (one network
  *     request feeds every mounted consumer),
@@ -33,6 +33,11 @@ interface CacheEntry<T> {
 const store = new Map<string, CacheEntry<unknown>>();
 /** Shared in-flight revalidations, so concurrent consumers issue one request. */
 const inflight = new Map<string, Promise<unknown>>();
+const revalidationErrors = new Map<string, Error>();
+
+export function getRevalidationError(key: string): Error | null {
+  return revalidationErrors.get(key) ?? null;
+}
 /**
  * Monotonic write counter per key — the last-write-wins guard. Every request
  * (`revalidate`) takes the next sequence before fetching, and every committed
@@ -160,6 +165,7 @@ function cacheDataEqual(a: unknown, b: unknown): boolean {
 
 /** Overwrite the cached value for a key and notify subscribers. */
 export function setCached<T>(key: string, data: T, persist = false): void {
+  const clearedError = revalidationErrors.delete(key);
   // A poll that returns an unchanged payload (the common case) must not churn
   // the snapshot reference — useSyncExternalStore compares by reference, so a
   // fresh-but-equal entry re-renders every consumer (e.g. the router + tab bar
@@ -171,6 +177,7 @@ export function setCached<T>(key: string, data: T, persist = false): void {
     existing.updatedAt = now;
     if (existing.snapshot) existing.snapshot.updatedAt = now;
     if (persist) writePersisted(key, { data: existing.data, updatedAt: now });
+    if (clearedError) notify(key);
     return;
   }
   const entry: CacheEntry<T> = { data, updatedAt: Date.now() };
@@ -191,6 +198,7 @@ export function setCached<T>(key: string, data: T, persist = false): void {
  */
 export function invalidate(key: string): void {
   store.delete(key);
+  revalidationErrors.delete(key);
   bumpRequestSeq(key);
   inflight.delete(key);
   if (typeof window !== "undefined") {
@@ -246,7 +254,7 @@ export function revalidate<T>(
   const seq = (requestSeq.get(key) ?? 0) + 1;
   requestSeq.set(key, seq);
 
-  const promise: Promise<T> = fetcher()
+  const promise: Promise<T> = (async () => fetcher())()
     .then((data) => {
       // Only the most recent request commits; older out-of-order responses are
       // dropped so a slow stale fetch can't overwrite fresher data.
@@ -255,6 +263,13 @@ export function revalidate<T>(
       return data;
     })
     .catch((err: unknown) => {
+      if (requestSeq.get(key) === seq) {
+        revalidationErrors.set(
+          key,
+          err instanceof Error ? err : new Error(String(err)),
+        );
+        notify(key);
+      }
       if (inflight.get(key) === promise) inflight.delete(key);
       throw err;
     });
@@ -265,7 +280,7 @@ export function revalidate<T>(
 
 /**
  * Start (or join) a shared background poll for a key. The fetcher fires every
- * `intervalMs` via {@link revalidate} (force=true), and overlapping ticks from
+ * `intervalMs` via {@link revalidate}, and overlapping ticks from
  * other consumers de-dup onto the same in-flight request. Exactly one timer
  * runs per key no matter how many mounts call this; the returned function
  * decrements the ref-count and clears the timer once the last consumer leaves.
@@ -280,9 +295,9 @@ export function startPolling(
     existing.refCount += 1;
   } else {
     const run = () => {
-      void revalidate(key, fetcher, false, true).catch(() => {
-        // Poll failures surface through the consuming hook's own revalidate
-        // call; the background timer just keeps ticking.
+      void revalidate(key, fetcher).catch(() => {
+        // revalidate records the failure and notifies consumers; the timer
+        // remains active so a later successful poll can recover.
       });
     };
     const intervalId = setInterval(() => {
@@ -329,6 +344,7 @@ export function startPolling(
 /** Test helper: wipe the entire cache. Not used in production code paths. */
 export function __resetResourceCache(): void {
   store.clear();
+  revalidationErrors.clear();
   inflight.clear();
   requestSeq.clear();
   subscribers.clear();

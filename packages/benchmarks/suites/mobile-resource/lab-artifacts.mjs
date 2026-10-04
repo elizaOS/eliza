@@ -1,3 +1,4 @@
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 /**
  * Physical lab artifact normalizer for the Mobile Resource Workbench (#12072).
  *
@@ -518,10 +519,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean),
-    out: get(
-      "out",
-      join("packages", "benchmarks", "mobile-resource", "results", "lab"),
-    ),
+    out: get("out", testOutputPath("mobile-resource", "lab")),
     minRuns: numberOrNull(get("min-runs", null)) ?? DEFAULT_MIN_RUNS,
     failOnGaps: argv.includes("--fail-on-gaps"),
   };

@@ -13,9 +13,9 @@ import {
   type ModelParamsMap,
   ModelType,
   type Plugin,
-  resolveAliasedEnvValue,
   type UUID,
 } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { z } from "zod";
 import {
   confidentialHostConfiguration,

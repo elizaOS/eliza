@@ -27,9 +27,9 @@
       "@/types/*": ["./src/types/*"],
       "@elizaos/cloud-routing/*": ["../routing/src/*"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
-      "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-elizacloud": ["../../../plugins/plugin-elizacloud/src/index.ts"],
-      "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"]
+      "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/core/protocol": ["../../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

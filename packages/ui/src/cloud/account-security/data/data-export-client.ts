@@ -6,7 +6,7 @@
  * user-visible failure — never a silently partial file.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { downloadAttachment } from "../../../utils/download-share";
 import { ApiError, apiFetch } from "../../lib/api-client";
 import {

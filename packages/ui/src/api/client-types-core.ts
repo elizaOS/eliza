@@ -5,6 +5,16 @@
  */
 
 import type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ReleaseChannel,
+  ConversationAutomationType as SharedConversationAutomationType,
+  ConversationMetadata as SharedConversationMetadata,
+  ConversationScope as SharedConversationScope,
+  TradePermissionMode as SharedTradePermissionMode,
+} from "@elizaos/contracts";
+import type {
   TrajectoryExportFormat,
   TriggerLastStatus,
   TriggerRunRecord,
@@ -21,25 +31,13 @@ import type {
   RuntimeOrderItem as SharedRuntimeOrderItem,
   RuntimeServiceOrderItem as SharedRuntimeServiceOrderItem,
   StreamEventEnvelope as SharedStreamEventEnvelope,
-  StreamEventType as SharedStreamEventType,
+  AgentStreamEventType as SharedStreamEventType,
   TableInfo as SharedTableInfo,
   TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
   TriggerSummary as SharedTriggerSummary,
   TriggerTaskMetadata as SharedTriggerTaskMetadata,
   UpdateTriggerRequest as SharedUpdateTriggerRequest,
-} from "@elizaos/core/api/agent-api-types";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ReleaseChannel,
-} from "@elizaos/core/contracts/config";
-import type {
-  ConversationAutomationType as SharedConversationAutomationType,
-  ConversationMetadata as SharedConversationMetadata,
-  ConversationScope as SharedConversationScope,
-} from "@elizaos/core/contracts/conversation-routes";
-import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/core/protocol";
 
 export type {
   CustomActionDef,

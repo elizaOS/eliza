@@ -1,6 +1,6 @@
 import { ChannelType, stringToUuid } from "@elizaos/core";
 /** Runs one side of the fresh-process PGLite continuity proof. */
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import {
   loadSessionSummaryContentLedger,
   publishSessionSummaryContentManifests,

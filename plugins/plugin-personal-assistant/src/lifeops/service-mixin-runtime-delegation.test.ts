@@ -1,11 +1,11 @@
 /** Verifies the LifeOpsService delegates messaging (X post/DM) calls through the connector runtime services. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import type {
+  CreateLifeOpsXPostRequest,
+  LifeOpsConnectorGrant,
+} from "@elizaos/contracts";
 import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
-import {
-  type CreateLifeOpsXPostRequest,
-  type LifeOpsConnectorGrant,
-} from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 

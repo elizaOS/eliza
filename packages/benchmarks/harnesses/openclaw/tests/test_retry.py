@@ -14,12 +14,9 @@ from urllib.error import HTTPError
 
 import pytest
 
-from openclaw_adapter._retry import (
+from benchmarks.lib import (
     MAX_ATTEMPTS,
     RetryExhaustedError,
-    backoff_seconds,
-    is_retryable_status,
-    parse_retry_after,
 )
 from openclaw_adapter.client import OpenClawClient
 
@@ -29,47 +26,9 @@ from openclaw_adapter.client import OpenClawClient
 # ---------------------------------------------------------------------------
 
 
-def test_parse_retry_after_none() -> None:
-    assert parse_retry_after(None) is None
-    assert parse_retry_after("") is None
-    assert parse_retry_after("   ") is None
-
-
-def test_parse_retry_after_seconds() -> None:
-    assert parse_retry_after("3") == 3.0
-    assert parse_retry_after("0.5") == 0.5
-    assert parse_retry_after("0") == 0.0
-
-
-def test_parse_retry_after_clamps_huge_values() -> None:
-    assert parse_retry_after("600") == 60.0
-
-
-def test_parse_retry_after_unparseable_returns_none() -> None:
-    assert parse_retry_after("nonsense") is None
-
-
 # ---------------------------------------------------------------------------
 # backoff_seconds + is_retryable_status
 # ---------------------------------------------------------------------------
-
-
-def test_backoff_seconds_schedule() -> None:
-    assert backoff_seconds(0) == 1.0
-    assert backoff_seconds(1) == 2.0
-    assert backoff_seconds(2) == 4.0
-    assert backoff_seconds(3) == 8.0
-    assert backoff_seconds(4) == 16.0
-    assert backoff_seconds(99) == 16.0
-    assert backoff_seconds(-1) == 1.0
-
-
-def test_is_retryable_status() -> None:
-    assert is_retryable_status(429) is True
-    assert is_retryable_status(500) is True
-    assert is_retryable_status(502) is True
-    assert is_retryable_status(400) is False
-    assert is_retryable_status(404) is False
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +40,10 @@ def _ok_response_body() -> bytes:
     return json.dumps(
         {
             "choices": [
-                {"message": {"content": "PONG", "tool_calls": []}, "finish_reason": "stop"}
+                {
+                    "message": {"content": "PONG", "tool_calls": []},
+                    "finish_reason": "stop",
+                }
             ],
             "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
         }
@@ -149,10 +111,10 @@ def test_openai_compat_retries_429_twice_then_succeeds(
         return _FakeOkResponse(_ok_response_body())
 
     sleeps: list[float] = []
-    monkeypatch.setattr("openclaw_adapter.client.time.sleep", lambda s: sleeps.append(s))
     monkeypatch.setattr(
-        "openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen
+        "openclaw_adapter.client.time.sleep", lambda s: sleeps.append(s)
     )
+    monkeypatch.setattr("openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen)
 
     # Bypass api_key resolution (api_key is read from env in __init__).
     client.api_key = "sk-test"
@@ -163,7 +125,9 @@ def test_openai_compat_retries_429_twice_then_succeeds(
     assert sleeps == [1.0, 2.0]
 
 
+@pytest.mark.parametrize("delay", [0, 4])
 def test_openai_compat_honors_retry_after(
+    delay: int,
     client: OpenClawClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -175,20 +139,20 @@ def test_openai_compat_honors_retry_after(
     def _fake_urlopen(_request: Any, *, timeout: float = 0.0) -> _FakeOkResponse:
         call_count["n"] += 1
         if call_count["n"] == 1:
-            raise _make_http_error(429, retry_after="4")
+            raise _make_http_error(429, retry_after=str(delay))
         return _FakeOkResponse(_ok_response_body())
 
     sleeps: list[float] = []
-    monkeypatch.setattr("openclaw_adapter.client.time.sleep", lambda s: sleeps.append(s))
     monkeypatch.setattr(
-        "openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen
+        "openclaw_adapter.client.time.sleep", lambda s: sleeps.append(s)
     )
+    monkeypatch.setattr("openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen)
 
     client.api_key = "sk-test"
     client.send_message("hi", context=None)
 
     assert call_count["n"] == 2
-    assert sleeps == [4.0]
+    assert sleeps == [float(delay)]
 
 
 def test_openai_compat_exhausts_after_max_attempts(
@@ -202,9 +166,7 @@ def test_openai_compat_exhausts_after_max_attempts(
         raise _make_http_error(429)
 
     monkeypatch.setattr("openclaw_adapter.client.time.sleep", lambda s: None)
-    monkeypatch.setattr(
-        "openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen
-    )
+    monkeypatch.setattr("openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen)
 
     client.api_key = "sk-test"
     with pytest.raises(RetryExhaustedError) as excinfo:
@@ -227,9 +189,7 @@ def test_openai_compat_does_not_retry_400(
         raise _make_http_error(400)
 
     monkeypatch.setattr("openclaw_adapter.client.time.sleep", lambda s: None)
-    monkeypatch.setattr(
-        "openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen
-    )
+    monkeypatch.setattr("openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen)
 
     client.api_key = "sk-test"
     with pytest.raises(RuntimeError, match="status=400"):
@@ -252,9 +212,7 @@ def test_openai_compat_retries_500_then_succeeds(
         return _FakeOkResponse(_ok_response_body())
 
     monkeypatch.setattr("openclaw_adapter.client.time.sleep", lambda s: None)
-    monkeypatch.setattr(
-        "openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen
-    )
+    monkeypatch.setattr("openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen)
 
     client.api_key = "sk-test"
     result = client.send_message("hi", context=None)
@@ -279,9 +237,7 @@ def test_openai_compat_retries_url_error(
         return _FakeOkResponse(_ok_response_body())
 
     monkeypatch.setattr("openclaw_adapter.client.time.sleep", lambda s: None)
-    monkeypatch.setattr(
-        "openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen
-    )
+    monkeypatch.setattr("openclaw_adapter.client.urllib.request.urlopen", _fake_urlopen)
 
     client.api_key = "sk-test"
     result = client.send_message("hi", context=None)

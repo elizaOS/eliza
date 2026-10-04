@@ -422,9 +422,11 @@ async function runUpdateIdentity(
   });
 
   if (!result.success) {
-    if (name) character.name = previousName;
-    if (systemPrompt) character.system = previousSystem;
-    const text = `Failed to persist identity: ${result.error ?? "unknown error"}; tell the user the change didn't save.`;
+    if (!result.persistence || result.persistence.config === "not-started") {
+      if (name) character.name = previousName;
+      if (systemPrompt) character.system = previousSystem;
+    }
+    const text = `Identity persistence did not complete: ${result.error ?? "unknown error"}. Report the recorded persistence status; do not claim all changes were rolled back.`;
     return {
       text,
       success: false,
@@ -433,6 +435,7 @@ async function runUpdateIdentity(
         action: "CHARACTER",
         op: "update_identity",
         detail: result.error,
+        persistence: result.persistence,
       },
     };
   }
@@ -1475,6 +1478,7 @@ async function handlePreferenceReset(
 ): Promise<ActionResult> {
   const existingPrefs = await runtime.getMemories({
     entityId: message.entityId,
+    authorEntityIds: [message.entityId],
     roomId: runtime.agentId,
     tableName: USER_PREFS_TABLE,
     count: MAX_PREFS_PER_USER + 5,
@@ -1545,6 +1549,7 @@ async function handleUserPreference(
 
     const existingPrefs = await runtime.getMemories({
       entityId: message.entityId,
+      authorEntityIds: [message.entityId],
       roomId: runtime.agentId,
       tableName: USER_PREFS_TABLE,
       count: MAX_PREFS_PER_USER + 1,

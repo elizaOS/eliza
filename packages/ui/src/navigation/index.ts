@@ -10,7 +10,7 @@
  * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
-import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
+import { userAgentHasElizaOSMarker } from "@elizaos/core/protocol";
 import {
   Clock3,
   LayoutGrid,

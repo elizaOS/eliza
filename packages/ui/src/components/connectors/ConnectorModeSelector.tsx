@@ -5,7 +5,7 @@
  * connector has one mode or fewer.
  */
 
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { getConnectorModes } from "./ConnectorModeSelector.helpers";
 import type { ConnectorChannelMode } from "./connector-channel-mode";

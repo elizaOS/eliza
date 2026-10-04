@@ -24,7 +24,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "../../components/primitives";
+} from "../../components/ui/tabs";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { ApprovalsTab } from "./components/approvals-tab";
 import { BallotsTab } from "./components/ballots-tab";

@@ -16,11 +16,8 @@ import {
   deriveCsrfToken,
   SESSION_COOKIE_NAME,
 } from "../api/auth/sessions";
-import {
-  type AuthRepository,
-  authStoreForRuntime,
-  type CreateSessionInput,
-} from "./auth-store";
+import type { AuthRepository, CreateSessionInput } from "./auth-repository";
+import { authStoreForRuntime } from "./auth-store";
 
 let directory: string;
 let adapter: SQLiteDatabaseAdapter;

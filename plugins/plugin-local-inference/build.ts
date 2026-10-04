@@ -78,6 +78,10 @@ export async function buildLocalInferencePlugin(
 			"./src/routes/index.ts",
 			"./src/services/index.ts",
 			"./src/services/voice/voice-preset-format.ts",
+			// Spawned as its own process by the app's standalone Kokoro service
+			// (resolved through the package's `./*` export). Not smoke-imported:
+			// it reads its configuration from the environment at load.
+			"./src/host-tts-worker.ts",
 			"./src/voice-wake.ts",
 			"./src/voice-workbench.ts",
 		],

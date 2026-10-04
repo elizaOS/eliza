@@ -7,10 +7,8 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import {
-  type AuthRepository,
-  authStoreForRuntime,
-} from "../services/auth-store";
+import type { AuthRepository } from "../services/auth-repository";
+import { authStoreForRuntime } from "../services/auth-store";
 import {
   appendAuditEvent,
   assertPasswordStrong,

@@ -60,95 +60,12 @@ const h = vi.hoisted(() => ({
   },
 }));
 
-// The four @elizaos/ui subpath specifiers (/api, /bridge, /browser, /events)
-// alias to one stub file under this package's vitest config, so each mock
-// carries the full export surface the capture module reads — the last mock
-// registered for the shared file wins.
-vi.mock("@elizaos/ui/api", () => ({
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-}));
-vi.mock("@elizaos/ui/bridge", () => ({
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-}));
-vi.mock("@elizaos/ui/events", () => ({
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-}));
-vi.mock("@elizaos/ui/browser", () => ({
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-}));
+// Keep the real service registry while controlling transport and auth state.
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
 
-vi.mock("@elizaos/ui/auth-status", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
-  ElizaClient: h.ElizaClient,
   client: {
     getBaseUrl: () => "http://fixture.local",
     getAuthorityRevision: () => 0,
@@ -159,12 +76,13 @@ vi.mock("@elizaos/ui/auth-status", () => ({
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
+  isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
   isAuthenticatedNow: h.isAuthenticatedNow,
   getAuthStatusSnapshot: h.getAuthStatusSnapshot,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   subscribeAuthStatus: h.subscribeAuthStatus,
+  ElizaClient: h.ElizaClient,
+  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -203,7 +121,7 @@ import {
   registerRendererService,
   settleRendererServices,
   startRendererServiceHost,
-} from "@elizaos/ui/platform/renderer-services";
+} from "../../../packages/ui/src/platform/renderer-services";
 import {
   isLifeOpsActivitySignalCaptureActive,
   startLifeOpsActivitySignalCapture,

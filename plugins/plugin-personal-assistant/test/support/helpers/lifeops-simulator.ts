@@ -3,6 +3,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveOAuthDir } from "@elizaos/agent";
+import {
+  LIFEOPS_DISCORD_CAPABILITIES,
+  LIFEOPS_TELEGRAM_CAPABILITIES,
+} from "@elizaos/contracts";
 import type {
   AgentRuntime,
   Content,
@@ -11,10 +15,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
-import {
-  LIFEOPS_DISCORD_CAPABILITIES,
-  LIFEOPS_TELEGRAM_CAPABILITIES,
-} from "@elizaos/core/contracts/personal-assistant";
 import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "@elizaos/plugin-telegram";
 import {
   createLifeOpsConnectorGrant,

@@ -1,7 +1,8 @@
 /** Reads the caller's consent-bound individual account from primary storage without granting subscription or infrastructure rights. */
+
+import { appBillingAccountsRepository } from "@elizaos/cloud-shared/db/repositories/app-billing-accounts";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { appBillingAccountsRepository } from "@/db/repositories/app-billing-accounts";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   appBillingEnvironment,
   appBillingFailure,

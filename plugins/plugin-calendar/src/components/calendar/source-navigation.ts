@@ -6,10 +6,7 @@
  * destination.
  */
 
-import {
-  dispatchFocusConnector,
-  dispatchNavigateViewEvent,
-} from "@elizaos/ui/events";
+import { dispatchFocusConnector, dispatchNavigateViewEvent } from "@elizaos/ui";
 
 export function openCalendarConnectorSettings(connectorId?: "google"): void {
   if (connectorId) dispatchFocusConnector(connectorId);

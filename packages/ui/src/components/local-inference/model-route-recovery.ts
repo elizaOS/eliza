@@ -3,7 +3,7 @@
  * Failed checks remain visible during bounded backoff; transport restoration
  * gives an exhausted probe another opportunity without reloading the page.
  */
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { loadAfterCapabilityWarmup } from "../../hooks/runtime-capability-retry";
 

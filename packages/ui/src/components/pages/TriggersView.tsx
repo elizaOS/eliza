@@ -18,12 +18,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { TriggerSummary } from "../../api/client";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { TriggerSummary } from "../../api/client-types-core";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import { confirmDesktopAction } from "../../utils";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { detectUiHostCapabilities } from "../../utils/host-capabilities";
 import { ChatSearchHint } from "../composites/chat-search-hint";

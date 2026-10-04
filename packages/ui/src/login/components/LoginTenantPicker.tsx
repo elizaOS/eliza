@@ -1,11 +1,10 @@
 /** Switches the active session tenant from the account membership list. */
+
+import type { LoginTenantMembership } from "@elizaos/auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../hooks/useAuth.js";
-import type {
-  LoginTenantMembership,
-  LoginTenantPickerProps,
-} from "../types.js";
+import type { LoginTenantPickerProps } from "../types.js";
 
 /**
  * LoginTenantPicker — Switch between connected apps/tenants.

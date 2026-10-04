@@ -33,16 +33,9 @@ import type { IAgentRuntime } from "../types/runtime";
 
 const DEDUPE_CANDIDATE_POOL = 120;
 
-/**
- * Canonical form for fact-text equality: case-, punctuation-, and
- * whitespace-insensitive, unicode-aware. An empty key never matches (so
- * punctuation-only or empty texts are never deduped against each other).
- */
+/** Exact fact text after trimming outer whitespace; signs, case and spacing carry meaning. */
 export function normalizeFactTextKey(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
+	return value.trim();
 }
 
 /**

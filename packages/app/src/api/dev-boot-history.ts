@@ -10,7 +10,7 @@ import {
   getLastFailedPluginDetails,
 } from "@elizaos/agent";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
-import { isDevApiWatchEnabled } from "@elizaos/core/runtime-env";
+import { isDevApiWatchEnabled } from "@elizaos/host/protocol";
 export const ELIZA_DEV_BOOT_HISTORY_SCHEMA = "elizaos.dev.boot-history/v1";
 export interface BootHistoryPayload {
   schema: typeof ELIZA_DEV_BOOT_HISTORY_SCHEMA;

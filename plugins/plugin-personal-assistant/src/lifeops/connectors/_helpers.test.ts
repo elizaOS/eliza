@@ -8,7 +8,7 @@
  * degradation for every send-capable connector, so its mapping and its
  * payload guard must be pinned exactly.
  */
-import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
+import { LifeOpsServiceError } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   dispatchReceipt,
@@ -18,7 +18,7 @@ import {
   missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
-import { type DispatchResult } from "./contract.js";
+import type { DispatchResult } from "./contract.js";
 
 describe("errorToDispatchResult", () => {
   it("maps 401/410 to auth_expired (user-actionable)", () => {

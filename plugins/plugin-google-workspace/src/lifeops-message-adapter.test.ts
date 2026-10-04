@@ -81,7 +81,7 @@ function gmailMessage(overrides: Record<string, unknown> = {}) {
       historyId: "history-1",
       hasAttachments: false,
       messageIdHeader: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      referencesHeader: "<root@example.com>",
       bodyText: "Can we meet tomorrow?",
     },
     ...overrides,
@@ -180,6 +180,32 @@ describe("GoogleGmailAdapter", () => {
     ).rejects.toMatchObject({ code: "GMAIL_READ_PROVIDER_FAILED" });
   });
 
+  it("keeps identical provider message IDs separate by runtime and account", async () => {
+    const first = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async ({ accountId }) => [
+        gmailMessage({ subject: accountId }),
+      ]),
+    });
+    const second = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async ({ accountId }) => [
+        gmailMessage({ subject: accountId }),
+      ]),
+    });
+    second.agentId = "00000000-0000-0000-0000-000000000002";
+    const adapter = new GoogleGmailAdapter();
+    const [one] = await adapter.listMessages(first, { worldIds: ["account-one"] });
+    const [two] = await adapter.listMessages(first, { worldIds: ["account-two"] });
+    const [peer] = await adapter.listMessages(second, { worldIds: ["account-one"] });
+    expect(new Set([one.id, two.id, peer.id]).size).toBe(3);
+    expect((await adapter.getMessage(first, one.id))?.subject).toBe("account-one");
+    expect((await adapter.getMessage(first, two.id))?.subject).toBe("account-two");
+    expect(await adapter.getMessage(first, peer.id)).toBeNull();
+    await expect(adapter.getMessage(first, "gmail:msg_1")).rejects.toMatchObject({
+      code: "GMAIL_MESSAGE_ACCOUNT_AMBIGUOUS",
+    });
+    expect((await adapter.getMessage(second, "gmail:msg_1"))?.id).toBe(peer.id);
+  });
+
   it("maps triage messages from the Google service into message refs", async () => {
     const listGmailTriageMessages = vi.fn(async () => [gmailMessage()]);
     const runtime = runtimeWithGoogleService({ listGmailTriageMessages });
@@ -195,7 +221,7 @@ describe("GoogleGmailAdapter", () => {
     });
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
-      id: "gmail:msg_1",
+      id: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
       source: "gmail",
       externalId: "msg_1",
       threadId: "thread_1",
@@ -260,18 +286,49 @@ describe("GoogleGmailAdapter", () => {
       subject: "Planning call",
       bodyText: "Tomorrow works.",
       inReplyTo: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      references: "<root@example.com> <msg_1@example.com>",
+      threadId: "thread_1",
     });
     expect(sent.externalId).toBe("sent_1");
     expect(runtime.emitEvent).toHaveBeenCalledWith(
       EventType.MESSAGE_MUTATED,
       expect.objectContaining({
         messageSource: "gmail",
-        messageId: "gmail:msg_1",
+        messageId: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
         operation: "replied",
         domainEventId: "gmail_reply:acct_google_1:sent_1",
       })
     );
+  });
+
+  it("refuses a reply draft when the listed Gmail message has no thread id", async () => {
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async () => [gmailMessage({ threadId: "" })]),
+    });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    await expect(
+      adapter.createDraft(runtime, { inReplyToId: "gmail:msg_1", body: "Tomorrow works." })
+    ).rejects.toMatchObject({ code: "GMAIL_REPLY_THREAD_REQUIRED" });
+  });
+
+  it("refuses a reply draft when the listed Gmail message has no Message-ID header", async () => {
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async () => [
+        gmailMessage({
+          metadata: {
+            historyId: "history-1",
+            hasAttachments: false,
+            referencesHeader: "<root@example.com>",
+          },
+        }),
+      ]),
+    });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    await expect(
+      adapter.createDraft(runtime, { inReplyToId: "gmail:msg_1", body: "Tomorrow works." })
+    ).rejects.toMatchObject({ code: "GMAIL_REPLY_MESSAGE_ID_REQUIRED" });
   });
 
   it("keeps the approved reply envelope and body across caller mutation and inbox refresh", async () => {
@@ -304,7 +361,8 @@ describe("GoogleGmailAdapter", () => {
       subject: "Planning call",
       bodyText: "Approved body.",
       inReplyTo: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      references: "<root@example.com> <msg_1@example.com>",
+      threadId: "thread_1",
     });
   });
 
@@ -323,6 +381,8 @@ describe("GoogleGmailAdapter", () => {
             { name: "From", value: "Sender <sender@example.com>" },
             { name: "Reply-To", value: '"Support, West" <support@example.com>' },
             { name: "To", value: "owner@example.com" },
+            { name: "Message-Id", value: "<msg_1@example.com>" },
+            { name: "References", value: "<root@example.com>" },
           ],
         },
       },
@@ -352,7 +412,12 @@ describe("GoogleGmailAdapter", () => {
     await adapter.sendDraft(runtime, draft.draftId);
 
     expect(sendGmailReply).toHaveBeenCalledWith(
-      expect.objectContaining({ to: ["support@example.com"] })
+      expect.objectContaining({
+        to: ["support@example.com"],
+        threadId: "thread_1",
+        inReplyTo: "<msg_1@example.com>",
+        references: "<root@example.com> <msg_1@example.com>",
+      })
     );
   });
 
@@ -495,7 +560,7 @@ describe("GoogleGmailAdapter", () => {
       EventType.MESSAGE_MUTATED,
       expect.objectContaining({
         messageSource: "gmail",
-        messageId: "gmail:msg_1",
+        messageId: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
         operation: "mark_read",
         domainEventId: "gmail_mark_read:acct_google_1:msg_1",
       })

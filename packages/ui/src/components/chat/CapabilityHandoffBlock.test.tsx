@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Verifies the real capability-handoff card records continuation and navigates within the app without opening an external browser. */
 
-import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import {
   cleanup,
   fireEvent,

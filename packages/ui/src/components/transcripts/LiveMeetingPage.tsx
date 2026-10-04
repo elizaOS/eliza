@@ -16,8 +16,8 @@ import type {
   MeetingJoinRequest,
   MeetingSession,
   MeetingSessionStatus,
-} from "@elizaos/core/meetings";
-import type { Transcript } from "@elizaos/core/transcripts";
+  Transcript,
+} from "@elizaos/core/protocol";
 import { Radio } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api/client";

@@ -1,5 +1,5 @@
 /** Exercises the persisted-state oracle used by both live DST scenarios with deterministic records. */
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { expect, test } from "vitest";
 import { inspectCalendarReschedule } from "./support/helpers/calendar-reschedule-check.js";
 

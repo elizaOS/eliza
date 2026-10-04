@@ -2,10 +2,11 @@
  * Owns durable Stripe Checkout quotes and atomically fulfills organization-credit purchases.
  * Stripe metadata is only a lookup hint; every money and tenant field is compared to this record.
  */
+
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "../../billing/organization-credits";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";

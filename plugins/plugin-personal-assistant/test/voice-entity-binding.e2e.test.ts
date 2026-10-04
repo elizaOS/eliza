@@ -30,7 +30,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type AgentRuntime, EventType, type Memory } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   identifySpeakerAction,
   localInferencePlugin,

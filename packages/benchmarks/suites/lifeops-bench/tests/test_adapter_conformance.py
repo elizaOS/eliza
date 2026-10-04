@@ -39,7 +39,8 @@ from eliza_lifeops_bench.lifeworld.snapshots import (
     SNAPSHOT_SPECS,
     build_world_for,
 )
-from eliza_lifeops_bench.runner import LifeOpsBenchRunner, supported_actions
+from eliza_lifeops_bench.lifeworld.executor import supported_actions
+from eliza_lifeops_bench.runner import LifeOpsBenchRunner
 from eliza_lifeops_bench.scenarios import ALL_SCENARIOS
 from eliza_lifeops_bench.types import (
     Domain,
@@ -412,9 +413,9 @@ async def test_hermes_adapter_perfect_mock_scores_one(scenario: Scenario) -> Non
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(
-        1.0, abs=1e-6
-    ), f"Hermes adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
+    assert score == pytest.approx(1.0, abs=1e-6), (
+        f"Hermes adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
+    )
 
 
 @pytest.mark.parametrize(
@@ -430,9 +431,9 @@ async def test_hermes_adapter_wrong_mock_scores_zero(scenario: Scenario) -> None
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(
-        0.0, abs=1e-6
-    ), f"Hermes adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
+    assert score == pytest.approx(0.0, abs=1e-6), (
+        f"Hermes adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -455,9 +456,9 @@ async def test_cerebras_direct_adapter_perfect_mock_scores_one(
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(
-        1.0, abs=1e-6
-    ), f"Cerebras adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
+    assert score == pytest.approx(1.0, abs=1e-6), (
+        f"Cerebras adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
+    )
 
 
 @pytest.mark.parametrize(
@@ -475,9 +476,9 @@ async def test_cerebras_direct_adapter_wrong_mock_scores_zero(
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(
-        0.0, abs=1e-6
-    ), f"Cerebras adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
+    assert score == pytest.approx(0.0, abs=1e-6), (
+        f"Cerebras adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -508,9 +509,9 @@ async def test_eliza_adapter_perfect_mock_scores_one(scenario: Scenario) -> None
     script = _MockScript(scenario, mode="perfect")
     agent_fn = _build_eliza_mock_agent(script)
     score = await _drive_scenario(scenario, agent_fn)
-    assert score == pytest.approx(
-        1.0, abs=1e-6
-    ), f"Eliza adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
+    assert score == pytest.approx(1.0, abs=1e-6), (
+        f"Eliza adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
+    )
 
 
 @pytest.mark.skipif(
@@ -527,9 +528,9 @@ async def test_eliza_adapter_wrong_mock_scores_zero(scenario: Scenario) -> None:
     script = _MockScript(scenario, mode="wrong")
     agent_fn = _build_eliza_mock_agent(script)
     score = await _drive_scenario(scenario, agent_fn)
-    assert score == pytest.approx(
-        0.0, abs=1e-6
-    ), f"Eliza adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
+    assert score == pytest.approx(0.0, abs=1e-6), (
+        f"Eliza adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
+    )
 
 
 # ---------------------------------------------------------------------------

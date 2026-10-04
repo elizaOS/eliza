@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { MEMORY_HORIZON_SIZES, type MemoryHorizonSize } from "./memory-horizon";
 
 interface MatrixCell {
@@ -197,7 +198,7 @@ async function main(): Promise<void> {
   const provider = argumentValue("provider") ?? "openai";
   const outputRoot = path.resolve(
     packageRoot,
-    argumentValue("output-dir") ?? "../../../reports/memory-horizon",
+    argumentValue("output-dir") ?? testOutputPath("memory-horizon"),
   );
   const cells: MatrixCell[] = [];
   for (const size of sizes) {

@@ -15,12 +15,13 @@ import {
   isTrustedLocalRequest as isTrustedLocalRequestShared,
 } from "@elizaos/agent/api/loopback-trust";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { AgentRuntime, ElizaConfig } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/host/protocol";
 import { sendJsonError as sendJsonErrorResponse } from "./response.js";
 
 const MAX_BODY_BYTES = 1048576;

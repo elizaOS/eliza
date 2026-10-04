@@ -7,7 +7,7 @@
  * account usability/status labels come from `./connector-send-as`.
  */
 import { Check, ChevronDown, RefreshCw, UserRound } from "lucide-react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import {

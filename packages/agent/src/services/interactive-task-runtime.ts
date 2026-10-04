@@ -2,14 +2,14 @@
  * The actuator must independently validate page/frame/input revision and policy
  * at the instant of the effect. No renderer may call execute or supply observations.
  */
-import { ElizaError } from "@elizaos/core/errors";
 import {
+  ElizaError,
   type InteractiveTask,
   type TaskActionProposal,
   type TaskObservation,
   type TaskOwner,
   transitionInteractiveTask,
-} from "@elizaos/core/messaging/interactive-task";
+} from "@elizaos/core/protocol";
 import type { SqliteInteractiveTaskStore } from "./interactive-task-store.ts";
 
 export interface InteractiveTaskActuator {

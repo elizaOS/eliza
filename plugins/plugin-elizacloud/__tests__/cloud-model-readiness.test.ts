@@ -9,7 +9,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { CloudAuthService } from "../src/services/cloud-auth";
 import { CloudModelRegistryService } from "../src/services/cloud-model-registry";

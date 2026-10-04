@@ -1,64 +1,36 @@
 # @elizaos/core
 
-Node runtime kernel for Eliza agents: plugin registration, authorization, state, model
-dispatch, memory, and cancellation.
+The Node runtime kernel: plugin registration, authorization, state composition,
+model dispatch, memory, cancellation and effect settlement.
 
-Import from `@elizaos/core`, including first-party catalog access and curated-app
-registration. Hosts explicitly supply database adapters, model providers,
-and `@elizaos/plugin-assistant` for conversational behavior. The root entrypoint is the Node runtime. Explicit leaf exports provide wire
-contracts and pure utilities without loading that runtime. Core does not own host
-route tables or install assistant behavior implicitly. Runtime settings are per-agent and do not implicitly read process.env.
+Use `@elizaos/core` for the Node runtime and `@elizaos/core/protocol` for
+browser-safe contracts and pure helpers. Internal modules import their defining
+files directly. Implementation leaves are private; JSON catalog assets retain
+explicit data exports. Hosts compose database adapters, model providers and
+`@elizaos/plugin-assistant` explicitly.
 
-The root also exports route DTOs, Markdown, and LifeOps helpers. Use
-`KnowledgeGraphEntity` / `KnowledgeGraphRelationship` for graph records and
-`FirstRunMessageExample` for setup examples; the existing `Entity`, `Relationship`,
-and `MessageExample` names retain their runtime meanings.
+HTTP lifecycle, process guards, restart, application configuration and boot environment resolution live
+in `@elizaos/host`, with browser-safe configuration in `@elizaos/host/protocol`.
+Portable acoustic processing lives in `@elizaos/voice`.
+Cross-domain DTOs and validation live in `@elizaos/contracts`. Core imports none
+of these owners.
 
-Host configuration is exported from the root as well. `AppMemoryConfig` and
-`AppX402Config` distinguish host settings from runtime settings; `ConfigUiPatchOp`
-names configuration UI patches. `getAppBootConfigEnvAliases` and
-`resolveAppAliasedEnvValue` retain the host store's initialization behavior.
+Runtime settings are per-agent. Explicit host environment fallbacks remain for
+the secret/PII master switches and process execution policies; per-agent switch
+values take precedence. Model context, authorization evidence and effect receipts
+remain complete. Source restoration requires its original authorized binding.
 
-Settings debug sanitizers, macOS permission links, and generated channel, provider,
-and short-ID plugin maps are available through the root. Process crash guards also
-use the root API and require the Node/Bun process host; importing core does not
-install them. Settings debugging uses the host `ELIZA_SETTINGS_DEBUG` flag and
-boot aliases; Vite debug flags are interpreted by the UI host.
+`asRecord` accepts plain records; `asObjectRecord` also accepts class and built-in
+object instances. Both reject arrays and null. `hasPlainObjectTag` checks the
+object tag. Persisted canonical JSON bytes retain their existing meaning;
+`stableJsonString` returns `undefined` for JSON-invisible root values.
 
-Event names, payload contracts, and navigation-frame normalization are exported
-from the root. DOM event creation and dispatch belong to the UI host.
-
-HTTP contracts and explicit host helpers are available from the root. Hosts still
-install their route lifecycle explicitly. `AgentStreamEventType` and `AgentLogEntry`
-name HTTP DTOs; `StreamEventType` and `LogEntry` keep their runtime meanings.
-
-Environment resolution, host execution settings, canonical JSON, transcript and
-audio-redaction utilities are also available from the root.
-
-`asRecord` accepts plain objects. `asObjectRecord` also accepts class and built-in
-object instances; both reject arrays and null. `asObjectRecordOrUndefined` is
-the optional loose variant, and `hasPlainObjectTag` checks the object tag.
-
-Restart requests require a host-installed handler; otherwise they throw
-`RESTART_HANDLER_NOT_INSTALLED`. Self-edit defaults to the host process
-environment and retains its explicit opt-in and production gates.
-
-## Development
-
-Install dependencies with `bun install` at the repository root. Run from that root:
+From the repository root:
 
 ```bash
-bun run --cwd packages/core build  # build
-bun run --cwd packages/core test   # tests
+bun run --cwd packages/core build
+bun run --cwd packages/core test
+bun run --cwd packages/core typecheck
+bun run --cwd packages/core lint:check
+bun run verify
 ```
-
-View declaration types remain in core; browser-safe visibility and surface-policy
-helpers live in `@elizaos/core/views/*`; renderers import those leaves directly.
-
-`@elizaos/core/messaging/interactions/sessions` is a Node host leaf for durable
-interaction authorities and pure store transitions; it uses Node cryptography.
-Browser surfaces should consume the interaction types, not this authority module.
-
-`messaging/task-widgets` validates browser-safe task choice envelopes. The shared
-UI leaf `components/interactive-task/TaskChoice` renders those envelopes without
-choosing transport, business policy, or product styling.

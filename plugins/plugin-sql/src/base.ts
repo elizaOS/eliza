@@ -1789,9 +1789,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
     return this.withDatabase(async () => {
       // Normalize entity data to ensure names is a proper array
+      const { agentId: _ownerAgentId, ...fields } = entity;
       const normalizedEntity = {
-        ...entity,
-        agentId: this.agentId,
+        ...fields,
         names: this.normalizeEntityNames(entity.names),
         metadata: entity.metadata || {},
       };
@@ -3357,6 +3357,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const textContains = params.textContains?.trim();
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
+    // `0` is an explicit empty page. A truthy check skipped LIMIT and returned
+    // every matching row.
     const effectiveLimit = params.limit ?? params.count;
     // Default newest-first; `orderDirection: "asc"` powers around-message paging
     // (load the messages immediately *after* an anchor, not the newest tail).
@@ -3527,9 +3529,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           // meant any caller passing only `limit` got NO limit clause and the
           // whole table back (e.g. evaluator recent-message fetches returning
           // thousands of rows instead of 10).
-          if (effectiveLimit && offset !== undefined && offset > 0) {
+          if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
             return baseQuery.limit(effectiveLimit).offset(offset);
-          } else if (effectiveLimit) {
+          } else if (effectiveLimit !== undefined) {
             return baseQuery.limit(effectiveLimit);
           } else if (offset !== undefined && offset > 0) {
             return baseQuery.offset(offset);
@@ -3549,9 +3551,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...conditions))
         .orderBy(...order);
       const rows = await (async () => {
-        if (effectiveLimit && offset !== undefined && offset > 0) {
+        if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
-        } else if (effectiveLimit) {
+        } else if (effectiveLimit !== undefined) {
           return baseQuery.limit(effectiveLimit);
         } else if (offset !== undefined && offset > 0) {
           return baseQuery.offset(offset);
@@ -4109,23 +4111,27 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     // entityId is both the RLS principal and a WHERE filter: PGlite and any
     // Postgres without ENABLE_DATA_ISOLATION apply no row policy, so the
-    // predicate is the only thing keeping other entities' logs out.
+    // predicate is the only thing keeping other entities' logs out. The logs
+    // table carries no agent column, so agents sharing one database are
+    // separated through the owning room, as in getAgentRunSummaries.
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const result = await tx
-        .select()
+        .select({ log: logTable })
         .from(logTable)
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
         .where(
           and(
+            eq(roomTable.agentId, this.agentId),
             entityId ? eq(logTable.entityId, entityId) : undefined,
             roomId ? eq(logTable.roomId, roomId) : undefined,
             type ? eq(logTable.type, type) : undefined
           )
         )
-        .orderBy(desc(logTable.createdAt))
+        .orderBy(desc(logTable.createdAt), desc(logTable.id))
         .limit(effectiveLimit)
         .offset(offset ?? 0);
 
-      const logs = result.map((log) => ({
+      const logs = result.map(({ log }) => ({
         ...log,
         id: log.id as UUID,
         entityId: log.entityId as UUID,
@@ -4410,9 +4416,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<void>} A Promise that resolves when the log is deleted.
    */
   async deleteLog(logId: UUID): Promise<void> {
-    return this.withDatabase(async () => {
-      await this.db.delete(logTable).where(eq(logTable.id, logId));
-    });
+    return this.deleteLogs([logId]);
   }
 
   /**
@@ -5005,7 +5009,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       .where(
         and(
           eq(memoryTable.agentId, this.agentId),
-          sql`${memoryTable.metadata}->>'documentId' = ${documentId}`
+          or(
+            sql`${memoryTable.metadata}->>'documentId' = ${documentId}`,
+            and(
+              eq(memoryTable.type, "message_content_segments"),
+              sql`${memoryTable.metadata}->>'messageId' = ${documentId}`
+            )
+          )
         )
       );
 
@@ -6156,6 +6166,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  private taskRowCreatedAtMs(value: Date | string | null | undefined): number | undefined {
+    if (value == null) return undefined;
+    const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+
   /**
    * Maps a listed task row while keeping one unreadable `scheduledAt` from
    * hiding every other task of the agent. The scheduler tick lists all tasks in
@@ -6185,6 +6201,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       scheduleError = error.message;
     }
+    const createdAt = this.taskRowCreatedAtMs(row.createdAt);
     return {
       id: row.id as UUID,
       agentId: row.agentId as UUID,
@@ -6195,6 +6212,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId: row.entityId as UUID,
       tags: row.tags || [],
       dueAt,
+      ...(createdAt === undefined ? {} : { createdAt }),
       ...(scheduleError === undefined ? {} : { scheduleError }),
       metadata,
     };
@@ -6238,6 +6256,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         const row = result[0];
         const metadata = (row.metadata || {}) as TaskMetadata;
+        const createdAt = this.taskRowCreatedAtMs(row.createdAt);
         return {
           id: row.id as UUID,
           agentId: row.agentId as UUID,
@@ -6248,6 +6267,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           entityId: row.entityId as UUID,
           tags: row.tags || [],
           dueAt: readTaskDueAt(metadata),
+          ...(createdAt === undefined ? {} : { createdAt }),
           metadata,
         };
       });
@@ -6859,7 +6879,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    beforeMessageId?: UUID
   ): Promise<
     Array<{
       id: UUID;
@@ -6878,14 +6899,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const conditions = [eq(messageTable.channelId, channelId)];
       if (beforeTimestamp) {
-        conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        // A bare timestamp cursor drops the rest of a same-timestamp group
+        // that straddled the previous page boundary. When the caller also
+        // names the last row's id, the cursor becomes the exact
+        // (createdAt, id) position this descending composite sort walks.
+        if (beforeMessageId) {
+          conditions.push(
+            or(
+              lt(messageTable.createdAt, beforeTimestamp),
+              and(eq(messageTable.createdAt, beforeTimestamp), lt(messageTable.id, beforeMessageId))
+            ) as SQL
+          );
+        } else {
+          conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        }
       }
 
       const query = this.db
         .select()
         .from(messageTable)
         .where(and(...conditions))
-        .orderBy(desc(messageTable.createdAt))
+        // The id tiebreak gives same-timestamp rows one deterministic order;
+        // without it two identical calls can return different pages.
+        .orderBy(desc(messageTable.createdAt), desc(messageTable.id))
         .limit(limit);
 
       const results = await query;
@@ -7656,7 +7692,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       let query = this.db
         .select()
         .from(entityTable)
-        .where(conditions.length > 0 ? and(...conditions) : undefined);
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        // Limit/offset pages need a total order: without one Postgres returns
+        // rows in physical order, which an UPDATE rewrites, so a caller paging
+        // across a concurrent write (plugin-form session restore) skips one
+        // entity and serves another twice. The key truncates to milliseconds
+        // because reads return `createdAt` as a millisecond Date and
+        // updateEntity writes it back, which would otherwise move a row with
+        // PostgreSQL's microsecond `now()` earlier in the order mid-scan.
+        .orderBy(
+          asc(sql`date_trunc('milliseconds', ${entityTable.createdAt})`),
+          asc(entityTable.id)
+        );
 
       if (params.limit !== undefined && !params.entityIds?.length) {
         query = query.limit(params.limit) as typeof query;
@@ -7820,7 +7867,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
     if (logIds.length === 0) return [];
     return this.withDatabase(async () => {
-      const result = await this.db.select().from(logTable).where(inArray(logTable.id, logIds));
+      const result = await this.db
+        .select()
+        .from(logTable)
+        .where(and(inArray(logTable.id, logIds), this.ownedLogRoomCondition()));
       return result.map((log) => ({
         ...log,
         id: log.id as UUID,
@@ -7840,7 +7890,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (updates.body !== undefined) setValues.body = updates.body;
         if (updates.type !== undefined) setValues.type = updates.type;
         if (Object.keys(setValues).length > 0) {
-          await this.db.update(logTable).set(setValues).where(eq(logTable.id, id));
+          await this.db
+            .update(logTable)
+            .set(setValues)
+            .where(and(eq(logTable.id, id), this.ownedLogRoomCondition()));
         }
       }
     });
@@ -7849,8 +7902,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteLogs(logIds: UUID[]): Promise<void> {
     if (logIds.length === 0) return;
     return this.withDatabase(async () => {
-      await this.db.delete(logTable).where(inArray(logTable.id, logIds));
+      await this.db
+        .delete(logTable)
+        .where(and(inArray(logTable.id, logIds), this.ownedLogRoomCondition()));
     });
+  }
+
+  /** Restricts a log read or mutation to rows in this agent's rooms (logs carry no agent column). */
+  private ownedLogRoomCondition() {
+    return inArray(
+      logTable.roomId,
+      this.db
+        .select({ id: roomTable.id })
+        .from(roomTable)
+        .where(eq(roomTable.agentId, this.agentId))
+    );
   }
 
   // ── Memory batch methods ──────────────────────────────────────────────

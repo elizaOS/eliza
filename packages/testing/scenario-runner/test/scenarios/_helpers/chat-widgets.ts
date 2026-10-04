@@ -25,13 +25,9 @@ import {
   uiWidgetCapabilitiesProvider,
   uiWidgetsProvider,
 } from "@elizaos/agent/providers/ui-catalog";
-import type { Plugin } from "@elizaos/core";
+import type { FormInteraction, InteractionField, Plugin } from "@elizaos/core";
+import { findInteractionRegions } from "@elizaos/core/protocol";
 import type { ScenarioContext, ScenarioSeedStep } from "@elizaos/testing";
-import { findInteractionRegions } from "../../../../../core/src/messaging/interactions/parse.ts";
-import type {
-  FormInteraction,
-  InteractionField,
-} from "../../../../../core/src/types/interactions.ts";
 
 const GUIDE_PLUGIN_NAME = "scenario-chat-widgets-guide";
 

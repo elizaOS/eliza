@@ -13,7 +13,7 @@ import type {
   JsonValue,
   RuntimeBrokerCapabilityMethod,
 } from "@elizaos/core";
-import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/testing";
+import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/testing/models";
 
 type Options = {
   host: string;

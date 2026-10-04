@@ -2,15 +2,14 @@
  * Barrel for i18n: message catalogs, translator factory, region helpers, and
  * re-exported language-code primitives owned by @elizaos/core.
  */
+import { normalizeLanguage, type UiLanguage } from "@elizaos/core/protocol";
 
-import { normalizeLanguage } from "@elizaos/core/i18n/language";
 import {
   DEFAULT_UI_LANGUAGE,
   ensureLanguageLoaded,
   MESSAGES,
   type MessageDict,
   UI_LANGUAGES,
-  type UiLanguage,
 } from "./messages";
 
 // `normalizeLanguage` (and the language-code constants below) are owned by

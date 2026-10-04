@@ -32,7 +32,7 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   DEFAULT_WEIGHTS,
   runLauncherLoop,
-} from "../../../ui/src/testing/launcher-loop";
+} from "../../../ui/src/testing/launcher-loop/index";
 import {
   installDefaultAppRoutes,
   openAppPath,

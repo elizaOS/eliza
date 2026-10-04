@@ -6,7 +6,7 @@
  * upload UI and its tests.
  */
 
-import type { DocumentScope } from "@elizaos/ui/api";
+import type { DocumentScope } from "@elizaos/ui";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576;
 export const BULK_UPLOAD_TARGET_BYTES = 24 * 1_048_576;
@@ -58,11 +58,12 @@ export function shouldReadDocumentFileAsText(
     "application/json",
     "application/xml",
   ];
+  const lowerName = file.name.toLowerCase();
 
   return (
     textTypes.some((t) => file.type.includes(t)) ||
-    file.name.endsWith(".md") ||
-    file.name.endsWith(".mdx")
+    lowerName.endsWith(".md") ||
+    lowerName.endsWith(".mdx")
   );
 }
 

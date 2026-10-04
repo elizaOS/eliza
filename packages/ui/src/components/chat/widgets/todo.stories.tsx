@@ -3,7 +3,7 @@
  * interaction-focused render states.
  */
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import type {
   WorkbenchOverview,
   WorkbenchTodo,

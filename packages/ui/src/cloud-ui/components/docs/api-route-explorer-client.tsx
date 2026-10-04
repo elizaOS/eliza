@@ -1,5 +1,6 @@
 "use client";
 
+import type { DiscoveredApiRouteDto, HttpMethod } from "@elizaos/cloud-sdk";
 /**
  * Interactive API-route explorer: filter/select a discovered route and view its details.
  */
@@ -17,7 +18,6 @@ import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../lib/utils";
-import type { DiscoveredApiRouteDto, HttpMethod } from "../../types/cloud-api";
 
 type RouteGroup = {
   group: string;

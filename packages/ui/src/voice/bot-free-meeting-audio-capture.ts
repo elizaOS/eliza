@@ -11,6 +11,7 @@ import {
   measurePcmAudio,
   type PcmAudioStats,
 } from "./local-asr-capture";
+import { concatPcm } from "./voice-session-pcm";
 
 export const BOT_FREE_MEETING_AUDIO_SAMPLE_RATE = 16_000;
 const PROCESSOR_BUFFER_SIZE = 4096;
@@ -367,17 +368,6 @@ function capturedMetadata(
     ...(source.deviceId ? { deviceId: source.deviceId } : {}),
     ...(source.groupId ? { groupId: source.groupId } : {}),
   };
-}
-
-function concatPcm(chunks: Float32Array[]): Float32Array {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const out = new Float32Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
 }
 
 function ignoreAudioGraphTeardownError(_err: unknown): void {

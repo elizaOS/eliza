@@ -7,6 +7,8 @@ import { listPackages, type WorkspaceDiscoveryOptions } from "./workspaces.ts";
 
 /** The `elizaos.scripts` block a package declares to opt into script behaviors. */
 export interface ScriptMetadata {
+  /** Sole package supplying the mobile workflow dependency/compiler contract. */
+  mobileWorkflowArtifact?: true;
   contentContextEvidence?: { role: "coding-tools" | "sql" };
   /** Leaf package the `build:core` set must build before the test lanes. */
   coreBuild?: true;
@@ -274,4 +276,18 @@ export function resolveContentContextEvidencePackages(
     packages.set(role, pkg);
   }
   return { packages, invalid };
+}
+
+/** Resolve the explicitly declared mobile workflow owner; missing/ambiguous owners fail closed. */
+export function resolveMobileWorkflowPackage(
+  opts?: WorkspaceDiscoveryOptions,
+): string {
+  const owners = packagesWithScriptMeta(opts).filter(
+    (pkg) => pkg.scripts.mobileWorkflowArtifact === true,
+  );
+  if (owners.length !== 1)
+    throw new Error(
+      `Expected exactly one mobile workflow artifact package, found ${owners.length}`,
+    );
+  return owners[0].dir;
 }

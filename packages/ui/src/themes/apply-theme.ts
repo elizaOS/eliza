@@ -12,7 +12,7 @@ import {
   type ThemeColorSet,
   type ThemeDefinition,
   type ThemeFonts,
-} from "@elizaos/core/contracts/theme";
+} from "@elizaos/contracts";
 /**
  * Apply a theme's color set for the given mode to the document root.
  * Returns a cleanup function that removes all applied properties.

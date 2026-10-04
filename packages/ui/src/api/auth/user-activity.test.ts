@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+
+import { LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "../client-base";
 import { fetchWithCsrf } from "../csrf-client";
-import { LAST_ACTIVITY_HEADER_NAME } from "./sessions";
 import {
   _resetUserActivityForTests,
   getLastUserActivityAt,

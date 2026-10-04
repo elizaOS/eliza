@@ -70,7 +70,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // provisioning-worker daemon's infra-maintenance cycle so the
     // orchestrator host owns docker_nodes truth. The control-plane still
     // serves these paths for compat but the CF cron no longer fans out
-    // to it — see packages/cloud/scripts/admin/daemons/provisioning-worker.ts.
+    // to it — see packages/cloud/services/provisioning-worker/src/index.ts.
   ],
   "*/2 * * * *": ["/api/v1/cron/pool-health-check"],
   "*/10 * * * *": [

@@ -95,7 +95,10 @@ import {
 	withModelInputBudgetProviderOptions,
 } from "../model-input-budget";
 import type { RuntimePipelineHooks } from "../pipeline-hooks.js";
-import { resolveEffectiveSystemPrompt } from "../system-prompt";
+import {
+	dropDuplicateLeadingSystemMessage,
+	resolveEffectiveSystemPrompt,
+} from "../system-prompt";
 import {
 	buildProviderAttributionsFromState,
 	canonicalPromptForModelCall,
@@ -846,25 +849,85 @@ export class RuntimeModelDispatch {
 		);
 	}
 
-	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+	private resolveDispatchRegistrations(
+		modelType: keyof ModelParamsMap,
+		provider?: string,
+	) {
+		// The caller's model type, before any LLM-mode override rewrites it.
+		const callerModelKey = String(modelType);
+		let requestedModelKey = callerModelKey;
+
+		// Apply LLM mode override for text generation models
+		const llmMode = this.runtime.getLLMMode();
+		if (llmMode !== "DEFAULT") {
+			if (LLM_MODE_OVERRIDE_MODEL_TYPES.has(requestedModelKey)) {
+				const overrideModelKey =
+					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+				if (requestedModelKey !== overrideModelKey) {
+					this.runtime.logger.debug(
+						{
+							src: "agent",
+							agentId: this.runtime.agentId,
+							originalModel: requestedModelKey,
+							overrideModel: overrideModelKey,
+							llmMode,
+						},
+						"LLM mode override applied",
+					);
+					requestedModelKey = overrideModelKey as typeof requestedModelKey;
+				}
+			}
+		}
+
+		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
+		// provider are pinned to the provider that answered the dimension probe:
+		// the vector column was sized from its output, so serving an embedding
+		// call from any other registration (including a higher-priority BATCH
+		// handler, or via rate-limit failover) can emit a different-width vector
+		// that the SQL adapter silently drops (#8769). Pinning also disables
+		// mid-call provider failover for embeddings — an embedding either comes
+		// from the provider the column was sized for, or the call fails loudly.
+		// An explicit provider argument still wins.
+		const requestedProvider =
+			provider === undefined &&
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
+			this.host.pinnedEmbeddingProvider() !== undefined
+				? this.host.pinnedEmbeddingProvider()
+				: provider;
+
+		// Runtime preferred-provider override: when the caller did not pin a
+		// provider and this is a text-generation model, honor the runtime-selected
+		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
+		// between loaded providers with no restart. A selection is a strict pin:
+		// failure or missing registration must not silently switch providers.
+		const providerOverride =
+			provider === undefined &&
+			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
+				? this.resolveTextProviderOverride()
+				: undefined;
+		const resolvedModels = this.resolveModelRegistrations(
+			requestedModelKey,
+			providerOverride ?? requestedProvider,
+		);
+		if (resolvedModels.length === 0) {
+			this.throwNoModelHandler(requestedModelKey);
+		}
+
+		return {
+			callerModelKey,
+			requestedModelKey,
+			requestedProvider,
+			resolvedModels,
+		};
+	}
+
+	/** Resolve an action chain once; nested attempts clear the routing context. */
+	private routeActionModel<T extends keyof ModelParamsMap, R>(
 		modelType: T,
 		params: ModelParamsMap[T],
-		provider?: string,
-	): Promise<R> {
-		const explicitSignal = isPlainObject(params)
-			? (params as { signal?: AbortSignal }).signal
-			: undefined;
-		const contextSignal = getStreamingContext()?.abortSignal;
-		const throwIfAborted = () => {
-			explicitSignal?.throwIfAborted();
-			contextSignal?.throwIfAborted();
-		};
-		throwIfAborted();
-		const useModelStartedAt = Date.now();
-		this.assertCanonicalModelCapabilityEnabled(String(modelType));
-		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
-			? captureModelLookupCaller()
-			: undefined;
+		provider: string | undefined,
+	): Promise<R> | undefined {
 		// Per-action model routing seam (closes A5 / W1-R2). If the call
 		// originates inside an action handler that declared a `modelClass`, and
 		// the requested model type is a text-generation model, we resolve
@@ -927,66 +990,37 @@ export class RuntimeModelDispatch {
 			}
 		}
 
-		// The caller's model type, before any LLM-mode override rewrites it.
-		const callerModelKey = String(modelType);
-		let requestedModelKey = callerModelKey;
+		return undefined;
+	}
 
-		// Apply LLM mode override for text generation models
-		const llmMode = this.runtime.getLLMMode();
-		if (llmMode !== "DEFAULT") {
-			if (LLM_MODE_OVERRIDE_MODEL_TYPES.has(requestedModelKey)) {
-				const overrideModelKey =
-					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
-				if (requestedModelKey !== overrideModelKey) {
-					this.runtime.logger.debug(
-						{
-							src: "agent",
-							agentId: this.runtime.agentId,
-							originalModel: requestedModelKey,
-							overrideModel: overrideModelKey,
-							llmMode,
-						},
-						"LLM mode override applied",
-					);
-					requestedModelKey = overrideModelKey as typeof requestedModelKey;
-				}
-			}
-		}
+	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+		modelType: T,
+		params: ModelParamsMap[T],
+		provider?: string,
+	): Promise<R> {
+		const explicitSignal = isPlainObject(params)
+			? (params as { signal?: AbortSignal }).signal
+			: undefined;
+		const contextSignal = getStreamingContext()?.abortSignal;
+		const throwIfAborted = () => {
+			explicitSignal?.throwIfAborted();
+			contextSignal?.throwIfAborted();
+		};
+		throwIfAborted();
+		const useModelStartedAt = Date.now();
+		this.assertCanonicalModelCapabilityEnabled(String(modelType));
+		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
+			? captureModelLookupCaller()
+			: undefined;
+		const routed = this.routeActionModel<T, R>(modelType, params, provider);
+		if (routed) return routed;
 
-		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
-		// provider are pinned to the provider that answered the dimension probe:
-		// the vector column was sized from its output, so serving an embedding
-		// call from any other registration (including a higher-priority BATCH
-		// handler, or via rate-limit failover) can emit a different-width vector
-		// that the SQL adapter silently drops (#8769). Pinning also disables
-		// mid-call provider failover for embeddings — an embedding either comes
-		// from the provider the column was sized for, or the call fails loudly.
-		// An explicit provider argument still wins.
-		const requestedProvider =
-			provider === undefined &&
-			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
-				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
-			this.host.pinnedEmbeddingProvider() !== undefined
-				? this.host.pinnedEmbeddingProvider()
-				: provider;
-
-		// Runtime preferred-provider override: when the caller did not pin a
-		// provider and this is a text-generation model, honor the runtime-selected
-		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
-		// between loaded providers with no restart. A selection is a strict pin:
-		// failure or missing registration must not silently switch providers.
-		const providerOverride =
-			provider === undefined &&
-			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
-				? this.resolveTextProviderOverride()
-				: undefined;
-		const resolvedModels = this.resolveModelRegistrations(
+		const {
+			callerModelKey,
 			requestedModelKey,
-			providerOverride ?? requestedProvider,
-		);
-		if (resolvedModels.length === 0) {
-			this.throwNoModelHandler(requestedModelKey);
-		}
+			requestedProvider,
+			resolvedModels,
+		} = this.resolveDispatchRegistrations(modelType, provider);
 
 		let lastModelError: unknown;
 		let lastFailedModel: ResolvedModelRegistration | undefined;
@@ -1488,6 +1522,31 @@ export class RuntimeModelDispatch {
 						postHookSystemPrompt === undefined
 							? undefined
 							: piiSwapSession.substituteText(postHookSystemPrompt);
+				}
+
+				// Contact references are opaque handles, not credentials or prose.
+				// Attach after hooks/redaction so every text-provider attempt sees it.
+				if (
+					secretSwapSession?.entries.some((entry) =>
+						entry.placeholder.startsWith("__ELIZA_CONTACT_"),
+					) &&
+					TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey)) &&
+					isPlainObject(modelParams)
+				) {
+					const guidance =
+						"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements.";
+					const record = modelParams as Record<string, unknown>;
+					// Remove only an exact existing duplicate before extending system.
+					// Otherwise the provider receives two different system messages.
+					if (Array.isArray(record.messages)) {
+						record.messages = dropDuplicateLeadingSystemMessage(
+							record.messages,
+							effectiveSystemPrompt,
+						);
+					}
+					effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`;
+					(modelParams as Record<string, unknown>).system =
+						effectiveSystemPrompt;
 				}
 
 				const hookedParamsObj =

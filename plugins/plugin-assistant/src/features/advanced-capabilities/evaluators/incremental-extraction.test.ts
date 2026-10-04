@@ -9,7 +9,7 @@ import {
   type RegisteredEvaluator,
   type UUID,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { makeFakeRuntime } from "../personality/__tests__/test-helpers.ts";

@@ -8,6 +8,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type ReactNode, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerPublicCloudSurfaces } from "../../../../app/src/renderer/cloud-registration";
 import { savePersistedActiveServer } from "../../state/persistence";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
@@ -19,7 +20,6 @@ import {
   resolveLoginReturnTo,
   storePendingOAuthReturnTo,
 } from "../public-pages/lib/login-return-to";
-import { registerPublicCloudSurfaces } from "../register-public";
 import { CloudRouterShell } from "./CloudRouterShell";
 import { registerCloudRoute } from "./cloud-route-registry";
 import { ManagedCloudPage } from "./ManagedCloudPage";

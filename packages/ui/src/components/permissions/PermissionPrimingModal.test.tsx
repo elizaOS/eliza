@@ -6,7 +6,7 @@
 // firing, and Skip-for-now. Drives the modal through an injected
 // `controllerOverride` stub (the live hook is covered by use-permission-priming.test).
 
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import type { PermissionId } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,

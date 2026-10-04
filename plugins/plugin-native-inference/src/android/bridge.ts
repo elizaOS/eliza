@@ -32,13 +32,9 @@
  * before spawning the bundle; this module only fills gaps for direct runs.
  */
 
-import {
-  createServer as createNetServer,
-  type Server as NodeServer,
-  type Socket as NodeSocket,
-} from "node:net";
 import process from "node:process";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
+import { startLocalAgentServer } from "./private-dispatch.ts";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
 
@@ -71,17 +67,7 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import { androidAliasSibling, installMobileFsShim } from "../shared/fs-shim.ts";
-import {
-  createStdioBridge,
-  type StdioBridgeResponseFrame,
-} from "../shared/stdio-bridge.ts";
-import {
-  type AndroidCoreRouteDeps,
-  type AndroidDispatchRoute,
-  type AndroidRequestPayload,
-  dispatchBufferedRequest,
-  dispatchStreamingRequest,
-} from "./dispatch.ts";
+import type { AndroidCoreRouteDeps, AndroidDispatchRoute } from "./dispatch.ts";
 
 type StartEliza = (options: {
   serverOnly: true;
@@ -239,91 +225,6 @@ function _logToFile(line: string): void {
 // connection gets its own NDJSON kernel over the socket byte stream; the WebView
 // contract (buffered result / agentStream* frames) is served by the same shared
 // createStdioBridge used on iOS.
-
-const DEFAULT_LOCAL_AGENT_SOCKET = "eliza_local_agent_v1";
-
-function localAgentSocketName(): string {
-  const name = process.env.ELIZA_LOCAL_AGENT_SOCKET?.trim();
-  return name && name.length > 0 ? name : DEFAULT_LOCAL_AGENT_SOCKET;
-}
-
-/** Serve one accepted connection: NDJSON frames in, response frames out. */
-function serveConnection(
-  socket: NodeSocket,
-  runtime: IAgentRuntime,
-  dispatchRoute: AndroidDispatchRoute,
-  coreRoutes: AndroidCoreRouteDeps,
-): void {
-  const bridge = createStdioBridge({
-    request: async (frame) =>
-      dispatchBufferedRequest(
-        runtime,
-        dispatchRoute,
-        (frame.payload ?? {}) as AndroidRequestPayload,
-        coreRoutes,
-      ),
-    requestStream: async (frame, sink) =>
-      dispatchStreamingRequest(
-        runtime,
-        dispatchRoute,
-        (frame.payload ?? {}) as AndroidRequestPayload,
-        sink,
-        coreRoutes,
-      ),
-    writeFrame: (frame: StdioBridgeResponseFrame) => {
-      if (!socket.destroyed) socket.write(`${JSON.stringify(frame)}\n`);
-    },
-  });
-
-  let buffered = "";
-  socket.setEncoding("utf8");
-  socket.on("data", (chunk: string) => {
-    buffered += chunk;
-    for (;;) {
-      const newline = buffered.indexOf("\n");
-      if (newline < 0) break;
-      const line = buffered.slice(0, newline).replace(/\r$/, "");
-      buffered = buffered.slice(newline + 1);
-      void bridge.handleLine(line);
-    }
-  });
-  socket.once("end", () => {
-    if (buffered.trim()) {
-      const line = buffered;
-      buffered = "";
-      void bridge.handleLine(line);
-    }
-    void bridge.drain().finally(() => {
-      if (!socket.destroyed) socket.end();
-    });
-  });
-  socket.once("error", (err: Error) => {
-    _logToFile(`[android-bridge] connection error: ${err.message}`);
-  });
-}
-
-/** Bind the abstract-namespace request server. Rejects if the name is taken. */
-function startLocalAgentServer(
-  runtime: IAgentRuntime,
-  dispatchRoute: AndroidDispatchRoute,
-  coreRoutes: AndroidCoreRouteDeps,
-): Promise<NodeServer> {
-  const name = localAgentSocketName();
-  // Abstract namespace: a leading NUL byte in the path (Linux). Mirrors
-  // BionicHostLoader's `net.connect({ path: "\0" + name })`.
-  const abstractPath = `\0${name}`;
-  const server = createNetServer((socket) => {
-    serveConnection(socket, runtime, dispatchRoute, coreRoutes);
-  });
-  return new Promise<NodeServer>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen({ path: abstractPath }, () => {
-      server.removeListener("error", reject);
-      _logToFile(`[android-bridge] listening on abstract UDS "${name}"`);
-      resolve(server);
-    });
-  });
-}
 
 // ── Step 4: boot the runtime + serve over the abstract UDS ─────────────────
 
@@ -534,7 +435,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
   process.once("SIGINT", () => stop?.());
   process.once("SIGTERM", () => stop?.());
 
-  let server: NodeServer;
+  let server: Awaited<ReturnType<typeof startLocalAgentServer>>;
   try {
     server = await startLocalAgentServer(runtime, dispatchRoute, coreRoutes);
   } catch (err) {
@@ -548,6 +449,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
   _logToFile("[android-bridge] local-agent request server ready");
 
   await stopped;
-  server.close();
-  _logToFile("[android-bridge] shutdown signal received, exiting.");
+  // Signal handlers suppress default exit: tear down services and storage.
+  const { shutdownAndroidBridge } = await import("./shutdown.ts");
+  await shutdownAndroidBridge(() => server.stop(), runtime, _logToFile);
 }

@@ -1,4 +1,4 @@
-import { readRequestBodyBuffer } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/host";
 /**
  * Shared auth and I/O helpers for the local-inference compat HTTP routes.
  *
@@ -14,8 +14,8 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
-import { isLoopbackBindHost, resolveApiToken } from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { isLoopbackBindHost } from "@elizaos/core/protocol";
+import { readAliasedEnv, resolveApiToken } from "@elizaos/host/protocol";
 
 const MAX_BODY_BYTES = 1_048_576;
 

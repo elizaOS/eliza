@@ -9,13 +9,6 @@
  * become plausible prices, entitlements, or zero usage.
  */
 
-import { ElizaError } from "@elizaos/core";
-import Decimal from "decimal.js";
-import { DrizzleError, DrizzleQueryError } from "drizzle-orm";
-import type {
-  PrimaryAccountBillingReadModel,
-  PrimaryComputeRateSegment,
-} from "../../db/repositories/account-billing-snapshot";
 import type {
   AccountBillingSnapshot,
   AccountBillingSnapshotV2,
@@ -36,7 +29,14 @@ import type {
   SandboxCreateLimitItem,
   SandboxLimitItem,
   StorageLimitItem,
-} from "../../types/account-billing-snapshot";
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
+import { ElizaError } from "@elizaos/core";
+import Decimal from "decimal.js";
+import { DrizzleError, DrizzleQueryError } from "drizzle-orm";
+import type {
+  PrimaryAccountBillingReadModel,
+  PrimaryComputeRateSegment,
+} from "../../db/repositories/account-billing-snapshot";
 import { buildOrganizationSubscriptionSnapshot } from "./account-subscription-snapshot";
 
 export type {
@@ -50,7 +50,7 @@ export type {
   SandboxCreateLimitItem,
   SandboxLimitItem,
   StorageLimitItem,
-} from "../../types/account-billing-snapshot";
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
 
 /**
  * Injected readers. Each maps 1:1 onto the enforcement source it mirrors; the

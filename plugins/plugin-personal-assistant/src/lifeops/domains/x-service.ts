@@ -13,8 +13,8 @@ import type {
   LifeOpsXConnectorStatus,
   LifeOpsXDm,
   LifeOpsXPostResponse,
-} from "../../contracts/index.js";
-import { LIFEOPS_X_CAPABILITIES } from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { LIFEOPS_X_CAPABILITIES } from "@elizaos/contracts";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsConnectorGrant } from "../repository.js";
 import {

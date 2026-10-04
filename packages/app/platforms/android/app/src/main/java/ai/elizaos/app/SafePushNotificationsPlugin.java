@@ -1,8 +1,11 @@
 package ai.elizaos.app;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 import com.getcapacitor.PluginCall;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
@@ -22,9 +25,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
  * Firebase-less build died the moment the shell painted.
  *
  * This subclass rejects the call cleanly when no FirebaseApp exists and
- * defers to the stock behavior otherwise. MainActivity registers it directly
- * on the live bridge after super.onCreate(), which wins the plugin-name slot
- * from the auto-registered stock plugin.
+ * defers to the stock behavior otherwise. MainActivity's initialPlugins list
+ * appends it after discovery and before the first renderer header export.
  */
 @CapacitorPlugin(
     name = "PushNotifications",
@@ -42,6 +44,36 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
         } catch (RuntimeException error) {
             return false;
         }
+    }
+
+    @PluginMethod
+    public void getReminderDataCapabilities(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("reminderDataNotifications", ElizaReminderMessagingService.isDeclaredHandler(getContext()));
+        result.put("reminderChannelSelection", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void resolveReminderChannel(PluginCall call) {
+        String priority = call.getString("priority");
+        String ownerType = call.getString("ownerType");
+        if ((!"occurrence".equals(ownerType) && !"calendar_event".equals(ownerType))
+            || (!"urgent".equals(priority) && !"high".equals(priority)
+                && !"normal".equals(priority) && !"low".equals(priority))) {
+            call.reject("Invalid reminder channel request");
+            return;
+        }
+        NotificationManager manager = getContext().getSystemService(NotificationManager.class);
+        if (manager == null) {
+            call.reject("Notification manager unavailable");
+            return;
+        }
+        NotificationChannel selected = ElizaReminderMessagingService.resolveReminderChannel(manager, priority, ownerType);
+        JSObject result = new JSObject();
+        result.put("channelId", selected.getId());
+        result.put("blocked", ElizaReminderMessagingService.isReminderChannelBlocked(manager, selected));
+        call.resolve(result);
     }
 
     @Override

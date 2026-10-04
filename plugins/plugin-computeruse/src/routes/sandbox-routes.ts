@@ -1,7 +1,7 @@
 /** Sandbox capability API routes: status, exec, browser, screen, audio, computer use. */
 import { execFileSync, execSync } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { type IncomingMessage, type ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
@@ -9,7 +9,7 @@ import {
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
-} from "@elizaos/core/api/http-helpers";
+} from "@elizaos/host";
 
 interface SandboxExecResult {
   exitCode: number;

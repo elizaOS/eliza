@@ -6,8 +6,9 @@ import type { Meta, StoryObj } from "@storybook/react";
 import type * as React from "react";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { ChatOverlay } from "./ChatOverlay";
+import type { ConversationNav } from "./conversation-nav";
 import type { ShellMessage } from "./shell-state";
-import type { ConversationNav, ShellController } from "./useShellController";
+import type { ShellController } from "./useShellController";
 
 // Mock the slice of ShellController the overlay reads — it takes the controller
 // as a prop (pure/presentational), so no provider is needed.

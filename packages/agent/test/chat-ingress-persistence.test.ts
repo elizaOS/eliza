@@ -8,7 +8,7 @@ import {
   renderContextObject,
   stringToUuid,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { createV5MessageContextObject } from "../../../plugins/plugin-assistant/src/services/message/context-assembly.ts";
 import { DefaultMessageService } from "../../../plugins/plugin-assistant/src/services/message.ts";

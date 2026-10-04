@@ -1,12 +1,12 @@
 /** Host-composed task adapter. Product policy and evidence storage stay with the host. */
-import { ElizaError } from "@elizaos/core/errors";
 import {
+  ElizaError,
   type InteractiveTask,
   sameTaskOwner,
   type TaskActionProposal,
   type TaskObservation,
   type TaskOwner,
-} from "@elizaos/core/messaging/interactive-task";
+} from "@elizaos/core/protocol";
 import type {
   NativeSocketBrowserTarget,
   NativeTaskBinding,

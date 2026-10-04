@@ -16,7 +16,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,

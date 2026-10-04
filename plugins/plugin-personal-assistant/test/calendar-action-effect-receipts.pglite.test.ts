@@ -5,6 +5,7 @@
  * from the same persisted snapshot or row the action consumed.
  */
 
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   type ActionResult,
   type AgentRuntime,
@@ -15,7 +16,6 @@ import {
   promoteSubactionsToActions,
   type UUID,
 } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import {
   type CalendarHostGate,

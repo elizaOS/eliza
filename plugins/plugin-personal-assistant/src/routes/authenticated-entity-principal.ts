@@ -6,8 +6,8 @@
 import type http from "node:http";
 import { resolveAuthorizedRouteRole } from "@elizaos/app/api/auth";
 import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 export const AUTH_SESSION_ENTITY_PLATFORM = "eliza_auth_session";
 export const AUTH_SESSION_CONNECTOR_ACCOUNT = "local-auth";

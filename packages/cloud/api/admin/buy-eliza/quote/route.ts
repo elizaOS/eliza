@@ -6,22 +6,21 @@
  * treasury hot wallet. Quote-only — does not execute trades.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-
-import { ValidationError } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { ValidationError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   elizaTokenPriceService,
   type SupportedNetwork,
-} from "@/lib/services/eliza-token-price";
-import { getHotWalletAddresses } from "@/lib/services/payout-status";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-token-price";
+import { getHotWalletAddresses } from "@elizaos/cloud-shared/lib/services/payout-status";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const QuoteSchema = z.object({
   network: z.enum(["ethereum", "base", "bnb", "solana"]),

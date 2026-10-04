@@ -70,6 +70,12 @@ it("delivers saved facts through chat voice boundary and notification store with
         pending.push(maybeRouteAutonomyEventToConversation(state, event));
       }
     });
+    const duplicateRoute = events.subscribe((event) => {
+      if (event.stream === "assistant")
+        pending.push(maybeRouteAutonomyEventToConversation(state, event));
+      expect(JSON.stringify(event.data)).not.toContain('"publish":');
+      expect(JSON.stringify(event.data)).not.toContain('"routed":');
+    });
     const domain = new LifeOpsService(runtime);
     const plan = createLifeOpsReminderPlan({
       agentId: runtime.agentId,
@@ -80,6 +86,32 @@ it("delivers saved facts through chat voice boundary and notification store with
       quietHours: {},
     });
     await repository.createReminderPlan(plan);
+    const notifier = runtime.getService<NotificationService>("notification");
+    if (!notifier) throw Error("Missing notification service");
+    const committedSources = new Set<string>();
+    const createMemory = runtime.createMemory.bind(runtime);
+    runtime.createMemory = async (
+      ...args: Parameters<typeof runtime.createMemory>
+    ) => {
+      const result = await createMemory(...args);
+      if (args[0].content.source === "reminder")
+        committedSources.add(args[0].id ?? "");
+      return result;
+    };
+    const notify = notifier.notify.bind(notifier);
+    notifier.notify = async (input) => {
+      const messageId = input.data?.messageId;
+      if (typeof messageId === "string") {
+        expect(committedSources.has(messageId)).toBe(true);
+        expect(
+          await runtime.getMemoriesByIds(
+            [messageId as import("@elizaos/core").UUID],
+            "messages",
+          ),
+        ).toHaveLength(1);
+      }
+      return notify(input);
+    };
     const due = "2026-09-29T14:26:01.193Z";
     const attempt = await domain.dispatchReminderAttempt({
       plan,
@@ -112,22 +144,35 @@ it("delivers saved facts through chat voice boundary and notification store with
     expect(notices).toHaveLength(1);
     const body = notices[0]?.body;
     if (typeof body !== "string") throw new Error("Missing notification body");
-    expect(body).toContain('Check "Monday"  exactly');
-    expect(body).not.toContain("all clear");
-    expect(body).toContain("7:26:01 AM");
+    expect(body).toBe('Check "Monday"  exactly');
     const messages = await runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
     });
     expect(messages).toHaveLength(1);
     expect(messages[0].content.text).toBe(canonicalChat);
-    expect(canonicalChat?.split("\n\n[CHOICE:")[0]).toBe(body);
+    expect(messages[0].content.metadata).toMatchObject({
+      ownerType: "occurrence",
+      ownerId: plan.ownerId,
+      subjectType: "owner",
+      scheduledFor: due,
+      dueAt: due,
+    });
+    expect(canonicalChat).toBe(body);
     expect(broadcasts).toContainEqual(
       expect.objectContaining({
         message: expect.objectContaining({ text: canonicalChat }),
       }),
     );
-    expect(messages[0].content.text).toContain("[CHOICE:lifeops-reminder");
+    expect(messages[0].content.text).not.toContain("[CHOICE:");
+    expect(notices[0].deepLink).toBe("/chat");
+    expect(notices[0].data).toMatchObject({
+      conversationId: conv.id,
+      messageId: messages[0].id,
+    });
+    expect(JSON.stringify(messages[0].content)).not.toContain(
+      "notificationDelivery",
+    );
     expect(modelCalls).toBe(0);
     expect(
       await repository.listReminderAttempts(runtime.agentId),
@@ -138,6 +183,49 @@ it("delivers saved facts through chat voice boundary and notification store with
         deliveryMetadata: expect.objectContaining({ message: body }),
       }),
     );
+    const secondOwner = randomUUID();
+    const secondPlan = { ...plan, id: randomUUID(), ownerId: secondOwner };
+    await repository.createReminderPlan(secondPlan);
+    await domain.dispatchReminderAttempt({
+      plan: secondPlan,
+      ownerType: "occurrence",
+      ownerId: secondOwner,
+      occurrenceId: secondOwner,
+      subjectType: "owner",
+      title: "Second reminder",
+      channel: "in_app",
+      stepIndex: 0,
+      scheduledFor: due,
+      dueAt: due,
+      urgency: "medium",
+      quietHours: {},
+      acknowledged: false,
+      attemptedAt: "2026-09-29T14:26:37Z",
+      timezone: "UTC",
+      definition: {
+        kind: "habit",
+        metadata: { ownerSurface: "OWNER_REMINDERS" },
+        cadence: { kind: "once", dueAt: due },
+      },
+    });
+    await Promise.all(pending);
+    const linked = notifications.list();
+    const stored = await runtime.getMemories({
+      roomId: conv.roomId,
+      tableName: "messages",
+    });
+    expect(linked).toHaveLength(2);
+    expect(stored).toHaveLength(2);
+    expect(new Set(linked.map((n) => n.data?.messageId)).size).toBe(2);
+    for (const notification of linked) {
+      const memory = stored.find((m) => m.id === notification.data?.messageId);
+      expect(memory).toBeDefined();
+      expect(notification.data?.conversationId).toBe(conv.id);
+      expect(memory?.content.metadata).not.toHaveProperty("publish");
+      expect(memory?.content.metadata).not.toHaveProperty("notification");
+    }
+    duplicateRoute();
+
     modelResponse = "Voiced recurring reminder";
     await domain.dispatchReminderAttempt({
       plan,
@@ -164,6 +252,40 @@ it("delivers saved facts through chat voice boundary and notification store with
     await Promise.all(pending);
     expect(modelCalls).toBeGreaterThan(0);
     modelCalls = 0;
+
+    const previousConversations = new Map(state.conversations);
+    state.conversations.clear();
+    const fallbackOwner = randomUUID();
+    await domain.dispatchReminderAttempt({
+      plan: { ...plan, ownerId: fallbackOwner },
+      ownerType: "occurrence",
+      ownerId: fallbackOwner,
+      occurrenceId: fallbackOwner,
+      subjectType: "owner",
+      title: "Fallback reminder",
+      channel: "in_app",
+      stepIndex: 0,
+      scheduledFor: due,
+      dueAt: due,
+      urgency: "medium",
+      quietHours: {},
+      acknowledged: false,
+      attemptedAt: "2026-09-29T14:26:37Z",
+      timezone: "UTC",
+      definition: {
+        kind: "habit",
+        metadata: { ownerSurface: "OWNER_REMINDERS" },
+        cadence: { kind: "once", dueAt: due },
+      },
+    });
+    await Promise.all(pending);
+    const fallback = notifications
+      .list()
+      .filter((n) => n.data?.ownerId === fallbackOwner);
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0].data).not.toHaveProperty("messageId");
+    expect(fallback[0].deepLink).toBe("/chat");
+    state.conversations = previousConversations;
 
     modelResponse = "A normal voiced message";
     expect(

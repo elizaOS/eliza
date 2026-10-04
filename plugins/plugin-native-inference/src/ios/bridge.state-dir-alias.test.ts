@@ -8,9 +8,9 @@
 
 import {
   getBootConfig,
+  readAliasedEnv,
   setBootConfig,
-} from "@elizaos/core/config/boot-config-store";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+} from "@elizaos/host/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMobileStateDir } from "./bridge.ts";
 

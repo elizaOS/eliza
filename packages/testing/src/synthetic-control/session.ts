@@ -63,10 +63,11 @@ export class SyntheticControlSession {
 
   private constructor(
     readonly client: SyntheticControlClient,
-    readonly leaseId: string,
+    private currentLeaseId: string,
     readonly manifest: SyntheticManifest,
     readonly resetReceipt: SyntheticResetReceipt,
     generation: number,
+    readonly seedData: Readonly<Record<string, JsonValue>>,
   ) {
     this.currentGeneration = generation;
   }
@@ -146,10 +147,13 @@ export class SyntheticControlSession {
       }
       return new SyntheticControlSession(
         options.client,
-        leaseId,
+        data.leaseId === undefined
+          ? leaseId
+          : resultString(data.leaseId, "seed data.leaseId"),
         options.manifest,
         receipt as unknown as SyntheticResetReceipt,
         seeded.generation,
+        structuredClone(data),
       );
     } catch (error) {
       // error-policy:J2 Seed failures retain the lease whenever mutation cannot be ruled out.
@@ -186,6 +190,10 @@ export class SyntheticControlSession {
 
   get generation(): number {
     return this.currentGeneration;
+  }
+
+  get leaseId(): string {
+    return this.currentLeaseId;
   }
 
   async execute(
@@ -262,6 +270,18 @@ export class SyntheticControlSession {
               throw this.normalizeCommandFailure(error, expectedGeneration);
             });
           this.currentGeneration = reset.generation;
+          try {
+            const resetData = resultObject(reset.data, "reset data");
+            if (resetData.leaseId !== undefined) {
+              this.currentLeaseId = resultString(
+                resetData.leaseId,
+                "reset data.leaseId",
+              );
+            }
+          } catch (error) {
+            // error-policy:J2 A malformed post-reset lease receipt makes release ambiguous.
+            throw this.markDirty(error, reset.generation);
+          }
           this.resetComplete = true;
         }
 

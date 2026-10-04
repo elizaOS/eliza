@@ -10,12 +10,12 @@
  * org-scoped lookups when the user later acts on the connection.
  */
 
-import { Hono } from "hono";
 import {
   createLifeOpsGithubReturnResponse,
   normalizePostMessageTargetOrigin,
-} from "@/lib/services/agent-github-return";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-github-return";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

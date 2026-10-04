@@ -46,7 +46,8 @@
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.3",
-    "lucide-react": "^1.0.0"
+    "lucide-react": "^1.0.0",
+    "@elizaos/contracts": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",

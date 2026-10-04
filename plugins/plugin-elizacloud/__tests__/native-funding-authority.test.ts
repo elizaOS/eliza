@@ -1,7 +1,7 @@
 /** Exercises the actual Cloud handler, SDK HTTP and AgentRuntime fallback against a controlled local provider failure. */
 import { createServer } from "node:http";
 import { ModelType } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, test, vi } from "vitest";
 import { handleTextLarge } from "../src/models/text";
 import { handleCloudStatusRoutes } from "../src/routes/cloud-status-routes";

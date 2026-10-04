@@ -1,4 +1,5 @@
 import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+import { uniquePaths } from "../utils/paths.ts";
 /**
  * Plugin discovery and resolution logic.
  *
@@ -19,14 +20,11 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { ElizaError, formatError, logger, type Plugin } from "@elizaos/core";
 import {
-  ElizaError,
-  formatError,
   isMobilePlatform,
-  logger,
-  type Plugin,
   type PluginInstallRecord,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
@@ -625,19 +623,6 @@ async function ensureStagedPackageDependencies(params: {
 // ---------------------------------------------------------------------------
 // Workspace plugin overrides
 // ---------------------------------------------------------------------------
-
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const candidate of paths) {
-    const resolved = path.resolve(candidate);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      ordered.push(resolved);
-    }
-  }
-  return ordered;
-}
 
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {

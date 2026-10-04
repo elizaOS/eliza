@@ -7,7 +7,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentButton } from "../../agent-surface";
+import { AgentButton } from "../../agent-surface/components";
 import { registerOverlayApp } from "../../apps/overlay-app-registry.js";
 import { invokeViewInteract } from "../views/view-interact-registry";
 import { AppWindowRenderer, OverlayAppSurface } from "./AppWindowRenderer";

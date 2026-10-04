@@ -16,7 +16,7 @@ import {
 import {
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,
   AGENT_BACKUP_MANIFEST_V2_LIMITS,
-} from "@elizaos/core/contracts/agent-backup-manifest";
+} from "@elizaos/contracts";
 import z from "zod";
 
 const SPOOL_FORMAT = "elizaos.agent-backup.capture-v3-spool" as const;

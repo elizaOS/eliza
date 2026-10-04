@@ -40,8 +40,8 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
       getFrontendPlatform: vi.fn(() => "desktop"),
     };
   });
-vi.mock("../api", () => ({ client }));
 vi.mock("../api/client", () => ({ client }));
+
 vi.mock("../api/csrf-client", () => ({ fetchWithCsrf }));
 vi.mock("../platform/platform-guards", () => ({ getFrontendPlatform }));
 function response(status: number, body: unknown) {

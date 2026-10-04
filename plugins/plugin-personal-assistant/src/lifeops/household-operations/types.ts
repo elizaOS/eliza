@@ -7,8 +7,8 @@
  * scheduler, approval queue, or external-effect executor.
  */
 import { createHash } from "node:crypto";
+import { isValidTimeZone } from "@elizaos/contracts";
 import { ElizaError, stableStringify } from "@elizaos/core";
-import { isValidTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
 
 export type HouseholdOperationsJson =
   | null

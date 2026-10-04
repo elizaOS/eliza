@@ -11,7 +11,7 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProviderSelection } from "./useProviderSelection";
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       setActionNotice: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("../../config/branding", () => ({
 vi.mock("../../first-run/mobile-runtime-mode", () => ({
   isElizaCloudRuntimeLocked: () => false,
 }));
-vi.mock("../../api", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: {} }));
 
 function run(elizaCloudConnected: boolean) {
   const { result } = renderHook(() =>

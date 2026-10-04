@@ -9,12 +9,12 @@
 import { Buffer } from "node:buffer";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
-import { ElizaError } from "@elizaos/core";
+import type { AgentBackupRestoreV3ContainerRoots } from "@elizaos/contracts/node";
 import {
   AGENT_BACKUP_RESTORE_V3_CONTAINER_DATA_ROOT,
-  type AgentBackupRestoreV3ContainerRoots,
   agentBackupRestoreV3ContainerRoots,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
+import { ElizaError } from "@elizaos/core";
 
 export function servingError(code: string, cause?: unknown): ElizaError {
   return new ElizaError("Restore serving operation did not complete", {

@@ -1,8 +1,5 @@
 /** Reports keyboard and palette interactions and defines settings navigation events. */
-import {
-  getElizaApiBase,
-  getElizaApiToken,
-} from "@elizaos/core/utils/eliza-globals";
+import { getElizaApiBase, getElizaApiToken } from "@elizaos/host/protocol";
 import { logger } from "../logger.ts";
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
 /** Shortcut report POST — independent hop, own 15s deadline. */

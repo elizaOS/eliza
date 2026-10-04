@@ -40,7 +40,7 @@ Pipeline (each step is a function below; `--help` lists the flags):
 Full real run (on the training box — needs network for the front-end graphs and
 a real negative corpus, plus a TTS for ~30k positives):
 
-  uv run --extra train python -m scripts.wakeword.train_eliza1_wakeword_head \\
+  uv run --extra train python -m eliza_training.wakeword.train_eliza1_wakeword_head \\
       --phrase "hey eliza" \\
       --positives-dir /data/wakeword/hey-eliza-positives \\
       --negatives-dir /data/wakeword/negatives \\

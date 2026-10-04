@@ -30,7 +30,7 @@ const {
   },
 }));
 
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: {
     getBaseUrl: getBaseUrlMock,
     listAppRuns: listAppRunsMock,
@@ -41,7 +41,7 @@ vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
 
-vi.mock("../../../state", () => ({
+vi.mock("../../../state/app-store", () => ({
   useAppSelectorShallow: <T,>(selector: (state: typeof mockState) => T): T =>
     selector(mockState),
 }));

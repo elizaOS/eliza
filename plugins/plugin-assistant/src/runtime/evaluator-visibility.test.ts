@@ -2,6 +2,36 @@ import type { PlannerTrajectory } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import { parseEvaluatorOutput, runEvaluator } from "./evaluator.ts";
 
+test.each(["blocked", "pending"])(
+  "keeps an honest partial FINISH terminal while rejecting %s coverage success",
+  (status) => {
+    const result = parseEvaluatorOutput(
+      JSON.stringify({
+        success: true,
+        decision: "FINISH",
+        thought: "The read completed, but navigation did not.",
+        requestFullyCovered: true,
+        outcomeCoverage: [
+          { intentId: "intent:1", status, evidenceStepIds: ["step:1"] },
+          {
+            intentId: "intent:2",
+            status: "completed",
+            evidenceStepIds: ["step:2"],
+          },
+        ],
+        messageToUser: "The read completed. I couldn't open the Notes view.",
+      }),
+    );
+    expect(result).toMatchObject({
+      success: false,
+      requestFullyCovered: false,
+      decision: "FINISH",
+      messageToUser: "The read completed. I couldn't open the Notes view.",
+    });
+    expect(result.protocolFailure).toBeUndefined();
+  },
+);
+
 describe("evaluator reply visibility", () => {
   const thought =
     "The stage-one answer already addresses the request.\n**I should FINISH and omit messageToUser.**";

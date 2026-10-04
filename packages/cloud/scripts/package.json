@@ -9,6 +9,19 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/cloud-services-common": "workspace:*"
+  },
+  "scripts": {
+    "sms-gateway:continue": "node ./continue-sms-gateway-work.ts",
+    "sms-gateway:deploy:cloud-prod": "node ./deploy-cloud-api-production-gateway.ts",
+    "sms-gateway:homepage": "node ./check-homepage-public-readiness.ts",
+    "sms-gateway:homepage:dns": "node ./sync-homepage-porkbun-dns.ts",
+    "sms-gateway:maintain:cloud-prod": "node ./maintain-cloud-api-production-gateway.ts",
+    "sms-gateway:verify:cloud-onboarding": "node ./verify-cloud-sms-onboarding-flow.ts",
+    "sms-gateway:verify:cloud-prod": "node ./verify-cloud-api-production-deploy.ts"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

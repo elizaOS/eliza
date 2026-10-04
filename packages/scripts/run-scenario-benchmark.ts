@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { listScenarioMetadata } from "@elizaos/testing/scenarios";
 
 /**
  * Weekly benchmark harness for the executive-assistant and connector
@@ -21,7 +22,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { encodeMarkdownTableCell } from "./markdown-table-cell.ts";
@@ -43,7 +44,7 @@ const EA_DIR = path.join(
 const CONNECTOR_DIR = path.join(
   REPO_ROOT,
   "packages",
-  "test",
+  "testing",
   "scenarios",
   "connector-certification",
 );
@@ -63,30 +64,18 @@ const REPORT_MD =
 mkdirSync(path.dirname(REPORT_JSON), { recursive: true });
 mkdirSync(path.dirname(REPORT_MD), { recursive: true });
 
-/**
- * Extract the scenario id from a scenario source file. The scenario() call
- * always sets `id: "<kebab-id>"` on the top-level object.
- */
-function extractScenarioId(filePath) {
-  const src = readFileSync(filePath, "utf-8");
-  const match = src.match(/id:\s*"([^"]+)"/);
-  if (!match) {
-    throw new Error(`[benchmark] could not extract id from ${filePath}`);
-  }
-  return match[1];
-}
-
-function collectScenarioIds(dir) {
-  return readdirSync(dir)
-    .filter((file) => file.endsWith(".scenario.ts") && !file.startsWith("_"))
-    .map((file) => ({
-      file,
-      id: extractScenarioId(path.join(dir, file)),
-    }));
-}
-
-const eaScenarios = collectScenarioIds(EA_DIR);
-const connectorScenarios = collectScenarioIds(CONNECTOR_DIR);
+const eaScenarios = await listScenarioMetadata(
+  EA_DIR,
+  undefined,
+  undefined,
+  false,
+);
+const connectorScenarios = await listScenarioMetadata(
+  CONNECTOR_DIR,
+  undefined,
+  undefined,
+  false,
+);
 const allIds = [...eaScenarios, ...connectorScenarios].map((entry) => entry.id);
 
 console.log(

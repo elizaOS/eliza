@@ -1,19 +1,19 @@
 /** Verifies and persists Twilio lifecycle callbacks for user-authorized outbound calls. */
 
 import { createHash } from "node:crypto";
-import { and, eq, lt } from "drizzle-orm";
-import { Hono } from "hono";
-import { z } from "zod";
-import { dbWrite, writeTransaction } from "@/db/helpers";
+import { dbWrite, writeTransaction } from "@elizaos/cloud-shared/db/helpers";
 import {
   idempotencyKeys,
   twilioCallStatusEvents,
   twilioOutboundCalls,
-} from "@/db/schemas";
-import { logger } from "@/lib/utils/logger";
-import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
-import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/db/schemas";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { normalizePhoneNumber } from "@elizaos/cloud-shared/lib/utils/phone-normalization";
+import { verifyTwilioSignature } from "@elizaos/cloud-shared/lib/utils/twilio-api";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { and, eq, lt } from "drizzle-orm";
+import { Hono } from "hono";
+import { z } from "zod";
 import {
   twilioCallFenceKey,
   twilioCallFenceSource,

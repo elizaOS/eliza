@@ -5,29 +5,29 @@
  * Each organization has their own webhook URL with their orgId.
  */
 
+import type { App } from "@elizaos/cloud-shared/db/repositories/apps";
+import { telegramChatsRepository } from "@elizaos/cloud-shared/db/repositories/telegram-chats";
+import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  nextStyleParams,
+  type RouteContext,
+} from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { agentGatewayRouterService } from "@elizaos/cloud-shared/lib/services/agent-gateway-router";
+import { telegramAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation";
+import { telegramAppAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation/app-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { isCommand } from "@elizaos/cloud-shared/lib/utils/telegram-helpers";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { ChatMemberUpdated, Message, Update } from "telegraf/types";
-import type { App } from "@/db/repositories/apps";
-import { telegramChatsRepository } from "@/db/repositories/telegram-chats";
-import { webhookEventsRepository } from "@/db/repositories/webhook-events";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  nextStyleParams,
-  type RouteContext,
-} from "@/lib/api/hono-next-style-params";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
-import { telegramAutomationService } from "@/lib/services/telegram-automation";
-import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
-import { logger } from "@/lib/utils/logger";
-import { isCommand } from "@/lib/utils/telegram-helpers";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 function allowUnverifiedTelegramDevWebhook(): boolean {
   return (

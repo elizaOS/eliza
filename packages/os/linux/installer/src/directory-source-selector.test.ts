@@ -16,8 +16,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FileReleaseSequenceStore } from "@elizaos/os-usb-installer/trust";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FileReleaseSequenceStore } from "../../../usb-installer/src/backend/release-sequence-store";
 import { DirectoryInstallationSourceSelector } from "./directory-source-selector";
 import {
   createDiskConfirmationToken,

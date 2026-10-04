@@ -4,7 +4,7 @@
  * same contract is exercised over real HTTP in
  * packages/agent/test/remote-agent-pairing-http.test.ts.
  */
-import { buildRemoteAgentPairingUri } from "@elizaos/core/contracts/remote-agent-pairing";
+import { buildRemoteAgentPairingUri } from "@elizaos/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "../api/client";
 import {

@@ -7,12 +7,12 @@
  * action items for the existing approval and scheduling systems to consume.
  */
 
-import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
-  type Entity,
+  type KnowledgeGraphEntity as Entity,
+  type KnowledgeGraphRelationship as Relationship,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
+} from "@elizaos/contracts";
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,

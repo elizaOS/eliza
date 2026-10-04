@@ -10,7 +10,7 @@
  * in its ViewDeclaration updates the catalog with no edit here.
  */
 
-import type { RegistryAppInfo } from "../../api";
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import type { Tab } from "../../navigation";
 

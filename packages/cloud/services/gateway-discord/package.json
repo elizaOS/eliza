@@ -19,7 +19,7 @@
     "start:local": "PORT=3001 bun run src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun --conditions=eliza-source test",
-    "docker:build": "docker build -t gateway-discord:local .",
+    "docker:build": "docker build -f Dockerfile -t gateway-discord:local ../../../..",
     "docker:run": "docker run -p 3001:3000 --env-file ../../../.env.local gateway-discord:local",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",

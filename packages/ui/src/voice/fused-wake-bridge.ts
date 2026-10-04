@@ -22,7 +22,7 @@
 import {
   FUSED_WAKE_EVENT,
   type FusedWakeEventDetail,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 /**
  * A single fused-wake stage forwarded from the native runtime to the UI. This
  * is the canonical {@link FusedWakeEventDetail} contract from `@elizaos/core`

@@ -179,6 +179,50 @@ describe("planner-owned LifeOps replies", () => {
     expect(roundTrip.modelReplyRequired).toBe(true);
   });
 
+  it("preserves complete grounding and receipts for compound post-turn results", async () => {
+    const h = harness({
+      context: {
+        title: "Drink water",
+        destinationId: "owner-device",
+        accountId: "owner-account",
+        permissionId: "permission-source",
+        sourceMessageId: message.id,
+      },
+    });
+    const result = await h.run("planner");
+    const original = structuredClone(result);
+    const pending = {
+      ...result,
+      effectReceipts: [{ ...receipt, receiptId: "save-2" }],
+    };
+    const navigation = {
+      success: true,
+      data: { actionName: "VIEWS_SHOW", destinationId: "calendar" },
+    };
+    const wire = renderActionResultsForModel([
+      result,
+      pending,
+      navigation,
+    ]).text;
+    const rendered = JSON.parse(
+      wire.split("\n").find((line) => line.startsWith("{")) ?? "",
+    );
+    expect(JSON.parse(rendered.data.replyGrounding)).toEqual(
+      JSON.parse(String(h.grounding())),
+    );
+    expect(rendered.effectReceipts).toEqual(
+      JSON.parse(
+        renderActionResultsForModel([result])
+          .text.split("\n")
+          .find((line) => line.startsWith("{")) ?? "",
+      ).effectReceipts,
+    );
+    expect(wire).toContain("save-2");
+    expect(wire).toContain("characterVoice");
+    expect(wire).toContain("calendar");
+    expect(result).toEqual(original);
+  });
+
   it("keeps direct callers and other domains on the original complete-history renderer", async () => {
     for (const [domain, owner] of [
       ["lifeops", undefined],

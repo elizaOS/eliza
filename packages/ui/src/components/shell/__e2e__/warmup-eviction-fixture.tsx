@@ -10,14 +10,15 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
-import type { Conversation, ConversationMessage } from "../../../api";
-import { client } from "../../../api";
+import type { Conversation, ConversationMessage } from "../../../api/client-types-chat";
+import { client } from "../../../api/client";
 import { MockAppProvider } from "../../../storybook/mock-providers";
-import type { UseChatSendDeps } from "../../../state/useChatSend";
-import { useChatSend } from "../../../state/useChatSend";
+import { type UseChatSendDeps, useChatSend } from "../../../state/useChatSend";
+
 import { ChatOverlay } from "../ChatOverlay";
 import type { ShellMessage } from "../shell-state";
-import type { ConversationNav, ShellController } from "../useShellController";
+import type { ShellController } from "../useShellController";
+import type { ConversationNav } from "../conversation-nav";
 
 declare global {
   interface Window {

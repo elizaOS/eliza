@@ -17,11 +17,11 @@
  *     events before the runner re-evaluates them.
  */
 
+import type {
+  LifeOpsBusFamily,
+  LifeOpsTelemetryFamily,
+} from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsBusFamily,
-  type LifeOpsTelemetryFamily,
-} from "@elizaos/core/contracts/personal-assistant";
 import type {
   ActivitySignalBusView,
   ScheduledTaskSubject,

@@ -21,10 +21,17 @@
  * declared locally to match the JSON shape PA emits.
  */
 
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import { ENTITY_KIND_FILTERS, ENTITY_KIND_LABELS } from "../../types.ts";
 import {
   EMPTY_RELATIONSHIPS,

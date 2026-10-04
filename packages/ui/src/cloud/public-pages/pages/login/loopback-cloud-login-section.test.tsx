@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   assign: vi.fn(),
   clearBinding: vi.fn(),
 }));
-vi.mock("../../../../api", () => ({
+vi.mock("../../../../api/client", () => ({
   client: { cloudLoginDirect: mocks.start },
 }));
 vi.mock("../../../../api/client-cloud", () => ({

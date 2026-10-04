@@ -764,6 +764,10 @@ const STUB_RULES: StubRule[] = [
       },
     },
   },
+  {
+    match: path_("/api/v1/billing/hold"),
+    body: { success: true, data: { status: "clear" } },
+  },
   { match: path_("/api/invoices/list"), body: { invoices: [] } },
   {
     // InvoiceDetailPage: GET /api/invoices/:id → camelCase InvoiceApiPayload
@@ -793,37 +797,37 @@ const STUB_RULES: StubRule[] = [
     },
   },
   { match: path_("/api/crypto/status"), body: { enabled: false } },
-  // monetization/ — earnings balance/redemptions/status + affiliates.
+  // monetization/ — read-only earnings statement + affiliate payouts.
   {
-    match: path_("/api/v1/redemptions/balance"),
+    match: path_("/api/v1/earnings/statement"),
     body: {
       success: true,
-      balance: {
-        totalEarned: 12.5,
-        availableBalance: 10,
-        pendingBalance: 2.5,
-        totalRedeemed: 0,
-        totalPending: 0,
-        totalConvertedToCredits: 0,
-      },
-      bySource: [{ source: "miniapp", totalEarned: 12.5, count: 3 }],
-      recentEarnings: [
-        {
-          id: "earning-smoke-1",
-          source: "miniapp",
-          sourceId: SMOKE_APP_UUID,
-          amount: 4.25,
-          description: "Smoke App purchase share",
-          createdAt: NOW_ISO,
+      statement: {
+        status: "frozen",
+        payoutsRetired: true,
+        frozen: {
+          frozenAt: NOW_ISO,
+          unpaidBalanceUsd: "12.50",
+          availableBalanceUsd: "10.00",
+          pendingRedemptionUsd: "2.50",
+          totalEarnedUsd: "12.50",
+          totalRedeemedUsd: "0.00",
+          bySource: {
+            apps: "12.50",
+            agents: "0.00",
+            mcps: "0.00",
+            affiliates: "0.00",
+            revenueShares: "0.00",
+          },
+          settledAt: null,
         },
-      ],
-      limits: {
-        minRedemptionUsd: 5,
-        maxSingleRedemptionUsd: 500,
-        userDailyLimitUsd: 1000,
-        userHourlyLimitUsd: 250,
+        affiliatePayableUsd: "3.00",
+        current: {
+          availableBalanceUsd: "10.00",
+          pendingRedemptionUsd: "2.50",
+          totalEarnedUsd: "15.50",
+        },
       },
-      eligibility: { canRedeem: true, dailyLimitRemaining: 1_000 },
     },
   },
   {
@@ -851,10 +855,6 @@ const STUB_RULES: StubRule[] = [
       warnings: [],
       lastChecked: NOW_ISO,
     },
-  },
-  {
-    match: path_("/api/v1/redemptions"),
-    body: { success: true, redemptions: [], paused: false },
   },
   {
     match: path_("/api/v1/affiliates"),

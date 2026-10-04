@@ -7,6 +7,10 @@
  * projects and toggles their normalized status through the ConnectorRegistry.
  */
 
+import {
+  LIFEOPS_GOOGLE_CAPABILITIES,
+  type LifeOpsGoogleCapability,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -18,10 +22,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { extractActionParamsViaLlm } from "@elizaos/plugin-assistant";
-import {
-  LIFEOPS_GOOGLE_CAPABILITIES,
-  type LifeOpsGoogleCapability,
-} from "../contracts/index.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { getConnectorRegistry } from "../lifeops/connectors/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";

@@ -7,13 +7,13 @@ import { ElizaError } from "@elizaos/core";
 // stranded by the process-wide registry replacement; restore in afterAll.
 const aiActual = require("ai") as Record<string, unknown>;
 
-import { estimateTokens } from "@/lib/pricing";
-import * as languageModelActual from "@/lib/providers/language-model";
-import * as aiBillingActual from "@/lib/services/ai-billing";
-import * as recordsActual from "@/lib/services/ai-billing-records";
+import { estimateTokens } from "@elizaos/cloud-shared/lib/pricing";
+import * as languageModelActual from "@elizaos/cloud-shared/lib/providers/language-model";
+import * as aiBillingActual from "@elizaos/cloud-shared/lib/services/ai-billing";
+import * as recordsActual from "@elizaos/cloud-shared/lib/services/ai-billing-records";
 // The REAL settler — explicitly NOT mocked. This is the component under test.
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import * as loggerActual from "@/lib/utils/logger";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import * as loggerActual from "@elizaos/cloud-shared/lib/utils/logger";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -40,7 +40,7 @@ mock.module("ai", () => ({
   generateText,
 }));
 
-mock.module("@/lib/providers/language-model", () => ({
+mock.module("@elizaos/cloud-shared/lib/providers/language-model", () => ({
   ...languageModelActual,
   getLanguageModel: () => ({}) as never,
 }));
@@ -82,12 +82,12 @@ const recordUsageAnalytics = mock(async () => null);
 const recordLedger = mock(async (_input: Record<string, unknown>) => ({
   id: "ledger-receipt",
 }));
-mock.module("@/lib/services/ai-billing-records", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/ai-billing-records", () => ({
   ...recordsActual,
   aiBillingRecordsService: { record: recordLedger },
 }));
 const ledgerErrors: unknown[] = [];
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
@@ -97,7 +97,7 @@ mock.module("@/lib/utils/logger", () => ({
     },
   },
 }));
-mock.module("@/lib/services/ai-billing", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
   recordUsageAnalytics,
@@ -111,10 +111,19 @@ const { handleStream, handleNonStream } = __messagesStreamingCreditTestHooks;
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
-  mock.module("@/lib/providers/language-model", () => languageModelActual);
-  mock.module("@/lib/services/ai-billing", () => aiBillingActual);
-  mock.module("@/lib/services/ai-billing-records", () => recordsActual);
-  mock.module("@/lib/utils/logger", () => loggerActual);
+  mock.module(
+    "@elizaos/cloud-shared/lib/providers/language-model",
+    () => languageModelActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/ai-billing",
+    () => aiBillingActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/ai-billing-records",
+    () => recordsActual,
+  );
+  mock.module("@elizaos/cloud-shared/lib/utils/logger", () => loggerActual);
 });
 
 /**

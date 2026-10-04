@@ -15,13 +15,15 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 }));
 
 import type {
+  KnowledgeGraphEntity as Entity,
+  KnowledgeGraphRelationship as Relationship,
+} from "@elizaos/contracts";
+import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
-import { type Entity } from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -78,6 +80,7 @@ type FakeStores = {
   };
   relationshipStore: {
     upsert: ReturnType<typeof vi.fn>;
+    assertEdge: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
   };
 };
@@ -96,6 +99,9 @@ function makeStores(): FakeStores {
     },
     relationshipStore: {
       upsert: vi.fn(async (input: Record<string, unknown>) =>
+        makeRelationship(input as Partial<Relationship>),
+      ),
+      assertEdge: vi.fn(async (input: Record<string, unknown>) =>
         makeRelationship(input as Partial<Relationship>),
       ),
       list: vi.fn(async () => [makeRelationship()]),
@@ -300,14 +306,14 @@ describe("KNOWLEDGE_GRAPH action", () => {
     expect(stores.entityStore.upsert).not.toHaveBeenCalled();
   });
 
-  it("set_relationship upserts a typed edge, defaulting from to self", async () => {
+  it("set_relationship asserts a typed edge, defaulting from to self", async () => {
     const result = await call({
       op: "set_relationship",
       toEntityId: "ent_1",
       relationshipType: "manages",
     });
     expect(result?.success).toBe(true);
-    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
+    expect(stores.relationshipStore.assertEdge).toHaveBeenCalledWith(
       expect.objectContaining({
         fromEntityId: "self",
         toEntityId: "ent_1",
@@ -325,7 +331,7 @@ describe("KNOWLEDGE_GRAPH action", () => {
       toEntityId: "ent_1",
       relationshipType: "works_at",
     });
-    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
+    expect(stores.relationshipStore.assertEdge).toHaveBeenCalledWith(
       expect.objectContaining({ fromEntityId: "ent_2", toEntityId: "ent_1" }),
     );
   });
@@ -334,6 +340,7 @@ describe("KNOWLEDGE_GRAPH action", () => {
     const result = await call({ op: "set_relationship", toEntityId: "ent_1" });
     expect(result?.success).toBe(false);
     expect(result?.data).toMatchObject({ error: "MISSING_FIELDS" });
+    expect(stores.relationshipStore.assertEdge).not.toHaveBeenCalled();
     expect(stores.relationshipStore.upsert).not.toHaveBeenCalled();
   });
 

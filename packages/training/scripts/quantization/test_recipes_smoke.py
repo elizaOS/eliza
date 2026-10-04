@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
 _CANONICAL_LLAMA_CPP_SUFFIX = (
     Path("plugins") / "plugin-local-inference" / "native" / "llama.cpp"
@@ -18,7 +15,7 @@ _CANONICAL_LLAMA_CPP_SUFFIX = (
 
 
 def test_polarquant_dry_run_emits_recipe_json(capsys):
-    from polarquant_apply import main
+    from eliza_training.quantization.polarquant_apply import main
 
     rc = main(
         [
@@ -37,7 +34,7 @@ def test_polarquant_dry_run_emits_recipe_json(capsys):
 
 
 def test_polarquant_dry_run_rejects_missing_calibration(tmp_path):
-    from polarquant_apply import main
+    from eliza_training.quantization.polarquant_apply import main
 
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
@@ -55,7 +52,7 @@ def test_polarquant_dry_run_rejects_missing_calibration(tmp_path):
 
 
 def test_fused_turboquant_dry_run_rejects_missing_calibration(tmp_path):
-    from fused_turboquant_apply import main
+    from eliza_training.quantization.fused_turboquant_apply import main
 
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
@@ -80,7 +77,7 @@ def test_qjl_apply_kv_bytes_per_token_analytic_gemma():
     pytest.importorskip("transformers")
     from transformers import AutoConfig
 
-    from qjl_apply import kv_bytes_per_token_analytic
+    from eliza_training.quantization.qjl_apply import kv_bytes_per_token_analytic
 
     try:
         cfg = AutoConfig.from_pretrained("google/gemma-4-E2B", trust_remote_code=True)
@@ -108,7 +105,7 @@ def test_qjl_apply_kv_bytes_per_token_analytic_gemma():
 def test_qjl_analytic_preserves_homogeneous_decoder_geometry():
     from types import SimpleNamespace
 
-    from qjl_apply import kv_bytes_per_token_analytic
+    from eliza_training.quantization.qjl_apply import kv_bytes_per_token_analytic
 
     config = SimpleNamespace(num_hidden_layers=2, head_dim=64,
                              num_key_value_heads=2, num_attention_heads=4)
@@ -123,7 +120,7 @@ def test_qjl_analytic_preserves_homogeneous_decoder_geometry():
 
 
 def test_common_helpers_handle_text_config_passthrough():
-    from _common import full_attention_layer_indices, get_text_config, head_dim_of
+    from eliza_training.quantization._common import full_attention_layer_indices, get_text_config, head_dim_of
 
     class FakeConfig:
         hidden_size = 1024
@@ -137,7 +134,7 @@ def test_common_helpers_handle_text_config_passthrough():
 
 
 def test_common_layer_types_filters_full_attention_layers():
-    from _common import full_attention_layer_indices
+    from eliza_training.quantization._common import full_attention_layer_indices
 
     class HybridConfig:
         num_hidden_layers = 8
@@ -157,7 +154,7 @@ def test_common_layer_types_filters_full_attention_layers():
 
 
 def test_common_load_calibration_prompts_pulls_current_message_content(tmp_path):
-    from _common import load_calibration_prompts
+    from eliza_training.quantization._common import load_calibration_prompts
 
     p = tmp_path / "val.jsonl"
     p.write_text(
@@ -176,7 +173,7 @@ def test_common_load_calibration_prompts_pulls_current_message_content(tmp_path)
 
 
 def test_common_load_calibration_prompts_raises_on_empty(tmp_path):
-    from _common import load_calibration_prompts
+    from eliza_training.quantization._common import load_calibration_prompts
 
     p = tmp_path / "empty.jsonl"
     p.write_text("", encoding="utf-8")
@@ -184,19 +181,6 @@ def test_common_load_calibration_prompts_raises_on_empty(tmp_path):
         load_calibration_prompts(p, n=1)
 
 
-def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
-    """The old single-file publisher is deliberately not a live upload path.
-
-    The current Eliza-1 release flow routes through
-    scripts.publish.orchestrator / scripts.publish.publish_model so bundle
-    gates, manifests, checksums, and Hugging Face evidence stay together.
-    """
-    sys.path.insert(0, str(_HERE.parent))
-    import push_model_to_hf
-
-    assert push_model_to_hf.main() == 2
-    assert not hasattr(push_model_to_hf, "resolve_repo_id")
-    assert not hasattr(push_model_to_hf, "QUANT_BLURBS")
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +266,7 @@ def test_polarquant_centroids_match_c_reference():
     same iteration count; if anyone bumps the Python default the
     reconstruction values diverge silently. Pin both sides here.
     """
-    from polarquant.polar_quant import _compute_lloyd_max_centroids
+    from eliza_training.quantization.polarquant.polar_quant import _compute_lloyd_max_centroids
 
     py = _compute_lloyd_max_centroids(16, n_iter=100).tolist()
     assert len(py) == len(_C_POLAR_Q4_CENTROIDS) == 16
@@ -297,7 +281,7 @@ def test_polarquant_qjl_correction_magnitude_matches_c():
     """The QJL residual correction magnitude and seed value MUST agree
     with the C macros POLAR_QJL_CORRECTION_MAGNITUDE / POLAR_QJL_SEED.
     """
-    from polarquant import polar_quant
+    from eliza_training.quantization.polarquant import polar_quant
 
     assert polar_quant._QJL_CORRECTION_MAGNITUDE == 0.5
     assert polar_quant._QJL_SEED == 42
@@ -322,7 +306,7 @@ def test_polarquant_python_sign_vector_pinned():
 
     import numpy as np
 
-    from polar_xorshift32 import polar_xorshift32_signs
+    from eliza_training.quantization.polar_xorshift32 import polar_xorshift32_signs
 
     QK_POLAR = 128
 
@@ -352,7 +336,7 @@ def test_recipe_sidecar_manifest_fragment_complete():
     layout version, codebook hash, expected per-block tolerance for every
     recipe. Verify the helper produces all four for every method.
     """
-    from _kernel_manifest import (
+    from eliza_training.quantization._kernel_manifest import (
         KERNEL_TARGETS,
         kernel_manifest_fragment,
     )
@@ -391,7 +375,7 @@ def test_kernel_manifest_hashes_verify_real_source_files():
     """The manifest `codebook_hash` pins are sha256 values of real kernel
     source files, not descriptive labels. Drift must be caught before a recipe
     sidecar is published."""
-    from _kernel_manifest import (
+    from eliza_training.quantization._kernel_manifest import (
         KERNEL_CODEBOOK_HASHES,
         PINNED_KERNEL_CODEBOOK_SHA256,
         verify_kernel_codebook_hashes,
@@ -406,7 +390,7 @@ def test_kernel_manifest_hashes_verify_real_source_files():
 def test_kernel_manifest_hash_verification_fails_on_drift(monkeypatch):
     """A changed native centroid/layout source must fail the recipe gate until
     the pin is deliberately updated in the same change."""
-    import _kernel_manifest as km
+    import eliza_training.quantization._kernel_manifest as km
 
     monkeypatch.setitem(km.PINNED_KERNEL_CODEBOOK_SHA256, "polar_q4", "0" * 64)
     with pytest.raises(RuntimeError, match="polar_q4"):
@@ -416,7 +400,7 @@ def test_kernel_manifest_hash_verification_fails_on_drift(monkeypatch):
 def test_llama_cpp_default_resolves_to_plugin_local_inference(monkeypatch):
     """Converter callers with no LLAMA_CPP_DIR must search the canonical fork
     submodule under plugins/plugin-local-inference/native/llama.cpp."""
-    from _common import DEFAULT_LLAMA_CPP_DIR, LLAMA_CPP_RELATIVE_DIR
+    from eliza_training.quantization._common import DEFAULT_LLAMA_CPP_DIR, LLAMA_CPP_RELATIVE_DIR
 
     monkeypatch.delenv("LLAMA_CPP_DIR", raising=False)
     assert LLAMA_CPP_RELATIVE_DIR.as_posix() == (
@@ -430,7 +414,7 @@ def test_llama_cpp_default_resolves_to_plugin_local_inference(monkeypatch):
 def test_kernel_manifest_fragment_rejects_unknown_method():
     """A recipe whose method name isn't pinned to a kernel target MUST
     fail loudly — no silent default."""
-    from _kernel_manifest import kernel_manifest_fragment
+    from eliza_training.quantization._kernel_manifest import kernel_manifest_fragment
 
     with pytest.raises(ValueError, match="unknown method"):
         kernel_manifest_fragment("unknown-recipe")
@@ -662,7 +646,7 @@ def test_qjl_projection_layout_matches_c_ref():
 
     import numpy as np
 
-    from qjl.qjl_quant import build_projection_matrix, quantize_row
+    from eliza_training.quantization.qjl.qjl_quant import build_projection_matrix, quantize_row
 
     class block_qjl1_256(ctypes.Structure):
         _pack_ = 1
@@ -735,7 +719,7 @@ def test_qjl_apply_recipe_projection_shape_is_canonical():
     # Avoid loading qjl_apply (which imports transformers via _common). Use
     # the canonical helper from qjl/qjl_quant.py — it lives in this repo
     # specifically as the dependency-free pin for this layout contract.
-    from qjl.qjl_quant import build_projection_matrix
+    from eliza_training.quantization.qjl.qjl_quant import build_projection_matrix
 
     pi = build_projection_matrix(128, 256, seed=42)
     assert pi.shape == (128, 256), (
@@ -772,7 +756,7 @@ def test_polarquant_full_block_parity_against_c_ref():
     import numpy as np
     import torch
 
-    from polarquant.polar_quant import polar_quantize
+    from eliza_training.quantization.polarquant.polar_quant import polar_quantize
 
     QK_POLAR = 128
 
@@ -863,14 +847,7 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 
 
-_KQUANT_SIBLINGS = (
-    ("gguf-q3_k_m_apply", "Q3_K_M"),
-    ("gguf-q4_k_m_apply", "Q4_K_M"),
-    ("gguf-q5_k_m_apply", "Q5_K_M"),
-    ("gguf-q6_k_apply", "Q6_K"),
-    ("gguf-q8_0_apply", "Q8_0"),
-)
-
+_KQUANT_SIBLINGS = tuple((level, level) for level in ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"))
 
 def _load_quantization_module(module_basename: str):
     import importlib.util
@@ -892,9 +869,9 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     """Every K-quant sibling supports the same --dry-run surface as the
     Q4_K_M baseline. Output is JSON and contains the recipe-level
     metadata."""
-    mod = _load_quantization_module(module_basename)
+    from eliza_training.quantization import gguf_profile as mod
     rc = mod.main(
-        [
+        ["--profile", module_basename,
             "--model",
             "google/gemma-4-E2B",
             "--output",
@@ -912,7 +889,7 @@ def test_kquant_sibling_dry_run_prints_quant_level(
 def test_kquant_sibling_fails_when_artifact_load_smoke_fails(
     module_basename: str, expected_level: str, monkeypatch, tmp_path
 ):
-    mod = _load_quantization_module(module_basename)
+    from eliza_training.quantization import gguf_profile as mod
     fake_llama = tmp_path / "llama.cpp"
     fake_llama.mkdir()
     fake_convert = fake_llama / "convert_hf_to_gguf.py"
@@ -928,17 +905,17 @@ def test_kquant_sibling_fails_when_artifact_load_smoke_fails(
         elif cmd[-1] == expected_level:
             Path(cmd[-2]).write_bytes(b"quantized")
 
-    monkeypatch.setattr(mod, "_find_convert_script", lambda _dir: fake_convert)
-    monkeypatch.setattr(mod, "_find_quantize_binary", lambda _dir: fake_quantize)
-    monkeypatch.setattr(mod, "_run", fake_run)
+    monkeypatch.setattr(mod, "find_llama_convert_script", lambda _dir: fake_convert)
+    monkeypatch.setattr(mod, "find_llama_quantize_binary", lambda _dir: fake_quantize)
+    monkeypatch.setattr(mod, "run_command", lambda command, _logger: fake_run(command))
     monkeypatch.setattr(
         mod,
-        "_smoke_load_gguf",
+        "smoke_load_gguf",
         lambda _gguf, _quantize: {"ok": False, "error": "synthetic load failure"},
     )
 
     rc = mod.main(
-        [
+        ["--profile", module_basename,
             "--model",
             "google/gemma-4-E2B",
             "--output",
@@ -954,7 +931,7 @@ def test_kquant_sibling_fails_when_artifact_load_smoke_fails(
 def test_kquant_sibling_no_smoke_marks_artifact_not_release_eligible(
     module_basename: str, _expected_level: str, monkeypatch, tmp_path
 ):
-    mod = _load_quantization_module(module_basename)
+    from eliza_training.quantization import gguf_profile as mod
     fake_llama = tmp_path / "llama.cpp"
     fake_llama.mkdir()
     fake_convert = fake_llama / "convert_hf_to_gguf.py"
@@ -970,13 +947,13 @@ def test_kquant_sibling_no_smoke_marks_artifact_not_release_eligible(
         else:
             Path(cmd[-2]).write_bytes(b"quantized")
 
-    monkeypatch.setattr(mod, "_find_convert_script", lambda _dir: fake_convert)
-    monkeypatch.setattr(mod, "_find_quantize_binary", lambda _dir: fake_quantize)
-    monkeypatch.setattr(mod, "_run", fake_run)
+    monkeypatch.setattr(mod, "find_llama_convert_script", lambda _dir: fake_convert)
+    monkeypatch.setattr(mod, "find_llama_quantize_binary", lambda _dir: fake_quantize)
+    monkeypatch.setattr(mod, "run_command", lambda command, _logger: fake_run(command))
 
     out_dir = tmp_path / "out"
     rc = mod.main(
-        [
+        ["--profile", module_basename,
             "--model",
             "google/gemma-4-E2B",
             "--output",
@@ -998,10 +975,6 @@ def test_kquant_sibling_no_smoke_marks_artifact_not_release_eligible(
 @pytest.mark.parametrize(
     "module_basename",
     (
-        "gguf-q3_k_m_apply",
-        "gguf-q4_k_m_apply",
-        "gguf-q5_k_m_apply",
-        "gguf-q6_k_apply",
         "gguf_asr_apply",
         "gguf_kokoro_apply",
     ),
@@ -1039,7 +1012,7 @@ def test_eliza_typed_gguf_resolver_uses_runtime_llama_cpp_submodule():
 def test_q4_k_m_apply_records_passing_recipe_test(monkeypatch, tmp_path):
     """A passing Q4_K_M load-smoke is recorded as the publish-consumable recipe
     gate result."""
-    mod = _load_quantization_module("gguf-q4_k_m_apply")
+    from eliza_training.quantization import gguf_profile as mod
     fake_quantize = tmp_path / "llama-quantize"
     fake_quantize.write_text("#!/bin/sh\n", encoding="utf-8")
 
@@ -1051,13 +1024,13 @@ def test_q4_k_m_apply_records_passing_recipe_test(monkeypatch, tmp_path):
             Path(cmd[-2]).write_bytes(b"quant")
 
     monkeypatch.setattr(
-        mod, "_find_convert_script", lambda _path: tmp_path / "convert.py"
+        mod, "find_llama_convert_script", lambda _path: tmp_path / "convert.py"
     )
-    monkeypatch.setattr(mod, "_find_quantize_binary", lambda _path: fake_quantize)
-    monkeypatch.setattr(mod, "_run", fake_run)
+    monkeypatch.setattr(mod, "find_llama_quantize_binary", lambda _path: fake_quantize)
+    monkeypatch.setattr(mod, "run_command", lambda command, _logger: fake_run(command))
     monkeypatch.setattr(
         mod,
-        "_smoke_load_gguf",
+        "smoke_load_gguf",
         lambda gguf, _quantize: {
             "ok": True,
             "output": "The capital of France is Paris.",
@@ -1065,7 +1038,7 @@ def test_q4_k_m_apply_records_passing_recipe_test(monkeypatch, tmp_path):
         },
     )
 
-    rc = mod.main(["--model", "local/final", "--output", str(tmp_path)])
+    rc = mod.main(["--profile", "Q4_K_M", "--model", "local/final", "--output", str(tmp_path)])
 
     assert rc == 0
     sidecar = json.loads((tmp_path / "gguf_q4_k_m.json").read_text(encoding="utf-8"))
