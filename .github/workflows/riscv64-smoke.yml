@@ -3,6 +3,12 @@ name: riscv64 cross-build smoke
 # Explicit native cross-build and QEMU qualification; no physical hardware claim.
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: RISC-V artifacts to qualify
+        type: choice
+        options: [all, bun, native]
+        default: all
 
 defaults:
   run:
@@ -17,6 +23,7 @@ permissions:
 
 jobs:
   smoke:
+    if: ${{ inputs.target != 'bun' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -167,3 +174,31 @@ jobs:
           else
             echo "no report produced"
           fi
+
+  bun:
+    if: ${{ inputs.target != 'native' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+      - name: Validate pinned patch application
+        run: node toolchains/bun-riscv64/validate.ts
+      - name: Cross-build Bun and run QEMU smoke checks
+        run: toolchains/bun-riscv64/run-build.sh --jobs 2
+      - name: Upload runtime and build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-riscv64
+          path: |
+            packages/os/toolchains/bun-riscv64/dist/*.zip
+            packages/os/toolchains/bun-riscv64/dist/*.sha256
+            packages/os/toolchains/bun-riscv64/dist/build-log.txt
+            test-results/os-riscv-patches/validation.log
+          if-no-files-found: warn
+          retention-days: 7
