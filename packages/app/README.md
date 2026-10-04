@@ -43,8 +43,9 @@ These select a product, not a merchant credential or paid entitlement.
 
 `scripts/mobile/android/hosted-fixture` supplies display/network admission and
 bounded diagnostics for fresh GitHub-hosted AOSP fixtures. Mutating setup requires
-`emulator-5554`, AVD `test`, a single user 0 and an unsecured observed keyguard;
-network setup also rejects preinstalled third-party apps. Boot-device admission
+`emulator-5554`, AVD `test` and a single user 0. Display setup additionally
+requires an unsecured observed keyguard; network setup rejects preinstalled
+third-party apps. Boot-device admission
 is specific to the captured API 35 x86_64 topology. Hosts inject ADB execution and
 retain orchestration/output ownership. Never use these helpers to provision a
 physical phone or relax their admission checks to fit an arbitrary emulator.
