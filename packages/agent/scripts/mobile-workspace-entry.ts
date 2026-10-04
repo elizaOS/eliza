@@ -13,7 +13,7 @@ export function canUseWorkspaceEntry(
       readFileSync(path.join(packageDir, "package.json"), "utf8"),
     );
     const subpath = specifier.split("/").slice(2).join("/");
-    let exported: ReturnType<typeof resolveExports>;
+    let exported: ReturnType<typeof resolveExports> = [];
     try {
       exported = resolveExports(manifest, specifier, { browser: true });
     } catch (error) {
