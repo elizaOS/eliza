@@ -3375,6 +3375,13 @@
       "when": 1796083200129,
       "tag": "0511_organization_plan_change_quotes",
       "breakpoints": true
+    },
+    {
+      "idx": 482,
+      "version": "7",
+      "when": 1796083200130,
+      "tag": "0512_organization_upgrade_dispatch",
+      "breakpoints": true
     }
   ]
 }
