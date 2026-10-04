@@ -86,7 +86,11 @@ describe("durable SQLite agent adapter", () => {
           ...base,
           id: unrelatedId,
           content: { text: "keep this chunk" },
-          metadata: { type: MemoryType.FRAGMENT, documentId: id(), position: 0 },
+          metadata: {
+            type: MemoryType.FRAGMENT,
+            documentId: id(),
+            position: 0,
+          },
         },
         tableName: "document_fragments",
       },
