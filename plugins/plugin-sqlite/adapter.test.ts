@@ -1290,6 +1290,38 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
   );
 });
 
+it("keeps another agent's worlds out of listing, updates, and metadata swaps", async () => {
+  const adapter = await open();
+  const ownedId = id();
+  const foreignId = id();
+  const otherAgentId = id();
+  await adapter.createWorlds([{ id: ownedId, agentId, name: "home" }]);
+  const storage = await adapter.getConnection();
+  await storage.set("worlds", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "secret",
+  });
+
+  expect((await adapter.getAllWorlds()).map((world) => world.id)).toEqual([
+    ownedId,
+  ]);
+  await adapter.updateWorlds([{ id: foreignId, agentId, name: "rewritten" }]);
+  await adapter.upsertWorlds([{ id: foreignId, agentId, name: "upserted" }]);
+  expect(
+    await adapter.compareAndSwapWorldMetadata({
+      worldId: foreignId,
+      expectedMetadata: {},
+      replacementMetadata: { note: "nope" },
+    }),
+  ).toEqual({ status: "not_found" });
+  expect(await storage.get("worlds", foreignId)).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "secret",
+  });
+});
+
 it("keeps another agent's tasks out of name lookup, id lookup, and writes", async () => {
   const adapter = await open();
   const otherAgentId = id();
