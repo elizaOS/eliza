@@ -182,7 +182,9 @@ provider policy, command and launch-receipt callback. It owns one child and reap
 it if receipt persistence fails; signal listeners are removed on child closure.
 It does not restart processes or replace the account supervisor. Parent
 directories must be private and host-controlled, and receipt callbacks must
-settle. The native-host end-to-end suite covers real disk and child-process
+settle. Hosts with an existing token-format contract may supply a synchronous
+`createToken` factory; it runs only for a newly created token file. Existing
+tokens are preserved and validated regardless of the current factory. The native-host end-to-end suite covers real disk and child-process
 isolation, failure cleanup and cancellation during launch.
 
 `native-host/task-evidence-store.mjs` stores host-validated append-only evidence
