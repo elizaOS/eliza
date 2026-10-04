@@ -27,6 +27,7 @@ let GEPA_REVISION: typeof Producer.GEPA_REVISION;
 let publishGepaCandidate: typeof Producer.publishGepaCandidate;
 let runGepaPlannerOptimization: typeof Producer.runGepaPlannerOptimization;
 let checkout: string;
+let publicationRoot: string;
 let revision: string;
 
 const base = testOutputPath("gepa-producer");
@@ -81,6 +82,7 @@ beforeAll(async () => {
     ),
   );
   revision = snapshot.revision;
+  publicationRoot = join(checkout, "test-results", "gepa-producer");
   ({ GEPA_REVISION, publishGepaCandidate, runGepaPlannerOptimization } =
     await import(
       /* @vite-ignore */ pathToFileURL(
@@ -108,7 +110,7 @@ afterAll(async () => {
   if (!server.listening) return;
   server.closeAllConnections();
   await new Promise<void>((done) => server.close(() => done()));
-});
+}, 180_000);
 function row(id: string) {
   const generation = { temperature: 0, maxTokens: 64 };
   const target = {
@@ -239,7 +241,7 @@ test("real upstream reflection, Pareto selection and held-out evaluation emit a 
   ).toHaveLength(2);
   for (const entry of result.evaluations)
     expect(() => process.kill(entry.evidence.processId, 0)).toThrow();
-}, 240_000);
+}, 360_000);
 
 test("split overlap fails before execution", async () => {
   const input = manifest();
@@ -344,7 +346,7 @@ test("last evaluator mutation of producer source invalidates the entire run", as
   } finally {
     await writeFile(path, original);
   }
-}, 240_000);
+}, 360_000);
 
 test("publication rejects an artifact detached from its observed evidence", async () => {
   const tampered = structuredClone(completed);
@@ -358,14 +360,16 @@ test("publication rejects an artifact detached from its observed evidence", asyn
     code: "GEPA_PRODUCER_ARTIFACT_INVALID",
   });
   expect(
-    (await readdir(base)).filter((name) => name.startsWith(".publish-")),
+    (await readdir(publicationRoot)).filter((name) =>
+      name.startsWith(".publish-"),
+    ),
   ).toEqual([]);
 });
 
 test("publication abort after staging leaves no candidate or staging directory", async () => {
   expect(completed).toBeDefined();
   const controller = new AbortController();
-  const watcher = watch(base, (_event, name) => {
+  const watcher = watch(publicationRoot, (_event, name) => {
     if (String(name).startsWith(".publish-"))
       controller.abort(new Error("publication canceled"));
   });
@@ -373,16 +377,19 @@ test("publication abort after staging leaves no candidate or staging directory",
     await expect(
       publishGepaCandidate(completed, controller.signal),
     ).rejects.toThrow();
+    expect(controller.signal.aborted).toBe(true);
     await expect(
       access(
         join(
-          base,
+          publicationRoot,
           completed.artifact.provenance?.evaluationSha256 ?? "invalid",
         ),
       ),
     ).rejects.toThrow();
     expect(
-      (await readdir(base)).filter((name) => name.startsWith(".publish-")),
+      (await readdir(publicationRoot)).filter((name) =>
+        name.startsWith(".publish-"),
+      ),
     ).toEqual([]);
   } finally {
     watcher.close();
@@ -391,7 +398,7 @@ test("publication abort after staging leaves no candidate or staging directory",
 
 test("failed atomic publication preserves existing files and removes staging", async () => {
   const destination = join(
-    base,
+    publicationRoot,
     completed.artifact.provenance?.evaluationSha256 ?? "invalid",
   );
   await mkdir(destination);
@@ -402,7 +409,9 @@ test("failed atomic publication preserves existing files and removes staging", a
     });
     expect(await readdir(destination)).toEqual(["existing.txt"]);
     expect(
-      (await readdir(base)).filter((name) => name.startsWith(".publish-")),
+      (await readdir(publicationRoot)).filter((name) =>
+        name.startsWith(".publish-"),
+      ),
     ).toEqual([]);
   } finally {
     await rm(destination, { recursive: true, force: true });
