@@ -1,16 +1,28 @@
-import { LifeOpsRepository } from "@elizaos/plugin-personal-assistant/lifeops/index";
 import { afterEach, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../src/mock-runtime.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 
-afterEach(() => vi.restoreAllMocks());
+const repository = vi.hoisted(() => ({
+  bootstrap: vi.fn().mockResolvedValue(undefined),
+  reminder: vi.fn().mockResolvedValue(undefined),
+  task: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@elizaos/plugin-personal-assistant/lifeops/index", () => ({
+  LifeOpsRepository: class {
+    static bootstrapSchema = repository.bootstrap;
+    createReminderAttempt = repository.reminder;
+    upsertScheduledTask = repository.task;
+  },
+}));
+afterEach(() => vi.clearAllMocks());
 
 it("persists canonical reminder channels while preserving the authored transport", async () => {
-  vi.spyOn(LifeOpsRepository, "bootstrapSchema").mockResolvedValue();
-  const write = vi
-    .spyOn(LifeOpsRepository.prototype, "createReminderAttempt")
-    .mockResolvedValue();
-  const runtime = createMockRuntime();
+  const write = repository.reminder;
+  const runtime = createMockRuntime({
+    createMemory: vi
+      .fn()
+      .mockResolvedValue("00000000-0000-0000-0000-000000000001"),
+  });
   for (const channel of [
     "desktop",
     "mobile",
@@ -42,11 +54,12 @@ it("persists canonical reminder channels while preserving the authored transport
 });
 
 it("uses a supported scheduler source and retains scenario provenance", async () => {
-  vi.spyOn(LifeOpsRepository, "bootstrapSchema").mockResolvedValue();
-  const write = vi
-    .spyOn(LifeOpsRepository.prototype, "upsertScheduledTask")
-    .mockResolvedValue();
-  const runtime = createMockRuntime();
+  const write = repository.task;
+  const runtime = createMockRuntime({
+    createMemory: vi
+      .fn()
+      .mockResolvedValue("00000000-0000-0000-0000-000000000001"),
+  });
   expect(
     await applyScenarioSeedStep(
       {
