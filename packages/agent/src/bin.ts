@@ -10,11 +10,8 @@
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";
-import {
-  captureHostExecutionBaseline,
-  isAndroidMobile,
-  readAliasedEnv,
-} from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/host";
+import { isAndroidMobile, readAliasedEnv } from "@elizaos/host/protocol";
 
 import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 import { captureProtectedProfile } from "./security/protected-profile-state.ts";

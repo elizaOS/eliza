@@ -24,7 +24,6 @@
       "@elizaos/app": ["./packages/app/src/index.ts"],
       "@elizaos/app/*": ["./packages/app/src/*"],
       "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
-      "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/plugin-computeruse/mobile/*": [
         "./plugins/plugin-computeruse/src/mobile/*"
       ],

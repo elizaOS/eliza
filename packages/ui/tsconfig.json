@@ -12,7 +12,6 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
@@ -26,7 +25,8 @@
         "../cloud/sdk/src/cloud-setup-session/*"
       ],
       "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
-      "@elizaos/ui/*": ["./src/*"]
+      "@elizaos/ui/*": ["./src/*"],
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],

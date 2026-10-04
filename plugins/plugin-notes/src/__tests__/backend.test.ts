@@ -20,7 +20,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   interact,

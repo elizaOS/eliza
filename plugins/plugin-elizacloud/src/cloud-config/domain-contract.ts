@@ -5,7 +5,7 @@
  * proxy them without treating them as canonical product origins.
  */
 
-import { trimEndCharacters } from "@elizaos/core/utils/string-boundaries";
+import { trimEndCharacters } from "@elizaos/core/protocol";
 
 export type ElizaCloudEnvironment = "production" | "staging";
 

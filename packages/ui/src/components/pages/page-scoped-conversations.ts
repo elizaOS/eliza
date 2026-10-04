@@ -7,17 +7,14 @@
  * scope's brief, copy, or live-state shape changes meaningfully.
  */
 
-import type { PageScope } from "@elizaos/core/contracts/page-scope";
+import type { PageScope } from "@elizaos/contracts";
 import { client } from "../../api";
 import type {
   Conversation,
   ConversationMetadata,
 } from "../../api/client-types-chat";
 
-export {
-  PAGE_SCOPES,
-  type PageScope,
-} from "@elizaos/core/contracts/page-scope";
+export { PAGE_SCOPES, type PageScope } from "@elizaos/contracts";
 
 const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   PageScope,

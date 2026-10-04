@@ -22,7 +22,7 @@
  *     Diagnostics: `{ count, platforms: { ios, android } }`.
  */
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 import {
   NOTIFICATION_PUSH_SERVICE_TYPE,
   NotificationPushService,

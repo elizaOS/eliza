@@ -30,6 +30,8 @@
     "@elizaos/cloud-routing",
     "@elizaos/cloud-sdk",
     "@elizaos/core",
+    "@elizaos/contracts",
+    "@elizaos/host",
     "@elizaos/auth",
     "@elizaos/electrobun",
     "@elizaos/macosreminders",

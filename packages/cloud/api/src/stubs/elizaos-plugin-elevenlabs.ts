@@ -1,5 +1,5 @@
 /** Speech models execute on the agent sidecar; the Worker cannot register them. */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 
 const elevenLabsPlugin = {
   name: "elevenlabs",

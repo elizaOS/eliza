@@ -11,6 +11,11 @@
  * than aborting the whole context.
  */
 
+import type {
+  LifeOpsGmailTriageSummary,
+  LifeOpsGoalDefinition,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   evaluateOwnerExclusiveDisclosure,
@@ -24,11 +29,6 @@ import {
   type State,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import type {
-  LifeOpsGmailTriageSummary,
-  LifeOpsGoalDefinition,
-  LifeOpsNextCalendarEventContext,
-} from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";

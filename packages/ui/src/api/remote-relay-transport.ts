@@ -4,16 +4,16 @@
  * receipt the client only polls status and never replays the effect.
  */
 
-import {
-  parseRemoteAgentRequest,
-  type RemoteAgentRequest,
-} from "@elizaos/core/contracts/remote-agent-request";
 import type {
   RemoteCommandAction,
   RemoteJsonValue,
   RemoteTargetPublicIdentity,
   SignedRemoteCommand,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import {
+  parseRemoteAgentRequest,
+  type RemoteAgentRequest,
+} from "@elizaos/contracts";
 import {
   acknowledgeRemoteCommandEnqueue,
   createRemoteCommand,
@@ -388,7 +388,7 @@ export async function sendRemoteBrowserCommand(
   signal?: AbortSignal,
 ): Promise<unknown> {
   const { parseRemoteBrowserCommandPayload } = await import(
-    "@elizaos/core/contracts/remote-control"
+    "@elizaos/contracts"
   );
   const parsed = parseRemoteBrowserCommandPayload(payload);
   const result = await sendCommand(

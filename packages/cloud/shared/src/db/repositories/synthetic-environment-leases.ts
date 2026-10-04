@@ -4,7 +4,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   type AcquireSyntheticEnvironmentLeaseInput,
   type GuardedSyntheticEnvironmentWriteResult,
@@ -17,7 +16,8 @@ import {
   type SyntheticEnvironmentLeaseReceipt,
   type SyntheticEnvironmentLeaseSnapshot,
   type SyntheticEnvironmentLeaseStore,
-} from "@elizaos/core/contracts/synthetic-environment-lease";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import { type DbTransaction } from "../client";
 import { dbWrite } from "../helpers";

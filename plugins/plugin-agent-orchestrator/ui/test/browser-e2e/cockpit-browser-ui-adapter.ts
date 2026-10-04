@@ -3,10 +3,7 @@
  * its HTTP client boundary with fetch calls that Playwright can observe.
  */
 
-export {
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "../../../../../packages/core/src/utils/well-formed";
+export { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 export { useAgentElement } from "../../../../../packages/ui/src/agent-surface/useAgentElement";
 export type {
   CodingAgentCreateTaskInput,

@@ -1,13 +1,13 @@
-import { isCloudInferenceSelectedInConfig } from "@elizaos/core/contracts/first-run-options";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
-import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
+import { isCloudInferenceSelectedInConfig } from "@elizaos/host/protocol";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/host/protocol";
+import { migrateLegacyRuntimeConfig } from "@elizaos/host/protocol";
 import { nativeBillingSelection } from "./native-billing-selection";
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import { resolveCloudBillingUrl } from "../cloud/base-url.js";
 import { type AgentRuntime } from "@elizaos/core";
-import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
-import { type RouteRequestMeta } from "@elizaos/core/api/route-helpers";
+import { type RouteHelpers } from "@elizaos/host/protocol";
+import { type RouteRequestMeta } from "@elizaos/host/protocol";
 import { type Service } from "@elizaos/core";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";

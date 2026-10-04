@@ -6,7 +6,7 @@
  * fields). No React — the editor imports these to normalize input and to seed
  * itself from `client.generateCustomAction`.
  */
-import type { CustomActionHandler } from "@elizaos/core/contracts/config";
+import type { CustomActionHandler } from "@elizaos/contracts";
 /* ── Types ─────────────────────────────────────────────────────────── */
 export type HandlerType = "http" | "shell" | "code";
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";

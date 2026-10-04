@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { wordErrorRate } from "@elizaos/core/voice-wer";
+import { wordErrorRate } from "@elizaos/plugin-local-inference/protocol";
 /**
  * Noise-rejection regression suite (#10726 scope item: "noise-rejection /
  * WER-vs-SNR curve with a real gate"). Real weights end to end: the clean

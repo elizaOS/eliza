@@ -96,7 +96,7 @@ function parseDisplayDate(
 /**
  * Format a byte count in human-readable units.
  */
-export { formatByteSize } from "@elizaos/core/utils/format-bytes";
+export { formatByteSize } from "@elizaos/core/protocol";
 
 type UsdFormatOptions = {
   /**

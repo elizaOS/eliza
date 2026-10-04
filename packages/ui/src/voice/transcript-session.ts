@@ -15,7 +15,7 @@
  * utterance has no audio (browser/talkmode), it falls back to a wall-clock
  * span and segment-level highlight. Pure (the caller injects "now").
  */
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 export interface AddFinalOptions {
   speakerLabel?: string;
   /** Per-word timings relative to THIS utterance's start (ms). */

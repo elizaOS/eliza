@@ -8,7 +8,7 @@
 import {
   type DiscordDmPolicyMetadata,
   isDiscordDmSenderAllowed,
-} from "@elizaos/core/discord-dm-policy";
+} from "@elizaos/core/protocol";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 export type DiscordConnectionDmMetadata = DiscordDmPolicyMetadata;

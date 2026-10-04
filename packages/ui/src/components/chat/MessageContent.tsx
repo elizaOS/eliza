@@ -14,9 +14,9 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
-import { isRetryableChatFailureKind } from "@elizaos/core/contracts/chat";
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core/messaging/interactions/parse";
+import { isRetryableChatFailureKind } from "@elizaos/contracts";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core/protocol";
+import type { UiSpec } from "@elizaos/host/protocol";
 import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,

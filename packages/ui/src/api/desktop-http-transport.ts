@@ -4,10 +4,7 @@
  * falling back to fetch otherwise.
  */
 
-import {
-  isLoopbackBindHost,
-  isWildcardBindHost,
-} from "@elizaos/core/runtime-env";
+import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/core/protocol";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,

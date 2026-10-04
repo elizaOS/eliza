@@ -12,7 +12,10 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { computeErle, computeFarActiveErle } from "@elizaos/core/voice/aec";
+import {
+  computeErle,
+  computeFarActiveErle,
+} from "@elizaos/plugin-local-inference/protocol";
 import {
   AGENT_VOICE_TIMBRE,
   makeSpeechWithSilenceFixture,

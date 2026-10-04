@@ -30,13 +30,15 @@
 		"@elizaos/agent": "workspace:*",
 		"@elizaos/app": "workspace:*",
 		"@elizaos/core": "workspace:*",
+		"@elizaos/host": "workspace:*",
 		"@elizaos/plugin-browser": "workspace:*",
-		"@elizaos/plugin-native-inference": "workspace:*",
+		"@elizaos/plugin-elizacloud": "workspace:*",
 		"@elizaos/plugin-local-inference": "workspace:*",
+		"@elizaos/plugin-native-inference": "workspace:*",
 		"@napi-rs/keyring": "^1.1.6",
 		"bonjour-service": "1.4.2",
 		"electrobun": "^1.18.1",
-		"@elizaos/plugin-elizacloud": "workspace:*"
+		"@elizaos/contracts": "workspace:*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",

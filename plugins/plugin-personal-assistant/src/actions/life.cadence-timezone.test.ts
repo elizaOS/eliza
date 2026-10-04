@@ -3,6 +3,12 @@
  * deletion reads clock tokens from that summary, so a host-local clock can
  * delete the other reminder.
  */
+
+import type {
+  LifeOpsCadence,
+  LifeOpsDefinitionRecord,
+  LifeOpsTaskDefinition,
+} from "@elizaos/contracts";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -11,11 +17,6 @@ import type {
 } from "@elizaos/core";
 import * as assistant from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  LifeOpsCadence,
-  LifeOpsDefinitionRecord,
-  LifeOpsTaskDefinition,
-} from "../contracts/index.js";
 import { runLifeOperationHandler } from "./life.js";
 
 const OWNER_ZONE = "America/Los_Angeles";

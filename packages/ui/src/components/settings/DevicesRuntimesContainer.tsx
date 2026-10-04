@@ -1,7 +1,7 @@
 /** Live state and secure enrollment flows for Devices & Runtimes settings. */
 
 import { Capacitor } from "@capacitor/core";
-import type { RemoteControllerPublicIdentity } from "@elizaos/core/contracts/remote-control";
+import type { RemoteControllerPublicIdentity } from "@elizaos/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RemoteCloudRequestError,

@@ -24,12 +24,12 @@ import {
 } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { ElizaError } from "@elizaos/core";
 import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletEntry,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";

@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import {
   AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_COPY_MARKER,
   AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_DIRECTORY,

@@ -15,7 +15,7 @@
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import { isAllowedDevConsoleLogPath } from "./dev-console-log";
 export const ELIZA_DEV_STACK_SCHEMA = "elizaos.dev.stack/v1" as const;
 export type DevStackPayload = {

@@ -3,7 +3,7 @@
  * session/refresh endpoints the Steward auth provider uses.
  */
 
-import { clearElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { clearElizaApiToken } from "@elizaos/host/protocol";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,

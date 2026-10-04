@@ -17,8 +17,10 @@
  * from the runtime-agnostic `@elizaos/ui/view-hero-art` barrel (browser + server).
  */
 
-import { trimBoundaryCharacters } from "@elizaos/core/utils/string-boundaries";
-import { hashString } from "@elizaos/core/utils/string-hash";
+import {
+  hashArtworkSeed as hashString,
+  trimBoundaryCharacters,
+} from "@elizaos/core/protocol";
 
 const W = 1024;
 const CX = W / 2;

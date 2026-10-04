@@ -7,15 +7,13 @@
  * cannot drift; this module only shapes those presets into ResolvedContentPacks
  * that reference the existing /vrms assets by avatarIndex.
  */
-import {
-  getDefaultStylePreset,
-  getStylePresets,
-} from "@elizaos/core/character-presets";
+
 import type {
   ContentPackManifest,
   ResolvedContentPack,
-} from "@elizaos/core/contracts/content-pack";
-import type { StylePreset } from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/contracts";
+import type { StylePreset } from "@elizaos/host/protocol";
+import { getDefaultStylePreset, getStylePresets } from "@elizaos/host/protocol";
 
 const PACK_VERSION = "1.0.0";
 function presetToResolvedPack(preset: StylePreset): ResolvedContentPack {

@@ -7,7 +7,7 @@ import { Capacitor } from "@capacitor/core";
 import type {
   AgentUpdateAuthority,
   AgentUpdateStatus,
-} from "@elizaos/core/contracts/update-status";
+} from "@elizaos/contracts";
 import { type BuildVariant, getBuildVariant } from "../../build-variant";
 import { isElizaOS } from "../../platform";
 export type AppUpdatePlatform = "desktop" | "ios" | "android" | "web";

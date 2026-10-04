@@ -2,7 +2,7 @@ import {
   createInteractiveTask,
   type TaskActionProposal,
   transitionInteractiveTask,
-} from "@elizaos/core/messaging/interactive-task";
+} from "@elizaos/core/protocol";
 import { expect, it } from "vitest";
 import { NativeTaskActuator } from "./task-actuator.js";
 

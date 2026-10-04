@@ -23,10 +23,7 @@ import {
   logger,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import {
-  type HttpPlugin as Plugin,
-  type Route,
-} from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin, Route } from "@elizaos/host/protocol";
 import { githubAction } from "./actions/github.js";
 import { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 import { handleGitHubRoutes } from "./routes/github-routes.js";

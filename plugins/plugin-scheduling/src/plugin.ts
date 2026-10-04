@@ -13,7 +13,7 @@ import {
   logger,
   resolveSetting,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
 import {
   ALPHA_ROUTINES_PACK_ID,

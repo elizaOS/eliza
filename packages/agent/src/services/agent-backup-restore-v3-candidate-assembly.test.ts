@@ -17,7 +17,7 @@ import {
   type AgentBackupRestoreV3CandidateReceipt,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assembleAgentBackupRestoreV3Candidate } from "./agent-backup-restore-v3-candidate-assembly";
 import { materializeAgentBackupRestoreV3CandidateCharacter } from "./agent-backup-restore-v3-candidate-character";

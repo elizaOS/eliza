@@ -15,22 +15,24 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import {
   channelPluginMap,
+  isGoogleChatConfigured,
+  providerPluginMap,
+  shortIdPluginMap,
+} from "@elizaos/core";
+import {
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
-  isGoogleChatConfigured,
   isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
-  providerPluginMap,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
-  shortIdPluginMap,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import type { ElizaConfig } from "../config/config.ts";
 import {

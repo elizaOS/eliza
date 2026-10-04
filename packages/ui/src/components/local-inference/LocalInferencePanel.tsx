@@ -5,7 +5,7 @@
  * and falls back to authenticated API snapshots when streaming is unavailable.
  */
 
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import type { VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";

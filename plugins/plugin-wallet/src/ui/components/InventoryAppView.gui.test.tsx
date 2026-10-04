@@ -16,7 +16,7 @@ import type {
   WalletMarketOverviewResponse,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import {
   cleanup,
   fireEvent,

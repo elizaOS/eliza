@@ -13,7 +13,7 @@
 import {
   type TranscriptSegment,
   transcriptPlainText,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import {
   Check,
   Copy,

@@ -14,7 +14,7 @@ import {
   isElizaSettingsDebugEnabled,
   resolveApiSecurityConfig,
   resolveApiToken,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import {
   type DevSettingsRow,

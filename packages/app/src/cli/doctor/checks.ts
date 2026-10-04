@@ -26,7 +26,7 @@ import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
   resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import JSON5 from "json5";
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";

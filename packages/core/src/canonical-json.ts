@@ -367,14 +367,12 @@ export function canonicalJsonString(
  *
  * `JSON.stringify(undefined)` is `undefined`, not `"null"`, and callers such as
  * the backup differ rely on that to tell an absent config value apart from a
- * `null` one (same for a bare function or symbol at the root). Its declared return type is `string` for the same reason
- * `JSON.stringify`'s most-used overload is: every call site here passes a
- * defined value, and widening it would ripple through unrelated signatures.
+ * `null` one (same for a bare function or symbol at the root).
  */
 export function stableJsonString(
 	value: unknown,
 	options: CanonicalJsonOptions,
-): string {
-	if (isJsonInvisible(value)) return undefined as unknown as string;
+): string | undefined {
+	if (isJsonInvisible(value)) return undefined;
 	return canonicalJsonString(value, options);
 }

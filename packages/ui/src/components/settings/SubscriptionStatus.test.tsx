@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { resolveSurfaceManifest } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,

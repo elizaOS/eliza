@@ -24,7 +24,7 @@ import {
   type State,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
-import { resolveRuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
+import { resolveRuntimeExecutionMode } from "@elizaos/host/protocol";
 import {
   consumeDestructiveChallenge,
   issueDestructiveChallenge,

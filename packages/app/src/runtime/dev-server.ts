@@ -43,19 +43,18 @@ function elapsedSinceModuleBodyStart(): number {
   return Date.now() - MODULE_BODY_START;
 }
 
-import { type AgentRuntime, logger } from "@elizaos/core";
+import { type AgentRuntime, getLogPrefix, logger } from "@elizaos/core";
 import {
+  formatError,
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
-} from "@elizaos/core/error-classification";
-import { setRestartHandler } from "@elizaos/core/restart";
+} from "@elizaos/core/protocol";
 import {
   resolveApiToken,
   resolveDesktopApiPort,
+  setRestartHandler,
   syncResolvedApiPort,
-} from "@elizaos/core/runtime-env";
-import { formatError } from "@elizaos/core/utils/format-error";
-import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
+} from "@elizaos/host/protocol";
 import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
 import { startApiServer } from "../api/server";
 import { colorizeDevSettingsStartupBanner } from "../dev-settings-banner-style.js";

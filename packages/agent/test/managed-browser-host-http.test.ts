@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { registerHttpPluginRoutes } from "@elizaos/core";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import type { BrowserService } from "@elizaos/plugin-browser";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";

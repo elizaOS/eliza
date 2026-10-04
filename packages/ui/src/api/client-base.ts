@@ -5,19 +5,19 @@
  * without circular dependency issues.
  */
 
-import { parseChatTerminalFailure } from "@elizaos/core/contracts/chat";
-import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/core/events";
-import { isInferenceTraceId } from "@elizaos/core/inference-trace";
+import { parseChatTerminalFailure } from "@elizaos/contracts";
 import {
   extractAssistantReplyText,
+  isInferenceTraceId,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
-} from "@elizaos/core/utils/assistant-text";
+} from "@elizaos/core/protocol";
 import {
   clearElizaApiBase,
   getElizaApiBase,
   getElizaApiToken,
   setElizaApiBase,
-} from "@elizaos/core/utils/eliza-globals";
+} from "@elizaos/host/protocol";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,

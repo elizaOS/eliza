@@ -4,7 +4,7 @@
  * `resolveLifeOpsDayBoundary` over health and activity signals.
  */
 
-import { roundConfidence } from "@elizaos/core/lifeops-normalize/time-util";
+import { roundConfidence } from "@elizaos/contracts";
 import {
   LIFEOPS_HEALTH_SIGNAL_SOURCES,
   type LifeOpsActivitySignal,

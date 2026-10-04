@@ -21,4 +21,4 @@ export {
   SERVER_EOT_SUPPRESS_THRESHOLD,
   type VoiceTurnSignal,
   type VoiceTurnSpeakerAttribution,
-} from "@elizaos/core/voice/respond-gate";
+} from "@elizaos/plugin-local-inference/protocol";

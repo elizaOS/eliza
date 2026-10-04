@@ -6,7 +6,7 @@
  * by TriggersView and its tests so neither duplicates the logic.
  */
 
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { CronExpressionParser } from "cron-parser";
 import type {
   CreateTriggerRequest,

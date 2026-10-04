@@ -3,24 +3,14 @@
  * re-exported shared helpers.
  */
 
-export { stripAssistantStageDirections } from "@elizaos/core/utils/assistant-text";
-export { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character-message-examples";
+export { getLogPrefix } from "@elizaos/core";
 export {
-  clearElizaApiBase,
-  clearElizaApiToken,
-  getElizaApiBase,
-  getElizaApiToken,
-  setElizaApiBase,
-  setElizaApiToken,
-} from "@elizaos/core/utils/eliza-globals";
-export {
+  createSerialise,
   errorMessage,
   isRedirectResponse,
+  isSafeExecutableValue,
   isTimeoutError,
-} from "@elizaos/core/utils/errors";
-export { isSafeExecutableValue } from "@elizaos/core/utils/exec-safety";
-export { getLogPrefix } from "@elizaos/core/utils/log-prefix";
-export {
+  normalizeCharacterMessageExamples,
   type ParseClampedIntegerOptions,
   type ParseClampedNumberOptions,
   type ParsePositiveNumberOptions,
@@ -28,8 +18,16 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
-} from "@elizaos/core/utils/number-parsing";
-export { createSerialise } from "@elizaos/core/utils/serialise";
+  stripAssistantStageDirections,
+} from "@elizaos/core/protocol";
+export {
+  clearElizaApiBase,
+  clearElizaApiToken,
+  getElizaApiBase,
+  getElizaApiToken,
+  setElizaApiBase,
+  setElizaApiToken,
+} from "@elizaos/host/protocol";
 export * from "../lib/floating-layers";
 export { cn } from "../lib/utils";
 export { resolveApiUrl, resolveAppAssetUrl } from "./asset-url.js";

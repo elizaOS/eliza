@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ElizaError } from "@elizaos/core";
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { resolveSurfaceManifest } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,
@@ -144,9 +144,7 @@ describe("host-external importer resolution (factory hostImport)", () => {
     expect(typeof api.fetchWithCsrf).toBe("function");
   });
   it("resolves explicit time-zone helpers without exposing host mutation APIs", async () => {
-    const shared = await resolveHostExternal(
-      "@elizaos/core/lifeops-normalize/time-zone",
-    );
+    const shared = await resolveHostExternal("@elizaos/contracts");
     const normalize = shared.normalizeTimeZone;
     const isValid = shared.isValidTimeZone;
     if (typeof normalize !== "function" || typeof isValid !== "function") {

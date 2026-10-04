@@ -26,7 +26,7 @@
  * stay as direct `setConversationMessages` calls.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AccountConnectRequest,

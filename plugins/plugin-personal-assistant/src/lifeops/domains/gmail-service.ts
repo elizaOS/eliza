@@ -41,7 +41,7 @@ import type {
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   accountIdForGrant,

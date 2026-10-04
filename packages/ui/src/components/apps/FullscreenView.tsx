@@ -6,7 +6,7 @@
  * `EmbeddedAppViewer` when `shouldUseEmbeddedAppViewer` selects it.
  */
 
-import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
+import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

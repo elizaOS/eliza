@@ -1,6 +1,6 @@
+import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
-import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
 import { buildNativeAppleReminderMetadata } from "../apple-reminders.js";
 import { createLifeOpsReminderAttempt } from "../repository.js";
 import { LifeOpsService } from "../service.js";

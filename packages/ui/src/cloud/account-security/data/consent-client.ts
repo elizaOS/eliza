@@ -11,7 +11,7 @@
  * not a consent purpose, and the panel only discloses it.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
 import {

@@ -15,8 +15,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveAliasedEnvValue } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  resolveAliasedEnvValue,
+} from "@elizaos/host/protocol";
 
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://api.eliza.app/api/v1";
 const CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
@@ -55,7 +57,12 @@ function getConfiguredCloudApiKey(): string {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-export type LiveProviderName = "groq" | "openai" | "anthropic" | "openrouter";
+export type LiveProviderName =
+  | "groq"
+  | "openai"
+  | "cerebras"
+  | "anthropic"
+  | "openrouter";
 export type LiveProviderConfig = {
   name: LiveProviderName;
   apiKey: string;
@@ -101,6 +108,17 @@ const PROVIDERS: Array<{
     largeModelEnvVar: "OPENAI_LARGE_MODEL",
     defaultSmallModel: "gpt-5-mini",
     defaultLargeModel: "gpt-5-mini",
+  },
+  {
+    name: "cerebras",
+    plugin: "@elizaos/plugin-openai",
+    keyEnvVars: ["CEREBRAS_API_KEY"],
+    baseUrlEnvVar: "CEREBRAS_BASE_URL",
+    defaultBaseUrl: CEREBRAS_OPENAI_BASE_URL,
+    smallModelEnvVar: "CEREBRAS_SMALL_MODEL",
+    largeModelEnvVar: "CEREBRAS_LARGE_MODEL",
+    defaultSmallModel: DEFAULT_CEREBRAS_TEXT_MODEL,
+    defaultLargeModel: DEFAULT_CEREBRAS_TEXT_MODEL,
   },
   {
     name: "anthropic",
@@ -178,6 +196,13 @@ export function selectLiveProvider(
     }
     if (isCerebrasOpenAi) {
       env.ELIZA_PROVIDER = process.env.ELIZA_PROVIDER?.trim() || "cerebras";
+    }
+    if (def.name === "cerebras") {
+      env.OPENAI_API_KEY = apiKey;
+      env.OPENAI_BASE_URL = baseUrl;
+      env.OPENAI_SMALL_MODEL = smallModel;
+      env.OPENAI_LARGE_MODEL = largeModel;
+      env.ELIZA_PROVIDER = "cerebras";
     }
     env[def.smallModelEnvVar] = smallModel;
     env[def.largeModelEnvVar] = largeModel;

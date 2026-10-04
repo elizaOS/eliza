@@ -2,7 +2,7 @@
  * Native shells retain their injected endpoint; explicit remote endpoints stay authoritative.
  */
 import { Capacitor } from "@capacitor/core";
-import { setElizaApiBase } from "@elizaos/core/utils/eliza-globals";
+import { setElizaApiBase } from "@elizaos/host/protocol";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 
 declare global {

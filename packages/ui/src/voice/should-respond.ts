@@ -13,4 +13,4 @@ export {
   ECHO_WINDOW_MS,
   type ShouldRespondContext,
   shouldRespondToVoiceTurn,
-} from "@elizaos/core/voice/respond-gate";
+} from "@elizaos/plugin-local-inference/protocol";

@@ -41,7 +41,7 @@ import type {
   MeetingEndReason,
   MeetingParticipant,
   MeetingPlatform,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
 import {
   type Transcript,
   type TranscriptConsentState,
@@ -51,7 +51,7 @@ import {
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 /** The `type` column partition transcripts live in (sibling to "messages"). */
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.source` marker — matches plugin-local-inference's store. */

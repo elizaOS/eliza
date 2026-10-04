@@ -60,6 +60,12 @@
 			"types": "./src/*.ts",
 			"import": "./dist/*.js",
 			"default": "./dist/*.js"
+		},
+		"./protocol": {
+			"eliza-source": "./src/protocol.ts",
+			"types": "./src/protocol.ts",
+			"import": "./dist/protocol.js",
+			"default": "./dist/protocol.js"
 		}
 	},
 	"files": [
@@ -103,17 +109,19 @@
 		"native:clean": "make -C native/verify clean"
 	},
 	"dependencies": {
+		"@elizaos/cloud-routing": "workspace:*",
 		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-native-inference": "workspace:*",
+		"@elizaos/host": "workspace:*",
+		"@elizaos/plugin-assistant": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
+		"@elizaos/plugin-elizacloud": "workspace:*",
+		"@elizaos/plugin-native-inference": "workspace:*",
+		"@huggingface/tokenizers": "0.1.3",
 		"phonemizer": "^1.2.1",
 		"ws": "^8.21.3",
-		"@elizaos/cloud-routing": "workspace:*",
-		"@elizaos/plugin-assistant": "workspace:*",
-		"zod": "^4.4.3",
-		"@elizaos/plugin-elizacloud": "workspace:*",
 		"yaml": "^2.8.2",
-		"@huggingface/tokenizers": "0.1.3"
+		"zod": "^4.4.3",
+		"@elizaos/contracts": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*"

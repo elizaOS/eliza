@@ -47,7 +47,7 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   createSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
-} from "@elizaos/core/todo-cutover";
+} from "@elizaos/core";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 

@@ -17,7 +17,7 @@ import type {
   WalletMarketOverviewSource,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, isApiError } from "@elizaos/ui/api";

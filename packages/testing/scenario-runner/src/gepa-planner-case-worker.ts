@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { JSONSchema, PlannerRuntime } from "@elizaos/core";
-import { resolveAliasedEnvValue } from "@elizaos/core/config/boot-config-store";
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { z } from "zod";
 import { gepaHash, parseGepaPlannerCase } from "./gepa-planner-case.ts";
 import { proveGepaSources } from "./gepa-source-proof.ts";

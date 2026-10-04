@@ -14,16 +14,16 @@
 // dragged ~1000 React modules (and their deps) into the API process at boot.
 // Subpath imports pull only the specific component. Mirrors `browser.ts`.
 
-export {
-  type AppRunSummary,
-  type AppSessionJsonValue,
-} from "@elizaos/core/contracts/apps";
+export type {
+  AppRunSummary,
+  AppSessionJsonValue,
+} from "@elizaos/core/protocol";
 export { client } from "@elizaos/ui/api";
 export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
-export { type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
-export {
-  type OverlayApp,
-  type OverlayAppContext,
+export type { AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export type {
+  OverlayApp,
+  OverlayAppContext,
 } from "@elizaos/ui/apps/overlay-app-api";
 export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";

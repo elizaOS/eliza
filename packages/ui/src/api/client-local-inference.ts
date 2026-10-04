@@ -15,10 +15,10 @@ import type {
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
+  ProviderStatus,
   VerifyResult,
-} from "@elizaos/core/contracts/local-inference";
-import type { ProviderStatus } from "@elizaos/core/contracts/local-inference-providers";
-import { ElizaError } from "@elizaos/core/errors";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core/protocol";
 import type {
   RoutingPolicy,
   RoutingPreferences,

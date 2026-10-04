@@ -1,7 +1,7 @@
 /** Verifies the plugin registers its routes and auto-registers the Google plugin dependency when absent. Deterministic vitest with a stubbed runtime plugin registrar. */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
 import {
   ensureLifeOpsGooglePluginRegistered,

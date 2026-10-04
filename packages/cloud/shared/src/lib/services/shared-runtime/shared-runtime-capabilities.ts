@@ -22,7 +22,7 @@ import {
   type CapabilityHandoffRequest,
   capabilityHandoffTargetAgentId,
   findAgentCapability,
-} from "@elizaos/core/capability-catalog";
+} from "@elizaos/core/protocol";
 import {
   buildSharedCapabilityCatalog,
   formatSharedCapabilityCatalogForPrompt,

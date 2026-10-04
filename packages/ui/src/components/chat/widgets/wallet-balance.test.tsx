@@ -11,7 +11,7 @@
 import type {
   WalletBalancesResponse,
   WalletMarketOverviewResponse,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import {
   act,
   cleanup,

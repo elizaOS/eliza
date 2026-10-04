@@ -8,7 +8,7 @@
 import {
   resolveServiceRoutingInConfig,
   type SubscriptionProviderStatus,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/host/protocol";
 import {
   type Dispatch,
   type SetStateAction,

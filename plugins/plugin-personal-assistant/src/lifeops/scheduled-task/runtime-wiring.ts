@@ -18,6 +18,7 @@ import {
   resolveOwnerEntityId,
 } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app/services/task-host-capabilities";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -32,7 +33,6 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,

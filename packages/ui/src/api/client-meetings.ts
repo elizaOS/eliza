@@ -14,8 +14,8 @@ import type {
   MeetingSession,
   MeetingStatusEvent,
   MeetingTranscriptEvent,
-} from "@elizaos/core/meetings";
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+  TranscriptSegment,
+} from "@elizaos/core/protocol";
 import { ElizaClient } from "./client-base";
 /** Options for listing meeting sessions. */
 export interface ListMeetingsOptions {

@@ -3,7 +3,7 @@
  * It preserves stable message/tool ids and terminal phases while treating all
  * text and serialized tool detail as display payload only.
  */
-import { isRetryableChatFailureKind } from "@elizaos/core/contracts/chat";
+import { isRetryableChatFailureKind } from "@elizaos/contracts";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,

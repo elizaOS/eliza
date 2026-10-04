@@ -21,11 +21,10 @@ import {
   logger,
   type Media,
   type Memory,
-  readAliasedEnv,
   redactSensitiveText,
   stringToUuid,
 } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import { readAliasedEnv, resolveSelfApiBaseUrl } from "@elizaos/host/protocol";
 
 import {
   capturedTerminalOutputIsSafe,

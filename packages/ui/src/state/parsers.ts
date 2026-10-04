@@ -4,7 +4,7 @@
  * messages and custom-action params). No React, no I/O.
  */
 
-import { parseChatFailureKind } from "@elizaos/core/contracts/chat";
+import { parseChatFailureKind } from "@elizaos/contracts";
 import type {
   AgentModelReadiness,
   AgentStartupDiagnostics,

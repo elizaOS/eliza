@@ -7,8 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { getHttpRuntime } from "@elizaos/host/protocol";
 import {
   type CapturedAction,
   type DeterministicModelFixture,

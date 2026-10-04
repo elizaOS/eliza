@@ -13,11 +13,9 @@ import {
   type LifeOpsRelativeTimeAnchorSource,
   type LifeOpsScheduleInsight,
   type LifeOpsScheduleRegularity,
-} from "@elizaos/core/contracts/personal-assistant";
-import {
   parseIsoMs,
   roundConfidence,
-} from "@elizaos/core/lifeops-normalize/time-util";
+} from "@elizaos/contracts";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

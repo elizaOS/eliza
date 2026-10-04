@@ -11,11 +11,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  AgentEventService,
-  createCharacter,
-  installHttpPluginLifecycle,
-} from "@elizaos/core";
+import { AgentEventService, createCharacter } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 import {
   ALPHA_ROUTINES_ENABLE_TRIGGERS,
   ALPHA_ROUTINES_IDEMPOTENCY_KEYS,

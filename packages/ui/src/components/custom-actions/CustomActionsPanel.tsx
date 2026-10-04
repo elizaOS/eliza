@@ -6,7 +6,7 @@
  * overlay presentation of the same data the full-page `CustomActionsView` owns.
  */
 
-import type { CustomActionDef } from "@elizaos/core/contracts/config";
+import type { CustomActionDef } from "@elizaos/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { useAppSelector } from "../../state";

@@ -5,18 +5,10 @@
  * scheduled tasks routed through the shared runner, not on prompt-text matching.
  */
 
-import {
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  ModelType,
-  runWithTrajectoryPurpose,
-  toWellFormedUnicode,
-} from "@elizaos/core";
 import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 import {
   type GetLifeOpsGmailTriageRequest,
   type GetLifeOpsInboxRequest,
@@ -29,7 +21,15 @@ import {
   type LifeOpsXDm,
   type LifeOpsXFeedItem,
   type LifeOpsXFeedType,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
 import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";

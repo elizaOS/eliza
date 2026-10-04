@@ -12,8 +12,7 @@
  */
 
 import { theme } from "@elizaos/app/terminal/theme";
-import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv, resolveDesktopApiPort } from "@elizaos/host/protocol";
 import type { Command } from "commander";
 
 function resolveDefaultAgentApiBase(): string {

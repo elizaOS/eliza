@@ -10,7 +10,7 @@
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/contracts";
 import {
   CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,

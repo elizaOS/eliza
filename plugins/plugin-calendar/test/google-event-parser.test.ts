@@ -3,7 +3,7 @@
  * multi-account identity, all-day bounds, and malformed-event rejection.
  */
 
-import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import type {
   GoogleCalendarEvent,
   GoogleCalendarListEntry,

@@ -9,13 +9,13 @@
  * consume, projected from / into the graph.
  */
 
-import { type LifeOpsRelationship } from "@elizaos/core/contracts/personal-assistant";
-import {
-  type Entity,
-  type EntityAttribute,
-  type EntityIdentity,
-} from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
+import type {
+  KnowledgeGraphEntity as Entity,
+  LifeOpsEntityAttribute as EntityAttribute,
+  LifeOpsEntityIdentity as EntityIdentity,
+  LifeOpsRelationship,
+  KnowledgeGraphRelationship as Relationship,
+} from "@elizaos/contracts";
 
 /** Tag marking a person entity that the owner explicitly added as a contact. */
 export const LIFEOPS_CONTACT_TAG = "lifeops:contact";

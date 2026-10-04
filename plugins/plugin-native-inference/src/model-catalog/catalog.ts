@@ -22,12 +22,12 @@ import type {
   CatalogQuantizationId,
   CatalogQuantizationVariant,
   LocalRuntimeKernel,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import {
   trimBoundaryCharacters,
   trimEndCharacters,
   trimStartCharacters,
-} from "@elizaos/core/utils/string-boundaries";
+} from "@elizaos/core/protocol";
 import { type HfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
 
 export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;

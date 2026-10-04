@@ -26,7 +26,7 @@
       "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
-      "@elizaos/core/*": ["../core/src/*"]
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "include": [

@@ -13,7 +13,7 @@
  * suites can exercise authed surfaces against a mock stack.
  */
 import { Capacitor } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";

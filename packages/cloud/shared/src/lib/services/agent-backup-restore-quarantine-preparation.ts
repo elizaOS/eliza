@@ -5,7 +5,7 @@
  * running host does not authorize generation boot, phase advance or routing.
  */
 
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import {
   claimAgentBackupRestoreOperation,

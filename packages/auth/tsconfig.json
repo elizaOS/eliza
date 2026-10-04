@@ -16,7 +16,7 @@
     "declaration": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core/*": ["../core/src/*"]
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "include": [

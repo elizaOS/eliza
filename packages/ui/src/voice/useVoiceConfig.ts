@@ -3,7 +3,7 @@
  * staying in sync via VOICE_CONFIG_UPDATED_EVENT.
  */
 
-import { hasConfiguredApiKey } from "@elizaos/core/voice";
+import { hasConfiguredApiKey } from "@elizaos/host/protocol";
 import * as React from "react";
 import { client } from "../api/client";
 import type { VoiceConfig } from "../api/client-types-config";

@@ -22,7 +22,7 @@ import {
 import {
   isLinkedAccountProviderId,
   type LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import {
   type AccountPool,
   getDefaultAccountPool,

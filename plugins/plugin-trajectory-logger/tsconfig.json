@@ -12,7 +12,6 @@
       "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/plugin-workflow/*": ["../plugin-workflow/dist/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
@@ -21,7 +20,8 @@
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
-      ]
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

@@ -4,27 +4,6 @@
  * `@elizaos/app/config/app-config`) alongside the local config modules.
  */
 
-export {
-  type AllowedHostPattern,
-  parseAllowedHostEnv,
-  toCapacitorAllowNavigation,
-  toViteAllowedHosts,
-} from "@elizaos/core/config/allowed-hosts";
-export {
-  type AndroidUserAgentMarker,
-  type AospVariantConfig,
-  type AppAndroidConfig,
-  type AppConfig,
-  type AppDesktopConfig,
-  type AppPackagingConfig,
-  type AppWebConfig,
-  resolveAppBranding,
-} from "@elizaos/core/config/app-config";
-export { shouldUseCloudOnlyBranding } from "@elizaos/core/config/cloud-only";
-export {
-  buildPluginConfigUiSpec,
-  buildPluginListUiSpec,
-} from "@elizaos/core/config/plugin-ui-spec";
 export type {
   ActionConfirm,
   ActionOnError,
@@ -34,10 +13,10 @@ export type {
   AuthVisibility,
   BuiltinValidator,
   CondExpr,
+  ConfigUiPatchOp as PatchOp,
   DynamicProp,
   NotVisibility,
   OrVisibility,
-  PatchOp,
   PathVisibility,
   RepeatConfig,
   UIStreamConfig,
@@ -51,7 +30,24 @@ export type {
   UiSpecValidationConfig,
   UiSpecVisibilityCondition,
   VisibilityOperator,
-} from "@elizaos/core/config/ui-spec";
+} from "@elizaos/host/protocol";
+export {
+  type AllowedHostPattern,
+  type AndroidUserAgentMarker,
+  type AospVariantConfig,
+  type AppAndroidConfig,
+  type AppConfig,
+  type AppDesktopConfig,
+  type AppPackagingConfig,
+  type AppWebConfig,
+  buildPluginConfigUiSpec,
+  buildPluginListUiSpec,
+  parseAllowedHostEnv,
+  resolveAppBranding,
+  shouldUseCloudOnlyBranding,
+  toCapacitorAllowNavigation,
+  toViteAllowedHosts,
+} from "@elizaos/host/protocol";
 export * from "./boot-config";
 // boot-config-react.hooks eagerly imports React; not barrel-exported so node-side
 // consumers (bench server, agent boot) can import @elizaos/core without

@@ -5,11 +5,12 @@
  * host's day. Access, the LifeOps service, and reply rendering are
  * deterministic stubs; zone resolution is the real core resolver.
  */
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+
 import {
   CALENDAR_TIME_ZONE_UNAVAILABLE,
   registerCalendarTimeZoneResolver,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

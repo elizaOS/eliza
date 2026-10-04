@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { totalmem } from "node:os";
 import { join as pathJoin } from "node:path";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
-import { isAndroidMobile, isIosMobile } from "@elizaos/core/runtime-env";
+import { isAndroidMobile, isIosMobile } from "@elizaos/host/protocol";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
 import {
 	ActiveModelCoordinator,

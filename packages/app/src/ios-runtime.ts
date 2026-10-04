@@ -1,5 +1,5 @@
 /** Exposes shared mobile configuration and rejects runtime modes absent from this app. */
-import { ElizaError } from "../../core/src/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig as resolveSharedIosRuntimeConfig,

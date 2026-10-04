@@ -90,7 +90,7 @@ describe("renderer runtime boundary", () => {
 
   it("bundles a pure core leaf without loading the runtime", async () => {
     const result = await bundle(
-      'export { ElizaError } from "@elizaos/core/errors";',
+      'export { ElizaError } from "@elizaos/core/protocol";',
     );
     const outputs = Array.isArray(result) ? result : [result];
     for (const output of outputs) {

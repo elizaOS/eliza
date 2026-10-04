@@ -23,11 +23,11 @@ import {
   logger,
   type SetupState,
 } from "@elizaos/core";
-import {
-  type Route,
-  type RouteRequest,
-  type RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/host/protocol";
 import { DEFAULT_ACCOUNT_ID } from "./accounts";
 import { resolveTelegramBotCredential } from "./bot-credential";
 import {

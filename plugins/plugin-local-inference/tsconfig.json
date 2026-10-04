@@ -70,7 +70,7 @@
 			"@elizaos/plugin-native-inference/*": [
 				"../plugin-native-inference/src/*"
 			],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
+			"@elizaos/core/protocol": ["../../packages/core/src/protocol"]
 		}
 	},
 	"include": ["src/**/*"],

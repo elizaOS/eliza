@@ -7,7 +7,7 @@
  */
 
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/core/contracts/cloud-coding-containers";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/contracts";
 import type {
   CloudCodingContainerService,
   CloudContainer,

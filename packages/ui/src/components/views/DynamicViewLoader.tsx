@@ -3,15 +3,15 @@ import type {
   SurfaceManifest,
   ViewCapability,
 } from "@elizaos/core";
-import { resolveAppBranding } from "@elizaos/core/config/app-config";
-import { ElizaError } from "@elizaos/core/errors";
 import {
+  ElizaError,
   HOST_EXTERNAL_RUNTIME_PARAM,
   HOST_EXTERNAL_SPECIFIERS_PARAM,
   type HostExternalBundleFactory,
   type HostModuleImporter,
-} from "@elizaos/core/views/host-external-contract";
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+  resolveSurfaceManifest,
+} from "@elizaos/core/protocol";
+import { resolveAppBranding } from "@elizaos/host/protocol";
 import {
   type ComponentType,
   memo,
@@ -514,9 +514,9 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/app/browser": importAppCoreViewCompat,
   "@elizaos/app/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
-  "@elizaos/core/errors": () => import("@elizaos/core/errors"),
-  "@elizaos/core/lifeops-normalize/time-zone": () =>
-    import("@elizaos/core/lifeops-normalize/time-zone"),
+  "@elizaos/core/protocol": () => import("@elizaos/core/protocol"),
+  "@elizaos/contracts": () => import("@elizaos/contracts"),
+  "@elizaos/host/protocol": () => import("@elizaos/host/protocol"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,

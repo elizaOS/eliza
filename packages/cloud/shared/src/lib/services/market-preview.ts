@@ -4,7 +4,7 @@ import {
   type WalletMarketOverviewResponse,
   type WalletMarketOverviewSource,
   type WalletMarketPrediction,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import {
   buildCoinGeckoMarketsUrl,
   buildMarketMovers,

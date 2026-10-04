@@ -40,12 +40,14 @@
         "../plugin-agent-orchestrator/src/ui/*"
       ],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/capacitor-calendar/*": [
         "../../plugins/plugin-native-calendar/src/*"
       ],
-      "@elizaos/plugin-native-inference/*": ["../plugin-native-inference/src/*"]
+      "@elizaos/plugin-native-inference/*": [
+        "../plugin-native-inference/src/*"
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*"],

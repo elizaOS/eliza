@@ -54,6 +54,10 @@ import {
 } from "@elizaos/auth/auth";
 import { probeDirectApiKey } from "@elizaos/auth/providers";
 import {
+  CODING_AGENT_BACKEND_PROVIDERS,
+  type LinkedAccountProviderId,
+} from "@elizaos/contracts";
+import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
   ElizaError,
@@ -61,8 +65,6 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/core/contracts/coding-agent-capabilities";
-import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,

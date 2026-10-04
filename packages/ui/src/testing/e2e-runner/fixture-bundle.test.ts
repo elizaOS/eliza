@@ -44,7 +44,7 @@ describe("fixture bundle", () => {
     const entry = join(root, "entry.ts");
     const sharedRouting = join(
       dirname(fileURLToPath(import.meta.url)),
-      "../../../../core/src/contracts/service-routing.ts",
+      "../../../../contracts/src/index.ts",
     );
     await writeFile(
       entry,

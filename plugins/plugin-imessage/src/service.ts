@@ -23,7 +23,6 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type IFileStorageService,
-  lifeOpsPassiveConnectorsEnabled,
   logger,
   type Media,
   type Memory,
@@ -44,6 +43,7 @@ import {
   trustedLocalMediaUrl,
   type UUID,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import {
   DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
   normalizeAccountId as normalizeIMessageAccountId,

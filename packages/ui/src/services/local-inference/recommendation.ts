@@ -4,7 +4,7 @@ import type {
   CatalogModel,
   HardwareProbe,
   TextGenerationSlot,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import {
   assessCatalogModelFit,

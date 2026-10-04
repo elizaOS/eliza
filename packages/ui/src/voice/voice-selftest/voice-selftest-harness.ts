@@ -16,7 +16,7 @@
  * false-greens.
  */
 
-import { wordErrorRate } from "@elizaos/core/voice-wer";
+import { wordErrorRate } from "@elizaos/plugin-local-inference/protocol";
 import type { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { resolveApiUrl } from "../../utils";

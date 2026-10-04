@@ -14,9 +14,9 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
-      "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"]
+      "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": [

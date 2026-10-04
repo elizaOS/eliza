@@ -4,7 +4,7 @@
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import {
   act,
   cleanup,
