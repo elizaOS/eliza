@@ -37,3 +37,29 @@ export async function removeFixtureUser(
     await sleep(pollMs);
   }
 }
+
+/**
+ * Waits until the fixture user reports RUNNING_UNLOCKED. Host cancellation
+ * stops the wait at once, and a user that never unlocks fails at the
+ * deadline so the caller's cleanup still releases the user and device lease.
+ */
+export async function waitForUserUnlocked(
+  run,
+  user,
+  {
+    timeoutMs,
+    signal,
+    pollMs = 500,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  },
+) {
+  let state;
+  for (const deadline = Date.now() + timeoutMs; ; ) {
+    signal?.throwIfAborted();
+    state = run("shell", "am", "get-started-user-state", String(user));
+    if (state === "RUNNING_UNLOCKED") return;
+    if (Date.now() >= deadline)
+      throw new Error(`Fixture user ${user} did not unlock: ${state}`);
+    await sleep(pollMs);
+  }
+}

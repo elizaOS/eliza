@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { removeFixtureUser } from "./fixture-user.mjs";
+import { removeFixtureUser, waitForUserUnlocked } from "./fixture-user.mjs";
 
 const OWNER = "Users:\n\tUserInfo{0:Owner:4c13} running";
 const WITH_FIXTURE = `${OWNER}\n\tUserInfo{10:calendar-harness:2500} running`;
@@ -63,5 +63,42 @@ describe("removeFixtureUser", () => {
     await expect(removeFixtureUser(run, 1, noWait)).resolves.toMatch(
       /removed by the system/,
     );
+  });
+});
+
+describe("waitForUserUnlocked", () => {
+  const states = (values) => {
+    const polled = [];
+    const run = (...args) => {
+      polled.push(args.join(" "));
+      return values.length > 1 ? values.shift() : values[0];
+    };
+    return { run, polled };
+  };
+
+  it("returns once the user unlocks", async () => {
+    const { run, polled } = states(["RUNNING_LOCKED", "RUNNING_UNLOCKED"]);
+    await waitForUserUnlocked(run, 10, noWait);
+    expect(polled).toEqual([
+      "shell am get-started-user-state 10",
+      "shell am get-started-user-state 10",
+    ]);
+  });
+
+  it("fails at the deadline instead of waiting forever", async () => {
+    const { run } = states(["RUNNING_LOCKED"]);
+    await expect(
+      waitForUserUnlocked(run, 10, { timeoutMs: 0, sleep: async () => {} }),
+    ).rejects.toThrow(/did not unlock: RUNNING_LOCKED/);
+  });
+
+  it("stops at once when the host cancels", async () => {
+    const { run, polled } = states(["RUNNING_LOCKED"]);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      waitForUserUnlocked(run, 10, { ...noWait, signal: controller.signal }),
+    ).rejects.toThrow();
+    expect(polled).toEqual([]);
   });
 });
