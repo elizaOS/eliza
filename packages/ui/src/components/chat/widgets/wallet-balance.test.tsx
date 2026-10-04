@@ -21,7 +21,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import { WalletBalanceWidget } from "./wallet-balance";
 
 // Auth gate (#11084) - mutable so tests can flip the session state. Default
@@ -32,7 +32,7 @@ const { authMock } = vi.hoisted(() => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: {
     getWalletBalances: vi.fn(),
     getWalletMarketOverview: vi.fn(),

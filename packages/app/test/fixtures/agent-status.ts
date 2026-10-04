@@ -1,5 +1,5 @@
 /** Shared status contract for deterministic renderer fixtures; never used by a live host. */
-import type { AgentStatus } from "@elizaos/ui/api";
+import type { AgentStatus } from "@elizaos/ui";
 
 export function fixtureAgentStatus(
   overrides: Partial<AgentStatus> = {},

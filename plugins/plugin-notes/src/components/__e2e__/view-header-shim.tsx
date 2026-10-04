@@ -4,10 +4,10 @@
  * deliberately avoids; production Notes continues to import the real header.
  */
 
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
+import { useAgentElement } from "../../../../../packages/ui/src/agent-surface/index";
+import { Button } from "../../../../../packages/ui/src/components/ui/button";
 
 export function ViewHeader({
   title,

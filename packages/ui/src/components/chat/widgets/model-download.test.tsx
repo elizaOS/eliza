@@ -61,7 +61,7 @@ const {
   getHubMock: vi.fn(),
   startDownloadMock: vi.fn(),
 }));
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: {
     onReconnect: vi.fn(() => () => {}),
     getBaseUrl: getBaseUrlMock,

@@ -11,10 +11,10 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
-  Input,
-  Textarea,
-} from "../../../components/primitives";
+} from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
+import { Textarea } from "../../../components/ui/textarea";
 import {
   type Ballot,
   formatApprovalTimestamp,

@@ -67,3 +67,17 @@ export function classifyNativeFetchRequest(
     return { kind: "invalid" };
   }
 }
+
+export function nativeJsonRequestData(
+  body: BodyInit | null | undefined,
+): unknown {
+  if (body == null) return undefined;
+  if (typeof body !== "string") return body;
+  const trimmed = body.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return body;
+  }
+}

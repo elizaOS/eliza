@@ -11,9 +11,10 @@
  * SpeechRecognition fallback.
  */
 
-import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { Capacitor } from "@capacitor/core";
+import type { PluginListenerHandle } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core/protocol";
-import { getElizaApiToken } from "@elizaos/host/protocol";
+import { getElizaApiToken, hasConfiguredApiKey } from "@elizaos/host/protocol";
 import {
   useCallback,
   useEffect,
@@ -22,8 +23,8 @@ import {
   useRef,
   useState,
 } from "react";
-import type { VoiceConfig } from "../api/client";
 import { getCloudAuthToken } from "../api/client-cloud";
+import type { VoiceConfig } from "../api/client-types-config";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
@@ -32,13 +33,15 @@ import {
 import {
   getElizaPlayVoicePlugin,
   getTalkModePlugin,
-  type TalkModeErrorEvent,
-  type TalkModeStateEvent,
-  type TalkModeTranscriptEvent,
+} from "../bridge/native-plugins";
+import type {
+  TalkModeErrorEvent,
+  TalkModeStateEvent,
+  TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
 import { APP_PAUSE_EVENT } from "../events";
 import { logger } from "../logger.ts";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   isTtsDebugEnabled,
@@ -46,13 +49,12 @@ import {
   ttsDebugTextPreview,
 } from "../utils/tts-debug";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
-import { hasConfiguredApiKey } from "../voice";
 import {
   isLocalAsrCaptureSupported,
   isSilentWav,
-  type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "../voice/local-asr-capture";
+import type { LocalAsrRecorder } from "../voice/local-asr-capture";
 import {
   CloudSttError,
   isLocalInferenceAsrReady,
@@ -62,10 +64,10 @@ import {
 import {
   ensurePlaybackContextRunning,
   PlaybackFramePump,
-  type PlaybackFrameTap,
   resumeAudioContextForPlayback,
   warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
+import type { PlaybackFrameTap } from "../voice/playback-frame-pump";
 import {
   configuredCloudVoiceOrigin,
   currentSharedRuntimeVoiceOrigin,
@@ -91,7 +93,6 @@ import {
   ASSISTANT_TTS_FINAL_ONLY,
   ASSISTANT_TTS_FIRST_FLUSH_CHARS,
   ASSISTANT_TTS_MIN_CHUNK_CHARS,
-  type AssistantSpeechState,
   DEFAULT_ELEVEN_MODEL,
   DEFAULT_ELEVEN_VOICE,
   describeTtsCloudFetchTargetForDebug,
@@ -101,28 +102,31 @@ import {
   localePrefix,
   matchesVoiceLocale,
   normalizeSpeechLocale,
-  type QueueAssistantSpeechOptions,
   readCachedAudio,
   rememberCachedAudio,
   resolveEffectiveVoiceConfig,
   resolveVoiceMode,
   resolveVoiceProxyEndpoint,
-  type SpeakTask,
-  type SpeechRecognitionInstance,
-  type SpeechRecognitionResultEvent,
   TALKMODE_STOP_SETTLE_MS,
   toArrayBuffer,
-  type VoiceCaptureMode,
-  type VoiceChatOptions,
-  type VoiceChatState,
-  type VoicePlaybackStartEvent,
-  type VoiceSessionMode,
-  type VoiceSpeakerMetadata,
-  type VoiceTranscriptEvent,
-  type VoiceTranscriptPreviewEvent,
-  type VoiceTtsError,
-  type VoiceTurn,
   webSpeechVoiceDebugFields,
+} from "../voice/voice-chat-types";
+import type {
+  AssistantSpeechState,
+  QueueAssistantSpeechOptions,
+  SpeakTask,
+  SpeechRecognitionInstance,
+  SpeechRecognitionResultEvent,
+  VoiceCaptureMode,
+  VoiceChatOptions,
+  VoiceChatState,
+  VoicePlaybackStartEvent,
+  VoiceSessionMode,
+  VoiceSpeakerMetadata,
+  VoiceTranscriptEvent,
+  VoiceTranscriptPreviewEvent,
+  VoiceTtsError,
+  VoiceTurn,
 } from "../voice/voice-chat-types";
 import {
   BufferedVoiceEvidence,

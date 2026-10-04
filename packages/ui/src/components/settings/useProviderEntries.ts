@@ -6,10 +6,12 @@
  * cloud-proxy session marks Local current instead (#20045).
  */
 
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import type { SubscriptionProviderStatus } from "@elizaos/host/protocol";
+import type { ConfigUiHint } from "@elizaos/contracts";
 import { Cloud, Cpu, KeyRound } from "lucide-react";
-import { type ComponentType, useCallback, useMemo } from "react";
-import type { PluginParamDef } from "../../api";
+import type { ComponentType } from "react";
+import { useCallback, useMemo } from "react";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
@@ -18,9 +20,9 @@ import {
   isSubscriptionProviderSelectionId,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
 } from "../../providers";
-import type { ConfigUiHint } from "../../types";
 import type { ProviderCategory, ProviderStatus } from "./ProviderCard";
 import type { ProviderPanelId } from "./useProviderSelection";
+
 export interface PluginInfo {
   id: string;
   name: string;

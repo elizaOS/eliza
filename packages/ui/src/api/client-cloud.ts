@@ -1,3 +1,5 @@
+import { getHostRequestTransport } from "./host-transport";
+import { nativeJsonRequestData as directCloudBodyData } from "./native-http-codec";
 /**
  * Cloud domain methods — cloud billing, compat agents, sandbox,
  * export/import, direct cloud auth, bug reports.
@@ -5,6 +7,14 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core/protocol";
+import {
+  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
+  DEFAULT_DIRECT_CLOUD_BASE_URL,
+  DIRECT_ELIZA_CLOUD_API_BY_HOST,
+  resolveDirectCloudAuthApiBase,
+  resolveDirectCloudWebBase,
+  stripTrailingSlashes,
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -32,7 +42,6 @@ import {
 } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
 import type {
-  ApiError,
   CloudApiKeySummary,
   CloudApiKeys,
   CloudBillingCheckoutRequest,
@@ -62,27 +71,21 @@ import type {
   CloudStatus,
   CloudTwitterOAuthInitiateResponse,
   LocalAgentBackupMetadata,
+} from "./client-types-cloud";
+import type {
+  ApiError,
   SandboxBrowserEndpoints,
   SandboxPlatformStatus,
   SandboxScreenshotPayload,
   SandboxScreenshotRegion,
   SandboxStartResponse,
   SandboxWindowInfo,
-} from "./client-types";
+} from "./client-types-core";
 import {
   confirmDedicatedActivation,
   type DedicatedActivationConfirmationRequester,
   parseDedicatedActivationConfirmationQuote,
 } from "./dedicated-activation-confirmation";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import {
-  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
-  DEFAULT_DIRECT_CLOUD_BASE_URL,
-  DIRECT_ELIZA_CLOUD_API_BY_HOST,
-  resolveDirectCloudAuthApiBase,
-  resolveDirectCloudWebBase,
-  stripTrailingSlashes,
-} from "./direct-cloud-endpoints";
 import {
   type PersonalFallbackAccountState,
   parsePersonalFallbackAccountState,
@@ -579,7 +582,7 @@ async function directCloudFetch(
   timeoutMs?: number,
 ): Promise<Response> {
   throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
-  const transport = desktopHttpTransportForUrl(url);
+  const transport = await getHostRequestTransport(url, "cloud");
   if (transport) {
     return transport.request(
       url,
@@ -601,7 +604,7 @@ export {
   resolveDirectCloudAppBase,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
-} from "./direct-cloud-endpoints";
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 
 function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const baseUrl = client.getBaseUrl().trim();
@@ -924,18 +927,6 @@ function directCloudResponseText(data: unknown): string {
     return JSON.stringify(data);
   } catch {
     return String(data);
-  }
-}
-
-function directCloudBodyData(body: BodyInit | null | undefined): unknown {
-  if (body == null) return undefined;
-  if (typeof body !== "string") return body;
-  const trimmed = body.trim();
-  if (!trimmed) return undefined;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return body;
   }
 }
 
@@ -1734,7 +1725,7 @@ function toCloudCompatJob(input: DirectCloudJob): CloudCompatJob {
 // Declaration merging
 // ---------------------------------------------------------------------------
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getCloudStatus(): Promise<CloudStatus>;
     getCloudCredits(): Promise<CloudCredits>;

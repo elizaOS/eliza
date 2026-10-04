@@ -95,6 +95,12 @@ export {
 } from "./constants/secrets";
 export * from "./contracts/apps.js";
 export * from "./contracts/awareness.js";
+export * from "./contracts/native-transcript.js";
+export * from "./contracts/os-intent/assistant-launch.js";
+export * from "./contracts/os-intent/contract.js";
+export * from "./contracts/os-intent/decode.js";
+export * from "./contracts/os-intent/dedupe.js";
+export * from "./contracts/os-intent/router.js";
 export * from "./contracts/permissions.js";
 export * from "./database";
 export * from "./database/cache-cas";

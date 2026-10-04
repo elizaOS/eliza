@@ -3,7 +3,12 @@
  * shared across the plugin management UI.
  */
 
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import type { JsonSchemaObject } from "@elizaos/host/protocol";
+import type {
+  TranslateFn as AppTranslateFn,
+  ConfigUiHint,
+} from "@elizaos/contracts";
 import {
   Binary,
   Bird,
@@ -40,7 +45,6 @@ import {
   Link,
   Lock,
   LockKeyhole,
-  type LucideIcon,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -78,9 +82,9 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import type { PluginInfo, PluginParamDef } from "../../api";
-import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
-import { resolveAppAssetUrl } from "../../utils";
+import type { LucideIcon } from "lucide-react";
+import type { PluginInfo } from "../../api/client-types-config";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import { autoLabel } from "../../utils/labels.js";
 import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";
 

@@ -8,12 +8,11 @@
  * AddAccountDialog, RotationStrategyPicker, EditableAccountLabel, useAccounts,
  * and the REAL ElizaClient network layer — stays real.
  */
-
 import {
   appNameInterpolationVars,
+  createTranslator,
   DEFAULT_BRANDING,
-} from "../../../ui/src/config/branding-base";
-import { createTranslator } from "../../../ui/src/i18n";
+} from "@elizaos/ui";
 
 const t = createTranslator("en", appNameInterpolationVars(DEFAULT_BRANDING));
 

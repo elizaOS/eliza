@@ -35,7 +35,7 @@ import { dirname, join } from "node:path";
 import { EDGE_BACKUP_VOICES } from "@elizaos/host/protocol";
 import { DEFAULT_NETWORK_POLICY_PREFERENCES } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 import { VOICE_MODEL_VERSIONS } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import type { AccountsListResponse } from "@elizaos/ui/api/client-agent";
+import type { AccountsListResponse } from "@elizaos/ui";
 import { expect, type Page, type Route, type TestInfo } from "@playwright/test";
 import {
   installDefaultAppRoutes,

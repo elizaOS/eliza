@@ -13,7 +13,7 @@ import {
   getDirectAccountProviderForFirstRunProvider,
   isSubscriptionProviderSelectionId,
 } from "../../providers";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import {
   isRealtimeVoiceForceEnabled,

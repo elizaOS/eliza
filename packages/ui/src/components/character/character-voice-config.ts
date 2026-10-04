@@ -9,8 +9,9 @@ import {
   hasConfiguredApiKey,
   PREMADE_VOICES,
 } from "@elizaos/host/protocol";
-import type { VoiceConfig } from "../../api/client";
+import type { VoiceConfig } from "../../api/client-types-config";
 import type { CharacterRosterEntry } from "./CharacterRoster";
+
 /* ── Constants ─────────────────────────────────────────────────────── */
 export const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
 export const ELEVENLABS_VOICE_GROUPS = [

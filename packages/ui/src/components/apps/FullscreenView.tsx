@@ -5,41 +5,42 @@
  * a connection-status indicator. Auth-payload delivery is delegated to
  * `EmbeddedAppViewer` when `shouldUseEmbeddedAppViewer` selects it.
  */
-
+import type {
+  AppRunSummary,
+  AppSessionControlAction,
+  AppSessionState,
+} from "@elizaos/core/protocol";
 import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  type AppRunSummary,
-  type AppSessionControlAction,
-  type AppSessionState,
-  client,
-  type LogEntry,
-} from "../../api";
-import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+import { client } from "../../api/client";
+import type { LogEntry } from "../../api/client-types-core";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useBranding } from "../../config/branding";
-import { useMediaQuery } from "../../hooks";
 import {
   useDocumentVisibility,
   useIntervalWhenDocumentVisible,
 } from "../../hooks/useDocumentVisibility";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTimeout } from "../../hooks/useTimeout";
-import { useAppSelector, useAppSelectorShallow } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state/app-store";
+import { safeAttachmentUrl } from "../../utils/attachment-url";
+import { formatTime } from "../../utils/format";
 import {
   navigatePreOpenedWindow,
   openExternalUrl,
   preOpenWindow,
-} from "../../utils";
-import { safeAttachmentUrl } from "../../utils/attachment-url";
-import { formatTime } from "../../utils/format";
+} from "../../utils/openExternalUrl";
 import { Alert } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Progress } from "../ui/progress";
-import { StatusBadge, type StatusTone } from "../ui/status-badge";
+import { StatusBadge } from "../ui/status-badge";
+import type { StatusTone } from "../ui/status-badge";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,

@@ -6,7 +6,7 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
 } from "@elizaos/contracts";
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 
 export function resolveWalletAddresses({
   walletAddresses,

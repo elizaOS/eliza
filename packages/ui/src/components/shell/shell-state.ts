@@ -3,13 +3,12 @@
  * surface coordination.
  */
 import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
+import type { ChatFailureKind, ChatTerminalFailure } from "@elizaos/contracts";
 import type {
-  ChatFailureKind,
-  ChatTerminalFailure,
   ConversationSecretRequest,
   MessageAttachment,
-  NativeToolCallEvent,
-} from "../../api";
+} from "../../api/client-types-chat";
+import type { NativeToolCallEvent } from "../../api/client-types-cloud";
 /**
  * Shell phase for the device-shell foundation (HomePill + AssistantOverlay +
  * ChatSurface). Drives the pill's visual treatment.

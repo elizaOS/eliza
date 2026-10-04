@@ -5,7 +5,7 @@
  */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { AccountCommandTable } from "./AccountCommandTable";
 

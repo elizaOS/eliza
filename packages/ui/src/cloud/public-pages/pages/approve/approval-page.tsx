@@ -17,8 +17,8 @@ import { Link, useParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
 import { Textarea } from "../../../../components/ui/textarea";
 import { ApiError, api } from "../../../lib/api-client";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -111,7 +111,7 @@ export default function ApprovalPage() {
     "approved" | "denied" | null
   >(null);
 
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.approval.metaTitle", {
       defaultValue: "Approval Request | Eliza Cloud",
     }),

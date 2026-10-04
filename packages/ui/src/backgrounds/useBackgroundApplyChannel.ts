@@ -12,10 +12,8 @@
  * listening regardless of which view is active — "make the background blue"
  * works from anywhere, not only on the Background view.
  */
-import {
-  BACKGROUND_APPLY_EVENT,
-  type BackgroundApplyPayload,
-} from "@elizaos/core/protocol";
+import { BACKGROUND_APPLY_EVENT } from "@elizaos/core/protocol";
+import type { BackgroundApplyPayload } from "@elizaos/core/protocol";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   catalogEntryToConfig,

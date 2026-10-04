@@ -28,7 +28,7 @@ const clientMock = vi.hoisted(() => ({
 
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (s: {
       t: (

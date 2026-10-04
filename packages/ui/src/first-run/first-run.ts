@@ -11,13 +11,12 @@ import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   getDefaultStylePreset,
 } from "@elizaos/host/protocol";
-import type { UiLanguage } from "../i18n";
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { shellLocalStorage } from "../surface-realm-channel";
-import {
-  type BuildFirstRunRuntimeConfigResult,
-  buildFirstRunRuntimeConfig,
-} from "./first-run-config";
+import type { BuildFirstRunRuntimeConfigResult } from "./first-run-config";
+import { buildFirstRunRuntimeConfig } from "./first-run-config";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
+
 export type FirstRunRuntime = "local" | "cloud" | "remote";
 /**
  * When the user picks the Local runtime, this is the inference sub-choice:

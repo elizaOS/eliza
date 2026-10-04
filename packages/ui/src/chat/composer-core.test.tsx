@@ -10,7 +10,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ImageAttachment } from "../api";
+import type { ImageAttachment } from "../api/client-types-chat";
 import { useChatComposerOrLocal } from "../state/ChatComposerContext.hooks";
 import {
   type ComposerPasteOptions,

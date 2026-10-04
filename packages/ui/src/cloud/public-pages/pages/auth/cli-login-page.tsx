@@ -16,7 +16,7 @@ import {
   useState,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button } from "../../../../components/primitives";
+import { Button } from "../../../../components/ui/button";
 import {
   hasCloudAuthCompleted,
   isCloudAuthHandoffSurface,
@@ -24,11 +24,11 @@ import {
   subscribeCloudAuthComplete,
 } from "../../../auth/cloud-auth-complete-signal";
 import { ApiError, apiFetch } from "../../../lib/api-client";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { clearStaleStewardSession } from "../../../shell/StewardProvider";
 import { getErrorMessage } from "../../lib/error-message";
-import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 const COMPLETE_TIMEOUT_MS = 30000;
@@ -355,7 +355,7 @@ export default function CliLoginPage() {
   );
   const lastSessionId = useRef(sessionId);
   const completionFiredRef = useRef(false);
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.cliLogin.metaTitle", {
       defaultValue: "Sign in | Eliza Cloud",
     }),

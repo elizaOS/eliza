@@ -16,7 +16,7 @@
 
 import { CloudCog } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import { isDirectCloudSharedAgentBase } from "../../../api/client-cloud";
 import { openCloudBillingConsole } from "../../../cloud/billing-console";
 import { loadPendingCloudHandoff } from "../../../cloud/handoff/pending-handoff-store";

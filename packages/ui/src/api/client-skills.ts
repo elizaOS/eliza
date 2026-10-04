@@ -5,11 +5,9 @@
 
 import type {
   AppPermissionsView,
-  CustomActionDef,
   PutAppPermissionsRequest,
+  CustomActionDef,
 } from "@elizaos/contracts";
-import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
-import { ElizaClient } from "./client-base";
 import type {
   AppLaunchResult,
   AppRunActionResult,
@@ -18,16 +16,21 @@ import type {
   AppSessionControlAction,
   AppSessionState,
   AppStopResult,
-  InstalledAppInfo,
+  RegistryAppInfo,
+} from "@elizaos/core/protocol";
+import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
+import { ElizaClient } from "./client-base";
+import type { InstalledAppInfo } from "./client-types-cloud";
+import type {
   InstalledPlugin,
   PluginInstallResult,
   PluginMutationResult,
-  RegistryAppInfo,
   RegistryPlugin,
   RegistryPluginItem,
   SkillInfo,
   SkillScanReportSummary,
-} from "./client-types";
+} from "./client-types-config";
+
 export type AppRunSteeringDisposition =
   | "accepted"
   | "queued"
@@ -73,7 +76,7 @@ export interface TelegramAccountSetupStatus {
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getSkills(): Promise<{
       skills: SkillInfo[];

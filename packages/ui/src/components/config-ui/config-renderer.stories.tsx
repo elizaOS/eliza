@@ -5,9 +5,9 @@
  */
 
 import type { JsonSchemaObject } from "@elizaos/host/protocol";
+import type { ConfigUiHint } from "@elizaos/contracts";
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
-import type { ConfigUiHint } from "../../types";
 import { ConfigRenderer } from "./config-renderer";
 import { defaultRegistry } from "./config-renderer.helpers";
 

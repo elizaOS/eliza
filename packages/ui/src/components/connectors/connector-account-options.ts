@@ -12,17 +12,19 @@
  */
 import {
   CONNECTOR_ACCOUNT_CATALOG,
-  type ConnectorAccountCatalogEntry,
-  type ConnectorOAuthCapabilityDeclaration,
   getConnectorAccountCatalogEntry,
   normalizeConnectorCatalogId as normalizeConnectorCatalogIdShared,
+} from "@elizaos/core/protocol";
+import type {
+  ConnectorAccountCatalogEntry,
+  ConnectorOAuthCapabilityDeclaration,
 } from "@elizaos/core/protocol";
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountPrivacy,
   ConnectorAccountPurpose,
   ConnectorAccountRole,
-} from "../../api/client-agent";
+} from "../../api/client-agent-connector-accounts";
 export interface ConnectorAccountOption<T extends string> {
   value: T;
   label: string;

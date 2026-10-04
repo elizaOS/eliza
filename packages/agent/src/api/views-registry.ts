@@ -18,9 +18,8 @@ import {
   type ViewDeclaration,
   type ViewType,
 } from "@elizaos/core";
-
-import { generateViewHeroSvgFor } from "@elizaos/ui/view-hero-art";
 import type { AgentPlatform } from "./platform-detect.ts";
+import { generateViewHeroSvgFor } from "./view-hero-art.ts";
 
 export type { ViewRegistryEntry } from "./view-registry-types.ts";
 

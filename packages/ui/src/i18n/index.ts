@@ -2,16 +2,15 @@
  * Barrel for i18n: message catalogs, translator factory, region helpers, and
  * re-exported language-code primitives owned by @elizaos/core.
  */
-
 import { normalizeLanguage } from "@elizaos/core/protocol";
+import type { UiLanguage } from "@elizaos/core/protocol";
 import {
   DEFAULT_UI_LANGUAGE,
   ensureLanguageLoaded,
   MESSAGES,
-  type MessageDict,
   UI_LANGUAGES,
-  type UiLanguage,
 } from "./messages";
+import type { MessageDict } from "./messages";
 
 // `normalizeLanguage` (and the language-code constants below) are owned by
 // @elizaos/core so Node route handlers can normalize without the renderer's

@@ -5,10 +5,12 @@
  * to the desktop shell view and sets the active tab; the "open-notifications" item
  * opens the notification center in place instead of navigating a tab.
  */
-import { subscribeDesktopBridgeEvent } from "@elizaos/ui/bridge/electrobun-rpc";
-import { dispatchOpenNotificationCenter } from "@elizaos/ui/events";
-import type { Tab } from "@elizaos/ui/navigation";
-import { useApp } from "@elizaos/ui/state/useApp";
+import {
+  dispatchOpenNotificationCenter,
+  subscribeDesktopBridgeEvent,
+  useApp,
+} from "@elizaos/ui";
+import type { Tab } from "@elizaos/ui";
 import { useEffect } from "react";
 
 const MAIN_SURFACE_TABS = new Set<Tab>(["chat", "plugins", "triggers"]);

@@ -29,7 +29,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // spatial primitives come from the separate `@elizaos/ui/spatial` subpath, which
 // is not mocked.
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,

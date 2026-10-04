@@ -5,7 +5,7 @@
  * after the bounded recovery window.
  */
 
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 import { shellLocalStorage } from "../surface-realm-channel";
 
 const PENDING_CHAT_TURN_PREFIX = "eliza:chat:pending-turn:";

@@ -609,7 +609,6 @@ const iosFsSandboxPlugin = {
 const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
-  "@elizaos/ui/brand",
   "@elizaos/plugin-local-inference/protocol",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
@@ -634,14 +633,6 @@ const dedupeTargets = {
     "packages",
     "core",
     "src",
-    "index.ts",
-  ),
-  "@elizaos/ui/brand": path.resolve(
-    repoRoot,
-    "packages",
-    "ui",
-    "src",
-    "brand",
     "index.ts",
   ),
   // Pin the AEC subpath to src as well (#11373). Without this the subpath

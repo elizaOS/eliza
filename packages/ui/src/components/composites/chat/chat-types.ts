@@ -9,6 +9,8 @@ import type {
   ChatFailureKind,
   ChatTerminalFailure,
   ChatTurnStatus,
+} from "@elizaos/contracts";
+import type {
   ConversationSecretRequest,
   MessageAttachment,
 } from "../../../api/client-types-chat";

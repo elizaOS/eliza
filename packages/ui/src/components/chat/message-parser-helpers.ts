@@ -21,21 +21,20 @@
  * instead of O(len) — #15280) while producing byte-identical output.
  */
 
-import { stripAssistantStageDirections } from "@elizaos/core/protocol";
 import type {
   JsonSchemaObject,
   ConfigUiPatchOp as PatchOp,
   UiSpec,
 } from "@elizaos/host/protocol";
+import type { ConfigUiHint } from "@elizaos/contracts";
+import { stripAssistantStageDirections } from "@elizaos/core/protocol";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
-import type { ConfigUiHint } from "../../types";
-import {
-  type PermissionCardPayload,
-  parsePermissionRequestFromText,
-} from "../composites/chat/permission-card.helpers";
+import type { PermissionCardPayload } from "../composites/chat/permission-card.helpers";
+import { parsePermissionRequestFromText } from "../composites/chat/permission-card.helpers";
 import { paramsToSchema } from "../pages/plugin-list-utils";
 import { getInlineWidgets } from "./widgets/inline-registry";
+
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 export const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
 export const SAFE_PLUGIN_ID_RE = /^[\w-]+$/;

@@ -2,13 +2,12 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun-types", "vite/client"],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },

@@ -6,9 +6,8 @@
  */
 
 import type { LifeOpsCalendarSourceHealth } from "@elizaos/contracts";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components";
-import { useAppSelector } from "@elizaos/ui/state";
+import { useAgentElement, Button, useAppSelector } from "@elizaos/ui";
+
 import {
   CheckCircle2,
   Clock3,

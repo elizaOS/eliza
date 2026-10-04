@@ -11,18 +11,17 @@
  */
 
 import { getDefaultStylePreset } from "@elizaos/host/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { useReducer, useRef } from "react";
-import type { FirstRunOptions } from "../api";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";
-import {
-  activeServerKindToFirstRunRuntimeTarget,
-  type FirstRunRuntimeTarget,
-} from "../first-run/runtime-target";
+import { activeServerKindToFirstRunRuntimeTarget } from "../first-run/runtime-target";
+import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import { isOnboardingReplayRequested } from "../platform/onboarding-replay";
 import {
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
 } from "./persistence";
+
 // ── Remote connection state ────────────────────────────────────────────
 export interface RemoteConnectionState {
   status: "idle" | "connecting" | "connected" | "error";

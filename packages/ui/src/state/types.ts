@@ -5,17 +5,15 @@
  */
 
 import type {
-  WalletChainKind,
-  WalletEntry,
-  WalletPrimaryMap,
-  WalletSource,
-} from "@elizaos/contracts";
-import type { Dispatch, SetStateAction } from "react";
-import type {
-  AgentStatus,
   AppRunSummary,
   AppSessionState,
   AppViewerAuthMessage,
+  UiLanguage,
+} from "@elizaos/core/protocol";
+import type {
+  ReleaseChannel,
+  DropStatus,
+  MintResult,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -24,57 +22,69 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  CharacterData,
-  ChatTokenUsage,
-  CodingAgentSession,
-  Conversation,
-  ConversationChannelType,
-  ConversationMessage,
-  CreateTriggerRequest,
-  DropStatus,
-  FirstRunOptions,
-  ImageAttachment,
-  LogEntry,
-  McpMarketplaceResult,
-  McpRegistryServerDetail,
-  McpServerConfig,
-  McpServerStatus,
-  MintResult,
-  PluginInfo,
-  RegistryPlugin,
-  RegistryStatus,
-  ReleaseChannel,
-  SkillInfo,
-  SkillScanReportSummary,
-  StewardApprovalActionResponse,
   StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingResponse,
-  StewardStatusResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-  StreamEventEnvelope,
-  TriggerHealthSnapshot,
-  TriggerRunRecord,
-  TriggerSummary,
-  UpdateStatus,
-  UpdateTriggerRequest,
   WalletAddresses,
   WalletBalancesResponse,
+  WalletChainKind,
   WalletConfigStatus,
   WalletConfigUpdateRequest,
-  WalletExportResult,
+  WalletEntry,
   WalletNftsResponse,
+  WalletPrimaryMap,
+  WalletSource,
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
+} from "@elizaos/contracts";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import type { Dispatch, SetStateAction } from "react";
+import type { TriggerRunRecord } from "../api/client";
+import type {
+  ChatTokenUsage,
+  Conversation,
+  ConversationChannelType,
+  ConversationMessage,
+  ImageAttachment,
+  McpMarketplaceResult,
+  McpRegistryServerDetail,
+  McpServerConfig,
+  McpServerStatus,
+} from "../api/client-types-chat";
+import type {
+  CodingAgentSession,
+  RegistryStatus,
   WhitelistStatus,
+} from "../api/client-types-cloud";
+import type {
+  CharacterData,
+  PluginInfo,
+  RegistryPlugin,
+  SkillInfo,
+  SkillScanReportSummary,
+  UpdateStatus,
+  WalletExportResult,
   WorkbenchOverview,
-} from "../api/client";
+} from "../api/client-types-config";
+import type {
+  AgentStatus,
+  CreateTriggerRequest,
+  LogEntry,
+  StreamEventEnvelope,
+  TriggerHealthSnapshot,
+  TriggerSummary,
+  UpdateTriggerRequest,
+} from "../api/client-types-core";
+import type {
+  StewardApprovalActionResponse,
+  StewardHistoryResponse,
+  StewardPendingResponse,
+  StewardStatusResponse,
+} from "../api/client-types-steward";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
-import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { ActionNotice, ActionTone } from "./action-notice";
 import type { AgentProfile } from "./agent-profile-types";

@@ -5,9 +5,8 @@
  * owns its own "Knowledge" header, media-format facets, and pushed reader)
  * inside the shell's agent surface, outside the character-editor chrome.
  */
+import { PagePanel, ShellViewAgentSurface } from "@elizaos/ui";
 
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { ShellViewAgentSurface } from "@elizaos/ui/components/views/ShellViewAgentSurface";
 import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView.js";
 
 export function KnowledgeView() {

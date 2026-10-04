@@ -20,13 +20,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchMock = vi.fn();
 const openExternalUrlMock = vi.fn();
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  openExternalUrl: (url: string) => openExternalUrlMock(url),
   client: {
     fetch: (path: string, init?: RequestInit) => fetchMock(path, init),
   },
-}));
-
-vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
     unstyled: _unstyled,
@@ -50,10 +49,6 @@ vi.mock("@elizaos/ui", () => ({
       <input {...rest} />
     ),
   },
-}));
-
-vi.mock("@elizaos/ui/utils/openExternalUrl", () => ({
-  openExternalUrl: (url: string) => openExternalUrlMock(url),
 }));
 
 import { GitHubConnectionCard } from "./GitHubConnectionCard";

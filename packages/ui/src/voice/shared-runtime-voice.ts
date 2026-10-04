@@ -7,9 +7,10 @@
  */
 
 import { getElizaApiBase } from "@elizaos/host/protocol";
-import { resolveDirectCloudAuthApiBase } from "../api/direct-cloud-endpoints";
+import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import { getBootConfig } from "../config/boot-config-store";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
+
 /**
  * Derive the cloud API worker origin from a shared-runtime agent base.
  *

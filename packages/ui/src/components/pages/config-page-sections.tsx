@@ -7,15 +7,19 @@
 
 import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import { normalizeFirstRunProviderId } from "@elizaos/host/protocol";
+import type {
+  TranslateFn as AppTranslateFn,
+  ConfigUiHint,
+} from "@elizaos/contracts";
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
-import { useAppSelector } from "../../state";
-import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
+import { useAppSelector } from "../../state/app-store";
 import { SettingsSwitchRow } from "../settings/settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "../settings/settings-layout";
 import { Button } from "../ui/button";
+
 /* ── Types ─────────────────────────────────────────────────────────── */
 export type RpcProviderOption<T extends string> = {
   id: T;

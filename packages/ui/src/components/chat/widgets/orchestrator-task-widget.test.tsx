@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
   streamError: undefined as ((error: Error) => void) | undefined,
 }));
 
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: {
     getOrchestratorWidgets: mocks.getWidgets,
     streamOrchestratorWidgets: mocks.streamWidgets,
@@ -39,7 +39,7 @@ vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => true,
 }));
 
-vi.mock("../../../state", () => ({
+vi.mock("../../../state/app-store", () => ({
   useAppSelectorShallow: () => ({ t: undefined }),
 }));
 

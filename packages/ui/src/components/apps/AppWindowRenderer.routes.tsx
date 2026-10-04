@@ -1,21 +1,14 @@
 /** Desktop app windows share the declared internal-tool, page and catalog routes. */
+
+import type {
+  AppLaunchResult,
+  AppRunSummary,
+  RegistryAppInfo,
+} from "@elizaos/core/protocol";
 import { formatError } from "@elizaos/core/protocol";
-import {
-  type ComponentType,
-  type JSX,
-  lazy,
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  type AppLaunchResult,
-  type AppRunSummary,
-  client,
-  type RegistryAppInfo,
-} from "../../api";
+import type { ComponentType, JSX } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { client } from "../../api/client";
 import {
   appShellAgentSurfaceDescriptor,
   listAppShellPages,
@@ -23,7 +16,7 @@ import {
 } from "../../app-shell-registry";
 import type { Tab } from "../../navigation";
 import { useApp } from "../../state/useApp";
-import { openExternalUrl } from "../../utils";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { DatabasePageView } from "../pages/DatabasePageView";
 import { FilesView } from "../pages/FilesView";
 import { LogsView } from "../pages/LogsView";

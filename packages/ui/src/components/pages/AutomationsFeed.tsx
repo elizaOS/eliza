@@ -26,8 +26,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
   AutomationItem,
@@ -44,7 +44,7 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page";
+} from "../../layouts/framed-page/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
   FEED_FILTERS,

@@ -4,19 +4,16 @@
  * read/write layer the state modules go through.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import { fetchWithCsrf } from "../api/csrf-client";
-import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
+import { isTerminalHostAgentBootError } from "../api/host-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import { normalizeUniforms } from "../backgrounds/shader-schema";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { removeStorageValue, setStorageValue } from "../bridge/storage-bridge";
 import { getBootConfig } from "../config/boot-config-store";
-import {
-  DEFAULT_UI_LANGUAGE,
-  normalizeLanguage,
-  type UiLanguage,
-} from "../i18n";
+import { DEFAULT_UI_LANGUAGE, normalizeLanguage } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
@@ -28,20 +25,20 @@ import {
 } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
-import {
-  type ContinuousChatModeValue,
-  resolveContinuousChatMode,
-} from "./continuous-chat-mode";
+import type { ContinuousChatModeValue } from "./continuous-chat-mode";
+import { resolveContinuousChatMode } from "./continuous-chat-mode";
 import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
+import type {
+  BackgroundConfig,
+  UiShellMode,
+  UiTheme,
+  UiThemeMode,
+} from "./ui-preferences";
 import {
-  type BackgroundConfig,
   DEFAULT_ACCENT_ID,
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_CONFIG,
   normalizeAccentId,
-  type UiShellMode,
-  type UiTheme,
-  type UiThemeMode,
 } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
 
@@ -775,7 +772,7 @@ export async function fetchServerFavoriteApps(): Promise<string[] | null> {
     const message = describePersistenceError(err);
     // error-policy:J4 `null` is the documented failure signal (caller keeps
     // the local cache); iOS mode-gated boot logs debug, real failures warn.
-    if (isTerminalIosNativeAgentBootErrorMessage(message)) {
+    if (isTerminalHostAgentBootError(message)) {
       logger.debug(
         `[persistence] server favorite apps unavailable while the native transport is mode-gated (will retry after agent-ready): ${message}`,
       );

@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type {
   Conversation,
   ConversationMessageSearchResult,
@@ -37,7 +37,7 @@ import {
 import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
 import { CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT } from "../../hooks/useConversationRenderWindow";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { emitViewEvent } from "../../views/view-event-bus";

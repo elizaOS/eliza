@@ -12,10 +12,8 @@
  *   settings sections use (see `IdentitySettingsSection` for `messages.tts`).
  */
 
-import {
-  VOICE_SETTINGS_APPLY_EVENT,
-  type VoiceSettingsApplyPayload,
-} from "@elizaos/core/protocol";
+import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/core/protocol";
+import type { VoiceSettingsApplyPayload } from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";

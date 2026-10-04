@@ -7,12 +7,12 @@
  */
 import { Brain } from "lucide-react";
 import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { SkillInfo } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { SkillInfo } from "../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { WorkspaceLayout } from "../../layouts/workspace-layout";
-import { useAppSelectorShallow } from "../../state";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";

@@ -12,17 +12,19 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
+  useAgentElement,
   Button,
   Popover,
   PopoverContent,
   PopoverTrigger,
   SegmentedControl,
   Spinner,
-} from "@elizaos/ui/components";
-import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
-import { useAppSelector } from "@elizaos/ui/state";
+  useAppSelector,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "@elizaos/ui";
+
 import { CalendarClock, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import {
   type CSSProperties,

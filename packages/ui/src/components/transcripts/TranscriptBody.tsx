@@ -13,8 +13,8 @@
 import {
   activeWordIndex,
   flattenTranscriptWords,
-  type Transcript,
 } from "@elizaos/core/protocol";
+import type { Transcript } from "@elizaos/core/protocol";
 import * as React from "react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

@@ -21,18 +21,16 @@ import {
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
-import {
-  BrandTabsContent,
-  BrandTabsResponsive,
-  Card,
-  CornerBrackets,
-  CostInsightsCard,
-  DashboardPageContainer,
-  ExportButton,
-  KeyMetricsGrid,
-  type TabItem,
-  useSetPageHeader,
-} from "../../../cloud-ui";
+import { CostInsightsCard } from "../../../cloud-ui/components/analytics/cost-insights-card";
+import { ExportButton } from "../../../cloud-ui/components/analytics/export-button";
+import { BrandTabsContent } from "../../../cloud-ui/components/brand/brand-tabs";
+import type { TabItem } from "../../../cloud-ui/components/brand/brand-tabs-responsive";
+import { BrandTabsResponsive } from "../../../cloud-ui/components/brand/brand-tabs-responsive";
+import { KeyMetricsGrid } from "../../../cloud-ui/components/brand/key-metrics-grid";
+import { DashboardPageContainer } from "../../../cloud-ui/components/layout/dashboard-page";
+import { useSetPageHeader } from "../../../cloud-ui/components/layout/page-header-context.hooks";
+import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { toSuccessRatePercent } from "../lib/format";
 import { AnalyticsFilters } from "./filters";

@@ -13,10 +13,10 @@
  * this package's standing @elizaos/ui test stub.
  */
 
-import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
-import { getRendererServiceStates } from "@elizaos/ui/platform/renderer-services";
 import { describe, expect, it, vi } from "vitest";
 import { cachedDynamicImport } from "../../../packages/app/src/app-module-cache";
+import { listAppShellPages } from "../../../packages/ui/src/app-shell-registry";
+import { getRendererServiceStates } from "../../../packages/ui/src/platform/renderer-services";
 
 // Production identities: main.tsx caches the root facade under the canonical
 // package name; the vite transform caches the register entry under the

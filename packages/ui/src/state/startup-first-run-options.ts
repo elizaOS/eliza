@@ -5,11 +5,12 @@
  */
 
 import {
-  FIRST_RUN_PROVIDER_CATALOG,
   getStylePresets,
+  FIRST_RUN_PROVIDER_CATALOG,
 } from "@elizaos/host/protocol";
-import type { FirstRunOptions } from "../api";
-import type { UiLanguage } from "../i18n";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import type { UiLanguage } from "@elizaos/core/protocol";
+
 export function buildStaticFirstRunOptions(
   uiLanguage: UiLanguage,
 ): FirstRunOptions {

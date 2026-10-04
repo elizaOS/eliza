@@ -5,20 +5,22 @@
  */
 
 import { parseChatFailureKind } from "@elizaos/contracts";
+import type { CustomActionDef } from "@elizaos/contracts";
+import type { ConversationMessage } from "../api/client-types-chat";
 import type {
   AgentModelReadiness,
   AgentStartupDiagnostics,
   AgentStatus,
-  ConversationMessage,
-  CustomActionDef,
+  LocalModelReadiness,
   StreamEventEnvelope,
-} from "../api/client";
-import type { LocalModelReadiness } from "../api/client-types-core";
+} from "../api/client-types-core";
 import {
   computeStreamingDelta as computeStreamingDeltaInternal,
   mergeStreamingText,
 } from "../utils/streaming-text.js";
-import { AGENT_STATES, type ApiLikeError } from "./types";
+import { AGENT_STATES } from "./types";
+import type { ApiLikeError } from "./types";
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

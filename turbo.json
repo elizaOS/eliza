@@ -447,7 +447,11 @@
       "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-native-settings#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/capacitor-system#build",
+        "@elizaos/ui#build"
+      ]
     },
     "@elizaos/plugin-native-wifi#typecheck": {
       "dependsOn": [
@@ -693,6 +697,9 @@
         "XDG_RUNTIME_DIR",
         "XDG_CONFIG_HOME"
       ]
+    },
+    "@elizaos/os-usb-installer#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     }
   }
 }

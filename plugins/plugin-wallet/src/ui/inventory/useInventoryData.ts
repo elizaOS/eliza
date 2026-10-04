@@ -15,7 +15,7 @@ import type {
   WalletConfigStatus,
   WalletNftsResponse,
 } from "@elizaos/contracts";
-import type { InventoryChainFilters } from "@elizaos/ui/state";
+import type { InventoryChainFilters } from "@elizaos/ui";
 import { useMemo } from "react";
 import {
   CHAIN_CONFIGS,

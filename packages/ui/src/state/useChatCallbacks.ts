@@ -5,20 +5,19 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
+import type { ChatTurnStatus } from "@elizaos/contracts";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/protocol";
-import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
+import type { MutableRefObject } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { client } from "../api/client";
 import type {
-  ChatTurnStatus,
-  CodingAgentSession,
   Conversation,
-  FirstRunOptions,
-} from "../api";
-import {
-  type AgentStatus,
-  type ConversationMessage,
-  client,
-  type ImageAttachment,
-} from "../api";
+  ConversationMessage,
+  ImageAttachment,
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
+import type { AgentStatus } from "../api/client-types-core";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { isIOS, isNative } from "../platform/init";
@@ -36,19 +35,22 @@ import {
 } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import { appendGreetingOnce } from "./greeting-dedupe";
-import type { AppState, LifecycleAction } from "./internal";
 import {
   filterRenderableConversationMessages,
-  type LoadConversationMessagesResult,
   loadActiveConversationId,
-  type StreamingTextModification,
   shouldKeepConversationMessage,
 } from "./internal";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
+import type {
+  AppState,
+  LifecycleAction,
+  LoadConversationMessagesResult,
+} from "./types";
 import { deriveAgentReady } from "./types";
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
 import type { ConversationMessageStateMutation } from "./useDataLoaders";
+import type { StreamingTextModification } from "./useStreamingText";
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],

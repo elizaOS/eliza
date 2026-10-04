@@ -12,9 +12,11 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  DropStatus,
-  MintResult,
-  VerificationResult,
+  StewardBalanceResponse,
+  StewardTokenBalancesResponse,
+  StewardWalletAddressesResponse,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -24,29 +26,27 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
+  DropStatus,
+  MintResult,
+  VerificationResult,
 } from "@elizaos/contracts";
 import { ElizaClient } from "./client-base";
 import type {
-  ApplyProductionWalletDefaultsResponse,
   RegistrationResult,
   RegistryConfig,
   RegistryStatus,
   VerificationMessageResponse,
-  WalletExportResult,
   WhitelistStatus,
-} from "./client-types";
+} from "./client-types-cloud";
+import type { WalletExportResult } from "./client-types-config";
+import type { ApplyProductionWalletDefaultsResponse } from "./client-types-core";
 import type {
   StewardApprovalActionResponse,
-  StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingResponse,
   StewardSignRequest,
   StewardSignResponse,
   StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
 } from "./client-types-steward";
 import type {
   BrowserWorkspaceSolanaMessageSignatureResult,
@@ -58,7 +58,7 @@ import type {
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getWalletAddresses(): Promise<WalletAddresses>;
     getWalletBalances(): Promise<WalletBalancesResponse>;

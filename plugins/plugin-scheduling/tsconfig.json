@@ -10,9 +10,6 @@
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
-      "@elizaos/ui/spatial": ["../../packages/ui/src/spatial/index.ts"],
-      "@elizaos/ui/spatial/*": ["../../packages/ui/src/spatial/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }

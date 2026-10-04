@@ -29,7 +29,7 @@ vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({ views: [] }),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: <T,>(selector: (s: typeof appStateValue) => T): T =>
     selector(appStateValue),
 }));

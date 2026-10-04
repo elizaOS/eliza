@@ -6,19 +6,20 @@
  * warnings/errors flow in as props and surface inline.
  */
 
-import type { JsonSchemaObject } from "@elizaos/host/protocol";
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import { API_KEY_PREFIX_HINTS } from "@elizaos/host/protocol";
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
+import type { ConfigUiHint } from "@elizaos/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type PluginParamDef } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import {
   defaultRegistry,
   useConfigValidation,
 } from "../../components/config-ui/config-renderer.helpers";
 import { useTimeout } from "../../hooks/useTimeout";
-import { useAppSelector } from "../../state";
-import type { ConfigUiHint } from "../../types";
+import { useAppSelector } from "../../state/app-store";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { autoLabel } from "../../utils/labels.js";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";

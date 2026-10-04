@@ -17,14 +17,14 @@
  */
 
 import {
-  Button,
-  Card,
+  SpatialButton as Button,
+  SpatialCard as Card,
   Field,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialHStack as HStack,
+  SpatialList as List,
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 
 /** Which render state the document browser is in. */
 export type DocumentsViewState = "loading" | "error" | "empty" | "ready";
