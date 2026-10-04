@@ -1,6 +1,7 @@
 """Boot the candidate's real HTTP/runtime stack and assert missing vision fails."""
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -22,6 +23,9 @@ def interrupted(_signum, _frame):
 
 signal.signal(signal.SIGTERM, interrupted)
 
+startup_timeout = float(os.environ.get("ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S", "90"))
+if not math.isfinite(startup_timeout) or startup_timeout <= 0:
+    raise ValueError("ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S must be finite and positive")
 root = Path(os.environ["BENCHMARK_VISION_TEST_OUTPUT"])
 root.mkdir(parents=True, exist_ok=True)
 server_entry = Path(os.environ["BENCHMARK_VISION_SERVER_ENTRY"])
@@ -190,11 +194,11 @@ with (
     )
     try:
         url = f"http://127.0.0.1:{port}/api/benchmark/"
-        deadline = time.monotonic() + 90
+        deadline = time.monotonic() + startup_timeout
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError(
-                    f"server exited {process.returncode}; see http-server.log"
+                    f"server exited {process.returncode}; see {log_path}"
                 )
             try:
                 urllib.request.urlopen(url + "health", timeout=1).close()
@@ -202,7 +206,9 @@ with (
             except (urllib.error.URLError, TimeoutError):
                 time.sleep(0.25)
         else:
-            raise TimeoutError("Server startup exceeded90seconds")
+            raise TimeoutError(
+                f"Server startup exceeded {startup_timeout}s; see {log_path}"
+            )
         payload = {
             "text": "Inspect this screenshot.",
             "context": {
