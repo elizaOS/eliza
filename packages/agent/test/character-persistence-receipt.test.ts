@@ -50,7 +50,8 @@ it("records committed sinks and exposes a later storage failure without claiming
       ).length,
     ).toBeGreaterThan(0);
     // A real SQLite constraint rejects only history insertion after the agent update.
-    // The adapter owns an exclusive lock; install the constraint while it is closed.
+    // The adapter owns an exclusive file lock. Release it before installing
+    // the real failure constraint, then reopen through the owning adapter.
     await adapter.close();
     const connection = new DatabaseSync(path.join(dir, "state.sqlite"));
     try {

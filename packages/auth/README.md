@@ -69,5 +69,5 @@ encrypted vault reopening, restored API access and exact-key revocation. Only a
 closed receipt is uploaded. It does not establish external provider sign-in,
 OS secure-store integration, or physical-device acceptance.
 
-Native cloud service composition belongs to the [Cloud SDK](../cloud/sdk/README.md),
+Native Cloud service composition belongs to the [Cloud SDK](../cloud/sdk/README.md),
 which accepts the authentication flow through host callbacks.
