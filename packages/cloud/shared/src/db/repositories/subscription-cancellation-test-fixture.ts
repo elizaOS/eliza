@@ -28,6 +28,7 @@ export async function installCancellationTestSchema(execute: (query: string) => 
 }
 export async function seedCancellationTestAccount(
   queryOverride?: (text: string, values: unknown[]) => Promise<unknown>,
+  period?: { start: Date; end: Date },
 ) {
   const { getPgliteClientForTests } = await import("../client");
   const query =
@@ -49,8 +50,8 @@ export async function seedCancellationTestAccount(
     plan_key: "plus_monthly" as const,
     catalog_version: "v1",
     status: "active" as const,
-    current_period_start: new Date((now - 86400) * 1000),
-    current_period_end: new Date((now + 86400) * 1000),
+    current_period_start: period?.start ?? new Date((now - 86400) * 1000),
+    current_period_end: period?.end ?? new Date((now + 86400) * 1000),
     cancel_at_period_end: false,
     canceled_at: null,
     ended_at: null,
@@ -95,8 +96,8 @@ export async function seedCancellationTestAccount(
       livemode: false,
       customer: source.stripe_customer_id,
       status: "active",
-      current_period_start: now - 86400,
-      current_period_end: now + 86400,
+      current_period_start: Math.floor(source.current_period_start.getTime() / 1000),
+      current_period_end: Math.floor(source.current_period_end.getTime() / 1000),
       cancel_at_period_end: false,
       cancel_at: null as number | null,
       canceled_at: null as number | null,

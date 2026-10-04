@@ -198,6 +198,7 @@ test("real upstream reflection, Pareto selection and held-out evaluation emit a 
   const result = await runGepaPlannerOptimization(input, {
     python,
     adapterSourcePaths,
+    caseTimeoutMs: 90_000,
     evaluate,
     reflect,
   });
@@ -208,6 +209,7 @@ test("real upstream reflection, Pareto selection and held-out evaluation emit a 
   );
   expect(gepaHash(input)).toBe(before);
   expect(result.activated).toBe(false);
+  expect(result.caseTimeoutMs).toBe(90_000);
   expect(parseOptimizedPromptArtifact(result.artifact)).toEqual(
     result.artifact,
   );
@@ -252,6 +254,7 @@ test("split overlap fails before execution", async () => {
     runGepaPlannerOptimization(input, {
       python,
       adapterSourcePaths,
+      caseTimeoutMs: 90_000,
       evaluate,
       reflect,
     }),
@@ -264,6 +267,7 @@ test("scorer infrastructure failure propagates without producing an artifact", a
     runGepaPlannerOptimization(manifest(), {
       python,
       adapterSourcePaths,
+      caseTimeoutMs: 90_000,
       reflect,
       evaluate: async () => {
         throw new Error("scoring infrastructure offline");
@@ -291,6 +295,7 @@ test("cancellation during a real worker HTTP request reaps engine and worker", a
   const run = runGepaPlannerOptimization(manifest(), {
     python,
     adapterSourcePaths,
+    caseTimeoutMs: 90_000,
     evaluate,
     reflect,
     signal: controller.signal,
@@ -333,6 +338,7 @@ test("last evaluator mutation of producer source invalidates the entire run", as
     const outcome = await runGepaPlannerOptimization(manifest(), {
       python,
       adapterSourcePaths,
+      caseTimeoutMs: 90_000,
       reflect,
       evaluate: async (evidence, input) => {
         const score = await evaluate(evidence);
@@ -442,4 +448,27 @@ test("failed atomic publication preserves existing files and removes staging", a
     JSON.parse(await readFile(join(destination, "evidence.json"), "utf8"))
       .activated,
   ).toBe(false);
+});
+
+test("invalid case budgets fail before optimizer or worker startup", async () => {
+  for (const caseTimeoutMs of [
+    0,
+    -1,
+    0.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ]) {
+    const onEngineStarted = vi.fn();
+    await expect(
+      runGepaPlannerOptimization(manifest(), {
+        python,
+        adapterSourcePaths,
+        evaluate,
+        reflect,
+        caseTimeoutMs,
+        onEngineStarted,
+      }),
+    ).rejects.toThrow("Positive case timeout required");
+    expect(onEngineStarted).not.toHaveBeenCalled();
+  }
 });

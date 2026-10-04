@@ -14,7 +14,11 @@ export async function installOrganizationUpgradeTestSchema(
     "0512_organization_upgrade_dispatch",
     "0513_organization_upgrade_live_lease",
     ...(includeProviderBinding
-      ? ["0514_organization_upgrade_quote_binding", "0515_organization_upgrade_invoice_origins"]
+      ? [
+          "0514_organization_upgrade_quote_binding",
+          "0515_organization_upgrade_invoice_origins",
+          "0516_organization_upgrade_paid_finalization",
+        ]
       : []),
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}.sql`, import.meta.url), "utf8");
@@ -30,8 +34,9 @@ export async function installOrganizationUpgradeTestSchema(
 }
 export async function seedOrganizationUpgradeTestAccount(
   queryOverride?: (text: string, values: unknown[]) => Promise<unknown>,
+  period?: { start: Date; end: Date },
 ) {
-  const f = await seedCancellationTestAccount(queryOverride);
+  const f = await seedCancellationTestAccount(queryOverride, period);
   const authority = await import("./organization-plan-change");
   const captured = await authority.readOrganizationPlanChangeSource(f.input);
   const observedAt = new Date();
@@ -70,7 +75,9 @@ export async function seedOrganizationUpgradeTestAccount(
         totalCents: 10000,
       },
       observedAt: observedAt.toISOString(),
-      expiresAt: new Date(observedAt.getTime() + 60_000).toISOString(),
+      expiresAt: new Date(
+        Math.min(observedAt.getTime() + 60_000, f.source.current_period_end.getTime()),
+      ).toISOString(),
     };
   const providerBinding: import("../../lib/services/organization-upgrade-provider-binding").OrganizationUpgradeProviderBinding =
     {
