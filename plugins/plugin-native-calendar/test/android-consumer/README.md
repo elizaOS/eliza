@@ -22,7 +22,7 @@ x86_64 fixture AVD (it must be booted and unlocked with foreground user 0):
 node plugins/plugin-native-calendar/test/android-consumer/run-read-access.mjs \
   --adb /absolute/android-sdk/platform-tools/adb \
   --aapt /absolute/android-sdk/build-tools/36.0.0/aapt \
-  --serial emulator-5582 --avd your-disposable-fixture
+  --serial emulator-5582 --abi x86_64 --avd your-disposable-fixture
 ```
 
 This host creates a separate fresh user for cancellation and complete-read runs,
@@ -35,3 +35,5 @@ users. APK hashes, instrumentation and cleanup receipts are under repository-roo
 and 300-second instrumentation deadlines; override them with
 `--command-timeout-ms` and `--instrumentation-timeout-ms` as needed. The shared
 harness imposes no automatic duration policy.
+
+Select `--abi arm64-v8a` for an ARM64 fixture. The caller holds the device lease before creating its fresh secondary users and through their removal. It switches each fixture user to the foreground to finish unlocking, then restores the original foreground user.
