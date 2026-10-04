@@ -194,3 +194,9 @@ the same synchronous SQLite connection without starting its own transaction.
 The store serializes ownership/epoch checks, sequencing and idempotency with
 writes; it never advances tasks or authorizes effects. Keep product measurement
 schemas and summaries in the host. Existing compatible tables are preserved.
+
+Hosts whose runtime writes its own persistent configuration should use
+`preparePrivateRuntimeProfile` and continue passing their original config path
+to that runtime. It returns the saved token and parsed configuration without
+rewriting existing bytes. `preparePrivateRuntimeFiles` composes this primitive
+with a separate generated launch config for hosts that need a per-launch selection.
