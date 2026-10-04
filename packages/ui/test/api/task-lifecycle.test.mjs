@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { TaskLifecycle as SharedTaskLifecycle } from "./task-lifecycle";
+import { TaskLifecycle as SharedTaskLifecycle } from "../../src/api/task-lifecycle.ts";
 
 const messages = {
   start: "start-unconfirmed",
