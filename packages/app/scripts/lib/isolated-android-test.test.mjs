@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import {
+  acquireDeviceLease,
+  deviceLeaseStateDir,
+  readDeviceLease,
+} from "./device-lease.ts";
 import { runIsolatedAndroidTest } from "./isolated-android-test.mjs";
 
 function fixture(t, mode = "") {
@@ -313,4 +320,124 @@ test("invalid or ambiguous class selections fail before any device mutation", as
       runIsolatedAndroidTest({ ...f.options, ...selection }),
     );
   assert.deepEqual(f.commands(), []);
+});
+
+test("caller ownership spans successful and cancelled consumer execution", async (t) => {
+  for (const mode of ["", "hanging"]) {
+    const f = fixture(t, mode);
+    const deviceKey = `android:${f.options.serial}`;
+    const stateDir = deviceLeaseStateDir(f.options.env);
+    const deviceLease = await acquireDeviceLease(deviceKey, {
+      waitMs: 0,
+      ttlMs: Number.MAX_SAFE_INTEGER,
+      stateDir,
+    });
+    try {
+      const controller = new AbortController();
+      const execution = runIsolatedAndroidTest({
+        ...f.options,
+        deviceLease,
+        signal: controller.signal,
+      });
+      if (mode === "hanging") {
+        while (!fs.existsSync(path.join(f.root, "instrumentation-started")))
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        controller.abort();
+        await assert.rejects(execution, (error) => error.name === "AbortError");
+      } else await execution;
+      assert.deepEqual(
+        readDeviceLease(deviceKey, { stateDir }),
+        deviceLease.lease,
+      );
+      assert.equal(
+        JSON.parse(
+          fs.readFileSync(path.join(f.options.directory, "verification.json")),
+        ).cleaned,
+        true,
+      );
+      await assert.rejects(
+        acquireDeviceLease(deviceKey, { waitMs: 0, stateDir }),
+      );
+    } finally {
+      deviceLease.release();
+    }
+    assert.equal(readDeviceLease(deviceKey, { stateDir }), null);
+  }
+});
+
+test("foreign and released caller leases reject before device commands", async (t) => {
+  const f = fixture(t);
+  const stateDir = deviceLeaseStateDir(f.options.env);
+  const foreign = await acquireDeviceLease("android:emulator-2", {
+    waitMs: 0,
+    stateDir,
+  });
+  try {
+    await assert.rejects(
+      runIsolatedAndroidTest({ ...f.options, deviceLease: foreign }),
+    );
+  } finally {
+    foreign.release();
+  }
+  const released = await acquireDeviceLease(`android:${f.options.serial}`, {
+    waitMs: 0,
+    ttlMs: Number.MAX_SAFE_INTEGER,
+    stateDir,
+  });
+  released.release();
+  await assert.rejects(
+    runIsolatedAndroidTest({ ...f.options, deviceLease: released }),
+  );
+  const finite = await acquireDeviceLease(`android:${f.options.serial}`, {
+    waitMs: 0,
+    stateDir,
+  });
+  try {
+    await assert.rejects(
+      runIsolatedAndroidTest({ ...f.options, deviceLease: finite }),
+      /live fixture lifecycle/,
+    );
+  } finally {
+    finite.release();
+  }
+  assert.deepEqual(f.commands(), []);
+});
+
+test("calendar caller rejects a leased fixture before creating users", async (t) => {
+  const f = fixture(t);
+  const lease = await acquireDeviceLease(`android:${f.options.serial}`, {
+    waitMs: 0,
+    stateDir: deviceLeaseStateDir(f.options.env),
+  });
+  try {
+    const caller = fileURLToPath(
+      new URL(
+        "../../../../plugins/plugin-native-calendar/test/android-consumer/run-read-access.mjs",
+        import.meta.url,
+      ),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        caller,
+        "--adb",
+        f.options.adb,
+        "--aapt",
+        f.options.aapt,
+        "--serial",
+        f.options.serial,
+        "--avd",
+        f.options.expectedAvdName,
+        "--abi",
+        "x86_64",
+      ],
+      { env: f.options.env, encoding: "utf8" },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /leased by/);
+    assert.deepEqual(f.commands(), []);
+  } finally {
+    lease.release();
+  }
 });
