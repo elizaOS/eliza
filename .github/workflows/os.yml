@@ -290,4 +290,4 @@ jobs:
         with:
           node-version: 24.15.0
       - name: Test durable OTA publication core
-        run: node --test packages/os/native/ota-publisher/test/*.test.mjs
+        run: node --test native/ota-publisher/test/*.test.mjs
