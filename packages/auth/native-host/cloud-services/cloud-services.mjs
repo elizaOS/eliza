@@ -698,7 +698,8 @@ export function createCloudRoutes({
           typeof input.audioBase64 !== "string" ||
           !/^[A-Za-z0-9+/]*={0,2}$/.test(input.audioBase64) ||
           typeof input.mimeType !== "string" ||
-          input.mimeType.length > 200 || /[\r\n]/.test(input.mimeType) ||
+          input.mimeType.length > 200 ||
+          /[\r\n]/.test(input.mimeType) ||
           !/^audio\/[a-zA-Z0-9.+-]+(?:;.*)?$/.test(input.mimeType)
         )
           throw fail(message("validBase64AudioAndMIMETypeRequired"));
