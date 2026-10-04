@@ -62,3 +62,12 @@ bundle for PGlite. Hosts supply exact directory exclusions and package the
 returned inventory plus assets. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
+
+
+`NativeStorageDiagnostic` runs a disposable SQLite write/close/reopen/integrity
+probe in a dedicated no-backup namespace on API 26+. Hosts supply the namespace,
+absolute elapsed-time deadline, database-byte budget and cleanup entry limit.
+A private no-follow file lock fences orphan cleanup; unknown entries, links and
+foreign ownership reject before deletion. It never opens application databases
+or declares an update healthy. Android tests cover readback, orphan cleanup,
+expired/invalid policy and unsafe files while preserving an external sentinel.
