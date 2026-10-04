@@ -250,3 +250,8 @@ and stage a pinned mobile runtime with byte provenance, supplying their own
 skills and gateway callback. Development checkout inspection lives in
 `scripts/lib/committed-source.mjs`; APK document integrity verification lives in
 `../host/native-host/android-documents.mjs`.
+
+`development-probes.ts` provides dependency-light TCP and authenticated JSON
+readiness transports for development hosts. TCP success does not identify an
+owner; JSON probes reject redirects and bound the body read. Hosts retain
+identity, readiness predicates and process reuse policy.

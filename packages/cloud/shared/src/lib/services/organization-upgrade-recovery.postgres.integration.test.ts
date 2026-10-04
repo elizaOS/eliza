@@ -15,6 +15,8 @@ let pending = false;
 let objects: ReturnType<typeof upgradePaidObjects>;
 let dispatched = false;
 let originalKey = "";
+let historicalTargetEvent: unknown = null;
+let afterTargetSearch = async () => {};
 
 process.env.ENVIRONMENT = "local";
 process.env.STRIPE_SECRET_KEY = ["sk", "test", "upgradepreview"].join("_");
@@ -118,22 +120,34 @@ const preview = mock(
 mock.module("../stripe", () => ({
   requireStripe: () => ({
     events: {
-      list: async () => ({
-        object: "list",
-        has_more: false,
-        data: [
-          {
-            id: `evt_${fixtureData.input.subscriptionId.replaceAll("-", "")}`,
-            object: "event",
-            type: "invoice.created",
-            api_version: "2024-11-20.acacia",
-            created: objects.rawInvoice.created,
-            livemode: false,
-            request: { id: `req_${schema.replaceAll("_", "")}`, idempotency_key: originalKey },
-            data: { object: objects.rawInvoice },
-          },
-        ],
-      }),
+      list: async (input: { types?: string[] }) => {
+        if (input.types) await afterTargetSearch();
+        return input.types
+          ? {
+              object: "list",
+              has_more: false,
+              data: historicalTargetEvent ? [historicalTargetEvent] : [],
+            }
+          : {
+              object: "list",
+              has_more: false,
+              data: [
+                {
+                  id: `evt_${fixtureData.input.subscriptionId.replaceAll("-", "")}`,
+                  object: "event",
+                  type: "invoice.created",
+                  api_version: "2024-11-20.acacia",
+                  created: objects.rawInvoice.created,
+                  livemode: false,
+                  request: {
+                    id: `req_${schema.replaceAll("_", "")}`,
+                    idempotency_key: originalKey,
+                  },
+                  data: { object: objects.rawInvoice },
+                },
+              ],
+            };
+      },
     },
     customers: {
       retrieve: async () => {
@@ -185,8 +199,10 @@ mock.module("../stripe", () => ({
 
 let close: typeof import("../../db/client").closeDatabaseConnectionsForTests;
 let dispatch: typeof import("./organization-upgrade-dispatch").dispatchOrganizationUpgrade;
-async function seed() {
-  fixtureData = await seedCancellationTestAccount((q, v) => db.query(q, v));
+async function seed(period?: { start: Date; end: Date }) {
+  fixtureData = await seedCancellationTestAccount((q, v) => db.query(q, v), period);
+  historicalTargetEvent = null;
+  afterTargetSearch = async () => {};
   dispatched = false;
   pending = false;
   writeFailure = false;
@@ -380,5 +396,548 @@ async function state(commandId: string) {
       expect(replay).toEqual(original);
       expect(mutation).toHaveBeenCalledTimes(1);
     });
+
+    test("failed original-event search releases only its lease and retains started unknown", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      originalKey = "foreign-request-key";
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      await expect(recover(f.identity)).rejects.toThrow();
+      const row = (
+        await db.query(
+          "SELECT status,lease_token,attempt_count,organization_upgrade_dispatch_state AS dispatch FROM billing_subscription_commands WHERE id=$1",
+          [f.identity.commandId],
+        )
+      ).rows[0];
+      expect(row).toEqual({
+        status: "OUTCOME_UNKNOWN",
+        lease_token: null,
+        attempt_count: 2,
+        dispatch: "started",
+      });
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    test("recovery incidents deduplicate and only applied authority resolves them", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      const issue = { ...f.identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" };
+      expect((await record(issue)).recorded).toBe(true);
+      await record(issue);
+      expect((await record({ ...issue, issueCode: null })).resolved).toBe(0);
+      const incidents = await db.query(
+        "SELECT occurrence_count,status,context FROM billing_subscription_incidents WHERE command_id=$1",
+        [f.identity.commandId],
+      );
+      expect(incidents.rows).toHaveLength(1);
+      expect(incidents.rows[0].occurrence_count).toBe(2);
+      expect(incidents.rows[0].status).toBe("open");
+      expect(incidents.rows[0].context).toEqual({
+        owner: "organization_upgrade_recovery",
+        code: "UPGRADE_RECOVERY_UNAVAILABLE",
+      });
+      await expiredLease(f.identity.commandId);
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      expect((await recover(f.identity)).status).toBe("applied");
+      expect((await record({ ...issue, issueCode: null })).resolved).toBe(1);
+      expect((await record(issue)).recorded).toBe(false);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM billing_subscription_incidents WHERE command_id=$1 AND status='open'",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    test("incident ownership rejects foreign tenant and unbounded raw error content", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      await expect(
+        record({ ...f.identity, organizationId: randomUUID(), issueCode: "UPGRADE_UNAVAILABLE" }),
+      ).rejects.toThrow();
+      await expect(
+        record({ ...f.identity, issueCode: "raw provider body must not be stored" }),
+      ).rejects.toThrow();
+    });
+
+    test("maintenance records failure and resolves it after a later paid recovery", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const original = originalKey;
+      originalKey = "unattributed-request";
+      await db.query(
+        "UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second',updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+        [f.identity.commandId],
+      );
+      const { recoverOrganizationUpgrades: run } = await import(
+        "./organization-upgrade-maintenance"
+      );
+      const failed = await run(5);
+      expect(failed.unavailable).toBe(1);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM billing_subscription_incidents WHERE command_id=$1 AND status='open'",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect((await run(5)).inspected).toBe(0);
+      originalKey = original;
+      await db.query(
+        "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+        [f.identity.commandId],
+      );
+      expect((await run(5)).applied).toBe(1);
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.identity.commandId,
+          ])
+        ).rows[0].status,
+      ).toBe("resolved");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    function invoiceDelivery(type: "invoice.created" | "invoice.paid") {
+      const event = {
+        id: `evt_${type.replaceAll(".", "")}${fixtureData.input.subscriptionId.replaceAll("-", "")}`,
+        object: "event",
+        type,
+        api_version: "2024-11-20.acacia",
+        created: objects.rawInvoice.created,
+        livemode: false,
+        request:
+          type === "invoice.created"
+            ? { id: `req_${schema.replaceAll("_", "")}`, idempotency_key: originalKey }
+            : null,
+        data: { object: objects.rawInvoice },
+      };
+      return {
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: type,
+        receivedAt: Date.now(),
+        event,
+      } as import("../../types/stripe-queue-message").StripeEventMessage;
+    }
+    test("invoice webhooks persist original attribution then recover once, including revoked actor and duplicate delivery", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      await db.query("UPDATE users SET role='member' WHERE id=$1", [f.identity.actorId]);
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      await record({ ...f.identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" });
+      expect(await route(invoiceDelivery("invoice.created"))).toEqual({ owned: true });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(await route(invoiceDelivery("invoice.created"))).toEqual({ owned: true });
+      expect(await route(invoiceDelivery("invoice.paid"))).toEqual({ owned: true });
+      expect(await route(invoiceDelivery("invoice.paid"))).toEqual({ owned: true });
+      expect((await state(f.identity.commandId)).status).toBe("APPLIED");
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.identity.commandId,
+          ])
+        ).rows[0].status,
+      ).toBe("resolved");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    test("paid before creation remains retryable until the original receipt arrives", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await expect(route(invoiceDelivery("invoice.paid"))).rejects.toThrow(
+        "requires reconciliation",
+      );
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      await route(invoiceDelivery("invoice.created"));
+      expect(await route(invoiceDelivery("invoice.paid"))).toEqual({ owned: true });
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    test("event identity, platform and version mismatches cannot attribute a command", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      const valid = invoiceDelivery("invoice.created");
+      for (const changes of [
+        { account: "acct_foreign" },
+        { context: "acct_foreign" },
+        { api_version: "2025-03-31.basil" },
+        { livemode: true },
+      ]) {
+        await expect(
+          route({ ...valid, event: { ...valid.event, ...changes } } as typeof valid),
+        ).rejects.toThrow();
+      }
+      await expect(route({ ...valid, eventId: "evt_wrong" })).rejects.toThrow();
+      await expect(route({ ...valid, eventType: "invoice.paid" })).rejects.toThrow();
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM organization_upgrade_invoice_origins WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    test("wrong request, customer, subscription or mode never bind another tenant's command", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      const valid = invoiceDelivery("invoice.created");
+      for (const changes of [
+        { customer: "cus_foreign" },
+        { subscription: "sub_foreign" },
+        { livemode: true },
+      ]) {
+        const event = {
+          ...valid.event,
+          livemode: changes.livemode ?? false,
+          data: { object: { ...objects.rawInvoice, ...changes } },
+        };
+        expect(await route({ ...valid, event } as typeof valid)).toEqual({ owned: false });
+      }
+      expect(
+        await route({
+          ...valid,
+          event: {
+            ...valid.event,
+            request: { id: "req_foreign", idempotency_key: "foreign-request" },
+          },
+        }),
+      ).toEqual({ owned: false });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+    });
+    test("an attributed paid event cannot steal an active observation lease", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      expect(await route(invoiceDelivery("invoice.paid"))).toEqual({ owned: true });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    test("a paid payload cannot replace receipt identity or override the retrieved unpaid state", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      const created = invoiceDelivery("invoice.created");
+      const paid = invoiceDelivery("invoice.paid");
+      const foreignObject = { ...objects.rawInvoice, id: "in_unrelated" };
+      await expect(
+        route({
+          ...created,
+          event: { ...created.event, data: { object: foreignObject } },
+        } as typeof created),
+      ).rejects.toThrow();
+      await expect(
+        route({
+          ...paid,
+          event: { ...paid.event, data: { object: foreignObject } },
+        } as typeof paid),
+      ).rejects.toThrow();
+      pending = true;
+      expect(await route(paid)).toEqual({ owned: true });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(mutation).toHaveBeenCalledTimes(1);
+      pending = false;
+      expect(await route(paid)).toEqual({ owned: true });
+      expect((await state(f.identity.commandId)).status).toBe("APPLIED");
+    });
+    test("a real second tenant cannot use the first tenant's original request key", async () => {
+      const first = await seed();
+      writeFailure = true;
+      await expect(dispatch(first.identity, first.claim, async () => {})).rejects.toThrow();
+      const firstKey = originalKey;
+      const second = await seed();
+      writeFailure = true;
+      await expect(dispatch(second.identity, second.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      originalKey = firstKey;
+      expect(await route(invoiceDelivery("invoice.created"))).toEqual({ owned: false });
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM organization_upgrade_invoice_origins WHERE command_id IN ($1,$2)",
+            [first.identity.commandId, second.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect((await state(first.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect((await state(second.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+    });
+
+    function historicalEvent() {
+      return {
+        id: `evt_target${fixtureData.input.subscriptionId.replaceAll("-", "")}`,
+        object: "event",
+        type: "customer.subscription.pending_update_applied",
+        api_version: "2024-11-20.acacia",
+        created: objects.rawInvoice.created,
+        livemode: false,
+        data: { object: { ...objects.rawSubscription, latest_invoice: objects.rawInvoice.id } },
+      };
+    }
+    test("historical target receipt is immutable, idempotent and performs no financial publication", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      const { recordOrganizationUpgradeHistoricalTarget: record } = await import(
+        "../../db/repositories/organization-upgrade-historical-targets"
+      );
+      const input = { ...f.identity, raw: historicalEvent() };
+      expect((await record(input)).created).toBe(true);
+      expect((await record(input)).created).toBe(false);
+      expect(
+        (await record({ ...input, raw: { ...input.raw, id: `${input.raw.id}second` } })).created,
+      ).toBe(false);
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM subscription_allowance_transactions WHERE organization_id=$1",
+            [f.identity.organizationId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      await expect(
+        db.query(
+          "UPDATE organization_upgrade_historical_targets SET invoice_id='in_other' WHERE command_id=$1",
+          [f.identity.commandId],
+        ),
+      ).rejects.toThrow();
+      await expect(
+        db.query("DELETE FROM organization_upgrade_historical_targets WHERE command_id=$1", [
+          f.identity.commandId,
+        ]),
+      ).rejects.toThrow();
+      await expect(
+        record({
+          ...input,
+          raw: {
+            ...input.raw,
+            data: { object: { ...input.raw.data.object, metadata: { changed: "payload" } } },
+          },
+        }),
+      ).rejects.toThrow();
+    });
+    test("historical target persistence rejects missing origin, foreign tenant and conflicting invoice", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { recordOrganizationUpgradeHistoricalTarget: record } = await import(
+        "../../db/repositories/organization-upgrade-historical-targets"
+      );
+      const input = { ...f.identity, raw: historicalEvent() };
+      await expect(record(input)).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      await expect(record({ ...input, organizationId: randomUUID() })).rejects.toThrow();
+      await expect(
+        record({
+          ...input,
+          raw: {
+            ...input.raw,
+            data: { object: { ...input.raw.data.object, latest_invoice: "in_other" } },
+          },
+        }),
+      ).rejects.toThrow();
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    test("late target evidence validates against original revision after the command applies", async () => {
+      const f = await seed();
+      await dispatch(f.identity, f.claim, async () => {});
+      expect((await state(f.identity.commandId)).status).toBe("APPLIED");
+      const { recordOrganizationUpgradeHistoricalTarget: record } = await import(
+        "../../db/repositories/organization-upgrade-historical-targets"
+      );
+      const receipt = await record({ ...f.identity, raw: historicalEvent() });
+      expect(receipt.created).toBe(true);
+      expect(receipt.receipt.raw_subscription.latest_invoice).toBe(objects.rawInvoice.id);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    test("database receipt guard rejects incomplete identity and an altered reviewed period", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      const event = historicalEvent();
+      for (const raw of [
+        { ...event.data.object, customer: null },
+        { ...event.data.object, current_period_end: event.data.object.current_period_end + 1 },
+        { ...event.data.object, pending_update: { expires_at: event.created + 60 } },
+      ]) {
+        await expect(
+          db.query(
+            `INSERT INTO organization_upgrade_historical_targets(command_id,organization_id,provider_event_id,event_type,api_version,livemode,invoice_id,event_created_at,observed_at,evidence_digest,raw_subscription) VALUES($1,$2,$3,$4,$5,false,$6,to_timestamp($7),clock_timestamp(),$8,$9::jsonb)`,
+            [
+              f.identity.commandId,
+              f.identity.organizationId,
+              event.id,
+              event.type,
+              event.api_version,
+              objects.rawInvoice.id,
+              event.created,
+              "a".repeat(64),
+              JSON.stringify(raw),
+            ],
+          ),
+        ).rejects.toThrow();
+      }
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+
+    test("expired observation lease retains historical evidence for a new claimant", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await seed({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      historicalTargetEvent = historicalEvent();
+      await expiredLease(f.identity.commandId);
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      objects.rawSubscription = {
+        ...objects.rawSubscription,
+        current_period_start: second + 5,
+        current_period_end: second + 86405,
+      };
+      afterTargetSearch = async () => {
+        await expiredLease(f.identity.commandId);
+      };
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      await expect(recover(f.identity)).rejects.toThrow();
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      historicalTargetEvent = null;
+      afterTargetSearch = async () => {
+        throw new Error("Retained target must prevent a repeated search");
+      };
+      expect((await recover(f.identity)).status).toBe("applied");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    }, 10000);
+
+    test("lost response after renewal searches and retains historical target before original settlement", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await seed({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      historicalTargetEvent = historicalEvent();
+      await expiredLease(f.identity.commandId);
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      objects.rawSubscription = {
+        ...objects.rawSubscription,
+        current_period_start: second + 5,
+        current_period_end: second + 86405,
+      };
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      expect((await recover(f.identity)).status).toBe("applied");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        (
+          await db.query(
+            "SELECT available_amount FROM subscription_allowance_periods WHERE organization_id=$1",
+            [f.identity.organizationId],
+          )
+        ).rows[0].available_amount,
+      ).toBe("0.000000");
+      expect(mutation).toHaveBeenCalledTimes(1);
+      historicalTargetEvent = null;
+      expect((await recover(f.identity)).status).toBe("applied");
+    }, 10000);
   },
 );

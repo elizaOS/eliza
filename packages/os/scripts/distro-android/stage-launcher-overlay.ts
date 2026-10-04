@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
  * image boot, or release qualification. The caller owns those separate gates.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,6 +43,64 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
     if (!/^[a-f0-9]{64}$/.test(d[key])) throw new Error(`Invalid ${key}`);
   }
   return d;
+}
+
+function launcherSigner(signatures: string): string {
+  const certificates = [
+    ...signatures.matchAll(/certificate SHA-256 digest:\s*(\S+)/g),
+  ].map((match) => match[1].replaceAll(":", "").toLowerCase());
+  if (certificates.length !== 1 || !/^[a-f0-9]{64}$/.test(certificates[0]))
+    throw new Error("Exactly one valid launcher signer is required");
+  return certificates[0];
+}
+
+/** Self-selecting an APK signer is allowed only for explicit development staging.
+ * Production still requires an independently reviewed descriptor. Inspect a
+ * private copy; stageLauncher rechecks the actual staged bytes against this pin.
+ */
+export function createDevelopmentLauncherDescriptor(options: {
+  identity: Pick<LauncherDescriptor, "brand" | "moduleName" | "packageName">;
+  apk: string;
+  apksigner: string;
+  development: boolean;
+  env?: NodeJS.ProcessEnv;
+}): LauncherDescriptor {
+  if (options.development !== true)
+    throw new Error("Descriptor generation requires explicit development mode");
+  const identity = validateDescriptor({
+    schemaVersion: 1,
+    brand: options.identity.brand,
+    moduleName: options.identity.moduleName,
+    packageName: options.identity.packageName,
+    apkSha256: "0".repeat(64),
+    certificateSha256: "0".repeat(64),
+  });
+  const temporary = fs.mkdtempSync(
+    path.join(os.tmpdir(), "launcher-descriptor-"),
+  );
+  try {
+    const apk = path.join(temporary, "Launcher.apk");
+    fs.copyFileSync(options.apk, apk);
+    const apkSha256 = createHash("sha256")
+      .update(fs.readFileSync(apk))
+      .digest("hex");
+    const signatures = execFileSync(
+      options.apksigner,
+      ["verify", "--print-certs", apk],
+      {
+        encoding: "utf8",
+        env: options.env,
+        timeout: 30000,
+      },
+    );
+    return {
+      ...identity,
+      apkSha256,
+      certificateSha256: launcherSigner(signatures),
+    };
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 }
 export function validateInspection(
   d: LauncherDescriptor,
@@ -123,10 +182,7 @@ export function validateInspection(
   if (!homeFilter) throw new Error("APK is not a MAIN/HOME/DEFAULT launcher");
   if (!development && /android:debuggable[^\n]*0xffffffff/.test(xml))
     throw new Error("Debug launcher requires --development");
-  const certificates = [
-    ...signatures.matchAll(/certificate SHA-256 digest:\s*([a-fA-F0-9:]+)/g),
-  ].map((m) => m[1].replaceAll(":", "").toLowerCase());
-  if (certificates.length !== 1 || certificates[0] !== d.certificateSha256)
+  if (launcherSigner(signatures) !== d.certificateSha256)
     throw new Error("Launcher signer mismatch or multiple signers");
 }
 export function renderOverlay(d: LauncherDescriptor) {
@@ -136,6 +192,7 @@ export function renderOverlay(d: LauncherDescriptor) {
   };
 }
 export function stageLauncher(options: {
+  env?: NodeJS.ProcessEnv;
   descriptor: string;
   apk: string;
   output: string;
@@ -160,7 +217,7 @@ export function stageLauncher(options: {
       .digest("hex");
     if (digest !== d.apkSha256) throw new Error("Launcher APK hash mismatch");
     const run = (command: string, args: string[]) =>
-      execFileSync(command, args, { encoding: "utf8" });
+      execFileSync(command, args, { encoding: "utf8", env: options.env });
     const badging = run(options.aapt, ["dump", "badging", apk]);
     const xml = run(options.aapt, [
       "dump",

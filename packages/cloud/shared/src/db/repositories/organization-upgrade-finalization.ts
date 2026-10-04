@@ -243,9 +243,11 @@ export async function finalizePaidOrganizationUpgrade(
         state_revision: command.state_revision + 1,
         lease_token: null,
         lease_expires_at: null,
+        organization_upgrade_settlement_evidence: verified.historicalEvidence,
         provider_response_digest: settlementDigest({
           paid: verified.paid,
           target: verified.target,
+          historicalEvidence: verified.historicalEvidence,
           allowance,
         }),
         result_subscription_id: verified.source.id,
