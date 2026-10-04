@@ -1287,6 +1287,51 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
   );
 });
 
+it("pages relationships oldest-first when the newer edge has the lower id", async () => {
+  const adapter = await open();
+  const sourceId = id();
+  const targetId = id();
+  const olderId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID;
+  const newerId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+  await adapter.createAgents([{ id: agentId, name: "Graph owner" }]);
+  await adapter.createEntities([
+    { id: sourceId, agentId, names: ["Source"] },
+    { id: targetId, agentId, names: ["Target"] },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("relationships", olderId, {
+    id: olderId,
+    sourceEntityId: sourceId,
+    targetEntityId: targetId,
+    agentId,
+    tags: ["knows"],
+    metadata: {},
+    createdAt: "2026-08-20T16:00:00.000Z",
+  });
+  await storage.set("relationships", newerId, {
+    id: newerId,
+    sourceEntityId: sourceId,
+    targetEntityId: targetId,
+    agentId,
+    tags: ["knows"],
+    metadata: {},
+    createdAt: "2026-08-20T23:00:00.000Z",
+  });
+
+  const first = await adapter.getRelationships({
+    entityIds: [sourceId],
+    limit: 1,
+    offset: 0,
+  });
+  const second = await adapter.getRelationships({
+    entityIds: [sourceId],
+    limit: 1,
+    offset: 1,
+  });
+  expect(first.map((relationship) => relationship.id)).toEqual([olderId]);
+  expect(second.map((relationship) => relationship.id)).toEqual([newerId]);
+});
+
 it("returns messages from the requested world and treats limit 0 as empty", async () => {
   const adapter = await open();
   const worldId = id();
