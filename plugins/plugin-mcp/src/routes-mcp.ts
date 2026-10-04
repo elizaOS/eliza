@@ -161,6 +161,25 @@ function normalizeBoundedString(value: string, maxLength: number, label: string)
 function canWriteMarketplaceResponse(res: http.ServerResponse): boolean {
   return !res.destroyed && !res.writableEnded;
 }
+
+async function persistMcpConfigUpdate(
+  ctx: McpRouteContext,
+  update: (config: McpRouteConfig) => void
+): Promise<boolean> {
+  try {
+    const nextConfig = structuredClone(ctx.state.config);
+    update(nextConfig);
+    ctx.saveElizaConfig(nextConfig);
+    ctx.state.config.mcp = nextConfig.mcp;
+    return true;
+  } catch (err) {
+    // error-policy:J1 the HTTP boundary reports persistence failure and leaves
+    // the live config unchanged instead of acknowledging an ephemeral update.
+    logger.error({ error: err }, "[api] MCP configuration save failed");
+    await ctx.error(ctx.res, "MCP configuration could not be persisted", 500);
+    return false;
+  }
+}
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -314,17 +333,17 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       );
       return true;
     }
-    if (!state.config.mcp) state.config.mcp = {};
-    if (!state.config.mcp.servers) state.config.mcp.servers = {};
     const sanitized = ctx.cloneWithoutBlockedObjectKeys(config);
-    state.config.mcp.servers[serverName] = sanitized as NonNullable<
-      NonNullable<typeof state.config.mcp>["servers"]
-    >[string];
-    // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
-    try {
-      ctx.saveElizaConfig(state.config);
-    } catch (err) {
-      logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
+    if (
+      !(await persistMcpConfigUpdate(ctx, (nextConfig) => {
+        if (!nextConfig.mcp) nextConfig.mcp = {};
+        if (!nextConfig.mcp.servers) nextConfig.mcp.servers = {};
+        nextConfig.mcp.servers[serverName] = sanitized as NonNullable<
+          NonNullable<typeof nextConfig.mcp>["servers"]
+        >[string];
+      }))
+    ) {
+      return true;
     }
     json(res, { ok: true, name: serverName, requiresRestart: true });
     return true;
@@ -345,12 +364,14 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       return true;
     }
     if (state.config.mcp?.servers?.[serverName]) {
-      delete state.config.mcp.servers[serverName];
-      // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
-      try {
-        ctx.saveElizaConfig(state.config);
-      } catch (err) {
-        logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
+      if (
+        !(await persistMcpConfigUpdate(ctx, (nextConfig) => {
+          if (nextConfig.mcp?.servers) {
+            delete nextConfig.mcp.servers[serverName];
+          }
+        }))
+      ) {
+        return true;
       }
     }
     json(res, { ok: true, requiresRestart: true });
@@ -362,7 +383,6 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       terminalToken?: string;
     }>(req, res);
     if (!body) return true;
-    if (!state.config.mcp) state.config.mcp = {};
     if (body.servers !== undefined) {
       if (!body.servers || typeof body.servers !== "object" || Array.isArray(body.servers)) {
         error(res, "servers must be a JSON object", 400);
@@ -398,16 +418,20 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
         );
         return true;
       }
-      const sanitized = ctx.cloneWithoutBlockedObjectKeys(body.servers);
-      state.config.mcp.servers = sanitized as NonNullable<
-        NonNullable<typeof state.config.mcp>["servers"]
-      >;
     }
-    // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
-    try {
-      ctx.saveElizaConfig(state.config);
-    } catch (err) {
-      logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
+    const sanitizedServers =
+      body.servers === undefined ? undefined : ctx.cloneWithoutBlockedObjectKeys(body.servers);
+    if (
+      !(await persistMcpConfigUpdate(ctx, (nextConfig) => {
+        if (!nextConfig.mcp) nextConfig.mcp = {};
+        if (sanitizedServers !== undefined) {
+          nextConfig.mcp.servers = sanitizedServers as NonNullable<
+            NonNullable<typeof nextConfig.mcp>["servers"]
+          >;
+        }
+      }))
+    ) {
+      return true;
     }
     json(res, { ok: true });
     return true;
