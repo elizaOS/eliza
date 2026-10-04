@@ -361,7 +361,10 @@ const desktopContext = await browser.newContext({
 });
 const page = await desktopContext.newPage();
 const desktopVideo = page.video();
-page.on("pageerror", (e) => pageErrors.push(String(e)));
+page.on("pageerror", (e) => {
+  pageErrors.push(String(e));
+  console.error(`[browser] ${e.stack ?? e}`);
+});
 page.on("console", (m) => consoleLog.push(`[${m.type()}] ${m.text()}`));
 page.on("request", (r) => {
   if (r.url().includes("/api/") || r.url().includes("/__e2e__/")) {
