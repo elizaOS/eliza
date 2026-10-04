@@ -213,3 +213,65 @@ test("private credential storage serializes writes and clear, and refuses symlin
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {
+  const calls = [];
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      accountBilling: false,
+      providerDefaultVoice: true,
+      speechLanguage: null,
+      multipartPrefix: "independent-host",
+      requireNonSensitiveText() {},
+      pickMessage: (value) => ({ id: value.externalId }),
+    },
+    initialApiKey: "synthetic-credential",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith("/voice/tts"))
+        return new Response(new Uint8Array([1]), {
+          headers: { "Content-Type": "audio/mpeg" },
+        });
+      if (url.endsWith("/voice/stt")) return Response.json({ text: "hello" });
+      if (url.endsWith("/api/auth/cli-session"))
+        return Response.json({
+          sessionId: "12345678-1234-1234-1234-123456789012",
+        });
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (route, value) =>
+    fetch(base + route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  for (const route of [
+    "/cloud/account/access",
+    "/cloud/account/plans",
+    "/cloud/account/checkout",
+    "/cloud/account/billing/start",
+  ])
+    assert.equal((await post(route, {})).status, 404);
+  assert.equal(calls.length, 0);
+  await assert.rejects(routes.requirePaidAccess(), /unavailable/);
+  assert.equal((await post("/voice/tts", { text: "hello" })).status, 200);
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body), { text: "hello" });
+  assert.equal(
+    (await post("/voice/stt", { audioBase64: "AQID", mimeType: "audio/wav" }))
+      .status,
+    200,
+  );
+  assert.doesNotMatch(calls.at(-1).options.body.toString(), /languageCode/);
+  assert.equal((await post("/cloud/login", {})).status, 200);
+});
