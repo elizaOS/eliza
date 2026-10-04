@@ -52,6 +52,7 @@ import {
 import { isRegisteredTokenRoleAuthorized } from "@elizaos/agent/api/boundary-role-resolver";
 import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
+import { resetDefaultAccountPoolAfterCredentialReset } from "@elizaos/auth/accounts";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
 import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 // Override the wallet export rejection function with the hardened version
@@ -65,8 +66,6 @@ import {
   resolveStateDir,
   settingsDebugCloudSummary,
 } from "@elizaos/core";
-
-import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
 import { sharedVault } from "../services/vault-mirror";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
@@ -372,104 +371,30 @@ function mergeEmbeddingIntoStatusPayload(
   payload.startup = { ...base, ...aug };
 }
 
-function rewriteCompatStatusBody(
-  bodyText: string,
+function composeAppStatus(
+  payload: Record<string, unknown>,
   state: CompatRuntimeState,
-): string {
+): Record<string, unknown> {
+  const result = { ...payload };
+  mergeEmbeddingIntoStatusPayload(result);
+  const upstreamReasons = Array.isArray(payload.pendingRestartReasons)
+    ? payload.pendingRestartReasons.filter(
+        (value): value is string => typeof value === "string",
+      )
+    : [];
+  const pendingRestartReasons = [
+    ...new Set([...upstreamReasons, ...state.pendingRestartReasons]),
+  ];
+  if (
+    pendingRestartReasons.length > 0 ||
+    typeof payload.pendingRestart === "boolean"
+  ) {
+    result.pendingRestart = pendingRestartReasons.length > 0;
+    result.pendingRestartReasons = pendingRestartReasons;
+  }
   const agentName = resolveCompatStatusAgentName(state);
-
-  try {
-    const parsed = JSON.parse(bodyText) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return bodyText;
-    }
-
-    const payload = parsed as Record<string, unknown>;
-    mergeEmbeddingIntoStatusPayload(payload);
-
-    const upstreamPendingRestartReasons = Array.isArray(
-      payload.pendingRestartReasons,
-    )
-      ? payload.pendingRestartReasons.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : [];
-    const pendingRestartReasons = Array.from(
-      new Set([
-        ...upstreamPendingRestartReasons,
-        ...state.pendingRestartReasons,
-      ]),
-    );
-    if (
-      pendingRestartReasons.length > 0 ||
-      typeof payload.pendingRestart === "boolean"
-    ) {
-      payload.pendingRestart = pendingRestartReasons.length > 0;
-      payload.pendingRestartReasons = pendingRestartReasons;
-    }
-
-    if (!agentName) {
-      return JSON.stringify(payload);
-    }
-
-    if (payload.agentName === agentName) {
-      return JSON.stringify(payload);
-    }
-
-    return JSON.stringify({
-      ...payload,
-      agentName,
-    });
-  } catch {
-    // error-policy:J3 upstream status is untrusted boundary data; preserve the
-    // original body when it cannot be parsed instead of fabricating a status.
-    return bodyText;
-  }
-}
-
-function patchCompatStatusResponse(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: CompatRuntimeState,
-): void {
-  const method = (req.method ?? "GET").toUpperCase();
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-  if (method !== "GET" || pathname !== "/api/status") {
-    return;
-  }
-
-  const originalEnd = res.end.bind(res);
-
-  res.end = ((
-    chunk?: string | Uint8Array,
-    encoding?: unknown,
-    cb?: unknown,
-  ) => {
-    let resolvedEncoding: BufferEncoding | undefined;
-    let resolvedCallback: (() => void) | undefined;
-
-    if (typeof encoding === "function") {
-      resolvedCallback = encoding as () => void;
-    } else {
-      resolvedEncoding = encoding as BufferEncoding | undefined;
-      resolvedCallback = cb as (() => void) | undefined;
-    }
-
-    if (chunk == null) {
-      return resolvedCallback ? originalEnd(resolvedCallback) : originalEnd();
-    }
-
-    const bodyText =
-      typeof chunk === "string"
-        ? chunk
-        : Buffer.from(chunk).toString(resolvedEncoding ?? "utf8");
-
-    return originalEnd(
-      rewriteCompatStatusBody(bodyText, state),
-      "utf8",
-      resolvedCallback,
-    );
-  }) as typeof res.end;
+  if (agentName) result.agentName = agentName;
+  return result;
 }
 
 /**
@@ -974,7 +899,6 @@ async function runCompatRequestPipeline(
   // is picked up without a restart.
   ensureCloudTtsApiKeyAlias();
   mirrorCompatHeaders(req);
-  patchCompatStatusResponse(req, res, state);
 
   // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
   // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
@@ -1124,6 +1048,13 @@ export async function startApiServer(
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
+    composeStatus: (payload) =>
+      composeAppStatus(
+        callerOptions?.composeStatus
+          ? callerOptions.composeStatus(payload)
+          : payload,
+        compatState,
+      ),
     onRuntimeActivated: async (previousRuntime, activeRuntime) => {
       if (compatState.current !== activeRuntime)
         stopStandaloneKokoro(compatState);

@@ -456,16 +456,16 @@ async function loadCanonicalAccountPoolBroker(): Promise<CredentialLeaseBroker> 
   const elizaRepo = process.env.ELIZA_REPO ?? monorepoRoot;
   if (
     !existsSync(
-      resolve(elizaRepo, "packages/app/src/services/account-pool-broker.ts"),
+      resolve(elizaRepo, "packages/auth/src/accounts/account-pool-broker.ts"),
     )
   ) {
     throw new GatewayCliError(
       "account_pool_unavailable",
-      "No elizaOS checkout found: set ELIZA_REPO to a monorepo containing packages/app/src/services/account-pool-broker.ts.",
+      "No elizaOS checkout found: set ELIZA_REPO to a monorepo containing packages/auth/src/accounts/account-pool-broker.ts.",
     );
   }
   const moduleUrl = pathToFileURL(
-    resolve(elizaRepo, "packages/app/src/services/account-pool-broker.ts"),
+    resolve(elizaRepo, "packages/auth/src/accounts/account-pool-broker.ts"),
   ).href;
   const loaded: unknown = await import(moduleUrl);
   const brokerConstructor =

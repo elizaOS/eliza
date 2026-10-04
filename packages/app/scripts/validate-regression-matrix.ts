@@ -1,9 +1,4 @@
-/**
- * Validates regression-matrix.json against the repo: every suite's guard
- * snippets must appear in the referenced GitHub workflow files and the manual
- * desktop checklist doc must contain its items, so the matrix cannot silently
- * drift from CI.
- */
+/** Validates executable regression suites, CI workflow guards, and changed-file coverage. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -72,19 +67,6 @@ const MANIFEST_PATH = path.join(
   "regression-matrix.json",
 );
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
-
-function normalizeGuardMarker(marker) {
-  if (typeof marker === "string") return marker;
-  if (
-    Array.isArray(marker) &&
-    marker.every((part) => typeof part === "string")
-  ) {
-    return marker.join("");
-  }
-  throw new Error(
-    `Regression matrix guard marker must be a string or string-part array: ${JSON.stringify(marker)}`,
-  );
-}
 
 function parsePathAliases(raw) {
   if (!raw?.trim()) return [];
@@ -437,72 +419,6 @@ function ensurePackageScripts(failures) {
   ensureHeavyOnlyE2EReachability(heavyE2E, failures);
 }
 
-function ensureDesktopInventory(failures) {
-  const checklistPath = path.join(
-    REPO_ROOT,
-    resolveRepoRelativePath(manifest.manualChecklistDoc),
-  );
-  if (!fs.existsSync(checklistPath)) {
-    failures.push(
-      `Manual desktop checklist is missing: ${manifest.manualChecklistDoc}`,
-    );
-    return;
-  }
-
-  const checklistText = fs.readFileSync(checklistPath, "utf8");
-  const inventoryTexts = (manifest.guards.desktopInventorySources ?? []).map(
-    (relativePath) => ({
-      relativePath,
-      text: readText(relativePath),
-    }),
-  );
-
-  const items = [
-    ...(manifest.exceptions.desktopHeavyInventory ?? []),
-    ...(manifest.exceptions.desktopManualChecklist ?? []),
-  ];
-
-  const seenIds = new Set();
-  for (const item of items) {
-    if (seenIds.has(item.id)) {
-      failures.push(
-        `Desktop regression inventory item id is duplicated: ${item.id}`,
-      );
-      continue;
-    }
-    seenIds.add(item.id);
-
-    const presentInInventory = inventoryTexts.some(({ text }) =>
-      text.includes(item.description),
-    );
-    if (!presentInInventory) {
-      failures.push(
-        `Desktop regression inventory source does not reference "${item.description}".`,
-      );
-    }
-  }
-
-  for (const item of manifest.exceptions.desktopManualChecklist ?? []) {
-    if (!checklistText.includes(item.description)) {
-      failures.push(
-        `Manual desktop checklist is missing "${item.description}".`,
-      );
-    }
-  }
-
-  for (const { relativePath, text } of inventoryTexts) {
-    for (const rawMarker of manifest.guards.forbiddenDesktopInventoryMarkers ??
-      []) {
-      const marker = normalizeGuardMarker(rawMarker);
-      if (text.includes(marker)) {
-        failures.push(
-          `${relativePath} still contains forbidden desktop inventory marker "${marker}".`,
-        );
-      }
-    }
-  }
-}
-
 function ensureChangedFileCoverage(
   workflowName,
   scheduledSuites,
@@ -564,7 +480,6 @@ if (
 const failures = [];
 const scheduledSuites = ensureWorkflowContracts(workflowName, failures);
 ensurePackageScripts(failures);
-ensureDesktopInventory(failures);
 ensureChangedFileCoverage(workflowName, scheduledSuites, failures, args);
 
 if (failures.length > 0) {

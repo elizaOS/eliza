@@ -5,11 +5,78 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  loadBaselineManifest,
+  recordBaseline,
+  requiredBaselineStates,
+  resolveBaselinePath,
+  saveBaselineManifest,
+} from "./mvp-visual-verify/baselines.ts";
 import {
   contactSheetSwatchColor,
   escapeContactSheetHtml,
   renderContactSheet,
 } from "./mvp-visual-verify/html-report.ts";
+
+describe("visual baseline identity", () => {
+  test("shares image bytes without losing states or coupling later updates", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "app-baselines-"));
+    try {
+      const source = path.join(root, "capture.png");
+      await writeFile(source, "same capture bytes");
+      const manifest = await loadBaselineManifest(root);
+      await recordBaseline(root, manifest, "desktop", "apps", source);
+      await recordBaseline(root, manifest, "mobile", "apps", source);
+      const original = resolveBaselinePath(root, manifest, "desktop", "apps");
+      expect(resolveBaselinePath(root, manifest, "mobile", "apps")).toBe(
+        original,
+      );
+      expect(requiredBaselineStates(manifest, [])).toEqual([
+        "apps@desktop",
+        "apps@mobile",
+      ]);
+      expect(requiredBaselineStates(manifest, ["mobile"])).toEqual([
+        "apps@mobile",
+      ]);
+      await writeFile(source, "updated mobile capture");
+      await recordBaseline(root, manifest, "mobile", "apps", source);
+      expect(resolveBaselinePath(root, manifest, "desktop", "apps")).toBe(
+        original,
+      );
+      expect(resolveBaselinePath(root, manifest, "mobile", "apps")).not.toBe(
+        original,
+      );
+      await saveBaselineManifest(root, manifest);
+      expect(await loadBaselineManifest(root)).toEqual(manifest);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects malformed manifests and paths outside the baseline store", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "app-baselines-invalid-"));
+    try {
+      await writeFile(
+        path.join(root, "manifest.json"),
+        JSON.stringify({
+          version: 1,
+          states: { "desktop/apps": "../../outside.png" },
+        }),
+      );
+      await expect(loadBaselineManifest(root)).rejects.toThrow(
+        "Invalid visual baseline entry",
+      );
+      expect(() =>
+        resolveBaselinePath(root, { version: 1, states: {} }, "..", "apps"),
+      ).toThrow("Invalid baseline state");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("contact-sheet HTML serialization", () => {
   test("escapes text and quoted-attribute metacharacters", () => {

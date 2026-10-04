@@ -1473,6 +1473,18 @@
 			"types": "./dist/messaging/interactions/profile-catalog.d.ts",
 			"import": "./dist/messaging/interactions/profile-catalog.js",
 			"default": "./dist/messaging/interactions/profile-catalog.js"
+		},
+		"./account-pool-bridge": {
+			"eliza-source": "./src/account-pool-bridge.ts",
+			"types": "./dist/account-pool-bridge.d.ts",
+			"import": "./dist/account-pool-bridge.js",
+			"default": "./dist/account-pool-bridge.js"
+		},
+		"./boot-env": {
+			"eliza-source": "./src/boot-env.ts",
+			"types": "./dist/boot-env.d.ts",
+			"import": "./dist/boot-env.js",
+			"default": "./dist/boot-env.js"
 		}
 	},
 	"files": [

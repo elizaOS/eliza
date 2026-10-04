@@ -24,6 +24,7 @@
     "src/vault/**/*",
     "src/kms/**/*",
     "src/index.ts",
-    "test/*.ts"
+    "test/*.ts",
+    "src/accounts/**/*"
   ]
 }

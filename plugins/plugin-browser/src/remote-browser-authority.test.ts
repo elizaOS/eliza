@@ -6,12 +6,12 @@ import type {
   RemoteControllerPublicIdentity,
   RemoteTargetPublicIdentity,
 } from "@elizaos/core/contracts/remote-control";
-import { describe, expect, it } from "vitest";
 import {
   digestRemotePayload,
   signRemoteCommand,
   verifyRemoteCommandAuthenticity,
-} from "../../../packages/app/src/security/remote-control-crypto";
+} from "@elizaos/plugin-browser/remote-control/crypto";
+import { describe, expect, it } from "vitest";
 
 function fixture() {
   const controller = generateKeyPairSync("ec", { namedCurve: "prime256v1" });

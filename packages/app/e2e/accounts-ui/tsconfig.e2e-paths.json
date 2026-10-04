@@ -7,9 +7,7 @@
   "compilerOptions": {
     "baseUrl": "../../../..",
     "paths": {
-      "@elizaos/app/account-pool": [
-        "./packages/app/src/services/account-pool.ts"
-      ],
+      "@elizaos/auth/accounts": ["./packages/auth/src/accounts/index.ts"],
       "@elizaos/core": ["./packages/core/src/index.ts"],
       "@elizaos/cloud-routing": ["./packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["./packages/cloud/routing/src/*"],

@@ -14,7 +14,7 @@
 
 import type { RuntimeEnvRecord } from "@elizaos/core/runtime-env";
 import { createLocalJWKSet, jwtVerify } from "jose";
-import type { AuthRepository } from "../../services/auth-store";
+import type { AuthRepository } from "../../services/auth-repository";
 import {
   type JwksDocument,
   readCachedJwks,

@@ -13,6 +13,7 @@
  * exposed by this resolver as API keys.
  */
 
+import { getDefaultAccountPool } from "@elizaos/auth/accounts";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
 import {
   getAccessToken,
@@ -35,7 +36,6 @@ import {
   getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
 } from "@elizaos/core/contracts/first-run-options";
-import { getDefaultAccountPool } from "../account-pool.js";
 
 // ── Credential source registry ───────────────────────────────────────
 interface CredentialSource {

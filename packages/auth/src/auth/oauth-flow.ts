@@ -19,7 +19,8 @@
  */
 
 import crypto from "node:crypto";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
+import { logger } from "@elizaos/core/logger";
 import {
   type AccountCredentialRecord,
   type AccountStoragePolicy,

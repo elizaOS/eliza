@@ -52,7 +52,7 @@
 // Toolchain:
 //   Same `zig cc --target=x86_64-linux-musl` cross-compile path that
 //   compile-libllama.ts uses. The shim is musl-linked so it matches
-//   the bun-on-Android runtime ABI. We reuse compile-libllama's
+//   the bun-on-Android runtime ABI. Shared zig-toolchain policy handles
 //   `ensureZigDrivers()` so cmake-style invocation patterns work
 //   uniformly.
 
@@ -66,7 +66,7 @@ import {
   assertZigPinForTargets,
   ensureZigDrivers,
   probeZig,
-} from "./compile-libllama.ts";
+} from "./zig-toolchain.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 

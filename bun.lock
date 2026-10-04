@@ -290,13 +290,13 @@
         "stream-browserify": "^3.0.0",
         "style-to-js": "^1.1.21",
         "three": "^0.184.0",
+        "use-sync-external-store": "1.7.0",
         "util": "^0.12.5",
         "ws": "^8.21.3",
         "zod": "^4.6.5",
       },
       "devDependencies": {
         "@capacitor/cli": "8.5.2",
-        "@elizaos/agent": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/testing": "workspace:*",
@@ -317,7 +317,6 @@
         "fflate": "^0.8.3",
         "ffprobe-static": "^3.1.0",
         "jsdom": "^30.1.1",
-        "json5": "^2.2.3",
         "nodemailer": "^10.0.12",
         "pathe": "^2.0.3",
         "playwright": "^1.63.0",
@@ -335,7 +334,6 @@
         "uuid": "^14.0.0",
         "vite": "^8.3.0",
         "vitest": "^5.0.2",
-        "ws": "^8.21.3",
         "yaml": "^2.9.0",
       },
       "optionalDependencies": {
@@ -826,6 +824,9 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
+      },
+      "devDependencies": {
+        "playwright": "^1.63.0",
       },
     },
     "packages/cloud/sdk": {
@@ -1495,8 +1496,8 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
-        "@electric-sql/pglite": "^0.4.0",
         "@biomejs/biome": "2.5.14",
+        "@electric-sql/pglite": "^0.4.0",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -1956,6 +1957,7 @@
       "name": "@elizaos/plugin-local-inference",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/auth": "workspace:*",
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
@@ -1970,14 +1972,13 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
-        "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@types/node": "24.12.2",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
-        "yaml": "^2.8.2",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -9500,6 +9501,8 @@
     "@elizaos/gateway-webhook/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 
     "@elizaos/lifeops-quality-bench/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@elizaos/macosreminders/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/operator/esbuild": ["esbuild@0.28.1", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.28.1", "@esbuild/android-arm": "0.28.1", "@esbuild/android-arm64": "0.28.1", "@esbuild/android-x64": "0.28.1", "@esbuild/darwin-arm64": "0.28.1", "@esbuild/darwin-x64": "0.28.1", "@esbuild/freebsd-arm64": "0.28.1", "@esbuild/freebsd-x64": "0.28.1", "@esbuild/linux-arm": "0.28.1", "@esbuild/linux-arm64": "0.28.1", "@esbuild/linux-ia32": "0.28.1", "@esbuild/linux-loong64": "0.28.1", "@esbuild/linux-mips64el": "0.28.1", "@esbuild/linux-ppc64": "0.28.1", "@esbuild/linux-riscv64": "0.28.1", "@esbuild/linux-s390x": "0.28.1", "@esbuild/linux-x64": "0.28.1", "@esbuild/netbsd-arm64": "0.28.1", "@esbuild/netbsd-x64": "0.28.1", "@esbuild/openbsd-arm64": "0.28.1", "@esbuild/openbsd-x64": "0.28.1", "@esbuild/openharmony-arm64": "0.28.1", "@esbuild/sunos-x64": "0.28.1", "@esbuild/win32-arm64": "0.28.1", "@esbuild/win32-ia32": "0.28.1", "@esbuild/win32-x64": "0.28.1" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw=="],
 

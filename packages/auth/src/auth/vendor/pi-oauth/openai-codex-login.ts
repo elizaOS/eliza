@@ -3,7 +3,7 @@
  * Inlined OAuth flow (MIT) — vendored to avoid a runtime dependency.
  */
 
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/core/logger";
 import { generatePKCE } from "./pkce.ts";
 
 function isNodeLikeRuntime(): boolean {

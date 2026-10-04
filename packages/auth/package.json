@@ -75,7 +75,14 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./native-host": "./native-host/cloud-enrollment.mjs"
+    "./native-host": "./native-host/cloud-enrollment.mjs",
+    "./accounts": {
+      "browser": null,
+      "eliza-source": "./src/accounts/index.ts",
+      "types": "./dist/accounts/index.d.ts",
+      "import": "./dist/accounts/index.js",
+      "default": "./dist/accounts/index.js"
+    }
   },
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.ts dist",

@@ -6,7 +6,7 @@
  * integration. Apps provide this via `app.config.ts` in their project root.
  *
  * Usage:
- *   import { AppConfig } from "@elizaos/app";
+ *   import { AppConfig } from "@elizaos/core";
  *
  *   export default {
  *     appName: "MyAgent",

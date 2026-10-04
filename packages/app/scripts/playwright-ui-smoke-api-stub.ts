@@ -17,6 +17,7 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.ts";
+import { fixtureAgentStatus } from "../test/fixtures/agent-status.ts";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
 // production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a
@@ -2779,14 +2780,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/status") {
-    sendJson(req, res, 200, {
-      state: "running",
-      agentName: "Playwright Smoke",
-      model: "ui-smoke",
-      startup: { phase: "running", attempt: 0 },
-      pendingRestart: false,
-      pendingRestartReasons: [],
-    });
+    sendJson(
+      req,
+      res,
+      200,
+      fixtureAgentStatus({
+        startup: { phase: "running", attempt: 0 },
+        pendingRestart: false,
+        pendingRestartReasons: [],
+      }),
+    );
     return;
   }
 

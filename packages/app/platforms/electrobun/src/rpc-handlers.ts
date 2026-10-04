@@ -9,9 +9,9 @@
  */
 
 import * as fs from "node:fs";
+import type { SecureStoreSecretKind } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { Utils } from "electrobun/bun";
 import { deriveAgentVaultId } from "../../../src/security/agent-vault-id";
-import type { SecureStoreSecretKind } from "../../../src/security/platform-secure-store";
 import {
 	createNodePlatformSecureStore,
 	describeNodePlatformSecureStore,

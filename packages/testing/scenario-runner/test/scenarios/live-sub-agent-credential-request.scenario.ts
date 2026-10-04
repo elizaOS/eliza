@@ -569,11 +569,9 @@ async function runLiveCodexCredentialRoundtrip(
       },
       createIsolatedAccountStoragePolicy(home),
     );
-    const { getDefaultAccountPool } = await import(
-      "../../../../app/src/services/account-pool"
-    );
+    const { getDefaultAccountPool } = await import("@elizaos/auth/accounts");
     const { getCodingAgentSelectorBridge } = await import(
-      "../../../../app/src/services/coding-account-bridge"
+      "@elizaos/auth/accounts"
     );
     getDefaultAccountPool();
     const bridge = getCodingAgentSelectorBridge();

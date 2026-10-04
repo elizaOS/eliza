@@ -3,7 +3,8 @@
 Shared login, account sessions, OAuth, and encrypted credential storage for elizaOS.
 
 The root SDK is browser-safe. Use explicit Node subpaths for account authentication,
-vault, and KMS. Preserve encrypted-storage compatibility and per-account refresh
+vault, and KMS. `@elizaos/auth/accounts` owns linked-account selection,
+usage accounting, and credential bridges for Node hosts. Preserve encrypted-storage compatibility and per-account refresh
 coordination; never log credentials.
 
 ## Development

@@ -5,7 +5,7 @@
  * values must not become a successful snapshot with missing usage.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 
