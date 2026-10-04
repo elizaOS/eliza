@@ -7,21 +7,19 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { isLoopbackRemoteAddress } from "@elizaos/agent/api/loopback-trust";
-import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import {
   AccountPoolBroker,
+  createAccountPoolConsumerKey,
+  listAccountPoolConsumerKeys,
   parseBrokerLeaseRequest,
   parseBrokerReleaseRequest,
   parseBrokerReportRequest,
-} from "../services/account-pool-broker.js";
-import {
-  createAccountPoolConsumerKey,
-  listAccountPoolConsumerKeys,
   queryAccountPoolConsumerUsage,
   rotateAccountPoolConsumerKey,
   updateAccountPoolConsumerKey,
-} from "../services/account-pool-consumer-metering.js";
+} from "@elizaos/auth/accounts";
+import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { readCompatJsonBody } from "./compat-route-shared.js";
 import { sendJson } from "./response.js";
 

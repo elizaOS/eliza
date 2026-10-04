@@ -228,6 +228,12 @@ export {
 	FIRST_AUDIO_FILLERS,
 	PhraseCache,
 } from "./phrase-cache";
+export {
+	PhraseChunkedTts,
+	type PhraseChunkedTtsOptions,
+	type PhraseTtsHandler,
+	speakStreamingText,
+} from "./phrase-chunked-tts";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
 	type DraftProposer,

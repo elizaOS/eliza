@@ -1,3 +1,4 @@
+import { fixtureAgentStatus } from "../fixtures/agent-status";
 /**
  * Shared Playwright helpers for app UI-smoke fixtures, navigation, logging,
  * and assertions.
@@ -1591,13 +1592,12 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        state: "running",
-        agentName: "Playwright Smoke",
-        model: "ui-smoke",
-        startedAt: Date.parse(SMOKE_GENERATED_AT),
-        uptime: 60000,
-      }),
+      body: JSON.stringify(
+        fixtureAgentStatus({
+          startedAt: Date.parse(SMOKE_GENERATED_AT),
+          uptime: 60000,
+        }),
+      ),
     });
   });
   await page.route("**/api/local-inference/device/stream**", async (route) => {

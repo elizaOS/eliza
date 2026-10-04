@@ -2,7 +2,7 @@
  * Telegram bot setup HTTP routes.
  *
  * Implements the shared connector setup contract
- * (`eliza/packages/app/src/api/setup-contract.ts`):
+ * (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/telegram/status   read current pairing state
  *   POST /api/setup/telegram/start    validate + save bot token

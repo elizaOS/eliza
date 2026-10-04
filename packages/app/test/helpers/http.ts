@@ -6,4 +6,4 @@ export {
   postConversationMessage,
   readConversationId,
   req,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";

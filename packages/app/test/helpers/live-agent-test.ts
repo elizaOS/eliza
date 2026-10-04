@@ -12,7 +12,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, it } from "vitest";
 
 const YELLOW = "\x1b[33m";

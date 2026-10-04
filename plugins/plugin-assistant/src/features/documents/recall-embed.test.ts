@@ -11,7 +11,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { EventType, ModelType } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, test, vi } from "vitest";
 import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 

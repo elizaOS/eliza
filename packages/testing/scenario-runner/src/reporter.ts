@@ -18,7 +18,7 @@ import { logger } from "@elizaos/core";
 import {
   isScenarioExecutionProfile,
   type ScenarioExecutionProfile,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 import type {
   AggregateReport,
   ScenarioEvidenceObservationKind,

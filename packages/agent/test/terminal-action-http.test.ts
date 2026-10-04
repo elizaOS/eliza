@@ -10,7 +10,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { captureHostExecutionBaseline } from "@elizaos/host";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { projectToolResultForModel } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { terminalAction } from "../src/actions/terminal.ts";

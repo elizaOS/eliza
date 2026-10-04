@@ -293,13 +293,13 @@
         "style-to-js": "^1.1.21",
         "tar": "7.5.22",
         "three": "^0.184.0",
+        "use-sync-external-store": "1.7.0",
         "util": "^0.12.5",
         "ws": "^8.21.3",
         "zod": "^4.6.5",
       },
       "devDependencies": {
         "@capacitor/cli": "8.5.2",
-        "@elizaos/agent": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/testing": "workspace:*",
@@ -320,7 +320,6 @@
         "fflate": "^0.8.3",
         "ffprobe-static": "^3.1.0",
         "jsdom": "^30.1.1",
-        "json5": "^2.2.3",
         "nodemailer": "^10.0.12",
         "pathe": "^2.0.3",
         "playwright": "^1.63.0",
@@ -338,7 +337,6 @@
         "uuid": "^14.0.0",
         "vite": "^8.3.0",
         "vitest": "^5.0.2",
-        "ws": "^8.21.3",
         "yaml": "^2.9.0",
       },
       "optionalDependencies": {
@@ -451,8 +449,13 @@
       "name": "elizaos-benchmarks",
       "version": "0.1.0",
       "devDependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/testing": "workspace:*",
         "@elizaos/vitest-vite": "npm:vite@7.3.5",
+        "fflate": "^0.8.3",
         "tsx": "^4.20.0",
+        "vitest": "^5.0.2",
+        "zod": "^4.6.5",
       },
     },
     "packages/benchmarks/framework/typescript": {
@@ -850,6 +853,9 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
+      },
+      "devDependencies": {
+        "playwright": "^1.63.0",
       },
     },
     "packages/cloud/sdk": {
@@ -1266,6 +1272,7 @@
       },
       "devDependencies": {
         "@elizaos/plugin-local-inference": "workspace:*",
+        "elizaos-benchmarks": "workspace:*",
       },
     },
     "packages/testing": {
@@ -1290,6 +1297,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@octokit/rest": "^22.0.0",
         "@playwright/test": "^1.63.0",
         "@types/bun": "1.4.2",
         "@types/node": "^25.0.3",
@@ -1297,7 +1305,6 @@
         "bun-types": "1.4.2",
         "drizzle-kit": "^0.31.10",
         "drizzle-orm": "0.45.3",
-        "fflate": "^0.8.3",
         "vitest": "^5.0.2",
       },
       "peerDependencies": {
@@ -2077,6 +2084,7 @@
       "name": "@elizaos/plugin-local-inference",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/auth": "workspace:*",
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -2093,14 +2101,13 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
-        "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@types/node": "24.12.2",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
-        "yaml": "^2.8.2",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",

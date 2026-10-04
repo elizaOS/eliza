@@ -1,20 +1,18 @@
+import { executePlannedToolCall } from "@elizaos/core";
 /** Mounted Todos dispatch and PA owner-task receipts; deterministic model, real PGlite. */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
+import { ChannelType, type Memory, type UUID } from "@elizaos/core";
 import {
-  ChannelType,
-  executePlannedToolCall,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
+  createDeterministicModelPlugin,
+  strictTerminalReplyFixture,
+} from "@elizaos/testing/models";
 import { act, cleanup, render } from "@testing-library/react";
 import { JSDOM } from "jsdom";
 import { expect, it, vi } from "vitest";
 import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
-import { strictTerminalReplyFixture } from "../../../packages/testing/src/deterministic-action-fixtures.ts";
-import { createDeterministicModelPlugin } from "../../../packages/testing/src/deterministic-model-plugin.ts";
 import {
   handleLifeOpsRoutes,
   type LifeOpsRouteContext,

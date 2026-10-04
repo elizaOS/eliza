@@ -17,16 +17,14 @@ import {
   logger,
 } from "@elizaos/core";
 import { formatErrorWithStack } from "@elizaos/core/protocol";
+import { drainAppRoutePluginLoaders } from "@elizaos/host";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
+  type AppRoutePluginRegistryEntry,
   isOptionalAppRoutePluginUnavailableError,
+  listAppRoutePluginLoaders,
   OptionalAppRoutePluginUnavailableError,
 } from "@elizaos/host/protocol";
-import {
-  type AppRoutePluginRegistryEntry,
-  drainAppRoutePluginLoaders,
-  listAppRoutePluginLoaders,
-} from "../app-route-plugin-registry.js";
 
 const _require = createRequire(import.meta.url);
 // ---------------------------------------------------------------------------

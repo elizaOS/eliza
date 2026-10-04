@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import {
   chmodSync,
-  statSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -95,14 +95,19 @@ it("preserves an incompatible destination and removes only its own staging direc
   }
 });
 
-it.skipIf(process.platform === "win32")("preserves restrictive permissions when replacing a registry", () => {
-  const directory = mkdtempSync(join(tmpdir(), "eliza-registry-mode-"));
-  try {
-    const file = join(directory, "registry.json");
-    writeFileSync(file, "{}", { mode: 0o600 });
-    chmodSync(file, 0o600);
-    writeJsonFileAtomic(file, { updated: true });
-    expect(statSync(file).mode & 0o777).toBe(0o600);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ updated: true });
-  } finally { rmSync(directory, { recursive: true, force: true }); }
-});
+it.skipIf(process.platform === "win32")(
+  "preserves restrictive permissions when replacing a registry",
+  () => {
+    const directory = mkdtempSync(join(tmpdir(), "eliza-registry-mode-"));
+    try {
+      const file = join(directory, "registry.json");
+      writeFileSync(file, "{}", { mode: 0o600 });
+      chmodSync(file, 0o600);
+      writeJsonFileAtomic(file, { updated: true });
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ updated: true });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);

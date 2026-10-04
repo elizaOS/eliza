@@ -9,7 +9,6 @@ import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.ts";
 import {
   buildLibllamaForAbi,
   describeAndroidTargetDryRun,
-  ensureZigDrivers,
   libllamaCmakeConfigureArgs,
   resetIncompatibleCmakeArchiverCache,
   stageStaticFusedRuntimeBackendLibs,
@@ -19,6 +18,7 @@ import {
   resolveDefaultAndroidAssetsDir,
   resolveHomebrewFormulaIncludeDirs,
 } from "./compile-libllama-paths.ts";
+import { ensureZigDrivers } from "./zig-toolchain.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(

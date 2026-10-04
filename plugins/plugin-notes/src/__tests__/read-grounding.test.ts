@@ -10,7 +10,7 @@ import {
   type IAgentRuntime,
   stringToUuid,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, test } from "vitest";
 import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import {

@@ -10,7 +10,7 @@ import {
   createDocumentsPlugin,
   type DocumentMemoryMetadata,
 } from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { knowledgePlugin } from "../../../plugins/plugin-knowledge/src/plugin.ts";
 import { startApiServer } from "../src/api/server.ts";

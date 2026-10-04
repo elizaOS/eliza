@@ -12,10 +12,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  getHttpRuntime,
-  type HttpPlugin as Plugin,
-} from "@elizaos/host/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { getHttpRuntime } from "@elizaos/host/protocol";
 import {
   type ScenarioContext,
   type ScenarioTurnExecution,

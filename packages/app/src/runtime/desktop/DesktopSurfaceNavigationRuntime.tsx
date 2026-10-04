@@ -7,9 +7,9 @@
  */
 import { subscribeDesktopBridgeEvent } from "@elizaos/ui/bridge/electrobun-rpc";
 import { dispatchOpenNotificationCenter } from "@elizaos/ui/events";
+import type { Tab } from "@elizaos/ui/navigation";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { useEffect } from "react";
-import type { Tab } from "../../../../ui/src/navigation";
 
 const MAIN_SURFACE_TABS = new Set<Tab>(["chat", "plugins", "triggers"]);
 const MAIN_NAVIGATION_TABS = new Set<Tab>([

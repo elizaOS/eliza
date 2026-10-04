@@ -19,7 +19,7 @@ import {
   createCharacter,
   ModelType,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import { DefaultMessageService } from "./message.ts";

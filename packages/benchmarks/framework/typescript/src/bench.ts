@@ -23,7 +23,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import {
   type BenchmarkResult,

@@ -4,6 +4,7 @@ export * from "./api/http-plugin.js";
 export * from "./api/http-plugin-runtime.js";
 export * from "./api/route-helpers.js";
 export * from "./api/runtime-route-context.js";
+export * from "./automation-node-contributors.js";
 export * from "./boot-env.js";
 export * from "./character-presets.characters.js";
 
@@ -24,6 +25,7 @@ export {
 export * from "./character-presets.shared.js";
 export * from "./checkout/index.js";
 export * from "./config/allowed-hosts.js";
+export * from "./config/api-key-prefix-hints.js";
 export * from "./config/app-config.js";
 export {
   type AppBootConfig,
@@ -41,6 +43,7 @@ export {
   resolveCharacterCatalog,
   setBootConfig,
 } from "./config/boot-config-store.js";
+export { buildBrandEnvAliases } from "./config/brand-env-aliases.js";
 export * from "./config/branding.js";
 export * from "./config/cloud-only.js";
 export * from "./config/config-catalog.js";
@@ -278,6 +281,7 @@ export {
   resolveElizaRuntimeEnv,
   resolvePlatform,
   resolveRuntimePorts,
+  resolveSelfApiBaseUrl,
   resolveSelfApiCredential,
   resolveServerOnlyPort,
   resolveSingleProcessPort,
