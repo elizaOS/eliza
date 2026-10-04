@@ -163,7 +163,7 @@ interface OAuthEmailAddress {
 
 export interface AuthUrlResult {
   url: string;
-  /** Present when requiresPkce=true. Must be stored and passed to exchangeCode(). */
+  /** Present for internally generated PKCE; caller-owned challenges never return a verifier. */
   codeVerifier?: string;
 }
 
@@ -721,7 +721,18 @@ export class OAuthClient {
    * @param redirectUri - Where the provider should send the user after auth
    * @returns url and, when PKCE is required, a codeVerifier to store server-side
    */
-  generateAuthUrl(state: string, redirectUri: string): AuthUrlResult {
+  generateAuthUrl(
+    state: string,
+    redirectUri: string,
+    pkce?: { codeChallenge: string; codeChallengeMethod: "S256" },
+  ): AuthUrlResult {
+    if (
+      pkce &&
+      (pkce.codeChallengeMethod !== "S256" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(pkce.codeChallenge))
+    ) {
+      throw new Error("A valid S256 code challenge is required");
+    }
     // Most providers use `client_id`; some (e.g. TikTok) name it `client_key`.
     const clientIdParam = this.provider.clientIdParam ?? "client_id";
     const params = new URLSearchParams({
@@ -733,7 +744,10 @@ export class OAuthClient {
     });
 
     let codeVerifier: string | undefined;
-    if (this.provider.requiresPkce) {
+    if (pkce) {
+      params.set("code_challenge_method", "S256");
+      params.set("code_challenge", pkce.codeChallenge);
+    } else if (this.provider.requiresPkce) {
       codeVerifier = generateCodeVerifier();
       params.set("code_challenge_method", "S256");
       params.set("code_challenge", deriveCodeChallenge(codeVerifier));
@@ -767,9 +781,12 @@ export class OAuthClient {
       redirect_uri: redirectUri,
     });
 
-    if (this.provider.requiresPkce) {
-      if (!codeVerifier) {
-        throw new Error("codeVerifier is required for PKCE providers");
+    if (this.provider.requiresPkce && !codeVerifier) {
+      throw new Error("codeVerifier is required for PKCE providers");
+    }
+    if (codeVerifier !== undefined) {
+      if (!/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) {
+        throw new Error("Invalid PKCE code verifier");
       }
       body.set("code_verifier", codeVerifier);
     }
