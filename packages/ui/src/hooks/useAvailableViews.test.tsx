@@ -31,7 +31,8 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
         sendWsMessage: vi.fn(),
         clientId: "native-client",
         getBaseUrl: vi.fn(() => ""),
-        onBaseUrlChange: vi.fn((onChange: () => void) => {
+        getAuthorityRevision: vi.fn(() => 0),
+        onAuthorityChange: vi.fn((onChange: () => void) => {
           authorityState.listeners.add(onChange);
           return () => authorityState.listeners.delete(onChange);
         }),

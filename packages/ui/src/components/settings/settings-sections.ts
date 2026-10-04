@@ -60,15 +60,8 @@ import {
 } from "./settings-section-registry";
 
 /**
- * Section bodies are lazy-loaded (#11351): the settings-section registry used to
- * pull ~15 section components (Identity, ProviderSwitcher, Connectors, Runtime,
- * Advanced, ReleaseCenter, …) into the eager boot graph through the
- * `@elizaos/ui/browser` barrel. `SettingsView` is already lazy, but the whole
- * registry rode along on the initial chunk. Wrapping each `Component` in
- * `React.lazy` moves those bodies onto their own on-demand chunks; the active
- * section's `<Component/>` render in `SettingsView` sits behind a `<Suspense>`
- * boundary so the split is transparent. Named exports are normalized to the
- * `default` shape `lazy()` expects.
+ * Load section bodies on demand beneath SettingsView's Suspense boundary.
+ * Adapt named component exports to React.lazy's default-export shape.
  */
 const IdentitySettingsSection = lazy(() =>
   import("./IdentitySettingsSection").then((m) => ({
