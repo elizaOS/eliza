@@ -222,16 +222,18 @@ export class SecureNotesStore {
     if (this.fault) throw this.fault;
   }
   async assertCurrent() {
-    await this.tail;
-    this.check();
-    try {
+    // A read and a later local commit must observe the same saved generation.
+    // Queue consistency reads with writes; external changes still fault the editor.
+    const task = this.tail.then(async () => {
+      this.check();
       const current = await this.vault.read<Saved>(this.config.secureSlot);
       if (!equal(current, this.saved))
         throw Error("Notes changed in another view. Reopen before editing.");
-    } catch (error) {
+    });
+    this.tail = task.catch((error) => {
       this.fault = error;
-      throw error;
-    }
+    });
+    return task;
   }
   private commit(nextRaw: string) {
     const task = this.tail.then(async () => {
