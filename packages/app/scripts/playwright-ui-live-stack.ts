@@ -29,7 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
-import { waitForChildExit } from "@elizaos/repository-tools";
+import { waitForChildExit } from "@elizaos/testing/fixtures";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildFirstRunRuntimeConfig } from "../../ui/src/first-run/first-run-config";
 import {

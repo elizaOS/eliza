@@ -15,7 +15,7 @@ import {
   startBrowserCapture,
   stopBrowserCapture,
 } from "@elizaos/plugin-browser";
-import { getFreePort } from "@elizaos/repository-tools";
+import { getFreePort } from "@elizaos/testing/fixtures";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";

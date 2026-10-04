@@ -8,5 +8,4 @@ export {
   getUiSourceRoot,
   resolveModuleEntry,
 } from "./package-paths.ts";
-export { getFreePort, waitForChildExit } from "./process-fixtures.ts";
 export { testOutputPath } from "./test-output.ts";

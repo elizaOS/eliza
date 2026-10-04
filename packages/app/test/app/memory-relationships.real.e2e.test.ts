@@ -11,7 +11,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { getFreePort, waitForChildExit } from "@elizaos/repository-tools";
+import { getFreePort, waitForChildExit } from "@elizaos/testing/fixtures";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildFirstRunRuntimeConfig } from "../../../ui/src/first-run/first-run-config";

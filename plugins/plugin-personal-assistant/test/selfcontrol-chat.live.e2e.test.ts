@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { getFreePort, waitForChildExit } from "@elizaos/repository-tools";
+import { getFreePort, waitForChildExit } from "@elizaos/testing/fixtures";
 import {
   createConversation,
   postConversationMessage,
