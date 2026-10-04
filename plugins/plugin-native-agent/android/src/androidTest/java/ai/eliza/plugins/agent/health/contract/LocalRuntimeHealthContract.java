@@ -27,5 +27,16 @@ public final class LocalRuntimeHealthContract {
   change.set(true);try{observer.read();throw new AssertionError("Stale runtime accepted");}catch(IOException expected){}change.set(false);check(!observer.unchanged(healthy));
   state.set(snapshot("one","running",1,false,false));before=calls.get();check(!observer.read().getBoolean("agentResponsive")&&calls.get()==before&&!observer.unchanged(healthy));
   healthy.put("processInstance","other");check(!observer.unchanged(healthy));
+  // A gateway can exit after answering storage but before the final liveness read.
+  for(String observed:new String[]{"ok","deferred"}){
+   AtomicBoolean live=new AtomicBoolean(true);
+   LocalRuntimeHealth.Snapshot crashing=new LocalRuntimeHealth.Snapshot(OWNER,"crash","running",1,false,AGENT,()->true,GATEWAY,live::get);
+   LocalRuntimeHealth crashObserver=new LocalRuntimeHealth("process",()->crashing,(snapshot,gateway,route,budget)->{
+    if(!gateway)return new JSONObject().put("status",200);
+    if(route.equals("/local-storage"))live.set(false);
+    return new JSONObject().put("status",200).put("data",new JSONObject().put("schemaVersion",1).put("gatewayResponsive",true).put("ownershipLoaded",true).put("taskStorage",observed));
+   },321);
+   JSONObject crashed=crashObserver.read();check(!crashed.getBoolean("gatewayResponsive")&&crashed.getString("taskStorage").equals("unavailable"));
+  }
  }
 }

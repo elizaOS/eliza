@@ -131,3 +131,9 @@ read. The host owns current-process binding, transport credentials, budgets and
 update admission. The helper neither starts the runtime nor admits an update.
 `LocalRuntimeHealthInstrumentedTest` exercises the shared protocol/lifecycle
 contract; maintained consumers separately qualify their actual IPC binding.
+
+Hosts must change the runtime instance or epoch whenever a child process is
+replaced, including automatic retries: delayed `unchanged` checks use that
+identity. Schema-5 consumers supply the UUID identities required by
+`NativeHealthEvidence`. A gateway that dies during storage sampling reports
+`gatewayResponsive:false` and `taskStorage:unavailable` together.

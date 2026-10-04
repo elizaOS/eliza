@@ -51,7 +51,9 @@ public final class LocalRuntimeHealth {
     }catch(IOException ignored){}
     Snapshot after=snapshots.get();
     if(after==null||before.owner!=after.owner||!before.instance.equals(after.instance)||before.epoch!=after.epoch||!before.state.equals(after.state)||before.stopping!=after.stopping||before.agent!=after.agent||before.gateway!=after.gateway)throw new IOException("Runtime changed during health observation");
-    return evidence(before.instance,before.state,before.epoch,storage,agentReady&&before.agentAlive(),gatewayReady&&before.gatewayAlive());
+    boolean gatewayResponsive=gatewayReady&&before.gatewayAlive();
+    if(!gatewayResponsive)storage="unavailable";
+    return evidence(before.instance,before.state,before.epoch,storage,agentReady&&before.agentAlive(),gatewayResponsive);
   }
   public boolean unchanged(JSONObject observation)throws Exception {
     if(!processInstance.equals(observation.getString("processInstance")))return false;
