@@ -144,9 +144,7 @@ it("delivers saved facts through chat voice boundary and notification store with
     expect(notices).toHaveLength(1);
     const body = notices[0]?.body;
     if (typeof body !== "string") throw new Error("Missing notification body");
-    expect(body).toContain('Check "Monday"  exactly');
-    expect(body).not.toContain("all clear");
-    expect(body).toContain("7:26:01 AM");
+    expect(body).toBe('Check "Monday"  exactly');
     const messages = await runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
