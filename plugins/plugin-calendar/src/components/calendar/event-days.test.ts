@@ -112,4 +112,28 @@ describe("calendar event day placement", () => {
       true,
     );
   });
+
+  it("keeps a timed event with an unparseable end on its start day without throwing", () => {
+    for (const endAt of ["", "not-a-date", "2026-06-16T25:00:00Z"]) {
+      const event = {
+        startAt: "2026-06-16T02:00:00.000Z",
+        endAt,
+        isAllDay: false,
+      } as LifeOpsCalendarEvent;
+      expect(
+        ["2026-06-14", "2026-06-15", "2026-06-16"].filter((day) =>
+          calendarEventOccursOn(event, day, "America/New_York"),
+        ),
+      ).toEqual(["2026-06-15"]);
+    }
+  });
+
+  it("places a timed event with an unparseable start on no day", () => {
+    const event = {
+      startAt: "",
+      endAt: "2026-06-16T05:00:00.000Z",
+      isAllDay: false,
+    } as LifeOpsCalendarEvent;
+    expect(calendarEventOccursOn(event, "2026-06-15", "UTC")).toBe(false);
+  });
 });
