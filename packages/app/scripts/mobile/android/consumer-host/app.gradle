@@ -51,6 +51,6 @@ android {
  }
 }
 dependencies {
- profile.modules.each { module -> implementation project(":${module.name}") }
+ profile.modules.findAll { it.appDependency }.each { module -> implementation project(":${module.name}") }
  profile.dependencies.each { dependency -> add(dependency.configuration, dependency.coordinate) }
 }

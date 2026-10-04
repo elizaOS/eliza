@@ -52,3 +52,21 @@ terms digest. These require the current billing-manager session. Display the
 estimate and obtain explicit confirmation; on an unknown outcome use
 `readOrganizationSubscriptionCancellationUndo` instead of inventing another intent.
 The review is short-lived and does not lock a future invoice price.
+
+Native billing also exposes management and portal projections, cancellation,
+pending/status recovery and reviewed reversal. The local POST
+`/cloud/account/subscription/renewal-review` accepts subscriptionId and revision;
+`/cloud/account/subscription/undo` additionally requires expectedRenewalTermsDigest.
+Hosts must display the complete renewal estimate and obtain explicit approval.
+Undo calls the reviewed confirmation API, never legacy unreviewed undo. Its
+idempotency identity includes approved terms and survives native restarts. A
+same-terms retry requires a matching FAILED predecessor via retryOf; changed
+terms require a fresh review and explicit confirmation. Recovery reads never
+redispatch. Server-side pending exclusion and billing authority remain decisive.
+
+Native account-factor transport exposes POST `/cloud/account/methods`,
+`/methods/unlink`, `/methods/phone/start`, `/methods/phone/verify`, and
+`/cloud/account/security/{status,start,verify,enroll/start,enroll/verify}` (method suffixes are relative to
+`/cloud/account`). The composed Auth host owns input validation, recent MFA,
+private session replacement, collision protection and cancellation. These routes
+are unavailable to service-only hosts. They do not manage Gmail consent.

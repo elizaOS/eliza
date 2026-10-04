@@ -45,6 +45,7 @@ import {
   resolveTestShardingMode,
   shouldNormalizeBunStatus99,
   shouldRetryQuarantinedSuites,
+  supervisedBunExitStatus,
   withDefaultTestTimeout,
 } from "./run-bun-tests-helpers.ts";
 
@@ -223,7 +224,7 @@ async function runBunTest(testArgs, { inherit, onOutput, timeoutMs } = {}) {
   if (result.error) throw result.error;
   if (result.terminationError) throw result.terminationError;
   return {
-    status: result.status,
+    status: supervisedBunExitStatus(result),
     signal: result.parentSignal ?? result.signal,
     output,
     watchdogFired: result.timedOut,

@@ -318,6 +318,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         seed: request.seed,
       });
 
+      signal?.throwIfAborted();
       if (!result.success || !result.data) {
         throw new Error(result.error ?? "Image generation failed");
       }
@@ -352,6 +353,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         imageUrl: request.imageUrl,
       });
 
+      signal?.throwIfAborted();
       if (!result.success || !result.data) {
         throw new Error(result.error ?? "Video generation failed");
       }
@@ -384,6 +386,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
       genre: request.genre,
     });
 
+    signal?.throwIfAborted();
     if (!result.success || !result.data) {
       throw new Error(result.error ?? "Audio generation failed");
     }

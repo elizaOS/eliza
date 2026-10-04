@@ -246,38 +246,10 @@ describe("workspace package resolution", () => {
     expect(buildConfig.resolve?.conditions).toBeUndefined();
   });
 
-  test("resolves the Cloud SDK redemption contract from workspace source in production builds", async () => {
-    const buildConfig = await resolveAppViteConfig("build");
-    const server = await createServer({
-      configFile: false,
-      root: appRoot,
-      logLevel: "silent",
-      optimizeDeps: { noDiscovery: true },
-      resolve: { alias: buildConfig.resolve?.alias },
-      server: { middlewareMode: true },
-    });
-
-    try {
-      const resolved =
-        await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/cloud-sdk/redemption-contract",
-          path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
-        );
-      expect(resolved?.id).toBe(
-        normalizePath(
-          path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
-        ),
-      );
-    } finally {
-      await server.close();
-    }
-  });
-
   test.each(["serve", "build"] as const)(
-    "resolves the canonical Cloud SDK contract from workspace source while %s config resolves",
+    "resolves the Cloud SDK redemption contract from workspace source with %s aliases",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
-
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
