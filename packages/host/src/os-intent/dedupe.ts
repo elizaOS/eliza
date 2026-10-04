@@ -13,11 +13,7 @@
  * skip the intents its predecessor already handled.
  */
 
-/** One applied launch: its id and the epoch-ms it was first routed. */
-export interface AppliedIntentRecord {
-  intentId: string;
-  appliedAt: number;
-}
+import type { AppliedIntentRecord } from "@elizaos/contracts";
 
 export interface IntentDedupeStoreOptions {
   /**
