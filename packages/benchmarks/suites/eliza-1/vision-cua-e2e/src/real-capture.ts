@@ -5,14 +5,10 @@
  * primitives behind the same `DisplayCaptureFixture` shape the stub mode
  * uses, so `runDisplay()` in `pipeline.ts` can be agnostic to the source.
  *
- * We import directly from the workspace TS source because the bundled
- * `dist/index.js` does not re-export `captureAllDisplays`, `listDisplays`,
- * or `NoDisplayError` (only `captureDesktopScreenshot`, which is the
- * legacy single-display API). The TS path is safe at runtime under bun /
- * vitest, which both transpile on-the-fly.
+ * Capture and display capabilities come from the selected checkout’s public package API.
  */
 
-import { elizaSourceUrl } from "./eliza-repo.ts";
+import { importElizaPackage } from "./eliza-repo.ts";
 import type { DisplayCaptureFixture, DisplayConfig } from "./types.ts";
 
 interface PluginComputerUseDisplaysModule {
@@ -72,12 +68,10 @@ export interface RealCaptureResult {
 export async function captureRealDisplays(
   options: { readonly delayMs?: number } = {},
 ): Promise<RealCaptureResult> {
-  const displaysModule = (await import(
-    elizaSourceUrl("plugins/plugin-computeruse/src/platform/displays.ts")
-  )) as PluginComputerUseDisplaysModule;
-  const captureModule = (await import(
-    elizaSourceUrl("plugins/plugin-computeruse/src/platform/capture.ts")
-  )) as PluginComputerUseCaptureModule;
+  const displaysModule = await importElizaPackage<
+    PluginComputerUseDisplaysModule & PluginComputerUseCaptureModule
+  >("@elizaos/plugin-computeruse");
+  const captureModule = displaysModule;
 
   if (displaysModule.isHeadless()) {
     throw new displaysModule.NoDisplayError(

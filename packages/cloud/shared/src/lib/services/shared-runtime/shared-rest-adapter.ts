@@ -20,7 +20,7 @@ import { type SharedReminderDelivery } from "@elizaos/plugin-scheduling";
 import { type RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
-import { type BridgeRequest } from "../eliza-sandbox-bridge";
+import { type BridgeRequest } from "../eliza-sandbox";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import { type PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import { type SharedAgentCharacter } from "./run-shared-agent-turn";

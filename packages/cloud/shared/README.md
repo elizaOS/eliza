@@ -23,3 +23,9 @@ bound provider response sizes, and recheck the grant after the last provider
 response before releasing complete attachment bytes. Provider/parser errors must
 not disclose message bodies or tokens. Task policy and document extraction remain
 host responsibilities.
+
+Use `/auth` for Worker request authentication, `/agents` for durable job admission
+and polling, and `/node` for provisioning execution. Public client DTOs belong
+to `@elizaos/cloud-sdk/contracts`; Node execution must not enter the agents graph.
+Shared exports are explicit. Leaf entries preserve lazy loading and schema ownership;
+do not add wildcard exports or consumer aliases that bypass the export map.

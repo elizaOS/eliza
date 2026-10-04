@@ -26,8 +26,8 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import {
-  join,
   kb,
   listViewBundlePlugins,
   loadBudgets,

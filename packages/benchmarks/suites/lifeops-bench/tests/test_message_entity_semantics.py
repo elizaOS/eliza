@@ -25,7 +25,7 @@ from eliza_lifeops_bench.lifeworld.entities import (
     EntityKind,
 )
 from eliza_lifeops_bench.lifeworld.world import LifeWorld
-from eliza_lifeops_bench.runner import _execute_action
+from eliza_lifeops_bench.lifeworld.executor import _execute_action
 from eliza_lifeops_bench.scenarios import CORE_SCENARIOS
 from eliza_lifeops_bench.types import Action, ScenarioMode
 

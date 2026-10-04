@@ -1,12 +1,13 @@
 /** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * OpenAI-compatible chat completions endpoint.
@@ -18,6 +19,133 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * IMPORTANT: Do NOT call provider APIs directly. Always use AI SDK.
  */
 
+import { getErrorStatusCode } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { createPreflightResponse } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
+import {
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
+import { recordCloudStreamMilestones } from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import {
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
+  type GatewayPreforwardTiming,
+  invokeAtGatewayHandoff,
+  resolveElizaTraceId,
+  snapshotGatewayPreforwardTiming,
+  withGatewayPreforwardTelemetry,
+  withInferenceAuthTelemetry,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import {
+  calculateCost,
+  estimateTokens,
+  getProviderFromModel,
+  getSafeModelParams,
+  modelUsesReasoningTokens,
+  normalizeModelName,
+} from "@elizaos/cloud-shared/lib/pricing";
+import {
+  mergeAnthropicCotProviderOptions,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
+  buildProviderNativeWebSearchTools,
+  isAnthropicWebSearchEnabled,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
+import {
+  canonicalizeCerebrasModelId,
+  getAiProviderConfigurationError,
+  getLanguageModel,
+  hasLanguageModelProviderConfigured,
+  isProviderConfigurationError,
+  type PooledLanguageModelCredential,
+  resolveAiProviderSource,
+  resolvePassthroughUpstreamForModel,
+  resolvePooledDirectProviderForModel,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  type BillingContext,
+  type BillingResult,
+  billUsage,
+  estimateInputTokens,
+  InsufficientCreditsError,
+  type recordUsageAnalytics,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { recordSettledInferenceBilling } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
+import {
+  AiPricingCacheUnavailableError,
+  AiPricingCacheWarmingError,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
+import {
+  admitAppInferenceCacheOnly,
+  assertInferenceAppAffiliateSupported,
+  InferenceAppAffiliateUnsupportedError,
+} from "@elizaos/cloud-shared/lib/services/app-inference-admission";
+import {
+  type AppInferenceDelegatedActor,
+  admitAppSubscriptionInference,
+  appInferenceDeveloperScope,
+  appInferenceErrorResponse,
+} from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/billing-hold";
+import { contentModerationService } from "@elizaos/cloud-shared/lib/services/content-moderation";
+import type {
+  CreditReconciliationResult,
+  CreditReservation,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import {
+  type InferenceAuthTelemetry,
+  resolveInferenceAuthContext,
+} from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import {
+  assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+  isInferenceStrongRevocationEnabled,
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import {
+  createPassthroughStreamMeter,
+  isPassthroughStreamingEnabled,
+  type PassthroughStreamTail,
+} from "@elizaos/cloud-shared/lib/services/inference-passthrough";
+import {
+  isKnownUnacceptedProviderError,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import {
+  getCachedGatewayModelById,
+  getGatewayModelByIdCacheOnly,
+} from "@elizaos/cloud-shared/lib/services/model-catalog";
+import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+  InferenceAffiliateCacheUnavailableError,
+  InferenceAffiliateCacheWarmingError,
+  InferencePricingCacheUnavailableError,
+  InferencePricingCacheWarmingError,
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
+import {
+  getTeamPoolRegistry,
+  type SelectedPooledCredential,
+} from "@elizaos/cloud-shared/lib/services/team-credential-pool";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { getRouteTimeoutMs } from "@elizaos/cloud-shared/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
 import {
   APICallError,
   generateText,
@@ -33,134 +161,6 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
-import { getErrorStatusCode } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { createPreflightResponse } from "@/lib/middleware/cors-apps";
-import {
-  enforceOrgRateLimit,
-  OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
-import { recordCloudStreamMilestones } from "@/lib/observability/cloud-backend-observability";
-import {
-  bindGatewayHandoffTelemetry,
-  type GatewayHandoffTelemetry,
-  type GatewayPreforwardTiming,
-  invokeAtGatewayHandoff,
-  resolveElizaTraceId,
-  snapshotGatewayPreforwardTiming,
-  withGatewayPreforwardTelemetry,
-  withInferenceAuthTelemetry,
-} from "@/lib/observability/http-telemetry";
-import {
-  calculateCost,
-  estimateTokens,
-  getProviderFromModel,
-  getSafeModelParams,
-  modelUsesReasoningTokens,
-  normalizeModelName,
-} from "@/lib/pricing";
-import {
-  mergeAnthropicCotProviderOptions,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
-  buildProviderNativeWebSearchTools,
-  isAnthropicWebSearchEnabled,
-} from "@/lib/providers/anthropic-web-search";
-import {
-  canonicalizeCerebrasModelId,
-  getAiProviderConfigurationError,
-  getLanguageModel,
-  hasLanguageModelProviderConfigured,
-  isProviderConfigurationError,
-  type PooledLanguageModelCredential,
-  resolveAiProviderSource,
-  resolvePassthroughUpstreamForModel,
-  resolvePooledDirectProviderForModel,
-} from "@/lib/providers/language-model";
-import {
-  type AIUsage,
-  type BillingContext,
-  type BillingResult,
-  billUsage,
-  estimateInputTokens,
-  InsufficientCreditsError,
-  type recordUsageAnalytics,
-} from "@/lib/services/ai-billing";
-import { recordSettledInferenceBilling } from "@/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
-import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
-import { appCreditsService } from "@/lib/services/app-credits";
-import {
-  admitAppInferenceCacheOnly,
-  assertInferenceAppAffiliateSupported,
-  InferenceAppAffiliateUnsupportedError,
-} from "@/lib/services/app-inference-admission";
-import {
-  type AppInferenceDelegatedActor,
-  admitAppSubscriptionInference,
-  appInferenceDeveloperScope,
-  appInferenceErrorResponse,
-} from "@/lib/services/app-subscription-inference-admission";
-import { appsService } from "@/lib/services/apps";
-import { BillingHoldActiveError } from "@/lib/services/billing-hold";
-import { contentModerationService } from "@/lib/services/content-moderation";
-import type {
-  CreditReconciliationResult,
-  CreditReservation,
-} from "@/lib/services/credits";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import {
-  type InferenceAuthTelemetry,
-  resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
-import {
-  assertInferenceCredentialActive,
-  type InferenceCredentialCheck,
-  InferenceCredentialRevokedError,
-  inferenceCredentialRevocationReason,
-  isInferenceStrongRevocationEnabled,
-} from "@/lib/services/inference-credential-revocation";
-import {
-  createPassthroughStreamMeter,
-  isPassthroughStreamingEnabled,
-  type PassthroughStreamTail,
-} from "@/lib/services/inference-passthrough";
-import {
-  isKnownUnacceptedProviderError,
-  isKnownUnacceptedProviderStatus,
-} from "@/lib/services/inference-provider-outcome";
-import {
-  getCachedGatewayModelById,
-  getGatewayModelByIdCacheOnly,
-} from "@/lib/services/model-catalog";
-import {
-  nativeApplicationInferenceErrorResponse,
-  prepareNativeApplicationInference,
-} from "@/lib/services/native-application-inference";
-import {
-  admitOrganizationInference,
-  InferenceAdmissionUnavailableError,
-  InferenceAffiliateCacheUnavailableError,
-  InferenceAffiliateCacheWarmingError,
-  InferencePricingCacheUnavailableError,
-  InferencePricingCacheWarmingError,
-} from "@/lib/services/organization-inference-admission";
-import { settlementDigest } from "@/lib/services/settlement-digest";
-import {
-  getTeamPoolRegistry,
-  type SelectedPooledCredential,
-} from "@/lib/services/team-credential-pool";
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import { logger } from "@/lib/utils/logger";
-import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
-import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
 
 /**
  * Write the durable billing ledger row for one settled inference. Credits are

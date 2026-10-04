@@ -7,6 +7,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import type {
   BenchmarkResult,
   ScenarioResult,
@@ -387,7 +388,8 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 const args = process.argv.slice(2);
 const resultsDir =
   args.find((a) => a.startsWith("--dir="))?.split("=")[1] ??
-  resolve(import.meta.dir, "results");
+  process.env.BENCHMARK_OUTPUT_ROOT ??
+  testOutputPath("benchmark-framework");
 
 const results = findLatestResults(resultsDir);
 printComparison(results);

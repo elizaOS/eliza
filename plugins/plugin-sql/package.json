@@ -18,7 +18,13 @@
       "import": "./dist/schema.js",
       "default": "./dist/schema.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./errors": {
+      "eliza-source": "./src/pglite/errors.ts",
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js",
+      "default": "./dist/errors.js"
+    }
   },
   "files": [
     "dist",

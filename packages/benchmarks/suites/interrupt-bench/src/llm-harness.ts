@@ -3,7 +3,7 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { JSONSchema, ResponseHandlerResult } from "./core-lite.ts";
+import type { JSONSchema, ResponseHandlerResult } from "@elizaos/core";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BRIDGE_SCRIPT = resolve(HERE, "../../../scripts/harness-turn.py");

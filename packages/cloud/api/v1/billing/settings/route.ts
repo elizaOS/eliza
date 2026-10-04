@@ -8,34 +8,34 @@
  * charge before the customer saves.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { organizationsRepository } from "@/db/repositories";
+import {
+  requireCurrentBillingManagerSession,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories";
 import {
   ApiError,
   ForbiddenError,
   failureResponse,
-} from "@/lib/api/cloud-worker-errors";
-import {
-  requireCurrentBillingManagerSession,
-  requireUserOrApiKeyWithOrg,
-} from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AUTO_TOP_UP_LIMITS,
   AutoTopUpSettingsPolicyError,
   AutoTopUpSettingsUnavailableError,
   AutoTopUpSettingsValidationError,
   autoTopUpService,
-} from "@/lib/services/auto-top-up";
-import { CreatorMonetizationRetiredError } from "@/lib/services/creator-monetization-retirement";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/auto-top-up";
+import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const UpdateSettingsSchema = z.object({
   autoTopUp: z

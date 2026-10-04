@@ -49,12 +49,14 @@ export interface ConversationMessagesValue {
    * Prepend an older page in front of the transcript for infinite upward
    * scroll (#13532). Dedupes by id and caps the retained count; stable identity.
    */
-  prependConversationMessages?: (older: ConversationMessage[]) => void;
+  // biome-ignore lint/suspicious/noConfusingVoidType: Existing callbacks may return void when a count is unavailable.
+  prependConversationMessages?: (older: ConversationMessage[]) => number | void;
 }
 
 export interface UseConversationMessagesValue
   extends ConversationMessagesValue {
-  prependConversationMessages: (older: ConversationMessage[]) => void;
+  // biome-ignore lint/suspicious/noConfusingVoidType: Existing callbacks may return void when a count is unavailable.
+  prependConversationMessages: (older: ConversationMessage[]) => number | void;
 }
 
 const noopPrependConversationMessages = () => {};

@@ -5,6 +5,7 @@
  * - owner/repo
  * - github.com/owner/repo
  * - https://github.com/owner/repo
+ * - https://gitlab.com/group/subgroup/project (GitLab nests namespaces)
  *
  * Bare owner/repo inputs default to GitHub because the coding workspace
  * flows in this plugin are GitHub-centric.
@@ -33,8 +34,49 @@ function normalizePathSegments(pathname: string): string[] {
     .filter(Boolean);
 }
 
-function toHttpsCloneUrl(host: string, owner: string, repo: string): string {
-  return `https://${host}/${owner}/${repo}.git`;
+/**
+ * The path segments naming the repository on a known host. GitHub and
+ * Bitbucket repositories are always `owner/repo`, so deeper segments are page
+ * routes. GitLab projects live under any depth of groups and subgroups, so the
+ * project path runs up to the `-` separator that prefixes project pages;
+ * guessing legacy route names can truncate a valid subgroup. Two segments turn
+ * `group/subgroup/project` into the non-project `group/subgroup`.
+ */
+function repositoryPathSegments(
+  host: string,
+  segments: string[],
+): string[] | null {
+  if (host !== "gitlab.com") {
+    return segments.length >= 2 ? segments.slice(0, 2) : null;
+  }
+  const end = segments.indexOf("-");
+  const projectPath = end === -1 ? segments : segments.slice(0, end);
+  return projectPath.length >= 2 ? projectPath : null;
+}
+
+function toHttpsCloneUrl(host: string, pathSegments: string[]): string {
+  const last = pathSegments.length - 1;
+  const path = pathSegments
+    .map((segment, index) =>
+      index === last ? stripGitSuffix(segment) : segment,
+    )
+    .join("/");
+  return `https://${host}/${path}.git`;
+}
+
+const REPOSITORY_URL_IN_TEXT_RE =
+  /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)(?:\/[\w.-]+){2,}/i;
+
+/**
+ * The first known-host repository URL in free task text, or null. Deeper paths
+ * are kept for GitLab subgroups (normalizeRepositoryInput trims page routes
+ * back to the repository). Path characters include `.`, so a URL that ends a
+ * sentence would carry the period into the last segment (`…/project.`); it is
+ * dropped here rather than becoming part of the repository name.
+ */
+export function extractRepositoryUrlFromText(text: string): string | null {
+  const match = REPOSITORY_URL_IN_TEXT_RE.exec(text);
+  return match ? match[0].replace(/\.+$/, "") : null;
 }
 
 export function normalizeRepositoryInput(repo: string): string {
@@ -57,12 +99,11 @@ export function normalizeRepositoryInput(repo: string): string {
       const parsed = new URL(withoutTrailingSlash);
       const host = parsed.hostname.toLowerCase();
       if (KNOWN_GIT_HOSTS.has(host)) {
-        const segments = normalizePathSegments(parsed.pathname);
-        if (segments.length >= 2) {
-          const owner = segments[0];
-          const repoName = stripGitSuffix(segments[1]);
-          return toHttpsCloneUrl(host, owner, repoName);
-        }
+        const repoPath = repositoryPathSegments(
+          host,
+          normalizePathSegments(parsed.pathname),
+        );
+        if (repoPath) return toHttpsCloneUrl(host, repoPath);
       }
     } catch {
       // error-policy:J3 untrusted repo input; URL parse failure → pass raw through to downstream assertSafeGitRemote validation
@@ -72,25 +113,25 @@ export function normalizeRepositoryInput(repo: string): string {
   }
 
   const hostMatch = withoutTrailingSlash.match(
-    /^(github\.com|gitlab\.com|bitbucket\.org)\/([^/]+)\/([^/]+?)(?:\.git)?$/i,
+    /^(github\.com|gitlab\.com|bitbucket\.org)\/([^\s]+)$/i,
   );
   if (hostMatch) {
-    return toHttpsCloneUrl(
-      hostMatch[1].toLowerCase(),
-      hostMatch[2],
-      stripGitSuffix(hostMatch[3]),
+    const host = hostMatch[1].toLowerCase();
+    const repoPath = repositoryPathSegments(
+      host,
+      normalizePathSegments(hostMatch[2]),
     );
+    if (repoPath) return toHttpsCloneUrl(host, repoPath);
   }
 
   const shorthandMatch = withoutTrailingSlash.match(
     /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/,
   );
   if (shorthandMatch) {
-    return toHttpsCloneUrl(
-      "github.com",
+    return toHttpsCloneUrl("github.com", [
       shorthandMatch[1],
-      stripGitSuffix(shorthandMatch[2]),
-    );
+      shorthandMatch[2],
+    ]);
   }
 
   return withoutTrailingSlash;

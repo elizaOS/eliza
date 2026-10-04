@@ -97,6 +97,7 @@ describe("catalog app windows", () => {
         sandbox: "allow-scripts allow-same-origin",
       }),
     );
+    const addWindowListener = vi.spyOn(window, "addEventListener");
     render(
       <StrictMode>
         <AppWindowRenderer slug="window-catalog-fixture" />
@@ -105,6 +106,14 @@ describe("catalog app windows", () => {
     const iframe = (await screen.findByTitle(
       "Catalog window",
     )) as HTMLIFrameElement;
+    // The iframe can be in the DOM before the viewer's passive effect arms its
+    // handshake listener; dispatching earlier would make every check vacuous.
+    await waitFor(() =>
+      expect(addWindowListener).toHaveBeenCalledWith(
+        "message",
+        expect.any(Function),
+      ),
+    );
     expect(launch).toHaveBeenCalledTimes(1);
     expect(launch).toHaveBeenCalledWith("@elizaos/app-window-catalog-fixture");
     const viewerWindow = iframe.contentWindow;
@@ -160,5 +169,28 @@ describe("catalog app windows", () => {
     render(<AppWindowRenderer slug="window-catalog-fixture" />);
     expect(await screen.findByText("Catalog launch failed")).toBeTruthy();
     expect(screen.queryByTitle("Catalog window")).toBeNull();
+  });
+
+  it("reports a launch URL that could not be opened instead of claiming success", async () => {
+    // No viewer, and a launch URL the navigation allowlist refuses, so
+    // openExternalUrl resolves false and nothing opens.
+    const result = launchResult("external-run", {
+      url: "https://viewer.example.test/app",
+    });
+    vi.spyOn(client, "launchApp").mockResolvedValue({
+      ...result,
+      viewer: null,
+      launchUrl: "javascript:alert(1)",
+      run: result.run ? { ...result.run, viewer: null } : null,
+    });
+    render(<AppWindowRenderer slug="window-catalog-fixture" />);
+    expect(
+      await screen.findByText("Could not launch Catalog window"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Could not open this app in your browser/),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText(/opened in your browser/)).toBeNull();
   });
 });

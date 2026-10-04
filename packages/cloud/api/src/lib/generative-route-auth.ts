@@ -4,32 +4,32 @@
  * cache read and never join database authorization to provider dispatch.
  */
 
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import type {
   BillingContext,
   FlatBillingCost,
-} from "@/lib/services/ai-billing";
-import type { PricingCacheReadOptions } from "@/lib/services/ai-pricing/cache";
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import type { PricingCacheReadOptions } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
-import type { GenerativeOperationContext } from "@/lib/services/generative-operation";
+} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import type { GenerativeOperationContext } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import type {
   InferenceAdmissionSnapshot,
   InferenceAuthRejectionReason,
-} from "@/lib/services/inference-auth-cache";
+} from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-} from "@/lib/services/inference-credential-revocation";
-import type { EndpointType } from "@/lib/services/org-rate-limits";
-import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import type { OrganizationInferenceAdmission } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 export interface GenerativeRouteCaller {
   user: {
@@ -244,8 +244,8 @@ export async function requireGenerativeKnownIdentity(
   identity: { userId: string; organizationId: string },
 ): Promise<GenerativeRouteCaller> {
   const [{ usersRepository }, { adminService }] = await Promise.all([
-    import("@/db/repositories/users"),
-    import("@/lib/services/admin"),
+    import("@elizaos/cloud-shared/db/repositories/users"),
+    import("@elizaos/cloud-shared/lib/services/admin"),
   ]);
   const user = await usersRepository.findWithOrganization(identity.userId);
   const reason = !user
@@ -281,16 +281,18 @@ export async function requireGenerativeKnownIdentity(
 
   const executionCtx = getGenerativeExecutionContext(c);
   const admissionSnapshot = executionCtx
-    ? await import("@/lib/services/inference-admission-snapshot").then(
-        (module) =>
-          module.getInferenceAdmissionSnapshotCacheOnly(
-            identity.organizationId,
-            executionCtx,
-          ),
+    ? await import(
+        "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+      ).then((module) =>
+        module.getInferenceAdmissionSnapshotCacheOnly(
+          identity.organizationId,
+          executionCtx,
+        ),
       )
-    : await import("@/lib/services/inference-admission-snapshot").then(
-        (module) =>
-          module.loadInferenceAdmissionSnapshot(identity.organizationId),
+    : await import(
+        "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+      ).then((module) =>
+        module.loadInferenceAdmissionSnapshot(identity.organizationId),
       );
 
   return {
@@ -363,7 +365,7 @@ export async function admitFlatGenerativeOperation(params: {
   };
   if (!executionCtx) {
     const { reserveFlatUsageCredits } = await import(
-      "@/lib/services/ai-billing"
+      "@elizaos/cloud-shared/lib/services/ai-billing"
     );
     const reservation = await reserveFlatUsageCredits(
       context,
@@ -388,7 +390,7 @@ export async function admitFlatGenerativeOperation(params: {
   }
   try {
     const { admitOrganizationInference } = await import(
-      "@/lib/services/organization-inference-admission"
+      "@elizaos/cloud-shared/lib/services/organization-inference-admission"
     );
     return await admitOrganizationInference({
       context,
@@ -458,7 +460,7 @@ export async function requireGenerativeRouteCaller(
       };
     }
     const { requireUserOrApiKeyWithOrg } = await import(
-      "@/lib/auth/workers-hono-auth"
+      "@elizaos/cloud-shared/auth"
     );
     const user = await requireUserOrApiKeyWithOrg(c);
     return {
@@ -469,7 +471,7 @@ export async function requireGenerativeRouteCaller(
     };
   }
   const { resolveInferenceAuthContext } = await import(
-    "@/lib/services/inference-auth-context"
+    "@elizaos/cloud-shared/lib/services/inference-auth-context"
   );
   const resolveCallerAuth = () =>
     resolveInferenceAuthContext(request, {
@@ -497,8 +499,10 @@ export async function requireGenerativeRouteCaller(
       if (options.rateLimitEndpoint) {
         const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
           await Promise.all([
-            import("@/lib/middleware/rate-limit"),
-            import("@/lib/services/inference-admission-snapshot"),
+            import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
+            import(
+              "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+            ),
           ]);
         const limited = await enforceOrgRateLimit(
           resolution.ctx.orgId,
@@ -598,7 +602,7 @@ export async function requireGenerativeRouteCaller(
     };
   }
   const { requireUserOrApiKeyWithOrg } = await import(
-    "@/lib/auth/workers-hono-auth"
+    "@elizaos/cloud-shared/auth"
   );
   const user = await requireUserOrApiKeyWithOrg(c);
   return {

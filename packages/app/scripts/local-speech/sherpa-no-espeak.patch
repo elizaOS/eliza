@@ -1,0 +1,179 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -69,6 +69,12 @@
+ option(SHERPA_ONNX_ENABLE_WASM_SPEECH_ENHANCEMENT "Whether to enable WASM for speech enhancement" OFF)
+ option(SHERPA_ONNX_ENABLE_BINARY "Whether to build binaries" ${SUGGEST_BUILD_BINARIES})
+ option(SHERPA_ONNX_ENABLE_TTS "Whether to build TTS related code" ON)
++option(SHERPA_ONNX_ENABLE_ESPEAK "Include GPL espeak/piper phonemizer; disable for lexicon-only builds" ON)
++if(SHERPA_ONNX_ENABLE_ESPEAK)
++  add_compile_definitions(SHERPA_ONNX_ENABLE_ESPEAK=1)
++else()
++  add_compile_definitions(SHERPA_ONNX_ENABLE_ESPEAK=0)
++endif()
+ option(SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION "Whether to build speaker diarization related code" ON)
+ option(SHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY "True to link libstdc++ statically. Used only when BUILD_SHARED_LIBS is OFF on Linux" ON)
+ option(SHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE "True to use pre-installed onnxruntime if available" ON)
+@@ -566,7 +572,7 @@
+ 
+ include(json)
+ 
+-if(SHERPA_ONNX_ENABLE_TTS)
++if(SHERPA_ONNX_ENABLE_TTS AND SHERPA_ONNX_ENABLE_ESPEAK)
+   include(espeak-ng-for-piper)
+   set(ESPEAK_NG_DIR ${espeak_ng_SOURCE_DIR})
+   message(STATUS "ESPEAK_NG_DIR: ${ESPEAK_NG_DIR}")
+--- a/sherpa-onnx/csrc/CMakeLists.txt
++++ b/sherpa-onnx/csrc/CMakeLists.txt
+@@ -288,9 +288,9 @@
+   list(APPEND sources
+     character-lexicon.cc
+     hifigan-vocoder.cc
+-    kokoro-multi-lang-lexicon.cc
++    $<$<BOOL:${SHERPA_ONNX_ENABLE_ESPEAK}>:kokoro-multi-lang-lexicon.cc>
+     lexicon.cc
+-    matcha-tts-lexicon.cc
++    $<$<BOOL:${SHERPA_ONNX_ENABLE_ESPEAK}>:matcha-tts-lexicon.cc>
+     melo-tts-lexicon.cc
+     offline-tts-character-frontend.cc
+     offline-tts-frontend.cc
+@@ -313,7 +313,7 @@
+     offline-tts-zipvoice-model-config.cc
+     offline-tts-zipvoice-model.cc
+     offline-tts.cc
+-    piper-phonemize-lexicon.cc
++    $<$<BOOL:${SHERPA_ONNX_ENABLE_ESPEAK}>:piper-phonemize-lexicon.cc>
+     sentence-piece-tokenizer.cc
+     vocoder.cc
+     vocos-vocoder.cc
+@@ -476,7 +476,7 @@
+ 
+ target_link_libraries(sherpa-onnx-core fstfar fst)
+ 
+-if(SHERPA_ONNX_ENABLE_TTS)
++if(SHERPA_ONNX_ENABLE_TTS AND SHERPA_ONNX_ENABLE_ESPEAK)
+   target_link_libraries(sherpa-onnx-core
+     piper_phonemize)
+ endif()
+--- a/sherpa-onnx/csrc/kokoro-multi-lang-lexicon.h
++++ b/sherpa-onnx/csrc/kokoro-multi-lang-lexicon.h
+@@ -14,6 +14,14 @@
+ 
+ namespace sherpa_onnx {
+ 
++#if defined(SHERPA_ONNX_ENABLE_ESPEAK) && !SHERPA_ONNX_ENABLE_ESPEAK
++class KokoroMultiLangLexicon : public OfflineTtsFrontend {
++ public:
++  template <typename... Args> explicit KokoroMultiLangLexicon(Args &&...) {}
++  std::vector<TokenIDs> ConvertTextToTokenIds(
++      const std::string &, const std::string & = "") const override { return {}; }
++};
++#else
+ class KokoroMultiLangLexicon : public OfflineTtsFrontend {
+  public:
+   ~KokoroMultiLangLexicon() override;
+@@ -38,6 +46,7 @@
+   std::unique_ptr<Impl> impl_;
+ };
+ 
++#endif
+ }  // namespace sherpa_onnx
+ 
+ #endif  // SHERPA_ONNX_CSRC_KOKORO_MULTI_LANG_LEXICON_H_
+--- a/sherpa-onnx/csrc/matcha-tts-lexicon.h
++++ b/sherpa-onnx/csrc/matcha-tts-lexicon.h
+@@ -15,6 +15,14 @@
+ namespace sherpa_onnx {
+ 
+ // For Chinese+English matcha tts
++#if defined(SHERPA_ONNX_ENABLE_ESPEAK) && !SHERPA_ONNX_ENABLE_ESPEAK
++class MatchaTtsLexicon : public OfflineTtsFrontend {
++ public:
++  template <typename... Args> explicit MatchaTtsLexicon(Args &&...) {}
++  std::vector<TokenIDs> ConvertTextToTokenIds(
++      const std::string &, const std::string & = "") const override { return {}; }
++};
++#else
+ class MatchaTtsLexicon : public OfflineTtsFrontend {
+  public:
+   ~MatchaTtsLexicon() override;
+@@ -37,6 +45,7 @@
+   std::unique_ptr<Impl> impl_;
+ };
+ 
++#endif
+ }  // namespace sherpa_onnx
+ 
+ #endif  // SHERPA_ONNX_CSRC_MATCHA_TTS_LEXICON_H_
+--- a/sherpa-onnx/csrc/offline-tts-model-config.cc
++++ b/sherpa-onnx/csrc/offline-tts-model-config.cc
+@@ -30,6 +30,18 @@
+ }
+ 
+ bool OfflineTtsModelConfig::Validate() const {
++#if defined(SHERPA_ONNX_ENABLE_ESPEAK) && !SHERPA_ONNX_ENABLE_ESPEAK
++  if (vits.model.empty()) {
++    SHERPA_ONNX_LOGE("This build supports only VITS lexicon TTS");
++    return false;
++  }
++  if (!vits.data_dir.empty() || !matcha.data_dir.empty() ||
++      !kokoro.data_dir.empty() || !zipvoice.data_dir.empty() ||
++      !kitten.data_dir.empty()) {
++    SHERPA_ONNX_LOGE("This build supports lexicon/FST TTS only; espeak is disabled");
++    return false;
++  }
++#endif
+   if (num_threads < 1) {
+     SHERPA_ONNX_LOGE("num_threads should be > 0. Given %d", num_threads);
+     return false;
+--- a/sherpa-onnx/csrc/offline-tts-vits-impl.h
++++ b/sherpa-onnx/csrc/offline-tts-vits-impl.h
+@@ -292,6 +292,19 @@
+         k = AddBlank(k);
+       }
+     }
++
++#if defined(SHERPA_ONNX_ENABLE_ESPEAK) && !SHERPA_ONNX_ENABLE_ESPEAK
++    // Piper's published token convention is pad=0, BOS=1, EOS=2.
++    // Lexicon produces phone IDs and AddBlank frames them; match the original
++    // Piper frontend's utterance boundaries. The client validates this token map.
++    if (meta_data.is_piper && config_.model.vits.data_dir.empty()) {
++      for (auto &tokens : x) {
++        if (!meta_data.add_blank) tokens = AddBlank(tokens);
++        tokens.insert(tokens.begin(), 1);
++        tokens.push_back(2);
++      }
++    }
++#endif
+ 
+     int32_t x_size = static_cast<int32_t>(x.size());
+ 
+--- a/sherpa-onnx/csrc/piper-phonemize-lexicon.h
++++ b/sherpa-onnx/csrc/piper-phonemize-lexicon.h
+@@ -17,6 +17,18 @@
+ 
+ namespace sherpa_onnx {
+ 
++#if defined(SHERPA_ONNX_ENABLE_ESPEAK) && !SHERPA_ONNX_ENABLE_ESPEAK
++// Lexicon-only build: no GPL phonemizer code is compiled or linked.
++// Config validation rejects data_dir before construction; this fallback also
++// refuses synthesis for any future caller that bypasses that validation.
++class PiperPhonemizeLexicon : public OfflineTtsFrontend {
++ public:
++  template <typename... Args>
++  explicit PiperPhonemizeLexicon(Args &&...) {}
++  std::vector<TokenIDs> ConvertTextToTokenIds(
++      const std::string &, const std::string & = "") const override { return {}; }
++};
++#else
+ class PiperPhonemizeLexicon : public OfflineTtsFrontend {
+  public:
+   PiperPhonemizeLexicon(const std::string &tokens, const std::string &data_dir,
+@@ -73,6 +85,8 @@
+   bool is_kitten_ = false;
+ };
+ 
++#endif
++
+ }  // namespace sherpa_onnx
+ 
+ #endif  // SHERPA_ONNX_CSRC_PIPER_PHONEMIZE_LEXICON_H_

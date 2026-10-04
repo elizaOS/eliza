@@ -23,6 +23,7 @@ import {
   type SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelector } from "../../state";
+import { runAsPrivilegedShell } from "../../surface-realm-channel";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { formatSubscriptionRequestError } from "../../utils/subscription-auth.js";
 import { Button } from "../ui/button";
@@ -79,15 +80,17 @@ function readOAuthActive(storageKey: string): boolean {
 function rememberOAuthActive(storageKey: string, active: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    if (active) window.localStorage.setItem(storageKey, "1");
-    else window.localStorage.removeItem(storageKey);
-    // `setup=oauth` is the established Anthropic deep link.
-    if (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY) {
-      const url = new URL(window.location.href);
-      if (active) url.searchParams.set("setup", "oauth");
-      else url.searchParams.delete("setup");
-      window.history.replaceState(null, "", url);
-    }
+    runAsPrivilegedShell(() => {
+      if (active) window.localStorage.setItem(storageKey, "1");
+      else window.localStorage.removeItem(storageKey);
+      // `setup=oauth` is the established Anthropic deep link.
+      if (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY) {
+        const url = new URL(window.location.href);
+        if (active) url.searchParams.set("setup", "oauth");
+        else url.searchParams.delete("setup");
+        window.history.replaceState(null, "", url);
+      }
+    });
   } catch {
     // error-policy:J4 OAuth remains usable for this session when persistence is unavailable.
     return;

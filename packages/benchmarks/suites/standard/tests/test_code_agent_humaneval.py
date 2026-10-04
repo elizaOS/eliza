@@ -6,7 +6,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from benchmarks.orchestrator.code_agent_matrix import collect_outcome_metrics, collect_token_metrics
+from benchmarks.orchestrator.code_agent_execution import (
+    collect_outcome_metrics,
+    collect_token_metrics,
+)
 from benchmarks.standard.code_agent_humaneval import (
     agent_command_template,
     run_agent_humaneval,
@@ -16,8 +19,12 @@ from benchmarks.standard.humaneval import SMOKE_FIXTURES
 
 def test_agent_command_template_uses_builtin_by_default(monkeypatch) -> None:
     monkeypatch.delenv("STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE", raising=False)
-    monkeypatch.delenv("STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
-    monkeypatch.delenv("STANDARD_HUMANEVAL_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
+    monkeypatch.delenv(
+        "STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False
+    )
+    monkeypatch.delenv(
+        "STANDARD_HUMANEVAL_DISABLE_BUILTIN_AGENT_COMMAND", raising=False
+    )
 
     template = agent_command_template(
         "elizaos",
@@ -31,7 +38,9 @@ def test_agent_command_template_uses_builtin_by_default(monkeypatch) -> None:
     assert "{result_json}" in template
 
 
-def test_run_agent_humaneval_scores_completion_and_writes_trajectory(tmp_path: Path) -> None:
+def test_run_agent_humaneval_scores_completion_and_writes_trajectory(
+    tmp_path: Path,
+) -> None:
     script = tmp_path / "agent.py"
     script.write_text(
         "\n".join(

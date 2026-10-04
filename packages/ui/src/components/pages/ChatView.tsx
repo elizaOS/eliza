@@ -520,6 +520,7 @@ export function ChatView({
   const loadOlderResumeRef = useRef<{
     conversationId: string | null;
     before?: number;
+    beforeId?: string;
   }>({ conversationId: activeConversationId });
   // Keep a ref to conversationMessages so fetchOlder reads the latest value at
   // call-time without carrying it as a dep. conversationMessages changes on
@@ -538,16 +539,17 @@ export function ChatView({
       conversationId,
       currentMessages: conversationMessagesRef.current,
       before: loadOlderResumeRef.current.before,
+      beforeId: loadOlderResumeRef.current.beforeId,
       prependMessages: (older) => {
-        if (loadOlderConversationIdRef.current === conversationId) {
-          prependConversationMessages(older);
-        }
+        if (loadOlderConversationIdRef.current !== conversationId) return 0;
+        return prependConversationMessages(older);
       },
     });
     if (loadOlderConversationIdRef.current === conversationId) {
       loadOlderResumeRef.current = {
         conversationId,
         before: result.resumeBefore,
+        beforeId: result.resumeBeforeId,
       };
     }
     return result;

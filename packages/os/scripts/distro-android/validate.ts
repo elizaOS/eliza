@@ -320,7 +320,6 @@ export function validateProductLayer(vendorDir, brand) {
 
   const common = read(path.join(vendorDir, brand.commonMakefile));
   assertIncludes(common, "PRODUCT_PACKAGES +=", brand.commonMakefile);
-  assertIncludes(common, "PRODUCT_PACKAGES -=", brand.commonMakefile);
   assertIncludes(common, brand.appName, brand.commonMakefile);
   assertLocallyOwnedProductModulesResolve(common, vendorDir, brand);
   assertIncludes(
@@ -359,12 +358,11 @@ export function validateProductLayer(vendorDir, brand) {
     ),
     "framework-res overlay (must mirror frameworks/base/core/res/res/...)",
   );
-  // Ensure no first-boot UX leaks through.
-  for (const marker of ["Provision", "SetupWizard", "ManagedProvisioning"]) {
-    assertIncludes(
-      common,
-      marker,
-      `${brand.commonMakefile} PRODUCT_PACKAGES -= strip list`,
+  // Package names in an unsupported subtraction were never removal evidence.
+  // Validate the actual setup property and overlay defaults below instead.
+  if (/^\s*PRODUCT_PACKAGES\s*-=/m.test(common)) {
+    fail(
+      `${brand.commonMakefile} uses unsupported PRODUCT_PACKAGES subtraction`,
     );
   }
   assertIncludes(common, "ro.setupwizard.mode=DISABLED", brand.commonMakefile);

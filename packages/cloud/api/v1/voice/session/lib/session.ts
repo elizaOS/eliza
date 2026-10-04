@@ -26,41 +26,41 @@
  * revoke — same-worker or cross-device — stops uplink to Cartesia in <=500ms.
  */
 
-import { type VoiceUiContext } from "@elizaos/core/voice";
 import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
   VOICE_TTS_MAX_BUFFER_DELAY_MS,
-} from "@/lib/services/cartesia-sonic-tts";
+} from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import {
   type FishAudioModel,
   FishAudioTtsAdapter,
   type FishAudioWebSocketFactory,
-} from "@/lib/services/fish-audio-tts";
+} from "@elizaos/cloud-shared/lib/services/fish-audio-tts";
 import type {
   VoiceUsageIdentity,
   VoiceUsageLimits,
   VoiceUsageStore,
-} from "@/lib/services/voice-usage-meter";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   type ElizaServerTimingReceipt,
   ElizaSseBridgeError,
   type ElizaSseBridgeResponseHeaders,
   streamElizaConversation,
-} from "@/lib/voice-session/eliza-sse-bridge";
-import { PhraseAggregator } from "@/lib/voice-session/phrase-aggregator";
-import type { ServerControlFrame } from "@/lib/voice-session/protocol";
+} from "@elizaos/cloud-shared/lib/voice-session/eliza-sse-bridge";
+import { PhraseAggregator } from "@elizaos/cloud-shared/lib/voice-session/phrase-aggregator";
+import type { ServerControlFrame } from "@elizaos/cloud-shared/lib/voice-session/protocol";
 import {
   getVoiceSessionRegistry,
   type LiveVoiceSession,
   type VoiceSessionRegistry,
   type VoiceSessionSeverReason,
-} from "@/lib/voice-session/session-registry";
+} from "@elizaos/cloud-shared/lib/voice-session/session-registry";
 import type {
   VoiceSessionDownlink,
   VoiceSessionLike,
-} from "@/lib/voice-session/ws-handler";
+} from "@elizaos/cloud-shared/lib/voice-session/ws-handler";
+import type { VoiceUiContext } from "@elizaos/core/voice";
 import {
   CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
   type CartesiaInkRealtimeEvent,
@@ -136,7 +136,7 @@ const UNSPEAKABLE_RESPONSE_FALLBACK =
 // the adapter (VOICE_TTS_MAX_BUFFER_DELAY_MS) so the evidence-harness
 // reference server provably opens Cartesia with the same value (#16667).
 
-export type { VoiceSessionDownlink } from "@/lib/voice-session/ws-handler";
+export type { VoiceSessionDownlink } from "@elizaos/cloud-shared/lib/voice-session/ws-handler";
 
 export interface VoiceTurnMetricsReceipt {
   traceId: string;

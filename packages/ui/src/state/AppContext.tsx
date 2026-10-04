@@ -1175,7 +1175,10 @@ function AppProviderInner({
   // InlineWidgetText and MessageContent route picks through this single
   // `sendActionMessage`, and so does the unlocked composer during onboarding.
   const sendActionMessage = useCallback(
-    (text: string): Promise<void> => {
+    (
+      text: string,
+      options?: { metadata?: Record<string, unknown> },
+    ): Promise<void> => {
       // The in-chat model-status card's `__model__:` controls (cancel / switch
       // to cloud / retry / download) are consumed by the model-status conductor
       // and NEVER reach the server — regardless of onboarding state.
@@ -1214,7 +1217,9 @@ function AppProviderInner({
           // Explicit "start/stop/restart tutorial" commands drive the tour
           // locally; every other message flows to the real send untouched.
           if (tryHandleTutorialText(text)) return Promise.resolve();
-          return rawSendActionMessage(text);
+          return options
+            ? rawSendActionMessage(text, options)
+            : rawSendActionMessage(text);
       }
     },
     [firstRunCloudProvisionedContainer, firstRunComplete, rawSendActionMessage],

@@ -305,6 +305,7 @@ export function useStartupCoordinator(
     effectRunRef.current += 1;
     const runId = effectRunRef.current;
     const cancelled = { current: false };
+    const credentialWaitCancellation = new AbortController();
     const tidRef = { current: null as ReturnType<typeof setTimeout> | null };
 
     runPollingBackend(
@@ -317,6 +318,7 @@ export function useStartupCoordinator(
       cancelled,
       tidRef,
       pollingBackendTarget,
+      credentialWaitCancellation.signal,
     ).catch((err: unknown) => {
       // error-policy:J4 expected failures are dispatched inside the runner; an
       // unexpected rejection is translated to the visible startup error card.
@@ -335,6 +337,7 @@ export function useStartupCoordinator(
 
     return () => {
       cancelled.current = true;
+      credentialWaitCancellation.abort();
       if (tidRef.current) clearTimeout(tidRef.current);
     };
   }, [

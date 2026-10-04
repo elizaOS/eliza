@@ -2906,7 +2906,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: conversations omitted to limit rerenders
   const sendActionMessage = useCallback(
-    async (text: string) => {
+    async (text: string, options?: Pick<ChatSendTextOptions, "metadata">) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       const viewHandoffOwner: ChatViewHandoffOwner = {
@@ -3099,7 +3099,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             "DM",
             controller.signal,
             undefined,
-            buildChatViewMetadata(tab),
+            buildChatViewMetadata(tab, options?.metadata),
             // No overlay status on the action/DM path (its finally doesn't clear
             // it); still stream inline tool rows onto the turn (#13535),
             // coalesced into the current transport burst with the text.
@@ -3324,6 +3324,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         Boolean(convId) &&
         userMsg.source !== "local_command" &&
         !userMsg.id.startsWith("temp-");
+      const hasLaterUserTurn = currentMessages
+        .slice(assistantIdx + 1)
+        .some((m) => m.role === "user");
+      if (canTruncate && convId && hasLaterUserTurn) {
+        await sendChatText(retryText, { conversationId: convId });
+        return;
+      }
       // Preferred path: re-run the turn IN PLACE. Truncate from the user message
       // (inclusive) so [Q, fail] is removed server-side, then resend Q — exactly
       // like handleChatEdit. The old behaviour only dropped the assistant bubble

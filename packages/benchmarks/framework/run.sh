@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RESULTS_DIR="${SCRIPT_DIR}/results"
+RESULTS_DIR="${BENCHMARK_OUTPUT_ROOT:-$(cd "${SCRIPT_DIR}/../../.." && pwd)/test-results/benchmark-framework}"
 
 timestamp_ms() {
   local ts

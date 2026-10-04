@@ -7,6 +7,18 @@
  */
 import type { UUID } from "@elizaos/core";
 
+/** In-process only: symbols survive local event delivery but never JSON/model context. */
+export const AUTONOMY_NOTIFICATION_DELIVERY = Symbol(
+  "autonomy-notification-delivery",
+);
+export interface AutonomyNotificationDelivery {
+  publish: (target?: {
+    conversationId: string;
+    messageId: string;
+  }) => Promise<unknown>;
+  routed?: Promise<void>;
+}
+
 export interface AgentEventPayloadLike {
   runId: string;
   seq: number;

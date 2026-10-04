@@ -161,6 +161,7 @@
   "appsview.Stopped": "중지됨",
   "appsview.URL": "URL:",
   "appsview.Viewer": "뷰어",
+  "appwindow.ExternalOpenFailed": "이 앱을 브라우저에서 열 수 없습니다: {{url}}",
   "appwindow.LaunchedNoViewer": "이 앱은 뷰어 URL 없이 실행됐어요. 앱 카탈로그에서 열어 주세요.",
   "appwindow.RetryingLaunch": "다시 실행하는 중…",
   "aria.advancedNavigation": "고급 탐색",

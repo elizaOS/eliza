@@ -52,3 +52,56 @@ it("leaves unselected credentials unchanged and rejects malformed policy before 
   );
   expect(fs.readFileSync(file, "utf8")).toBe(before);
 });
+
+it("preserves saved and explicit connector options when legacy credentials are persisted", async () => {
+  const file = destination();
+  const { prepareFirstRunConnectors } = await import(
+    "../src/first-run-config.ts"
+  );
+  const { loadElizaConfig } = await import("../src/config/config.ts");
+  const prepared = prepareFirstRunConnectors(
+    {
+      connectors: {
+        telegram: { enabled: false, botToken: "old-telegram" },
+        discord: { enabled: false, token: "old-discord" },
+        whatsapp: { enabled: false, sessionPath: "/old/session" },
+      },
+    },
+    {
+      connectors: { telegram: { groupPolicy: "allowlist" } },
+      telegramToken: "new-telegram",
+      discordToken: "new-discord",
+      whatsappSessionPath: "/new/session",
+    },
+  );
+  if (!prepared.ok) throw new Error(prepared.error);
+  saveElizaConfig({ connectors: prepared.connectors });
+  expect(fs.existsSync(file)).toBe(true);
+  expect(loadElizaConfig().connectors).toMatchObject({
+    telegram: {
+      enabled: false,
+      botToken: "new-telegram",
+      groupPolicy: "allowlist",
+    },
+    discord: { enabled: false, token: "new-discord" },
+    whatsapp: { enabled: false, sessionPath: "/new/session" },
+  });
+});
+
+it("keeps unavailable owner configuration distinct from an unset name", async () => {
+  const file = destination();
+  const { fetchConfiguredOwnerName, persistConfiguredOwnerName } = await import(
+    "../src/services/owner-name.ts"
+  );
+  expect(await fetchConfiguredOwnerName()).toBeNull();
+  expect(await persistConfiguredOwnerName("  Owner  ")).toBe(true);
+  expect(await fetchConfiguredOwnerName()).toBe("Owner");
+  fs.writeFileSync(file, "{broken");
+  await expect(fetchConfiguredOwnerName()).rejects.toMatchObject({
+    code: "OWNER_NAME_READ_FAILED",
+  });
+  await expect(persistConfiguredOwnerName("Replacement")).rejects.toMatchObject(
+    { code: "OWNER_NAME_WRITE_FAILED" },
+  );
+  expect(fs.readFileSync(file, "utf8")).toBe("{broken");
+});

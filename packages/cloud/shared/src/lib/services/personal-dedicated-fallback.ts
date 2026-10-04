@@ -232,7 +232,7 @@ export interface PersonalDedicatedFallbackEffects {
 
 async function lifecycleEffects(): Promise<PersonalDedicatedFallbackEffects> {
   // Lazy: the lifecycle queue is heavy and only needed when an effect is due.
-  const { provisioningJobService } = await import("./provisioning-jobs");
+  const { provisioningJobService } = await import("./provisioning-job-queue");
   return {
     async suspendInTransaction(tx, input) {
       // A user_request stop is the unconditional, state-preserving stop: a

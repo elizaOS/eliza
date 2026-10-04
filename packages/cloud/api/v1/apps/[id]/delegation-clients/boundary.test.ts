@@ -1,7 +1,7 @@
 /** Exercises the real Hono client-management CSRF boundary; registration ownership remains covered by the database-backed delegation suite. */
 import { expect, test } from "bun:test";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { appClientManagementBoundary } from "./_handlers";
 
 test("cookie inventory reads reach authentication without a mutation marker", async () => {

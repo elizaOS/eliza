@@ -1,5 +1,8 @@
 // Handles compatibility cloud API compat lib cors route traffic through route-local auth checks.
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 
 export function handleCompatCorsOptions(methods: string): Response {
   return handleCorsOptions(methods);

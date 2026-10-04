@@ -1,21 +1,24 @@
 /** Starts a recurring checkout for a freshly authorized organization billing manager. */
-import { Hono } from "hono";
-import { z } from "zod";
-import { ForbiddenError } from "@/lib/api/cloud-worker-errors";
-import { requireCurrentBillingManagerSession } from "@/lib/auth/workers-hono-auth";
+
+import { requireCurrentBillingManagerSession } from "@elizaos/cloud-shared/auth";
+import { ForbiddenError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { submitSubscriptionCheckout } from "@/lib/services/subscription-checkout";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { submitSubscriptionCheckout } from "@elizaos/cloud-shared/lib/services/subscription-checkout";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { checkoutFailure } from "./_boundary";
 
 const schema = z
   .object({
     planKey: z.enum(["plus_monthly", "pro_monthly"]),
     idempotencyKey: z.string().uuid(),
+    /** hosted (default) redirects this browser; embedded mounts an in-app form; shared is a link for another payer. */
+    presentation: z.enum(["hosted", "embedded", "shared"]).optional(),
   })
   .strict();
 const app = new Hono<AppEnv>();
