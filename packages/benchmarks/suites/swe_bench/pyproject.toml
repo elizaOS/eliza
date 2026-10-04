@@ -22,6 +22,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    "elizaos-benchmark-support==0.1.0",
     "eliza-adapter",
     "datasets==3.6.0",
     "gitpython==3.1.62",
@@ -33,6 +34,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
+elizaos-benchmark-support = { path = "../..", editable = true }
 eliza-adapter = { path = "../../harnesses/eliza", editable = true }
 
 [project.optional-dependencies]

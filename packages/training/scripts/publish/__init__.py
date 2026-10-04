@@ -5,9 +5,7 @@ verifies kernels, applies eval gates, builds the Eliza-1 manifest,
 generates the README, and pushes the bundle into ``elizaos/eliza-1``
 under ``bundles/<tier>/``.
 
-The flow is the canonical implementation of
-``packages/training/AGENTS.md`` §6. There is no opt-out flag for any
-gate. ``--dry-run`` performs every check but does not push.
+There is no opt-out flag for any gate. ``--dry-run`` performs every check but does not push.
 """
 
 __all__ = [
@@ -28,15 +26,17 @@ __all__ = [
 def __getattr__(name: str):
     """Lazily expose orchestrator symbols without breaking `python -m`.
 
-    Importing `scripts.publish` is part of Python's package execution
-    path for `python -m scripts.publish.orchestrator`. Eagerly importing
+    Importing `eliza_training.publish` is part of Python's package execution
+    path for `python -m eliza_training.publish.orchestrator`. Eagerly importing
     `.orchestrator` here preloads the same module that runpy is about to
     execute and triggers a RuntimeWarning. Lazy lookup keeps the public
     package API intact while letting the module entrypoint run cleanly.
     """
 
     if name in __all__:
-        from . import orchestrator
-
-        return getattr(orchestrator, name)
+        if name == "run":
+            from .orchestrator import run
+            return run
+        from . import context
+        return getattr(context, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

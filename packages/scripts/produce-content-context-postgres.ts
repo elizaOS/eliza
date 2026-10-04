@@ -18,7 +18,7 @@ import { Pool } from "pg";
 import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
 import { createProgressiveToolOutputTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts";
 import { createProgressivePostgresSqlTargetFactories } from "../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts";
-import { createProgressiveAttachmentTargetFactory } from "../agent/src/testing/progressive-content-attachment-target.ts";
+import { createProgressiveAttachmentTargetFactory } from "../agent/test/support/progressive-content-attachment-target.ts";
 import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
 import { validateProgressiveContentPostgresEvidence } from "../testing/corpus/progressive-content-postgres-evidence.ts";
 import { openProgressiveContentBoundedSource } from "../testing/corpus/progressive-content-realization.ts";

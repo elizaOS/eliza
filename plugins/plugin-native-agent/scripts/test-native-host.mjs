@@ -9,8 +9,17 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-native-host-"));
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
 try {
+  execFileSync(
+    process.execPath,
+    [
+      "--test",
+      path.join(root, "test/native-host/android-runtime-inventory.node.mjs"),
+    ],
+    { stdio: "inherit", timeout: 60000 },
+  );
   const shared = [
     "runtime/RuntimeBundleStore",
+    "runtime/NativeProcessSupervisor",
     "runtime/RuntimeRequestDeadline",
     "runtime/RuntimeInstallationIdentity",
     "updater/UpdateJournal",
@@ -34,6 +43,7 @@ try {
   });
   for (const [group, name] of [
     ["runtime.test", "RuntimeBundleStoreTest"],
+    ["runtime.test", "NativeProcessSupervisorTest"],
     ["runtime.test", "RuntimeRequestDeadlineTest"],
     ["updater", "UpdateJournalTest"],
     ["updater", "ProbationWindowTest"],

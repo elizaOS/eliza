@@ -18,6 +18,7 @@ import {
   type DirectWalletNetwork,
   directWalletPaymentsService,
 } from "@/lib/services/direct-wallet-payments";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -49,8 +50,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     // Credits land on `organization_id` from the authenticated session; the
     // actual paying wallet is recorded from the verified transaction.
 
-    const body = await c.req.json();
-    const validation = createSchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const validation = createSchema.safeParse(decodedBody.value);
     if (!validation.success) {
       return c.json(
         {

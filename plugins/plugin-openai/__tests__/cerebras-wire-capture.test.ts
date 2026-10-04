@@ -8,12 +8,12 @@ import {
   captureReplayAttempt,
   type ReplayAttempt,
   validateReplayStream,
-} from "../../../packages/agent/scripts/cerebras-cache-wire-replay.ts";
+} from "../../../packages/benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-cache-wire-replay.ts";
 
 import {
   measuredProviderFetch,
   type ProviderWireEvidence,
-} from "../../../packages/agent/scripts/cerebras-chat-flow-experiment.ts";
+} from "../../../packages/benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-chat-flow-experiment.ts";
 import {
   startCerebrasWireCapture,
   writeCerebrasEvidenceArtifacts,

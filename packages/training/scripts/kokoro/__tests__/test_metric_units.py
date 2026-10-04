@@ -24,7 +24,7 @@ import pytest
 
 # `conftest.py` puts `packages/training/scripts/kokoro/` on `sys.path`
 # so we can import the module by name.
-import eval_kokoro  # type: ignore  # noqa: E402
+from eliza_training.kokoro import eval_kokoro  # type: ignore  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

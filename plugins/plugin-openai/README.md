@@ -17,3 +17,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-openai build  # build
 bun run --cwd plugins/plugin-openai test   # tests
 ```
+
+The root also exports stateless direct media adapters for explicit own-key host
+configuration. `./direct-media` provides the same adapters without initializing
+model registration. Callers supply credentials and cancellation.

@@ -2989,19 +2989,8 @@ public class ElizaAgentService extends Service {
             return;
         }
         Log.i(TAG, "Stopping agent process (pid=" + safePid(toStop) + ").");
-        toStop.destroy();
-        long deadline = System.currentTimeMillis() + PROCESS_TERMINATE_GRACE_MS;
-        while (toStop.isAlive() && System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        if (toStop.isAlive()) {
-            Log.w(TAG, "Agent did not exit on SIGTERM — sending SIGKILL.");
-            toStop.destroyForcibly();
+        if (ai.eliza.plugins.agent.runtime.NativeProcessSupervisor.terminate(toStop, PROCESS_TERMINATE_GRACE_MS)) {
+            Log.w(TAG, "Agent did not exit on SIGTERM — sent SIGKILL.");
         }
         if (outPump != null) outPump.interrupt();
         if (errPump != null) errPump.interrupt();

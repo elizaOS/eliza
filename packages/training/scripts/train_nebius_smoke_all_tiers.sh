@@ -188,8 +188,7 @@ _launch_one_tier() {
   local pub
   pub="$(cd "$ROOT" && python3 -c "
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path('scripts').resolve()))
-from training.model_registry import get
+from eliza_training.training.model_registry import get
 e = get('$rk')
 print(e.public_name)
 " 2>/dev/null)"
@@ -321,8 +320,7 @@ _fetch_one_tier() {
   rk="$(echo "$spec" | awk '{print $1}')"
   pub="$(cd "$ROOT" && python3 -c "
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path('scripts').resolve()))
-from training.model_registry import get
+from eliza_training.training.model_registry import get
 print(get('$rk').public_name)
 " 2>/dev/null)"
   [ -n "$pub" ] || pub="$rk"

@@ -159,7 +159,7 @@ export function createNativeCloudAuth({
   async function config(ticket) {
     const value = await call(
       api,
-      "/api/v1/app-auth/mobile/config?" + new URLSearchParams(binding),
+      `/api/v1/app-auth/mobile/config?${new URLSearchParams(binding)}`,
       undefined,
       undefined,
       ticket,
@@ -686,7 +686,7 @@ export function createNativeCloudAuth({
               message("error16", "Saved sign-in needs account recovery."),
               409,
             );
-          const response = await fetchImpl(api + "/api/v1/api-keys/current", {
+          const response = await fetchImpl(`${api}/api/v1/api-keys/current`, {
             method: "DELETE",
             redirect: "error",
             signal: AbortSignal.timeout(30000),

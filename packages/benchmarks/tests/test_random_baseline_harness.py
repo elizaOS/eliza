@@ -21,6 +21,8 @@ Covers three layers:
 
 from __future__ import annotations
 
+from benchmarks.orchestrator.result_store import result_store_root
+
 import io
 import json
 import sys
@@ -33,15 +35,15 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))
 
-from orchestrator.cli import build_parser  # noqa: E402
-from orchestrator.compare_vs_random import run_compare_vs_random  # noqa: E402
-from orchestrator.db import (  # noqa: E402
+from benchmarks.orchestrator.cli import build_parser  # noqa: E402
+from benchmarks.orchestrator.compare_vs_random import run_compare_vs_random  # noqa: E402
+from benchmarks.orchestrator.db import (  # noqa: E402
     connect_database,
     initialize_database,
     insert_run_start,
     update_run_result,
 )
-from orchestrator.random_baseline_runner import (  # noqa: E402
+from benchmarks.orchestrator.random_baseline_runner import (  # noqa: E402
     run_random_baseline,
 )
 
@@ -101,7 +103,7 @@ def _seed_db(
     random_score: float,
     agent_label: str = "eliza",
 ) -> None:
-    db_path = workspace_root / "benchmark_results" / "orchestrator.sqlite"
+    db_path = result_store_root(workspace_root) / "orchestrator.sqlite"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = connect_database(db_path)
     initialize_database(conn)
@@ -215,7 +217,7 @@ def test_compare_vs_random_ignores_newer_scoreless_success(tmp_path: Path) -> No
         agent_score=0.8,
         random_score=0.4,
     )
-    db_path = tmp_path / "benchmark_results" / "orchestrator.sqlite"
+    db_path = result_store_root(tmp_path) / "orchestrator.sqlite"
     conn = connect_database(db_path)
     insert_run_start(
         conn,
@@ -276,7 +278,7 @@ def test_compare_vs_random_ignores_newer_scoreless_success(tmp_path: Path) -> No
 def test_compare_vs_random_skips_threshold_when_baseline_missing(
     tmp_path: Path,
 ) -> None:
-    db_path = tmp_path / "benchmark_results" / "orchestrator.sqlite"
+    db_path = result_store_root(tmp_path) / "orchestrator.sqlite"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = connect_database(db_path)
     initialize_database(conn)
@@ -366,7 +368,7 @@ def test_build_parser_includes_compare_vs_random() -> None:
 
 
 def test_random_v1_harness_accepted_by_selected_harnesses() -> None:
-    from orchestrator.cli import _selected_harnesses  # noqa: PLC0415
+    from benchmarks.orchestrator.cli import _selected_harnesses  # noqa: PLC0415
 
     parser = build_parser()
     args = parser.parse_args(

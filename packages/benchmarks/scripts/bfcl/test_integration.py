@@ -29,6 +29,7 @@ sys.path.insert(0, str(project_root))
 # Load .env file if present
 try:
     from dotenv import load_dotenv
+
     env_path = project_root / ".env"
     if env_path.exists():
         load_dotenv(env_path)
@@ -36,8 +37,12 @@ try:
 except ImportError:
     print("⚠️  python-dotenv not installed, using system environment")
 
-from suites.bfcl.agent import BFCLAgent, get_model_provider_plugin, ELIZAOS_AVAILABLE  # noqa: E402
-from suites.bfcl.types import (  # noqa: E402
+from benchmarks.bfcl.agent import (
+    BFCLAgent,
+    get_model_provider_plugin,
+    ELIZAOS_AVAILABLE,
+)  # noqa: E402
+from benchmarks.bfcl.types import (  # noqa: E402
     BFCLCategory,
     BFCLConfig,
     BFCLTestCase,
@@ -45,8 +50,8 @@ from suites.bfcl.types import (  # noqa: E402
     FunctionDefinition,
     FunctionParameter,
 )
-from suites.bfcl.parser import FunctionCallParser  # noqa: E402
-from suites.bfcl.evaluators import ASTEvaluator  # noqa: E402
+from benchmarks.bfcl.parser import FunctionCallParser  # noqa: E402
+from benchmarks.bfcl.evaluators import ASTEvaluator  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -95,7 +100,9 @@ def check_environment() -> dict[str, bool]:
     keys = {
         "OPENAI_API_KEY": bool(os.environ.get("OPENAI_API_KEY")),
         "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "GOOGLE_GENERATIVE_AI_API_KEY": bool(os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY")),
+        "GOOGLE_GENERATIVE_AI_API_KEY": bool(
+            os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY")
+        ),
     }
     return keys
 
@@ -113,7 +120,7 @@ async def test_parser() -> bool:
         ('{"name": "get_weather", "arguments": {"location": "San Francisco"}}', 1),
         ('[{"name": "func1", "arguments": {}}, {"name": "func2", "arguments": {}}]', 2),
         ('```json\n{"name": "test", "arguments": {"x": 1}}\n```', 1),
-        ('No function needed', 0),
+        ("No function needed", 0),
     ]
 
     all_passed = True
@@ -199,7 +206,9 @@ async def test_agent_with_llm() -> bool:
 
     if model_plugin is None:
         print("  ⚠️  No model provider available, skipping LLM test")
-        print("  Set GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY")
+        print(
+            "  Set GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY"
+        )
         return True  # Not a failure, just skipped
 
     print(f"  Using model: {model_name}")
@@ -220,15 +229,13 @@ async def test_agent_with_llm() -> bool:
 
         if calls:
             for i, call in enumerate(calls):
-                print(f"    Call {i+1}: {call.name}({call.arguments})")
+                print(f"    Call {i + 1}: {call.name}({call.arguments})")
 
         # Evaluate the result
         evaluator = ASTEvaluator()
 
         # Check if we got a function call with "get_weather"
-        has_weather_call = any(
-            "weather" in call.name.lower() for call in calls
-        )
+        has_weather_call = any("weather" in call.name.lower() for call in calls)
 
         # Check if location argument contains San Francisco
         has_sf_location = any(
@@ -267,8 +274,8 @@ async def run_mini_benchmark() -> bool:
         print("  ⚠️  No model provider available, skipping mini benchmark")
         return True
 
-    from suites.bfcl.runner import BFCLRunner
-    from suites.bfcl.types import BFCLConfig
+    from benchmarks.bfcl.runner import BFCLRunner
+    from benchmarks.bfcl.types import BFCLConfig
 
     config = BFCLConfig(
         max_tests_per_category=1,
@@ -285,13 +292,16 @@ async def run_mini_benchmark() -> bool:
         print("\n  Results:")
         print(f"    Overall Score: {results.metrics.overall_score:.2%}")
         print(f"    AST Accuracy: {results.metrics.ast_accuracy:.2%}")
-        print(f"    Tests: {results.metrics.passed_tests}/{results.metrics.total_tests}")
+        print(
+            f"    Tests: {results.metrics.passed_tests}/{results.metrics.total_tests}"
+        )
 
         return results.metrics.overall_score > 0
 
     except Exception as e:
         print(f"  ❌ Mini benchmark failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

@@ -33,6 +33,7 @@ import {
   waitForInferenceAuthTail,
 } from "./inference-auth-latency.ts";
 import {
+  readDeploymentPlacement,
   verifyCertificationSource,
   withVerifiedDeployment,
 } from "./latency-certification-provenance.ts";
@@ -164,7 +165,23 @@ export async function verifyExactDeployment(deploySha, fetchImpl = fetch) {
   return { kind: "deployment", deploySha, environment: "staging" };
 }
 
-export function validatePairedEvidence(text, deploySha, sourceSha = deploySha) {
+export function validatePairedEvidence(
+  text,
+  deploySha,
+  sourceSha = deploySha,
+  placementPolicy: { mode: string; deploySha?: string; region?: string } = {
+    mode: "default",
+  },
+) {
+  if (
+    placementPolicy.mode !== "default" &&
+    !(
+      placementPolicy.mode === "targeted" &&
+      placementPolicy.deploySha === deploySha &&
+      /^[a-z0-9]+:[a-z0-9-]+$/.test(placementPolicy.region ?? "")
+    )
+  )
+    throw new Error("Invalid deployment placement policy");
   const records = parseJsonLines(text, "Paired latency evidence");
   if (records.length !== EXPECTED_PAIRED_RECORDS) {
     throw new Error(
@@ -172,6 +189,7 @@ export function validatePairedEvidence(text, deploySha, sourceSha = deploySha) {
     );
   }
   const counts = { direct: 0, gateway: 0 };
+  const placementLocations = { reported: 0, unavailable: 0 };
   for (const record of records) {
     if (record.target !== "direct" && record.target !== "gateway") {
       throw new Error("Paired latency evidence contains an unexpected target");
@@ -193,10 +211,16 @@ export function validatePairedEvidence(text, deploySha, sourceSha = deploySha) {
       );
     }
     const placement = record.headers?.["cf-placement"];
+    // Staging also emits the exact value "remote-" on direct health requests.
+    // It identifies remote execution but supplies no location. Retain those raw
+    // bytes and disclose the missing location; never infer an airport or region.
+    const targetedLocationUnavailable =
+      placementPolicy.mode === "targeted" && placement === "remote-";
     if (
       record.target === "gateway" &&
       placement !== undefined &&
-      !isCloudflarePlacement(placement)
+      !isCloudflarePlacement(placement) &&
+      !targetedLocationUnavailable
     ) {
       throw new Error(
         "Gateway latency evidence contains an invalid Worker placement",
@@ -204,6 +228,7 @@ export function validatePairedEvidence(text, deploySha, sourceSha = deploySha) {
     }
     if (
       record.target === "gateway" &&
+      placementPolicy.mode !== "targeted" &&
       typeof placement === "string" &&
       placement.startsWith("remote-")
     ) {
@@ -211,11 +236,16 @@ export function validatePairedEvidence(text, deploySha, sourceSha = deploySha) {
         "Gateway latency evidence observed remote Worker placement",
       );
     }
+    if (record.target === "gateway") {
+      if (placement === undefined || targetedLocationUnavailable)
+        placementLocations.unavailable++;
+      else placementLocations.reported++;
+    }
   }
   if (counts.direct !== 22 || counts.gateway !== 22) {
     throw new Error("Paired latency evidence is not a balanced 20-run matrix");
   }
-  return { records, counts };
+  return { records, counts, placementLocations };
 }
 
 export function validateAuthEvidence(text, deploySha, runSuspended = false) {
@@ -492,6 +522,7 @@ async function waitForSanitizedTail(rawPath, traceIds, deploySha) {
 async function runPaired({
   deploySha,
   sourceSha,
+  placementPolicy,
   outputDir,
   env,
   probeCase = "qwen-3.8-27b@none@512",
@@ -535,6 +566,7 @@ async function runPaired({
       await readFile(outputPath, "utf8"),
       deploySha,
       sourceSha,
+      placementPolicy,
     );
   } finally {
     await rm(stderrPath, { force: true });
@@ -708,6 +740,12 @@ export async function runCertification(
     `${JSON.stringify(source)}\n`,
     { mode: 0o600, flag: "wx" },
   );
+  const placementPolicy = await readDeploymentPlacement(options.deploySha);
+  await writeFile(
+    join(options.outputDir, "placement.json"),
+    `${JSON.stringify(placementPolicy)}\n`,
+    { mode: 0o600, flag: "wx" },
+  );
   const { paired, auth, traces } = await withVerifiedDeployment(
     options.deploySha,
     (sha) => verifyExactDeployment(sha, fetchImpl),
@@ -720,6 +758,7 @@ export async function runCertification(
       const paired = await runPaired({
         ...options,
         sourceSha: source.sourceSha,
+        placementPolicy,
         env,
       });
       // Start trace lookup immediately after the paired calls. Its rejection is
@@ -769,7 +808,11 @@ export async function runCertification(
     deploySha: options.deploySha,
     source,
     environment: "staging",
-    paired: { records: paired.records.length, counts: paired.counts },
+    paired: {
+      records: paired.records.length,
+      counts: paired.counts,
+      placementLocations: paired.placementLocations,
+    },
     auth,
     traces,
   };

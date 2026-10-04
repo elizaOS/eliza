@@ -24,7 +24,7 @@ from typing import Any, Mapping, Sequence
 
 from .images import extract_benchmark_images, native_image_argv
 
-from ._retry import (
+from benchmarks.lib import (
     MAX_ATTEMPTS,
     RetryExhaustedError,
     backoff_seconds,
@@ -746,10 +746,14 @@ class OpenClawClient:
         self._active_native_runtime = runtime
         argv = self.build_argv(text, ctx)
         if images:
-            node = _resolve_compatible_node_bin(self.binary_path) or shutil.which("node")
+            node = _resolve_compatible_node_bin(self.binary_path) or shutil.which(
+                "node"
+            )
             if node is None:
                 raise RuntimeError("OpenClaw native image input requires Node")
-            argv = native_image_argv(self.binary_path, str(node), runtime.state_dir, argv, images)
+            argv = native_image_argv(
+                self.binary_path, str(node), runtime.state_dir, argv, images
+            )
         env = benchmark_runtime_env(
             paths=runtime,
             gateway_token=gateway_token,
@@ -909,7 +913,9 @@ class OpenClawClient:
             extra={
                 "agent_runtime": "openclaw",
                 "native_runtime_class": "openclaw.agent.embedded",
-                "native_runtime_api": "agentCommand(images)" if images else "openclaw agent --local --json",
+                "native_runtime_api": "agentCommand(images)"
+                if images
+                else "openclaw agent --local --json",
                 "native_image_count": len(images),
                 "native_image_bytes_verified": bool(images),
                 "tool_bridge": "native_plugin",
@@ -1262,7 +1268,8 @@ def _post_with_retry(
                 )
             except AttributeError:
                 retry_after_raw = None
-            delay = parse_retry_after(retry_after_raw) or backoff_seconds(attempt)
+            retry_after = parse_retry_after(retry_after_raw)
+            delay = backoff_seconds(attempt) if retry_after is None else retry_after
         except urllib.error.URLError as exc:
             last_status = None
             last_error_str = f"{type(exc).__name__}: {exc.reason!r}"

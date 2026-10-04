@@ -25,16 +25,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 from pathlib import Path
 
 import torch
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
-from _common import (  # noqa: E402
+from eliza_training.quantization._common import (  # noqa: E402
     load_model_and_tokenizer,
     save_model,
     write_sidecar,

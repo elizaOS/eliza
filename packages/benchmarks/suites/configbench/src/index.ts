@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 
 // Usage: bun run src/index.ts [--eliza] [--verbose]
 
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { determineExitCode } from "./exit-code.js";
 import {
   createHarnessBridgeHandler,
@@ -62,7 +63,7 @@ async function main(): Promise<void> {
   const outputDir =
     outputIndex >= 0 && args[outputIndex + 1]
       ? resolve(args[outputIndex + 1])
-      : join(import.meta.dir, "..", "results");
+      : testOutputPath("configbench");
 
   const limitIndex = args.indexOf("--limit");
   const limit =

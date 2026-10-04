@@ -36,8 +36,8 @@
     "build:mobile": "bun run scripts/build-mobile-bundle.ts",
     "build:ios-bun": "bun run scripts/build-mobile-bundle.ts --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.ts --target=ios-jsc",
-    "perf:cerebras-chat": "bun --conditions=eliza-source scripts/cerebras-chat-flow-latency.ts",
-    "perf:relevant-conversations": "bun --conditions=eliza-source scripts/bench-relevant-conversations.ts",
+    "perf:cerebras-chat": "bun --conditions=eliza-source ../benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-chat-flow-latency.ts",
+    "perf:relevant-conversations": "bun --conditions=eliza-source ../benchmarks/scripts/eliza-benchmark-scripts/agent/bench-relevant-conversations.ts",
     "verify:mobile-workspace-resolution": "bun run scripts/build-mobile-bundle.ts --verify-workspace-resolution",
     "build:docker-dist": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -189,13 +189,6 @@
       "bun": "./src/api/wallet-keygen.ts",
       "import": "./dist/api/wallet-keygen.js",
       "default": "./dist/api/wallet-keygen.js"
-    },
-    "./testing/*": {
-      "eliza-source": "./src/testing/*.ts",
-      "types": "./dist/testing/*.d.ts",
-      "bun": "./src/testing/*.ts",
-      "import": "./dist/testing/*.js",
-      "default": "./dist/testing/*.js"
     },
     "./first-run-config": {
       "eliza-source": "./src/first-run-config.ts",
@@ -360,7 +353,6 @@
     }
   },
   "devDependencies": {
-    "@elizaos/ui": "workspace:*",
     "@types/bun": "1.4.2",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.23.1",
@@ -371,7 +363,6 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "ai": "^6.0.134",
     "bun-types": "1.4.2",
-    "fast-check": "^4.10.2",
     "resolve.exports": "2.0.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
