@@ -137,6 +137,8 @@ import {
   type OrganizationSubscriptionCancellationResponse,
   type OrganizationSubscriptionRenewalReviewResponse,
   type OrganizationSubscriptionReviewedUndoRequest,
+  type OrganizationSubscriptionUpgradeQuoteRequest,
+  type OrganizationSubscriptionUpgradeQuoteResponse,
   type PairingTokenResponse,
   type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
@@ -588,6 +590,15 @@ export class ElizaCloudClient {
     input: OrganizationSubscriptionCancellationRequest,
   ): Promise<OrganizationSubscriptionCancellationResponse> {
     return this.v1.requestData("POST", "/subscriptions/cancel/undo", {
+      json: input,
+    });
+  }
+
+  /** Persists a current manager's upgrade review; no charge or subscription change occurs. */
+  createOrganizationSubscriptionUpgradeQuote(
+    input: OrganizationSubscriptionUpgradeQuoteRequest,
+  ): Promise<OrganizationSubscriptionUpgradeQuoteResponse> {
+    return this.v1.requestData("POST", "/subscriptions/upgrade/review", {
       json: input,
     });
   }

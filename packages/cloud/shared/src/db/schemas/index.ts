@@ -140,6 +140,7 @@ export * from "./organization-encryption-keys";
 export * from "./organization-entitlements";
 export * from "./organization-invites";
 export * from "./organization-payment-reversal-holds";
+export * from "./organization-plan-change-quotes";
 export * from "./organization-policy-audit";
 export * from "./organizations";
 export * from "./payment-request-receipts";

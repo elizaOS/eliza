@@ -149,7 +149,7 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       /ElizaAgentService\.localAgentToken\(context\),\s*ownershipPrefs\(context\)\.getBoolean\(RUNTIME_STOPPED_KEY, false\)/,
     );
     expect(service).toMatch(
-      /if \(restartFirst\) \{\s*stopAgentProcess\(false\);\s*\}\s*startAgentProcess\(!restartFirst\)/,
+      /if \(restartFirst && !stopAgentProcessOrPreserve\(false\)\) \{[\s\S]*?currentStatus = "stop-failed";\s*updateNotification\(\);\s*return;\s*\}\s*startAgentProcess\(!restartFirst\)/,
     );
     expect(service).toMatch(
       /ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);[\s\S]*?deleteLocalAgentTokenFile\(\)/,
@@ -161,7 +161,7 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       /restoreAdoptedRuntimeOwnership\(\)[\s\S]*localAgentToken\(context\)[\s\S]*ElizaWorkScheduler\.credentialProvisioned\(context\)/,
     );
     expect(service).toMatch(
-      /stopAgentProcess\(false\);\s*scheduleRestart\(true\)/,
+      /if \(stopAgentProcessOrPreserve\(false\)\) \{\s*scheduleRestart\(true\);\s*\} else \{\s*currentStatus = "stop-failed";/,
     );
   });
 

@@ -12,6 +12,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  ElizaError,
   logger,
   requireConfirmation,
   toWellFormedUnicode,
@@ -121,21 +122,27 @@ async function runList(
   }
 
   if (repo && parts && !author) {
-    const resp = await resolved.client.pulls.list({
-      owner: parts.owner,
-      repo: parts.name,
-      state,
-      per_page: 100,
-    });
-    for (const pr of resp.data) {
-      prs.push({
-        repo,
-        number: pr.number,
-        title: pr.title,
-        author: pr.user?.login ?? null,
-        state: pr.state,
-        url: pr.html_url,
+    for (let page = 1; ; page++) {
+      const resp = await resolved.client.pulls.list({
+        owner: parts.owner,
+        repo: parts.name,
+        state,
+        per_page: 100,
+        page,
+        sort: "created",
+        direction: "asc",
       });
+      for (const pr of resp.data) {
+        prs.push({
+          repo,
+          number: pr.number,
+          title: pr.title,
+          author: pr.user?.login ?? null,
+          state: pr.state,
+          url: pr.html_url,
+        });
+      }
+      if (resp.data.length < 100) break;
     }
   } else {
     // An author filter runs server-side through search (with a `repo:`
@@ -149,21 +156,55 @@ async function runList(
     ]
       .filter(Boolean)
       .join(" ");
-    const resp = await resolved.client.search.issuesAndPullRequests({
-      q,
-      per_page: 50,
-    });
-    for (const item of resp.data.items) {
-      const match = /\/repos\/([^/]+\/[^/]+)(?:\/|$)/.exec(item.repository_url);
-      const repoName = match?.[1] ?? item.repository_url;
-      prs.push({
-        repo: repoName,
-        number: item.number,
-        title: item.title,
-        author: item.user?.login ?? null,
-        state: item.state,
-        url: item.html_url,
+    for (let page = 1; ; page++) {
+      const resp = await resolved.client.search.issuesAndPullRequests({
+        q,
+        per_page: 100,
+        page,
+        sort: "created",
+        order: "asc",
       });
+      if (resp.data.incomplete_results || (resp.data.total_count ?? 0) > 1000) {
+        throw new ElizaError(
+          "GitHub search cannot return a complete PR list; narrow the search and retry",
+          { code: "GITHUB_PR_LIST_INCOMPLETE" },
+        );
+      }
+      for (const item of resp.data.items) {
+        const match = /\/repos\/([^/]+\/[^/]+)(?:\/|$)/.exec(
+          item.repository_url,
+        );
+        const repoName = match?.[1] ?? item.repository_url;
+        prs.push({
+          repo: repoName,
+          number: item.number,
+          title: item.title,
+          author: item.user?.login ?? null,
+          state: item.state,
+          url: item.html_url,
+        });
+      }
+      if (
+        resp.data.items.length < 100 ||
+        prs.length === resp.data.total_count
+      ) {
+        if (
+          resp.data.total_count !== undefined &&
+          prs.length !== resp.data.total_count
+        ) {
+          throw new ElizaError(
+            "GitHub search changed while reading pages; retry for a complete PR list",
+            { code: "GITHUB_PR_LIST_INCOMPLETE" },
+          );
+        }
+        break;
+      }
+      if (page === 10) {
+        throw new ElizaError(
+          "GitHub search reached its result limit; narrow the search and retry",
+          { code: "GITHUB_PR_LIST_INCOMPLETE" },
+        );
+      }
     }
   }
 
