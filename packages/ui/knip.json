@@ -7,11 +7,17 @@
     "src/**/*.{stories,test,spec}.{ts,tsx}",
     "src/**/__e2e__/**/*.{ts,tsx,mjs}",
     "src/cloud/handoff/__integration__/**/*.mts",
-    "src/components/shell/__screenshots__/**/*.mjs",
     "test/**/*.{ts,tsx,mjs}",
     "stories/**/*.{ts,tsx,mjs}",
     ".storybook/**/*.{ts,tsx}",
-    "scripts/*.ts"
+    "scripts/*.ts",
+    ".storybook/fixtures/**/*.js",
+    "src/brand/brand.css",
+    "src/brand-classic/brand.css",
+    "src/cloud-ui/index.css",
+    "src/spatial/index.ts",
+    "src/utils/browser-tab-kit-types.ts",
+    "src/components/pages/page-scoped-conversations.ts"
   ],
   "paths": {
     "@ui-src/*": ["src/*"]
@@ -27,5 +33,6 @@
     "scripts/**/*.ts"
   ],
   "ignoreDependencies": ["@metamask/connect-evm", "pixelmatch"],
-  "vitest": false
+  "vitest": false,
+  "ignoreUnresolved": ["/storybook-fixtures/ready-view.js"]
 }
