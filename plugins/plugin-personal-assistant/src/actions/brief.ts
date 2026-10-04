@@ -1480,7 +1480,9 @@ export const briefAction: Action & {
       success: true,
       text,
       userFacingText: text,
-      verifiedUserFacing: true,
+      // Generated narrative is licensed reply material, not mandatory verbatim
+      // output. Preserve exact structured JSON while the evaluator owns prose.
+      ...(format === "json" ? { verifiedUserFacing: true } : {}),
       turnComplete: true,
       data: {
         subaction,

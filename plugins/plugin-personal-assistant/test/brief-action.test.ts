@@ -1932,6 +1932,76 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("narrative compose pass", () => {
+    it.each(["narrative", "json"] as const)(
+      "licenses %s output without changing source facts or reply text",
+      async (format) => {
+        const narrative =
+          "I'll focus on the open reminder. Screen break is due at 7 pm.";
+        const useModel = vi.fn(async () => narrative);
+        setBriefComposers({
+          loadCalendar: async () => [],
+          loadLife: async () => ({
+            items: [
+              {
+                id: "screen-break",
+                kind: "reminder",
+                title: "Screen break",
+                state: "visible",
+                dueAt: "2026-10-03T19:00:00.000Z",
+              },
+            ],
+            summary: {
+              activeOccurrenceCount: 1,
+              overdueOccurrenceCount: 1,
+              snoozedOccurrenceCount: 0,
+              activeReminderCount: 1,
+              activeGoalCount: 0,
+            },
+          }),
+          loadCompletedToday: async () => [],
+          loadCommitments: async () => [],
+        });
+        const result = await callBrief(
+          makeRuntime({ useModel }),
+          makeMessage(),
+          {
+            action: "compose_evening",
+            format,
+            include: {
+              calendar: true,
+              inbox: false,
+              life: true,
+              commitments: true,
+            },
+          },
+        );
+        expect(result.success).toBe(true);
+        expect(result.userFacingText).toBe(result.text);
+        expect(result.turnComplete).toBe(true);
+        expect(result.data?.briefing).toMatchObject({
+          sections: {
+            calendar: [],
+            completedToday: [],
+            life: [
+              { title: "Screen break", dueAt: "2026-10-03T19:00:00.000Z" },
+            ],
+          },
+          lifeSummary: { activeReminderCount: 1, activeGoalCount: 0 },
+        });
+        if (format === "narrative") {
+          expect(result.userFacingText).toBe(narrative);
+          expect(result.verifiedUserFacing).toBeUndefined();
+          expect(useModel).toHaveBeenCalledTimes(1);
+        } else {
+          expect(result.verifiedUserFacing).toBe(true);
+          expect(result.userFacingText).toBe(
+            "Composed your evening briefing for today.",
+          );
+          expect(useModel).not.toHaveBeenCalled();
+        }
+      },
+    );
+
     it("retains healthy persisted items when the canonical owner-zone read fails before narrative generation", async () => {
       const db = await PGlite.create();
       const reportError = vi.fn();
