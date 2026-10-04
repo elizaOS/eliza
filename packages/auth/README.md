@@ -57,7 +57,7 @@ from the trusted host, and never return it to a renderer. It is cleared on
 `cancel`, a new `start`, `clearBillingAuthority()`, expiry (JWT `exp`, at most
 one hour), or when the active credential changes. When it is missing (for
 example after a restart, or for Google/CLI keys), `billing-start` (`{method?,
-email?, phone?}`, defaulting to the account's own email, then phone) and
+email?, phone?, purpose?: "billing" | "account"}`, defaulting to the account's own email, then phone) and
 `billing-verify`/`billing-mfa` (`{sessionId, code}`) repeat the code check.
 They never re-enroll or write storage, and they reject a different
 user/organization with `code: "billing_account_mismatch"`. `billing-status`
@@ -110,3 +110,11 @@ OS secure-store integration, or physical-device acceptance.
 
 Native Cloud service composition belongs to the [Cloud SDK](../cloud/sdk/README.md),
 which accepts the authentication flow through host callbacks.
+
+Account-method management requires personal Auth authority. Use `billing-start`
+with `purpose: "account"`: send and verify omit the Cloud tenant so Auth issues
+a personal session. The private host still verifies the returned account and
+organization against the connected credential. Cloud billing accepts personal
+sessions too; no additional token store is introduced. Cloud-tenant authority
+cannot authorize account-method routes. JWT inspection is admission only;
+Auth and Cloud retain signature and ownership validation.
