@@ -423,18 +423,6 @@ const definition = scenario({
         cardinality: 1,
       },
       {
-        name: "cloud-reminder-preview-reply",
-        match: {
-          modelType: "TEXT_SMALL",
-          input: { includes: "Scenario: preview_definition" },
-          toolNames: [],
-        },
-        response: {
-          text: "I can save this reminder for January 2, 2099 at 9 AM UTC. Confirm and I’ll save it.",
-        },
-        cardinality: 1,
-      },
-      {
         name: "cloud-reminder-saved-reply",
         match: {
           modelType: "TEXT_SMALL",
