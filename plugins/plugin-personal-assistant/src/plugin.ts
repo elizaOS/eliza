@@ -216,7 +216,11 @@ import {
   registerFamilyRegistry,
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
-import { createOwnerReminderDirectRoutingRule } from "./lifeops/reminders/direct-routing.js";
+import {
+  createOwnerReminderDirectRoutingRule,
+  ownerReminderChoiceDirectRoutingRules,
+  ownerReminderChoiceRoutingEvaluator,
+} from "./lifeops/reminders/direct-routing.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 import {
   createResourceCapacityAction,
@@ -803,6 +807,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     // there is exactly one runner service per runtime.
   ],
   responseHandlerEvaluators: [
+    ownerReminderChoiceRoutingEvaluator,
     deferredOwnerTodoRoutingEvaluator,
     ownerProfileExtractionEvaluator,
   ],
@@ -945,6 +950,9 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createOwnerReminderDirectRoutingRule(),
     );
+    for (const rule of ownerReminderChoiceDirectRoutingRules) {
+      registerDirectActionRoutingRule(runtime, rule);
+    }
     registerDirectActionRoutingRule(
       runtime,
       createUndatedOwnerTodoDirectRoutingRule(),

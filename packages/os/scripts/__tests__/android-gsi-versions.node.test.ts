@@ -42,6 +42,10 @@ function selectPolicy(sdk: string, gsi: boolean) {
     { encoding: "utf8" },
   );
   fs.rmSync(path.dirname(printer), { recursive: true, force: true });
+  assert.ifError(result.error);
+  if (sdk) {
+    assert.equal(result.status, 0, result.stderr);
+  }
   const [vendor = "", systemExt = ""] = result.stdout.trim().split("|");
   return {
     status: result.status,

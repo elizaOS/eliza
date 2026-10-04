@@ -5,7 +5,8 @@
 
 import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { readdir, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readdir, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isPidAlive, parseRuntimeOwnerPid } from '@smthrs/engine/runtime-owner';
 import {
@@ -314,7 +315,9 @@ export default smithers(() => { throw new Error("Select a project before running
     }
 
     const retainedFiles = await readdir(workflowDir);
-    expect(retainedFiles).toContain(`${workflow.versionId}.tsx`);
+    const sourceName = `${workflow.versionId}.${createHash('sha256').update(workflow.source).digest('hex')}.tsx`;
+    expect(retainedFiles).toContain(sourceName);
+    expect(await readFile(join(workflowDir, sourceName), 'utf8')).toBe(workflow.source);
     expect(retainedFiles.filter((name) => name.startsWith('.run-'))).toEqual([]);
   }, 45_000);
 

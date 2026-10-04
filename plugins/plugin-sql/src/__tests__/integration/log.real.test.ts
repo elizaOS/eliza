@@ -350,4 +350,17 @@ describe("Log Integration Tests", () => {
       expect(still?.id).toBe(foreign.id);
     });
   });
+
+  it("stores a log body holding a truncated emoji with U+FFFD", async () => {
+    await (adapter.getDatabase() as DrizzleDatabase).delete(logTable);
+    await adapter.log({
+      body: { reply: "done \ud83d" },
+      entityId: testEntityId,
+      roomId: testRoomId,
+      type: "lone-surrogate",
+    });
+
+    const [log] = await adapter.getLogs({ roomId: testRoomId, type: "lone-surrogate" });
+    expect(log.body).toEqual({ reply: "done \ufffd" });
+  });
 });
