@@ -1,4 +1,4 @@
--c requirements-ci.lock
+-c requirements-ci-constraints.txt
 # Offline harness checks; suite-specific live environments remain separate.
 pytest>=8,<10
 pytest-asyncio>=0.24,<2
