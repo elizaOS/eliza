@@ -1,10 +1,5 @@
-import type { EnabledViewKinds, ViewKind, ViewKindBearer } from "@elizaos/core";
-import {
-  isViewKindEnabled,
-  isViewVisible,
-  resolveViewKind,
-} from "@elizaos/core/protocol";
-import { useMemo, useSyncExternalStore } from "react";
+import type { EnabledViewKinds } from "@elizaos/core";
+import { useSyncExternalStore } from "react";
 
 const defaults: EnabledViewKinds = { developer: false, preview: false };
 const storageKeys = {
@@ -57,27 +52,3 @@ export function useEnabledViewKinds(): EnabledViewKinds {
     () => defaults,
   );
 }
-
-/**
- * Returns a stable predicate that reports whether a view-like declaration is
- * visible under the current toggles. Recomputed only when a toggle flips.
- */
-export function useViewKindVisible(): (
-  decl: ViewKindBearer | null | undefined,
-) => boolean {
-  const enabled = useEnabledViewKinds();
-  return useMemo(
-    () => (decl: ViewKindBearer | null | undefined) =>
-      isViewVisible(decl, enabled),
-    [enabled],
-  );
-}
-
-export {
-  type EnabledViewKinds,
-  isViewKindEnabled,
-  isViewVisible,
-  resolveViewKind,
-  type ViewKind,
-  type ViewKindBearer,
-};

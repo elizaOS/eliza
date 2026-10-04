@@ -14,8 +14,7 @@
     "src/brand/brand.css",
     "src/brand-classic/brand.css",
     "src/cloud-ui/index.css",
-    "src/utils/browser-tab-kit-types.ts",
-    "src/components/pages/page-scoped-conversations.ts"
+    "src/utils/browser-tab-kit-types.ts"
   ],
   "paths": {
     "@ui-src/*": ["src/*"]
