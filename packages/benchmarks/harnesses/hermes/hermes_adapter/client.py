@@ -296,12 +296,8 @@ def _resolved_campaign_model(model: str | None) -> str:
     ).strip() or "gemma-4-31b"
 
 
-def resolve_hermes_mode(
-    mode: str | None = None,
-    *,
-    provider: str | None = None,
-) -> str:
-    """Resolve the native execution mode and fail closed on unsafe campaigns."""
+def resolve_hermes_mode(mode: str | None = None) -> str:
+    """Resolve and validate the supported native execution mode."""
 
     configured = {
         value
@@ -700,7 +696,7 @@ class HermesClient:
     ) -> None:
         resolved_provider = _resolved_campaign_provider(provider)
         resolved_model = _resolved_campaign_model(model)
-        resolved_mode = resolve_hermes_mode(mode, provider=resolved_provider)
+        resolved_mode = resolve_hermes_mode(mode)
         self.repo_path, self.venv_python = _runtime_paths(repo_path, venv_python)
         self.workspace_path = (
             Path(workspace_path).resolve()

@@ -37,8 +37,9 @@ async function main() {
   const { ModelType, resolveOptimizedPromptForRuntime } = await import(
     "@elizaos/core"
   );
-  const { plannerTemplate } = await import("@elizaos/plugin-assistant");
-  const { runPlannerLoop } = await import("@elizaos/plugin-assistant");
+  const { plannerTemplate, runPlannerLoop } = await import(
+    "@elizaos/plugin-assistant"
+  );
   const { createTestRuntime } = await import("@elizaos/testing/runtime");
   if (input.candidate.baseline !== plannerTemplate)
     throw new Error("Candidate baseline differs from the current planner");
