@@ -94,6 +94,9 @@ serves deadline-bound observations off the main thread. Hosts supply a trusted
 HTTPS origin and a read-only JavaScript expression returning a boolean; product
 DOM/content policy stays in that expression. The shared wrapper guards the DOM
 origin and supplies `visible(element)` for ancestor CSS and viewport checks. Resume/pause/destroy transitions,
-renderer replacement, URL changes and late callbacks fence results. It never
+renderer replacement, URL changes and late callbacks fence results. Expired or
+interrupted reads retire their logical request lease; WebView cannot cancel an
+already issued evaluation, so late callbacks cannot complete or clear a newer
+request. Lifecycle transitions retire pending reads immediately. It never
 launches an Activity, navigates a WebView or declares an update healthy. Hosts
 must qualify their actual Activity lifecycle and expression in instrumentation.
