@@ -31,6 +31,10 @@ on:
         description: "Explicitly approve one visible Dedicated confirmation click in the staging Cloud lane. This may start billable compute."
         type: boolean
         default: false
+      run_native_staging_credentials:
+        description: "Exercise scoped staging native PKCE, encrypted restoration and revocation without external provider sign-in or paid compute."
+        type: boolean
+        default: false
       run_cloud_production:
         description: "Also run the production Cloud login+personal-identity+chat lane. Keep false for staging-only evidence."
         type: boolean
@@ -865,3 +869,40 @@ jobs:
               issue_number: 13681,
               body,
             });
+
+  native-staging-credentials:
+    name: native credential lifecycle (protected staging fixture)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_staging_credentials }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    environment: staging
+    timeout-minutes: 45
+    env:
+      ELIZA_NATIVE_STAGING_ACCEPTANCE: "1"
+      ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Exercise native credential lifecycle without exporting authority
+        run: node --import tsx packages/auth/native-host/staging-acceptance.mjs
+      - name: Upload closed native lifecycle receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-staging-credential-receipt
+          path: test-results/native-staging-acceptance/receipt.json
+          if-no-files-found: error
+          retention-days: 7

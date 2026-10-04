@@ -45,6 +45,12 @@ They never re-enroll or write storage, and they reject a different
 user/organization with `code: "billing_account_mismatch"`. `billing-status`
 returns `{status: "authorized", expiresAt}` or `{status: "required"}`.
 
+The protected App Live E2E workflow also offers an explicit staging credential
+fixture. It verifies single-use session PKCE, native credential acknowledgement,
+encrypted vault reopening, restored API access and exact-key revocation. Only a
+closed receipt is uploaded. It does not establish external provider sign-in,
+OS secure-store integration, or physical-device acceptance.
+
 ## Native Cloud service composition
 
 `native-host/cloud-services/cloud-services.mjs` is a Node source entrypoint for
