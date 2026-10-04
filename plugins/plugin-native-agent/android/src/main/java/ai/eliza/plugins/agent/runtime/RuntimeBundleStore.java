@@ -147,7 +147,11 @@ public class RuntimeBundleStore {
     if (!Files.exists(directory, NOFOLLOW)) {
       // Another process can create the root before opening its file lock.
       // Re-check the actual leaf after a creation collision.
-      try { Files.createDirectory(directory); } catch (FileAlreadyExistsException created) { }
+      try {
+        Files.createDirectory(directory);
+      } catch (FileAlreadyExistsException created) {
+        // error-policy:J4 another creator won the race; the leaf is re-validated below.
+      }
     }
     if (!Files.isDirectory(directory, NOFOLLOW)) throw new IOException("Runtime directory is not a real directory");
     restrict(directory);
