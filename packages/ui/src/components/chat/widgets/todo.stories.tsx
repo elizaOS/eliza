@@ -36,7 +36,7 @@ function todo(
 }
 
 function workbench(todos: WorkbenchTodo[]): WorkbenchOverview {
-  return { tasks: [], triggers: [], todos };
+  return { triggers: [], todos };
 }
 
 /** Seed the app store with a workbench AND stub the refresh fetch to match. */

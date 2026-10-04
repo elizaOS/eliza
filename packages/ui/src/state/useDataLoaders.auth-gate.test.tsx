@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   client: {
     getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
     getWorkbenchOverview: vi.fn(async () => ({
-      tasksAvailable: true,
       triggersAvailable: true,
       todosAvailable: true,
     })),
