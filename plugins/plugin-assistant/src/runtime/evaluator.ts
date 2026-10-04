@@ -2088,6 +2088,14 @@ function calendarCoverageSourceFacts(
         : undefined;
     const asOf =
       typeof snapshot === "string" ? Date.parse(snapshot) : Number.NaN;
+    // A next event found while some source was not fresh is real but
+    // unconfirmed: report it with the sources that were not checked, instead
+    // of hiding it behind "couldn't confirm".
+    const partialNextEvent =
+      isObjectRecord(reply) &&
+      reply.scenario === "next_event" &&
+      isObjectRecord(data.event) &&
+      data.calendarFeedState === "partial";
     if (
       Number.isFinite(requestedAt) &&
       Number.isFinite(asOf) &&
@@ -2098,10 +2106,22 @@ function calendarCoverageSourceFacts(
       (reply.scenario === "feed_results" ||
         (data.event === null &&
           isObjectRecord(scope) &&
-          scope.exhaustive === false))
+          scope.exhaustive === false) ||
+        partialNextEvent)
     ) {
       facts.push(reply.userFacingFacts);
       calendarScopeReported = true;
+      if (partialNextEvent && Array.isArray(data.calendarSources)) {
+        const unchecked = data.calendarSources.flatMap((source) =>
+          isObjectRecord(source) &&
+          source.status !== "fresh" &&
+          typeof source.summary === "string"
+            ? [source.summary]
+            : [],
+        );
+        if (unchecked.length > 0)
+          facts.push(`Not up to date: ${unchecked.join(", ")}.`);
+      }
     }
   }
   return { facts: [...new Set(facts)], calendarScopeReported };

@@ -331,6 +331,36 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(false);
   });
+  it("still tells the owner the next event it found when one source is not fresh", async () => {
+    const f = fixture();
+    const data = f.trajectory.steps[0].result.data as Record<string, unknown>;
+    data.calendarFeedState = "partial";
+    data.calendarSources = [
+      { summary: "Work", status: "fresh" },
+      { summary: "Family", status: "stale" },
+    ];
+    data.replyContext = {
+      domain: "calendar",
+      scenario: "next_event",
+      userFacingFacts:
+        "Your next event is Design review on October 5 at 10:00.",
+    };
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    // Unverified (a source is not fresh), but the found event is not hidden.
+    expect(result.success).toBe(false);
+    expect(result.messageToUser).toContain(
+      "Your next event is Design review on October 5 at 10:00.",
+    );
+    expect(result.messageToUser).toContain("Family");
+    expect(result.messageToUser).toContain("couldn't confirm");
+    expect(result.messageToUser).not.toContain(
+      "No upcoming events on any calendar.",
+    );
+  });
   it("rejects a feed substituted for next_event even with a copied next-event receipt", () => {
     const f = fixture();
     f.trajectory.steps[0].toolCall.name = "CALENDAR_FEED";
