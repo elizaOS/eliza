@@ -76,9 +76,17 @@ test("concurrent release workers get nonoverlapping candidate/recovery codes", {
             child.stdout.on("data", (s) => (out += s));
             child.stderr.on("data", (s) => (err += s));
             child.on("error", reject);
-            child.on("exit", (code) =>
-              code === 0 ? resolve(JSON.parse(out)) : reject(Error(err)),
-            );
+            child.on("close", (code) => {
+              if (code !== 0) {
+                reject(Error(err));
+                return;
+              }
+              try {
+                resolve(JSON.parse(out));
+              } catch (error) {
+                reject(error);
+              }
+            });
           }),
       ),
     );
