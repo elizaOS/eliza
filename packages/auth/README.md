@@ -37,7 +37,10 @@ for synthetic lifecycle tests; these do not establish live provider acceptance.
 verified native gateway payloads. It shares private credential persistence,
 account epochs, Cloud login/billing transport, speech framing, account-bound
 Google reads and document-runtime authority/provenance checks. It does not
-provision a remote agent or export credentials to the renderer.
+provision a remote agent or expose account API credentials to the renderer.
+The checkout projection intentionally returns only provider-scoped payment UI
+fields. The document loader needs a host-supplied canvasVersion or a
+host-resolvable @napi-rs/canvas installation.
 
 Hosts supply explicit `hostPolicy` functions (projectAccountAccess,
 createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
