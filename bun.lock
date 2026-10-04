@@ -1122,6 +1122,9 @@
     "packages/os/linux/installer": {
       "name": "@elizaos/linux-installer-plan",
       "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/os-usb-installer": "workspace:*",
+      },
       "devDependencies": {
         "@types/node": "^25.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -1141,7 +1144,6 @@
         "@types/node": "^25.0.0",
         "@types/react": "^18.0.0 || ^19.0.0",
         "@types/react-dom": "^19.3.0",
-        "@types/three": "0.165.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "electrobun": "1.18.1",
         "jsdom": "^30.1.1",
@@ -1159,6 +1161,7 @@
       "name": "@elizaos/os-usb-installer",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/os": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
         "vite": "^8.0.0",
