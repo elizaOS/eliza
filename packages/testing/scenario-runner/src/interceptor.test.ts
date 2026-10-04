@@ -1,4 +1,5 @@
 import type { Memory, UUID } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/core/protocol";
 import { expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../src/mock-runtime.ts";
 import { attachInterceptor } from "./interceptor.ts";
@@ -71,7 +72,7 @@ it("rejects unsupported capture depth before running an action instead of trunca
     ],
   });
   const capture = attachInterceptor(runtime);
-  let options: Record<string, unknown> = { sentinel: "complete" };
+  let options: Record<string, JsonValue> = { sentinel: "complete" };
   for (let index = 0; index < 130; index++) options = { child: options };
   try {
     await expect(

@@ -188,11 +188,10 @@ type LifeOpsRepositoryConstructor = {
   bootstrapSchema: (runtime: AgentRuntime) => Promise<void>;
 };
 
-type LifeOpsDefaultsModule = {
-  resolveDefaultWindowPolicy: (
-    timeZone?: string | null,
-  ) => Record<string, unknown>;
-};
+type LifeOpsDefaultsModule = Pick<
+  typeof import("@elizaos/plugin-personal-assistant/lifeops/index"),
+  "resolveDefaultWindowPolicy"
+>;
 
 type LifeOpsEngineModule = {
   materializeDefinitionOccurrences: (

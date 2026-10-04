@@ -1,4 +1,3 @@
-import { drainAppRoutePluginLoaders } from "@elizaos/host";
 /**
  * Registry-driven app-route, runtime-hook, and pre-ready boot contributors for
  * app startup. This module owns optional package resolution and contributor

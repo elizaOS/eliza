@@ -410,12 +410,14 @@ describe("ingestAllSilos", () => {
     expect(
       byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
-    expect(byPath["lanes/evaluation/when2speak.json"]).toMatchObject({
+    expect(byPath["lanes/evaluation/repo/when2speak.json"]).toMatchObject({
       kind: "report",
       source: "group-chat-timing",
       lane: "evaluation",
     });
-    expect(byPath["lanes/content-context/run-1/benchmark.json"]).toMatchObject({
+    expect(
+      byPath["lanes/content-context/repo/run-1/benchmark.json"],
+    ).toMatchObject({
       kind: "report",
       source: "content-context",
       lane: "content-context",
@@ -430,21 +432,21 @@ describe("ingestAllSilos", () => {
       "source-work.json",
       "cleanup.json",
     ]) {
-      expect(byPath[`lanes/content-context/run-1/${name}`]).toMatchObject({
+      expect(byPath[`lanes/content-context/repo/run-1/${name}`]).toMatchObject({
         kind: "report",
         source: "content-context",
         lane: "content-context",
       });
     }
     expect(
-      byPath["trajectories/content-context/run-1/page-ledger.jsonl"],
+      byPath["trajectories/content-context/repo/run-1/page-ledger.jsonl"],
     ).toMatchObject({
       kind: "trajectory",
       source: "content-context",
       lane: "content-context",
     });
     expect(
-      byPath["misc/content-context/run-1/e2e-artifacts/browser/trace.zip"],
+      byPath["misc/content-context/repo/run-1/e2e-artifacts/browser/trace.zip"],
     ).toMatchObject({
       source: "content-context",
       lane: "content-context",
@@ -477,7 +479,7 @@ describe("ingestAllSilos", () => {
       source: "ios-device-capture",
     });
 
-    expect(byPath["video/walkthrough/desktop.mp4"]).toBeDefined();
+    expect(byPath["video/walkthrough/repo/desktop.mp4"]).toBeDefined();
 
     // node_modules content is never evidence.
     expect(artifacts.some((entry) => entry.path.includes("node_modules"))).toBe(
