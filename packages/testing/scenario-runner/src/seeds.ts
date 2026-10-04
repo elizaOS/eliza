@@ -8,7 +8,16 @@
  */
 
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import { createMessageMemory, MemoryType, stringToUuid } from "@elizaos/core";
+import {
+  createMessageMemory,
+  ElizaError,
+  MemoryType,
+  stringToUuid,
+} from "@elizaos/core";
+import {
+  LIFEOPS_REMINDER_CHANNELS,
+  type LifeOpsReminderChannel,
+} from "@elizaos/core/contracts/personal-assistant";
 import { GMAIL_FIXTURE_MESSAGE_IDS } from "../../scripts/mocks/google-gmail-fixtures.ts";
 import type { ScenarioContext, ScenarioSeedStep } from "../schema/index.ts";
 import { isLoopbackUrl } from "./utils.js";
@@ -34,186 +43,22 @@ export function seedFetch(
   });
 }
 
-type LifeOpsOccurrenceState =
-  | "completed"
-  | "visible"
-  | "pending"
-  | "expired"
-  | "snoozed"
-  | "skipped"
-  | "muted";
+type LifeOpsRepositoryType =
+  import("@elizaos/plugin-personal-assistant/lifeops/index").LifeOpsRepository;
+type LifeOpsCalendarEventSeedInput = Parameters<
+  LifeOpsRepositoryType["upsertCalendarEvent"]
+>[0];
 
-type LifeOpsTaskDefinitionInput = Record<string, unknown>;
-
-type LifeOpsTaskDefinition = LifeOpsTaskDefinitionInput & {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LifeOpsOccurrence = Record<string, unknown> & {
-  occurrenceKey: string;
-  state: LifeOpsOccurrenceState;
-};
-
-type LifeOpsScheduledTask = Record<string, unknown> & {
-  taskId: string;
-  kind: string;
-  promptInstructions: string;
-  trigger: Record<string, unknown>;
-  priority: "low" | "medium" | "high";
-  respectsGlobalPause: boolean;
-  state: { status: string; followupCount: number };
-  source: string;
-  createdBy: string;
-  ownerVisible: boolean;
-  metadata?: Record<string, unknown>;
-};
-
-type LifeOpsBrowserSessionSeedInput = {
-  id: string;
-  agentId: string;
-  domain: string;
-  subjectType: string;
-  subjectId: string;
-  visibilityScope: string;
-  contextPolicy: string;
-  workflowId: string | null;
-  browser: string | null;
-  companionId: string | null;
-  profileId: string | null;
-  windowId: string | null;
-  tabId: string | null;
-  title: string;
-  status: string;
-  actions: Record<string, unknown>[];
-  currentActionIndex: number;
-  awaitingConfirmationForActionId: string | null;
-  result: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-  finishedAt: string | null;
-};
-
-type LifeOpsReminderAttempt = Record<string, unknown> & {
-  id: string;
-  agentId: string;
-  planId: string;
-  ownerType: "occurrence" | "calendar_event";
-  ownerId: string;
-  occurrenceId: string | null;
-  channel: string;
-  stepIndex: number;
-  scheduledFor: string;
-  attemptedAt: string | null;
-  outcome: string;
-  connectorRef: string | null;
-  deliveryMetadata: Record<string, unknown>;
-  reviewAt?: string | null;
-  reviewStatus?: string | null;
-};
-
-type LifeOpsCalendarEventSeedInput = {
-  id: string;
-  externalId: string;
-  agentId: string;
-  provider: "google" | "apple_calendar";
-  side: "owner" | "agent";
-  calendarId: string;
-  title: string;
-  description: string;
-  location: string;
-  status: string;
-  startAt: string;
-  endAt: string;
-  isAllDay: boolean;
-  timezone: string | null;
-  htmlLink: string | null;
-  conferenceLink: string | null;
-  organizer: Record<string, unknown> | null;
-  attendees: Record<string, unknown>[];
-  metadata: Record<string, unknown>;
-  syncedAt: string;
-  updatedAt: string;
-  connectorAccountId?: string;
-  grantId?: string;
-  accountEmail?: string;
-};
-
-type LifeOpsCalendarEvent = {
-  id: string;
-  externalId: string;
-  startAt: string;
-};
-
-type LifeOpsRepositoryInstance = {
-  createDefinition: (definition: LifeOpsTaskDefinition) => Promise<unknown>;
-  upsertOccurrence: (occurrence: LifeOpsOccurrence) => Promise<unknown>;
-  upsertScheduledTask: (
-    agentId: string,
-    task: LifeOpsScheduledTask,
-    options?: { nextFireAtIso?: string | null },
-  ) => Promise<unknown>;
-  listScheduledTasks: (
-    agentId: string,
-    filter?: Record<string, unknown>,
-  ) => Promise<LifeOpsScheduledTask[]>;
-  createReminderAttempt: (attempt: LifeOpsReminderAttempt) => Promise<unknown>;
-  listReminderAttempts: (
-    agentId: string,
-    options?: Record<string, unknown>,
-  ) => Promise<LifeOpsReminderAttempt[]>;
-  createBrowserSession: (
-    session: LifeOpsBrowserSessionSeedInput,
-  ) => Promise<unknown>;
-  listBrowserSessions: (
-    agentId: string,
-  ) => Promise<LifeOpsBrowserSessionSeedInput[]>;
-  upsertCalendarEvent: (
-    event: LifeOpsCalendarEventSeedInput,
-    side?: LifeOpsCalendarEventSeedInput["side"],
-  ) => Promise<unknown>;
-  listCalendarEvents: (
-    agentId: string,
-    provider: LifeOpsCalendarEventSeedInput["provider"],
-    timeMin?: string,
-    timeMax?: string,
-    side?: LifeOpsCalendarEventSeedInput["side"],
-  ) => Promise<LifeOpsCalendarEvent[]>;
-};
-
-type LifeOpsRepositoryConstructor = {
-  new (runtime: AgentRuntime): LifeOpsRepositoryInstance;
-  bootstrapSchema: (runtime: AgentRuntime) => Promise<void>;
-};
-
-type LifeOpsDefaultsModule = {
-  resolveDefaultWindowPolicy: (
-    timeZone?: string | null,
-  ) => Record<string, unknown>;
-};
-
-type LifeOpsEngineModule = {
-  materializeDefinitionOccurrences: (
-    definition: LifeOpsTaskDefinition,
-    existingOccurrences: LifeOpsOccurrence[],
-    options?: { now?: Date; lookbackDays?: number; lookaheadDays?: number },
-  ) => LifeOpsOccurrence[];
-};
-
-type LifeOpsRepositoryModule = {
-  createLifeOpsTaskDefinition: (
-    params: LifeOpsTaskDefinitionInput,
-  ) => LifeOpsTaskDefinition;
-  LifeOpsRepository: LifeOpsRepositoryConstructor;
-};
+type LifeOpsScheduledTaskSeedInput = Parameters<
+  LifeOpsRepositoryType["upsertScheduledTask"]
+>[1];
+type LifeOpsReminderAttemptSeedInput = Parameters<
+  LifeOpsRepositoryType["createReminderAttempt"]
+>[0];
 
 // Domain operations stay with their owner; the runner interprets scenario seeds.
 async function loadLifeOps() {
-  return import("@elizaos/plugin-personal-assistant/lifeops/index") as Promise<
-    LifeOpsDefaultsModule & LifeOpsEngineModule & LifeOpsRepositoryModule
-  >;
+  return import("@elizaos/plugin-personal-assistant/lifeops/index");
 }
 
 type TodoSeed = {
@@ -1289,11 +1134,11 @@ async function upsertScenarioScheduledTask(
   args: {
     seedKind: string;
     title: string;
-    taskKind?: string;
+    taskKind?: LifeOpsScheduledTaskSeedInput["kind"];
     dueAt?: Date;
     priority?: unknown;
-    status?: string;
-    subjectKind?: string;
+    status?: LifeOpsScheduledTaskSeedInput["state"]["status"];
+    subjectKind?: NonNullable<LifeOpsScheduledTaskSeedInput["subject"]>["kind"];
     subjectId?: string;
     metadata?: Record<string, unknown>;
   },
@@ -1314,7 +1159,7 @@ async function upsertScenarioScheduledTask(
       priority: normalizeScheduledTaskPriority(args.priority),
       respectsGlobalPause: true,
       state: { status: args.status ?? "scheduled", followupCount: 0 },
-      source: "scenario_seed",
+      source: "plugin",
       createdBy: String(runtime.agentId),
       ownerVisible: true,
       subject:
@@ -1425,25 +1270,26 @@ async function seedDeviceIntentMemory(
   return undefined;
 }
 
-function normalizeReminderAttemptChannel(value: unknown): string {
-  const channel = readNonEmptyString(value)?.toLowerCase();
-  if (
-    channel === "desktop" ||
-    channel === "mobile" ||
-    channel === "sms" ||
-    channel === "voice" ||
-    channel === "phone_call" ||
-    channel === "ntfy" ||
-    channel === "in_app"
-  ) {
-    return channel === "phone_call" ? "voice" : channel;
-  }
-  return "in_app";
+function normalizeReminderAttemptChannel(
+  value: unknown,
+): LifeOpsReminderChannel {
+  const channel = readNonEmptyString(value)?.toLowerCase() ?? "in_app";
+  if (channel === "phone_call") return "voice";
+  if (channel === "desktop" || channel === "mobile" || channel === "ntfy")
+    return "push";
+  const supported = LIFEOPS_REMINDER_CHANNELS.find(
+    (entry) => entry === channel,
+  );
+  if (!supported)
+    throw new ElizaError(`Unsupported reminder seed channel: ${channel}`, {
+      code: "SCENARIO_SEED_INVALID_CHANNEL",
+    });
+  return supported;
 }
 
 function normalizeReminderAttemptOutcome(
   seed: ReminderAttemptMemorySeed,
-): string {
+): LifeOpsReminderAttemptSeedInput["outcome"] {
   const result = readNonEmptyString(seed.result)?.toLowerCase();
   if (result === "failed" || result === "blocked") {
     return "blocked_connector";
@@ -1464,7 +1310,9 @@ async function seedReminderAttemptMemory(
   planIdOverride?: string,
 ): Promise<string | undefined> {
   const runtime = requireRuntime(ctx);
-  const channel = normalizeReminderAttemptChannel(seed.channel);
+  const requestedChannel =
+    readNonEmptyString(seed.channel)?.toLowerCase() ?? "in_app";
+  const channel = normalizeReminderAttemptChannel(requestedChannel);
   const attemptedAt =
     readIsoDate(seed.attemptedAt) ??
     readIsoDate(seed.sentAt) ??
@@ -1474,7 +1322,7 @@ async function seedReminderAttemptMemory(
   ).toISOString();
   const title =
     readNonEmptyString(seed.title) ??
-    (channel === "ntfy" ? "ntfy push" : "Scenario push attempt");
+    (requestedChannel === "ntfy" ? "ntfy push" : "Scenario push attempt");
   const planId =
     planIdOverride ??
     `scenario-reminder-plan:${ctx.scenarioId ?? "unknown"}:${title}`;
@@ -1493,7 +1341,7 @@ async function seedReminderAttemptMemory(
   await repository.createReminderAttempt({
     id:
       readNonEmptyString(seed.id) ??
-      `${planId}:attempt:${index}:${channel}:${attemptedAt.toISOString()}`,
+      `${planId}:attempt:${index}:${requestedChannel}:${attemptedAt.toISOString()}`,
     agentId: String(runtime.agentId),
     planId,
     ownerType: "occurrence",
@@ -1505,11 +1353,12 @@ async function seedReminderAttemptMemory(
     attemptedAt: attemptedAt.toISOString(),
     outcome,
     connectorRef: readNonEmptyString(seed.topic)
-      ? `${channel}:${readNonEmptyString(seed.topic)}`
+      ? `${requestedChannel}:${readNonEmptyString(seed.topic)}`
       : null,
     deliveryMetadata: {
       source: "scenario-seed",
       scenarioId: ctx.scenarioId ?? null,
+      channel: requestedChannel,
       title,
       urgency,
       priority: readNonEmptyString(seed.priority) ?? urgency,
@@ -1582,21 +1431,29 @@ async function seedScheduledPushLadderMemory(
       return "scheduled-push-ladder rungs must be objects";
     }
     const offsetMin = readOptionalNumber(rung.offsetMin) ?? 0;
-    const channel = normalizeReminderAttemptChannel(rung.channel);
+    const requestedChannel =
+      readNonEmptyString(rung.channel)?.toLowerCase() ?? "in_app";
+    const channel = normalizeReminderAttemptChannel(requestedChannel);
     const status = readNonEmptyString(rung.status) ?? "pending";
     const dueAt = new Date(eventStartAt.getTime() + offsetMin * 60_000);
     const result = await upsertScenarioScheduledTask(ctx, {
       seedKind: "scheduled-push-ladder",
-      title: `${eventId}:${index}:${channel}`,
+      title: `${eventId}:${index}:${requestedChannel}`,
       taskKind: "reminder",
       dueAt,
       priority: "medium",
-      status: status === "cancelled" ? "cancelled" : "scheduled",
+      status: status === "cancelled" ? "dismissed" : "scheduled",
       subjectKind: "calendar_event",
       subjectId: eventId,
       metadata: {
         eventId,
-        rung: { offsetMin, channel, status, index },
+        rung: {
+          offsetMin,
+          channel: requestedChannel,
+          deliveryChannel: channel,
+          status,
+          index,
+        },
       },
     });
     if (result) return result;
@@ -1652,13 +1509,42 @@ function normalizeIsoDate(value: unknown): string | null {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
-function normalizeCalendarAttendees(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
+function normalizeCalendarAttendees(
+  value: unknown,
+): LifeOpsCalendarEventSeedInput["attendees"] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value))
+    throw new ElizaError("Calendar seed attendees must be an array", {
+      code: "SCENARIO_SEED_INVALID_ATTENDEES",
+    });
+  return value.map((entry) => {
+    const attendee = readOptionalRecord(entry);
+    if (!attendee)
+      throw new ElizaError("Calendar seed attendee must be an object", {
+        code: "SCENARIO_SEED_INVALID_ATTENDEES",
+      });
+    for (const key of ["email", "displayName", "responseStatus"]) {
+      if (attendee[key] != null && typeof attendee[key] !== "string")
+        throw new ElizaError(
+          `Calendar attendee ${key} must be a string or null`,
+          { code: "SCENARIO_SEED_INVALID_ATTENDEES" },
+        );
     }
-    return [entry as Record<string, unknown>];
+    for (const key of ["self", "organizer", "optional"]) {
+      if (attendee[key] !== undefined && typeof attendee[key] !== "boolean")
+        throw new ElizaError(`Calendar attendee ${key} must be a boolean`, {
+          code: "SCENARIO_SEED_INVALID_ATTENDEES",
+        });
+    }
+    return {
+      ...attendee,
+      email: readNonEmptyString(attendee.email),
+      displayName: readNonEmptyString(attendee.displayName),
+      responseStatus: readNonEmptyString(attendee.responseStatus),
+      self: attendee.self === true,
+      organizer: attendee.organizer === true,
+      optional: attendee.optional === true,
+    };
   });
 }
 
@@ -1926,12 +1812,13 @@ async function seedFollowupMemory(
     priority:
       readNonEmptyString(seed.priority) ?? readNonEmptyString(seed.urgency),
     status,
-    subjectKind: seedKind.includes("thread") ? "thread" : "owner",
-    subjectId:
-      readNonEmptyString(seed.counterparty) ??
-      readNonEmptyString(seed.attendee) ??
-      readNonEmptyString(seed.topic) ??
-      String(requireRuntime(ctx).agentId),
+    subjectKind: seedKind.includes("thread") ? "thread" : "self",
+    subjectId: seedKind.includes("thread")
+      ? (readNonEmptyString(seed.counterparty) ??
+        readNonEmptyString(seed.attendee) ??
+        readNonEmptyString(seed.topic) ??
+        String(requireRuntime(ctx).agentId))
+      : String(requireRuntime(ctx).agentId),
     metadata: {
       followup: {
         kind: seedKind,

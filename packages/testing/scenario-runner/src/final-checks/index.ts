@@ -2438,7 +2438,7 @@ registerFinalCheckHandler("gmailBatchModify", async (check, { runtime }) => {
   };
 });
 
-registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
+registerFinalCheckHandler("gmailApproval", async (check, { ctx, runtime }) => {
   const { state } = check as {
     state: "pending" | "confirmed" | "canceled" | "cancelled";
   };

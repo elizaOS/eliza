@@ -217,7 +217,10 @@ test("closing a world interrupts a partial HTTP body before waiting for its leas
       domains: { slack: {} },
     },
   });
-  const endpoint = new URL(world.endpoints.slack!);
+  const slackEndpoint = world.endpoints.slack;
+  if (!slackEndpoint)
+    throw new Error("World did not expose its Slack endpoint");
+  const endpoint = new URL(slackEndpoint);
   const socket = connect(Number(endpoint.port), endpoint.hostname);
   try {
     await new Promise<void>((resolve, reject) => {

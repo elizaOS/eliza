@@ -20,7 +20,7 @@ export function createScenarioRuntimeLifecycle() {
       resources.push({ label, dispose });
     },
     close(): Promise<void> {
-      return (closing ??= (async () => {
+      closing ??= (async () => {
         const failures: unknown[] = [];
         for (const resource of resources.reverse()) {
           let timer: ReturnType<typeof setTimeout> | undefined;
@@ -61,7 +61,8 @@ export function createScenarioRuntimeLifecycle() {
             "Scenario runtime cleanup failed; this process must not be reused",
           );
         active = false;
-      })());
+      })();
+      return closing;
     },
   };
 }
