@@ -273,10 +273,30 @@ export async function buildLiveHarness(
   const restoreEnv = maybeApplyCerebrasAlias(provider);
   let runtime: AgentRuntime | undefined;
   const close = async (): Promise<void> => {
+    const failures: unknown[] = [];
     try {
-      await runtime?.stop();
+      if (runtime) {
+        try {
+          await runtime.stop();
+        } catch (error) {
+          failures.push(error);
+        }
+        try {
+          await runtime.close();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
     } finally {
-      restoreEnv();
+      try {
+        restoreEnv();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Live runtime cleanup failed");
     }
   };
   try {
