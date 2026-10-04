@@ -150,6 +150,42 @@ test("persistent profile preserves runtime-written configuration and its exact b
   assert.equal((await stat(options.configPath)).mode & 0o777, 0o600);
 });
 
+test("a failed token factory does not poison later private profile preparation", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-launch-token-failure-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath: join(root, "config.json"),
+    launchConfigPath: join(root, "launch.json"),
+    initialConfig: {},
+    selectConfig: (existing) => existing,
+  };
+  const failure = new Error("controlled token factory failure");
+  await assert.rejects(
+    preparePrivateRuntimeFiles({
+      ...options,
+      createToken: () => {
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  await assert.rejects(stat(options.tokenPath), { code: "ENOENT" });
+  for (const invalid of ["", "  ", "line\nbreak", undefined]) {
+    await assert.rejects(
+      preparePrivateRuntimeFiles({ ...options, createToken: () => invalid }),
+      { code: "INVALID_RUNTIME_TOKEN" },
+    );
+    await assert.rejects(stat(options.tokenPath), { code: "ENOENT" });
+  }
+  const restored = await preparePrivateRuntimeFiles({
+    ...options,
+    createToken: () => "fixture-token",
+  });
+  assert.equal(restored.token, "fixture-token");
+  assert.equal((await stat(options.tokenPath)).mode & 0o777, 0o600);
+});
+
 test("private launch rejects malformed settings, links and empty authority without spawning", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "private-files-"));
   t.after(() => rm(root, { recursive: true, force: true }));
