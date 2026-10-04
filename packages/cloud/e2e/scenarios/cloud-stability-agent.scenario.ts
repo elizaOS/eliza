@@ -395,7 +395,23 @@ const definition = scenario({
             {
               id: "call-cloud-owner-reminder",
               name: "OWNER_REMINDERS_CREATE",
-              arguments: reminderArgs,
+              arguments: {
+                ...reminderArgs,
+                createPlan: {
+                  mode: "create",
+                  multiStep: false,
+                  requestKind: "reminder",
+                  nativeProjection: "in_app_only",
+                  title: reminderArgs.title,
+                  cadenceKind: "once",
+                  dueDate: "2099-01-02",
+                  dueInDays: null,
+                  dueWeekday: null,
+                  dueInMinutes: null,
+                  timeOfDay: "09:00",
+                  timeZone: "UTC",
+                },
+              },
             },
           ],
           finishReason: "tool-calls",
@@ -450,7 +466,7 @@ const definition = scenario({
           // the original request stays in the earlier context message.
           input: {
             pattern:
-              "^# Current decision state\\n[\\s\\S]*\\nQueued call IDs: \\[\\]\\nCommitted effect receipt IDs: \\[\\]\\n[\\s\\S]*\\nrequiresReplyField: false\\nhasUnresolvedToolFailure: false\\n[\\s\\S]*\\nintent:1: create reminder\\nEvidence step sources[^\\n]*\\nstep:1: OWNER_REMINDERS_CREATE; success=false$",
+              "^# Current decision state\\n[\\s\\S]*\\nQueued call IDs: \\[\\]\\nCommitted effect receipt IDs: \\[\\]\\n[\\s\\S]*\\nrequiresReplyField: true\\nhasUnresolvedToolFailure: false\\n[\\s\\S]*\\nintent:1: create reminder\\nEvidence step sources[^\\n]*\\nstep:1: OWNER_REMINDERS_CREATE; success=false$",
           },
           toolNames: [],
         },
