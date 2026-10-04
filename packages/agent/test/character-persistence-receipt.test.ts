@@ -18,12 +18,11 @@ it("records committed sinks and exposes a later storage failure without claiming
     character: { name: "Before", bio: [] },
     logLevel: "fatal",
   });
-  runtime.registerDatabaseAdapter(
-    SQLiteDatabaseAdapter.create(
-      path.join(dir, "state.sqlite"),
-      runtime.agentId,
-    ),
+  const adapter = SQLiteDatabaseAdapter.create(
+    path.join(dir, "state.sqlite"),
+    runtime.agentId,
   );
+  runtime.registerDatabaseAdapter(adapter);
   try {
     await runtime.init();
     await runtime.createAgent({ ...runtime.character, id: runtime.agentId });
@@ -51,34 +50,37 @@ it("records committed sinks and exposes a later storage failure without claiming
       ).length,
     ).toBeGreaterThan(0);
     // A real SQLite constraint rejects only history insertion after the agent update.
+    // The adapter owns an exclusive file lock. Release it before installing
+    // the real failure constraint, then reopen through the owning adapter.
+    await adapter.close();
     const connection = new DatabaseSync(path.join(dir, "state.sqlite"));
     try {
       connection.exec(
         "CREATE TRIGGER reject_history BEFORE INSERT ON records WHEN NEW.collection = 'memories' BEGIN SELECT RAISE(ABORT, 'history unavailable'); END",
       );
-      const historyFailure = await service.persistCharacter({
-        character: { name: "History failed", bio: [] },
-        previousCharacter: { name: "Saved", bio: [] },
-        source: "manual",
-      });
-      expect(historyFailure).toMatchObject({
-        success: false,
-        persistence: {
-          config: "committed",
-          agent: "committed",
-          history: "unknown",
-        },
-      });
-      expect((await runtime.getAgent(runtime.agentId))?.name).toBe(
-        "History failed",
-      );
-      expect(
-        JSON.parse(await readFile(configPath, "utf8")).agents.list[0].name,
-      ).toBe("History failed");
-      connection.exec("DROP TRIGGER reject_history");
     } finally {
       connection.close();
     }
+    await adapter.init();
+    const historyFailure = await service.persistCharacter({
+      character: { name: "History failed", bio: [] },
+      previousCharacter: { name: "Saved", bio: [] },
+      source: "manual",
+    });
+    expect(historyFailure).toMatchObject({
+      success: false,
+      persistence: {
+        config: "committed",
+        agent: "committed",
+        history: "unknown",
+      },
+    });
+    expect((await runtime.getAgent(runtime.agentId))?.name).toBe(
+      "History failed",
+    );
+    expect(
+      JSON.parse(await readFile(configPath, "utf8")).agents.list[0].name,
+    ).toBe("History failed");
     await runtime.close();
     const partial = await service.persistCharacter({
       character: { name: "Saved on disk", bio: [] },
