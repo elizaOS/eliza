@@ -5,7 +5,6 @@
  * assistant DTOs; the actual Gmail API access lives in the google plugin.
  */
 import crypto from "node:crypto";
-import { gmailBriefSourceId } from "@elizaos/plugin-google-workspace/gmail-message-id";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -43,6 +42,7 @@ import type {
   SendLifeOpsGmailReplyRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
 } from "@elizaos/contracts";
+import { gmailBriefSourceId } from "@elizaos/plugin-google-workspace/gmail-message-id";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   accountIdForGrant,
