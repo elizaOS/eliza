@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.FrameLayout
@@ -126,10 +127,21 @@ internal class BrowserHelperEntry(
 
     fun removeFullScreen() {
         val frame = full ?: return
+        // End the overlay input connection before moving the same WebView to
+        // the Activity window, whose IME and Back dispatcher must own it next.
+        val input = activity.getSystemService(InputMethodManager::class.java)
+        input.hideSoftInputFromWindow(webView.windowToken, 0)
+        webView.clearFocus()
         frame.removeView(webView)
         if (frame.isAttachedToWindow) manager.removeViewImmediate(frame)
         parent?.addView(webView, parentIndex, parentLayout)
         full = null; parent = null; parentLayout = null
+        webView.post {
+            if (!destroyed && full == null && webView.isAttachedToWindow) {
+                webView.requestFocus()
+                input.restartInput(webView)
+            }
+        }
     }
 
     fun release() { removeEntry(); removeFullScreen() }

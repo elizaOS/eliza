@@ -40,6 +40,12 @@
       "types": "./dist/text/template-rendering.d.ts",
       "import": "./dist/text/template-rendering.js",
       "default": "./dist/text/template-rendering.js"
+    },
+    "./device-clock-review": {
+      "eliza-source": "./src/services/device-actions/clock-review-executor.ts",
+      "types": "./dist/device-clock-review.d.ts",
+      "import": "./dist/device-clock-review.js",
+      "default": "./dist/device-clock-review.js"
     }
   },
   "files": [
@@ -55,7 +61,8 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
-    "test:templates": "node --test test/templates/*.test.js"
+    "test:templates": "node --test test/templates/*.test.js",
+    "test:clock-review-export": "node ../../packages/scripts/run-vitest.ts run --config vitest.clock-review.config.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -82,7 +89,8 @@
     "@elizaos/testing": "workspace:*",
     "@biomejs/biome": "2.5.14",
     "@elizaos/plugin-sql": "workspace:*",
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.0",
+    "@electric-sql/pglite": "^0.4.0"
   },
   "publishConfig": {
     "access": "public"

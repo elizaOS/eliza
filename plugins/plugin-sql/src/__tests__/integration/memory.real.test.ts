@@ -173,6 +173,7 @@ describe("Memory Integration Tests", () => {
           code: "SQL_JSON_SANITIZE_UNBOUNDED",
         },
         { content: { text: "bad\0source" }, code: "SQL_JSON_UNSUPPORTED_NUL" },
+        { content: { text: "bad \ud83d" }, code: "SQL_JSON_UNSUPPORTED_SURROGATE" },
         {
           content: {
             text: "replacement",

@@ -4043,6 +4043,21 @@ describe("useChatSend — sendActionMessage cold-open defers the create like the
     } as never);
   });
 
+  it("retains reminder source metadata through the action send transport", async () => {
+    const deps = makeActiveConversationDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    const metadata = {
+      replyToMessageId: "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9",
+      reminderChoiceId: "reminder-source",
+    };
+    await act(async () => {
+      await result.current.sendActionMessage("done", { metadata });
+    });
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.[6],
+    ).toMatchObject(metadata);
+  });
+
   it("skips the redundant client.createConversation round trip on a shared-agent base", async () => {
     // Shared base: the server POST handler ignores the body, so
     // createConversationForFirstSend synthesizes the canonical record locally.

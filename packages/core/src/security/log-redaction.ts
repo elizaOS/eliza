@@ -8,6 +8,23 @@ const REDACTED_VALUE = "[REDACTED]";
 export const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]";
 /** Bound on recursion so a pathological payload cannot hang the process. */
 const MAX_REDACT_DEPTH = 8;
+/**
+ * Bound on the extra work one walk spends re-cloning objects it already cloned
+ * elsewhere. A shared (non-cyclic) reference renders in full wherever it
+ * appears, but a densely shared graph (an HTTP client error's request, socket,
+ * and agent) would otherwise expand once per path. A repeated object is
+ * admitted only when the budget covers one unit plus its width (own keys,
+ * elements, or entries), so it renders whole or becomes a single "[Shared]";
+ * every key, element, and entry visited inside a repeated subtree then spends
+ * a unit before any skip, and text (strings, an error's message and stack, a
+ * RegExp source) spends one more per SHARED_TEXT_UNIT characters because every
+ * credential pattern re-scans it. The total work therefore stays linear in
+ * the payload's distinct content.
+ */
+const MAX_SHARED_WORK = 10_000;
+const SHARED_TEXT_UNIT = 256;
+const CIRCULAR_VALUE = "[Circular]";
+const SHARED_VALUE = "[Shared]";
 
 /**
  * Separator-free substrings that mark an object key as holding a credential.
@@ -120,9 +137,16 @@ const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
  * a known token prefix — no entropy heuristics — so ordinary prose does not
  * false-positive, while credentials interpolated into free text are caught.
  */
-export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
+/** Broad assignment detection for runtime logs; source reviewers classify literals separately. */
+export const SENSITIVE_ASSIGNMENT_PATTERNS: readonly string[] = [
+	// Named credential assignments are case-insensitive; avoid broad suffix matches on ordinary words.
+	String.raw`/\b(?:password|passwd|passphrase|mnemonic|seed|credential|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bot[_-]?token|session[_-]?key|private[_-]?key|client[_-]?secret|seed[_-]?phrase)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/gi`,
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
 	String.raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/g`,
+];
+
+export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
+	...SENSITIVE_ASSIGNMENT_PATTERNS,
 	// JSON fields.
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
 	// Quoted credential keys with arbitrary naming — a closing quote sits where
@@ -260,8 +284,10 @@ export function redactSensitiveLogText(text: string): string {
  * serializer hooks (toJSON/valueOf/toString), and a copied hook re-runs when a
  * sink JSON-stringifies the clone, able to reconstitute the very secrets the
  * walk just masked — JSON.stringify drops function props anyway, so omission
- * matches serialization semantics. Cycles and over-depth payloads collapse
- * to a marker instead of recursing forever. Buffer/TypedArray/DataView/
+ * matches serialization semantics. `seen` holds only the current ancestor
+ * path, so a true cycle collapses to "[Circular]" while an object referenced
+ * from two places is cloned at both; over-depth payloads and shared objects
+ * beyond the re-expansion budget collapse to a marker instead. Buffer/TypedArray/DataView/
  * ArrayBuffer values collapse to a size-only marker — JSON would otherwise
  * serialize the raw bytes verbatim
  * (`{"type":"Buffer","data":[...]}`) under an innocent-looking key. Error
@@ -278,16 +304,67 @@ export function redactSensitiveLogText(text: string): string {
  * (e.g. React DevTools' patched console methods during startup logging).
  */
 function createRedactClone(): Record<string, unknown> {
-	const clone = {};
-	protectCloneCoercion(clone, "[object Object]");
-	return clone;
+	return {};
 }
 
-/** Keep source data named toString/valueOf without executing it during coercion. */
+/**
+ * Keep source data named toString/valueOf without executing it during
+ * coercion. Plain clones get this only when an own toString shadows the
+ * inherited method: Bun's console prints a non-enumerable Symbol.toPrimitive (own or
+ * inherited) on every object, so an unconditional hook adds a
+ * `[Symbol(Symbol.toPrimitive)]: [Function: value]` line to each logged
+ * object in the terminal.
+ */
 function protectCloneCoercion(clone: object, text: string): void {
 	Object.defineProperty(clone, Symbol.toPrimitive, {
 		value: (hint: string) => (hint === "number" ? Number.NaN : text),
 	});
+}
+
+/** Per-walk record of cloned objects and the remaining repeat-work budget. */
+interface SharedReferenceBudget {
+	expanded: WeakSet<object>;
+	/**
+	 * Repeated objects the budget already refused. The budget only shrinks, so
+	 * a refusal is final for the walk; remembering it keeps later copies from
+	 * re-measuring the object's keys, which is O(width) on V8 per copy.
+	 */
+	rejected: WeakSet<object>;
+	remaining: number;
+	/** Number of repeated objects on the current path; non-zero means every value costs work. */
+	repeatDepth: number;
+}
+
+/**
+ * Extra work units for re-scanning `text` against every credential pattern,
+ * beyond the unit its slot already paid. Error fields may hold non-strings;
+ * those cost nothing extra, never NaN, which would turn the remaining budget
+ * into NaN and disable every later check.
+ */
+function sharedTextExtra(text: unknown): number {
+	return typeof text === "string"
+		? Math.floor(text.length / SHARED_TEXT_UNIT)
+		: 0;
+}
+
+/** Keys, elements, or entries a clone of `value` visits, read without walking it. */
+function shallowWidth(value: object): number {
+	if (Array.isArray(value)) return value.length;
+	if (value instanceof Map) return Reflect.get(Map.prototype, "size", value);
+	if (value instanceof Set) return Reflect.get(Set.prototype, "size", value);
+	// An error's clone also walks its cause.
+	return Object.keys(value).length + (value instanceof Error ? 1 : 0);
+}
+
+/** Spend one unit for a key, element, or entry visited inside a repeated subtree. */
+function spendRepeatedSlot(shared: SharedReferenceBudget): boolean {
+	return shared.repeatDepth === 0 || spendSharedWork(shared, 1);
+}
+
+function spendSharedWork(shared: SharedReferenceBudget, cost: number): boolean {
+	if (shared.remaining < cost) return false;
+	shared.remaining -= cost;
+	return true;
 }
 
 export function redactLogValue(
@@ -295,38 +372,90 @@ export function redactLogValue(
 	seen: WeakSet<object>,
 	depth: number,
 ): unknown {
-	if (typeof value === "string") return redactSensitiveLogText(value);
+	return redactWalkValue(value, seen, depth, {
+		expanded: new WeakSet<object>(),
+		rejected: new WeakSet<object>(),
+		remaining: MAX_SHARED_WORK,
+		repeatDepth: 0,
+	});
+}
+
+function redactWalkValue(
+	value: unknown,
+	seen: WeakSet<object>,
+	depth: number,
+	shared: SharedReferenceBudget,
+): unknown {
+	// Primitives and functions cost nothing beyond the unit their slot paid.
+	if (typeof value === "string") {
+		const extra = shared.repeatDepth > 0 ? sharedTextExtra(value) : 0;
+		if (extra > 0 && !spendSharedWork(shared, extra)) return SHARED_VALUE;
+		return redactSensitiveLogText(value);
+	}
 	// Functions are executable values even when they are passed directly or as
 	// trailing arguments. Never let a caller-owned function (and its toJSON)
 	// survive into a sink.
 	if (typeof value === "function") return null;
 	if (value === null || typeof value !== "object") return value;
-	if (seen.has(value)) return "[Circular]";
+	if (seen.has(value)) return CIRCULAR_VALUE;
 	if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
+	const repeated = shared.expanded.has(value);
+	shared.expanded.add(value);
+	if (isLeafObject(value)) {
+		// Leaf built-ins have no children; only a RegExp source is re-scanned,
+		// so a repeated Date or buffer stays free while a long pattern pays.
+		const extra =
+			(repeated || shared.repeatDepth > 0) && value instanceof RegExp
+				? sharedTextExtra(RegExp.prototype.toString.call(value))
+				: 0;
+		if (extra > 0 && !spendSharedWork(shared, extra)) return SHARED_VALUE;
+		return redactLeafObject(value);
+	}
+	if (repeated || shared.repeatDepth > 0) {
+		if (shared.rejected.has(value) || shared.remaining <= 0) {
+			return SHARED_VALUE;
+		}
+		// Admit the whole clone or none of it, so a repeat never renders half a
+		// record. The per-slot charges below still bound a Proxy whose key list
+		// changes between reads.
+		const errorText =
+			value instanceof Error
+				? sharedTextExtra(value.message) + sharedTextExtra(value.stack)
+				: 0;
+		if (shared.remaining < 1 + shallowWidth(value) + errorText) {
+			shared.rejected.add(value);
+			return SHARED_VALUE;
+		}
+		shared.remaining -= 1 + errorText;
+	}
+	if (repeated) shared.repeatDepth += 1;
+	// Leave the ancestor path on every exit, including a throwing getter that
+	// unwinds to redactOwnPropertiesInto's per-key catch, so a sibling key that
+	// holds the same object is not misreported as a cycle.
 	seen.add(value);
-
-	if (value instanceof Error) {
-		const clone = new Error(redactSensitiveLogText(value.message));
-		clone.name = redactSensitiveLogText(value.name);
-		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
-		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
-		if (value.cause !== undefined) {
-			clone.cause = redactLogValue(value.cause, seen, depth + 1);
-		}
-		const target = clone as unknown as Record<string, unknown>;
-		redactOwnPropertiesInto(value, target, seen, depth + 1);
-		return clone;
+	try {
+		return redactObjectValue(value, seen, depth, shared);
+	} finally {
+		seen.delete(value);
+		if (repeated) shared.repeatDepth -= 1;
 	}
+}
 
-	if (Array.isArray(value)) {
-		// Avoid the caller's potentially overridden `map` and species constructor.
-		const result = new Array<unknown>(value.length);
-		for (let index = 0; index < value.length; index += 1) {
-			result[index] = redactLogValue(value[index], seen, depth + 1);
-		}
-		return result;
-	}
+/** Built-ins that hold no walkable children and render in one marker or string. */
+function isLeafObject(value: object): boolean {
+	return (
+		ArrayBuffer.isView(value) ||
+		value instanceof ArrayBuffer ||
+		value instanceof Date ||
+		value instanceof RegExp ||
+		value instanceof WeakMap ||
+		value instanceof WeakSet ||
+		value instanceof Promise
+	);
+}
 
+/** Render a value for which isLeafObject holds. */
+function redactLeafObject(value: object): string {
 	// Binary payloads carry raw bytes that JSON serializes verbatim
 	// ({"type":"Buffer","data":[...]}); under a neutral key that silently leaks
 	// secret material into every sink, so mask with a size-only marker. Both
@@ -336,8 +465,7 @@ export function redactLogValue(
 	}
 
 	// Built-ins must also be detached from the caller. JSON.stringify invokes a
-	// caller-owned Date/toJSON before its replacer, and pretty sinks may inspect
-	// Map/Set contents directly.
+	// caller-owned Date/toJSON before its replacer.
 	if (value instanceof Date) {
 		try {
 			return Date.prototype.toISOString.call(value);
@@ -348,16 +476,59 @@ export function redactLogValue(
 	if (value instanceof RegExp) {
 		return `[RegExp ${redactSensitiveLogText(RegExp.prototype.toString.call(value))}]`;
 	}
+	if (value instanceof WeakMap) return "[WeakMap]";
+	if (value instanceof WeakSet) return "[WeakSet]";
+	return "[Promise]";
+}
+
+function redactObjectValue(
+	value: object,
+	seen: WeakSet<object>,
+	depth: number,
+	shared: SharedReferenceBudget,
+): unknown {
+	if (value instanceof Error) {
+		const clone = new Error(redactSensitiveLogText(value.message));
+		clone.name = redactSensitiveLogText(value.name);
+		if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
+		protectCloneCoercion(clone, Error.prototype.toString.call(clone));
+		if (value.cause !== undefined) {
+			clone.cause = spendRepeatedSlot(shared)
+				? redactWalkValue(value.cause, seen, depth + 1, shared)
+				: SHARED_VALUE;
+		}
+		const target = clone as unknown as Record<string, unknown>;
+		redactOwnPropertiesInto(value, target, seen, depth + 1, shared);
+		return clone;
+	}
+
+	if (Array.isArray(value)) {
+		// Avoid the caller's potentially overridden `map` and species constructor.
+		const result = new Array<unknown>(value.length);
+		for (let index = 0; index < value.length; index += 1) {
+			result[index] = spendRepeatedSlot(shared)
+				? redactWalkValue(value[index], seen, depth + 1, shared)
+				: SHARED_VALUE;
+		}
+		return result;
+	}
+
+	// Pretty sinks may inspect Map/Set contents directly, so both are detached
+	// from the caller like every other clone.
 	if (value instanceof Map) {
 		const entries: unknown[] = [];
 		Map.prototype.forEach.call(
 			value,
 			(entryValue: unknown, entryKey: unknown) => {
-				const safeKey = redactLogValue(entryKey, seen, depth + 1);
+				if (!spendRepeatedSlot(shared)) {
+					entries.push(SHARED_VALUE);
+					return;
+				}
+				const safeKey = redactWalkValue(entryKey, seen, depth + 1, shared);
 				const safeValue =
 					typeof entryKey === "string" && isSensitiveLogKey(entryKey)
 						? REDACTED_VALUE
-						: redactLogValue(entryValue, seen, depth + 1);
+						: redactWalkValue(entryValue, seen, depth + 1, shared);
 				entries.push([safeKey, safeValue]);
 			},
 		);
@@ -369,22 +540,28 @@ export function redactLogValue(
 	if (value instanceof Set) {
 		const values: unknown[] = [];
 		Set.prototype.forEach.call(value, (entryValue: unknown) => {
-			values.push(redactLogValue(entryValue, seen, depth + 1));
+			values.push(
+				spendRepeatedSlot(shared)
+					? redactWalkValue(entryValue, seen, depth + 1, shared)
+					: SHARED_VALUE,
+			);
 		});
 		const result = createRedactClone();
 		defineSafeProperty(result, "type", "Set");
 		defineSafeProperty(result, "values", values);
 		return result;
 	}
-	if (value instanceof WeakMap) return "[WeakMap]";
-	if (value instanceof WeakSet) return "[WeakSet]";
-	if (value instanceof Promise) return "[Promise]";
-
 	// Class instances are cloned into plain objects: JSON serialization only
 	// ever emits own enumerable properties anyway, and walking them here masks
 	// credentials stashed on config/response wrappers (axios-style).
 	const result = createRedactClone();
-	redactOwnPropertiesInto(value, result, seen, depth + 1);
+	redactOwnPropertiesInto(value, result, seen, depth + 1, shared);
+	// Only a non-callable own toString breaks coercion: ToPrimitive falls back
+	// from valueOf to toString, and the inherited Object.prototype.toString
+	// still answers when valueOf alone is shadowed.
+	if (Object.hasOwn(result, "toString")) {
+		protectCloneCoercion(result, "[object Object]");
+	}
 	return result;
 }
 
@@ -415,8 +592,15 @@ function redactOwnPropertiesInto(
 	target: Record<string, unknown>,
 	seen: WeakSet<object>,
 	depth: number,
+	shared: SharedReferenceBudget,
 ): void {
 	for (const key of Object.keys(source)) {
+		// Charge before the credential and function skips: a repeated object of
+		// masked or dropped keys still costs one visit per key.
+		if (!spendRepeatedSlot(shared)) {
+			defineSafeProperty(target, key, SHARED_VALUE);
+			continue;
+		}
 		if (isSensitiveLogKey(key)) {
 			defineSafeProperty(target, key, REDACTED_VALUE);
 			continue;
@@ -428,7 +612,11 @@ function redactOwnPropertiesInto(
 			// can reconstitute the very secrets the walk just masked. JSON.stringify
 			// omits function props anyway, so the clone drops them outright.
 			if (typeof entry === "function") continue;
-			defineSafeProperty(target, key, redactLogValue(entry, seen, depth));
+			defineSafeProperty(
+				target,
+				key,
+				redactWalkValue(entry, seen, depth, shared),
+			);
 		} catch {
 			// error-policy:J7 logging must never break the runtime; a throwing
 			// getter fails closed on this one key, never emits the raw value.

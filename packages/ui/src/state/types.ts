@@ -695,7 +695,10 @@ export interface AppActions {
   /** Restore the active personal conversation; null means recovery is unavailable. */
   ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
-  handleSelectConversation: (id: string) => Promise<void>;
+  handleSelectConversation: (
+    id: string,
+    options?: { onRejected: () => void },
+  ) => Promise<void>;
   /**
    * Replace the active thread with a window CENTERED on `messageId` so a
    * keyword-search jump can scroll to a hit older than the most-recent window
@@ -705,13 +708,19 @@ export interface AppActions {
   loadConversationMessagesAround: (
     conversationId: string,
     messageId: string,
+    options?: {
+      onMessages: (messages: readonly ConversationMessage[]) => void;
+    },
   ) => Promise<boolean>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   /** LLM title from recent messages; persists on the server and updates local list. */
   suggestConversationTitle: (id: string) => Promise<string | null>;
   /** Send a programmatic message (e.g. from a UiSpec action) without touching chatInput. */
-  sendActionMessage: (text: string) => Promise<void>;
+  sendActionMessage: (
+    text: string,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>;
   /** Send a chat message with optional metadata (e.g. task creation intent). */
   sendChatText: (
     rawInput: string,
