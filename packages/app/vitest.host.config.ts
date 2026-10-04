@@ -17,7 +17,6 @@ const monorepoRoot = path.resolve(fileDir, "../..");
 const _require = createRequire(import.meta.url);
 const reactPkg = path.dirname(_require.resolve("react/package.json"));
 const reactDomPkg = path.dirname(_require.resolve("react-dom/package.json"));
-const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
 
 /**
  * Real `react` / `react-dom` packages (not .d.ts stubs from tsconfig paths)
@@ -111,12 +110,6 @@ export default defineConfig({
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
-      ...(includeLiveE2e
-        ? []
-        : [
-            "src/services/local-inference/engine.e2e.test.ts",
-            "test/live-agent/**/*.e2e.test.ts",
-          ]),
     ],
   },
   resolve: {

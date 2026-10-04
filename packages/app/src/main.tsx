@@ -142,7 +142,6 @@ import "./renderer-build-stamp";
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type {
   AppBlockerSettingsCardProps,
@@ -195,7 +194,6 @@ import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
-
 import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
 import {
   apiBaseToDeviceBridgeUrl,
@@ -233,6 +231,7 @@ import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
 } from "./renderer-shell-scope";
+import type { DetachedShellRootProps } from "./runtime/desktop";
 import {
   applyRuntimeChooserOverrideFromUrl,
   removeUrlParameter,
@@ -358,18 +357,18 @@ const ShellViewAgentSurface = lazyNamedComponent<{
 const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
   Record<string, never>
 >(async () => {
-  const mod = await import("@elizaos/app/desktop-shell");
+  const mod = await import("./runtime/desktop");
   return mod.DesktopSurfaceNavigationRuntime;
 });
 const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
   async () => {
-    const mod = await import("@elizaos/app/desktop-shell");
+    const mod = await import("./runtime/desktop");
     return mod.DesktopTrayRuntime;
   },
 );
 const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
   async () => {
-    const mod = await import("@elizaos/app/desktop-shell");
+    const mod = await import("./runtime/desktop");
     return mod.DetachedShellRoot;
   },
 );
@@ -378,17 +377,15 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 
-async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
-  const mod = await import("@elizaos/app/desktop-shell");
+async function runIosFullBunSmoke(): Promise<boolean> {
+  const mod = await import("./platform/ios-runtime-bridge");
   return mod.runIosFullBunSmokeIfRequested();
 }
 
 async function buildLocalizedTrayMenuAsync(
-  ...args: Parameters<
-    typeof import("@elizaos/app/desktop-shell").buildLocalizedTrayMenu
-  >
+  ...args: Parameters<typeof import("./runtime/desktop").buildLocalizedTrayMenu>
 ) {
-  const mod = await import("@elizaos/app/desktop-shell");
+  const mod = await import("./runtime/desktop");
   return mod.buildLocalizedTrayMenu(...args);
 }
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
@@ -465,7 +462,6 @@ configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
-const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let cameraBridgeResponderStop: (() => void) | null = null;
@@ -576,49 +572,6 @@ function applyCloudPairSessionToken(): void {
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
-      }
-    }
-  }
-  // Gate 4 — legacy single-key migration with target equality. A pre-#17579
-  // install stored the bearer under the global `eliza:cloud-pair:api-token`
-  // key with no owner binding. That key is adopted ONLY when the persisted
-  // active server for THIS agent still carries the identical bearer — i.e.
-  // the local record proves the legacy credential belongs to the agent being
-  // booted. Without that proof the legacy key is left untouched (never
-  // mirrored onto an agent that cannot claim it) and the pairing flow writes
-  // the scoped key on the next explicit pair.
-  if (!token) {
-    let legacyToken: string | null = null;
-    try {
-      legacyToken =
-        window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
-        null;
-    } catch {
-      // error-policy:J4 unreadable legacy storage — no adoption.
-    }
-    if (legacyToken) {
-      try {
-        const activeServer = loadPersistedActiveServer();
-        const ownedByTarget =
-          activeServer !== null &&
-          resolveDedicatedAgentId(activeServer) === agentId &&
-          activeServer.accessToken === legacyToken;
-        if (ownedByTarget) {
-          token = legacyToken;
-          try {
-            shellLocalStorage.setItem(agentTokenKey, token);
-          } catch {
-            // error-policy:J4 best-effort migration write.
-          }
-          try {
-            shellLocalStorage.removeItem(CLOUD_PAIR_SESSION_TOKEN_KEY);
-          } catch {
-            // error-policy:J3 best-effort legacy cleanup.
-          }
-        }
-      } catch {
-        // error-policy:J4 unreadable active-server record — legacy key stays
-        // unadopted rather than being stamped onto an unproven target.
       }
     }
   }
@@ -878,15 +831,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (() => {
-    // app owns the AppBootConfig singleton and is already evaluated: this
-    // module statically imports its desktop bindings, so the whole package
-    // loads with the entry chunk before main() runs. A dynamic
-    // import("@elizaos/app") here would be a runtime no-op, but its
-    // escaping namespace would force Rollup to retain every export of the
-    // barrel (`export * from "@elizaos/ui/browser"`) in the startup-critical
-    // entry chunk (#13187). Everything else exposed through the boot config is
-    // a React.lazy handle that loads on render, so its import is deferred onto
-    // the idle path instead of gating the first visible shell (#9565).
     setBootConfig(buildAppBootConfig());
     return Promise.resolve();
   })();
@@ -955,7 +899,7 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   installNativeTranscriptPlatformBridge();
-  void runIosFullBunSmokeFromDesktopShell();
+  void runIosFullBunSmoke();
   if (isIOS) {
     void import("./native-smoke")
       .then((smoke) =>
@@ -2504,7 +2448,7 @@ async function main(): Promise<void> {
       initializeCapacitorBridge,
       installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
       installFetchBridge: installIosLocalAgentFetchBridge,
-      runSmoke: runIosFullBunSmokeFromDesktopShell,
+      runSmoke: runIosFullBunSmoke,
     })
   ) {
     return;

@@ -12,14 +12,14 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { config as loadDotenv } from "dotenv";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../helpers/http.ts";
+} from "@elizaos/testing/runtime";
+import { config as loadDotenv } from "dotenv";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describeIf } from "../helpers/conditional-tests.ts";
 import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 import {

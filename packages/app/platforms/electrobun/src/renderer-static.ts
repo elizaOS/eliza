@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop renderer static ts behavior for app shell integration. */
 import path from "node:path";
 
 type ExistsSyncLike = (filePath: string) => boolean;

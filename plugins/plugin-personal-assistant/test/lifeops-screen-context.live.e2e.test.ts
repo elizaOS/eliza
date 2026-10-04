@@ -5,7 +5,6 @@
  */
 import { rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -16,6 +15,7 @@ import {
   startBrowserCapture,
   stopBrowserCapture,
 } from "@elizaos/plugin-browser";
+import { getFreePort } from "@elizaos/repository-tools";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";
@@ -38,26 +38,6 @@ if (missingSetupReasons.length > 0) {
   console.info(
     `[lifeops-screen-live] skipped until setup is complete: ${missingSetupReasons.join(" | ")}`,
   );
-}
-
-async function getFreePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Could not allocate a loopback port"));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
 }
 
 describeIf(LIVE_TESTS_ENABLED && CHROME_SUPPORTED)(

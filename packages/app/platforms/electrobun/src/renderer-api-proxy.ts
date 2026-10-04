@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop renderer api proxy ts behavior for app shell integration. */
 export function isRendererApiProxyPath(pathname: string): boolean {
 	return (
 		pathname.startsWith("/api/") ||

@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop voice trace ts behavior for app shell integration. */
 import type { JsonValue } from "@elizaos/core";
 import type { TraceService } from "../trace/trace-service";
 import type { TraceEventKind, TraceSession } from "../trace/types";

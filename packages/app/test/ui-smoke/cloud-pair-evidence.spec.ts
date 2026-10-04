@@ -305,7 +305,6 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
       "savePersistedActiveServer",
       "upsertAndActivateAgentProfile",
       "shellLocalStorage",
-      "CLOUD_PAIR_SESSION_TOKEN_KEY",
       `"use strict";\n${fnBody}`,
     ) as (
       client: { setToken: (t: string) => void },
@@ -322,7 +321,6 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
       savePersistedActiveServer: (s: unknown) => void,
       upsertAndActivateAgentProfile: (p: Record<string, unknown>) => void,
       shellLocalStorage: Storage,
-      legacyKey: string,
     ) => () => void;
 
     const client = { setToken: (t: string) => adopted.push(t) };
@@ -367,7 +365,6 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
       persistence.savePersistedActiveServer,
       agentProfiles.upsertAndActivateAgentProfile,
       realm.shellLocalStorage,
-      "eliza:cloud-pair:api-token",
     );
     bootAdopter();
     phases.push({
@@ -389,7 +386,7 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
     });
 
     // Phase 4 — global disconnect/sign-out: the no-agentId clear purges every
-    // scoped key plus the legacy global key from BOTH storages.
+    // scoped key from both storages.
     tokenState.clearCloudPairApiToken();
     phases.push({
       phase: "4-after-global-clear",
@@ -502,10 +499,10 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
     expect(phase3.storage.localStorage[AGENT_B_KEY]).toBe(TOKEN_B);
     expect(phase3.storage.sessionStorage[AGENT_B_KEY]).toBe(TOKEN_B);
 
-    // Phase 4 assertions — global clear purges every scoped key + legacy key.
+    // Phase 4 assertions — global clear purges scoped keys and preserves unrelated storage.
     expect(phase4.storage.localStorage[AGENT_B_KEY]).toBeUndefined();
     expect(phase4.storage.sessionStorage[AGENT_B_KEY]).toBeUndefined();
-    expect(phase4.storage.localStorage[LEGACY_KEY]).toBeUndefined();
+    expect(phase4.storage.localStorage[LEGACY_KEY]).toBe(LEGACY_TOKEN);
     expect(phase4.storage.sessionStorage[LEGACY_KEY]).toBeUndefined();
 
     // Manifest.
@@ -531,10 +528,10 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
         "Assertions (all green in this run):",
         "- Phase 1: per-agent key A in localStorage AND sessionStorage; legacy key present",
         "- Phase 2: boot adopter adopts ONLY agent A's token; agent B token never adopted;",
-        "  legacy token not adopted without ownership proof; active-server mirrors token A",
+        "  unscoped token is never adopted; active-server mirrors token A",
         "- Phase 3: scoped clear purges agent A key from BOTH storages; agent B key AND the",
         "  legacy global key (unknown owner) untouched",
-        "- Phase 4: global clear purges every scoped key plus the legacy key from BOTH storages",
+        "- Phase 4: global clear purges scoped keys from both storages",
       ].join("\n"),
     );
 

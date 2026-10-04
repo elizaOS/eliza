@@ -370,7 +370,8 @@
     "viem": "^2.56.9",
     "vite": "^8.3.0",
     "vitest": "^5.0.2",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "@elizaos/repository-tools": "workspace:*"
   },
   "elizaos": {
     "app": {
@@ -431,112 +432,10 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./desktop-shell": {
-      "eliza-source": "./src/desktop-shell.ts",
-      "types": "./dist/desktop-shell.d.ts",
-      "import": "./dist/desktop-shell.js",
-      "default": "./dist/desktop-shell.js"
-    },
     "./entry": {
       "types": "./dist/entry.d.ts",
       "import": "./dist/entry.js",
       "default": "./dist/entry.js"
-    },
-    "./api/auth": {
-      "types": "./dist/api/auth.d.ts",
-      "import": "./dist/api/auth.js",
-      "default": "./dist/api/auth.js"
-    },
-    "./api/cloud-pair-route": {
-      "types": "./dist/api/cloud-pair-route.d.ts",
-      "import": "./dist/api/cloud-pair-route.js",
-      "default": "./dist/api/cloud-pair-route.js"
-    },
-    "./api/compat-route-shared": {
-      "types": "./dist/api/compat-route-shared.d.ts",
-      "import": "./dist/api/compat-route-shared.js",
-      "default": "./dist/api/compat-route-shared.js"
-    },
-    "./api/ios-local-agent-transport": {
-      "types": "./dist/renderer/transports/ios-local-agent-transport.d.ts",
-      "import": "./dist/renderer/transports/ios-local-agent-transport.js",
-      "default": "./dist/renderer/transports/ios-local-agent-transport.js"
-    },
-    "./api/response": {
-      "types": "./dist/api/response.d.ts",
-      "import": "./dist/api/response.js",
-      "default": "./dist/api/response.js"
-    },
-    "./services/vault-mirror": {
-      "types": "./dist/services/vault-mirror.d.ts",
-      "import": "./dist/services/vault-mirror.js",
-      "default": "./dist/services/vault-mirror.js"
-    },
-    "./services/auth-store": {
-      "eliza-source": "./src/services/auth-store.ts",
-      "types": "./dist/services/auth-store.d.ts",
-      "import": "./dist/services/auth-store.js",
-      "default": "./dist/services/auth-store.js"
-    },
-    "./security/agent-vault-id": {
-      "types": "./dist/security/agent-vault-id.d.ts",
-      "import": "./dist/security/agent-vault-id.js",
-      "default": "./dist/security/agent-vault-id.js"
-    },
-    "./security/platform-secure-store-node": {
-      "types": "./dist/security/platform-secure-store-node.d.ts",
-      "import": "./dist/security/platform-secure-store-node.js",
-      "default": "./dist/security/platform-secure-store-node.js"
-    },
-    "./services/steward-credentials": {
-      "types": "./dist/services/steward-credentials.d.ts",
-      "import": "./dist/services/steward-credentials.js",
-      "default": "./dist/services/steward-credentials.js"
-    },
-    "./services/steward-sidecar/helpers": {
-      "types": "./dist/services/steward-sidecar/helpers.d.ts",
-      "import": "./dist/services/steward-sidecar/helpers.js",
-      "default": "./dist/services/steward-sidecar/helpers.js"
-    },
-    "./platform/native-plugin-entrypoints": {
-      "types": "./dist/platform/native-plugin-entrypoints.d.ts",
-      "import": "./dist/platform/native-plugin-entrypoints.js",
-      "default": "./dist/platform/native-plugin-entrypoints.js"
-    },
-    "./platform/ios-runtime-backends": {
-      "types": "./dist/platform/ios-runtime-backends.d.ts",
-      "import": "./dist/platform/ios-runtime-backends.js",
-      "default": "./dist/platform/ios-runtime-backends.js"
-    },
-    "./dev-settings-banner-style": {
-      "eliza-source": "./src/dev-settings-banner-style.ts",
-      "types": "./dist/dev-settings-banner-style.d.ts",
-      "import": "./dist/dev-settings-banner-style.js",
-      "default": "./dist/dev-settings-banner-style.js"
-    },
-    "./dev-settings-figlet-heading": {
-      "eliza-source": "./src/dev-settings-figlet-heading.ts",
-      "types": "./dist/dev-settings-figlet-heading.d.ts",
-      "import": "./dist/dev-settings-figlet-heading.js",
-      "default": "./dist/dev-settings-figlet-heading.js"
-    },
-    "./dev-settings-table": {
-      "eliza-source": "./src/dev-settings-table.ts",
-      "types": "./dist/dev-settings-table.d.ts",
-      "import": "./dist/dev-settings-table.js",
-      "default": "./dist/dev-settings-table.js"
-    },
-    "./terminal/links": {
-      "eliza-source": "./src/terminal/links.ts",
-      "types": "./dist/terminal/links.d.ts",
-      "import": "./dist/terminal/links.js",
-      "default": "./dist/terminal/links.js"
-    },
-    "./terminal/theme": {
-      "eliza-source": "./src/terminal/theme.ts",
-      "types": "./dist/terminal/theme.d.ts",
-      "import": "./dist/terminal/theme.js",
-      "default": "./dist/terminal/theme.js"
     },
     "./browser": {
       "eliza-source": "./src/browser.ts",
@@ -544,7 +443,25 @@
       "import": "./dist/browser.js",
       "default": "./dist/browser.js"
     },
-    "./native-host/*": "./native-host/*.mjs"
+    "./auth": {
+      "browser": null,
+      "eliza-source": "./src/auth.ts",
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js",
+      "default": "./dist/auth.js"
+    },
+    "./dev-tools": {
+      "browser": null,
+      "eliza-source": "./src/dev-tools.ts",
+      "types": "./dist/dev-tools.d.ts",
+      "import": "./dist/dev-tools.js",
+      "default": "./dist/dev-tools.js"
+    },
+    "./native-host": {
+      "browser": null,
+      "import": "./native-host/index.mjs",
+      "default": "./native-host/index.mjs"
+    }
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",

@@ -10,7 +10,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import type {
   PlatformSecureStore,
   SecureStoreSecretKind,
@@ -65,9 +64,7 @@ function createStewardSecureStore(
   return options.secureStore ?? createNodePlatformSecureStore();
 }
 
-function readCredentialsFile():
-  | (Partial<PersistedStewardCredentials> & StewardCredentialsMetadata)
-  | null {
+function readCredentialsFile(): StewardCredentialsMetadata | null {
   const credPath = resolveCredentialsPath();
   try {
     if (!fs.existsSync(credPath)) {
@@ -75,7 +72,7 @@ function readCredentialsFile():
     }
     return JSON.parse(
       fs.readFileSync(credPath, "utf-8"),
-    ) as Partial<PersistedStewardCredentials> & StewardCredentialsMetadata;
+    ) as StewardCredentialsMetadata;
   } catch {
     // error-policy:J3 absent/invalid credentials JSON
     return null;
@@ -234,26 +231,6 @@ async function restoreStewardSecrets(
   }
 }
 
-async function migrateLegacyFileSecrets(
-  store: PlatformSecureStore,
-  vaultId: string,
-  parsed: Partial<PersistedStewardCredentials> & StewardCredentialsMetadata,
-): Promise<void> {
-  const migrated: Partial<PersistedStewardCredentials> = {};
-  for (const field of Object.keys(
-    STEWARD_SECRET_KINDS,
-  ) as StewardCredentialSecretField[]) {
-    const value = parsed[field];
-    if (typeof value === "string" && value.trim()) {
-      await writeStewardSecret(store, vaultId, field, value);
-      migrated[field] = value.trim();
-    }
-  }
-  if (Object.keys(migrated).length > 0) {
-    writeCredentialsMetadata({ ...parsed, ...migrated });
-  }
-}
-
 /**
  * Load persisted steward credentials from metadata + platform secure store.
  * Returns null if credentials are missing or unreadable.
@@ -265,15 +242,8 @@ export async function loadStewardCredentials(
   if (!parsed) return null;
 
   const store = createStewardSecureStore(options);
-  const hasLegacySecrets = (
-    Object.keys(STEWARD_SECRET_KINDS) as StewardCredentialSecretField[]
-  ).some((field) => {
-    const value = parsed[field];
-    return typeof value === "string" && value.trim().length > 0;
-  });
   if (await store.isAvailable()) {
     const vaultId = deriveAgentVaultId();
-    await migrateLegacyFileSecrets(store, vaultId, parsed);
 
     const secureValues: Partial<
       Pick<PersistedStewardCredentials, StewardCredentialSecretField>
@@ -304,12 +274,6 @@ export async function loadStewardCredentials(
       agentName: parsed.agentName,
       createdAt: parsed.createdAt,
     };
-  }
-
-  if (hasLegacySecrets) {
-    throw new Error(
-      "platform secure store is unavailable; plaintext Steward credentials were retained for recovery",
-    );
   }
 
   const apiUrl = parsed.apiUrl || null;

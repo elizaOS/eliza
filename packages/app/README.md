@@ -3,8 +3,9 @@
 Eliza application host, renderer, and native platform tooling for web, desktop, iOS, and
 Android.
 
-`@elizaos/app` is the Node host API. Use `@elizaos/app/browser` or
-`@elizaos/app/desktop-shell` for renderer composition. Import shared contracts,
+`@elizaos/app` is the Node host API. Use `@elizaos/app/browser`
+for renderer composition, `@elizaos/app/auth` for request authorization,
+and `@elizaos/app/dev-tools` for launcher diagnostics. Import shared contracts,
 UI and authentication from their owning packages; the host barrel does not relay them.
 
 Start the app and API with `bun run dev` from the repository root. Native targets

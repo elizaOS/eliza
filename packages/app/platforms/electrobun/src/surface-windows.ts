@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop surface windows ts behavior for app shell integration. */
 import { getBrandConfig } from "./brand-config";
 
 export type DetachedSurface =
@@ -79,7 +78,6 @@ interface SurfaceWindowManagerOptions {
 	createWindow: (options: CreateManagedWindowOptions) => ManagedWindowLike;
 	resolveRendererUrl: () => Promise<string>;
 	readPreload: () => string;
-	wireRpc: (window: ManagedWindowLike) => void;
 	injectApiBase: (window: ManagedWindowLike) => void;
 	onWindowFocused?: (window: ManagedWindowLike) => void;
 	onRegistryChanged?: () => void;
@@ -198,7 +196,6 @@ export class SurfaceWindowManager {
 	private readonly createWindowFn: SurfaceWindowManagerOptions["createWindow"];
 	private readonly resolveRendererUrlFn: SurfaceWindowManagerOptions["resolveRendererUrl"];
 	private readonly readPreloadFn: SurfaceWindowManagerOptions["readPreload"];
-	private readonly wireRpcFn: SurfaceWindowManagerOptions["wireRpc"];
 	private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
 	private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
 	private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
@@ -215,7 +212,6 @@ export class SurfaceWindowManager {
 		this.createWindowFn = options.createWindow;
 		this.resolveRendererUrlFn = options.resolveRendererUrl;
 		this.readPreloadFn = options.readPreload;
-		this.wireRpcFn = options.wireRpc;
 		this.injectApiBaseFn = options.injectApiBase;
 		this.onWindowFocused = options.onWindowFocused;
 		this.onRegistryChanged = options.onRegistryChanged;
@@ -508,7 +504,6 @@ export class SurfaceWindowManager {
 		};
 
 		this.windows.set(id, record);
-		this.wireRpcFn(window);
 		this.onWindowFocused?.(window);
 		window.webview.on("dom-ready", () => {
 			this.injectApiBaseFn(window);

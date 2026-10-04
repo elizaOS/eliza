@@ -14,14 +14,14 @@ import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
 import { decodePathComponent } from "@elizaos/agent/api/server-helpers";
 import {
+  authStoreForRuntime,
   ensureRouteAuthorized,
   ensureSessionForRequest,
   getCompatApiToken,
   getProvidedApiToken,
+  isTrustedLocalRequest,
   tokenMatches,
-} from "@elizaos/app/api/auth";
-import { isTrustedLocalRequest } from "@elizaos/app/api/compat-route-shared";
-import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
+} from "@elizaos/app/auth";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type AgentRuntime,

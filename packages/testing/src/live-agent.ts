@@ -12,19 +12,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, it } from "vitest";
+import { SQLiteDatabaseAdapter } from "./sqlite-adapter.ts";
 
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
-export type LiveProviderId =
-  | "openai"
-  | "anthropic"
-  | "groq"
-  | "openrouter"
-  | "xai"
-  | "elizacloud"
-  | "cerebras";
+export type LiveProviderId = "openai" | "anthropic" | "elizacloud" | "cerebras";
 export interface LiveAgentTestOptions {
   /** Required env vars. If any is missing, the suite skips with a warning. */
   requiredEnv: string[];
@@ -51,44 +44,22 @@ const DEFAULT_SYSTEM_PROMPT =
   "Concise, helpful assistant for end-to-end testing. " +
   "Always respond in plain text. Keep answers short (1-3 sentences) unless asked otherwise.";
 interface ProviderConfig {
-  pluginPath: string;
   bareSpecifier: string;
   pluginExportNames: string[];
   defaultRequiredEnv: string[];
 }
 const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
   openai: {
-    pluginPath: "../../../../plugins/plugin-openai/index.ts",
     bareSpecifier: "@elizaos/plugin-openai",
     pluginExportNames: ["openaiPlugin", "default"],
     defaultRequiredEnv: ["OPENAI_API_KEY"],
   },
   anthropic: {
-    pluginPath: "../../../../plugins/plugin-anthropic/index.ts",
     bareSpecifier: "@elizaos/plugin-anthropic",
     pluginExportNames: ["anthropicPlugin", "default"],
     defaultRequiredEnv: ["ANTHROPIC_API_KEY"],
   },
-  groq: {
-    pluginPath: "../../../../plugins/plugin-groq/index.ts",
-    bareSpecifier: "@elizaos/plugin-groq",
-    pluginExportNames: ["groqPlugin", "default"],
-    defaultRequiredEnv: ["GROQ_API_KEY"],
-  },
-  openrouter: {
-    pluginPath: "../../../../plugins/plugin-openrouter/index.ts",
-    bareSpecifier: "@elizaos/plugin-openrouter",
-    pluginExportNames: ["openrouterPlugin", "default"],
-    defaultRequiredEnv: ["OPENROUTER_API_KEY"],
-  },
-  xai: {
-    pluginPath: "../../../../plugins/plugin-xai/index.ts",
-    bareSpecifier: "@elizaos/plugin-xai",
-    pluginExportNames: ["XAIPlugin", "default"],
-    defaultRequiredEnv: ["XAI_API_KEY"],
-  },
   elizacloud: {
-    pluginPath: "../../../../plugins/plugin-elizacloud/src/index.ts",
     bareSpecifier: "@elizaos/plugin-elizacloud",
     pluginExportNames: ["elizaOSCloudPlugin", "default"],
     defaultRequiredEnv: ["ELIZAOS_CLOUD_API_KEY"],
@@ -97,41 +68,16 @@ const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
   // the Cerebras OpenAI-compatible endpoint. Useful for tests that explicitly
   // want Cerebras even when OPENAI_API_KEY is set to a real OpenAI key.
   cerebras: {
-    pluginPath: "../../../../plugins/plugin-openai/index.ts",
     bareSpecifier: "@elizaos/plugin-openai",
     pluginExportNames: ["openaiPlugin", "default"],
     defaultRequiredEnv: ["CEREBRAS_API_KEY"],
   },
 };
-/**
- * Resolve the workspace plugin via explicit relative file import first, falling
- * back to the bare specifier (which may point at a published copy hoisted in
- * `node_modules`). Same pattern as `packages/core/e2e/setup/global-setup.ts`.
- */
-async function importWorkspacePlugin(
-  relativeFromHere: string,
-  bareSpecifier: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const mod = (await import(
-      new URL(relativeFromHere, import.meta.url).href
-    )) as Record<string, unknown>;
-    return mod;
-  } catch {
-    try {
-      const mod = (await import(bareSpecifier)) as Record<string, unknown>;
-      return mod;
-    } catch {
-      return null;
-    }
-  }
-}
 async function resolveProviderPlugin(
   provider: LiveProviderId,
 ): Promise<Plugin | null> {
   const cfg = PROVIDER_CONFIG[provider];
-  const mod = await importWorkspacePlugin(cfg.pluginPath, cfg.bareSpecifier);
-  if (!mod) return null;
+  const mod = (await import(cfg.bareSpecifier)) as Record<string, unknown>;
   for (const name of cfg.pluginExportNames) {
     const candidate = mod[name];
     if (candidate) return candidate as Plugin;
@@ -148,15 +94,9 @@ async function loadExtraPlugin(
 ): Promise<Plugin | null> {
   const path = typeof entry === "string" ? entry : entry.path;
   const named = typeof entry === "string" ? undefined : entry.name;
-  try {
-    const mod = (await import(path)) as Record<string, unknown>;
-    const candidate = named
-      ? mod[named]
-      : (mod.default ?? Object.values(mod)[0]);
-    return (candidate as Plugin | undefined) ?? null;
-  } catch {
-    return null;
-  }
+  const mod = (await import(path)) as Record<string, unknown>;
+  const candidate = named ? mod[named] : mod.default;
+  return (candidate as Plugin | undefined) ?? null;
 }
 function applyProviderSettings(
   runtime: AgentRuntime,
@@ -203,72 +143,6 @@ function applyProviderSettings(
         process.env.ANTHROPIC_API_KEY ?? "",
         true,
       );
-      break;
-    case "google":
-      runtime.setSetting(
-        "GOOGLE_GENERATIVE_AI_API_KEY",
-        process.env.GOOGLE_API_KEY ??
-          process.env.GOOGLE_AI_API_KEY ??
-          process.env.GOOGLE_GENERATIVE_AI_API_KEY ??
-          "",
-        true,
-      );
-      break;
-    case "groq":
-      runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
-      runtime.setSetting(
-        "GROQ_SMALL_MODEL",
-        process.env.GROQ_SMALL_MODEL ?? "openai/gpt-oss-120b",
-      );
-      runtime.setSetting(
-        "GROQ_LARGE_MODEL",
-        process.env.GROQ_LARGE_MODEL ?? "openai/gpt-oss-120b",
-      );
-      break;
-    case "openrouter":
-      runtime.setSetting(
-        "OPENROUTER_API_KEY",
-        process.env.OPENROUTER_API_KEY ?? "",
-        true,
-      );
-      break;
-    case "ollama": {
-      const endpoint =
-        process.env.OLLAMA_API_ENDPOINT?.trim() ||
-        process.env.OLLAMA_API_URL?.trim() ||
-        "";
-      runtime.setSetting("OLLAMA_API_ENDPOINT", endpoint, true);
-      if (process.env.OLLAMA_SMALL_MODEL) {
-        runtime.setSetting(
-          "OLLAMA_SMALL_MODEL",
-          process.env.OLLAMA_SMALL_MODEL,
-        );
-      }
-      if (process.env.OLLAMA_LARGE_MODEL) {
-        runtime.setSetting(
-          "OLLAMA_LARGE_MODEL",
-          process.env.OLLAMA_LARGE_MODEL,
-        );
-      }
-      if (process.env.OLLAMA_EMBEDDING_MODEL) {
-        runtime.setSetting(
-          "OLLAMA_EMBEDDING_MODEL",
-          process.env.OLLAMA_EMBEDDING_MODEL,
-        );
-      }
-      break;
-    }
-    case "xai":
-      runtime.setSetting("XAI_API_KEY", process.env.XAI_API_KEY ?? "", true);
-      if (process.env.XAI_BASE_URL) {
-        runtime.setSetting("XAI_BASE_URL", process.env.XAI_BASE_URL);
-      }
-      if (process.env.XAI_LARGE_MODEL) {
-        runtime.setSetting("XAI_LARGE_MODEL", process.env.XAI_LARGE_MODEL);
-      }
-      if (process.env.XAI_SMALL_MODEL) {
-        runtime.setSetting("XAI_SMALL_MODEL", process.env.XAI_SMALL_MODEL);
-      }
       break;
     case "elizacloud":
       runtime.setSetting(
@@ -392,84 +266,78 @@ function effectiveRequiredEnv(opts: LiveAgentTestOptions): {
     : missing;
   return { missing: filtered, hasCerebrasFallback };
 }
-/**
- * Ping the Ollama server's `/api/tags` endpoint with a 2-second timeout.
- * Returns true if the server responds 2xx, false otherwise. Used to skip
- * Ollama live tests cleanly when OLLAMA_API_ENDPOINT is set but no server
- * is actually running.
- */
-export async function pingOllamaReachable(endpoint: string): Promise<boolean> {
-  const base = endpoint.replace(/\/api\/?$/, "").replace(/\/$/, "");
-  if (!base) return false;
-  try {
-    const res = await fetch(`${base}/api/tags`, {
-      method: "GET",
-      signal: AbortSignal.timeout(2000),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 export async function buildLiveHarness(
   opts: LiveAgentTestOptions,
 ): Promise<LiveAgentHarness> {
   const provider = opts.provider ?? "openai";
   const restoreEnv = maybeApplyCerebrasAlias(provider);
-  const providerPlugin = await resolveProviderPlugin(provider);
-  if (!providerPlugin) {
-    restoreEnv();
-    throw new Error(
-      `[live-agent-test] failed to resolve provider plugin for ${provider}`,
-    );
-  }
-  const plugins: Plugin[] = [providerPlugin];
-  for (const entry of opts.extraPlugins ?? []) {
-    const extra = await loadExtraPlugin(entry);
-    if (!extra) {
-      throw new Error(
-        `[live-agent-test] failed to load extra plugin: ${typeof entry === "string" ? entry : entry.path}`,
-      );
-    }
-    plugins.push(extra);
-  }
-  const agentId = randomUUID() as UUID;
-  const character: Character = {
-    id: agentId,
-    name: "LiveTestAgent",
-    system: opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
-    bio: ["Live e2e test agent"],
-    templates: {},
-    messageExamples: [],
-    postExamples: [],
-    topics: ["testing"],
-    adjectives: ["helpful", "concise"],
-    knowledge: [],
-    plugins: [],
-    secrets: {},
-    settings: {},
-  };
-  const runtime = new AgentRuntime({
-    agentId,
-    character,
-    plugins,
-    checkShouldRespond: false,
-    logLevel: "warn",
-  });
-  const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
-  runtime.registerDatabaseAdapter(adapter);
-  await adapter.init();
-  applyProviderSettings(runtime, provider);
-  await runtime.initialize();
+  let runtime: AgentRuntime | undefined;
   const close = async (): Promise<void> => {
     try {
-      await runtime.stop();
+      await runtime?.stop();
     } finally {
       restoreEnv();
     }
   };
-  return { agentId, runtime, close };
+  try {
+    const providerPlugin = await resolveProviderPlugin(provider);
+    if (!providerPlugin) {
+      throw new Error(
+        `[live-agent-test] failed to resolve provider plugin for ${provider}`,
+      );
+    }
+    const plugins: Plugin[] = [providerPlugin];
+    for (const entry of opts.extraPlugins ?? []) {
+      const extra = await loadExtraPlugin(entry);
+      if (!extra) {
+        throw new Error(
+          `[live-agent-test] failed to load extra plugin: ${typeof entry === "string" ? entry : entry.path}`,
+        );
+      }
+      plugins.push(extra);
+    }
+    const agentId = randomUUID() as UUID;
+    const character: Character = {
+      id: agentId,
+      name: "LiveTestAgent",
+      system: opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+      bio: ["Live e2e test agent"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful", "concise"],
+      knowledge: [],
+      plugins: [],
+      secrets: {},
+      settings: {},
+    };
+    runtime = new AgentRuntime({
+      agentId,
+      character,
+      plugins,
+      checkShouldRespond: false,
+      logLevel: "warn",
+    });
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+    runtime.registerDatabaseAdapter(adapter);
+    await adapter.init();
+    applyProviderSettings(runtime, provider);
+    await runtime.initialize();
+    return { agentId, runtime, close };
+  } catch (error) {
+    try {
+      await close();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "Live runtime startup and cleanup failed",
+      );
+    }
+    throw error;
+  }
 }
+
 /**
  * Resolve the auto-defaulted required env for a provider. Callers may pass
  * `requiredEnv: []` to fall back entirely on the provider's defaults.
@@ -492,18 +360,12 @@ function emitSkip(name: string, reason: string): void {
  * Register a vitest `describe` block that boots a real AgentRuntime against a
  * live LLM provider. When required env is missing, the suite is skipped with
  * a yellow warning.
- *
- * This function is async because some providers (currently `ollama`) need a
- * pre-flight network reachability check before tests are registered. Callers
- * should `await describeLive(...)` at module top level — vitest supports
- * top-level await in test files.
  */
-export async function describeLive(
+export function describeLive(
   name: string,
   opts: LiveAgentTestOptions,
   body: (ctx: { harness: () => LiveAgentHarness }) => void,
-): Promise<void> {
-  const provider = opts.provider ?? "openai";
+): void {
   const required = defaultedRequiredEnv({
     ...opts,
     requiredEnv: opts.requiredEnv,
@@ -513,21 +375,6 @@ export async function describeLive(
     const reason = `missing required env: ${missing.join(", ")} (set ${missing.join(", ")} to enable)`;
     emitSkip(name, reason);
     return;
-  }
-  // Ollama-specific: env is set, but the server might not be running.
-  // Do a 2s reachability ping before registering tests so unreachable
-  // servers produce a clean skip instead of long timeouts.
-  if (provider === "ollama") {
-    const endpoint =
-      process.env.OLLAMA_API_ENDPOINT?.trim() ||
-      process.env.OLLAMA_API_URL?.trim() ||
-      "";
-    const reachable = await pingOllamaReachable(endpoint);
-    if (!reachable) {
-      const reason = `OLLAMA_API_ENDPOINT=${endpoint} unreachable (start ollama or unset OLLAMA_API_ENDPOINT to skip cleanly)`;
-      emitSkip(name, reason);
-      return;
-    }
   }
   describe(name, () => {
     let harness: LiveAgentHarness | null = null;

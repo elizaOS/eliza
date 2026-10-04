@@ -1,5 +1,3 @@
-/** Implements Electrobun desktop rpc handler slices ts behavior for app shell integration. */
-
 import { showBackgroundNoticeOnce } from "./background-notice";
 import type { DynamicViewRegistry } from "./dynamic-views/registry";
 import type { DynamicViewSessionManager } from "./dynamic-views/session-manager";

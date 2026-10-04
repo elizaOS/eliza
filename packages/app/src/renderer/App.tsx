@@ -36,7 +36,6 @@ import {
   AppsPageView,
   AppWorkspaceContent,
   AssistantOverlay,
-  applyLaunchConnection,
   appShellAgentSurfaceDescriptor,
   appShellPageIsAvailable,
   appShellPageMatchesPath,
@@ -53,16 +52,11 @@ import {
   CloudPairRelay,
   CloudSignInRecoveryView,
   ConnectionLostOverlay,
-  type ConnectRequestResult,
   CustomActionEditor,
   CustomActionsPanel,
   clearCloudAuthFirstScreenGreeting,
-  clearPendingRemoteFirstRun,
-  client,
   cloudAuthFirstScreenOwnsHost,
   cn,
-  completeRemoteAgentFirstRun,
-  confirmDesktopAction,
   createNavigateViewHandler,
   type DesktopBottomBarSurfaceState,
   DesktopTabBar,
@@ -101,7 +95,6 @@ import {
   isElizaCloudRuntimeLocked,
   isImmersiveWallpaperRoute,
   isIOS,
-  isLoopbackGatewayHost,
   isManagedCloudRuntime,
   isNative,
   isRouteRootPath,
@@ -111,7 +104,6 @@ import {
   KioskViewCanvas,
   LauncherSurface,
   listAppShellPages,
-  listenForConnectRequests,
   listenForNavigateViewRequests,
   ModelStatusConductorMount,
   markCloudAuthFirstScreenGreeting,
@@ -131,7 +123,6 @@ import {
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
   pathForTab,
-  persistMobileRuntimeModeForServerTarget,
   playCaptureSendCue,
   playCaptureStartCue,
   RetainedLazyComponent,
@@ -188,6 +179,7 @@ import {
   useEnabledViewKinds,
   useFirstRunChatRelease,
   useKioskViewSurfaces,
+  useRemoteConnectRequests,
   useRoutableViews,
   useSecretsManagerModalState,
   useSecretsManagerShortcut,
@@ -251,13 +243,6 @@ import { FirstRunConductorMount } from "./onboarding/use-first-run-conductor";
 // by `AppWorkspaceChrome`'s safe-area floor). The routed `<main>`
 // (`routedShellMainClass`) deliberately does NOT re-apply that clearance —
 // doing so double-counted it and left an oversized empty band under every view.
-function gatewayHostForDisplay(gatewayUrl: string): string {
-  try {
-    return new URL(gatewayUrl).host || gatewayUrl;
-  } catch {
-    return gatewayUrl;
-  }
-}
 // Import the page registry from its standalone module, NOT the
 // `app-shell-components` barrel — that barrel statically re-exports every page
 // view, so importing through it folds all of them back into the main chunk.
@@ -2552,8 +2537,6 @@ function AppContent() {
     tab,
     setTab,
     setState,
-    completeFirstRun,
-    setActionNotice,
     actionNotice,
     activeOverlayApp,
     uiTheme,
@@ -2561,7 +2544,6 @@ function AppContent() {
     activeGameViewerUrl,
     gameOverlayEnabled,
     uiShellMode,
-    uiLanguage,
     t,
     elizaCloudConnected,
     elizaCloudLoginBusy,
@@ -2574,8 +2556,6 @@ function AppContent() {
     tab: s.tab,
     setTab: s.setTab,
     setState: s.setState,
-    completeFirstRun: s.completeFirstRun,
-    setActionNotice: s.setActionNotice,
     actionNotice: s.actionNotice,
     activeOverlayApp: s.activeOverlayApp,
     uiTheme: s.uiTheme,
@@ -2583,7 +2563,6 @@ function AppContent() {
     activeGameViewerUrl: s.activeGameViewerUrl,
     gameOverlayEnabled: s.gameOverlayEnabled,
     uiShellMode: s.uiShellMode,
-    uiLanguage: s.uiLanguage,
     t: s.t,
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
@@ -2628,79 +2607,7 @@ function AppContent() {
     firstRunComplete,
     startupCoordinator.phase,
   );
-  useEffect(() => {
-    if (!isShellPaintableNow) return;
-    const handleConnect = async (payload: {
-      gatewayUrl: string;
-      token?: string;
-      completeFirstRun?: boolean;
-      skipConfirm?: boolean;
-    }): Promise<ConnectRequestResult> => {
-      const shouldCompleteFirstRun = payload.completeFirstRun === true;
-      const skipConfirm = payload.skipConfirm === true;
-      if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
-        const approved = await confirmDesktopAction({
-          type: "warning",
-          title: "Connect to this server?",
-          message: `Point this app at "${gatewayHostForDisplay(payload.gatewayUrl)}"?`,
-          detail:
-            "A link asked to connect this app to a different agent server. Only continue if you trust it — that server will handle your messages and data.",
-          confirmLabel: "Connect",
-          cancelLabel: "Cancel",
-        });
-        if (!approved) {
-          setActionNotice("Connection request cancelled.", "info", 4200);
-          return { status: "cancelled" };
-        }
-      }
-      try {
-        clearPendingRemoteFirstRun();
-        const connection = applyLaunchConnection({
-          kind: "remote",
-          apiBase: payload.gatewayUrl,
-          token: typeof payload.token === "string" ? payload.token : null,
-        });
-        persistMobileRuntimeModeForServerTarget("remote");
-        setState("firstRunRuntimeTarget", "remote");
-        setState("firstRunRemoteApiBase", connection.apiBase);
-        setState("firstRunRemoteToken", connection.token ?? "");
-        setState("firstRunRemoteError", null);
-        if (shouldCompleteFirstRun) {
-          await completeRemoteAgentFirstRun(
-            client,
-            {
-              apiBase: connection.apiBase,
-              token: connection.token,
-              uiLanguage,
-            },
-            completeFirstRun,
-          );
-        }
-        setState("firstRunRemoteConnected", true);
-        setActionNotice("Connected to remote backend.", "success", 4200);
-        retryStartup();
-        return { status: "connected" };
-      } catch (err) {
-        // error-policy:J1 expose failed adoption to both the initiating form and shell notice.
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Failed to connect remote backend.";
-        setState("firstRunRemoteConnected", false);
-        setState("firstRunRemoteError", message);
-        setActionNotice(message, "error", 8000);
-        return { status: "failed", message };
-      }
-    };
-    return listenForConnectRequests(handleConnect);
-  }, [
-    completeFirstRun,
-    isShellPaintableNow,
-    retryStartup,
-    setActionNotice,
-    setState,
-    uiLanguage,
-  ]);
+  useRemoteConnectRequests(isShellPaintableNow);
   const isAgentlessCloudOrigin =
     typeof window !== "undefined" &&
     isTrustedHostedCloudOnboardingBase(

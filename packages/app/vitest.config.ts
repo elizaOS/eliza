@@ -57,13 +57,6 @@ export default defineConfig({
         ),
       },
       {
-        // Same source-mode rule for the desktop-shell subpath the entrypoint
-        // tests import (runIosFullBunSmokeIfRequested): the export maps to
-        // app's dist, which the changed-test lane never builds.
-        find: /^@elizaos\/app\/desktop-shell$/,
-        replacement: path.join(here, "../app/src/desktop-shell.ts"),
-      },
-      {
         // main.tsx imports "@elizaos/ui/styles"; the ui package otherwise
         // resolves to its built dist, whose externalized styles.js makes Node
         // load raw .css. Aliasing to source keeps the stylesheet inside vite's

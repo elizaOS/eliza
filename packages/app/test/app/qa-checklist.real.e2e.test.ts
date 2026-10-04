@@ -1,4 +1,3 @@
-/** Exercises qa checklist real e2e behavior with deterministic app test fixtures. */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -8,10 +7,10 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { getFreePort, waitForChildExit } from "@elizaos/repository-tools";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
@@ -931,55 +930,6 @@ async function startUiProxyServer(args: {
     server.listen(args.port, "127.0.0.1", () => resolve());
   });
   return server;
-}
-
-async function waitForChildExit(
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (child.exitCode != null) {
-    return true;
-  }
-
-  return await new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-
-    const handleExit = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-      child.off("close", handleExit);
-    };
-
-    child.once("exit", handleExit);
-    child.once("close", handleExit);
-  });
-}
-
-async function getFreePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Could not allocate a loopback port"));
-        return;
-      }
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
 }
 
 async function fetchJson<T>(url: string): Promise<T> {

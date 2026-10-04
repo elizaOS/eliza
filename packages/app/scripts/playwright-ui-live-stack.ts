@@ -29,6 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
+import { waitForChildExit } from "@elizaos/repository-tools";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildFirstRunRuntimeConfig } from "../../ui/src/first-run/first-run-config";
 import {
@@ -750,36 +751,6 @@ async function startUiProxyServer(args: {
     server.listen(args.port, "127.0.0.1", () => resolve());
   });
   return server;
-}
-
-async function waitForChildExit(
-  child: CapturedChildProcess,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (child.exitCode != null) {
-    return true;
-  }
-
-  return await new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-
-    const handleExit = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-      child.off("close", handleExit);
-    };
-
-    child.once("exit", handleExit);
-    child.once("close", handleExit);
-  });
 }
 
 async function closeUiServer(uiServer: Server | null): Promise<void> {

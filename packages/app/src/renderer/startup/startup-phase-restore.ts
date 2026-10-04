@@ -92,9 +92,6 @@ const STEWARD_RESTORE_REFRESH_AHEAD_SECS = 120;
  */
 const STEWARD_RESTORE_REFRESH_TIMEOUT_MS =
   STARTUP_TIMING_POLICY.stewardRestoreRefreshTimeoutMs;
-/** Bound the non-blocking legacy runtime-tier repair lookup. */
-const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS =
-  STARTUP_TIMING_POLICY.cloudAgentTierProbeTimeoutMs;
 /** Steward refresh endpoint path (same-origin on web; `api.` host on native). */
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 /** Default direct Cloud site base used to derive the native refresh endpoint. */
@@ -112,58 +109,7 @@ function recoverCloudAgentId(active: PersistedActiveServer): string | null {
   return isCloudPairAgentId(baseAgentId) ? baseAgentId : null;
 }
 /**
- * Repair an older persisted dedicated-looking base when the owner record says
- * it is actually a temporary shared bridge. This runs off the startup critical
- * path: an inconclusive lookup leaves the already-bound target untouched.
- */
-async function reconcileLegacyDedicatedCloudApiBase(
-  active: PersistedActiveServer,
-  ownerToken: string | null,
-): Promise<PersistedActiveServer | null> {
-  if (!ownerToken || !isDedicatedCloudAgentBase(active.apiBase)) return null;
-  const agentId = recoverCloudAgentId(active);
-  if (!agentId) return null;
-  const pageHostname =
-    typeof window !== "undefined" ? window.location.hostname : "";
-  const cloudApiBase = resolveDirectCloudAuthApiBase(
-    resolveCloudEnvironmentBase({
-      pageHostname,
-      apiBase: active.apiBase,
-      bootCloudApiBase: getBootConfig().cloudApiBase,
-      fallback: RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
-    }),
-  );
-  try {
-    const response = await fetch(
-      `${cloudApiBase}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
-      {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${ownerToken}`,
-        },
-        signal: AbortSignal.timeout(CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS),
-      },
-    );
-    if (!response.ok) return null;
-    const payload: unknown = await response.json();
-    if (typeof payload !== "object" || payload === null) return null;
-    const data = (payload as Record<string, unknown>).data;
-    if (typeof data !== "object" || data === null) return null;
-    const tier = (data as Record<string, unknown>).executionTier;
-    if (tier !== "shared") return null;
-    return {
-      ...active,
-      apiBase: buildCloudSharedAgentApiBase(cloudApiBase, agentId),
-    };
-  } catch {
-    // error-policy:J4 this is a compatibility repair probe; the normal startup
-    // poll remains authoritative when the control plane is temporarily down.
-    return null;
-  }
-}
-/**
- * Repair a restored managed-cloud target using the current environment and,
- * for legacy dedicated-looking records, the server-authoritative runtime tier.
+ * Resolve a restored managed-cloud target using the current environment.
  *
  * Environment priority for dedicated ingress rebuild:
  * live Cloud page host → already-staging persisted base → boot config → prod
@@ -587,15 +533,6 @@ export async function applyRestoredConnection(args: {
       clientRef.setBaseUrl(null);
       return;
     }
-    // The compatibility lookup must use the post-refresh authority. The stored
-    // pre-refresh JWT can be expired, while native/Electrobun restores may
-    // intentionally rely on a host-injected Cloud owner key instead.
-    const controlPlaneOwnerToken = stewardToken ?? nativeOwnerApiKey;
-    const tierRepairPromise =
-      !isManagedSharedControlPlane &&
-      isDedicatedCloudAgentBase(restoredActiveServer.apiBase)
-        ? reconcileLegacyDedicatedCloudApiBase(resolved, controlPlaneOwnerToken)
-        : Promise.resolve(null);
     // Dedicated agent subdomains and explicit local-Docker pair targets use an
     // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
     // its Steward recovery fallback; a loopback process must never receive a
@@ -614,26 +551,6 @@ export async function applyRestoredConnection(args: {
                 resolved.accessToken ||
                 null,
     );
-    void tierRepairPromise.then((repaired) => {
-      if (!repaired || repaired.apiBase === resolved.apiBase) return;
-      if (!isTrustedCloudApiBaseUrl(repaired.apiBase, agentId)) return;
-      const current = loadPersistedActiveServer();
-      // A user can switch agents while the compatibility probe is in flight.
-      // Never overwrite a newer selection; null is allowed for direct unit
-      // callers that did not seed persistence.
-      if (
-        current &&
-        (current.id !== resolved.id || current.apiBase !== resolved.apiBase)
-      ) {
-        return;
-      }
-      savePersistedActiveServer(repaired);
-      clientRef.setToken(null);
-      clientRef.setBaseUrl(repaired.apiBase ?? null);
-      // A shared adapter is a Cloud control-plane target. The same owner
-      // authority that proved the tier must remain installed after rerouting.
-      clientRef.setToken(controlPlaneOwnerToken);
-    });
     return;
   }
   if (

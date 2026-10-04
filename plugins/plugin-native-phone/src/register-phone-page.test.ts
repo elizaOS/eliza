@@ -26,9 +26,9 @@ describe("native Phone page registration", () => {
   });
 
   it("registers /phone with a bundled PhoneView loader", async () => {
-    await import("./register-phone-page");
+    (await import("./register")).registerApp();
 
-    expect(registration.register).toHaveBeenCalledOnce();
+    expect(registration.register).toHaveBeenCalledTimes(2);
     expect(registration.register).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "phone",
@@ -42,7 +42,10 @@ describe("native Phone page registration", () => {
 
   it("does not expose native call controls on web hosts", async () => {
     platform.current = "web";
-    await import("./register-phone-page");
-    expect(registration.register).not.toHaveBeenCalled();
+    (await import("./register")).registerApp();
+    expect(registration.register).toHaveBeenCalledOnce();
+    expect(registration.register).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "phone-companion" }),
+    );
   });
 });

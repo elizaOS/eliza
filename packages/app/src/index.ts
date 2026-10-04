@@ -1,4 +1,4 @@
-/** Node host API. UI and platform composition use the browser and desktop-shell entries. */
+/** Node host API. Renderer composition uses the browser entry. */
 export * from "./api/auth.ts";
 export * from "./api/compat-route-shared";
 export * from "./api/credential-tunnel-routes";
@@ -17,18 +17,11 @@ export * from "./runtime/server-only-process";
 export * from "./security/agent-vault-id";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
 export * from "./security/platform-secure-store-node";
-export * from "./security/wallet-os-store-actions";
+export * from "./security/wallet-secrets";
 export type * from "./services/auth-repository";
 export * from "./services/auth-store";
-export * from "./services/credential-tunnel-service";
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
-// Explicit .ts extension on steward-sidecar.ts disambiguates from the
-// sibling steward-sidecar/ directory: `tsc --rewriteRelativeImportExtensions`
-// emits `./services/steward-sidecar.js` in dist, which Node ESM can resolve
-// without falling through to the directory and crashing on the missing
-// dist/services/steward-sidecar/index.json fallback (the Docker production
-// smoke regression observed on PR #7528 / #7530).
 export * from "./services/steward-sidecar.ts";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";

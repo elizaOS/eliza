@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop database lock ts behavior for app shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseLockSnapshot } from "./database-snapshot";

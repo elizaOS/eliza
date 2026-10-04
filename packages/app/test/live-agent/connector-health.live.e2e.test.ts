@@ -13,9 +13,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { req } from "../helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 
 const LIVE = process.env.ELIZA_LIVE_TEST === "1";

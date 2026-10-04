@@ -1695,10 +1695,7 @@ function buildViteDevSettingsRows(
       effective:
         mode === "dev-server" ? "vite dev (HMR)" : "vite build --watch",
       source: "derived",
-      change:
-        mode === "dev-server"
-          ? `bun run dev (default); ${APP_ENV_PREFIX}_DESKTOP_VITE_BUILD_WATCH=1 for Rollup watch`
-          : `${APP_ENV_PREFIX}_DESKTOP_VITE_WATCH=1 + ${APP_ENV_PREFIX}_DESKTOP_VITE_BUILD_WATCH=1`,
+      change: mode === "dev-server" ? "bun run dev" : "bunx vite build --watch",
     },
   ];
 }
@@ -2668,10 +2665,6 @@ export const INVALID_TRACER_PROVIDER = {};
             ),
           },
           // Desktop shell resolves through its own renderer entry.
-          {
-            find: /^@elizaos\/app\/desktop-shell$/,
-            replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
-          },
         ];
       })(),
     ],

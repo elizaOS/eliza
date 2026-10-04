@@ -1513,7 +1513,9 @@ describe("App navigate-view event wiring", () => {
     const platform = vi
       .spyOn(Capacitor, "getPlatform")
       .mockReturnValue("android");
-    await import("../../../../plugins/plugin-native-contacts/src/register");
+    (
+      await import("../../../../plugins/plugin-native-contacts/src/register")
+    ).registerApp();
     const registration = listAppShellPages().find(
       (entry) => entry.id === "contacts",
     );

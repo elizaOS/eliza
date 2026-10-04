@@ -13,8 +13,6 @@ import {
   setBootConfig,
 } from "../../../config/boot-config";
 import {
-  CLOUD_PAIR_LOCAL_STORAGE_KEY,
-  CLOUD_PAIR_SESSION_STORAGE_KEY,
   CloudHostedAgentAuthNotice,
   CloudPairExchangeError,
   CloudPairRelay,
@@ -202,13 +200,6 @@ describe("CloudPairRelay", () => {
     expect(
       window.localStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
     ).toBe("agent-key");
-    // The legacy global key is migrated away once the scoped write lands.
-    expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
-      null,
-    );
-    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      null,
-    );
     expect(
       (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__,
     ).toEqual(expect.objectContaining({ apiToken: "agent-key" }));
@@ -218,9 +209,7 @@ describe("CloudPairRelay", () => {
       /owner agent id/,
     );
   });
-  it("keeps a legacy global token when BOTH scoped writes fail", () => {
-    window.localStorage.setItem(CLOUD_PAIR_LOCAL_STORAGE_KEY, "legacy-key");
-    window.sessionStorage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, "legacy-key");
+  it("reports persistence failure when both storage writes fail", () => {
     // jsdom's Storage getters hand back a fresh proxy per access, so spying on
     // `setItem` never intercepts the write. Replace the getters with failing
     // storages for the duration of the call instead.
@@ -244,8 +233,6 @@ describe("CloudPairRelay", () => {
       get: failingStorage,
     });
     try {
-      // Neither storage channel accepted the write, so persistence fails
-      // loudly (pre-existing contract) and the legacy key is never touched.
       expect(() => persistCloudPairApiToken("agent-key", "agent-123")).toThrow(
         /could not be stored/,
       );
@@ -259,10 +246,6 @@ describe("CloudPairRelay", () => {
         get: () => realSession,
       });
     }
-    // Legacy key survives because no scoped write landed.
-    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      "legacy-key",
-    );
   });
   it("persists the authoritative response owner on a non-dedicated origin", async () => {
     const onPaired = vi.fn();
@@ -314,13 +297,6 @@ describe("CloudPairRelay", () => {
     expect(window.sessionStorage.getItem(scoped)).toBe("agent-key");
     expect(
       window.localStorage.getItem(cloudPairTokenKeyForAgent(OTHER_AGENT_ID)),
-    ).toBeNull();
-    // Legacy global key is superseded and removed once the scoped write lands.
-    expect(
-      window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY),
-    ).toBeNull();
-    expect(
-      window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY),
     ).toBeNull();
   });
   it("shows a clean Cloud-pair error instead of the local password form", async () => {

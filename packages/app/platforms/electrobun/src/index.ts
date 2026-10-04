@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop index ts behavior for app shell integration. */
 import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
@@ -1690,17 +1689,6 @@ function toggleFocusedWindowDevTools(): void {
 type ElizaDesktopRpc = ReturnType<
 	typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>
 >;
-/**
- * Internal: type-erased view of the rpc shape that
- * `wireBrowserWorkspaceCaller` consumes. The handler module declares its
- * own structural type with `params: any`, so we widen here at the
- * boundary instead of forcing every consumer to import that internal.
- */
-// biome-ignore lint/suspicious/noExplicitAny: bridges typed rpc.request to the handler-module's any-params signature
-type RpcRequestProxy = Record<string, (params: any) => Promise<any>>;
-function asRpcRequestProxy(request: unknown): RpcRequestProxy {
-	return request as RpcRequestProxy;
-}
 function asRpcSend(
 	send: unknown,
 ): (message: string, payload?: unknown) => void {
@@ -1791,21 +1779,7 @@ function wireMainWindowAfterCreate(
 	initializeNativeModules(win, sendToWebview);
 	setStewardSendToWebview(sendToWebview);
 	wireBrowserWorkspaceCaller({
-		request: asRpcRequestProxy(rpc.request),
-	});
-}
-/**
- * Wire RPC for a secondary window (e.g. settings) after constructor-time
- * injection. Does NOT call `initializeNativeModules` — that would
- * overwrite the main window reference on DesktopManager and other
- * singletons.
- *
- * This keeps the call site symmetric with the main window even though
- * settings windows don't need most of the wiring.
- */
-function wireSettingsRpcAfterCreate(rpc: ElizaDesktopRpc): void {
-	wireBrowserWorkspaceCaller({
-		request: asRpcRequestProxy(rpc.request),
+		request: rpc.request,
 	});
 }
 function injectApiBase(win: BrowserWindow): void {
@@ -2841,10 +2815,6 @@ async function main(): Promise<void> {
 				`[SSH runtime] Failed to read restart intents; all SSH tunnels remain stopped: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		});
-	// Per-window RPC tracking: surface windows each get their own typed
-	// RPC built up front via createDesktopRpc, baked into the BrowserWindow
-	// constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
-	const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
 	surfaceWindowManager = new SurfaceWindowManager({
 		createWindow: (options) => {
 			const { rpc, releaseShellSync } = createDesktopRpc("surface");
@@ -2852,7 +2822,6 @@ async function main(): Promise<void> {
 				...options,
 				rpc,
 			}) as BrowserWindow & ManagedWindowLike;
-			surfaceRpcs.set(window, rpc);
 			// Drop this window's relay endpoint when it closes so a churned detached
 			// surface does not leak (#16442).
 			window.on("close", releaseShellSync);
@@ -2860,16 +2829,6 @@ async function main(): Promise<void> {
 		},
 		resolveRendererUrl,
 		readPreload: () => readResolvedPreloadScript(import.meta.dir),
-		wireRpc: (window) => {
-			const rpc = surfaceRpcs.get(window);
-			if (!rpc) {
-				logger.warn(
-					"[surface-windows] wireRpc called for window with no tracked rpc; skipping browser-workspace caller setup",
-				);
-				return;
-			}
-			wireSettingsRpcAfterCreate(rpc);
-		},
 		injectApiBase: (window) =>
 			injectApiBase(window as BrowserWindow & ManagedWindowLike),
 		onWindowFocused: (window) => {
@@ -3002,7 +2961,6 @@ async function main(): Promise<void> {
 					preload: readResolvedPreloadScript(import.meta.dir),
 					partition: mainWindowPartition,
 					rpc,
-					wireRpc: () => wireSettingsRpcAfterCreate(rpc),
 					injectApiBase,
 					onWindowFocused: (window) => {
 						lastFocusedWindow = window;

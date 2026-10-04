@@ -139,9 +139,7 @@ export function registerDashboardCommand(program: Command) {
       );
       const path = await import("node:path");
       const fs = await import("node:fs");
-      const { resolveElizaPackageRootSync } = await import(
-        "../../utils/eliza-root"
-      );
+      const { resolveElizaPackageRootSync } = await import("@elizaos/host");
       const pkgRoot = resolveElizaPackageRootSync({
         cwd: process.cwd(),
         argv1: process.argv[1],
@@ -152,13 +150,8 @@ export function registerDashboardCommand(program: Command) {
         process.exitCode = 1;
         return;
       }
-      const appDir = [
-        path.join(pkgRoot, "packages", "app"),
-        path.join(pkgRoot, "apps", "app"),
-      ].find((candidate) =>
-        fs.existsSync(path.join(candidate, "package.json")),
-      );
-      if (!appDir) {
+      const appDir = path.join(pkgRoot, "packages", "app");
+      if (!fs.existsSync(path.join(appDir, "package.json"))) {
         console.log(
           theme.error("App UI is not available in this installation."),
         );
