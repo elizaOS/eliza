@@ -23,6 +23,10 @@ import {
   tenantMfaRequiredFor,
 } from "../services/mfa-policy";
 import {
+  matchesOAuthLinkPkce,
+  validOAuthLinkPkce,
+} from "../services/oauth-link-pkce";
+import {
   normalizeInvitationExpiry,
   normalizeOptionalText,
   parseCustomTokenList,
@@ -3070,6 +3074,13 @@ user.post("/me/accounts/oauth/:provider/challenge", async (c) => {
     );
   }
 
+  if (!validOAuthLinkPkce(body?.codeChallenge, body?.codeChallengeMethod)) {
+    return c.json<ApiResponse>(
+      { ok: false, error: "OAuth link PKCE requires a valid S256 challenge" },
+      400,
+    );
+  }
+
   try {
     await assertAllowedOAuthRedirectUri(redirectUri, session.tenantId);
   } catch (err) {
@@ -3146,7 +3157,7 @@ user.post("/me/accounts/oauth/:provider/token", async (c) => {
     typeof body?.redirectUri === "string" ? body.redirectUri.trim() : "";
   const state = typeof body?.state === "string" ? body.state.trim() : "";
   const codeVerifier =
-    typeof body?.codeVerifier === "string" ? body.codeVerifier.trim() : "";
+    typeof body?.codeVerifier === "string" ? body.codeVerifier : "";
   if (!code || !redirectUri || !state) {
     return c.json<ApiResponse>(
       { ok: false, error: "code, redirectUri, and state are required" },
@@ -3201,6 +3212,18 @@ user.post("/me/accounts/oauth/:provider/token", async (c) => {
   if ((challengePayload.tenantId ?? null) !== (session.tenantId ?? null)) {
     return c.json<ApiResponse>(
       { ok: false, error: "OAuth link state tenant mismatch" },
+      401,
+    );
+  }
+  if (
+    !matchesOAuthLinkPkce(
+      challengePayload.codeChallenge,
+      challengePayload.codeChallengeMethod,
+      codeVerifier,
+    )
+  ) {
+    return c.json<ApiResponse>(
+      { ok: false, error: "OAuth link code verifier mismatch" },
       401,
     );
   }
