@@ -1789,9 +1789,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
     return this.withDatabase(async () => {
       // Normalize entity data to ensure names is a proper array
+      const { agentId: _ownerAgentId, ...fields } = entity;
       const normalizedEntity = {
-        ...entity,
-        agentId: this.agentId,
+        ...fields,
         names: this.normalizeEntityNames(entity.names),
         metadata: entity.metadata || {},
       };
