@@ -303,13 +303,7 @@ function buildPrompt(params: {
     latestMessage,
     responseTexts,
     actionResults: Array.isArray(actionResults)
-      ? renderActionResultsForModel(actionResults as ActionResult[], {
-          postTurn: {
-            agentId: runtime.agentId,
-            message,
-            responses: options.responses ?? [],
-          },
-        }).text
+      ? renderActionResultsForModel(actionResults as ActionResult[]).text
       : stringifyForPrompt(actionResults ?? []),
     providerContext,
     // Rendered once here; sections refer to it instead of embedding their

@@ -457,7 +457,7 @@ describe("EvaluatorService", () => {
     },
   );
 
-  it("shares the post-turn delivered-result view without repeating its composition input", async () => {
+  it("keeps complete delivered-result grounding in the shared post-turn model input", async () => {
     const runtime = makeRuntime();
     const message = makeMessage();
     message.agentId = runtime.agentId;
@@ -533,8 +533,8 @@ describe("EvaluatorService", () => {
     expect(prompt).toContain('Action results: see "Action results"');
     expect(prompt).toContain("lifeops-create");
     expect(prompt).toContain("2026-10-03T22:41:23.033Z");
-    expect(prompt).not.toContain("REPLY_ONLY_SENTINEL");
-    expect(prompt).not.toContain("VOICE_ONLY_SENTINEL");
+    expect(prompt).toContain("REPLY_ONLY_SENTINEL");
+    expect(prompt).toContain("VOICE_ONLY_SENTINEL");
     expect(actionResults).toEqual(original);
   });
 
