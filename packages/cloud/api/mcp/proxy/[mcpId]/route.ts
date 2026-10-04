@@ -156,7 +156,7 @@ export function resolveMcpProxyView(params: {
 /**
  * Byte budgets for the two bodies this route buffers into the isolate.
  *
- * The numbers are not new: `@/lib/services/oauth/credential-broker.ts` — the
+ * The numbers are not new: `@elizaos/cloud-shared/lib/services/oauth` — the
  * platform's other "proxy one call to a caller-supplied host" service — caps
  * the request body it accepts at 1 MB and derives its response budget from that
  * cap so the two halves cannot drift (#23900). Same shape of hop, same numbers,

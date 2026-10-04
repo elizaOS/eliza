@@ -127,7 +127,7 @@ test("the scenario executor carries a complete two-service journey and world evi
     path.join(directory, "lease.sqlite"),
   );
   const title = "Cross-service scenario";
-  const body = "Complete issue content. ".repeat(1000) + "final sentinel";
+  const body = `${"Complete issue content. ".repeat(1000)}final sentinel`;
   try {
     const result = await runSyntheticScenario({
       world: {

@@ -107,7 +107,9 @@
 		"native:verify:vulkan": "make -C native/verify vulkan && cd native/verify && ./vulkan_verify",
 		"native:verify:metal": "make -C native/verify metal && cd native/verify && ./metal_verify",
 		"native:clean": "make -C native/verify clean",
-		"bench:streaming": "bun scripts/streaming-pipeline-bench.ts"
+		"bench:streaming": "bun scripts/streaming-pipeline-bench.ts",
+		"bench:stt": "bun scripts/local-stt-bench.ts",
+		"voice:hardware": "bun scripts/voice-e2e-hardware.ts"
 	},
 	"dependencies": {
 		"@elizaos/cloud-routing": "workspace:*",

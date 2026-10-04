@@ -326,12 +326,15 @@ function importPersonalAssistant() {
 }
 
 function importAppPhone() {
-  return cachedDynamicImport("@elizaos/plugin-native-phone", async () => {
-    const { PhoneCompanionApp } = await import(
-      "@elizaos/plugin-native-phone/ui"
-    );
-    return { PhoneCompanionApp };
-  });
+  return cachedDynamicImport(
+    "@elizaos/plugin-native-phone/companion",
+    async () => {
+      const { PhoneCompanionApp } = await import(
+        "@elizaos/plugin-native-phone/companion"
+      );
+      return { PhoneCompanionApp };
+    },
+  );
 }
 
 function importAppTaskCoordinatorRegister() {

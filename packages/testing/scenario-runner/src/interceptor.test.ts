@@ -1,5 +1,4 @@
-import type { Memory, UUID } from "@elizaos/core";
-import type { JsonValue } from "@elizaos/core/protocol";
+import type { JsonValue, Memory, UUID } from "@elizaos/core";
 import { expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../src/mock-runtime.ts";
 import { attachInterceptor } from "./interceptor.ts";

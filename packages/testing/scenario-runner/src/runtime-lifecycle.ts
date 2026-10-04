@@ -20,33 +20,17 @@ export function createScenarioRuntimeLifecycle() {
       resources.push({ label, dispose });
     },
     close(): Promise<void> {
-      return (closing ??= (async () => {
+      closing ??= (async () => {
         const failures: unknown[] = [];
         for (const resource of resources.reverse()) {
-          let timer: ReturnType<typeof setTimeout> | undefined;
           try {
-            await Promise.race([
-              Promise.resolve().then(resource.dispose),
-              new Promise<never>((_, reject) => {
-                timer = setTimeout(
-                  () =>
-                    reject(
-                      new ElizaError(
-                        `Scenario cleanup timed out: ${resource.label}`,
-                        { code: "SCENARIO_RUNTIME_CLEANUP_TIMEOUT" },
-                      ),
-                    ),
-                  30_000,
-                );
-              }),
-            ]);
+            await resource.dispose();
           } catch (error) {
             // error-policy:J6 Attempt every owned disposer and report all failures.
             failures.push(error);
-          } finally {
-            if (timer) clearTimeout(timer);
           }
         }
+
         // No other scenario may change the process environment while this scope owns it.
         for (const key of new Set([
           ...Object.keys(before),
@@ -61,7 +45,8 @@ export function createScenarioRuntimeLifecycle() {
             "Scenario runtime cleanup failed; this process must not be reused",
           );
         active = false;
-      })());
+      })();
+      return closing;
     },
   };
 }

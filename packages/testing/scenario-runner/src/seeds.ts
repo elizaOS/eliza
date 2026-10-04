@@ -7,8 +7,17 @@
  * executor between setup and the first turn.
  */
 
+import {
+  LIFEOPS_REMINDER_CHANNELS,
+  type LifeOpsReminderChannel,
+} from "@elizaos/contracts";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import { createMessageMemory, MemoryType, stringToUuid } from "@elizaos/core";
+import {
+  createMessageMemory,
+  ElizaError,
+  MemoryType,
+  stringToUuid,
+} from "@elizaos/core";
 import { GMAIL_FIXTURE_MESSAGE_IDS } from "../../scripts/mocks/google-gmail-fixtures.ts";
 import type { ScenarioContext, ScenarioSeedStep } from "../schema/index.ts";
 import { isLoopbackUrl } from "./utils.js";
@@ -34,18 +43,17 @@ export function seedFetch(
   });
 }
 
-type LifeOpsRepository = InstanceType<
-  typeof import("@elizaos/plugin-personal-assistant/lifeops/index").LifeOpsRepository
->;
+type LifeOpsRepositoryType =
+  import("@elizaos/plugin-personal-assistant/lifeops/index").LifeOpsRepository;
 type LifeOpsCalendarEventSeedInput = Parameters<
-  LifeOpsRepository["upsertCalendarEvent"]
+  LifeOpsRepositoryType["upsertCalendarEvent"]
 >[0];
 
-type ScenarioScheduledTask = Parameters<
-  LifeOpsRepository["upsertScheduledTask"]
+type LifeOpsScheduledTaskSeedInput = Parameters<
+  LifeOpsRepositoryType["upsertScheduledTask"]
 >[1];
-type ScenarioReminderAttempt = Parameters<
-  LifeOpsRepository["createReminderAttempt"]
+type LifeOpsReminderAttemptSeedInput = Parameters<
+  LifeOpsRepositoryType["createReminderAttempt"]
 >[0];
 
 // Domain operations stay with their owner; the runner interprets scenario seeds.
@@ -1126,11 +1134,11 @@ async function upsertScenarioScheduledTask(
   args: {
     seedKind: string;
     title: string;
-    taskKind?: ScenarioScheduledTask["kind"];
+    taskKind?: LifeOpsScheduledTaskSeedInput["kind"];
     dueAt?: Date;
     priority?: unknown;
-    status?: ScenarioScheduledTask["state"]["status"];
-    subjectKind?: NonNullable<ScenarioScheduledTask["subject"]>["kind"];
+    status?: LifeOpsScheduledTaskSeedInput["state"]["status"];
+    subjectKind?: NonNullable<LifeOpsScheduledTaskSeedInput["subject"]>["kind"];
     subjectId?: string;
     metadata?: Record<string, unknown>;
   },
@@ -1262,25 +1270,26 @@ async function seedDeviceIntentMemory(
   return undefined;
 }
 
-function normalizeReminderAttemptChannel(value: unknown) {
-  const channel = readNonEmptyString(value)?.toLowerCase();
-  if (
-    channel === "desktop" ||
-    channel === "mobile" ||
-    channel === "sms" ||
-    channel === "voice" ||
-    channel === "phone_call" ||
-    channel === "ntfy" ||
-    channel === "in_app"
-  ) {
-    return channel === "phone_call" ? "voice" : channel;
-  }
-  return "in_app";
+function normalizeReminderAttemptChannel(
+  value: unknown,
+): LifeOpsReminderChannel {
+  const channel = readNonEmptyString(value)?.toLowerCase() ?? "in_app";
+  if (channel === "phone_call") return "voice";
+  if (channel === "desktop" || channel === "mobile" || channel === "ntfy")
+    return "push";
+  const supported = LIFEOPS_REMINDER_CHANNELS.find(
+    (entry) => entry === channel,
+  );
+  if (!supported)
+    throw new ElizaError(`Unsupported reminder seed channel: ${channel}`, {
+      code: "SCENARIO_SEED_INVALID_CHANNEL",
+    });
+  return supported;
 }
 
 function normalizeReminderAttemptOutcome(
   seed: ReminderAttemptMemorySeed,
-): ScenarioReminderAttempt["outcome"] {
+): LifeOpsReminderAttemptSeedInput["outcome"] {
   const result = readNonEmptyString(seed.result)?.toLowerCase();
   if (result === "failed" || result === "blocked") {
     return "blocked_connector";
@@ -1301,7 +1310,9 @@ async function seedReminderAttemptMemory(
   planIdOverride?: string,
 ): Promise<string | undefined> {
   const runtime = requireRuntime(ctx);
-  const channel = normalizeReminderAttemptChannel(seed.channel);
+  const requestedChannel =
+    readNonEmptyString(seed.channel)?.toLowerCase() ?? "in_app";
+  const channel = normalizeReminderAttemptChannel(requestedChannel);
   const attemptedAt =
     readIsoDate(seed.attemptedAt) ??
     readIsoDate(seed.sentAt) ??
@@ -1311,7 +1322,7 @@ async function seedReminderAttemptMemory(
   ).toISOString();
   const title =
     readNonEmptyString(seed.title) ??
-    (channel === "ntfy" ? "ntfy push" : "Scenario push attempt");
+    (requestedChannel === "ntfy" ? "ntfy push" : "Scenario push attempt");
   const planId =
     planIdOverride ??
     `scenario-reminder-plan:${ctx.scenarioId ?? "unknown"}:${title}`;
@@ -1330,29 +1341,26 @@ async function seedReminderAttemptMemory(
   await repository.createReminderAttempt({
     id:
       readNonEmptyString(seed.id) ??
-      `${planId}:attempt:${index}:${channel}:${attemptedAt.toISOString()}`,
+      `${planId}:attempt:${index}:${requestedChannel}:${attemptedAt.toISOString()}`,
     agentId: String(runtime.agentId),
     planId,
     ownerType: "occurrence",
     ownerId: planId,
     occurrenceId: null,
-    channel:
-      channel === "desktop" || channel === "mobile" || channel === "ntfy"
-        ? "push"
-        : channel,
+    channel,
     stepIndex: index,
     scheduledFor,
     attemptedAt: attemptedAt.toISOString(),
     outcome,
     connectorRef: readNonEmptyString(seed.topic)
-      ? `${channel}:${readNonEmptyString(seed.topic)}`
+      ? `${requestedChannel}:${readNonEmptyString(seed.topic)}`
       : null,
     deliveryMetadata: {
       source: "scenario-seed",
       scenarioId: ctx.scenarioId ?? null,
+      channel: requestedChannel,
       title,
       urgency,
-      channel,
       priority: readNonEmptyString(seed.priority) ?? urgency,
       readAt: readNonEmptyString(seed.readAt),
       statusCode: readOptionalNumber(seed.statusCode),
@@ -1423,12 +1431,14 @@ async function seedScheduledPushLadderMemory(
       return "scheduled-push-ladder rungs must be objects";
     }
     const offsetMin = readOptionalNumber(rung.offsetMin) ?? 0;
-    const channel = normalizeReminderAttemptChannel(rung.channel);
+    const requestedChannel =
+      readNonEmptyString(rung.channel)?.toLowerCase() ?? "in_app";
+    const channel = normalizeReminderAttemptChannel(requestedChannel);
     const status = readNonEmptyString(rung.status) ?? "pending";
     const dueAt = new Date(eventStartAt.getTime() + offsetMin * 60_000);
     const result = await upsertScenarioScheduledTask(ctx, {
       seedKind: "scheduled-push-ladder",
-      title: `${eventId}:${index}:${channel}`,
+      title: `${eventId}:${index}:${requestedChannel}`,
       taskKind: "reminder",
       dueAt,
       priority: "medium",
@@ -1437,7 +1447,13 @@ async function seedScheduledPushLadderMemory(
       subjectId: eventId,
       metadata: {
         eventId,
-        rung: { offsetMin, channel, status, index },
+        rung: {
+          offsetMin,
+          channel: requestedChannel,
+          deliveryChannel: channel,
+          status,
+          index,
+        },
       },
     });
     if (result) return result;
@@ -1496,23 +1512,43 @@ function normalizeIsoDate(value: unknown): string | null {
 function normalizeCalendarAttendees(
   value: unknown,
 ): LifeOpsCalendarEventSeedInput["attendees"] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value))
+    throw new ElizaError("Calendar seed attendees must be an array", {
+      code: "SCENARIO_SEED_INVALID_ATTENDEES",
+    });
+  return value.map((entry) => {
+    const attendee = readOptionalRecord(entry);
+    if (!attendee)
+      throw new ElizaError("Calendar seed attendee must be an object", {
+        code: "SCENARIO_SEED_INVALID_ATTENDEES",
+      });
+    for (const key of ["email", "displayName", "responseStatus"]) {
+      if (attendee[key] != null && typeof attendee[key] !== "string")
+        throw new ElizaError(
+          `Calendar attendee ${key} must be a string or null`,
+          { code: "SCENARIO_SEED_INVALID_ATTENDEES" },
+        );
     }
-    const attendee = entry as Record<string, unknown>;
-    return [
-      {
-        ...attendee,
-        email: readNonEmptyString(attendee.email),
-        displayName: readNonEmptyString(attendee.displayName),
-        responseStatus: readNonEmptyString(attendee.responseStatus),
-        self: readOptionalBoolean(attendee.self) ?? false,
-        organizer: readOptionalBoolean(attendee.organizer) ?? false,
-        optional: readOptionalBoolean(attendee.optional) ?? false,
-      },
-    ];
+    for (const key of ["self", "organizer", "optional"]) {
+      if (attendee[key] !== undefined && typeof attendee[key] !== "boolean")
+        throw new ElizaError(`Calendar attendee ${key} must be a boolean`, {
+          code: "SCENARIO_SEED_INVALID_ATTENDEES",
+        });
+    }
+    return {
+      ...attendee,
+      email: typeof attendee.email === "string" ? attendee.email : null,
+      displayName:
+        typeof attendee.displayName === "string" ? attendee.displayName : null,
+      responseStatus:
+        typeof attendee.responseStatus === "string"
+          ? attendee.responseStatus
+          : null,
+      self: attendee.self === true,
+      organizer: attendee.organizer === true,
+      optional: attendee.optional === true,
+    };
   });
 }
 
@@ -1530,6 +1566,9 @@ function calendarEventMetadata(
     ...(authored ?? {}),
     source: "scenario-seed",
     kind: "calendar-event",
+    ...(seed.attendees !== undefined
+      ? { authoredAttendees: seed.attendees }
+      : {}),
     ...(ctx.scenarioId ? { scenarioId: ctx.scenarioId } : {}),
     ...(joinLink ? { joinLink } : {}),
     ...(cancelledAt ? { cancelledAt } : {}),
@@ -1780,12 +1819,13 @@ async function seedFollowupMemory(
     priority:
       readNonEmptyString(seed.priority) ?? readNonEmptyString(seed.urgency),
     status,
-    subjectKind: seedKind.includes("thread") ? "thread" : "entity",
-    subjectId:
-      readNonEmptyString(seed.counterparty) ??
-      readNonEmptyString(seed.attendee) ??
-      readNonEmptyString(seed.topic) ??
-      String(requireRuntime(ctx).agentId),
+    subjectKind: seedKind.includes("thread") ? "thread" : "self",
+    subjectId: seedKind.includes("thread")
+      ? (readNonEmptyString(seed.counterparty) ??
+        readNonEmptyString(seed.attendee) ??
+        readNonEmptyString(seed.topic) ??
+        String(requireRuntime(ctx).agentId))
+      : String(requireRuntime(ctx).agentId),
     metadata: {
       followup: {
         kind: seedKind,

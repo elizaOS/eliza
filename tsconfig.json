@@ -36,7 +36,6 @@
       ],
       "@elizaos/auth/auth/*": ["./packages/auth/src/auth/*"],
       "@elizaos/auth/vault/*": ["./packages/auth/src/vault/*"],
-      "@elizaos/cloud-shared/*": ["./packages/cloud/shared/src/*"],
       "@elizaos/plugin-wallet/*": ["./plugins/plugin-wallet/src/*"],
       "@elizaos/capacitor-desktop": [
         "./plugins/plugin-native-desktop/src/index.ts"
