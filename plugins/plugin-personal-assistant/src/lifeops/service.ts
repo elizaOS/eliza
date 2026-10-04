@@ -1763,14 +1763,15 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // applied AFTER it: with the filter in TypeScript, agent-subject
     // completions under multi-room load consumed the LIMIT window and
     // silently evicted owner wins from the recap (#16966 post-merge review).
-    // The scan limit is sized for the 36h window, newest-first — the local-day
-    // filter below only trims the older-than-today tail, so today's rows are
-    // never the ones cut. The final cap bounds the provider/brief block.
+    // Known completion timestamps are bounded through now before the scan
+    // limit, so future timestamps cannot evict real wins. The local-day filter
+    // then removes the lookback tail; the final cap bounds the provider block.
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
       {
         subjectType: "owner",
+        throughIso: now.toISOString(),
         definitionScopes: [
           {
             domain: "user_lifeops",

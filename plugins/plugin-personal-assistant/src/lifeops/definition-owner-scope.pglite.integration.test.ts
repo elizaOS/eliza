@@ -478,6 +478,78 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     },
   );
 
+  it("keeps a real completion when more than the scan limit have future completion timestamps", async () => {
+    const now = new Date("2026-10-04T06:14:13.975Z");
+    const store = resolveOwnerFactStore(runtimeResult.runtime);
+    const previous = await store.read();
+    await store.update(
+      { timezone: "America/Los_Angeles" },
+      { source: "first_run", recordedAt: now.toISOString() },
+    );
+    const definition = makeDefinition(
+      agentId,
+      ownerA,
+      "bounded completion clock",
+    );
+    await repository.createDefinition(definition);
+    try {
+      const [base] = await service.refreshDefinitionOccurrences(
+        definition,
+        now,
+      );
+      if (!base) throw new Error("expected occurrence");
+      for (let index = 0; index <= 201; index++) {
+        await repository.upsertOccurrence({
+          ...base,
+          id: crypto.randomUUID(),
+          occurrenceKey: index === 0 ? "actual-today" : `future-${index}`,
+          state: "completed",
+          completionPayload: {
+            completedAt: new Date(
+              now.getTime() + (index === 0 ? -60_000 : index * 60_000),
+            ).toISOString(),
+          },
+          updatedAt: now.toISOString(),
+        });
+      }
+      const before = await repository.listOccurrencesForDefinition(
+        agentId,
+        definition.id,
+      );
+      // The optional upper bound must not change existing since-only callers.
+      const sinceOnly = await repository.listCompletedOccurrenceViewsSince(
+        agentId,
+        "2026-10-03T07:00:00.000Z",
+        {
+          definitionScopes: [
+            { domain: "user_lifeops", subjectType: "owner", subjectId: ownerA },
+          ],
+          subjectType: "owner",
+          limit: 200,
+        },
+      );
+      expect(sinceOnly).toHaveLength(200);
+      expect(
+        sinceOnly.every((item) => item.occurrenceKey.startsWith("future-")),
+      ).toBe(true);
+      const completed = await service.listOwnerOccurrencesCompletedToday(now);
+      expect(
+        completed
+          .filter((item) => item.definitionId === definition.id)
+          .map((item) => item.occurrenceKey),
+      ).toEqual(["actual-today"]);
+      expect(
+        await repository.listOccurrencesForDefinition(agentId, definition.id),
+      ).toEqual(before);
+    } finally {
+      await repository.deleteDefinition(agentId, definition.id);
+      await store.update(
+        { timezone: previous.timezone?.value ?? null },
+        { source: "first_run", recordedAt: now.toISOString() },
+      );
+    }
+  });
+
   it("keeps another owner's completed items out of owner recaps", async () => {
     const now = new Date("2027-01-05T10:00:00.000Z");
     const ownDefinition = makeDefinition(agentId, ownerA, "owner A completed");
