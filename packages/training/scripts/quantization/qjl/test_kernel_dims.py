@@ -84,10 +84,8 @@ def _try_import_quant_extension():
     extensions are built --inplace next to setup.py, not as installed
     packages.
     """
-    if str(QJL_DIR) not in sys.path:
-        sys.path.insert(0, str(QJL_DIR))
     try:
-        return importlib.import_module("cuda_qjl_quant")
+        return importlib.import_module("eliza_training.quantization.qjl.cuda_qjl_quant")
     except (ImportError, OSError):
         return None
 

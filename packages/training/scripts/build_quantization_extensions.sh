@@ -75,8 +75,7 @@ ls -1 "${QJL_DIR}"/*.so
 # `quantization.fused_turboquant_vendored.*`, which means the parent
 # `quantization` directory must be on PYTHONPATH. scripts/ does that.
 echo "[build_quantization_extensions] verifying fused_turboquant_vendored imports..."
-PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+:${PYTHONPATH}}" \
-    "${PYTHON_BIN}" -c "import quantization.fused_turboquant_vendored as f; print('fused-turboquant', f.__version__)" \
+    "${PYTHON_BIN}" -c "import eliza_training.quantization.fused_turboquant_vendored as f; print('fused-turboquant', f.__version__)" \
     || { echo "[build_quantization_extensions] FATAL: fused_turboquant_vendored import failed" >&2; exit 2; }
 
 echo "[build_quantization_extensions] OK — QJL built, fused-turboquant import verified"
