@@ -55,12 +55,14 @@ it("exports one consistent log snapshot while the agent keeps writing", async ()
     // Export carries room participants' entities; the log author is one.
     await adapter.createRoomParticipants([entityId], roomId);
     for (let index = 0; index < SEEDED_LOGS; index += 1) {
-      await adapter.log({
-        body: { index },
-        entityId,
-        roomId,
-        type: "export-snapshot",
-      });
+      await adapter.createLogs([
+        {
+          body: { metadata: { index } },
+          entityId,
+          roomId,
+          type: "export-snapshot",
+        },
+      ]);
     }
 
     // The agent keeps logging while the export runs: one write lands right
@@ -71,12 +73,14 @@ it("exports one consistent log snapshot while the agent keeps writing", async ()
       const rows = await readLogs(params);
       reads += 1;
       if (reads === 1) {
-        await adapter.log({
-          body: { index: "late" },
-          entityId,
-          roomId,
-          type: "export-snapshot",
-        });
+        await adapter.createLogs([
+          {
+            body: { metadata: { index: "late" } },
+            entityId,
+            roomId,
+            type: "export-snapshot",
+          },
+        ]);
       }
       return rows;
     };
