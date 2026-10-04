@@ -6,7 +6,12 @@
  * snapshots triggered by the billing system's low-credit warning.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  compareMemoryIds,
+  type IAgentRuntime,
+  logger,
+  Service,
+} from "@elizaos/core";
 import type {
   AgentSnapshot,
   CreateSnapshotResponse,
@@ -108,9 +113,14 @@ export class CloudBackupService extends Service {
 
     // Sort by created_at descending and return the most recent
     snapshots.sort((a, b) => {
-      const aTime = Number.isFinite(new Date(a.created_at).getTime()) ? new Date(a.created_at).getTime() : 0;
-      const bTime = Number.isFinite(new Date(b.created_at).getTime()) ? new Date(b.created_at).getTime() : 0;
-      return bTime - aTime;
+      const aTime = Number.isFinite(new Date(a.created_at).getTime())
+        ? new Date(a.created_at).getTime()
+        : 0;
+      const bTime = Number.isFinite(new Date(b.created_at).getTime())
+        ? new Date(b.created_at).getTime()
+        : 0;
+      if (bTime !== aTime) return bTime - aTime;
+      return compareMemoryIds(b.id, a.id);
     });
     return snapshots[0];
   }

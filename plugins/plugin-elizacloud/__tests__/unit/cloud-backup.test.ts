@@ -33,4 +33,26 @@ describe("CloudBackupService", () => {
     expect(latest).toBeDefined();
     expect(latest?.id).toBe("s3");
   });
+
+  it("keeps the higher snapshot id when two backups share a timestamp", async () => {
+    const same = "2026-08-20T16:00:00.000Z";
+    const lower = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const upper = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const mockClient = {
+      requestData: vi.fn().mockResolvedValue({
+        data: [
+          { id: lower, created_at: same, snapshotType: "auto" } as AgentSnapshot,
+          { id: upper, created_at: same, snapshotType: "auto" } as AgentSnapshot,
+        ],
+      }),
+    };
+    const runtime = {
+      getService: vi.fn().mockReturnValue({ getClient: () => mockClient }),
+    } as unknown as IAgentRuntime;
+
+    const service = (await CloudBackupService.start(runtime)) as CloudBackupService;
+    const latest = await service.getLatestSnapshot("test-container");
+
+    expect(latest?.id).toBe(upper);
+  });
 });
