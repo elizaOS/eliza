@@ -18,27 +18,6 @@ import {
   type RateLimitConfig,
 } from "@elizaos/agent";
 import {
-  type AgentRuntime,
-  logger,
-  type Memory,
-  requireConfirmation,
-  type UUID,
-} from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
-import {
-  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
-  type CalendarOwnerMutationGateway,
-  type CalendarRouteService,
-  CalendarService,
-  CalendarServiceError,
-  handleCalendarRoutes,
-} from "@elizaos/plugin-calendar";
-import {
-  LIFEOPS_SCHEDULE_STATE_SCOPES,
-  type SyncLifeOpsScheduleObservationsRequest,
-} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import {
   type AcknowledgeLifeOpsReminderRequest,
   type CaptureLifeOpsActivitySignalRequest,
   type CaptureLifeOpsManualOverrideRequest,
@@ -79,6 +58,7 @@ import {
   type RelockLifeOpsWebsiteAccessRequest,
   type ResolveLifeOpsWebsiteAccessCallbackRequest,
   type RunLifeOpsWorkflowRequest,
+  SELF_ENTITY_ID,
   type SeedLifeOpsGmailRequest,
   type SendLifeOpsGmailBatchReplyRequest,
   type SendLifeOpsGmailMessageRequest,
@@ -92,7 +72,27 @@ import {
   type UpdateLifeOpsWorkflowRequest,
   type UpsertLifeOpsChannelPolicyRequest,
   type VerifyLifeOpsTelegramConnectorRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import {
+  type AgentRuntime,
+  logger,
+  type Memory,
+  requireConfirmation,
+  type UUID,
+} from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
+import {
+  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+  type CalendarOwnerMutationGateway,
+  type CalendarRouteService,
+  CalendarService,
+  CalendarServiceError,
+  handleCalendarRoutes,
+} from "@elizaos/plugin-calendar";
+import {
+  LIFEOPS_SCHEDULE_STATE_SCOPES,
+  type SyncLifeOpsScheduleObservationsRequest,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import { areLifeOpsActivitySignalsActive } from "../lifeops/activity-signal-lifecycle.js";
 import {
   loadLifeOpsAppState,

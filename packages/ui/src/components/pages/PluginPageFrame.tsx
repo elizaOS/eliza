@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from "react";
-import { FramedPage } from "../../layouts/framed-page";
+import { FramedPage } from "../../layouts/framed-page/framed-page";
 import { ViewHeader } from "../shared/ViewHeader";
 import { ScrollArea } from "../ui/scroll-area";
 

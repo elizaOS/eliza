@@ -11,11 +11,14 @@
  * `lifeops/service-normalize-gmail.ts` for its historical importers.
  */
 import crypto from "node:crypto";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
+  fail,
+  GOOGLE_CALENDAR_CACHE_TTL_MS,
+  GOOGLE_GMAIL_CACHE_TTL_MS,
   LIFEOPS_GMAIL_BULK_OPERATIONS,
   LIFEOPS_GMAIL_DRAFT_TONES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
+  type LifeOpsCalendarEvent,
   type LifeOpsConnectorGrant,
   type LifeOpsGmailBatchReplyDraftsFeed,
   type LifeOpsGmailBulkOperation,
@@ -30,18 +33,11 @@ import {
   type LifeOpsGmailSpamReviewStatus,
   type LifeOpsGmailTriageFeed,
   type LifeOpsGmailUnrespondedFeed,
-} from "@elizaos/core/contracts/personal-assistant";
-import {
-  GOOGLE_CALENDAR_CACHE_TTL_MS,
-  GOOGLE_GMAIL_CACHE_TTL_MS,
-} from "@elizaos/core/lifeops-constants/service-constants";
-import {
-  fail,
   normalizeEnumValue,
   normalizeFiniteNumber,
   normalizeOptionalString,
   requireNonEmptyString,
-} from "@elizaos/core/lifeops-normalize/service-normalize";
+} from "@elizaos/contracts";
 import { extractLooseEmailAddress } from "./email-address.ts";
 export type SyncedGoogleGmailMessageSummary = Omit<
   LifeOpsGmailMessageSummary,
@@ -1170,7 +1166,7 @@ export function summarizeGmailRecommendations(
  * alongside the email classifier that depends on it; this preserves the
  * historical import path for in-plugin callers.
  */
-export { wrapUntrustedEmailContent } from "@elizaos/core/text/untrusted-email-content";
+export { wrapUntrustedEmailContent } from "@elizaos/core/protocol";
 export function buildFallbackGmailReplyDraftBody(args: {
   message: LifeOpsGmailMessageSummary;
   tone: "brief" | "neutral" | "warm";

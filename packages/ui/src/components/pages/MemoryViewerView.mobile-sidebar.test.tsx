@@ -37,7 +37,7 @@ vi.mock("../../hooks/useAvailableViews", () => ({
 
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (s: {
       t: (key: string, options?: { defaultValue?: string }) => string;

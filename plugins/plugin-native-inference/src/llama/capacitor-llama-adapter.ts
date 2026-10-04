@@ -17,37 +17,37 @@
  * a complete response.
  */
 
-import { type PluginListenerHandle } from "@capacitor/core";
+import type { PluginListenerHandle } from "@capacitor/core";
 import {
   BGE_SMALL_VECTOR_SPACE,
+  ElizaError,
   identifyEmbeddingVector,
-} from "@elizaos/core/embedding-vector-space";
-import { ElizaError } from "@elizaos/core/errors";
-import {
-  type NativeCompletionParams,
-  type NativeCompletionResult,
-  type NativeContextParams,
-  type NativeEmbeddingParams,
-  type NativeEmbeddingResult,
-  type NativeLlamaContext,
+} from "@elizaos/core/protocol";
+import type {
+  NativeCompletionParams,
+  NativeCompletionResult,
+  NativeContextParams,
+  NativeEmbeddingParams,
+  NativeEmbeddingResult,
+  NativeLlamaContext,
 } from "llama-cpp-capacitor";
 import { BGE_EMBEDDING_MODEL } from "../model-catalog/bge-embedding-model.js";
 import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,
 } from "../model-catalog/bge-input.js";
-import {
-  type EmbedOptions,
-  type EmbedResult,
-  type GenerateOptions,
-  type GenerateResult,
-  type GenerateStreamOptions,
-  type GenerationEvent,
-  type HardwareInfo,
-  type LlamaAdapter,
-  type LoadOptions,
-  type SamplerStage,
-  type SetSpecTypeArgs,
+import type {
+  EmbedOptions,
+  EmbedResult,
+  GenerateOptions,
+  GenerateResult,
+  GenerateStreamOptions,
+  GenerationEvent,
+  HardwareInfo,
+  LlamaAdapter,
+  LoadOptions,
+  SamplerStage,
+  SetSpecTypeArgs,
 } from "./definitions.js";
 
 // Dynamically imported so the adapter can be bundled into a desktop build

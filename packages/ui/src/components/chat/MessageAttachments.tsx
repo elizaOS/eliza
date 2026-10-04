@@ -28,7 +28,7 @@ import { createPortal } from "react-dom";
 import type {
   MessageAttachment,
   MessageAttachmentContentType,
-} from "../../api";
+} from "../../api/client-types-chat";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";

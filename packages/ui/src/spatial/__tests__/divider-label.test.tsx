@@ -4,7 +4,8 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Divider, SpatialSurface } from "../index.ts";
+import { SpatialSurface } from "../dom";
+import { Divider } from "../primitives";
 
 /**
  * Regression guard for the labeled `<Divider label="…" />` affordance.

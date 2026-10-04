@@ -13,7 +13,7 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import { getConnectorAccountCatalogEntry } from "@elizaos/core/connector-account-catalog";
+import { getConnectorAccountCatalogEntry } from "@elizaos/core/protocol";
 import { OAuth2Client as GoogleIdTokenVerifier } from "google-auth-library";
 import { Auth } from "googleapis";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -1381,6 +1381,7 @@ describe("google plugin", () => {
         to: ["ada@example.com"],
         subject: "Need response",
         bodyText: "Done",
+        threadId: "thread_1",
         inReplyTo: "<msg_1@example.com>",
       })
     ).resolves.toEqual({ messageId: "sent_1", threadId: "thread_1", labelIds: ["SENT"] });

@@ -17,15 +17,15 @@
  * @module first-time-setup
  */
 
+import { formatError } from "@elizaos/core";
 import {
   type AgentConfig,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-  formatError,
   getStylePresets,
   migrateLegacyRuntimeConfig,
   type StylePreset,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { persistConfigEnv } from "../api/config-env.ts";
 import {

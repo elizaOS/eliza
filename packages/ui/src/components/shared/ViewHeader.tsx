@@ -4,7 +4,7 @@
  */
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { cn } from "../../lib/utils";
 import { shouldUseHashNavigation } from "../../navigation";
 import { shellHistory } from "../../surface-realm-channel";

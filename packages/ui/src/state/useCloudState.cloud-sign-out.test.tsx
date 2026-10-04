@@ -12,7 +12,7 @@ import {
   isAndroidCloudAccountSwitchPending,
   signOutAndroidCloud,
 } from "../android-cloud/android-cloud-auth";
-import { client } from "../api";
+import { client } from "../api/client";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import {
   clearPersistedActiveServer,
@@ -73,7 +73,7 @@ vi.mock("../android-cloud/android-cloud-auth", async (importOriginal) => ({
   signOutAndroidCloud: signOutAndroidCloudMock,
 }));
 
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: vi.fn(() => "https://api.eliza.app"),
     setBaseUrl: vi.fn(),

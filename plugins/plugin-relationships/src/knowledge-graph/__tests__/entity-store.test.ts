@@ -5,12 +5,12 @@
  * was programmed to echo.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
 import {
-  type EntityAttribute,
-  type EntityIdentity,
+  type LifeOpsEntityAttribute as EntityAttribute,
+  type LifeOpsEntityIdentity as EntityIdentity,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTO_MERGE_CONFIDENCE_THRESHOLD,

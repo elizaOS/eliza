@@ -37,7 +37,7 @@ def _load_kernel(name: str):
     cached = _KERNEL_CACHE.get(name)
     if cached is not None:
         return cached
-    mod = importlib.import_module(name)
+    mod = importlib.import_module(f".{name}", package=__package__)
     _KERNEL_CACHE[name] = mod
     return mod
 

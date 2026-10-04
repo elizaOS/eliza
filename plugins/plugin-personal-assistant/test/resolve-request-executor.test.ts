@@ -20,6 +20,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 }));
 
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type {
   HandlerCallback,
   HandlerOptions,
@@ -28,7 +29,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { parseInteractionBlocks } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID } from "../src/lifeops/resource-capacity/types.js";
 import { googleHandoffFixture } from "./helpers/handoff-google.js";
@@ -125,6 +125,7 @@ import {
   __resetDocumentStoreForTests,
   ownerDocumentsAction,
 } from "../src/actions/document.js";
+import { personalAssistantAction } from "../src/actions/owner-surfaces.js";
 import {
   buildResolveRequestChoice,
   executeApprovedRequest,
@@ -860,6 +861,50 @@ describe("executeApprovedRequest", () => {
       state: "done",
     });
     expect(texts.join(" ")).toContain("Partnership NDA");
+  });
+
+  it("sign_document approval dispatches the DocumentRequest seeded through PERSONAL_ASSISTANT", async () => {
+    const runtime = makeRuntime();
+    const seeded = await personalAssistantAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: "Get the partner NDA signed by Friday." },
+      } as Memory,
+      undefined,
+      {
+        parameters: { action: "sign_document", documentName: "Partner NDA" },
+      } as unknown as HandlerOptions,
+      async () => [],
+    );
+    expect(seeded).toMatchObject({ success: true });
+    const enqueued = docMocks.enqueue.mock.calls[0]?.[0];
+    if (!enqueued) throw new Error("sign_document enqueued no approval");
+    const payload = enqueued.payload as ApprovalRequest["payload"];
+    expect(payload).toMatchObject({
+      action: "sign_document",
+      documentName: "Partner NDA",
+    });
+
+    const request = approvedRequest({ action: "sign_document", payload });
+    const queue = new RecordingQueue(request);
+    const { callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(result.success).toBe(true);
+    expect(queue.transitions).toEqual(["executing", "done"]);
+    expect(result.data).toMatchObject({
+      documentStatus: "in_progress",
+      state: "done",
+    });
   });
 
   it("sign_document approval for a vanished DocumentRequest fails honestly and dispatches nothing", async () => {

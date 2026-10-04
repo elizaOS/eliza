@@ -226,7 +226,7 @@ describe("view bundle import guard", () => {
       export const hostImport = (specifier) => resolveHostExternal(specifier)?.();
     `;
     const registration = `
-      import { registerHostExternalImporter as register } from "@elizaos/ui/app-shell-registry";
+      import { registerHostExternalImporter as register } from "@elizaos/ui";
       // register("<comment-only>", () => import("<comment-only>"));
       const example = 'register("<string-only>", factory)';
       function importHostExternal(specifier) {
@@ -254,7 +254,7 @@ describe("view bundle import guard", () => {
           ...record,
           file: "host-externals.ts",
           source: `
-            import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+            import { registerHostExternalImporter } from "@elizaos/ui";
             export function initializeHostExternals() {
               registerHostExternalImporter(specifier, () => importHostExternal("@fixture/runtime"));
             }
@@ -277,7 +277,7 @@ describe("view bundle import guard", () => {
       `,
       file: "host-externals.ts",
       source: `
-        import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+        import { registerHostExternalImporter } from "@elizaos/ui";
         export function initializeHostExternals() {
           registerHostExternalImporter("@fixture/runtime", () => import("@fixture/runtime"));
         }
@@ -316,7 +316,7 @@ describe("view bundle import guard", () => {
       `,
       file: "host-externals.ts",
       source: `
-        import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+        import { registerHostExternalImporter } from "@elizaos/ui";
         export function initializeHostExternals() {
           registerHostExternalImporter("@fixture/runtime", () => import("@fixture/runtime"));
         }
@@ -491,7 +491,7 @@ describe("view bundle import guard", () => {
       entrySource: entry,
       file: "host-externals.ts",
       source: `
-        import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+        import { registerHostExternalImporter } from "@elizaos/ui";
         export function initializeHostExternals(${parameters}) {
           ${body}
         }
@@ -561,6 +561,9 @@ describe("view bundle import guard", () => {
     const specifiers = await getHostExternalSpecifiers();
     expect(specifiers.size).toBeGreaterThan(0);
     expect(specifiers).toContain("react");
-    expect(specifiers).toContain("@elizaos/ui/components/shared/ViewHeader");
+    expect(specifiers).toContain("@elizaos/ui");
+    expect(
+      [...specifiers].some((specifier) => specifier.startsWith("@elizaos/ui/")),
+    ).toBe(false);
   });
 });

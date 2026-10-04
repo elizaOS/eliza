@@ -8,6 +8,10 @@
  */
 
 import {
+  requireCurrentBillingManagerSession,
+  requireUserWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import {
   checkoutAmountUsdToCents,
   ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
 } from "@elizaos/cloud-shared/billing";
@@ -15,23 +19,22 @@ import {
   findBySku,
   HARDWARE_SKUS,
 } from "@elizaos/cloud-shared/hardware-catalog";
-import { Hono } from "hono";
-import type Stripe from "stripe";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  requireCurrentBillingManagerSession,
-  requireUserWithOrg,
-} from "@/lib/auth/workers-hono-auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
-import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
-import { isStripeConfigured, requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@elizaos/cloud-shared/lib/services/stripe-customer-authority";
+import {
+  isStripeConfigured,
+  requireStripe,
+} from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import type Stripe from "stripe";
+import { z } from "zod";
 
 // Canonical checkout bounds come from the shared organization-credit contract;
 // this route must not restate the range locally (#22963).

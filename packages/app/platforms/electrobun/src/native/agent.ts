@@ -26,13 +26,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import {
 	resolveApiToken,
 	resolveDesktopApiPort,
 	resolveDisableAutoApiToken,
 	setApiToken,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import {
 	applyDevCloudAuthoritySnapshotToEnv,
 	captureDevCloudEnvAuthoritySnapshot,

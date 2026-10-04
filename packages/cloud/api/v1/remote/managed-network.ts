@@ -2,8 +2,8 @@
 import {
   HeadscaleClient,
   type HeadscaleNode,
-} from "@/lib/services/headscale-client";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/headscale-client";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 const REMOTE_HOST_TAG = "tag:eliza-remote-host";
 const ENROLLMENT_TTL_MS = 15 * 60 * 1_000;

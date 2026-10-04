@@ -24,6 +24,12 @@ import {
   GITHUB_FIXTURE_PULLS,
   GITHUB_FIXTURE_SEARCH_ITEMS,
 } from "../../scenario-runner/test/mocks/helpers/github-octokit-fixture.ts";
+import {
+  createFixtureScope,
+  fixtureNow,
+  fixtureRandom,
+  fixtureUuid,
+} from "./fixture-context.ts";
 import type { GoogleCalendarRequestLedgerMetadata } from "./google-calendar-state.ts";
 import {
   createGoogleMockState,
@@ -62,6 +68,13 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "anthropic",
   "openai",
   "vision",
+  "apple-reminders",
+  "cerebras",
+  "duffel",
+  "notion",
+  "ntfy",
+  "plaid",
+  "spotify",
 ] as const;
 
 export const MOCK_SCENARIO_ENVIRONMENTS = [
@@ -86,6 +99,15 @@ interface MockoonHeader {
 }
 
 interface MockoonResponse {
+  default?: boolean;
+  rulesOperator?: "AND" | "OR";
+  rules?: Array<{
+    target: "header" | "query";
+    modifier: string;
+    value: string;
+    invert?: boolean;
+    operator: "equals";
+  }>;
   statusCode?: number;
   headers?: MockoonHeader[];
   body?: string;
@@ -106,6 +128,7 @@ interface CompiledRoute {
   method: string;
   endpoint: string;
   response: MockoonResponse;
+  responses: MockoonResponse[];
   matcher: RegExp;
   paramNames: string[];
 }
@@ -115,20 +138,33 @@ interface StartedFixtureServer {
   baseUrl: string;
   requests: MockRequestLedgerEntry[];
   clearRequests(): void;
+  snapshot(): unknown;
   stop(): Promise<void>;
 }
 
 interface MockFixtureOptions {
+  port?: number;
+  scope?: ReturnType<typeof createFixtureScope>;
+  nextSequence?: () => number;
+  allowControlMutations?: boolean;
   simulator?: boolean;
-  /**
-   * Shard tree of validated, verified-scrub corpus messages
-   * (`<platform>/<account>/<yyyy-mm>.jsonl`). When set, gmail-platform rows
-   * seed the Google mock alongside the built-in fixtures.
-   */
+  withRequest?: (
+    operation: (signal?: AbortSignal) => Promise<void>,
+  ) => Promise<void>;
+  onRequest?: (
+    entry: MockRequestLedgerEntry,
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+  ) => Promise<boolean>;
 }
 
 export interface MockRequestLedgerEntry {
   environment: string;
+  sequence?: number;
+  service?: MockEnvironmentName;
+  statusCode?: number;
+  unmatched?: boolean;
+  faultId?: string;
   method: string;
   path: string;
   query: string;
@@ -206,10 +242,11 @@ export interface StartedMocks {
   envVars: Record<string, string>;
   requestLedger(): MockRequestLedgerEntry[];
   clearRequestLedger(): void;
+  snapshot(): Record<string, unknown>;
   stop(): Promise<void>;
 }
 
-function envVarsFor(
+export function mockEnvironmentSettings(
   envs: readonly MockEnvironmentName[],
   baseUrls: Record<MockEnvironmentName, string>,
 ): Record<string, string> {
@@ -273,6 +310,17 @@ function envVarsFor(
     out.ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE =
       baseUrls["lifeops-presence-active"];
   }
+  for (const [service, setting] of [
+    ["apple-reminders", "ELIZA_MOCK_APPLE_REMINDERS_BASE"],
+    ["cerebras", "CEREBRAS_BASE_URL"],
+    ["duffel", "LIFEOPS_DUFFEL_API_BASE"],
+    ["notion", "ELIZA_MOCK_NOTION_BASE"],
+    ["ntfy", "NTFY_BASE_URL"],
+    ["plaid", "ELIZA_MOCK_PLAID_BASE"],
+    ["spotify", "ELIZA_MOCK_SPOTIFY_BASE"],
+  ] as const) {
+    if (envs.includes(service)) out[setting] = baseUrls[service];
+  }
   return out;
 }
 
@@ -306,12 +354,16 @@ function compileEndpoint(endpoint: string): {
 function compileRoutes(environment: MockoonEnvironmentFile): CompiledRoute[] {
   return (environment.routes ?? []).map((route) => {
     const { matcher, paramNames } = compileEndpoint(route.endpoint);
-    const response = route.responses?.find((candidate) => candidate) ?? {};
+    const response =
+      route.responses?.find((candidate) => candidate.default === true) ??
+      route.responses?.find((candidate) => !candidate.rules?.length) ??
+      {};
 
     return {
       method: route.method.toUpperCase(),
       endpoint: route.endpoint,
       response,
+      responses: route.responses ?? [],
       matcher,
       paramNames,
     };
@@ -393,13 +445,13 @@ function escapeTemplateString(value: string): string {
 function randomFromAlphabet(alphabet: string, length: number): string {
   let out = "";
   for (let i = 0; i < length; i++) {
-    out += alphabet[crypto.randomInt(alphabet.length)];
+    out += alphabet[Math.floor(fixtureRandom() * alphabet.length)];
   }
   return out;
 }
 
 function fakerValue(kind: string, lengthText?: string): string {
-  if (kind === "string.uuid") return crypto.randomUUID();
+  if (kind === "string.uuid") return fixtureUuid();
 
   const length = Number.parseInt(lengthText ?? "", 10);
   const size = Number.isFinite(length) && length > 0 ? length : 16;
@@ -411,11 +463,11 @@ function fakerValue(kind: string, lengthText?: string): string {
     );
   }
 
-  return crypto.randomUUID();
+  return fixtureUuid();
 }
 
 function offsetDate(offsetText?: string): Date {
-  const date = new Date();
+  const date = new Date(fixtureNow());
   const match = offsetText?.match(/^([+-])(\d+)([hm])$/);
   if (!match) return date;
 
@@ -775,7 +827,7 @@ function xDynamicFixture(
       id: `tweet-${randomFromAlphabet("0123456789", 18)}`,
       text,
       author_id: "user-owner",
-      created_at: new Date().toISOString(),
+      created_at: new Date(fixtureNow()).toISOString(),
       conversation_id: `tweet-${randomFromAlphabet("0123456789", 18)}`,
     };
     state.homeTweets.unshift(tweet);
@@ -798,7 +850,7 @@ function xDynamicFixture(
       text,
       sender_id: "user-owner",
       dm_conversation_id: `dm-user-owner-${dmRecipientId}`,
-      created_at: new Date().toISOString(),
+      created_at: new Date(fixtureNow()).toISOString(),
     };
     state.dmEvents.unshift(event);
     ledgerEntry.x = withRunId<XRequestLedgerMetadata>(ledgerEntry, {
@@ -914,7 +966,7 @@ function parseWhatsAppWebhookMessages(
           timestamp:
             typeof rawMessage.timestamp === "string"
               ? rawMessage.timestamp
-              : String(Math.floor(Date.now() / 1000)),
+              : String(Math.floor(fixtureNow() / 1000)),
           type:
             typeof rawMessage.type === "string" ? rawMessage.type : "unknown",
           ...(text && typeof text.body === "string"
@@ -1406,7 +1458,7 @@ function githubDynamicFixture(
       event,
       state: event === "APPROVE" ? "APPROVED" : event,
       user: { login: "mocked-reviewer" },
-      submitted_at: new Date().toISOString(),
+      submitted_at: new Date(fixtureNow()).toISOString(),
       pull_request_url: `https://api.github.com/repos/${reviewPath.owner}/${reviewPath.repo}/pulls/${number}`,
     };
     const key = githubPullKey(reviewPath.owner, reviewPath.repo, number);
@@ -1620,7 +1672,7 @@ function discordDynamicFixture(
       channel_id: postMsgChannelId,
       author: { id: "111111111111111111", username: "mock-bot", bot: true },
       content,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(fixtureNow()).toISOString(),
     };
     const existing = state.sentMessages.get(postMsgChannelId) ?? [];
     existing.push(msg);
@@ -1668,7 +1720,7 @@ function discordDynamicFixture(
       channel_id: channelId,
       author: { id: authorId, username: authorName },
       content,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(fixtureNow()).toISOString(),
     };
     const existing = state.inboundMessages.get(channelId) ?? [];
     existing.push(msg);
@@ -1701,8 +1753,8 @@ function createSlackMockState(): SlackMockState {
 }
 
 function slackTs(): string {
-  return `${Math.floor(Date.now() / 1000)}.${String(
-    Math.floor(Math.random() * 1_000_000),
+  return `${Math.floor(fixtureNow() / 1000)}.${String(
+    Math.floor(fixtureRandom() * 1_000_000),
   ).padStart(6, "0")}`;
 }
 
@@ -1861,7 +1913,7 @@ function telegramDynamicFixture(
     return jsonFixture({
       ok: true,
       result: {
-        message_id: Math.floor(Math.random() * 1000000),
+        message_id: Math.floor(fixtureRandom() * 1000000),
         from: {
           id: 123456789,
           is_bot: true,
@@ -1869,7 +1921,7 @@ function telegramDynamicFixture(
           username: "mock_eliza_bot",
         },
         chat: { id: chatId, type: "private" },
-        date: Math.floor(Date.now() / 1000),
+        date: Math.floor(fixtureNow() / 1000),
         text,
       },
     });
@@ -1896,8 +1948,8 @@ function telegramDynamicFixture(
           username: "mock_eliza_bot",
         },
         chat: { id: chatId, type: "private" },
-        date: Math.floor(Date.now() / 1000),
-        edit_date: Math.floor(Date.now() / 1000),
+        date: Math.floor(fixtureNow() / 1000),
+        edit_date: Math.floor(fixtureNow() / 1000),
         text,
       },
     });
@@ -1968,7 +2020,7 @@ function telegramDynamicFixture(
         message_id: state.nextUpdateId * 10,
         from: { id: fromId, is_bot: false, first_name: fromName },
         chat: { id: chatId, type: "private" },
-        date: Math.floor(Date.now() / 1000),
+        date: Math.floor(fixtureNow() / 1000),
         text,
       },
     };
@@ -2508,7 +2560,7 @@ function visionDynamicFixture(
     const fixture = VISION_FIXTURES[hint] ?? VISION_FIXTURES["cat-fixture"];
     return jsonFixture({
       ...fixture,
-      request_id: `vis-${crypto.randomUUID()}`,
+      request_id: `vis-${fixtureUuid()}`,
     });
   }
 
@@ -2517,7 +2569,7 @@ function visionDynamicFixture(
     const fixture = pickVisionFixture(requestBody);
     return jsonFixture({
       ...fixture,
-      request_id: `vis-${crypto.randomUUID()}`,
+      request_id: `vis-${fixtureUuid()}`,
     });
   }
 
@@ -2526,7 +2578,7 @@ function visionDynamicFixture(
     const fixture = pickVisionFixture(requestBody);
     return jsonFixture({
       description: fixture.description,
-      request_id: `vis-${crypto.randomUUID()}`,
+      request_id: `vis-${fixtureUuid()}`,
     });
   }
 
@@ -2535,7 +2587,7 @@ function visionDynamicFixture(
     const fixture = pickVisionFixture(requestBody);
     return jsonFixture({
       objects: fixture.objects,
-      request_id: `vis-${crypto.randomUUID()}`,
+      request_id: `vis-${fixtureUuid()}`,
     });
   }
 
@@ -2547,7 +2599,7 @@ function visionDynamicFixture(
       blocks: fixture.text
         ? [{ text: fixture.text, bbox: [0, 0, 800, 1080], confidence: 0.95 }]
         : [],
-      request_id: `vis-${crypto.randomUUID()}`,
+      request_id: `vis-${fixtureUuid()}`,
     });
   }
 
@@ -2689,7 +2741,7 @@ async function dispatchPaymentMockCallback(
   request: PaymentMockRequest,
   event: "payment_request.paid" | "payment_request.failed",
 ): Promise<boolean> {
-  const createdAt = new Date().toISOString();
+  const createdAt = new Date(fixtureNow()).toISOString();
   if (!request.callbackUrl) {
     if (!request.channel) return false;
     const roomId =
@@ -2729,7 +2781,7 @@ async function dispatchPaymentMockCallback(
     "User-Agent": "Eliza-Mock-Payments/1.0",
     "X-Eliza-Event": event,
     "X-Eliza-Timestamp": createdAt,
-    "X-Eliza-Delivery": crypto.randomUUID(),
+    "X-Eliza-Delivery": fixtureUuid(),
   };
   if (request.callbackSecret) {
     headers["X-Eliza-Signature"] = await paymentCallbackSignature(
@@ -2757,11 +2809,11 @@ async function dispatchPaymentMockCallback(
     });
     delivery.statusCode = response.status;
     delivery.delivered = response.ok;
-    delivery.completedAt = new Date().toISOString();
+    delivery.completedAt = new Date(fixtureNow()).toISOString();
     return response.ok;
   } catch (error) {
     delivery.error = error instanceof Error ? error.message : String(error);
-    delivery.completedAt = new Date().toISOString();
+    delivery.completedAt = new Date(fixtureNow()).toISOString();
     return false;
   }
 }
@@ -2813,8 +2865,8 @@ async function paymentDynamicFixture(
     }
 
     const origin = paymentMockOrigin(headers);
-    const id = `payreq_${crypto.randomUUID()}`;
-    const now = new Date();
+    const id = `payreq_${fixtureUuid()}`;
+    const now = new Date(fixtureNow());
     const expiresInSeconds =
       typeof requestBody.expiresInSeconds === "number" &&
       Number.isFinite(requestBody.expiresInSeconds)
@@ -2902,7 +2954,7 @@ async function paymentDynamicFixture(
   if (payId) {
     const request = state.requests.get(payId);
     if (!request) return mockJsonError(404, "payment_request_not_found");
-    const now = new Date().toISOString();
+    const now = new Date(fixtureNow()).toISOString();
     request.status = "paid";
     request.accepted = true;
     request.updatedAt = now;
@@ -2911,7 +2963,7 @@ async function paymentDynamicFixture(
       readOptionalString(requestBody, "transactionHash") ??
       readOptionalString(requestBody, "transaction_hash") ??
       request.transactionHash ??
-      `mock_tx_${crypto.randomUUID()}`;
+      `mock_tx_${fixtureUuid()}`;
     const callbackDelivered = await dispatchPaymentMockCallback(
       state,
       request,
@@ -2942,7 +2994,7 @@ async function paymentDynamicFixture(
     if (request.status === "paid") {
       return mockJsonError(409, "payment_request_already_paid");
     }
-    const now = new Date().toISOString();
+    const now = new Date(fixtureNow()).toISOString();
     request.status = "failed";
     request.accepted = false;
     request.updatedAt = now;
@@ -3319,7 +3371,7 @@ function handleGoogleGmailFaultControl(
   if (method === "POST") {
     const fault = readGoogleGmailFaultInjection(requestBody);
     setGoogleGmailFaultInjection(provider.state, fault);
-    return { statusCode: 200, body: { ok: true, fault } };
+    return { statusCode: 200, body: { ok: true, fault: { ...fault } } };
   }
 
   throw new MockHttpError(405, "Unsupported Gmail fault control method");
@@ -3541,11 +3593,37 @@ async function startFixtureServer(
   );
   let stopped = false;
 
-  const server = http.createServer(async (req, res) => {
+  const dispatch = async (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ) => {
     try {
       const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
       const method = (req.method ?? "GET").toUpperCase();
       const requestBody = await readRequestBody(req);
+      if (
+        opts?.allowControlMutations === false &&
+        method !== "GET" &&
+        requestUrl.pathname.startsWith("/__mock/")
+      ) {
+        requests.push({
+          environment: environment.name ?? dataPath,
+          service: path.basename(dataPath, ".json") as MockEnvironmentName,
+          sequence: opts.nextSequence?.(),
+          method,
+          path: requestUrl.pathname,
+          query: requestUrl.search,
+          body: requestBody,
+          createdAt: new Date(fixtureNow()).toISOString(),
+          statusCode: 403,
+          unmatched: true,
+        });
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ error: "SYNTHETIC_CONTROL_AUTHORITY_REQUIRED" }),
+        );
+        return;
+      }
       if (method === "GET" && requestUrl.pathname === "/__mock/requests") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ requests }));
@@ -3586,16 +3664,62 @@ async function startFixtureServer(
       }
       const ledgerEntry: MockRequestLedgerEntry = {
         environment: environment.name ?? dataPath,
+        sequence: opts?.nextSequence?.(),
+        service: path.basename(dataPath, ".json") as MockEnvironmentName,
         method,
         path: requestUrl.pathname,
         query: requestUrl.search,
         body: requestBody,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(fixtureNow()).toISOString(),
         ...(requestRunId(req.headers)
           ? { runId: requestRunId(req.headers) }
           : {}),
       };
       requests.push(ledgerEntry);
+      res.once("finish", () => {
+        ledgerEntry.statusCode = res.statusCode;
+      });
+      if (await opts?.onRequest?.(ledgerEntry, req, res)) return;
+      if (opts?.allowControlMutations !== false) {
+        const matched = findRoute(routes, method, requestUrl.pathname);
+        const faultResponse = matched?.route.responses.find((response) => {
+          if (!response.rules?.length) return false;
+          const outcomes = response.rules.map((rule) => {
+            if (
+              rule.operator !== "equals" ||
+              !["header", "query"].includes(rule.target)
+            )
+              throw new MockHttpError(500, "Unsupported mock response rule");
+            const actual =
+              rule.target === "header"
+                ? req.headers[rule.modifier.toLowerCase()]
+                : requestUrl.searchParams.get(rule.modifier);
+            return (actual === rule.value) !== Boolean(rule.invert);
+          });
+          return response.rulesOperator === "AND"
+            ? outcomes.every(Boolean)
+            : outcomes.some(Boolean);
+        });
+        if (faultResponse && matched) {
+          res.writeHead(faultResponse.statusCode ?? 500, {
+            "Content-Type": "application/json",
+            ...Object.fromEntries(
+              (faultResponse.headers ?? []).map((header) => [
+                header.key,
+                header.value,
+              ]),
+            ),
+          });
+          res.end(
+            renderBodyTemplate(
+              faultResponse.body ?? "",
+              matched.params,
+              requestBody,
+            ),
+          );
+          return;
+        }
+      }
       if (
         isLifeOpsPresenceActiveEnvironment &&
         method === "GET" &&
@@ -3680,7 +3804,7 @@ async function startFixtureServer(
           );
           return;
         }
-        const taskId = `lifeops-${crypto.randomUUID()}`;
+        const taskId = `lifeops-${fixtureUuid()}`;
         lifeOpsTasks.set(taskId, { scenarioId, snapshotIndex: 0 });
         ledgerEntry.lifeopsPresenceActive =
           withRunId<LifeOpsPresenceActiveRequestLedgerMetadata>(ledgerEntry, {
@@ -3819,6 +3943,7 @@ async function startFixtureServer(
 
       const matched = findRoute(routes, method, requestUrl.pathname);
       if (!matched) {
+        ledgerEntry.unmatched = true;
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "not_found" }));
         return;
@@ -3847,9 +3972,53 @@ async function startFixtureServer(
         }),
       );
     }
+  };
+  const activeRequests = new Set<http.IncomingMessage>();
+  const sockets = new Set<import("node:net").Socket>();
+  const server = http.createServer((req, res) => {
+    activeRequests.add(req);
+    res.once("close", () => activeRequests.delete(req));
+    const operation = async (signal?: AbortSignal) => {
+      signal?.throwIfAborted();
+      const abort = () =>
+        req.destroy(
+          signal?.reason instanceof Error ? signal.reason : undefined,
+        );
+      signal?.addEventListener("abort", abort, { once: true });
+      try {
+        await (opts?.scope
+          ? opts.scope(() => dispatch(req, res))
+          : dispatch(req, res));
+      } finally {
+        signal?.removeEventListener("abort", abort);
+      }
+    };
+    const result = opts?.withRequest
+      ? opts.withRequest(operation)
+      : operation();
+    void result.catch((error: unknown) => {
+      // error-policy:J1 Reject requests whose owning world no longer has authority.
+      if (res.headersSent) {
+        res.destroy(error instanceof Error ? error : undefined);
+        return;
+      }
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "mock_world_unavailable" }));
+    });
   });
 
-  await listenFixtureServer(server);
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+
+  if (opts?.port !== undefined) {
+    if (!Number.isInteger(opts.port) || opts.port < 0 || opts.port > 65535)
+      throw new MockHttpError(400, "Invalid fixture port");
+    await listenOnLoopback(server, opts.port);
+  } else {
+    await listenFixtureServer(server);
+  }
 
   server.unref();
 
@@ -3863,6 +4032,18 @@ async function startFixtureServer(
     port,
     baseUrl: `http://127.0.0.1:${port}`,
     requests,
+    snapshot: () =>
+      JSON.parse(
+        JSON.stringify(
+          { provider: dynamicProvider, lifeOpsTasks },
+          (_key, value) =>
+            value instanceof Map
+              ? { type: "map", entries: [...value] }
+              : value instanceof Set
+                ? { type: "set", values: [...value] }
+                : value,
+        ),
+      ),
     clearRequests: () => {
       requests.splice(0, requests.length);
     },
@@ -3872,6 +4053,9 @@ async function startFixtureServer(
       if (!server.listening) return;
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
+        for (const request of activeRequests) request.destroy();
+        for (const socket of sockets) socket.destroy();
+        server.closeAllConnections();
       });
     },
   };
@@ -3879,9 +4063,23 @@ async function startFixtureServer(
 
 export async function startMocks(opts?: {
   envs?: readonly MockEnvironmentName[];
+  ports?: Partial<Record<MockEnvironmentName, number>>;
+  deterministicSeed?: string;
+  allowControlMutations?: boolean;
   simulator?: boolean;
+  withRequest?: MockFixtureOptions["withRequest"];
+  onRequest?: MockFixtureOptions["onRequest"];
 }): Promise<StartedMocks> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
+  if (
+    new Set(envs).size !== envs.length ||
+    envs.some((name) => !MOCK_ENVIRONMENTS.includes(name))
+  ) {
+    throw new MockHttpError(
+      400,
+      "Mock environments must be unique registered service names",
+    );
+  }
   if (process.env.ELIZA_CORPUS_DIR !== undefined) {
     throw new Error(
       "Corpus directory loading has been removed; unset ELIZA_CORPUS_DIR and use the built-in mock fixtures.",
@@ -3895,12 +4093,24 @@ export async function startMocks(opts?: {
   }
 
   const servers: StartedFixtureServer[] = [];
+  const scope = createFixtureScope(opts?.deterministicSeed);
+  let sequence = 0;
   try {
     for (const dataPath of dataPaths) {
       servers.push(
-        await startFixtureServer(dataPath, {
-          simulator: Boolean(opts?.simulator),
-        }),
+        await scope(() =>
+          startFixtureServer(dataPath, {
+            scope,
+            port: opts?.ports?.[
+              path.basename(dataPath, ".json") as MockEnvironmentName
+            ],
+            nextSequence: () => ++sequence,
+            allowControlMutations: opts?.allowControlMutations,
+            simulator: Boolean(opts?.simulator),
+            withRequest: opts?.withRequest,
+            onRequest: opts?.onRequest,
+          }),
+        ),
       );
     }
   } catch (err) {
@@ -3917,11 +4127,17 @@ export async function startMocks(opts?: {
   return {
     portMap,
     baseUrls,
-    envVars: envVarsFor(envs, baseUrls),
-    requestLedger: () =>
-      servers.flatMap((server) =>
-        server.requests.map((entry) => ({ ...entry })),
+    envVars: mockEnvironmentSettings(envs, baseUrls),
+    snapshot: () =>
+      Object.fromEntries(
+        envs.map((name, index) => [name, servers[index].snapshot()]),
       ),
+    requestLedger: () =>
+      servers
+        .flatMap((server) =>
+          server.requests.map((entry) => structuredClone(entry)),
+        )
+        .sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0)),
     clearRequestLedger: () => {
       for (const server of servers) {
         server.clearRequests();

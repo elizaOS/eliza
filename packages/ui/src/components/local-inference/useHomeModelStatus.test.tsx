@@ -58,17 +58,13 @@ vi.mock("../../first-run/mobile-runtime-mode", async (importOriginal) => ({
   ...(await importOriginal()),
   readPersistedMobileRuntimeMode: () => mobileRuntimeModeMock.value,
 }));
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
-vi.mock("@elizaos/ui/utils/asset-url", async (importOriginal) => ({
+vi.mock("../../api/client", () => ({ client: clientMock }));
+vi.mock("../../utils/asset-url", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/asset-url.js")>()),
   resolveApiUrl: (path: string) => path,
 }));
-vi.mock("@elizaos/core/utils/eliza-globals", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@elizaos/core/utils/eliza-globals")
-  >()),
+vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/host/protocol")>()),
   getElizaApiToken: () => null,
 }));
 vi.mock("../../utils/event-source", () => ({

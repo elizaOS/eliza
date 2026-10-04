@@ -13,7 +13,7 @@
 import {
   packageNameToAppRouteSlug,
   type RegistryAppInfo,
-} from "@elizaos/core/contracts/apps";
+} from "@elizaos/core/protocol";
 import { readAppsCache } from "../components/apps/apps-cache";
 /** Result of main-tab discovery. */
 export interface MainTabApp {

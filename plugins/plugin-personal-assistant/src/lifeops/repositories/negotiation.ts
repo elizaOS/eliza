@@ -1,9 +1,10 @@
 /** Adapts LifeOps negotiation persistence to canonical domain records. Preserves existing agent scoping, transaction handles, and conditional mutation contracts. */
-import type { IAgentRuntime } from "@elizaos/core";
+
 import type {
   LifeOpsSchedulingNegotiation,
   LifeOpsSchedulingProposal,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   executeRawSqlTx,

@@ -16,6 +16,8 @@
  * plugin just provides the backend capabilities it consumes.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
+import type { AppRunSummary, RegistryAppInfo } from "@elizaos/core/protocol";
 import {
   Activity,
   AlertTriangle,
@@ -45,11 +47,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { client, type RegistryAppInfo } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
-import type { AccountsListResponse } from "../../../api/client-agent";
+import { client } from "../../../api/client";
+import type { AccountsListResponse } from "../../../api/client-agent-accounts";
 import type {
-  AppRunSummary,
   OrchestratorAccountOverview,
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
@@ -57,8 +58,7 @@ import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { logger } from "../../../logger.ts";
-import { useAppSelectorShallow } from "../../../state";
-import type { TranslateFn } from "../../../types";
+import { useAppSelectorShallow } from "../../../state/app-store";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";
 import { loadMergedCatalogApps } from "../../apps/catalog-loader";
 import { getRunAttentionReasons } from "../../apps/run-attention";

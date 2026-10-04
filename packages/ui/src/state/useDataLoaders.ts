@@ -6,10 +6,26 @@
  * character language sync, loadWorkbench, loadUpdateStatus,
  */
 
+import type {
+  BscTradeExecuteRequest,
+  BscTradeExecuteResponse,
+  BscTradePreflightResponse,
+  BscTradeQuoteRequest,
+  BscTradeQuoteResponse,
+  BscTradeTxStatusResponse,
+  BscTransferExecuteRequest,
+  BscTransferExecuteResponse,
+  StewardWebhookEventType,
+  WalletTradingProfileResponse,
+  WalletTradingProfileSourceFilter,
+  WalletTradingProfileWindow,
+} from "@elizaos/contracts";
+import type { UiLanguage } from "@elizaos/core/protocol";
+import type { StylePreset } from "@elizaos/host/protocol";
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/core/character-presets";
+} from "@elizaos/host/protocol";
 import {
   type RefObject,
   useCallback,
@@ -17,33 +33,23 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type AgentStatus,
-  type BscTradeExecuteRequest,
-  type BscTradeExecuteResponse,
-  type BscTradePreflightResponse,
-  type BscTradeQuoteRequest,
-  type BscTradeQuoteResponse,
-  type BscTradeTxStatusResponse,
-  type BscTransferExecuteRequest,
-  type BscTransferExecuteResponse,
-  type CharacterData,
-  type Conversation,
-  type ConversationMessage,
-  client,
-  type StewardWebhookEventType,
-  type StreamEventEnvelope,
-  type StylePreset,
-  type UpdateStatus,
-  type WalletTradingProfileResponse,
-  type WalletTradingProfileSourceFilter,
-  type WalletTradingProfileWindow,
-  type WorkbenchOverview,
-} from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../api/client-types-chat";
+import type {
+  CharacterData,
+  UpdateStatus,
+  WorkbenchOverview,
+} from "../api/client-types-config";
+import type {
+  AgentStatus,
+  StreamEventEnvelope,
+} from "../api/client-types-core";
 import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
-import type { UiLanguage } from "../i18n";
 import { logger } from "../logger.ts";
 import { normalizeOwnerName } from "../utils/owner-name.js";
 import {
@@ -58,12 +64,12 @@ import { markConversationHistoryApplied } from "./conversation-hydration-readine
 import {
   applyStreamingTextModification,
   filterRenderableConversationMessages,
-  type LoadConversationMessagesResult,
-  type StreamingTextModification,
   shouldKeepConversationMessage,
 } from "./internal";
 import { clearSettledPendingChatTurns } from "./pending-chat-turns";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
+import type { LoadConversationMessagesResult } from "./types";
+import type { StreamingTextModification } from "./useStreamingText";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
 function hasConversationBootstrapMessage(
@@ -73,6 +79,39 @@ function hasConversationBootstrapMessage(
     (message) =>
       message.role === "assistant" && shouldKeepConversationMessage(message),
   );
+}
+const STORE_MESSAGE_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Keep local rows in their arrival slots while ordering durable UUIDs within each timestamp. */
+function orderStreamedConversationMessages(
+  messages: readonly ConversationMessage[],
+): ConversationMessage[] {
+  const ordered = [...messages].sort(
+    (left, right) => left.timestamp - right.timestamp,
+  );
+  for (let start = 0; start < ordered.length; ) {
+    let end = start + 1;
+    while (
+      end < ordered.length &&
+      ordered[end].timestamp === ordered[start].timestamp
+    )
+      end++;
+    const durable = ordered
+      .slice(start, end)
+      .filter((message) => STORE_MESSAGE_ID_RE.test(message.id))
+      .sort((left, right) => {
+        const leftId = left.id.toLowerCase(),
+          rightId = right.id.toLowerCase();
+        return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+      });
+    let next = 0;
+    for (let index = start; index < end; index++) {
+      if (STORE_MESSAGE_ID_RE.test(ordered[index].id))
+        ordered[index] = durable[next++];
+    }
+    start = end;
+  }
+  return ordered;
 }
 function localConversationMessageLineage(
   message: ConversationMessage,
@@ -368,6 +407,9 @@ function mergeMessagesChronologically(
     message: ConversationMessage;
     serverIndex: number | null;
   }> = serverMessages.map((message, serverIndex) => ({ message, serverIndex }));
+  // Overlay rows are client-local and not yet in the store, so the store's
+  // same-millisecond UUID tiebreak does not apply: a request and its reply are
+  // often stamped in the same millisecond, and the stable sort keeps send order.
   const orderedOverlay = [...localOverlay].sort(
     (left, right) => left.timestamp - right.timestamp,
   );
@@ -1192,9 +1234,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           .map((row) => [row.id, row]),
       );
       for (const row of changed) rows.set(row.id, row);
-      const orderedRows = [...rows.values()].sort(
-        (a, b) => a.timestamp - b.timestamp,
-      );
+      // Streamed durable rows follow the store's UUID tie-break order. Local
+      // optimistic rows retain insertion order in mergeMessagesChronologically.
+      const orderedRows = orderStreamedConversationMessages([...rows.values()]);
       setConversationMessages(
         mergeMessagesChronologically(
           orderedRows.filter((row) => row.assistantEphemeral !== true),
@@ -1759,7 +1801,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // user navigated away before it landed. Best-effort — a failure leaves the
   // current thread untouched and the caller simply doesn't scroll.
   const loadConversationMessagesAround = useCallback(
-    async (convId: string, messageId: string): Promise<boolean> => {
+    async (
+      convId: string,
+      messageId: string,
+      options?: {
+        onMessages: (messages: readonly ConversationMessage[]) => void;
+      },
+    ): Promise<boolean> => {
       if (
         activeConversationIdRef.current !== convId ||
         visibleConversationMessagesOwnerRef.current !== convId
@@ -1792,6 +1840,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (!isCurrentConversationMessageFence(fence)) return false;
         captureVisibleConversationMessageOverlay(convId);
         const serverMessages = filterRenderableConversationMessages(messages);
+        options?.onMessages(serverMessages);
         const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
           conversationMessageOverlayRef.current.get(convId),

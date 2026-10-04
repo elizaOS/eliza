@@ -47,7 +47,7 @@ object ChromiumBrowserLauncher {
         activity.startActivity(intent)
     }
 
-    private fun requireTrustedBrowser(activity: Activity) {
+    internal fun requireTrustedBrowser(activity: Activity) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
             !ChromiumBrowserIdentity.isTrustedPackage(PACKAGE_NAME, BuildConfig.ELIZA_CHROMIUM_CERT_SHA256) { packageName, certificate ->
                 activity.packageManager.hasSigningCertificate(packageName, certificate, PackageManager.CERT_INPUT_SHA256)

@@ -1,17 +1,5 @@
 /** Opens an explicitly manifested synthetic-world session through the shared subprocess control client. */
 
-export type {
-  SyntheticControlCommand,
-  SyntheticControlResponse,
-  SyntheticManifest,
-  SyntheticResetReceipt,
-} from "@elizaos/testing/synthetic-control";
-export {
-  SyntheticControlClient,
-  SyntheticControlProtocolError,
-  SyntheticControlSession,
-} from "@elizaos/testing/synthetic-control";
-
 import {
   SyntheticControlClient,
   SyntheticControlSession,

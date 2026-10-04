@@ -44,7 +44,7 @@ const h = vi.hoisted(() => {
   return { state, swabblePlugin };
 });
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     sel: (value: Record<string, unknown>) => unknown,
     // biome-ignore lint/suspicious/noExplicitAny: test shim over the app store

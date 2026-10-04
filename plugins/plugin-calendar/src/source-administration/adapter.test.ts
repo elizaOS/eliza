@@ -5,13 +5,13 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCalendarFeed,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
   SetLifeOpsCalendarIncludedRequest,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CalendarServiceError } from "../internal/errors.js";

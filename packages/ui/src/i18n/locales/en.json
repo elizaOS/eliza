@@ -252,6 +252,7 @@
   "appsview.Stopped": "Stopped",
   "appsview.URL": "URL",
   "appsview.Viewer": "Viewer",
+  "appwindow.ExternalOpenFailed": "Could not open this app in your browser: {{url}}",
   "appwindow.LaunchedNoViewer": "This app launched without a viewer URL. Open it from the apps catalog.",
   "appwindow.RetryingLaunch": "Retrying launch...",
   "aria.advancedNavigation": "Advanced navigation",

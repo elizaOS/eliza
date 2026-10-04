@@ -1,3 +1,4 @@
+import { resetDefaultAccountPoolAfterCredentialReset } from "@elizaos/auth/accounts";
 import { handleCloudGoogleDelegationRoute } from "./cloud-google-delegation-routes";
 /**
  * app wrapper around `@elizaos/agent`'s dashboard HTTP API. Every request
@@ -39,6 +40,7 @@ import {
   loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
+  removeResetCredentialsFromVault,
   resolveDefaultAgentWorkspaceDir,
   resolveMcpServersRejection,
   resolvePluginConfigMutationRejections,
@@ -51,22 +53,21 @@ import {
 import { isRegisteredTokenRoleAuthorized } from "@elizaos/agent/api/boundary-role-resolver";
 import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
+import {
+  createRuntimeAccountStoragePolicy,
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+} from "@elizaos/auth/auth";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import {
-  type AgentRuntime,
   getHttpRuntime,
   isElizaSettingsDebugEnabled,
-  logger,
   resolveLinkedAccountsInConfig,
-  resolveStateDir,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
-
-import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
+} from "@elizaos/host/protocol";
 import { authStoreForRuntime } from "../services/auth-store";
+import { sharedVault } from "../services/vault-mirror";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import {
   getProvidedApiToken,
@@ -90,6 +91,12 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
+import {
+  closeStandaloneKokoro,
+  handleStandaloneKokoroRoute,
+  stopStandaloneKokoro,
+  warmStandaloneKokoro,
+} from "./standalone-kokoro-routes";
 import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
 export {
@@ -364,104 +371,30 @@ function mergeEmbeddingIntoStatusPayload(
   payload.startup = { ...base, ...aug };
 }
 
-function rewriteCompatStatusBody(
-  bodyText: string,
+function composeAppStatus(
+  payload: Record<string, unknown>,
   state: CompatRuntimeState,
-): string {
+): Record<string, unknown> {
+  const result = { ...payload };
+  mergeEmbeddingIntoStatusPayload(result);
+  const upstreamReasons = Array.isArray(payload.pendingRestartReasons)
+    ? payload.pendingRestartReasons.filter(
+        (value): value is string => typeof value === "string",
+      )
+    : [];
+  const pendingRestartReasons = [
+    ...new Set([...upstreamReasons, ...state.pendingRestartReasons]),
+  ];
+  if (
+    pendingRestartReasons.length > 0 ||
+    typeof payload.pendingRestart === "boolean"
+  ) {
+    result.pendingRestart = pendingRestartReasons.length > 0;
+    result.pendingRestartReasons = pendingRestartReasons;
+  }
   const agentName = resolveCompatStatusAgentName(state);
-
-  try {
-    const parsed = JSON.parse(bodyText) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return bodyText;
-    }
-
-    const payload = parsed as Record<string, unknown>;
-    mergeEmbeddingIntoStatusPayload(payload);
-
-    const upstreamPendingRestartReasons = Array.isArray(
-      payload.pendingRestartReasons,
-    )
-      ? payload.pendingRestartReasons.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : [];
-    const pendingRestartReasons = Array.from(
-      new Set([
-        ...upstreamPendingRestartReasons,
-        ...state.pendingRestartReasons,
-      ]),
-    );
-    if (
-      pendingRestartReasons.length > 0 ||
-      typeof payload.pendingRestart === "boolean"
-    ) {
-      payload.pendingRestart = pendingRestartReasons.length > 0;
-      payload.pendingRestartReasons = pendingRestartReasons;
-    }
-
-    if (!agentName) {
-      return JSON.stringify(payload);
-    }
-
-    if (payload.agentName === agentName) {
-      return JSON.stringify(payload);
-    }
-
-    return JSON.stringify({
-      ...payload,
-      agentName,
-    });
-  } catch {
-    // error-policy:J3 upstream status is untrusted boundary data; preserve the
-    // original body when it cannot be parsed instead of fabricating a status.
-    return bodyText;
-  }
-}
-
-function patchCompatStatusResponse(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: CompatRuntimeState,
-): void {
-  const method = (req.method ?? "GET").toUpperCase();
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-  if (method !== "GET" || pathname !== "/api/status") {
-    return;
-  }
-
-  const originalEnd = res.end.bind(res);
-
-  res.end = ((
-    chunk?: string | Uint8Array,
-    encoding?: unknown,
-    cb?: unknown,
-  ) => {
-    let resolvedEncoding: BufferEncoding | undefined;
-    let resolvedCallback: (() => void) | undefined;
-
-    if (typeof encoding === "function") {
-      resolvedCallback = encoding as () => void;
-    } else {
-      resolvedEncoding = encoding as BufferEncoding | undefined;
-      resolvedCallback = cb as (() => void) | undefined;
-    }
-
-    if (chunk == null) {
-      return resolvedCallback ? originalEnd(resolvedCallback) : originalEnd();
-    }
-
-    const bodyText =
-      typeof chunk === "string"
-        ? chunk
-        : Buffer.from(chunk).toString(resolvedEncoding ?? "utf8");
-
-    return originalEnd(
-      rewriteCompatStatusBody(bodyText, state),
-      "utf8",
-      resolvedCallback,
-    );
-  }) as typeof res.end;
+  if (agentName) result.agentName = agentName;
+  return result;
 }
 
 /**
@@ -764,6 +697,11 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // (app must not statically import plugin packages). This replaces the
     // former inline hardwired block that enumerated the four plugin handlers
     // directly in the dispatcher body (#12089 item 5).
+    id: "standalone-kokoro",
+    handler: ({ req, res, state }) =>
+      handleStandaloneKokoroRoute(req, res, state),
+  },
+  {
     id: "standalone-whisper",
     handler: ({ req, res, state }) =>
       handleStandaloneWhisperRoute(req, res, state),
@@ -864,6 +802,7 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         }
         saveElizaConfig(config);
         clearCloudSecrets();
+        await removeResetCredentialsFromVault(sharedVault());
         await deleteWalletSecretsFromOsStore();
         logger.info(
           "[eliza][reset] POST /api/agent/reset: eliza.json saved; renderer should restart API process if embedded/third-party dev",
@@ -960,7 +899,6 @@ async function runCompatRequestPipeline(
   // is picked up without a restart.
   ensureCloudTtsApiKeyAlias();
   mirrorCompatHeaders(req);
-  patchCompatStatusResponse(req, res, state);
 
   // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
   // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
@@ -1106,11 +1044,22 @@ export async function startApiServer(
   }
 
   const callerOptions = args[0];
+  let speechHostStarted = false;
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
+    composeStatus: (payload) =>
+      composeAppStatus(
+        callerOptions?.composeStatus
+          ? callerOptions.composeStatus(payload)
+          : payload,
+        compatState,
+      ),
     onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+      if (compatState.current !== activeRuntime)
+        stopStandaloneKokoro(compatState);
       compatState.current = activeRuntime;
+      if (speechHostStarted) warmStandaloneKokoro(compatState);
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
     },
@@ -1228,16 +1177,21 @@ export async function startApiServer(
   compatState.runtimeOperations = server.runtimeOperations;
   compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
+  speechHostStarted = true;
+  warmStandaloneKokoro(compatState);
+
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
   ) => void;
 
   server.updateRuntime = (runtime: AgentRuntime) => {
+    if (compatState.current !== runtime) stopStandaloneKokoro(compatState);
     compatState.current = runtime;
     clearCompatRuntimeRestart(compatState);
     // Make the runtime immediately visible to upstream routes so hot swaps do
     // not briefly return 503s while compat setup finishes in the background.
     originalUpdateRuntime(runtime);
+    warmStandaloneKokoro(compatState);
 
     // Continue repairing SQL compatibility asynchronously without blocking
     // the runtime from becoming available to unrelated routes.
@@ -1259,5 +1213,10 @@ export async function startApiServer(
     })();
   };
 
+  const originalClose = server.close.bind(server);
+  server.close = async () => {
+    closeStandaloneKokoro(compatState);
+    await originalClose();
+  };
   return server;
 }

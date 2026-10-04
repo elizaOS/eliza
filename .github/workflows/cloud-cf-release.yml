@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: false
+      approve_staging_billable_dedicated_confirmation:
+        description: Explicitly approve the staging fixture Dedicated compute quote during the browser proof
+        required: false
+        default: false
+        type: boolean
       production_binding_only_recovery:
         description: Re-run the trusted production Hyperdrive recovery audit inside the mutation job
         required: false
@@ -3351,10 +3356,9 @@ jobs:
           ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
           ELIZA_UI_SMOKE_LIVE_STACK: "1"
           ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
-          # Reaching this reusable job requires the caller's explicit staging
-          # deployed-renderer opt-in. Carry that same one-shot approval through
-          # the browser's fail-closed Dedicated confirmation gate.
-          ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1"
+          # A renderer proof request does not approve a Dedicated compute quote.
+          # Preserve the browser consent gate unless the caller separately approves it.
+          ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: ${{ inputs.approve_staging_billable_dedicated_confirmation == true && '1' || '0' }}
           ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
           ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
           ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ github.sha }}

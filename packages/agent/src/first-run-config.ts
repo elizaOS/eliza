@@ -3,11 +3,8 @@
  * Validation and legacy field normalization are pure; hosts retain credential
  * resolution, durable config commits, environment updates, and authorization.
  */
-import {
-  asObjectRecord as asRecord,
-  type ConnectorConfig,
-  type ElizaConfig,
-} from "@elizaos/core";
+import { asObjectRecord as asRecord } from "@elizaos/core";
+import type { ConnectorConfig, ElizaConfig } from "@elizaos/host/protocol";
 
 export interface CanonicalBlooioConnectorConfig {
   apiKey: string;
@@ -164,12 +161,17 @@ export function prepareFirstRunConnectors(
     }
   }
   const telegramToken = firstNonBlankString(body.telegramToken);
-  if (telegramToken) connectors.telegram = { botToken: telegramToken };
+  if (telegramToken)
+    connectors.telegram = { ...connectors.telegram, botToken: telegramToken };
   const discordToken = firstNonBlankString(body.discordToken);
-  if (discordToken) connectors.discord = { token: discordToken };
+  if (discordToken)
+    connectors.discord = { ...connectors.discord, token: discordToken };
   const whatsappSessionPath = firstNonBlankString(body.whatsappSessionPath);
   if (whatsappSessionPath)
-    connectors.whatsapp = { sessionPath: whatsappSessionPath };
+    connectors.whatsapp = {
+      ...connectors.whatsapp,
+      sessionPath: whatsappSessionPath,
+    };
   const twilioAccountSid = firstNonBlankString(body.twilioAccountSid);
   const twilioAuthToken = firstNonBlankString(body.twilioAuthToken);
   if (twilioAccountSid && twilioAuthToken) {

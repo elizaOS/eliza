@@ -23,7 +23,6 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
-  lifeOpsPassiveConnectorsEnabled,
   logger,
   type Media,
   type Memory,
@@ -41,6 +40,7 @@ import {
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import type {
   Chat,
   Document,
@@ -883,20 +883,19 @@ export class MessageManager {
     // Process images
     if ("photo" in message && message.photo.length > 0) {
       const imageInfo = await this.processImage(message);
-      if (imageInfo) {
-        const photo = message.photo[message.photo.length - 1];
-        attachments.push({
-          id: photo.file_id,
-          // Bare capability reference only — the token-bearing Bot API URL is
-          // resolved transiently at fetch time, never persisted.
-          url: telegramFileRefUrl(photo.file_id),
-          title: "Image Attachment",
-          source: "Image",
-          contentType: "image",
-          description: imageInfo.description,
-          text: imageInfo.description,
-        });
-      }
+      const photo = message.photo[message.photo.length - 1];
+      attachments.push({
+        id: photo.file_id,
+        // Bare capability reference only — the token-bearing Bot API URL is
+        // resolved transiently at fetch time, never persisted.
+        url: telegramFileRefUrl(photo.file_id),
+        title: "Image Attachment",
+        source: "Image",
+        contentType: "image",
+        ...(imageInfo
+          ? { description: imageInfo.description, text: imageInfo.description }
+          : {}),
+      });
     }
 
     // Voice / audio / video / animation / sticker attachments. Setting

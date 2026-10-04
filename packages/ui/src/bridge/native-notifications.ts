@@ -12,8 +12,12 @@ import { logger } from "../logger.ts";
 import {
   isSafeDeepLink,
   navigateDeepLink,
+  readNotificationChatTarget,
 } from "../state/notifications/navigate-deep-link";
-import { getNativePlugin } from "./native-plugins";
+import {
+  getNativePlugin,
+  type PushNotificationsPluginLike,
+} from "./native-plugins";
 
 export interface NativeNotificationRequest {
   /** Stable string id (used to derive a numeric LocalNotifications id). */
@@ -22,6 +26,8 @@ export interface NativeNotificationRequest {
   body?: string;
   /** App route / URL to open on tap. */
   deepLink?: string;
+  /** Canonical, read-only chat destination from the notification producer. */
+  data?: Record<string, unknown>;
   /** Drives the delivery loudness (Android channel, web silence). */
   priority: NotificationPriority;
   /**
@@ -69,7 +75,7 @@ interface LocalNotificationActionPerformed {
 
 export interface LocalNotificationTapRoutingDeps {
   getPlugin: () => LocalNotificationsPluginLike;
-  navigate: (deepLink: string) => void;
+  navigate: (deepLink: string, data?: unknown) => void;
 }
 
 interface ElizaIntentPluginLike extends Record<string, unknown> {
@@ -204,7 +210,11 @@ export function initLocalNotificationTapRouting(
             { src: "local-notification-tap" },
             "[local-notification-tap] routed native notification action",
           );
-          deps.navigate(deepLink);
+          if (
+            readNotificationChatTarget(action.notification?.extra) === undefined
+          )
+            deps.navigate(deepLink);
+          else deps.navigate(deepLink, action.notification?.extra);
         }
       }),
     )
@@ -295,7 +305,46 @@ async function tryLocalNotifications(
     if (requested.display !== "granted") return "denied";
   }
 
-  const channel = await ensureAndroidChannel(plugin, req.priority);
+  let channelPriority = req.priority;
+  const ownerType = req.data?.ownerType;
+  if (
+    Capacitor.getPlatform() === "android" &&
+    (ownerType === "occurrence" || ownerType === "calendar_event")
+  ) {
+    const push =
+      getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
+    const capabilities = await push.getReminderDataCapabilities?.();
+    // Old native builds cannot observe legacy channel provenance. Keep the
+    // durable in-app fallback rather than guess a louder OS channel.
+    if (
+      capabilities?.reminderChannelSelection !== true ||
+      typeof push.resolveReminderChannel !== "function"
+    ) {
+      if (ownerType === "occurrence" && req.priority === "high") return false;
+    } else {
+      const selected = await push.resolveReminderChannel({
+        priority: req.priority,
+        ownerType,
+      });
+      if (typeof selected.blocked !== "boolean" || selected.blocked)
+        return false;
+      const entry = Object.entries(ANDROID_CHANNELS).find(
+        ([, channel]) => channel.id === selected.channelId,
+      );
+      if (
+        !entry ||
+        (entry[0] !== req.priority &&
+          !(
+            ownerType === "occurrence" &&
+            req.priority === "high" &&
+            entry[0] === "normal"
+          ))
+      )
+        return false;
+      if (entry[0] === "normal") channelPriority = "normal";
+    }
+  }
+  const channel = await ensureAndroidChannel(plugin, channelPriority);
   // A required Android channel that couldn't be created means the OS would drop
   // the post — don't claim success; let the store's glass fallback deliver.
   if (channel.unusable) return false;
@@ -315,7 +364,9 @@ async function tryLocalNotifications(
         // exact-alarm settings screen even though no future alarm is needed.
         isExactNotification: false,
         ...(channel.channelId ? { channelId: channel.channelId } : {}),
-        ...(safeDeepLink ? { extra: { deepLink: safeDeepLink } } : {}),
+        ...(safeDeepLink
+          ? { extra: { ...req.data, deepLink: safeDeepLink } }
+          : {}),
       },
     ],
   });
@@ -384,7 +435,7 @@ export function showWebNotification(req: NativeNotificationRequest): boolean {
           // Scheme-checked: a producer-supplied deepLink must never reach a raw
           // top-window navigation (javascript: → XSS, arbitrary https → open
           // redirect). navigateDeepLink drops anything but app routes / http(s).
-          navigateDeepLink(deepLink);
+          void navigateDeepLink(deepLink, req.data);
         } catch {
           // error-policy:J6 best-effort tap navigation; the app is already
           // focused and the dashboard notification center still lists it.

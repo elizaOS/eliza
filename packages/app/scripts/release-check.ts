@@ -25,19 +25,11 @@ const requiredPaths = [
   "dist/entry.js",
   "dist/build-info.json",
   "packages/app/scripts",
-  "packages/app/scripts/setup-upstreams.ts",
-  "packages/app/scripts/init-submodules.ts",
 ];
 const forbiddenPrefixes = ["dist/Eliza.app/"];
 const orchestratorBrokenLifecycleTarget = "./scripts/ensure-node-pty.mjs";
 const orchestratorPluginPackageJsonPathCandidates = [
-  resolve("eliza", "plugins", "plugin-agent-orchestrator", "package.json"),
-  resolve(
-    ".eliza.ci-disabled",
-    "plugins",
-    "plugin-agent-orchestrator",
-    "package.json",
-  ),
+  resolve("plugins", "plugin-agent-orchestrator", "package.json"),
   resolve(
     "node_modules",
     "@elizaos",
@@ -48,32 +40,23 @@ const orchestratorPluginPackageJsonPathCandidates = [
 const autonomousElizaPathCandidates = [
   "node_modules/@elizaos/agent/src/runtime/eliza.js",
   "packages/agent/src/runtime/eliza.ts",
-  "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
 const cdnValidationScriptPathCandidates = [
   "packages/app/scripts/validate-cdn-assets.ts",
   "scripts/validate-cdn-assets.ts",
-  "eliza/packages/app/scripts/validate-cdn-assets.ts",
 ] as const;
 const patchedElectrobunCliHelperPathCandidates = [
   "packages/app/scripts/build-patched-electrobun-cli.ts",
-  "eliza/packages/app/scripts/build-patched-electrobun-cli.ts",
 ] as const;
 const cloudAgentTemplatePackageJsonPathCandidates = [
   "packages/app/deploy/cloud-agent-template/package.json",
-  "eliza/packages/app/deploy/cloud-agent-template/package.json",
 ] as const;
-const agentPackageJsonPathCandidates = [
-  "packages/agent/package.json",
-  "eliza/packages/agent/package.json",
-] as const;
+const agentPackageJsonPathCandidates = ["packages/agent/package.json"] as const;
 const innoBuildScriptPathCandidates = [
   "packages/app/packaging/inno/build-inno.ps1",
-  "eliza/packages/app/packaging/inno/build-inno.ps1",
 ] as const;
 const innoTemplatePathCandidates = [
   "packages/app/packaging/inno/ElizaOSApp.iss",
-  "eliza/packages/app/packaging/inno/ElizaOSApp.iss",
 ] as const;
 
 function resolveExistingPath(candidates: readonly string[]) {
@@ -360,8 +343,6 @@ const requiredElectrobunConfigSnippets = [
 ];
 const electrobunDirCandidates = [
   resolve("packages", "app", "platforms", "electrobun"),
-  resolve("eliza", "packages", "app", "platforms", "electrobun"),
-  resolve("apps", "app", "electrobun"),
 ];
 
 function resolveElectrobunPath(...segments: string[]) {
@@ -825,7 +806,7 @@ function assertBundledAgentOrchestratorInstallFix() {
     )
   ) {
     console.error(
-      "release-check: @elizaos/plugin-agent-orchestrator references scripts/ensure-node-pty.mjs in postinstall, but that file is missing under eliza/packages/scripts/plugins/plugin-agent-orchestrator/.",
+      "release-check: @elizaos/plugin-agent-orchestrator references scripts/ensure-node-pty.mjs in postinstall, but that file is missing under packages/scripts/plugins/plugin-agent-orchestrator/.",
     );
     process.exit(1);
   }
@@ -1035,7 +1016,6 @@ function assertRequiredRootPackageScripts() {
 function assertAppleStoreSandboxAuditPasses() {
   const auditScriptPath = resolveExistingPath([
     "packages/app/scripts/audit-apple-store-sandbox.ts",
-    "eliza/packages/app/scripts/audit-apple-store-sandbox.ts",
   ]);
   if (!auditScriptPath) {
     console.error(

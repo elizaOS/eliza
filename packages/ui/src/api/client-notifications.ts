@@ -27,7 +27,7 @@ export interface ListNotificationsOptions {
 /** Remote-push transport a device token belongs to (matches the server enum). */
 export type PushTokenPlatform = "ios" | "android";
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listNotifications(
       opts?: ListNotificationsOptions,
@@ -46,7 +46,8 @@ declare module "./client-base" {
     registerPushToken(
       platform: PushTokenPlatform,
       token: string,
-    ): Promise<{ ok: boolean }>;
+      reminderDataNotifications?: boolean,
+    ): Promise<{ ok: boolean; deliveryEnabled?: boolean }>;
     unregisterPushToken(token: string): Promise<{ ok: boolean }>;
   }
 }
@@ -117,11 +118,21 @@ ElizaClient.prototype.registerPushToken = async function (
   this: ElizaClient,
   platform: PushTokenPlatform,
   token: string,
-): Promise<{ ok: boolean }> {
-  return this.fetch<{ ok: boolean }>("/api/notifications/push-tokens", {
-    method: "POST",
-    body: JSON.stringify({ platform, token }),
-  });
+  reminderDataNotifications?: boolean,
+): Promise<{ ok: boolean; deliveryEnabled?: boolean }> {
+  return this.fetch<{ ok: boolean; deliveryEnabled?: boolean }>(
+    "/api/notifications/push-tokens",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        platform,
+        token,
+        ...(reminderDataNotifications === true
+          ? { reminderDataNotifications: true }
+          : {}),
+      }),
+    },
+  );
 };
 
 // Drop this device's push token (e.g. on logout / permission revocation).

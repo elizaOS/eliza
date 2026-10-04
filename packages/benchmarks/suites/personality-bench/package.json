@@ -15,13 +15,14 @@
   },
   "scripts": {
     "grade": "bun run src/runner.ts",
-    "test": "bun x vitest run",
+    "test": "bun x vitest run && bun run scenarios:validate",
     "test:watch": "bun x vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "scenarios:validate": "bun --conditions=eliza-source ../../../testing/scenario-runner/src/cli.ts list scenarios --validate-scenarios"
   },
   "dependencies": {
     "@elizaos/testing": "workspace:*"

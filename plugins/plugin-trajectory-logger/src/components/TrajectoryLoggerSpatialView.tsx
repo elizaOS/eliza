@@ -12,23 +12,28 @@
  */
 
 import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
+  SpatialHStack as HStack,
+  SpatialList as List,
   type SpatialTone,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 import type {
   UIEvaluationEvent,
   UILlmCall,
   UIProviderAccess,
   UIToolEvent,
 } from "../api-client.ts";
-import type { PhaseName, PhaseStatus, PhaseSummary } from "../phases.ts";
-import { extractShouldRespondDecision, PHASES } from "../phases.ts";
+import {
+  extractShouldRespondDecision,
+  PHASES,
+  type PhaseName,
+  type PhaseStatus,
+  type PhaseSummary,
+} from "../phases.ts";
 
 export type Slot = "now" | "last";
 

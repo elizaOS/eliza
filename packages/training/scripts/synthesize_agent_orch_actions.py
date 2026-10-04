@@ -29,14 +29,12 @@ from __future__ import annotations
 import argparse
 import logging
 import random
-import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.native_record import native_tool_call_record, stable_id, write_jsonl  # noqa: E402
+from eliza_training.lib.native_record import native_tool_call_record, stable_id, write_jsonl  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("synth-agent-orch")

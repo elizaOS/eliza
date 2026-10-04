@@ -7,12 +7,8 @@
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { openProgressiveContentBoundedSource } from "../../testing/corpus/progressive-content-realization.ts";
-import { createCoreProgressiveContentExternalMutantExecutors } from "../../testing/src/progressive-content-external-mutant-executors.ts";
-import {
-  cleanupProgressiveContentProductionFaults,
-  createProgressiveContentProductionFaultExecutors,
-} from "../../testing/src/progressive-content-production-faults.ts";
+import { createCoreProgressiveContentExternalMutantExecutors } from "@elizaos/testing/progressive-content";
+import { openProgressiveContentBoundedSource } from "elizaos-benchmarks/content-context";
 
 const TARGET_FAMILIES = [
   "file",
@@ -76,7 +72,7 @@ export async function createProgressiveContentBenchmarkFactory(input) {
   }
   if (input.family === "attachment") {
     const module = await import(
-      "../../agent/src/testing/progressive-content-attachment-target.ts"
+      "../../agent/test/support/progressive-content-attachment-target.ts"
     );
     return module.createProgressiveAttachmentTargetFactory();
   }
@@ -104,7 +100,7 @@ export async function createProgressiveContentProductionFactories(input) {
         "../../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts"
       ),
       import(
-        "../../agent/src/testing/progressive-content-attachment-target.ts"
+        "../../agent/test/support/progressive-content-attachment-target.ts"
       ),
       import(
         "../../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts"
@@ -200,45 +196,23 @@ async function countFileDescriptors() {
 }
 
 /** Bind the fixed lifecycle catalog to production fault and continuity oracles. */
-export async function createProgressiveContentProductionLifecycleContract(
-  input,
-) {
-  const faultRoot = path.join(path.resolve(input.workRoot), "lifecycle-faults");
-  const faults = await createProgressiveContentProductionFaultExecutors({
-    workRoot: faultRoot,
-  });
+export async function createProgressiveContentProductionLifecycleContract() {
   const mutants = createCoreProgressiveContentExternalMutantExecutors();
-  const faultDeclaration = (id, faultId, expectedCode) => ({
+  const unsupported = (id) => ({
     id,
-    semantics: "fault-rejection",
-    expectedCode,
-    executor: faults[faultId],
+    semantics: "unsupported",
+    reason:
+      "No production-target fault injector and independent effect observer are implemented for this lifecycle operation",
   });
   return {
     lifecycle: {
       declarations: [
-        faultDeclaration(
-          "abort",
-          "read-cancellation",
-          "CONTENT_READ_CANCELLED",
-        ),
-        faultDeclaration(
-          "revoke",
-          "revoked-authorization",
-          "CONTENT_ACCESS_REVOKED",
-        ),
-        faultDeclaration(
-          "mutate",
-          "concurrent-replace",
-          "CONTENT_STALE_REVISION",
-        ),
+        unsupported("abort"),
+        unsupported("revoke"),
+        unsupported("mutate"),
         { id: "restart", semantics: "target-transition" },
-        faultDeclaration("expire", "retention-expiry", "CONTENT_EXPIRED"),
-        faultDeclaration(
-          "compaction",
-          "compaction-failure",
-          "CONTENT_MANIFEST_COMMIT_FAILED",
-        ),
+        unsupported("expire"),
+        unsupported("compaction"),
         {
           id: "eviction",
           semantics: "mutant-rejection",
@@ -262,7 +236,7 @@ export async function createProgressiveContentProductionLifecycleContract(
         },
       ],
     },
-    cleanup: () => cleanupProgressiveContentProductionFaults(faultRoot),
+    cleanup: async () => {},
   };
 }
 
@@ -292,9 +266,7 @@ export async function createProgressiveContentProductionSoakContract(input) {
     };
   });
   const lifecycleContract =
-    await createProgressiveContentProductionLifecycleContract({
-      workRoot: input.workRoot,
-    });
+    await createProgressiveContentProductionLifecycleContract();
   return {
     targets,
     lifecycle: lifecycleContract.lifecycle,

@@ -12,13 +12,13 @@
  * previous host-side implementations.
  */
 import type http from 'node:http';
-import { type AgentRuntime, logger, type Task, type UUID } from '@elizaos/core';
-import { sendJson, sendJsonError } from '@elizaos/core/api/http-helpers';
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
   PutWorkbenchTodoRequestSchema,
-} from '@elizaos/core/contracts/workbench-routes';
+} from '@elizaos/contracts';
+import { type AgentRuntime, logger, type Task, type UUID } from '@elizaos/core';
+import { sendJson, sendJsonError } from '@elizaos/host';
 import {
   isObject,
   isWorkbenchTodoTask,

@@ -1,7 +1,7 @@
 /** Validate wallet action union schemas through the real schema converter. */
+
+import { actionToJsonSchema, validateSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { actionToJsonSchema } from "../../../../packages/core/src/actions/action-schema";
-import { validateSchema } from "../../../../packages/core/src/actions/validate-tool-args";
 import { liquidityAction } from "../lp/actions/liquidity";
 import { tradeRouterAction } from "./trade-action";
 

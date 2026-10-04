@@ -9,14 +9,14 @@
  * a read-only mirror, so a storage upsert is refused with 409.
  */
 
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { servicePricingRepository } from "@elizaos/cloud-shared/db/repositories/service-pricing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { invalidateServicePricingCache } from "@elizaos/cloud-shared/lib/services/proxy/pricing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { servicePricingRepository } from "@/db/repositories/service-pricing";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { invalidateServicePricingCache } from "@/lib/services/proxy/pricing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const STORAGE_SERVICE_ID = "storage";
 

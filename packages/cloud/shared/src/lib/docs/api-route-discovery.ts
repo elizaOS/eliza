@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   API_ENDPOINTS,
   type ApiEndpoint,
-} from "../swagger/endpoint-discovery";
+} from "@elizaos/cloud-sdk/api-explorer";
 
 export type HttpMethod =
   | "GET"

@@ -161,6 +161,7 @@
   "appsview.Stopped": "Detenida",
   "appsview.URL": "URL",
   "appsview.Viewer": "Visor",
+  "appwindow.ExternalOpenFailed": "No se pudo abrir esta app en tu navegador: {{url}}",
   "appwindow.LaunchedNoViewer": "Esta app se inició sin una URL de visor. Ábrela desde el catálogo de apps.",
   "appwindow.RetryingLaunch": "Reintentando inicio...",
   "aria.advancedNavigation": "Navegación avanzada",

@@ -18,7 +18,7 @@
 import { type ReactNode, useMemo } from "react";
 import { dispatchNavigateViewEvent } from "../../../events";
 import { cn } from "../../../lib/utils";
-import { useAppSelectorShallow } from "../../../state";
+import { useAppSelectorShallow } from "../../../state/app-store";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { StatusDot } from "../../ui/status-badge";

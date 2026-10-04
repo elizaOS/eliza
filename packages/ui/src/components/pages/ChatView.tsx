@@ -12,6 +12,8 @@
  * terminal, and a user-initiated dismissal sticks.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
+import type { VoiceSettingsApplyPayload } from "@elizaos/core/protocol";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -22,12 +24,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { type CodingAgentSession, client } from "../../api/client";
+import { client } from "../../api/client";
 import {
   type ConversationMessage,
   type ImageAttachment,
   isConversationMessage,
 } from "../../api/client-types-chat";
+import type { CodingAgentSession } from "../../api/client-types-cloud";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
@@ -60,7 +63,6 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
-import type { TranslateFn } from "../../types";
 import {
   buildDroppedAttachmentNotice,
   CHAT_UPLOAD_ACCEPT,
@@ -68,10 +70,7 @@ import {
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
-import {
-  VOICE_SETTINGS_APPLY_EVENT,
-  type VoiceSettingsApplyPayload,
-} from "../../voice/useVoiceSettingsApplyChannel";
+import { VOICE_SETTINGS_APPLY_EVENT } from "../../voice/useVoiceSettingsApplyChannel";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
@@ -520,6 +519,7 @@ export function ChatView({
   const loadOlderResumeRef = useRef<{
     conversationId: string | null;
     before?: number;
+    beforeId?: string;
   }>({ conversationId: activeConversationId });
   // Keep a ref to conversationMessages so fetchOlder reads the latest value at
   // call-time without carrying it as a dep. conversationMessages changes on
@@ -538,16 +538,17 @@ export function ChatView({
       conversationId,
       currentMessages: conversationMessagesRef.current,
       before: loadOlderResumeRef.current.before,
+      beforeId: loadOlderResumeRef.current.beforeId,
       prependMessages: (older) => {
-        if (loadOlderConversationIdRef.current === conversationId) {
-          prependConversationMessages(older);
-        }
+        if (loadOlderConversationIdRef.current !== conversationId) return 0;
+        return prependConversationMessages(older);
       },
     });
     if (loadOlderConversationIdRef.current === conversationId) {
       loadOlderResumeRef.current = {
         conversationId,
         before: result.resumeBefore,
+        beforeId: result.resumeBeforeId,
       };
     }
     return result;

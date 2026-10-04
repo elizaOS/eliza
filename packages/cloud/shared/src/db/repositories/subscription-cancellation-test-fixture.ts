@@ -19,6 +19,12 @@ export async function installCancellationTestSchema(execute: (query: string) => 
       if (statement.trim()) await execute(statement);
   }
   await applyAppBillingTestMigrations(execute, true);
+  const reviewMigration = await readFile(
+    new URL("../migrations/0510_subscription_renewal_review_receipts.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of reviewMigration.split("--> statement-breakpoint"))
+    if (statement.trim()) await execute(statement);
 }
 export async function seedCancellationTestAccount(
   queryOverride?: (text: string, values: unknown[]) => Promise<unknown>,

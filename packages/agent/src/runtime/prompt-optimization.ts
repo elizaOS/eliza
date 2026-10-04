@@ -8,7 +8,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ElizaConfig } from "@elizaos/core";
 import {
   type AgentRuntime,
   assertActiveTrajectoryForLlmCall,
@@ -20,6 +19,7 @@ import {
   isTextGenerationModelType,
   normalizeTrajectoryLlmPurpose,
 } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { detectRuntimeModel } from "../api/agent-model.ts";
 import {
   type ModelTokenMetadata,

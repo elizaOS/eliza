@@ -16,13 +16,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  type RouteHelpers,
-  type RouteRequestContext,
-} from "@elizaos/core/api/route-helpers";
-import {
   parseClampedFloat,
   parsePositiveInteger,
-} from "@elizaos/core/utils/number-parsing";
+} from "@elizaos/core/protocol";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/host/protocol";
 import {
   __setDocumentUrlFetchImplForTests,
   actorCanManageAgentDocuments,
@@ -1389,7 +1386,7 @@ export async function handleDocumentsRoutes(
       content = `[Image: ${document.filename}]\n\n${descText}`;
       contentType = "text/plain";
     }
-    if (document.filename.endsWith(".mdx")) {
+    if (document.filename.toLowerCase().endsWith(".mdx")) {
       contentType = "text/markdown";
     }
     const textBacked =

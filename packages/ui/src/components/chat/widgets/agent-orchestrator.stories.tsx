@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import type {
   AccountsListResponse,
   AccountWithCredentialFlag,
-} from "../../../api/client-agent";
+} from "../../../api/client-agent-accounts";
 import type {
   OrchestratorAccountOverview,
   OrchestratorRoomRosterOverview,

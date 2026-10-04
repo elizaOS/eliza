@@ -36,10 +36,8 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "../../../bridge/toast";
-import {
-  DashboardStatCard,
-  MiniStatCard,
-} from "../../../cloud-ui/components/brand";
+import { DashboardStatCard } from "../../../cloud-ui/components/brand/dashboard-stat-card";
+import { MiniStatCard } from "../../../cloud-ui/components/brand/mini-stat-card";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import {

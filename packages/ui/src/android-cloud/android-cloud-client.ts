@@ -8,16 +8,16 @@
  */
 
 import {
-  clearStoredStewardToken,
-  readStoredStewardToken,
-  writeStoredStewardToken,
-} from "@elizaos/plugin-elizacloud/steward-session-client";
-import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
   STAGING_DIRECT_CLOUD_API_BASE_URL,
-} from "../api/direct-cloud-endpoints";
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 

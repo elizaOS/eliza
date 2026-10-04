@@ -18,6 +18,7 @@ import type {
   ContextObjectTool,
   EffectReceipt,
   EvaluatorOutput,
+  ModelInputBudget,
   PlannerLoopParams,
   PlannerLoopResult,
   PlannerRuntime,
@@ -47,6 +48,7 @@ import {
   COMPLETION_CONTEXT_SCHEMA,
   COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   captureToolStageIO,
+  compactHistoricalReceiptSegments,
   completionContextSources,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
@@ -126,9 +128,9 @@ import {
   plannerTemplate,
   plannerToolScopedRules,
 } from "../prompts/planner.ts";
-import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import {
   labelHistorySources,
+  orderHistoryFirst,
   referenceRepeatedHistory,
 } from "../services/message/history-wire.ts";
 import {
@@ -3166,6 +3168,12 @@ function renderPlannerModelInput(params: {
       ? projectDeferredProviders(diagnosticProjection.context)
       : { context: diagnosticProjection.context, available: [] };
   const renderedContext = renderContextObject(deferred.context);
+  if (!params.codingMode) {
+    renderedContext.promptSegments = orderHistoryFirst(
+      deferred.context,
+      renderedContext.promptSegments,
+    );
+  }
   // Domain planning can review originals for the whole pending turn without changing
   // the reply handler or mutating the complete restorable context.
   const actionSources =
@@ -3375,7 +3383,7 @@ export function buildInitialPlannerModelInputBudget(params: {
   config?: PlannerLoopParams["config"];
   tools?: ToolDefinition[];
   codingMode?: boolean;
-}) {
+}): ModelInputBudget {
   const config = mergeChainingLoopConfig(params.config);
   const context = normalizePlannerContext(params.context);
   const trajectory: PlannerTrajectory = {
@@ -4220,7 +4228,7 @@ async function dispatchPlannerModelCall(params: {
         )
           return tool;
         const schema = tool.parameters;
-        if (!schema || schema.type !== "object") return tool;
+        if (schema?.type !== "object") return tool;
         if (schema.properties?.[ACTION_CONTEXT_ARG] !== undefined)
           throw new ElizaError(
             "Action declares reserved planner source metadata",
@@ -9092,7 +9100,14 @@ function preferredFinalMessageFromToolOrModel(
   //   - `planner-loop-user-facing-text.test.ts` → "delivers verified tool
   //     output AND the evaluator's grounded prose" — both survive when both
   //     exist and neither contains the other.
-  const verifiedToolText = singleVerifiedUserFacingToolResultText(trajectory);
+  const verifiedCandidate = singleVerifiedUserFacingToolResultText(trajectory);
+  // Verification preserves effect authority, but cannot make malformed prose
+  // displayable. Keep a clean synthesis instead of combining it with rejected
+  // native text and forcing another recovery; the original result stays intact.
+  const verifiedToolText =
+    verifiedCandidate && !isUnsafeUserVisibleText(verifiedCandidate)
+      ? verifiedCandidate
+      : undefined;
   return (
     combinedVerifiedToolTextAndProse(
       trajectory,

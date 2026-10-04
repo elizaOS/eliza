@@ -4,9 +4,9 @@
  * Each method is synchronous: an effect may start only after transition returns.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
 import {
   createInteractiveTask,
+  ElizaError,
   type InteractiveTask,
   sameTaskOwner,
   type TaskContext,
@@ -16,7 +16,7 @@ import {
   transitionInteractiveTask,
   validateInteractiveTask,
   validateTaskEvent,
-} from "@elizaos/core/messaging/interactive-task";
+} from "@elizaos/core/protocol";
 
 export interface TaskSqliteConnection {
   exec(sql: string): unknown;

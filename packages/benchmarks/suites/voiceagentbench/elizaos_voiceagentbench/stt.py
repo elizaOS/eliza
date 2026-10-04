@@ -20,8 +20,7 @@ from .types import AudioQuery
 class STTBackend(Protocol):
     """Minimal STT interface."""
 
-    def transcribe(self, query: AudioQuery) -> str:
-        ...
+    def transcribe(self, query: AudioQuery) -> str: ...
 
 
 class GroqWhisperSTT:
@@ -39,9 +38,7 @@ class GroqWhisperSTT:
     ) -> None:
         self._api_key = api_key or os.environ.get("GROQ_API_KEY")
         if not self._api_key:
-            raise RuntimeError(
-                "GroqWhisperSTT requires GROQ_API_KEY (env or arg)."
-            )
+            raise RuntimeError("GroqWhisperSTT requires GROQ_API_KEY (env or arg).")
         self._model = os.environ.get("GROQ_TRANSCRIPTION_MODEL") or model
         self._client = None
 
@@ -184,7 +181,7 @@ class Eliza1STT:
     """Local eliza-1 llama.cpp ASR backend over real audio bytes."""
 
     def __init__(self) -> None:
-        from .eliza1_asr import Eliza1ASRBackend
+        from benchmarks.lib import Eliza1ASR as Eliza1ASRBackend
 
         self._backend = Eliza1ASRBackend()
 

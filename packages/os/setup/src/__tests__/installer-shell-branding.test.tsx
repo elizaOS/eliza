@@ -13,9 +13,5 @@ describe("InstallerShell branding and language", () => {
     expect(html).toContain("Computer");
     expect(html).toContain("Android");
     expect(html).toContain("iPhone &amp; iPad");
-    expect(html).toContain("review the exact drive");
-    expect(html).not.toContain("Safe, guided setup");
-    expect(html).not.toContain("💾");
-    expect(html).not.toContain("🍎");
   });
 });

@@ -270,3 +270,79 @@ describe("registerBuiltInGates: model_moment_check fallback (#14677)", () => {
     expect(decision).toEqual({ kind: "deny", reason: "judge says drop" });
   });
 });
+
+/**
+ * Regression: `quiet_hours` defers to the instant the window ends in its own
+ * zone. A wall-clock minute count drifts by the DST change inside the window:
+ * an hour late after spring-forward, still inside quiet hours after fall-back.
+ */
+describe("quiet_hours defers to the window's end instant", () => {
+  function quietTask(): ScheduledTask {
+    return {
+      ...sleepRecapTask(),
+      taskId: "t-quiet",
+      kind: "checkin",
+      promptInstructions: "check in",
+      priority: "medium",
+      shouldFire: {
+        compose: "all",
+        gates: [{ kind: "quiet_hours", params: { highPriorityBypass: false } }],
+      },
+      createdBy: "test",
+    };
+  }
+
+  async function decide(nowIso: string, tz: string) {
+    const task = quietTask();
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    return reg.get("quiet_hours")?.evaluate(task, {
+      ...makeContext(task),
+      nowIso,
+      ownerFacts: {
+        timezone: tz,
+        quietHours: { start: "22:00", end: "07:00", tz },
+      },
+    });
+  }
+
+  it.each([
+    // 22:30 EST before spring-forward -> 07:00 EDT.
+    [
+      "America/New_York",
+      "2026-03-08T03:30:00.000Z",
+      "2026-03-08T11:00:00.000Z",
+    ],
+    // 22:30 EDT before fall-back -> 07:00 EST.
+    [
+      "America/New_York",
+      "2026-11-01T02:30:00.000Z",
+      "2026-11-01T12:00:00.000Z",
+    ],
+    // 22:30 GMT before BST starts -> 07:00 BST.
+    ["Europe/London", "2026-03-28T22:30:00.000Z", "2026-03-29T06:00:00.000Z"],
+    // Lord Howe moves 30 minutes: 22:30 +10:30 -> 07:00 +11.
+    [
+      "Australia/Lord_Howe",
+      "2026-10-03T12:00:00.000Z",
+      "2026-10-03T20:00:00.000Z",
+    ],
+    // After midnight inside the window, the end is the same local day.
+    [
+      "America/New_York",
+      "2026-03-08T07:30:00.000Z",
+      "2026-03-08T11:00:00.000Z",
+    ],
+  ])("%s at %s ends at %s", async (tz, nowIso, endIso) => {
+    expect(await decide(nowIso, tz)).toMatchObject({
+      kind: "defer",
+      until: { atIso: endIso },
+    });
+  });
+
+  it("allows outside the window", async () => {
+    expect(
+      await decide("2026-03-08T17:00:00.000Z", "America/New_York"),
+    ).toEqual({ kind: "allow" });
+  });
+});

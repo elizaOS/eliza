@@ -1,3 +1,5 @@
+import { redactTrailingArgs } from "@elizaos/core/protocol";
+
 /**
  * Structured JSON logger factory shared by cloud-services packages.
  *
@@ -50,7 +52,6 @@ export interface ServiceLogger {
 }
 
 export function createServiceLogger(
-  _serviceName: string,
   options: ServiceLoggerOptions = {},
 ): ServiceLogger {
   const metaFirst = options.metaFirst ?? false;
@@ -64,7 +65,19 @@ export function createServiceLogger(
     const base = metaFirst
       ? { ...meta, timestamp, level, message }
       : { timestamp, level, message, ...meta };
-    return JSON.stringify(base);
+    return JSON.stringify(redactTrailingArgs([base])[0], (_key, value) => {
+      if (typeof value === "bigint") return value.toString();
+      if (value instanceof Error) {
+        return {
+          ...value,
+          name: value.name,
+          message: value.message,
+          stack: value.stack,
+          cause: value.cause,
+        };
+      }
+      return value;
+    });
   }
 
   return {

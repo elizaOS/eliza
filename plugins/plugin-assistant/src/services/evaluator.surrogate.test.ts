@@ -13,7 +13,7 @@
  */
 
 import type { AgentRuntime, Character, Memory } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import { EvaluatorService } from "./evaluator.ts";

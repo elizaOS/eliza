@@ -12,7 +12,11 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { computeErle, computeFarActiveErle } from "@elizaos/core/voice/aec";
+import {
+  computeErle,
+  computeFarActiveErle,
+  NlmsEchoCanceller,
+} from "@elizaos/voice";
 import {
   AGENT_VOICE_TIMBRE,
   makeSpeechWithSilenceFixture,
@@ -27,7 +31,6 @@ import {
   cancelEchoInWavUtterance,
   FarEndReference,
 } from "../../../../plugins/plugin-local-inference/src/services/voice/far-end-reference.js";
-import { NlmsEchoCanceller } from "../../../../plugins/plugin-local-inference/src/services/voice/nlms-echo-canceller.js";
 import { AgentSelfVoiceImprint } from "../../../../plugins/plugin-local-inference/src/services/voice/self-voice-imprint.js";
 import type { SpeakerEncoder } from "../../../../plugins/plugin-local-inference/src/services/voice/speaker/encoder.js";
 import { encodeMonoPcm16Wav } from "../../../../plugins/plugin-local-inference/src/services/voice/wav-codec.js";

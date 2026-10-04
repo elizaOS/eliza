@@ -58,9 +58,7 @@ vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({ views: [] }),
 }));
 
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 vi.mock("../../utils/openExternalUrl", () => ({
   openExternalUrl: openExternalUrlMock,

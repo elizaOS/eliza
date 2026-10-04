@@ -6,10 +6,10 @@
  * live feed).
  */
 
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarSourceHealth,
-} from "@elizaos/core/contracts/calendar";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSourceHealth,
+} from "@elizaos/contracts";
 import {
   cleanup,
   fireEvent,
@@ -17,8 +17,8 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UseCalendarWeekResult } from "../hooks/useCalendarWeek.js";
@@ -34,7 +34,9 @@ const calendarSectionAppValue = vi.hoisted(() => ({
   setActionNotice: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
   Button: ({
     children,
     ...props
@@ -44,7 +46,6 @@ vi.mock("@elizaos/ui", () => ({
     </button>
   ),
   Spinner: () => <span data-testid="spinner" />,
-  // Popover stub: render trigger + content inline so we can click and assert.
   Popover: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   PopoverTrigger: ({ children }: { children: ReactNode; asChild?: boolean }) =>
     children,
@@ -77,6 +78,7 @@ vi.mock("@elizaos/ui", () => ({
       ))}
     </div>
   ),
+
   useApp: () => calendarSectionAppValue,
   useAppSelector: <T,>(
     selector: (value: typeof calendarSectionAppValue) => T,
@@ -84,24 +86,6 @@ vi.mock("@elizaos/ui", () => ({
   useAppSelectorShallow: <T,>(
     selector: (value: typeof calendarSectionAppValue) => T,
   ) => selector(calendarSectionAppValue),
-}));
-
-vi.mock("@elizaos/ui/components", async () => {
-  return await vi.importMock<Record<string, unknown>>("@elizaos/ui");
-});
-
-vi.mock("@elizaos/ui/state", () => ({
-  useApp: () => calendarSectionAppValue,
-  useAppSelector: <T,>(
-    selector: (value: typeof calendarSectionAppValue) => T,
-  ) => selector(calendarSectionAppValue),
-  useAppSelectorShallow: <T,>(
-    selector: (value: typeof calendarSectionAppValue) => T,
-  ) => selector(calendarSectionAppValue),
-}));
-
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
 const calendarState = vi.hoisted(() => ({
@@ -137,7 +121,7 @@ vi.mock("./EventEditorDrawer.js", () => ({
     ) : null,
 }));
 
-import { CalendarSection } from "./CalendarSection.js";
+import { CalendarSection, layoutDayEvents } from "./CalendarSection.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures + default hook result.
@@ -330,6 +314,66 @@ describe("CalendarSection", () => {
     expect(screen.getByText(/9:00\s*AM/i)).toBeTruthy();
     // The week range header is present.
     expect(screen.getByText(/June 2026/)).toBeTruthy();
+  });
+
+  it("keeps the week grid when one feed event has an unparseable end", () => {
+    calendarState.current = makeResult({
+      events: [
+        evt({
+          id: "no-end",
+          title: "Imported hold",
+          startAt: new Date(2026, 5, 15, 8, 0, 0).toISOString(),
+          endAt: "",
+        }),
+        evt({
+          id: "e1",
+          title: "Design sync",
+          startAt: new Date(2026, 5, 15, 9, 0, 0).toISOString(),
+          endAt: new Date(2026, 5, 15, 10, 0, 0).toISOString(),
+        }),
+      ],
+    });
+    render(<CalendarSection {...noopProps} />);
+    expect(screen.getByText("Design sync")).toBeTruthy();
+    expect(screen.getByText(/June 2026/)).toBeTruthy();
+  });
+
+  it("lays out each week column against its own day when an event runs overnight", () => {
+    // 22:00 on 15 June to 01:00 on 16 June, then a 09:00 meeting on 16 June.
+    calendarState.current = makeResult({
+      events: [
+        evt({
+          id: "overnight",
+          title: "Late flight",
+          startAt: new Date(2026, 5, 15, 22, 0, 0).toISOString(),
+          endAt: new Date(2026, 5, 16, 1, 0, 0).toISOString(),
+        }),
+        evt({
+          id: "morning",
+          title: "Morning standup",
+          startAt: new Date(2026, 5, 16, 9, 0, 0).toISOString(),
+          endAt: new Date(2026, 5, 16, 10, 0, 0).toISOString(),
+        }),
+      ],
+    });
+
+    render(<CalendarSection {...noopProps} />);
+
+    // The overnight event ends before 16 June's grid opens (06:00), so it is
+    // drawn once, in the 15 June column, not again as a phantom on 16 June.
+    expect(screen.getAllByText("Late flight")).toHaveLength(1);
+    expect(screen.getByText("Morning standup")).toBeTruthy();
+
+    // jsdom drops `calc()` positions, so check the column layout directly:
+    // 09:00 sits 3 of the grid's 17 hours (06:00-23:00) down its own column,
+    // not 27 hours down a column measured from the previous day.
+    const events = calendarState.current.events;
+    const june16 = layoutDayEvents(events, new Date(2026, 5, 16));
+    expect(june16.map((entry) => entry.event.id)).toEqual(["morning"]);
+    expect(june16[0]?.position.topPct).toBeCloseTo((3 / 17) * 100, 1);
+    const june15 = layoutDayEvents(events, new Date(2026, 5, 15));
+    expect(june15.map((entry) => entry.event.id)).toEqual(["overnight"]);
+    expect(june15[0]?.position.topPct).toBeCloseTo((16 / 17) * 100, 1);
   });
 
   it("invokes the navigation callbacks for prev/today/next", () => {

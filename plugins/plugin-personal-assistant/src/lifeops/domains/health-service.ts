@@ -4,6 +4,27 @@
  * `@elizaos/plugin-health` into assistant DTOs. All health/circadian domain
  * logic lives in the health plugin; this is a thin owner-access wrapper.
  */
+
+import type {
+  DisconnectLifeOpsHealthConnectorRequest,
+  GetLifeOpsHealthSummaryRequest,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsHealthConnectorCapability,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthDailySummary,
+  LifeOpsHealthMetric,
+  LifeOpsHealthMetricSample,
+  LifeOpsHealthSummaryResponse,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
+  SyncLifeOpsHealthConnectorRequest,
+} from "@elizaos/contracts";
+import {
+  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
+} from "@elizaos/contracts";
 import {
   completeHealthConnectorOAuth,
   deleteStoredHealthToken,
@@ -22,26 +43,6 @@ import {
   startHealthConnectorOAuth,
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
-import type {
-  DisconnectLifeOpsHealthConnectorRequest,
-  GetLifeOpsHealthSummaryRequest,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsHealthConnectorCapability,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorStatus,
-  LifeOpsHealthDailySummary,
-  LifeOpsHealthMetric,
-  LifeOpsHealthMetricSample,
-  LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
-  SyncLifeOpsHealthConnectorRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-} from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   createLifeOpsConnectorGrant,
@@ -730,9 +731,17 @@ export class HealthDomain {
     };
   }
 
-  async getHealthDailySummary(date: string): Promise<HealthDailySummary> {
+  async getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary> {
     try {
-      return await getDailySummary(date, resolveHealthConfig());
+      // `date` is the owner's local calendar day; the bridge bounds it in the
+      // same zone, as getHealthTrend does for its window.
+      return await getDailySummary(date, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }
@@ -752,13 +761,20 @@ export class HealthDomain {
     }
   }
 
-  async getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
+  async getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
     try {
-      return await getDataPoints(opts, resolveHealthConfig());
+      // Sleep series are per local calendar day in the owner's zone.
+      return await getDataPoints(opts, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }

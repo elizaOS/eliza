@@ -4,13 +4,13 @@
  * authenticated HTTP/document surface; this action never creates file bytes.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type {
   Action,
   ActionResult,
   HandlerOptions,
   ProviderValue,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   AgreementKnowledgeError,

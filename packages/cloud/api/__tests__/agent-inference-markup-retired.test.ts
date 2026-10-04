@@ -45,20 +45,20 @@ function storedMonetizedAgent(overrides: Partial<Agent> = {}): Agent {
   };
 }
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => OWNER,
 }));
 mock.module("@/api-app/middleware/org-membership", () => ({
   assertOrgMembership: async () => {},
 }));
-mock.module("@/db/repositories/characters", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/characters", () => ({
   userCharactersRepository: {
     publish: async (id: string, options: Record<string, unknown>) => {
       publishWrites.push({ id, options });
     },
   },
 }));
-mock.module("@/lib/services/characters/characters", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/characters/characters", () => ({
   charactersService: {
     getById: async () => agent,
     getByIdCacheOnly: async () => ({ kind: "ready", character: agent }),
@@ -67,14 +67,14 @@ mock.module("@/lib/services/characters/characters", () => ({
     countPublicCatalog: async () => 1,
   },
 }));
-mock.module("@/lib/services/user-mcps", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/user-mcps", () => ({
   userMcpsService: {
     listPublic: async () => [],
     countPublic: async () => 0,
     getPublicProxyUrl: () => "",
   },
 }));
-mock.module("@/lib/cache/client", () => ({
+mock.module("@elizaos/cloud-shared/lib/cache/client", () => ({
   cache: { get: async () => null, set: async () => {} },
 }));
 mock.module("@/api-app/lib/generative-route-auth", () => ({
@@ -88,41 +88,50 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   }),
   resolveInferenceCredentialAdmissionDenial: () => null,
 }));
-mock.module("@/lib/services/deferred-credential-admission-guard", () => ({
-  deferredCredentialAdmissionGuard: () => ({
-    credentialForAdmission: () => undefined,
-    [Symbol.asyncDispose]: async () => {},
+mock.module(
+  "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard",
+  () => ({
+    deferredCredentialAdmissionGuard: () => ({
+      credentialForAdmission: () => undefined,
+      [Symbol.asyncDispose]: async () => {},
+    }),
   }),
-}));
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  RateLimitPresets: { STANDARD: {} },
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
-}));
-mock.module("@/lib/pricing", () => ({
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    RateLimitPresets: { STANDARD: {} },
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/pricing", () => ({
   estimateRequestCost: async () => 0.01,
   calculateCost: async () => ({ totalCost: 0.02 }),
   getProviderFromModel: () => "openai",
 }));
-mock.module("@/lib/providers/language-model", () => ({
+mock.module("@elizaos/cloud-shared/lib/providers/language-model", () => ({
   getLanguageModel: () => ({}),
   resolveAiProviderSource: () => "gateway",
 }));
-mock.module("@/lib/services/organization-inference-admission", () => ({
-  admitOrganizationInference: async (input: {
-    flatCost: (typeof admissions)[number]["flatCost"];
-  }) => {
-    const record = { flatCost: input.flatCost, settled: [] as number[] };
-    admissions.push(record);
-    return {
-      markProviderDispatched: async () => {},
-      settle: async (amount: number) => {
-        record.settled.push(amount);
-        return undefined;
-      },
-      settleUnknown: async () => undefined,
-    };
-  },
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-inference-admission",
+  () => ({
+    admitOrganizationInference: async (input: {
+      flatCost: (typeof admissions)[number]["flatCost"];
+    }) => {
+      const record = { flatCost: input.flatCost, settled: [] as number[] };
+      admissions.push(record);
+      return {
+        markProviderDispatched: async () => {},
+        settle: async (amount: number) => {
+          record.settled.push(amount);
+          return undefined;
+        },
+        settleUnknown: async () => undefined,
+      };
+    },
+  }),
+);
 mock.module("ai", () => ({
   streamText: async () => ({
     textStream: (async function* () {
@@ -136,7 +145,7 @@ mock.module("ai", () => ({
     }),
   }),
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
 

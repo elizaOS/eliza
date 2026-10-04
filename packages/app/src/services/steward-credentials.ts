@@ -10,15 +10,15 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
+import type {
+  PlatformSecureStore,
+  SecureStoreSecretKind,
+} from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import {
   deriveAgentVaultId,
   resolveCanonicalStateDir,
 } from "../security/agent-vault-id";
-import type {
-  PlatformSecureStore,
-  SecureStoreSecretKind,
-} from "../security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../security/platform-secure-store-node";
 
 export interface PersistedStewardCredentials {

@@ -18,9 +18,8 @@ from types import SimpleNamespace
 import pytest
 
 TRAINING_SCRIPTS = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(TRAINING_SCRIPTS))
 
-from lib.generation_integrity import (  # noqa: E402
+from eliza_training.lib.generation_integrity import (  # noqa: E402
     IncompleteGenerationError,
     PromptExceedsContextError,
 )
@@ -161,12 +160,12 @@ class TestTinkerAuthoritativeStopReason:
 
 class TestSharedGateStillWorks:
     def test_gate_rejects_authoritative_length_reasons(self):
-        from lib.generation_integrity import require_complete_finish_reasons
+        from eliza_training.lib.generation_integrity import require_complete_finish_reasons
 
         with pytest.raises(IncompleteGenerationError):
             require_complete_finish_reasons(["stop", "length"], source="fixture")
 
     def test_gate_accepts_all_stop(self):
-        from lib.generation_integrity import require_complete_finish_reasons
+        from eliza_training.lib.generation_integrity import require_complete_finish_reasons
 
         require_complete_finish_reasons(["stop", "stop"], source="fixture")

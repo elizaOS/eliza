@@ -22,6 +22,8 @@
     "content/browser/indexed_db/instance/connection.cc": "f305f4ec28f279a36098c450f603bd5c654de576bc71768d54ac80f5aad770f8",
     "content/browser/indexed_db/instance/transaction_unittest.cc": "eb21c606b01160ed8774d087754552d4abe874a0d752d2401b96ce0253b17f27",
     "chrome/browser/extensions/api/messaging/BUILD.gn": "1ace86c16c43e5d55f7ff44f2494b6c601d1340c730562cfb2a2ef916ef08018",
-    "chrome/android/java/AndroidManifest.xml": "55cb5be8a4f0e03b228ce778487d9a6a26ae13e72cf81739c4b08fea4255c802"
+    "chrome/android/java/AndroidManifest.xml": "55cb5be8a4f0e03b228ce778487d9a6a26ae13e72cf81739c4b08fea4255c802",
+    "components/android_autofill/browser/java/src/org/chromium/components/autofill/FormData.java": "d40a9ea65b45550d36e298e751df7a56d968637f2861fbb9bfccdf177fd7aca9",
+    "components/android_autofill/browser/form_data_android_bridge_impl.cc": "abf731611d77fee4a7191913814498d66da0b885ab787531e812c53d08a29d55"
   }
 }

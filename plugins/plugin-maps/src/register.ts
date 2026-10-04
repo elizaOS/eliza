@@ -1,6 +1,6 @@
 /** Registers Maps as a signed app-shell page for native and offline clients. */
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 
 registerAppShellPage({
   id: "maps",

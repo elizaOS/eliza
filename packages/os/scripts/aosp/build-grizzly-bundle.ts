@@ -2150,4 +2150,4 @@ export function main(argv = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+if (import.meta.main) main();

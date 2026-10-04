@@ -30,7 +30,7 @@ const TABS: Tab[] = [
   },
 ];
 
-const USB_INSTALLER_DEV_URL = "http://127.0.0.1:3742";
+const USB_INSTALLER_DEV_URL = "http://127.0.0.1:5174";
 const USB_INSTALLER_DOWNLOAD_URL = "https://elizaos.ai/downloads#usb-installer";
 
 interface OpenItemShell {

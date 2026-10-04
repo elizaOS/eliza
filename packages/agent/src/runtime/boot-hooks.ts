@@ -22,6 +22,8 @@ import {
   logger,
 } from "@elizaos/core";
 
+import { isModuleNotFoundError } from "../utils/module-resolution-error.ts";
+
 export interface BootHookDeclaration {
   id: string;
   specifier: string;
@@ -65,21 +67,6 @@ const FALLBACK_BOOT_HOOK_DECLARATIONS: readonly BootHookDeclaration[] = [
   },
 ];
 
-/**
- * True only when `specifier` itself could not be resolved — not when the hook
- * module loaded and one of *its* imports was missing. Skipping on the latter
- * would turn a genuinely broken plugin into a silent no-op.
- */
-function isMissingModule(error: unknown, specifier: string): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") {
-    return false;
-  }
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" && message.includes(specifier);
-}
-
 async function loadAndInvokeBootHook(
   declaration: BootHookDeclaration,
   runtime: AgentRuntime,
@@ -96,7 +83,7 @@ async function loadAndInvokeBootHook(
     // error-policy:J4 a host that ships without an optional hook module is a
     // supported deployment, so its absence degrades to "no hook". Anything else,
     // including a broken import inside the hook module, still fails the boot.
-    if (isMissingModule(error, declaration.specifier)) {
+    if (isModuleNotFoundError(error, declaration.specifier)) {
       logger.debug(
         `[eliza] boot hook ${declaration.id} not installed (${declaration.specifier}); skipping`,
       );

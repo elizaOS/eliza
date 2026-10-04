@@ -4,105 +4,56 @@ import os
 import sys
 from pathlib import Path
 from typing import Mapping, cast
+from .catalog import workload_metadata
 
-try:
-    from benchmarks.campaign_profile import is_full_campaign_profile
-    from benchmarks.bench_cli_types import (
-        BenchmarkDefinition,
-        BenchmarkRequirements,
-        JSONValue,
-        ModelSpec,
-        find_latest_file,
-        load_json_file,
-    )
-    from benchmarks.registry.scores import (
-        _score_from_abliteration_robustness_json,
-        _score_from_action_calling_json,
-        _score_from_agentbench_json,
-        _score_from_bfcl_json,
-        _score_from_clawbench_json,
-        _score_from_configbench_json,
-        _score_from_contextbench_json,
-        _score_from_gauntlet_json,
-        _score_from_gsm8k_json,
-        _score_from_hermes_env_json,
-        _score_from_humaneval_json,
-        _score_from_lifeops_bench_json,
-        _score_from_meeting_transcription_proof_json,
-        _score_from_mind2web_json,
-        _score_from_mint_json,
-        _score_from_multitask_bench_json,
-        _score_from_mmau_json,
-        _score_from_mmlu_json,
-        _score_from_mt_bench_json,
-        _score_from_openclaw_bench_json,
-        _score_from_orchestrator_lifecycle_json,
-        _score_from_osworld_json,
-        _score_from_realm_json,
-        _score_from_recall_json,
-        _score_from_swebench_json,
-        _score_from_swebench_orchestrated_json,
-        _score_from_taubench_json,
-        _score_from_terminalbench_json,
-        _score_from_trajectory_replay_json,
-        _score_from_trust_json,
-        _score_from_vendingbench_json,
-        _score_from_visualwebbench_json,
-        _score_from_vision_language_json,
-        _score_from_voiceagentbench_json,
-        _score_from_voicebench_json,
-        _score_from_voicebench_quality_json,
-        _score_from_webshop_json,
-    )
-except ImportError:
-    from campaign_profile import is_full_campaign_profile  # type: ignore[no-redef]
-    from bench_cli_types import (  # type: ignore[no-redef]
-        BenchmarkDefinition,
-        BenchmarkRequirements,
-        JSONValue,
-        ModelSpec,
-        find_latest_file,
-        load_json_file,
-    )
-    from registry.scores import (  # type: ignore[no-redef]
-        _score_from_abliteration_robustness_json,
-        _score_from_action_calling_json,
-        _score_from_agentbench_json,
-        _score_from_bfcl_json,
-        _score_from_clawbench_json,
-        _score_from_configbench_json,
-        _score_from_contextbench_json,
-        _score_from_gauntlet_json,
-        _score_from_gsm8k_json,
-        _score_from_hermes_env_json,
-        _score_from_humaneval_json,
-        _score_from_lifeops_bench_json,
-        _score_from_meeting_transcription_proof_json,
-        _score_from_mind2web_json,
-        _score_from_mint_json,
-        _score_from_multitask_bench_json,
-        _score_from_mmau_json,
-        _score_from_mmlu_json,
-        _score_from_mt_bench_json,
-        _score_from_openclaw_bench_json,
-        _score_from_orchestrator_lifecycle_json,
-        _score_from_osworld_json,
-        _score_from_realm_json,
-        _score_from_recall_json,
-        _score_from_swebench_json,
-        _score_from_swebench_orchestrated_json,
-        _score_from_taubench_json,
-        _score_from_terminalbench_json,
-        _score_from_trajectory_replay_json,
-        _score_from_trust_json,
-        _score_from_vendingbench_json,
-        _score_from_visualwebbench_json,
-        _score_from_vision_language_json,
-        _score_from_voiceagentbench_json,
-        _score_from_voicebench_json,
-        _score_from_voicebench_quality_json,
-        _score_from_webshop_json,
-    )
+from benchmarks.campaign_profile import is_full_campaign_profile
+from benchmarks.bench_cli_types import (
+    BenchmarkDefinition,
+    BenchmarkRequirements,
+    JSONValue,
+    ModelSpec,
+    find_latest_file,
+    load_json_file,
+)
+from benchmarks.registry.scores import (
+    _score_from_abliteration_robustness_json,
+    _score_from_action_calling_json,
+    _score_from_agentbench_json,
+    _score_from_bfcl_json,
+    _score_from_clawbench_json,
+    _score_from_configbench_json,
+    _score_from_contextbench_json,
+    _score_from_gauntlet_json,
+    _score_from_gsm8k_json,
+    _score_from_hermes_env_json,
+    _score_from_humaneval_json,
+    _score_from_lifeops_bench_json,
+    _score_from_meeting_transcription_proof_json,
+    _score_from_mind2web_json,
+    _score_from_mint_json,
+    _score_from_multitask_bench_json,
+    _score_from_mmau_json,
+    _score_from_mmlu_json,
+    _score_from_mt_bench_json,
+    _score_from_openclaw_bench_json,
+    _score_from_orchestrator_lifecycle_json,
+    _score_from_osworld_json,
+    _score_from_realm_json,
+    _score_from_recall_json,
+    _score_from_swebench_json,
+    _score_from_swebench_orchestrated_json,
+    _score_from_taubench_json,
+    _score_from_terminalbench_json,
+    _score_from_trajectory_replay_json,
+    _score_from_trust_json,
+    _score_from_vendingbench_json,
+    _score_from_visualwebbench_json,
+    _score_from_vision_language_json,
+    _score_from_voiceagentbench_json,
+    _score_from_voicebench_json,
+    _score_from_voicebench_quality_json,
+    _score_from_webshop_json,
+)
 
 
 _MINT_CATEGORY_TO_SUBTASKS: dict[str, tuple[str, ...]] = {
@@ -1170,10 +1121,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _vision_language_result(output_dir: Path) -> Path:
         return output_dir / "vision-language-results.json"
 
-
-
-
-
     def _osworld_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
@@ -1234,7 +1181,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="osworld-eliza-results-*.json")
 
     # HyperliquidBench - perp-trading plan generation + Rust execution
-
 
     def _gauntlet_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
@@ -1716,9 +1662,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return output_dir / "webshop-results.json"
 
     # WooBench - mystical-reading conversation benchmark.
-
-
-
 
     # abliteration-robustness
     def _abliteration_robustness_cmd(
@@ -2377,9 +2320,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     return [
         BenchmarkDefinition(
-            id="bfcl",
-            display_name="BFCL",
-            description="Berkeley Function-Calling Leaderboard",
+            **workload_metadata("bfcl"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2391,9 +2332,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_bfcl_json,
         ),
         BenchmarkDefinition(
-            id="realm",
-            display_name="REALM-Bench",
-            description="Real-World Planning benchmark",
+            **workload_metadata("realm"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2408,9 +2347,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_realm_json,
         ),
         BenchmarkDefinition(
-            id="mint",
-            display_name="MINT",
-            description="Multi-turn benchmark (tools + feedback ablations)",
+            **workload_metadata("mint"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2425,9 +2362,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_mint_json,
         ),
         BenchmarkDefinition(
-            id="agentbench",
-            display_name="AgentBench",
-            description="AgentBench environments (sample tasks in this repo)",
+            **workload_metadata("agentbench"),
             cwd_rel="suites/agentbench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2443,9 +2378,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_agentbench_json,
         ),
         BenchmarkDefinition(
-            id="context_bench",
-            display_name="ContextBench",
-            description="Needle-in-a-haystack + multihop context retrieval benchmark",
+            **workload_metadata("context_bench"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2460,9 +2393,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_contextbench_json,
         ),
         BenchmarkDefinition(
-            id="recall_bench",
-            display_name="RecallBench",
-            description="Precision/Recall/nDCG/latency over the real @elizaos/core memory-recall + knowledge-retrieval path (document-scale, per SearchMode, with a forced embed fail-open).",
+            **workload_metadata("recall_bench"),
             cwd_rel="suites/recall-bench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2479,9 +2410,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_recall_json,
         ),
         BenchmarkDefinition(
-            id="terminal_bench",
-            display_name="Terminal-Bench",
-            description="Terminal proficiency benchmark",
+            **workload_metadata("terminal_bench"),
             cwd_rel="suites/terminal-bench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2496,9 +2425,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_terminalbench_json,
         ),
         BenchmarkDefinition(
-            id="tau_bench",
-            display_name="Tau-bench",
-            description="Tool-Agent-User Interaction benchmark",
+            **workload_metadata("tau_bench"),
             cwd_rel="suites/tau-bench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2518,9 +2445,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_taubench_json,
         ),
         BenchmarkDefinition(
-            id="vending_bench",
-            display_name="Vending-Bench",
-            description="Vending machine management simulation benchmark",
+            **workload_metadata("vending_bench"),
             cwd_rel="suites/vending-bench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2532,9 +2457,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_vendingbench_json,
         ),
         BenchmarkDefinition(
-            id="swe_bench",
-            display_name="SWE-bench",
-            description="Software engineering benchmark (Lite/Verified/Full)",
+            **workload_metadata("swe_bench"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2546,9 +2469,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_swebench_json,
         ),
         BenchmarkDefinition(
-            id="swe_bench_orchestrated",
-            display_name="SWE-bench (Orchestrated)",
-            description="Legacy SWE-bench provider matrix; orchestration publication disabled",
+            **workload_metadata("swe_bench_orchestrated"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2563,9 +2484,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_swebench_orchestrated_json,
         ),
         BenchmarkDefinition(
-            id="orchestrator_lifecycle",
-            display_name="Orchestrator Lifecycle",
-            description="Multi-turn orchestration lifecycle scenario benchmark",
+            **workload_metadata("orchestrator_lifecycle"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2577,9 +2496,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_orchestrator_lifecycle_json,
         ),
         BenchmarkDefinition(
-            id="mind2web",
-            display_name="Mind2Web",
-            description="Web agent navigation benchmark (OSU-NLP-Group)",
+            **workload_metadata("mind2web"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2598,9 +2515,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_mind2web_json,
         ),
         BenchmarkDefinition(
-            id="visualwebbench",
-            display_name="VisualWebBench",
-            description="Multimodal webpage understanding and grounding benchmark",
+            **workload_metadata("visualwebbench"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2616,9 +2531,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_visualwebbench_json,
         ),
         BenchmarkDefinition(
-            id="vision_language",
-            display_name="Vision-Language Bench",
-            description="TextVQA, DocVQA, ChartQA, ScreenSpot, and OSWorld vision-language harness",
+            **workload_metadata("vision_language"),
             cwd_rel="suites/vision-language",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2634,9 +2547,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_vision_language_json,
         ),
         BenchmarkDefinition(
-            id="osworld",
-            display_name="OSWorld",
-            description="Multimodal desktop agent benchmark (369 tasks) - arXiv:2404.07972",
+            **workload_metadata("osworld"),
             cwd_rel="suites/OSWorld",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2652,9 +2563,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_osworld_json,
         ),
         BenchmarkDefinition(
-            id="gauntlet",
-            display_name="Solana Gauntlet",
-            description="Tiered adversarial safety benchmark for Solana AI agents (96 scenarios, 4 levels)",
+            **workload_metadata("gauntlet"),
             cwd_rel="suites/gauntlet",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2672,9 +2581,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_gauntlet_json,
         ),
         BenchmarkDefinition(
-            id="clawbench",
-            display_name="ClawBench",
-            description="Deterministic scenario-based evaluation for OpenClaw agents (5 scenarios)",
+            **workload_metadata("clawbench"),
             cwd_rel="suites/clawbench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2690,9 +2597,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_clawbench_json,
         ),
         BenchmarkDefinition(
-            id="openclaw_bench",
-            display_name="OpenClaw-Bench",
-            description="AI coding assistant benchmark (setup, implementation, refactoring, testing)",
+            **workload_metadata("openclaw_bench"),
             cwd_rel="suites/openclaw-benchmark",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2708,9 +2613,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_openclaw_bench_json,
         ),
         BenchmarkDefinition(
-            id="configbench",
-            display_name="ConfigBench",
-            description="Plugin configuration & secrets security benchmark (682 scripted scenarios: 62 authored baselines + 620 edge variants)",
+            **workload_metadata("configbench"),
             cwd_rel="suites/configbench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2726,9 +2629,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_configbench_json,
         ),
         BenchmarkDefinition(
-            id="voicebench",
-            display_name="VoiceBench",
-            description="End-to-end voice latency benchmark (transcription + response + TTS)",
+            **workload_metadata("voicebench"),
             cwd_rel="suites/voicebench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2749,13 +2650,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_voicebench_json,
         ),
         BenchmarkDefinition(
-            id="mmau",
-            display_name="MMAU (Audio)",
-            description=(
-                "Audio MMAU — Massive Multi-task Audio Understanding (Sakshi et al., "
-                "ICLR 2025) — 10k audio MCQs across speech/sound/music and 27 "
-                "reasoning skills. Not the Salesforce agent MMAU (arXiv:2407.18961)."
-            ),
+            **workload_metadata("mmau"),
             cwd_rel="suites/mmau-audio",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2777,12 +2672,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_mmau_json,
         ),
         BenchmarkDefinition(
-            id="voicebench_quality",
-            display_name="VoiceBench (quality)",
-            description=(
-                "Vendored VoiceBench (Chen et al. 2024) — 8-suite quality "
-                "benchmark over 6783 spoken instructions"
-            ),
+            **workload_metadata("voicebench_quality"),
             cwd_rel="suites/voicebench/quality",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY",),
@@ -2804,9 +2694,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_voicebench_quality_json,
         ),
         BenchmarkDefinition(
-            id="trust",
-            display_name="Trust",
-            description="Agent trust/security detection benchmark",
+            **workload_metadata("trust"),
             cwd_rel="suites/trust",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2822,9 +2710,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_trust_json,
         ),
         BenchmarkDefinition(
-            id="webshop",
-            display_name="WebShop",
-            description="WebShop product-search/purchase benchmark with Eliza agent",
+            **workload_metadata("webshop"),
             cwd_rel="suites/webshop",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2840,9 +2726,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_webshop_json,
         ),
         BenchmarkDefinition(
-            id="abliteration-robustness",
-            display_name="Abliteration Robustness",
-            description="Over-refusal benchmark for abliterated model variants on benign prompts",
+            **workload_metadata("abliteration-robustness"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2858,9 +2742,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_abliteration_robustness_json,
         ),
         BenchmarkDefinition(
-            id="action-calling",
-            display_name="Action Calling",
-            description="Native function/tool calling against planner-style records",
+            **workload_metadata("action-calling"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2876,9 +2758,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_action_calling_json,
         ),
         BenchmarkDefinition(
-            id="lifeops_bench",
-            display_name="LifeOpsBench",
-            description="Multi-turn life-assistant tool-use benchmark (calendar/mail/messages/contacts/reminders/finance/travel/health/sleep/focus)",
+            **workload_metadata("lifeops_bench"),
             cwd_rel="suites/lifeops-bench",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY", "ANTHROPIC_API_KEY"),
@@ -2900,9 +2780,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_lifeops_bench_json,
         ),
         BenchmarkDefinition(
-            id="multitask_bench",
-            display_name="MultitaskBench",
-            description="One agent handling N interleaved LifeOps tasks (N=1/5/10); per-task score interference under load for eliza/hermes/openclaw",
+            **workload_metadata("multitask_bench"),
             cwd_rel="suites/multitask-bench",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY",),
@@ -2917,7 +2795,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                     "STATIC-only sample (10 scenarios) — no ANTHROPIC key or LIVE judge needed. "
                     "CEREBRAS_API_KEY is required for the live harnesses (agent model gemma-4-31b). "
                     "The eliza live lane builds ungated: per-session usage attribution is the "
-                    "AsyncLocalStorage buffer in suites/lifeops-bench/runner/src/server.ts (#13777). "
+                    "AsyncLocalStorage buffer in harnesses/eliza/runner/src/server.ts (#13777). "
                     "extra.lanes (default '1,5,10') sets concurrency; N=1 is the interference baseline and is required. "
                     "isolation is 'shared_runtime' for eliza, 'process_per_turn' for hermes/openclaw. "
                     "Score: mean_task_score of the N=10 lane. Higher is better."
@@ -2928,9 +2806,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_multitask_bench_json,
         ),
         BenchmarkDefinition(
-            id="voiceagentbench",
-            display_name="VoiceAgentBench",
-            description="Voice-in + tool-call-out + multi-turn benchmark (single/parallel/sequential/multi-turn/safety/multilingual)",
+            **workload_metadata("voiceagentbench"),
             cwd_rel="suites/voiceagentbench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2954,13 +2830,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_voiceagentbench_json,
         ),
         BenchmarkDefinition(
-            id="meeting_voice",
-            display_name="Meeting Voice Smoke",
-            description=(
-                "No-key smoke lane for meeting voice transcription proof wiring, "
-                "canonical artifact shape, capture-path metadata, and evidence "
-                "bundle validation. Mocked plumbing is never product proof."
-            ),
+            **workload_metadata("meeting_voice"),
             cwd_rel="suites/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -2980,12 +2850,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_meeting_transcription_proof_json,
         ),
         BenchmarkDefinition(
-            id="meeting_voice_real",
-            display_name="Meeting Voice Real Product Evidence",
-            description=(
-                "Manual real-product lane for Zoom, Google Meet, on-device, cloud-agent, "
-                "and hybrid local/cloud meeting transcription proof"
-            ),
+            **workload_metadata("meeting_voice_real"),
             cwd_rel="suites/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3003,12 +2868,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_meeting_transcription_proof_json,
         ),
         BenchmarkDefinition(
-            id="meeting_voice_stress",
-            display_name="Meeting Voice Acoustic Stress Evidence",
-            description=(
-                "Manual real-product lane for meeting voice stressors: music, noise, "
-                "babble, overlap, far-field room audio, and multi-speaker single-stream cases"
-            ),
+            **workload_metadata("meeting_voice_stress"),
             cwd_rel="suites/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3026,12 +2886,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_meeting_transcription_proof_json,
         ),
         BenchmarkDefinition(
-            id="meeting_voice_av",
-            display_name="Meeting Voice Audio-Visual Evidence",
-            description=(
-                "Manual real-product lane for audio-visual meeting proof, active-speaker "
-                "metadata, video evidence, screenshots, and transcript/diarization artifacts"
-            ),
+            **workload_metadata("meeting_voice_av"),
             cwd_rel="suites/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3049,13 +2904,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_meeting_transcription_proof_json,
         ),
         BenchmarkDefinition(
-            id="meeting_transcription_proof",
-            display_name="Meeting Transcription Proof",
-            description=(
-                "Issue #12486 proof registry for Zoom, Google Meet, on-device "
-                "capture, cloud agents, hybrid inference, diarization, speaker "
-                "identity, consent, retention, and evidence bundles"
-            ),
+            **workload_metadata("meeting_transcription_proof"),
             cwd_rel="suites/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3077,9 +2926,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ),
         # ----- standard public LLM benchmarks (W1-B1, gap C6) -----
         BenchmarkDefinition(
-            id="mmlu",
-            display_name="MMLU",
-            description="Massive Multitask Language Understanding (cais/mmlu, 4-way multiple choice over 57 subjects)",
+            **workload_metadata("mmlu"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3096,9 +2943,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_mmlu_json,
         ),
         BenchmarkDefinition(
-            id="humaneval",
-            display_name="HumanEval",
-            description="OpenAI HumanEval pass@1 over openai_humaneval (164 Python coding problems)",
+            **workload_metadata("humaneval"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3115,9 +2960,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_humaneval_json,
         ),
         BenchmarkDefinition(
-            id="gsm8k",
-            display_name="GSM8K",
-            description="Grade-school math word problems (openai/gsm8k) with strict #### integer parsing",
+            **workload_metadata("gsm8k"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3133,9 +2976,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_gsm8k_json,
         ),
         BenchmarkDefinition(
-            id="mt_bench",
-            display_name="MT-Bench",
-            description="Multi-turn open-ended LLM benchmark judged 1-10 by a strong model (LMSYS-style)",
+            **workload_metadata("mt_bench"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3153,14 +2994,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_mt_bench_json,
         ),
         BenchmarkDefinition(
-            id="trajectory_replay",
-            display_name="Trajectory Replay",
-            description=(
-                "Regression benchmark that replays curated eliza_native_v1 "
-                "trajectories from ~/.eliza/trajectories against a candidate "
-                "endpoint and scores action-sequence + final-state match via "
-                "eliza_reward_fn (closes M5 follow-up)."
-            ),
+            **workload_metadata("trajectory_replay"),
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3180,12 +3014,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_trajectory_replay_json,
         ),
         BenchmarkDefinition(
-            id="hermes_tblite",
-            display_name="Hermes TBlite",
-            description=(
-                "Hermes-agent's TBlite environment (100 calibrated terminal tasks). "
-                "Fastest of the four hermes-native envs — preferred for smoke loops."
-            ),
+            **workload_metadata("hermes_tblite"),
             cwd_rel="harnesses/hermes",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY",),
@@ -3201,9 +3030,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_hermes_env_json,
         ),
         BenchmarkDefinition(
-            id="hermes_terminalbench_2",
-            display_name="Hermes TerminalBench 2",
-            description="Hermes-agent's terminalbench_2 environment (89 terminal tasks).",
+            **workload_metadata("hermes_terminalbench_2"),
             cwd_rel="harnesses/hermes",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY",),
@@ -3218,9 +3045,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_hermes_env_json,
         ),
         BenchmarkDefinition(
-            id="hermes_yc_bench",
-            display_name="Hermes YC-Bench",
-            description="Hermes-agent's yc_bench environment (long-horizon strategic tasks).",
+            **workload_metadata("hermes_yc_bench"),
             cwd_rel="harnesses/hermes",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY",),
@@ -3235,9 +3060,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_hermes_env_json,
         ),
         BenchmarkDefinition(
-            id="hermes_swe_env",
-            display_name="Hermes SWE Env",
-            description="Hermes-agent's SWE-bench-style hermes_swe_env environment.",
+            **workload_metadata("hermes_swe_env"),
             cwd_rel="harnesses/hermes",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY",),

@@ -5,8 +5,8 @@
  * query the registry to discover and launch overlay apps.
  */
 
-import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
-import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
+import { userAgentHasElizaOSMarker } from "@elizaos/core/protocol";
 import { getUiRegistryStore } from "../registry-host.js";
 import type { OverlayApp } from "./overlay-app-api.js";
 

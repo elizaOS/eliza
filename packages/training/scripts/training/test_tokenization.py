@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from training.tokenization import tokenize_with_explicit_limit
+from eliza_training.training.tokenization import tokenize_with_explicit_limit
 
 
 class FakeTensor:

@@ -1,7 +1,7 @@
 // Handles MCP cloud API mcp stream route traffic with transport-specific auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const body = JSON.stringify({
   error: "SSE streaming is no longer supported. Use streamable-http transport.",

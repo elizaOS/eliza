@@ -13,7 +13,7 @@ const boundary = vi.hoisted(() => ({ fetch: vi.fn(), authority: "first" }));
 vi.mock("../../state/agent-profiles", () => ({
   loadAgentProfileRegistry: () => ({ profiles: [], activeProfileId: null }),
 }));
-vi.mock("../../api", () => ({ client: { fetch: boundary.fetch } }));
+vi.mock("../../api/client", () => ({ client: { fetch: boundary.fetch } }));
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   getActiveAgentAuthority: () => boundary.authority,
   useActiveAgentAuthority: () => boundary.authority,

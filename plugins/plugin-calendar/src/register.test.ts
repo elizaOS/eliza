@@ -2,10 +2,10 @@
 
 import {
   appShellPageMatchesPath,
+  ElizaClient,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
 } from "@elizaos/ui";
-import { ElizaClient } from "@elizaos/ui/api";
 import { expect, it } from "vitest";
 
 it("keeps root imports passive and installs the Calendar surface explicitly", async () => {

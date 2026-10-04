@@ -1,7 +1,11 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
+import {
+  calendarReadBindingEvaluator,
+  calendarReadBindingField,
+} from "../../../plugin-calendar/src/read-binding.ts";
 import { createAssistantPlugin } from "../index.ts";
 
 /**
@@ -250,6 +254,503 @@ function visibleTexts(contents: Content[]): string[] {
 }
 
 describe("planner-loop death after a completed tool", () => {
+  it.each([false, true])(
+    "preserves the conditional Calendar branch through the real field runner (note exists=%s)",
+    async (exists) => {
+      const h = await createHarness({ actionResult: { success: true } });
+      const world = await h.runtime.getWorld(h.runtime.agentId);
+      if (!world) throw new Error("Missing owner world");
+      await h.runtime.updateWorlds([
+        {
+          ...world,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" },
+          },
+        },
+      ]);
+      h.runtime.contexts.tryRegister({
+        id: "notes",
+        aliases: ["note"],
+        description: "Saved notes",
+      });
+      h.runtime.actions.length = 0;
+      const executed: string[] = [];
+      for (const name of ["NOTES_LIST", "CALENDAR_FEED", "CALENDAR_NEXT_EVENT"])
+        h.runtime.registerAction({
+          name,
+          description: name,
+          contexts: name === "NOTES_LIST" ? ["notes"] : ["calendar"],
+          validate: async () => true,
+          handler: async () => {
+            executed.push(name);
+            return {
+              success: true,
+              data: {
+                readOnlyOperation: true,
+                count: name === "NOTES_LIST" && exists ? 1 : 0,
+              },
+            };
+          },
+        });
+      h.runtime.registerResponseHandlerFieldEvaluator(calendarReadBindingField);
+      h.runtime.responseHandlerEvaluators.push(calendarReadBindingEvaluator);
+      let responseCalls = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (++responseCalls === 1) {
+            const result = stageOneToolTurn();
+            Object.assign(result.toolCalls[0].arguments, {
+              intents: [
+                "Read Notes to check whether a note exists",
+                "If I have a note, read my next Calendar event",
+              ],
+              candidateActionNames: ["NOTES_LIST"],
+              calendarReadBindings: [
+                {
+                  intentId: "intent:2",
+                  operation: "next_event",
+                  execution: "conditional",
+                },
+              ],
+            });
+            return result;
+          }
+          if (exists && executed.length === 1)
+            return JSON.stringify({
+              success: false,
+              decision: "CONTINUE",
+              thought:
+                "A note exists, so perform the conditional next-event read.",
+              requestFullyCovered: false,
+              messageToUser: "",
+            });
+          return JSON.stringify({
+            success: true,
+            decision: "FINISH",
+            thought: exists
+              ? "Both requested reads finished."
+              : "The condition is false, so no Calendar read is requested.",
+            requestFullyCovered: true,
+            outcomeCoverage: [
+              {
+                intentId: "intent:1",
+                status: "completed",
+                evidenceStepIds: ["step:1"],
+              },
+              {
+                intentId: "intent:2",
+                status: "completed",
+                evidenceStepIds: [exists ? "step:2" : "step:1"],
+              },
+            ],
+            messageToUser: exists
+              ? "The conditional Calendar read completed."
+              : "No note exists, so I skipped the Calendar read.",
+          });
+        },
+        "conditional-read-test",
+        200,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          const tools = params.tools?.map((tool) => tool.name) ?? [];
+          expect(tools).toContain("CALENDAR_NEXT_EVENT");
+          expect(tools).not.toContain("CALENDAR_FEED");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `read-${executed.length}`,
+                name:
+                  executed.length === 0 ? "NOTES_LIST" : "CALENDAR_NEXT_EVENT",
+                arguments: {},
+              },
+            ],
+          };
+        },
+        "conditional-read-test",
+        200,
+      );
+      const message = {
+        ...makeMessage(
+          h.runtime,
+          "If I have a note, read my next Calendar event.",
+        ),
+        id: "00000000-0000-0000-0000-000000000095" as UUID,
+      };
+      const outcome = await runV5MessageRuntimeStage1({
+        runtime: h.runtime,
+        message,
+        state: await h.runtime.composeState(message),
+        responseId: "00000000-0000-0000-0000-000000000096" as UUID,
+        callback: h.callback,
+      });
+      expect(executed).toEqual(
+        exists ? ["NOTES_LIST", "CALENDAR_NEXT_EVENT"] : ["NOTES_LIST"],
+      );
+      expect(outcome.kind).toBe("planned_reply");
+      if (outcome.kind !== "planned_reply")
+        throw new Error("Missing conditional reply");
+      expect(outcome.result.responseContent?.text).toBe(
+        exists
+          ? "The conditional Calendar read completed."
+          : "No note exists, so I skipped the Calendar read.",
+      );
+    },
+  );
+
+  it.each([
+    {
+      operation: "next_event",
+      reader: "CALENDAR_NEXT_EVENT",
+      text: "Open Notes and read my latest note and next Calendar event.",
+    },
+    {
+      operation: "feed",
+      reader: "CALENDAR_FEED",
+      text: "Open Notes and read my latest note and Calendar agenda for next week.",
+    },
+  ] as const)(
+    "routes the same-call typed $operation binding through the real planner surface",
+    async ({ operation, reader, text }) => {
+      const h = await createHarness({ actionResult: { success: true } });
+      const world = await h.runtime.getWorld(h.runtime.agentId);
+      if (!world) throw new Error("Missing owner world");
+      await h.runtime.updateWorlds([
+        {
+          ...world,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" },
+          },
+        },
+      ]);
+      h.runtime.contexts.tryRegister({
+        id: "notes",
+        aliases: ["note"],
+        description: "Saved notes",
+      });
+      h.runtime.actions.length = 0;
+      const executed: string[] = [];
+      for (const name of [
+        "VIEWS_SHOW",
+        "NOTES_LIST",
+        "CALENDAR_FEED",
+        "CALENDAR_NEXT_EVENT",
+      ]) {
+        h.runtime.registerAction({
+          name,
+          description: name,
+          contexts: name === "NOTES_LIST" ? ["notes"] : ["general", "calendar"],
+          validate: async () => true,
+          handler: async () => {
+            executed.push(name);
+            return { success: true, data: { readOnlyOperation: true } };
+          },
+        });
+      }
+      h.runtime.registerResponseHandlerFieldEvaluator(calendarReadBindingField);
+      h.runtime.responseHandlerEvaluators.push({
+        name: "host.view-navigation",
+        priority: 60,
+        shouldRun: () => true,
+        evaluate: () => ({
+          requiresTool: true,
+          addCandidateActions: ["VIEWS_SHOW"],
+          addContextSlices: [
+            "Navigation target is the current-request registered Notes view.",
+          ],
+        }),
+      });
+      h.runtime.responseHandlerEvaluators.push(calendarReadBindingEvaluator);
+      const intents = [
+        "Open Notes view",
+        "Read latest note",
+        operation === "next_event"
+          ? "Read next calendar event"
+          : "Read Calendar agenda for next week",
+      ];
+      let responseCalls = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (++responseCalls === 1) {
+            const result = stageOneToolTurn();
+            Object.assign(result.toolCalls[0].arguments, {
+              intents,
+              candidateActionNames: ["CALENDAR_FEED"],
+              calendarReadBindings: [
+                { intentId: "intent:3", operation, execution: "required" },
+              ],
+            });
+            return result;
+          }
+          return JSON.stringify({
+            success: false,
+            decision: "FINISH",
+            thought: "This surface test stops after the selected read.",
+            requestFullyCovered: false,
+            messageToUser: "Only the selected Calendar read was exercised.",
+          });
+        },
+        "typed-read-test",
+        200,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          const names = params.tools?.map((tool) => tool.name) ?? [];
+          expect(names).toContain("VIEWS_SHOW");
+          expect(names).toContain("NOTES_LIST");
+          expect(names).toContain(reader);
+          expect(names).not.toContain(
+            operation === "next_event"
+              ? "CALENDAR_FEED"
+              : "CALENDAR_NEXT_EVENT",
+          );
+          for (const intent of intents)
+            expect(JSON.stringify(params.messages)).toContain(intent);
+          return {
+            text: "",
+            toolCalls: [{ id: "selected-read", name: reader, arguments: {} }],
+          };
+        },
+        "typed-read-test",
+        200,
+      );
+      const message = {
+        ...makeMessage(h.runtime, text),
+        id: "00000000-0000-0000-0000-000000000094" as UUID,
+      };
+      const outcome = await runV5MessageRuntimeStage1({
+        runtime: h.runtime,
+        message,
+        state: await h.runtime.composeState(message),
+        responseId: "00000000-0000-0000-0000-000000000093" as UUID,
+        callback: h.callback,
+      });
+      expect(outcome.kind).toBe("planned_reply");
+      expect(executed).toEqual([reader]);
+      expect(responseCalls).toBe(2);
+    },
+  );
+
+  it("terminates with the honest partial reply when FINISH admits a blocked outcome", async () => {
+    const h = await createHarness({
+      actionResult: { success: true, data: { readOnlyOperation: true } },
+    });
+    const partial = "The read completed. I couldn't open the requested view.";
+    let responseCalls = 0;
+    h.runtime.registerModel(
+      ModelType.RESPONSE_HANDLER,
+      async () => {
+        if (++responseCalls === 1) return stageOneToolTurn();
+        return JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          thought: "The read completed, but navigation is blocked.",
+          requestFullyCovered: true,
+          outcomeCoverage: [
+            {
+              intentId: "intent:1",
+              status: "completed",
+              evidenceStepIds: ["step:1"],
+            },
+            {
+              intentId: "intent:2",
+              status: "blocked",
+              evidenceStepIds: ["step:1"],
+            },
+          ],
+          messageToUser: partial,
+          replyEffectStatus: "none",
+        });
+      },
+      "partial-finish-test",
+      200,
+    );
+    h.runtime.registerModel(
+      ModelType.ACTION_PLANNER,
+      async () => plannerCalendarCall(),
+      "partial-finish-test",
+      200,
+    );
+    const outcome = await runV5MessageRuntimeStage1({
+      runtime: h.runtime,
+      message: makeMessage(h.runtime, "look up the requested entry"),
+      state: { values: {}, data: {}, text: "" },
+      responseId: "00000000-0000-0000-0000-000000000083" as UUID,
+      callback: h.callback,
+    });
+    expect(outcome.kind).toBe("planned_reply");
+    if (outcome.kind !== "planned_reply")
+      throw new Error("Missing planned reply");
+    expect(outcome.result.responseContent?.text).toBe(partial);
+    expect(responseCalls).toBe(2);
+  });
+
+  it.each(["VIEWS", "VIEWS_SHOW"])(
+    "preserves host-added %s through mixed Notes/Calendar owner-read narrowing",
+    async (navigationName) => {
+      const h = await createHarness({ actionResult: { success: true } });
+      h.runtime.contexts.tryRegister({
+        id: "notes",
+        aliases: ["note"],
+        description: "Saved notes",
+      });
+      const world = await h.runtime.getWorld(h.runtime.agentId);
+      if (!world) throw new Error("Missing caller world");
+      await h.runtime.updateWorlds([
+        {
+          ...world,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" },
+          },
+        },
+      ]);
+      h.runtime.actions.length = 0;
+      const executed: string[] = [];
+      for (const name of [
+        navigationName,
+        "NOTES_LIST",
+        "CALENDAR_FEED",
+        "CALENDAR_DELETE_EVENT",
+      ]) {
+        h.runtime.registerAction({
+          name,
+          description: name === navigationName ? "Open Notes view" : name,
+          parameters:
+            name === navigationName
+              ? [
+                  {
+                    name: "view",
+                    description: "Registered destination",
+                    required: true,
+                    schema: { type: "string" },
+                  },
+                  {
+                    name: "navigationStepId",
+                    description: "Runtime-owned navigation correlation",
+                    required: false,
+                    schema: { type: "string" },
+                  },
+                ]
+              : [],
+          contexts:
+            name === navigationName
+              ? ["general", "notes", "calendar"]
+              : name === "NOTES_LIST"
+                ? ["notes"]
+                : ["calendar"],
+          validate: async () => true,
+          handler: async (_runtime, _message, _state, options) => {
+            executed.push(name);
+            if (name === navigationName)
+              expect(options?.parameters?.view).toBe("notes");
+            return { success: true, data: { readOnlyOperation: true } };
+          },
+        });
+      }
+      h.runtime.responseHandlerEvaluators.push({
+        name: "host.view-navigation",
+        priority: 60,
+        shouldRun: () => true,
+        evaluate: () => ({
+          requiresTool: true,
+          addContexts: ["general"],
+          addCandidateActions: [navigationName],
+          addContextSlices: [
+            'Current-request navigation judgment: {"disposition":"planning","viewId":"notes"}. No navigation has executed.',
+          ],
+          clearReply: true,
+        }),
+      });
+      const intents = [
+        "Open the Notes view",
+        "Read the latest note",
+        "Look up the next calendar event",
+      ];
+      let stageOne = true;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (stageOne) {
+            stageOne = false;
+            const output = stageOneToolTurn();
+            output.toolCalls[0].arguments.intents = intents;
+            output.toolCalls[0].arguments.candidateActionNames = [
+              "CALENDAR_DELETE_EVENT",
+            ];
+            return output;
+          }
+          return JSON.stringify({
+            success: true,
+            decision: "FINISH",
+            thought: "The requested work has settled.",
+            messageToUser: "Read complete.",
+            replyEffectStatus: "none",
+          });
+        },
+        "mixed-navigation-test",
+        200,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, parameters) => {
+          const names = parameters.tools?.map((tool) => tool.name) ?? [];
+          expect(names).toContain(navigationName);
+          expect(names).toContain("NOTES_LIST");
+          expect(names).toContain("CALENDAR_FEED");
+          expect(names).not.toContain("CALENDAR_DELETE_EVENT");
+          const eventLine = parameters.messages
+            ?.flatMap((message) =>
+              typeof message.content === "string"
+                ? message.content.split("\n")
+                : [],
+            )
+            .find((line) => line.startsWith("message_handler: "));
+          if (!eventLine) throw new Error("Missing routing event");
+          const event = JSON.parse(eventLine.slice("message_handler: ".length));
+          expect(event.content).toContain('"viewId":"notes"');
+          expect(event.metadata.plan.intents).toEqual(intents);
+          expect(event.metadata.plan.candidateActions).toEqual([
+            navigationName,
+            "CALENDAR_FEED",
+          ]);
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "open-notes",
+                name: navigationName,
+                arguments: { view: "notes" },
+              },
+            ],
+          };
+        },
+        "mixed-navigation-test",
+        200,
+      );
+      const message = makeMessage(
+        h.runtime,
+        "Open Notes and read my latest note and next Calendar event.",
+      );
+      const outcome = await runV5MessageRuntimeStage1({
+        runtime: h.runtime,
+        message,
+        state: await h.runtime.composeState(message),
+        responseId: "00000000-0000-0000-0000-000000000083" as UUID,
+        callback: h.callback,
+      });
+      expect(outcome.kind).toBe("planned_reply");
+      expect(executed).toEqual([navigationName]);
+    },
+  );
+
   it.each([false, true])(
     "starts ambiguous read work with discovery and refreshes role (revoked=%s)",
     async (revoked) => {

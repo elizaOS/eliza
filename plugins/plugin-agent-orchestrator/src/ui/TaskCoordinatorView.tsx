@@ -12,12 +12,12 @@
  * cross-modality view-bundle surface. Each spatial affordance maps 1:1 to a
  * client method.
  */
-
-import { ApiError, client } from "@elizaos/ui/api";
-import type {
-  CodingAgentTaskThread,
-  CodingAgentTaskThreadDetail,
-} from "@elizaos/ui/api/client-types-cloud";
+import {
+  ApiError,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
+  client,
+} from "@elizaos/ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

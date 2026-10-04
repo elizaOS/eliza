@@ -1,3 +1,22 @@
+import {
+  ActionNoticeToast,
+  AppWorkspaceChrome,
+  CodingAgentSettingsSection,
+  getBootConfig,
+  listAppShellPages,
+  loadBrowserWorkspaceView,
+  loadChatView,
+  loadConversationsSidebar,
+  loadSettingsView,
+  loadTriggersView,
+  PairingView,
+  PluginsPageView,
+  resolveDetachedShellTarget,
+  ShellRoleProvider,
+  StartupFailureView,
+  useApp,
+  type WindowShellRoute,
+} from "@elizaos/ui";
 /**
  * Renders the root of a detached desktop window — a single non-"main"
  * WindowShellRoute (browser, chat, plugins, triggers, or a settings section)
@@ -9,20 +28,8 @@
  * because App.tsx already eager-loads it, so a lazy edge here buys nothing.
  */
 
-import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
-import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
-import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
-import { ActionNoticeToast } from "@elizaos/ui/components/shell/ActionNoticeToast";
-import { PairingView } from "@elizaos/ui/components/shell/PairingView";
-import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
-import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
-import { getBootConfig } from "@elizaos/ui/config";
-import {
-  resolveDetachedShellTarget,
-  type WindowShellRoute,
-} from "@elizaos/ui/platform/window-shell";
-import { CodingAgentSettingsSection } from "@elizaos/ui/slots/task-coordinator-slots";
-import { useApp } from "@elizaos/ui/state/useApp";
+import type { PageScope } from "@elizaos/contracts";
+
 import {
   type ComponentType,
   type JSX,
@@ -59,7 +66,7 @@ function lazyNamedView<
 }
 
 const BrowserWorkspaceView = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/BrowserWorkspaceView"),
+  () => loadBrowserWorkspaceView(),
   "BrowserWorkspaceView",
 );
 
@@ -70,13 +77,10 @@ const BrowserWorkspaceView = lazyNamedView(
 // settings-section registry) or tree-shaken barrels, so a lazy edge here really
 // does move them off the eager path.
 const ConversationsSidebar = lazyNamedView(
-  () => import("@elizaos/ui/components/conversations/ConversationsSidebar"),
+  () => loadConversationsSidebar(),
   "ConversationsSidebar",
 );
-const ChatView = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/ChatView"),
-  "ChatView",
-);
+const ChatView = lazyNamedView(() => loadChatView(), "ChatView");
 const CloudDashboard = lazy(async () => {
   const registration = listAppShellPages().find((page) => page.id === "cloud");
   if (!registration?.loader) {
@@ -84,20 +88,13 @@ const CloudDashboard = lazy(async () => {
   }
   return registration.loader();
 });
-const TriggersView = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/TriggersView"),
-  "TriggersView",
-);
+const TriggersView = lazyNamedView(() => loadTriggersView(), "TriggersView");
 
 // Static import: PluginsPageView is statically imported by App.tsx and
 // AppWindowRenderer; a lazy() here can't move it into a separate chunk
 // and just adds a wasted Suspense boundary.
-import { PluginsPageView } from "@elizaos/ui/components/pages/PluginsPageView";
 
-const SettingsView = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/SettingsView"),
-  "SettingsView",
-);
+const SettingsView = lazyNamedView(() => loadSettingsView(), "SettingsView");
 
 function DetachedLazyBoundary({ children }: { children: JSX.Element }) {
   return (

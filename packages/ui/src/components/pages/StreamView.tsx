@@ -11,7 +11,7 @@ import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { openStreamPopout } from "../stream/popout-url";

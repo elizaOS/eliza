@@ -8,7 +8,7 @@ mock.module("@/api-app/lib/paid-route-standing", () => ({
     user: { id: "user", organization_id: "org" },
   }),
 }));
-mock.module("@/db/repositories", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories", () => ({
   StoragePutConflictError: class extends Error {},
   StorageQuotaExceededError: class extends Error {},
   servicePricingRepository: {
@@ -18,16 +18,16 @@ mock.module("@/db/repositories", () => ({
     },
   },
 }));
-mock.module("@/lib/cache/client", () => ({
+mock.module("@elizaos/cloud-shared/lib/cache/client", () => ({
   cache: { get: async () => null, set: async () => {}, del: async () => {} },
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { error() {}, warn() {}, info() {} },
 }));
-mock.module("@/lib/api/cloud-worker-errors", () => ({
+mock.module("@elizaos/cloud-shared/lib/api/cloud-worker-errors", () => ({
   failureResponse: (c: Context) => c.json({ error: "unexpected" }, 500),
 }));
-mock.module("@/lib/services/credits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   InsufficientCreditsError: class extends Error {},
 }));
 const effect = (kind: string) => async (args: { priceUsd: number }) => {
@@ -51,24 +51,34 @@ const effect = (kind: string) => async (args: { priceUsd: number }) => {
   };
 };
 const putPriceInputs: Array<[number, number, number]> = [];
-mock.module("@/lib/services/storage/native-storage-put", () => ({
-  NativeStoragePutError: class extends Error {},
-  resolveNativeStorageObject: async () => ({
-    provider_key: "immutable-generation",
+mock.module(
+  "@elizaos/cloud-shared/lib/services/storage/native-storage-put",
+  () => ({
+    NativeStoragePutError: class extends Error {},
+    resolveNativeStorageObject: async () => ({
+      provider_key: "immutable-generation",
+    }),
+    calculateStoragePutPrice: (
+      flat: number,
+      perByte: number,
+      bytes: number,
+    ) => {
+      putPriceInputs.push([flat, perByte, bytes]);
+      return flat + perByte * bytes;
+    },
+    executeNativeStoragePut: effect("put"),
+    executeNativeStorageDelete: effect("delete"),
   }),
-  calculateStoragePutPrice: (flat: number, perByte: number, bytes: number) => {
-    putPriceInputs.push([flat, perByte, bytes]);
-    return flat + perByte * bytes;
-  },
-  executeNativeStoragePut: effect("put"),
-  executeNativeStorageDelete: effect("delete"),
-}));
-mock.module("@/lib/services/storage/native-storage-read", () => ({
-  NativeStorageReadError: class extends Error {},
-  executeNativeStorageList: effect("list"),
-  executeNativeStorageGetOrHead: effect("read"),
-  executeNativeStoragePresign: effect("presign"),
-}));
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/storage/native-storage-read",
+  () => ({
+    NativeStorageReadError: class extends Error {},
+    executeNativeStorageList: effect("list"),
+    executeNativeStorageGetOrHead: effect("read"),
+    executeNativeStoragePresign: effect("presign"),
+  }),
+);
 mock.module("@/api-app/storage-read-capability", () => ({
   StorageReadCapabilityConfigurationError: class extends Error {},
   validateStorageReadCapabilityConfiguration: () => "https://storage.example",
@@ -80,7 +90,7 @@ const { default: objects } = await import(
 const { default: list } = await import("../v1/apis/storage/list/route");
 const { default: presign } = await import("../v1/apis/storage/presign/route");
 const { STORAGE_PRICING, STORAGE_PRICED_OPERATIONS, storageOperationPriceUsd } =
-  await import("@/lib/constants/pricing");
+  await import("@elizaos/cloud-shared/lib/constants/pricing");
 const env = {
   BLOB: {
     put: async () => ({}),

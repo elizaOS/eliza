@@ -203,7 +203,6 @@ describe("LifeOps package boundaries", () => {
       readPackageFile("src/index.ts"),
       readPackageFile("src/public.ts"),
       readPackageFile("src/lifeops/index.ts"),
-      readPackageFile("src/contracts/index.ts"),
     ];
 
     expect(statusMixin).toContain('from "@elizaos/plugin-browser"');

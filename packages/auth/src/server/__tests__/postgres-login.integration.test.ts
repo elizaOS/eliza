@@ -6,6 +6,11 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { LoginAuth } from "../../sdk/auth";
 
 const databaseUrl = process.env.LOGIN_TEST_DATABASE_URL;
+if (process.env.LOGIN_REQUIRE_POSTGRES_TESTS === "1" && !databaseUrl) {
+  throw new Error(
+    "LOGIN_TEST_DATABASE_URL is required by the PostgreSQL test lane",
+  );
+}
 
 test.skipIf(!databaseUrl)(
   "PostgreSQL login preserves sessions under enforced tenant isolation and rejects schema drift",
@@ -117,7 +122,7 @@ test.skipIf(!databaseUrl)(
         SELECT tenant_id AS "tenantId", actor_id AS "actorId"
         FROM audit_events WHERE action = 'auth.login'
       `;
-      expect(auditRows).toEqual([
+      expect([...auditRows]).toEqual([
         { tenantId: `eth:${account.address.toLowerCase()}`, actorId: userId },
       ]);
       await server.stop();
@@ -213,6 +218,103 @@ test.skipIf(!databaseUrl)(
       ).toMatchObject({ authenticated: false });
       await server.stop();
       server = undefined;
+      const {
+        closeDb,
+        getDb,
+        tenantContextForInternalJob,
+        withTenantRlsTransaction,
+        withTenantTransactionDatabase,
+        webhookConfigs,
+        waitUntilTenantDatabaseTask,
+      } = await import("../db/index");
+      const { PersistentQueue, WebhookDispatcher } = await import(
+        "../webhooks/index"
+      );
+      const { sql } = await import("drizzle-orm");
+      const { dispatchWebhook } = await import(
+        "../api/services/webhook-dispatch"
+      );
+      const dispatched: string[] = [];
+      class QueueDispatcher extends WebhookDispatcher {
+        override async dispatch(event: import("../shared/index").WebhookEvent) {
+          // The worker must release its tenant transaction before network I/O.
+          const context = await getDb().execute(
+            sql`SELECT NULLIF(current_setting('steward.tenant_id', true), '') AS tenant_id`,
+          );
+          expect([...context]).toEqual([{ tenant_id: null }]);
+          const claims =
+            await owner`SELECT id FROM webhook_deliveries WHERE tenant_id = ${event.tenantId} AND status = 'processing'`;
+          expect(claims).toHaveLength(1);
+          dispatched.push(event.tenantId);
+          return { success: true, attempts: 1, deliveredAt: new Date() };
+        }
+      }
+      const queue = new PersistentQueue(new QueueDispatcher());
+      const queueTenants = ["queue-one", "queue-two"];
+      try {
+        for (const tenantId of queueTenants) {
+          await owner`INSERT INTO tenants(id, name, api_key_hash) VALUES (${tenantId}, ${tenantId}, ${tenantId})`;
+          await withTenantRlsTransaction(
+            getDb(),
+            "postgres-js",
+            tenantContextForInternalJob({ tenantId, job: "queue-fixture" }),
+            (tx) =>
+              withTenantTransactionDatabase(tx, { tenantId }, async () => {
+                const [config] = await getDb()
+                  .insert(webhookConfigs)
+                  .values({
+                    tenantId,
+                    url: "https://queue.example.test",
+                    secret: "fixture",
+                  })
+                  .returning();
+                if (tenantId === "queue-two") {
+                  // Register delayed work without awaiting it; the owner must
+                  // drain this and the webhook task it schedules before commit.
+                  void waitUntilTenantDatabaseTask(async () => {
+                    await Bun.sleep(20);
+                    dispatchWebhook(
+                      tenantId,
+                      "dashboard",
+                      "user.wallet_created",
+                      {},
+                    );
+                  });
+                  return;
+                }
+                await queue.enqueue(
+                  {
+                    type: "webhook.test",
+                    tenantId,
+                    timestamp: new Date(),
+                    data: {},
+                  },
+                  config,
+                );
+              }),
+          );
+        }
+        expect(await getDb().select().from(webhookConfigs)).toEqual([]);
+        const pending =
+          await owner`SELECT status, attempts FROM webhook_deliveries ORDER BY tenant_id`;
+        expect([...pending]).toEqual([
+          { status: "pending", attempts: 0 },
+          { status: "pending", attempts: 0 },
+        ]);
+        expect(await queue.processQueue()).toHaveLength(2);
+        expect(dispatched.sort()).toEqual(queueTenants);
+        const receipts =
+          await owner`SELECT tenant_id, status, attempts FROM webhook_deliveries ORDER BY tenant_id`;
+        expect([...receipts]).toEqual(
+          queueTenants.map((tenant_id) => ({
+            tenant_id,
+            status: "delivered",
+            attempts: 1,
+          })),
+        );
+      } finally {
+        await closeDb();
+      }
       await owner`UPDATE drizzle.__drizzle_migrations SET hash = ${"0".repeat(64)} WHERE id = (SELECT min(id) FROM drizzle.__drizzle_migrations)`;
       await expect(startLoginServer({ port: 0 })).rejects.toMatchObject({
         code: "LOGIN_STARTUP_FAILED",
@@ -233,5 +335,5 @@ test.skipIf(!databaseUrl)(
       await admin.end();
     }
   },
-  60_000,
+  300_000,
 );

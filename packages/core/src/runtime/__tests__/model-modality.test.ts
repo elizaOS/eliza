@@ -2,7 +2,7 @@
  * Covers the single model-slot modality table and the PII-swap exclusions it
  * drives in dispatch. Uses a real AgentRuntime with spy handlers; no live model.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRuntime } from "../../runtime";
 import type { Character } from "../../types/agent.js";

@@ -3,7 +3,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 export function freshCalendarSources(
   events: readonly LifeOpsCalendarEvent[] = [],
 ): LifeOpsCalendarSourceHealth[] {

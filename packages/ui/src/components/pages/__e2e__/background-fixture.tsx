@@ -16,7 +16,7 @@
 // undo, and redo.
 import * as React from "react";
 import { AppBackground } from "../../../backgrounds/AppBackground";
-import { BACKGROUND_APPLY_EVENT } from "@elizaos/core/events";
+import { BACKGROUND_APPLY_EVENT } from "@elizaos/core/protocol";
 import { __setAppValueForTests } from "../../../state/app-store";
 import { applyBackgroundRedo } from "../../../state/background-history";
 import { applyBackgroundSet } from "../../../state/background-history";

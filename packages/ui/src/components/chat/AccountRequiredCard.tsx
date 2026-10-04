@@ -10,7 +10,7 @@
  */
 import { CheckCircle2, RefreshCw, ShieldAlert, UserRound } from "lucide-react";
 import { useRef } from "react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
 import { useBranding } from "../../config/branding";
 import {
   type ConnectorReconnectPhase,

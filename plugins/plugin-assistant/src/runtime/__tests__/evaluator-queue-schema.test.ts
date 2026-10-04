@@ -11,14 +11,12 @@ import type {
 import {
   completionContextSources,
   computePrefixHashes,
+  type JsonSchema,
   ModelType,
   normalizePromptSegments,
+  validateSchema,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  type JsonSchema,
-  validateSchema,
-} from "../../../../../packages/core/src/actions/validate-tool-args.ts";
 import {
   EVALUATOR_CONTEXT_ROUTES,
   evaluatorSchema,

@@ -34,7 +34,7 @@ const { useViewCatalogMock } = vi.hoisted(() => ({
 vi.mock("../../hooks/useViewCatalog", () => ({
   useViewCatalog: useViewCatalogMock,
 }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: { getBaseUrl: () => "http://localhost:31337" },
 }));
 vi.mock("../../api/app-shell-capabilities", () => ({

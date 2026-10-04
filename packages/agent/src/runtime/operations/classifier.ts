@@ -21,7 +21,7 @@
  *        - otherwise                            → cold
  */
 
-import { getFirstRunProviderFamily } from "@elizaos/core";
+import { getFirstRunProviderFamily } from "@elizaos/host/protocol";
 import type { OperationIntent, ReloadTier } from "./types.ts";
 
 export interface ClassifyContext {

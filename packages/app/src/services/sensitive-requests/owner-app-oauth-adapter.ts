@@ -1,3 +1,9 @@
+import {
+  isOwnerAppDeliveryRuntime,
+  isPolicySensitiveRequest,
+  looksLikeOwnerAppPrivate,
+  resolveOwnerAppTarget,
+} from "./owner-app-delivery.js";
 /**
  * SensitiveRequestDeliveryAdapter for `target === "owner_app_oauth"`: the OAuth
  * sibling of the inline-secret adapter. Delivers `kind: "oauth"` requests as an
@@ -13,15 +19,11 @@ import {
   type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
-  type DispatchSensitiveRequest,
   logger,
   requireConfirmedSendHandlerDelivery,
-  type SendHandlerResult,
   type SensitiveRequest,
   type SensitiveRequestDeliveryAdapter,
   type SensitiveRequestOAuthTarget,
-  type TargetInfo,
-  type UUID,
 } from "@elizaos/core";
 
 /**
@@ -41,49 +43,6 @@ import {
  * token-handling provider lives elsewhere; this adapter only formats and
  * delivers the consent-link envelope.
  */
-interface OwnerAppOAuthRuntime {
-  sendMessageToTarget(target: TargetInfo, content: Content): SendHandlerResult;
-}
-
-function isOwnerAppOAuthRuntime(value: unknown): value is OwnerAppOAuthRuntime {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "sendMessageToTarget" in value &&
-    typeof (value as { sendMessageToTarget: unknown }).sendMessageToTarget ===
-      "function"
-  );
-}
-
-function isPolicySensitiveRequest(
-  value: DispatchSensitiveRequest,
-): value is DispatchSensitiveRequest & SensitiveRequest {
-  const record = value as Record<string, unknown>;
-  const target = record.target;
-  const delivery = record.delivery;
-  return (
-    typeof record.status === "string" &&
-    typeof record.agentId === "string" &&
-    target !== null &&
-    typeof target === "object" &&
-    typeof (target as { kind?: unknown }).kind === "string" &&
-    delivery !== null &&
-    typeof delivery === "object" &&
-    typeof (delivery as { mode?: unknown }).mode === "string"
-  );
-}
-
-const OWNER_APP_SOURCES = new Set(["app", "in_app", "eliza_app", "owner_app"]);
-
-function looksLikeOwnerAppPrivate(input: {
-  channelType?: string;
-  source?: string;
-}): boolean {
-  if (input.channelType !== ChannelType.DM) return false;
-  const source = (input.source ?? "").trim().toLowerCase();
-  return OWNER_APP_SOURCES.has(source);
-}
-
 interface OAuthRequestForm {
   type: "sensitive_request_form";
   kind: "oauth";
@@ -187,18 +146,6 @@ function buildOAuthContent(envelope: InlineOAuthRequestEnvelope): Content {
   } as Content & { secretRequest: InlineOAuthRequestEnvelope };
 }
 
-function resolveTarget(
-  request: SensitiveRequest,
-  channelId?: string,
-): TargetInfo {
-  return {
-    source: "owner_app",
-    channelId,
-    roomId: (request.sourceRoomId ?? undefined) as UUID | undefined,
-    entityId: (request.ownerEntityId ?? undefined) as UUID | undefined,
-  };
-}
-
 export const ownerAppOAuthSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter =
   {
     target: "owner_app_oauth",
@@ -207,7 +154,7 @@ export const ownerAppOAuthSensitiveRequestAdapter: SensitiveRequestDeliveryAdapt
       // Channel acceptance is decided at deliver time using the request's
       // classified source — mirroring `owner-app-inline-adapter` exactly so
       // both adapters share the same trust boundary.
-      return isOwnerAppOAuthRuntime(runtime);
+      return isOwnerAppDeliveryRuntime(runtime);
     },
 
     async deliver({
@@ -224,7 +171,7 @@ export const ownerAppOAuthSensitiveRequestAdapter: SensitiveRequestDeliveryAdapt
       }
       const request = rawRequest;
 
-      if (!isOwnerAppOAuthRuntime(runtime)) {
+      if (!isOwnerAppDeliveryRuntime(runtime)) {
         return {
           delivered: false,
           target: "owner_app_oauth",
@@ -273,7 +220,7 @@ export const ownerAppOAuthSensitiveRequestAdapter: SensitiveRequestDeliveryAdapt
 
       const envelope = buildOAuthEnvelope(request);
       const content = buildOAuthContent(envelope);
-      const target = resolveTarget(request, channelId);
+      const target = resolveOwnerAppTarget(request, channelId);
 
       try {
         requireConfirmedSendHandlerDelivery(

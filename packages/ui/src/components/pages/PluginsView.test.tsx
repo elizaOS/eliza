@@ -15,7 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginInfo } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 import { PluginsView } from "./PluginsView";
 
 // PluginsView reads plugin data + lifecycle handlers from the app context
@@ -33,14 +33,14 @@ const clientMock = vi.hoisted(() => ({
   restartAndWait: vi.fn(),
 }));
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
 }));
-vi.mock("../../api", () => ({ client: clientMock }));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;

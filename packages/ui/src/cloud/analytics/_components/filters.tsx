@@ -13,22 +13,22 @@
  */
 "use client";
 
+import type { AnalyticsTimeRange } from "@elizaos/cloud-sdk";
 import { Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "../../../components/ui/button";
 import {
-  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../../cloud-ui";
+} from "../../../components/ui/select";
 import { cn } from "../../../lib/utils";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
   ANALYTICS_TIME_RANGES,
-  type AnalyticsTimeRange,
   resolveTimeRangeParam,
 } from "../lib/time-range";
 

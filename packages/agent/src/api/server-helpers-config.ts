@@ -3,16 +3,14 @@
  */
 import type http from "node:http";
 import path from "node:path";
+import { ElizaError, logger, normalizeCharacterLanguage } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/host";
 import {
-  ElizaError,
   FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
   FIRST_RUN_PROVIDER_CATALOG,
   getDefaultStylePreset,
   getStylePresets,
-  logger,
-  normalizeCharacterLanguage,
-  sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";

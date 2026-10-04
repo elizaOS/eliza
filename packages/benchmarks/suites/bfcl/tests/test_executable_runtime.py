@@ -7,12 +7,13 @@ Verifies that:
     fenced / wrapped model output.
   * State comparison drives multi-turn scoring.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from suites.bfcl.evaluators import ExecutionEvaluator
-from suites.bfcl.executable_runtime import (
+from benchmarks.bfcl.evaluators import ExecutionEvaluator
+from benchmarks.bfcl.executable_runtime import (
     ExecutableRuntime,
     RuntimeNetworkRequired,
     decode_python_calls,
@@ -70,7 +71,8 @@ class TestExecutableRuntime:
 
     def test_decode_python_calls_plain_list(self) -> None:
         assert decode_python_calls("[ls(a=True), MathAPI.mean(numbers=[1,2])]") == [
-            "ls(a=True)", "MathAPI.mean(numbers=[1,2])"
+            "ls(a=True)",
+            "MathAPI.mean(numbers=[1,2])",
         ]
 
     def test_decode_python_calls_code_fence(self) -> None:
@@ -92,9 +94,7 @@ class TestExecutionEvaluatorMultiTurn:
                 "root": {
                     "alex": {
                         "type": "directory",
-                        "contents": {
-                            "log.txt": {"type": "file", "content": "hello"}
-                        },
+                        "contents": {"log.txt": {"type": "file", "content": "hello"}},
                     }
                 }
             }
@@ -117,9 +117,7 @@ class TestExecutionEvaluatorMultiTurn:
                 "root": {
                     "alex": {
                         "type": "directory",
-                        "contents": {
-                            "log.txt": {"type": "file", "content": "hello"}
-                        },
+                        "contents": {"log.txt": {"type": "file", "content": "hello"}},
                     }
                 }
             }

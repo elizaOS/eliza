@@ -3,10 +3,7 @@
  * keyboard focus restoration, filtering, teardown, and error-action dispatch.
  */
 // @vitest-environment jsdom
-import {
-  AgentSurfaceProvider,
-  getViewRegistry,
-} from "@elizaos/ui/agent-surface";
+
 import {
   act,
   cleanup,
@@ -15,6 +12,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
+import {
+  AgentSurfaceProvider,
+  getViewRegistry,
+} from "../../../../../packages/ui/src/agent-surface/index";
 import {
   type RelationshipsSnapshot,
   RelationshipsSpatialView,

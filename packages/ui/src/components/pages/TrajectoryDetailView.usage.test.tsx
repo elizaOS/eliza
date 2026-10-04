@@ -14,7 +14,7 @@ import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const api = vi.hoisted(() => ({ getTrajectoryDetail: vi.fn(), copy: vi.fn() }));
 vi.mock("../../api/client", () => ({ client: api }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({
       t: (key: string, options?: { defaultValue?: string }) =>
@@ -22,7 +22,7 @@ vi.mock("../../state", () => ({
       copyToClipboard: api.copy,
     }),
 }));
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 

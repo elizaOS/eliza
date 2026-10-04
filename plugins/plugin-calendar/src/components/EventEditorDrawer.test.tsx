@@ -9,10 +9,7 @@
 import type {
   LifeOpsCalendarEvent,
   ListLifeOpsCalendarsResponse,
-} from "@elizaos/core/contracts/calendar";
-import { client as authorityClient } from "@elizaos/ui/api/client";
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
-import { getActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
+} from "@elizaos/contracts";
 import {
   act,
   cleanup,
@@ -21,9 +18,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
-import { forwardRef } from "react";
+import { forwardRef, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client as authorityClient } from "../../../../packages/ui/src/api/client";
+import { NAVIGATE_VIEW_EVENT } from "../../../../packages/ui/src/events/index";
+import { getActiveAgentAuthority } from "../../../../packages/ui/src/hooks/useActiveAgentAuthority";
 
 // ---------------------------------------------------------------------------
 // Mock @elizaos/ui: spied calendar client + lightweight form-control stubs.
@@ -36,204 +35,184 @@ const uiClient = vi.hoisted(() => ({
   deleteLifeOpsCalendarEvent: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui", () => {
-  const Input = forwardRef<
-    HTMLInputElement,
-    React.InputHTMLAttributes<HTMLInputElement>
-  >((props, ref) => <input ref={ref} {...props} />);
-  Input.displayName = "Input";
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
+  ...(await (() => {
+    const Input = forwardRef<
+      HTMLInputElement,
+      React.InputHTMLAttributes<HTMLInputElement>
+    >((props, ref) => <input ref={ref} {...props} />);
+    Input.displayName = "Input";
 
-  const Textarea = forwardRef<
-    HTMLTextAreaElement,
-    React.TextareaHTMLAttributes<HTMLTextAreaElement>
-  >((props, ref) => <textarea ref={ref} {...props} />);
-  Textarea.displayName = "Textarea";
+    const Textarea = forwardRef<
+      HTMLTextAreaElement,
+      React.TextareaHTMLAttributes<HTMLTextAreaElement>
+    >((props, ref) => <textarea ref={ref} {...props} />);
+    Textarea.displayName = "Textarea";
 
-  // Give the explicit Calendar client installer a prototype target while
-  // this component test exercises the spied transport client.
-  class ElizaClient {
-    fetch = vi.fn(async () => ({}) as never);
-  }
+    // Give the explicit Calendar client installer a prototype target while
+    // this component test exercises the spied transport client.
+    class ElizaClient {
+      fetch = vi.fn(async () => ({}) as never);
+    }
 
-  const appValue = {
-    t: (_key: string, opts?: { defaultValue?: string }) =>
-      opts?.defaultValue ?? _key,
-    setActionNotice: vi.fn(),
-  };
+    const appValue = {
+      t: (_key: string, opts?: { defaultValue?: string }) =>
+        opts?.defaultValue ?? _key,
+      setActionNotice: vi.fn(),
+    };
 
-  return {
-    ElizaClient,
-    client: uiClient,
-    Button: forwardRef<
-      HTMLButtonElement,
-      React.ButtonHTMLAttributes<HTMLButtonElement>
-    >(({ children, ...props }, ref) => (
-      <button type="button" ref={ref} {...props}>
-        {children}
-      </button>
-    )),
-    Input,
-    Textarea,
-    Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
-      open ? <div data-testid="dialog">{children}</div> : null,
-    DialogContent: ({
-      children,
-      ...props
-    }: { children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) => (
-      <div {...props}>{children}</div>
-    ),
-    // Native-select stub: walks SelectItem descendants to build selectable
-    // <option>s (value/onValueChange) AND renders the raw children so the
-    // SelectItem summary/account text is queryable in the DOM.
-    Select: ({
-      value,
-      onValueChange,
-      children,
-    }: {
-      value: string;
-      onValueChange: (value: string) => void;
-      children: ReactNode;
-    }) => {
-      const options: string[] = [];
-      const walk = (node: ReactNode) => {
-        if (Array.isArray(node)) {
-          for (const child of node) walk(child);
-          return;
-        }
-        if (node && typeof node === "object" && "props" in node) {
-          // biome-ignore lint/suspicious/noExplicitAny: test stub introspection
-          const anyNode = node as any;
-          if (anyNode.props?.["data-select-item-value"]) {
-            options.push(anyNode.props["data-select-item-value"]);
+    return {
+      ElizaClient,
+      client: uiClient,
+      Button: forwardRef<
+        HTMLButtonElement,
+        React.ButtonHTMLAttributes<HTMLButtonElement>
+      >(({ children, ...props }, ref) => (
+        <button type="button" ref={ref} {...props}>
+          {children}
+        </button>
+      )),
+      Input,
+      Textarea,
+      Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
+        open ? <div data-testid="dialog">{children}</div> : null,
+      DialogContent: ({
+        children,
+        ...props
+      }: { children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) => (
+        <div {...props}>{children}</div>
+      ),
+      // Native-select stub: walks SelectItem descendants to build selectable
+      // <option>s (value/onValueChange) AND renders the raw children so the
+      // SelectItem summary/account text is queryable in the DOM.
+      Select: ({
+        value,
+        onValueChange,
+        children,
+      }: {
+        value: string;
+        onValueChange: (value: string) => void;
+        children: ReactNode;
+      }) => {
+        const options: string[] = [];
+        const walk = (node: ReactNode) => {
+          if (Array.isArray(node)) {
+            for (const child of node) walk(child);
+            return;
           }
-          walk(anyNode.props?.children);
-        }
-      };
-      walk(children);
-      return (
-        <div data-testid="calendar-select-wrap">
-          <select
-            data-testid="calendar-select"
-            value={options.includes(value) ? value : ""}
-            onChange={(e) => onValueChange(e.target.value)}
-          >
-            {!options.includes(value) ? <option value="">--</option> : null}
-            {options.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-          {/* render raw items so their text/labels appear in the DOM */}
-          <div data-testid="calendar-select-items">{children}</div>
-        </div>
-      );
-    },
-    SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-    SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-    SelectItem: ({
-      value,
-      children,
-    }: {
-      value: string;
-      children: ReactNode;
-    }) => (
-      <div data-select-item data-select-item-value={value}>
-        {children}
-      </div>
-    ),
-    SelectValue: ({ placeholder }: { placeholder?: string }) => (
-      <span>{placeholder}</span>
-    ),
-    TagEditor: ({
-      items,
-      onChange,
-      placeholder,
-    }: {
-      items: string[];
-      onChange: (items: string[]) => void;
-      placeholder?: string;
-    }) => (
-      <div data-testid="tag-editor">
-        {items.map((item) => (
-          <span key={item} data-testid="attendee-chip">
-            {item}
-          </span>
-        ))}
-        <input
-          data-testid="attendee-input"
-          placeholder={placeholder}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              const value = (e.target as HTMLInputElement).value;
-              onChange([...items, value]);
+          if (node && typeof node === "object" && "props" in node) {
+            // biome-ignore lint/suspicious/noExplicitAny: test stub introspection
+            const anyNode = node as any;
+            if (anyNode.props?.["data-select-item-value"]) {
+              options.push(anyNode.props["data-select-item-value"]);
             }
-          }}
-        />
-      </div>
-    ),
-    ConfirmDialog: ({
-      open,
-      message,
-      confirmLabel = "Confirm",
-      onConfirm,
-      onCancel,
-    }: {
-      open: boolean;
-      message: string;
-      confirmLabel?: string;
-      onConfirm: () => void;
-      onCancel: () => void;
-    }) =>
-      open ? (
-        <div data-testid="confirm-dialog">
-          <span>{message}</span>
-          <button
-            type="button"
-            data-testid="confirm-delete"
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-          <button type="button" onClick={onCancel}>
-            cancel
-          </button>
+            walk(anyNode.props?.children);
+          }
+        };
+        walk(children);
+        return (
+          <div data-testid="calendar-select-wrap">
+            <select
+              data-testid="calendar-select"
+              value={options.includes(value) ? value : ""}
+              onChange={(e) => onValueChange(e.target.value)}
+            >
+              {!options.includes(value) ? <option value="">--</option> : null}
+              {options.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+            {/* render raw items so their text/labels appear in the DOM */}
+            <div data-testid="calendar-select-items">{children}</div>
+          </div>
+        );
+      },
+      SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+      SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+      SelectItem: ({
+        value,
+        children,
+      }: {
+        value: string;
+        children: ReactNode;
+      }) => (
+        <div data-select-item data-select-item-value={value}>
+          {children}
         </div>
-      ) : null,
-    useApp: () => appValue,
-    useAppSelector: <T,>(selector: (value: typeof appValue) => T) =>
-      selector(appValue),
-    useAppSelectorShallow: <T,>(selector: (value: typeof appValue) => T) =>
-      selector(appValue),
-  };
-});
-
-vi.mock("@elizaos/ui/api", () => ({
+      ),
+      SelectValue: ({ placeholder }: { placeholder?: string }) => (
+        <span>{placeholder}</span>
+      ),
+      TagEditor: ({
+        items,
+        onChange,
+        placeholder,
+      }: {
+        items: string[];
+        onChange: (items: string[]) => void;
+        placeholder?: string;
+      }) => (
+        <div data-testid="tag-editor">
+          {items.map((item) => (
+            <span key={item} data-testid="attendee-chip">
+              {item}
+            </span>
+          ))}
+          <input
+            data-testid="attendee-input"
+            placeholder={placeholder}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const value = (e.target as HTMLInputElement).value;
+                onChange([...items, value]);
+              }
+            }}
+          />
+        </div>
+      ),
+      ConfirmDialog: ({
+        open,
+        message,
+        confirmLabel = "Confirm",
+        onConfirm,
+        onCancel,
+      }: {
+        open: boolean;
+        message: string;
+        confirmLabel?: string;
+        onConfirm: () => void;
+        onCancel: () => void;
+      }) =>
+        open ? (
+          <div data-testid="confirm-dialog">
+            <span>{message}</span>
+            <button
+              type="button"
+              data-testid="confirm-delete"
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </button>
+            <button type="button" onClick={onCancel}>
+              cancel
+            </button>
+          </div>
+        ) : null,
+      useApp: () => appValue,
+      useAppSelector: <T,>(selector: (value: typeof appValue) => T) =>
+        selector(appValue),
+      useAppSelectorShallow: <T,>(selector: (value: typeof appValue) => T) =>
+        selector(appValue),
+    };
+  })()),
   client: uiClient,
   ElizaClient: class {
     fetch = vi.fn(async () => ({}));
   },
-}));
-
-vi.mock("@elizaos/ui/components", async () => {
-  return await vi.importMock<Record<string, unknown>>("@elizaos/ui");
-});
-
-vi.mock("@elizaos/ui/state", async () => {
-  const ui = await vi.importMock<{
-    useApp: () => unknown;
-    useAppSelector: <T>(selector: (value: unknown) => T) => T;
-    useAppSelectorShallow: <T>(selector: (value: unknown) => T) => T;
-  }>("@elizaos/ui");
-  return {
-    useApp: ui.useApp,
-    useAppSelector: ui.useAppSelector,
-    useAppSelectorShallow: ui.useAppSelectorShallow,
-  };
-});
-
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
 import {
