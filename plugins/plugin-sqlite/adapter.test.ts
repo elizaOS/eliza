@@ -51,6 +51,50 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("returns every eligible vector when match_threshold is omitted or zero", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const close = {
+      ...memory("close"),
+      embedding: [1, 0, 0],
+    };
+    const distant = {
+      ...memory("distant"),
+      embedding: [0, 1, 0],
+    };
+    await adapter.createMemories([
+      { memory: close, tableName: "messages" },
+      { memory: distant, tableName: "messages" },
+    ]);
+
+    const omitted = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+    });
+    expect(omitted.map((row) => row.id).sort()).toEqual(
+      [close.id, distant.id].sort(),
+    );
+
+    const zero = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+      match_threshold: 0,
+    });
+    expect(zero.map((row) => row.id).sort()).toEqual(
+      [close.id, distant.id].sort(),
+    );
+
+    const strict = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+      match_threshold: 0.99,
+    });
+    expect(strict.map((row) => row.id)).toEqual([close.id]);
+  });
+
   it("preserves complete sources and the selected embedding space across restarts", async () => {
     const adapter = await open();
     const record = memory(
