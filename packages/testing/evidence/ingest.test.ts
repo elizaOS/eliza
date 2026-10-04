@@ -184,6 +184,39 @@ async function build(repo: string): Promise<{
 }
 
 describe("ingestAllSilos", () => {
+  it("preserves legacy archive paths while retaining colliding current producer reports", async () => {
+    const repo = tmpDir();
+    write(
+      repo,
+      "reports/content-context/run/report.json",
+      '{"source":"legacy"}',
+    );
+    write(
+      repo,
+      "test-results/content-context/run/report.json",
+      '{"source":"current"}',
+    );
+    const { bundle, artifacts } = await build(repo);
+    expect(artifacts.map((entry) => entry.path).sort()).toEqual([
+      "lanes/content-context/current/run/report.json",
+      "lanes/content-context/run/report.json",
+    ]);
+    for (const [relative, source] of [
+      ["current/run/report.json", "current"],
+      ["run/report.json", "legacy"],
+    ]) {
+      expect(
+        JSON.parse(
+          fs.readFileSync(
+            path.join(bundle.dir, "lanes/content-context", relative),
+            "utf8",
+          ),
+        ),
+      ).toEqual({ source });
+    }
+    expect((await verifyBundle(bundle.dir)).ok).toBe(true);
+  });
+
   it("includes a byte-identical file rewritten during the run", async () => {
     const repo = tmpDir();
     const file = path.join(repo, "test-results/app/reused.log");

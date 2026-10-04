@@ -1,5 +1,9 @@
 /** progressive-content testing capability barrel. */
 
+export {
+  progressiveConformanceAdapter,
+  progressiveConformanceFixture,
+} from "./progressive-content-conformance.fixture.ts";
 export * from "./progressive-content-conformance.ts";
 export * from "./progressive-content-external-mutant-executors.ts";
 export * from "./progressive-content-faults.ts";

@@ -298,7 +298,8 @@ test.each([false, true])(
     );
     expect(stored.notes).toHaveLength(1);
     expect(stored.notes[0].title).toBe("Ada");
-    expect(stored.notes[0].body).toBe("Bring the notebook.");
+    expect(stored.notes[0].body).toBe("\nBring the notebook.");
+    expect(stored.notes[0].title + stored.notes[0].body).toBe(content);
     expect(replies.join("\n")).toContain("Saved");
     const history = await runtime.getMemories({
       roomId,
