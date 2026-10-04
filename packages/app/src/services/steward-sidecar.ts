@@ -353,6 +353,7 @@ export class StewardSidecar {
   // Internal.
   private async ensureDataDir(): Promise<void> {
     const dir = this.config.dataDir;
+    const home = process.env.HOME || process.env.USERPROFILE || "";
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -361,6 +362,28 @@ export class StewardSidecar {
       if (!fs.existsSync(subDir)) {
         fs.mkdirSync(subDir, { recursive: true });
       }
+    }
+    // Steward's embedded runtime historically defaulted to ~/.steward/data.
+    // Migrate that legacy PGLite directory into Eliza's state dir when the
+    // new target is still empty so upgrades keep the same wallet/agent data.
+    const legacyDataDir = path.join(home, ".steward", "data");
+    const targetDataDir = path.join(dir, "data");
+    const targetHasData =
+      fs.existsSync(path.join(targetDataDir, "PG_VERSION")) ||
+      (fs.existsSync(targetDataDir) &&
+        fs.readdirSync(targetDataDir).length > 0);
+    if (
+      legacyDataDir !== targetDataDir &&
+      fs.existsSync(legacyDataDir) &&
+      !targetHasData
+    ) {
+      logger.info(
+        `[StewardSidecar] Migrating legacy steward data from ${legacyDataDir} to ${targetDataDir}`,
+      );
+      fs.cpSync(legacyDataDir, targetDataDir, {
+        recursive: true,
+        force: false,
+      });
     }
   }
   private async loadOrCreateCredentials(): Promise<void> {

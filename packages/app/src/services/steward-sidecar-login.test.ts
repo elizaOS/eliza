@@ -8,6 +8,8 @@ import { StewardSidecar } from "./steward-sidecar";
 
 it("provisions a local wallet and reopens the same authority after restarting", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-login-sidecar-"));
+  // Isolate upgrade discovery from the developer's existing wallet.
+  vi.stubEnv("HOME", directory);
   vi.stubEnv("HOME", directory);
   vi.stubEnv(
     "STEWARD_ENTRY_POINT",
