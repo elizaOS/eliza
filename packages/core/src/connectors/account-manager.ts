@@ -18,6 +18,7 @@
  * process-local map and referenced by an opaque `codeVerifierRef` written to
  * flow metadata, so stored rows never carry the raw secret.
  */
+import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Action, ActionParameters } from "../types/components";
@@ -658,7 +659,7 @@ export class InMemoryConnectorAccountStorage
 				return (
 					a.provider.localeCompare(b.provider) ||
 					aTime - bTime ||
-					a.id.localeCompare(b.id)
+					compareMemoryIds(a.id, b.id)
 				);
 			});
 	}
