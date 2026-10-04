@@ -4121,7 +4121,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             type ? eq(logTable.type, type) : undefined
           )
         )
-        .orderBy(desc(logTable.createdAt))
+        .orderBy(desc(logTable.createdAt), desc(logTable.id))
         .limit(effectiveLimit)
         .offset(offset ?? 0);
 
@@ -6859,7 +6859,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    beforeMessageId?: UUID
   ): Promise<
     Array<{
       id: UUID;
@@ -6878,14 +6879,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const conditions = [eq(messageTable.channelId, channelId)];
       if (beforeTimestamp) {
-        conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        // A bare timestamp cursor drops the rest of a same-timestamp group
+        // that straddled the previous page boundary. When the caller also
+        // names the last row's id, the cursor becomes the exact
+        // (createdAt, id) position this descending composite sort walks.
+        if (beforeMessageId) {
+          conditions.push(
+            or(
+              lt(messageTable.createdAt, beforeTimestamp),
+              and(eq(messageTable.createdAt, beforeTimestamp), lt(messageTable.id, beforeMessageId))
+            ) as SQL
+          );
+        } else {
+          conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        }
       }
 
       const query = this.db
         .select()
         .from(messageTable)
         .where(and(...conditions))
-        .orderBy(desc(messageTable.createdAt))
+        // The id tiebreak gives same-timestamp rows one deterministic order;
+        // without it two identical calls can return different pages.
+        .orderBy(desc(messageTable.createdAt), desc(messageTable.id))
         .limit(limit);
 
       const results = await query;
@@ -7656,7 +7672,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       let query = this.db
         .select()
         .from(entityTable)
-        .where(conditions.length > 0 ? and(...conditions) : undefined);
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        // Limit/offset pages need a total order: without one Postgres returns
+        // rows in physical order, which an UPDATE rewrites, so a caller paging
+        // across a concurrent write (plugin-form session restore) skips one
+        // entity and serves another twice. The key truncates to milliseconds
+        // because reads return `createdAt` as a millisecond Date and
+        // updateEntity writes it back, which would otherwise move a row with
+        // PostgreSQL's microsecond `now()` earlier in the order mid-scan.
+        .orderBy(
+          asc(sql`date_trunc('milliseconds', ${entityTable.createdAt})`),
+          asc(entityTable.id)
+        );
 
       if (params.limit !== undefined && !params.entityIds?.length) {
         query = query.limit(params.limit) as typeof query;

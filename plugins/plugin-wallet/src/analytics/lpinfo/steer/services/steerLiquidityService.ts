@@ -489,9 +489,10 @@ export class SteerLiquidityService extends Service {
         }
       }
 
-      // Token-specific search found nothing (or wasn't attempted): fall back
-      // to fetching every vault on the searched chains.
-      if (allVaults.length === 0) {
+      // Symbol/general searches preserve the protocol-wide fallback. An
+      // explicit address is a strict membership query: returning every vault
+      // when it has no match would attribute unrelated positions to that token.
+      if (!isTokenAddress && allVaults.length === 0) {
         logger.log(`Fetching all vault data from Steer Finance using SDK...`);
 
         for (const chainId of chainsToSearch) {
@@ -753,20 +754,10 @@ export class SteerLiquidityService extends Service {
     const token1Address =
       typeof vault.token1 === "string" ? vault.token1 : vault.token1?.address;
 
-    if (
+    return Boolean(
       token0Address?.toLowerCase() === targetAddress ||
-      token1Address?.toLowerCase() === targetAddress
-    ) {
-      return true;
-    }
-
-    // NOTE: any vault with a pool address matches here regardless of the
-    // target token — this does not actually check the pool for the token.
-    if (vault.poolAddress) {
-      return true;
-    }
-
-    return false;
+        token1Address?.toLowerCase() === targetAddress,
+    );
   }
 
   private async processVaultData(

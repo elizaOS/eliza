@@ -27,6 +27,7 @@
  * the Node, browser, and edge build targets.
  */
 
+import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Room } from "../types/environment.js";
@@ -337,7 +338,9 @@ export function matchTopicRooms(
 			});
 		}
 	}
-	scored.sort((a, b) => b.score - a.score || a.roomId.localeCompare(b.roomId));
+	scored.sort(
+		(a, b) => b.score - a.score || compareMemoryIds(a.roomId, b.roomId),
+	);
 	const selected =
 		limit === undefined ? scored : scored.slice(0, Math.max(0, limit));
 	return selected.map(({ score, ...hit }) => hit);
