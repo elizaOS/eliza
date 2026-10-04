@@ -1,10 +1,13 @@
 /** Starts isolated PostgreSQL and signed-session HTTP fixtures while keeping billing repositories and Stripe SDK real. */
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { Hono } from "hono";
 import { Client } from "pg";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { createAdminTestProvider } from "./admin-test-provider";
 export const databaseUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
 const schema = `app_admin_${randomUUID().replaceAll("-", "_")}`;
@@ -71,7 +74,9 @@ async function migrate(tag: string) {
   const source = await readFile(
     new URL(
       `../../db/migrations/${tag}.sql`,
-      import.meta.resolve("@/lib/services/generic-billing-admin"),
+      import.meta.resolve(
+        "@elizaos/cloud-shared/lib/services/generic-billing-admin",
+      ),
     ),
     "utf8",
   );
@@ -87,8 +92,10 @@ export async function setupAdminTest() {
   );
   await db.query(`CREATE SCHEMA ${schema}`);
   await db.query(`SET search_path TO ${schema},public`);
-  const { organizations } = await import("@/db/schemas/organizations");
-  const { users } = await import("@/db/schemas/users");
+  const { organizations } = await import(
+    "@elizaos/cloud-shared/db/schemas/organizations"
+  );
+  const { users } = await import("@elizaos/cloud-shared/db/schemas/users");
   const empty = generateDrizzleJson({});
   const target = generateDrizzleJson({ organizations, users }, empty.id);
   for (const statement of await generateMigration(empty, target))
@@ -142,7 +149,9 @@ export async function setupAdminTest() {
     "INSERT INTO app_client_registrations(id,app_id,owner_organization_id,billing_environment,secret_hashes,redirect_uris,allowed_scopes) VALUES($1,$2,$3,'test','[]','[]','[]')",
     [ids.registration, ids.app, ids.org],
   );
-  const session = await import("@/lib/auth/playwright-test-session");
+  const session = await import(
+    "@elizaos/cloud-shared/lib/auth/playwright-test-session"
+  );
   token = session.createPlaywrightTestSessionToken(ids.user, ids.org, env);
   otherToken = session.createPlaywrightTestSessionToken(
     ids.otherUser,
@@ -150,12 +159,12 @@ export async function setupAdminTest() {
     env,
   );
   const { GenericBillingAdminService } = await import(
-    "@/lib/services/generic-billing-admin"
+    "@elizaos/cloud-shared/lib/services/generic-billing-admin"
   );
   const { createAppBillingAdminHandlers, appBillingAdministrationBoundary } =
     await import("./_handlers");
   const { runWithCloudBindingsAsync } = await import(
-    "@/lib/runtime/cloud-bindings"
+    "@elizaos/cloud-shared/lib/runtime/cloud-bindings"
   );
   const handlers = createAppBillingAdminHandlers(
     new GenericBillingAdminService(async (mode) => {
@@ -188,7 +197,8 @@ export async function setupAdminTest() {
     routes.post(`/apps/:id${suffix}`, routeHandler);
     routes.post(`/apps/:id/billing/admin${suffix}`, routeHandler);
   }
-  close = (await import("@/db/client")).closeDatabaseConnectionsForTests;
+  close = (await import("@elizaos/cloud-shared/db/client"))
+    .closeDatabaseConnectionsForTests;
 }
 export async function closeAdminTest() {
   if (close) await close();

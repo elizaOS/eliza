@@ -1,12 +1,7 @@
-/**
- * DTOs mirrored from the Cloud API schema (`CurrentUserDto`, `AgentDetailDto`,
- * the `ApiSuccessEnvelope`/`ApiErrorEnvelope` wrappers, etc.). These must stay in
- * exact sync with the actual API responses — do not add computed or client-only
- * fields here.
- */
+/** Canonical public Cloud transport contracts. Backend-only records stay in cloud-shared. */
 
 export type IsoDateString = string;
-type DateLike = Date | IsoDateString;
+export type DateLike = Date | IsoDateString;
 
 export interface ApiSuccessEnvelope<TData> {
   success: true;
@@ -304,7 +299,7 @@ export interface NormalizedAgentListItemDto
   activeJob: AgentActiveJobDto | null;
 }
 
-interface AgentAdminDetailsDto {
+export interface AgentAdminDetailsDto {
   nodeId: string | null;
   containerName: string | null;
   internalBridgeUrl: string | null;

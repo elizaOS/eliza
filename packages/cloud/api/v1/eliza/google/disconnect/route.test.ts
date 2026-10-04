@@ -20,32 +20,35 @@ const disconnectCalls: Array<{
   connectionId: string | null;
 }> = [];
 
-mock.module("@/lib/api/cloud-worker-errors", () => ({
+mock.module("@elizaos/cloud-shared/lib/api/cloud-worker-errors", () => ({
   failureResponse: (_c: unknown, error: unknown) =>
     new Response(JSON.stringify({ error: String(error) }), { status: 500 }),
 }));
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({
     id: "user-1",
     organization_id: "org-1",
   }),
 }));
 
-mock.module("@/lib/services/agent-google-connector", () => ({
-  AgentGoogleConnectorError: class AgentGoogleConnectorError extends Error {
-    status = 400;
-  },
-  disconnectManagedGoogleConnection: async (args: {
-    organizationId: string;
-    userId: string;
-    side: "owner" | "agent";
-    connectionId: string | null;
-  }) => {
-    disconnectCalls.push(args);
-    return { ok: true };
-  },
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/agent-google-connector",
+  () => ({
+    AgentGoogleConnectorError: class AgentGoogleConnectorError extends Error {
+      status = 400;
+    },
+    disconnectManagedGoogleConnection: async (args: {
+      organizationId: string;
+      userId: string;
+      side: "owner" | "agent";
+      connectionId: string | null;
+    }) => {
+      disconnectCalls.push(args);
+      return { ok: true };
+    },
+  }),
+);
 
 const { default: disconnectRoute } = await import("./route");
 

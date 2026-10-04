@@ -47,7 +47,7 @@ COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY packages/cloud/scripts/gateway-discord/select-opus-prebuild.ts packages/cloud/scripts/gateway-discord/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
 COPY ${CORE_DIR}/package.json ${CORE_DIR}/
-RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:{".":"./src/errors.ts","./discord-dm-policy":"./src/discord-dm-policy.ts"}}));' "${CORE_DIR}/package.json" \
+RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:{".":"./src/errors.ts","./errors":"./src/errors.ts","./security/log-redaction":"./src/security/log-redaction.ts","./discord-dm-policy":"./src/discord-dm-policy.ts"}}));' "${CORE_DIR}/package.json" \
     && printf '{"name":"gateway-discord-build","private":true,"workspaces":["packages/cloud/services/*","packages/core"]}\n' > package.json \
     && npm_config_target="${OPUS_PREBUILD_NODE_TARGET}" bun install --production \
     && bun "packages/cloud/scripts/gateway-discord/select-opus-prebuild.ts" "${SERVICE_DIR}" "${TARGETARCH}"
@@ -59,6 +59,7 @@ ARG COMMON_DIR
 ARG CORE_DIR
 COPY ${COMMON_DIR}/src ${COMMON_DIR}/src
 COPY ${CORE_DIR}/src/errors.ts ${CORE_DIR}/src/errors.ts
+COPY ${CORE_DIR}/src/security/log-redaction.ts ${CORE_DIR}/src/security/log-redaction.ts
 COPY ${CORE_DIR}/src/discord-dm-policy.ts ${CORE_DIR}/src/discord-dm-policy.ts
 COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
 COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src

@@ -23,7 +23,7 @@ export async function buildCloudSdk(options: CloudSdkBuildOptions = {}) {
     (() => Bun.$`node ../../scripts/rm-path-recursive.ts dist`);
   const emitDeclarations =
     options.emitDeclarations ??
-    (() => Bun.$`tsc6 --project tsconfig.json --noEmit false --noCheck`);
+    (() => Bun.$`tsc6 --project tsconfig.build.json --noEmit false --noCheck`);
 
   if (exists("dist")) {
     await removeDist();

@@ -13,6 +13,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
@@ -49,14 +50,13 @@ import { subscriptionAllowancePeriods } from "../../../db/schemas/subscription-a
 import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
-import { AGENT_PRICING } from "../../constants/agent-pricing";
 
 const TEST_TIMEOUT = 300_000;
 const OWNER_ID = "10000000-0000-4000-8000-000000000042";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
-let ProvisioningJobService: typeof import("../provisioning-jobs").ProvisioningJobService;
+let ProvisioningJobService: typeof import("@elizaos/cloud-shared/node").ProvisioningJobService;
 let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
 
 let sequence = 0;
@@ -67,7 +67,7 @@ function unique(prefix: string): string {
 
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
-  ({ ProvisioningJobService } = await import("../provisioning-jobs"));
+  ({ ProvisioningJobService } = await import("@elizaos/cloud-shared/node"));
   ({ ElizaSandboxService } = await import("../eliza-sandbox"));
   const schema = {
     organizations,

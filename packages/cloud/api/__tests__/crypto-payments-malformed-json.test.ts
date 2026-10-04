@@ -5,8 +5,8 @@
  * (or an engine parse diagnostic) and never reaches a money-mutating service.
  */
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const USER = {
   id: "user-1",
@@ -47,53 +47,59 @@ class CryptoPaymentError extends Error {
   }
 }
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => USER,
   requireUserWithOrg: async () => USER,
 }));
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  RateLimitPresets: { STANDARD: {}, STRICT: {} },
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
-    next(),
-}));
-mock.module("@/lib/services/direct-wallet-payments", () => ({
-  directWalletPaymentsService: {
-    createPayment: async (...input: unknown[]) => {
-      calls.directCreate.push(input);
-      return {
-        payment: { id: DIRECT_PAYMENT.id, status: "pending" },
-        paymentInstructions: { network: "base" },
-      };
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    RateLimitPresets: { STANDARD: {}, STRICT: {} },
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+      next(),
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/direct-wallet-payments",
+  () => ({
+    directWalletPaymentsService: {
+      createPayment: async (...input: unknown[]) => {
+        calls.directCreate.push(input);
+        return {
+          payment: { id: DIRECT_PAYMENT.id, status: "pending" },
+          paymentInstructions: { network: "base" },
+        };
+      },
+      confirmPayment: async (...input: unknown[]) => {
+        calls.directConfirm.push(input);
+        return {
+          alreadyConfirmed: false,
+          payment: { id: DIRECT_PAYMENT.id, credits_to_add: 1000 },
+        };
+      },
+      attachTransaction: async (...input: unknown[]) => {
+        calls.directAttach.push(input);
+        return {
+          alreadyAttached: false,
+          payment: {
+            id: DIRECT_PAYMENT.id,
+            status: "pending",
+            transaction_hash:
+              "0x1111111111111111111111111111111111111111111111111111111111111111",
+          },
+        };
+      },
     },
-    confirmPayment: async (...input: unknown[]) => {
-      calls.directConfirm.push(input);
-      return {
-        alreadyConfirmed: false,
-        payment: { id: DIRECT_PAYMENT.id, credits_to_add: 1000 },
-      };
-    },
-    attachTransaction: async (...input: unknown[]) => {
-      calls.directAttach.push(input);
-      return {
-        alreadyAttached: false,
-        payment: {
-          id: DIRECT_PAYMENT.id,
-          status: "pending",
-          transaction_hash:
-            "0x1111111111111111111111111111111111111111111111111111111111111111",
-        },
-      };
-    },
-  },
-}));
-mock.module("@/db/repositories/crypto-payments", () => ({
+  }),
+);
+mock.module("@elizaos/cloud-shared/db/repositories/crypto-payments", () => ({
   cryptoPaymentsRepository: {
     findById: async (id: string) =>
       id === OXA_PAYMENT.id ? OXA_PAYMENT : DIRECT_PAYMENT,
   },
 }));
-mock.module("@/lib/services/crypto-payments", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/crypto-payments", () => ({
   CryptoPaymentError,
   cryptoPaymentsService: {
     createPayment: async (...input: unknown[]) => {
@@ -113,10 +119,10 @@ mock.module("@/lib/services/crypto-payments", () => ({
     listPaymentsByOrganization: async () => [],
   },
 }));
-mock.module("@/lib/services/oxapay", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/oxapay", () => ({
   isOxaPayConfigured: () => true,
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
   redact: {
     paymentId: (value: string) => value,

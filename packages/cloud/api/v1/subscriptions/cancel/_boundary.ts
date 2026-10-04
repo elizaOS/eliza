@@ -1,6 +1,9 @@
 /** Translates cancellation domain failures into sanitized HTTP outcomes without provider details. */
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { AppContext } from "@/types/cloud-worker-env";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 export function cancellationFailure(c: AppContext, error: unknown): Response {
   const code = error instanceof Error && "code" in error ? error.code : null;
   switch (code) {

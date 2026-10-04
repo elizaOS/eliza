@@ -1,6 +1,7 @@
 /** Persisted server-observed renewal estimate. Its digest compares terms; it grants no authority. */
+
+import type { OrganizationSubscriptionRenewalReviewDto } from "@elizaos/cloud-sdk/contracts";
 import { z } from "zod";
-import type { OrganizationSubscriptionRenewalReviewDto } from "../types/cloud-api";
 
 const cents = z.number().int().safe();
 export const subscriptionRenewalReviewSchema: z.ZodType<OrganizationSubscriptionRenewalReviewDto> =

@@ -1,9 +1,9 @@
 /** Reads paginated pending schedule commands and their current-source relationship from one primary snapshot, without claiming provider completion. */
 import { Buffer } from "node:buffer";
+import type { PendingSubscriptionCommandsDto } from "@elizaos/cloud-shared/types";
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { PendingSubscriptionCommandsDto } from "../../lib/types/cloud-api";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import {

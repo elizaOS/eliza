@@ -9,19 +9,11 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/cloud/sdk build  # build
+bun run --cwd packages/cloud/sdk test  # keyless unit and transport tests
 bun run --cwd packages/cloud/sdk test:e2e  # live integration tests
 ```
 
 Live tests use the configured Cloud endpoints. Set `ELIZAOS_CLOUD_API_KEY` for authenticated API checks and `ELIZA_CLOUD_SESSION_TOKEN` for session checks; tests without their credentials skip. Write/generation/container checks require separate explicit opt-in flags in `src/live.e2e.test.ts`.
-
-## Reviewed subscription reversal
-
-Organization cancellation reversal can use `readOrganizationSubscriptionRenewalReview`
-and `submitReviewedOrganizationSubscriptionCancellationUndo` with the returned
-terms digest. These require the current billing-manager session. Display the
-estimate and obtain explicit confirmation; on an unknown outcome use
-`readOrganizationSubscriptionCancellationUndo` instead of inventing another intent.
-The review is short-lived and does not lock a future invoice price.
 
 ## Native Cloud service composition
 
@@ -61,3 +53,13 @@ idempotency identity includes approved terms and survives native restarts. A
 same-terms retry requires a matching FAILED predecessor via retryOf; changed
 terms require a fresh review and explicit confirmation. Recovery reads never
 redispatch. Server-side pending exclusion and billing authority remain decisive.
+
+Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
+setup-session mock exports remain compatible; the client root does not load them.
+
+Organization cancellation reversal can use `readOrganizationSubscriptionRenewalReview`
+and `submitReviewedOrganizationSubscriptionCancellationUndo` with the returned
+terms digest. These require the current billing-manager session. Display the
+estimate and obtain explicit confirmation; on an unknown outcome use
+`readOrganizationSubscriptionCancellationUndo` instead of inventing another intent.
+The review is short-lived and does not lock a future invoice price.

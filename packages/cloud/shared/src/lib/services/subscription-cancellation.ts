@@ -1,4 +1,6 @@
 /** Executes manager-authorized organization period-end cancellation and retrieves uncertain outcomes through the same durable command owner. Recovery never invents session authority or sends a provider mutation. */
+
+import type { OrganizationSubscriptionCancellationDto } from "@elizaos/cloud-shared/types";
 import { ElizaError } from "@elizaos/core";
 import {
   assertCancellationClaimCurrent,
@@ -19,7 +21,6 @@ import {
 import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-billing-operations";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
-import type { OrganizationSubscriptionCancellationDto } from "../types/cloud-api";
 import { logger } from "../utils/logger";
 import {
   cancellationReobserve,

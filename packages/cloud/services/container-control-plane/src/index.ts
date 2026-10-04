@@ -2,6 +2,7 @@
  * Owns container-control-plane index mutations that Cloudflare Workers cannot run.
  */
 import { timingSafeEqual } from "node:crypto";
+import { resolveJobTypesForLanes } from "@elizaos/cloud-shared/agent-contracts";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import {
@@ -41,10 +42,9 @@ import {
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { resolvePersonalDedicatedTrafficAccess } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
-import { resolveJobTypesForLanes } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
-import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { provisioningJobService } from "@elizaos/cloud-shared/node";
 import { type Context, Hono } from "hono";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
@@ -737,7 +737,7 @@ app.post("/api/v1/cron/deployment-monitor", deploymentMonitorResponse);
 function agentHotPoolResponse(c: Context) {
   return handleInternal(c, async () => {
     // Node health checks moved to the provisioning-worker daemon — see
-    // `packages/cloud/scripts/admin/daemons/provisioning-worker.ts:processNodeHealthCheckCycle`.
+    // `packages/cloud/services/provisioning-worker/src/index.ts:processNodeHealthCheckCycle`.
     // The orchestrator host runs them now because it's the one with a valid
     // CONTAINERS_SSH_KEY against the cores; leaving the call here too would
     // race with the daemon and flip status every 5 min depending on which

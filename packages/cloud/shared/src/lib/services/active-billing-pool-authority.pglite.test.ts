@@ -18,6 +18,8 @@ process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
+import { provisioningJobService } from "@elizaos/cloud-shared/node";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
@@ -34,8 +36,6 @@ import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
-import { AGENT_PRICING } from "../constants/agent-pricing";
-import { provisioningJobService } from "./provisioning-jobs";
 
 const { activeBillingService } = await import("./active-billing");
 

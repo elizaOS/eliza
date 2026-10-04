@@ -11,29 +11,35 @@ const drainCalls: Array<{
   options: { deprovision: boolean };
 }> = [];
 
-mock.module("@/lib/auth", () => ({
+mock.module("@elizaos/cloud-shared/lib/auth", () => ({
   requireAdmin: async () => ({ role: "super_admin" }),
 }));
 
-mock.module("@/db/repositories/docker-nodes", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     findByNodeId: async (nodeId: string) => ({ node_id: nodeId }),
   },
 }));
 
-mock.module("@/lib/services/containers/node-autoscaler", () => ({
-  getNodeAutoscaler: () => ({
-    drainNode: async (nodeId: string, options: { deprovision: boolean }) => {
-      drainCalls.push({ nodeId, options });
-    },
+mock.module(
+  "@elizaos/cloud-shared/lib/services/containers/node-autoscaler",
+  () => ({
+    getNodeAutoscaler: () => ({
+      drainNode: async (nodeId: string, options: { deprovision: boolean }) => {
+        drainCalls.push({ nodeId, options });
+      },
+    }),
   }),
-}));
+);
 
-mock.module("@/lib/services/containers/hetzner-cloud-api", () => ({
-  HetznerCloudError: class HetznerCloudError extends Error {},
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api",
+  () => ({
+    HetznerCloudError: class HetznerCloudError extends Error {},
+  }),
+);
 
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: {
     error() {},
   },

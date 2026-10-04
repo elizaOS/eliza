@@ -3,19 +3,23 @@
  * them to the assigned agent server. When no compatible runtime is assigned,
  * callers receive a typed dedicated-upgrade or retryable-unavailable response.
  */
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const WORKFLOW_CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const WORKFLOW_PROXY_DEFAULT_TIMEOUT_MS = 120_000;

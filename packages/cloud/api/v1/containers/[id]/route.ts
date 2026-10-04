@@ -20,14 +20,14 @@
  * client's typed errors.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getHetznerContainersClient } from "@elizaos/cloud-shared/lib/services/containers/hetzner-client/client";
+import { HetznerClientError } from "@elizaos/cloud-shared/lib/services/containers/hetzner-client/types";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getHetznerContainersClient } from "@/lib/services/containers/hetzner-client/client";
-import { HetznerClientError } from "@/lib/services/containers/hetzner-client/types";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { PatchContainerSchema } from "../schema";
 
 const app = new Hono<AppEnv>();
