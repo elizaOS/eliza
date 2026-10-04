@@ -13,7 +13,9 @@ export async function installOrganizationUpgradeTestSchema(
     "0511_organization_plan_change_quotes",
     "0512_organization_upgrade_dispatch",
     "0513_organization_upgrade_live_lease",
-    ...(includeProviderBinding ? ["0514_organization_upgrade_quote_binding"] : []),
+    ...(includeProviderBinding
+      ? ["0514_organization_upgrade_quote_binding", "0515_organization_upgrade_invoice_origins"]
+      : []),
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}.sql`, import.meta.url), "utf8");
     for (const q of migration.split("--> statement-breakpoint"))

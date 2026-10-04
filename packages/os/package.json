@@ -44,6 +44,8 @@
     "verify:portable": "bun run verify:layout && bun run typecheck && bun run lint:check && bun run test"
   },
   "dependencies": {
+    "punycode": "2.3.1",
+    "tldts": "7.4.16",
     "@elizaos/ui": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*"
   },
