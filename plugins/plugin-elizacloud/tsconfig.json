@@ -16,7 +16,6 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "outDir": "./dist",
-    "rootDir": "../..",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "bun-types"],
     "noUnusedLocals": false,

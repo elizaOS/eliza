@@ -3,7 +3,6 @@
 	"compilerOptions": {
 		"lib": ["ES2024", "DOM", "DOM.Iterable"],
 		"outDir": "./dist",
-		"rootDir": "../../",
 		"sourceMap": false,
 		"inlineSourceMap": false,
 		"types": ["node"],
