@@ -877,6 +877,7 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.completedDedicatedQuoteResponseBodyCount,
           parsedDedicatedQuoteResponseBodyCount:
             audit.parsedDedicatedQuoteResponseBodyCount,
+          dedicatedQuoteTerms: audit.dedicatedQuoteTerms,
           decodedDedicatedQuoteResponseCount:
             audit.decodedDedicatedQuoteResponseCount,
           uninspectableDedicatedQuoteResponseBodyCount:
