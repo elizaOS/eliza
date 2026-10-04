@@ -1,4 +1,10 @@
-import { exceptionRule, installThreatRules } from "./policy.mjs";
+import {
+  downloadThreatFeed,
+  exceptionRule,
+  installThreatRules,
+  parseThreatDomains,
+  validFeedTime,
+} from "./policy.mjs";
 /** Install one shared protection engine inside a host-owned extension worker. */
 export function installBrowserProtection({
   chrome: chromeApi,
@@ -16,83 +22,13 @@ export function installBrowserProtection({
     fetch = fetchImpl,
     SOURCES = feeds;
   const HOUR = 3600000;
-  async function body(response, max = 24 * 1024 * 1024) {
-    if (!response.ok) throw Error("Feed unavailable");
-    const reader = response.body.getReader(),
-      decoder = new TextDecoder();
-    let size = 0,
-      text = "";
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.length;
-        if (size > max) throw Error("Feed too large");
-        text += decoder.decode(value, { stream: true });
-      }
-      return text + decoder.decode();
-    } finally {
-      await reader.cancel();
-    }
-  }
-  const validTime = (t) =>
-    Number.isFinite(t) &&
-    t <= Date.now() + 300000 &&
-    Date.now() - t < 48 * HOUR;
+  const validTime = (time) => validFeedTime(time);
   async function source(feed) {
-    let text, publishedAt;
-    try {
-      const reply = await fetch(feed.url, {
-        signal: AbortSignal.timeout(15000),
-        redirect: "error",
-      });
-      text = await body(reply);
-      publishedAt = Date.parse(
-        feed.id === "threats"
-          ? text.match(/^# Last modified: (.+)$/m)?.[1]
-          : reply.headers.get("last-modified"),
-      );
-      if (!validTime(publishedAt)) throw Error("Expired feed");
-    } catch (error) {
-      if (feed.id !== "phishing") throw error;
-      const meta = JSON.parse(
-        await body(
-          await fetch(
-            "https://api.github.com/repos/Phishing-Database/Phishing.Database/commits?path=phishing-domains-ACTIVE.txt&per_page=1",
-            { signal: AbortSignal.timeout(5000), redirect: "error" },
-          ),
-          128 * 1024,
-        ),
-      );
-      const sha = meta?.[0]?.sha;
-      publishedAt = Date.parse(meta?.[0]?.commit?.committer?.date);
-      if (!/^[a-f0-9]{40}$/.test(sha) || !validTime(publishedAt))
-        throw Error("Invalid feed provenance");
-      text = await body(
-        await fetch(
-          `https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/${sha}/phishing-domains-ACTIVE.txt`,
-          { signal: AbortSignal.timeout(15000), redirect: "error" },
-        ),
-      );
-    }
-    const domains = [];
-    let invalid = 0;
-    for (const line of text.split(/\r?\n/)) {
-      const host = line.trim().toLowerCase();
-      if (!host || host.startsWith("#")) continue;
-      if (
-        host.length <= 253 &&
-        host.includes(".") &&
-        host
-          .split(".")
-          .every((l) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(l))
-      )
-        domains.push(host);
-      else invalid++;
-    }
-    if (domains.length < 1000 || invalid > domains.length / 100)
-      throw Error("Invalid feed");
-    return { domains, publishedAt };
+    const { body, publishedAt } = await downloadThreatFeed(
+      { ...feed, mirror: feed.mirror ?? feed.id === "phishing" },
+      { fetchImpl: fetch },
+    );
+    return { domains: [...parseThreatDomains(body)], publishedAt };
   }
   let refreshing;
   async function refresh() {

@@ -35,6 +35,12 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  downloadThreatFeed,
+  parseThreatDomains,
+  validFeedTime,
+} from "./policy.mjs";
+
 const HOUR = 3600000,
   MAX_BYTES = 24 * 1024 * 1024;
 const unavailable = (reason) => ({ status: "unavailable", reason });
@@ -45,7 +51,7 @@ export function createWebsiteReputation({
   now = Date.now,
   minEntries = 1000,
   cacheDir = null,
-  feeds,
+  feeds = [],
   userAgent = "Eliza-Browser-Protection",
 } = {}) {
   if (
@@ -64,8 +70,7 @@ export function createWebsiteReputation({
   }));
   let timer = null,
     stopped = false;
-  const validTime = (t) =>
-    Number.isFinite(t) && t <= now() + 300000 && now() - t < 48 * HOUR;
+  const validTime = (time) => validFeedTime(time, now());
   const usable = (s) =>
     s && validTime(s.publishedAt) && validTime(s.downloadedAt);
   const fresh = (s) => usable(s) && now() - s.downloadedAt < 6 * HOUR;
@@ -76,25 +81,7 @@ export function createWebsiteReputation({
       !validTime(downloadedAt)
     )
       throw Error("expired or oversized feed");
-    const domains = new Set();
-    let invalid = 0;
-    for (const line of body.split(/\r?\n/)) {
-      const domain = line.trim().toLowerCase();
-      if (!domain || domain.startsWith("#")) continue;
-      if (
-        domain.length <= 253 &&
-        domain.includes(".") &&
-        domain
-          .split(".")
-          .every((label) =>
-            /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
-          )
-      )
-        domains.add(domain);
-      else invalid++;
-    }
-    if (domains.size < minEntries || invalid > domains.size / 100)
-      throw Error("invalid feed");
+    const domains = parseThreatDomains(body, minEntries);
     return { domains, publishedAt, downloadedAt };
   }
   const loaded = Promise.all(
@@ -118,59 +105,14 @@ export function createWebsiteReputation({
       }
     }),
   );
-  async function readBody(response, limit = MAX_BYTES) {
-    if (!response.ok) throw Error("feed unavailable");
-    let size = 0;
-    const chunks = [];
-    for await (const chunk of response.body) {
-      size += chunk.length;
-      if (size > limit) throw Error("oversized response");
-      chunks.push(Buffer.from(chunk));
-    }
-    return Buffer.concat(chunks).toString("utf8");
-  }
   async function download(feed) {
-    try {
-      const response = await fetchImpl(feed.url, {
-        signal: AbortSignal.timeout(15000),
-        redirect: "error",
-      });
-      const body = await readBody(response);
-      const stamp =
-        feed.id === "threats"
-          ? body.match(/^# Last modified: (.+)$/m)?.[1]
-          : response.headers.get("last-modified");
-      const publishedAt = Date.parse(stamp),
-        downloadedAt = now();
-      return { body, snapshot: parse(body, publishedAt, downloadedAt) };
-    } catch (error) {
-      if (!feed.mirror) throw error;
-      // Pin fallback bytes to the official file's commit, not a moving branch or
-      // an unrelated repository timestamp. No user URL is included in either request.
-      const response = await fetchImpl(
-        "https://api.github.com/repos/Phishing-Database/Phishing.Database/commits?path=phishing-domains-ACTIVE.txt&per_page=1",
-        {
-          headers: {
-            "User-Agent": userAgent,
-            Accept: "application/vnd.github+json",
-          },
-          signal: AbortSignal.timeout(5000),
-          redirect: "error",
-        },
-      );
-      const commits = JSON.parse(await readBody(response, 128 * 1024));
-      const sha = commits?.[0]?.sha,
-        publishedAt = Date.parse(commits?.[0]?.commit?.committer?.date);
-      if (!/^[a-f0-9]{40}$/.test(sha) || !validTime(publishedAt))
-        throw Error("invalid mirror provenance");
-      const data = await fetchImpl(
-        `https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/${sha}/phishing-domains-ACTIVE.txt`,
-        { signal: AbortSignal.timeout(15000), redirect: "error" },
-      );
-      const body = await readBody(data),
-        downloadedAt = now();
-      return { body, snapshot: parse(body, publishedAt, downloadedAt) };
-    }
+    const { body, publishedAt, downloadedAt } = await downloadThreatFeed(feed, {
+      fetchImpl,
+      now,
+      minEntries,
+      userAgent,
+    });
+    return { body, snapshot: parse(body, publishedAt, downloadedAt) };
   }
   async function refresh(state) {
     let temporary;

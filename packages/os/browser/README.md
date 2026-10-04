@@ -226,3 +226,12 @@ These modules are not enabled automatically in Eliza's browser build. Consumers
 bundle the extension engine into their admitted worker resource and include the
 Node module in the verified native gateway dependency closure. Run the protection
 regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
+
+`buildBrowserProtection(output, {warningDirectory, feeds, refreshAlarm, exceptionAlarm})`
+builds the optional unpacked worker using the shared engine. HTML/CSS overrides
+preserve shared messaging and enforcement. The optional builder defaults to the
+reviewed Phishing.Database and HaGeZi lists and ships their license notices.
+`composeProtectionAssets` adds the complete admitted resource inventory to an
+existing component without changing its other capabilities. Keep existing alarm
+names when upgrading an installed consumer. Run `test:browser:protection:network`
+for real Chromium blocking, exception, offline-restart and capacity checks.

@@ -17,6 +17,10 @@
     "src/protocol.mjs",
     "src/protocol.test.mjs",
     "scripts/native-host.mjs",
-    "scripts/native-host.test.mjs"
+    "scripts/native-host.test.mjs",
+    "protection/policy.mjs",
+    "protection/reputation.mjs",
+    "protection/build.mjs",
+    "protection/extension.mjs"
   ]
 }
