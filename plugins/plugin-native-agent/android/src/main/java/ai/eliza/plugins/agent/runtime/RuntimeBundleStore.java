@@ -50,6 +50,17 @@ public class RuntimeBundleStore {
     String identity = digest(manifest);
     root = root.toAbsolutePath().normalize();
     privateDirectory(root);
+    // A FileChannel lock belongs to the whole JVM: a second thread preparing
+    // the same root would get OverlappingFileLockException instead of waiting.
+    synchronized (ROOT_LOCKS.computeIfAbsent(root, key -> new Object())) {
+      return prepareLocked(root, entries, identity, source, nativeLibraries, durability, faults);
+    }
+  }
+
+  private static final java.util.concurrent.ConcurrentMap<Path, Object> ROOT_LOCKS =
+    new java.util.concurrent.ConcurrentHashMap<>();
+
+  private static Path prepareLocked(Path root, List<Entry> entries, String identity, Source source, Path nativeLibraries, Durability durability, Faults faults) throws IOException {
     Path lockPath = root.resolve(".lock");
     try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, NOFOLLOW);
          FileLock lock = channel.lock()) {
