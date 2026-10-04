@@ -87,7 +87,10 @@ async function withCleanup(
 export class FileReleaseSequenceStore implements ReleaseSequenceStore {
   private operation = Promise.resolve();
 
-  constructor(private readonly statePath: string) {
+  private readonly statePath: string;
+
+  constructor(statePath: string) {
+    this.statePath = statePath;
     if (!path.isAbsolute(statePath)) {
       throw new Error("Release sequence state path must be absolute.");
     }

@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FileReleaseSequenceStore } from "../release-sequence-store";
+import { FileReleaseSequenceStore } from "./release-sequence-store";
 
 const roots: string[] = [];
 

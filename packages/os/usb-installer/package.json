@@ -16,8 +16,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./contracts": "./src/backend/types.ts",
-    "./node": "./src/backend/index.ts",
-    "./trust": "./src/trust.ts"
+    "./node": "./src/backend/index.ts"
   },
   "scripts": {
     "dev": "vite",

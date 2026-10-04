@@ -32,6 +32,6 @@ Use a fresh repository-root `test-results/` output directory for each 512/4096-b
 sector run. These tests cover raw writes and readback, not OS boot or installation.
 
 Public imports use the browser entrypoint, `/contracts` for portable types, `/node`
-for host execution, and `/trust` for image verification and durable sequence floors.
+for host execution, and `@elizaos/os/trust` for image verification and durable sequence floors.
 Linux supports the signed `raw.zst` writer. macOS and Windows provide drive
 discovery and previews; writing requires a qualified platform adapter.

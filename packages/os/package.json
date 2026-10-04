@@ -17,10 +17,10 @@
   },
   "scripts": {
     "build": "bun run --cwd setup build && bun run --cwd usb-installer build && bun run build:browser",
-    "typecheck": "tsc --noEmit -p linux/installer/tsconfig.json && tsc --noEmit -p setup/tsconfig.json && tsc --noEmit -p setup/tsconfig.main.json && tsc --noEmit -p usb-installer/tsconfig.json && bun run typecheck:browser",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p linux/installer/tsconfig.json && tsc --noEmit -p setup/tsconfig.json && tsc --noEmit -p setup/tsconfig.main.json && tsc --noEmit -p usb-installer/tsconfig.json && bun run typecheck:browser",
     "lint": "bun run lint:check",
-    "format": "bunx @biomejs/biome format --write linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
-    "test": "bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test && bun run test:browser",
+    "format": "bunx @biomejs/biome format --write trust contracts linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
+    "test": "bun run test:trust && bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test && bun run test:browser",
     "test:release": "node --test scripts/__tests__/*.node.test.ts && bun test --timeout 60000 scripts/__tests__/*.bun.test.ts",
     "verify:layout": "node scripts/verify-os-repository-layout.ts",
     "verify": "bun run verify:installer-native && bun run verify:portable && bun run test:release && bun run test:ota-publisher",
@@ -40,8 +40,9 @@
     "test:browser:protection": "node --test browser/protection/*.test.mjs",
     "test:browser:protection:network": "node browser/protection/test-network.mjs",
     "test:ota-publisher": "node --test native/ota-publisher/test/*.test.mjs",
-    "lint:check": "bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check && bun run lint:browser",
-    "verify:portable": "bun run verify:layout && bun run typecheck && bun run lint:check && bun run test"
+    "lint:check": "bunx @biomejs/biome check trust contracts && bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check && bun run lint:browser",
+    "verify:portable": "bun run verify:layout && bun run typecheck && bun run lint:check && bun run test",
+    "test:trust": "vitest run --environment node trust/*.test.ts"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",
@@ -58,6 +59,7 @@
     "@fontsource/poppins": "^5.2.7"
   },
   "exports": {
-    "./contracts": "./contracts/index.ts"
+    "./contracts": "./contracts/index.ts",
+    "./trust": "./trust/index.ts"
   }
 }

@@ -18,7 +18,7 @@ import {
   assertEd25519Signature,
   loadPinnedEd25519PublicKey,
   publicKeyFingerprint,
-} from "./ed25519-trust";
+} from "@elizaos/os/trust";
 import type { ReleaseFetcher } from "./release-manifest";
 import type { ElizaOsImage } from "./types";
 import { hasTrustedChecksum } from "./write-safety";

@@ -6,10 +6,10 @@ export {
   RELEASE_PUBLIC_KEY_ENV,
   RELEASE_PUBLIC_KEY_FINGERPRINT_ENV,
   RELEASE_REVOKED_KEY_FINGERPRINTS_ENV,
-} from "./backend/ed25519-trust";
-export type { ReleaseSequenceStore } from "./backend/release-sequence-store";
+} from "./ed25519-trust.ts";
+export type { ReleaseSequenceStore } from "./release-sequence-store.ts";
 export {
   configuredReleaseSequenceStore,
   FileReleaseSequenceStore,
   RELEASE_SEQUENCE_STATE_PATH_ENV,
-} from "./backend/release-sequence-store";
+} from "./release-sequence-store.ts";
