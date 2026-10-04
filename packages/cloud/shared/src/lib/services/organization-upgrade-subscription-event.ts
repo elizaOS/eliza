@@ -16,7 +16,7 @@ const envelope = z.object({
   id: z.string().regex(/^evt_[A-Za-z0-9]+$/),
   object: z.literal("event"),
   type: z.enum(["customer.subscription.updated", "customer.subscription.pending_update_applied"]),
-  api_version: z.string(),
+  api_version: z.string().nullable(),
   created: z.number().int().positive().safe(),
   livemode: z.boolean(),
   account: z.never().optional(),

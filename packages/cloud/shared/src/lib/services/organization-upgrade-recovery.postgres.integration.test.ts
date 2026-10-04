@@ -942,6 +942,22 @@ async function state(commandId: string) {
 
     test("subscription event identity and target mismatches cannot retain evidence or publish", async () => {
       const f = await seed();
+      const { reconcileOrganizationUpgradeSubscriptionEvent: beforeDispatch } = await import(
+        "./organization-upgrade-subscription-event"
+      );
+      const unrelated = { ...historicalEvent(), api_version: null };
+      expect(
+        await beforeDispatch(
+          {
+            kind: "stripe.event",
+            eventId: unrelated.id,
+            eventType: unrelated.type,
+            event: unrelated,
+            receivedAt: Date.now(),
+          } as Parameters<typeof beforeDispatch>[0],
+          objects.rawSubscription,
+        ),
+      ).toEqual({ owned: false });
       writeFailure = true;
       await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
       await expiredLease(f.identity.commandId);
@@ -955,6 +971,7 @@ async function state(commandId: string) {
       const original = historicalEvent();
       for (const event of [
         { ...original, api_version: "2025-03-31.basil" },
+        { ...original, api_version: null },
         { ...original, account: "acct_other" },
         { ...original, data: { object: { ...original.data.object, latest_invoice: "in_other" } } },
         {
