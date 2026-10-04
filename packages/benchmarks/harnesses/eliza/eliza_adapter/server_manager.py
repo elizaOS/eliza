@@ -263,6 +263,7 @@ class ElizaServerManager:
         port: int | None = None,
         timeout: float = 240.0,
         repo_root: Path | None = None,
+        env_overrides: dict[str, str] | None = None,
     ) -> None:
         env_timeout = os.environ.get("ELIZA_BENCH_START_TIMEOUT", "").strip()
         if env_timeout:
@@ -296,6 +297,7 @@ class ElizaServerManager:
         self.port = port
         self.timeout = timeout
         self.repo_root = repo_root or _find_repo_root()
+        self._env_overrides = dict(env_overrides or {})
         self.host = (
             os.environ.get("ELIZA_BENCH_HOST", "127.0.0.1").strip() or "127.0.0.1"
         )
@@ -333,9 +335,6 @@ class ElizaServerManager:
             )
             return
 
-        # A monorepo checkout that still bundles the server wins (its workspace
-        # node_modules are known-good); the in-repo runner is the canonical
-        # fallback and requires `bun install` in its directory.
         runner_dir = _BENCHMARKS_ROOT / "harnesses" / "eliza" / "runner"
         candidates: list[tuple[Path, Path]] = []
         if self.repo_root is not None:
@@ -348,36 +347,6 @@ class ElizaServerManager:
                 / "runner"
             )
             candidates.append((canonical / "src" / "cli.ts", canonical))
-            candidates.extend(
-                [
-                    (
-                        self.repo_root
-                        / "packages"
-                        / "lifeops-bench"
-                        / "src"
-                        / "server.ts",
-                        self.repo_root / "packages" / "lifeops-bench",
-                    ),
-                    (
-                        self.repo_root
-                        / "packages"
-                        / "app-core"
-                        / "src"
-                        / "benchmark"
-                        / "server.ts",
-                        self.repo_root / "packages" / "app-core",
-                    ),
-                    (
-                        self.repo_root
-                        / "packages"
-                        / "eliza"
-                        / "src"
-                        / "benchmark"
-                        / "server.ts",
-                        self.repo_root / "packages" / "eliza",
-                    ),
-                ]
-            )
         candidates.append((runner_dir / "src" / "cli.ts", runner_dir))
         server_script: Path | None = None
         cwd: Path | None = None
@@ -408,6 +377,7 @@ class ElizaServerManager:
                 else runner_dir / "tsconfig.json"
             ),
         }
+        env.update(self._env_overrides)
         _normalize_model_env(env)
         _normalize_task_agent_env(env)
         # Stub embeddings are diagnostic-only. The server manager preserves an

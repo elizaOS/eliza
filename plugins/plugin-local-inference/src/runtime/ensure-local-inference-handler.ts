@@ -48,7 +48,7 @@ import {
 	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
 import { LocalInferenceUnavailableError } from "../provider";
 import {

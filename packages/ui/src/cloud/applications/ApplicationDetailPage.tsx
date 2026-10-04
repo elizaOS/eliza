@@ -15,7 +15,7 @@ import {
   DashboardErrorState,
   DashboardLoadingState,
 } from "../../cloud-ui/components/dashboard/route-placeholders";
-import { DashboardPageContainer } from "../../cloud-ui/components/layout";
+import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppDetailsTabs } from "./components/app-details-tabs";

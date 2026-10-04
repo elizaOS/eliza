@@ -1,11 +1,11 @@
 import {
   ChannelType,
   type ContextEvent,
+  conversationClientUserMemoryId,
   type IAgentRuntime,
   type Memory,
   type State,
 } from "@elizaos/core";
-import { conversationClientUserMemoryId } from "@elizaos/core/conversation-chat-marker";
 import { describe, expect, it } from "vitest";
 import { appendPriorDialogueEvents } from "./dialogue-context";
 import {

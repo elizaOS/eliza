@@ -6,7 +6,6 @@
  */
 
 import { Buffer } from "node:buffer";
-import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_RESTORE_V3_SERVING_LIMITS,
   type AgentBackupRestoreV3Attestation,
@@ -15,7 +14,8 @@ import {
   type AgentBackupRestoreV3ControllerResponse,
   AgentBackupRestoreV3ControllerResponseSchema,
   type AgentBackupRestoreV3ProbeRequest,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
+import { ElizaError } from "@elizaos/core";
 import type { AgentBackupRestoreContainerAuthority } from "../../db/repositories/agent-backup-restore-serving";
 import {
   buildExactRestoreControllerCommand,

@@ -7,7 +7,7 @@
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
 import { FRAME_SAMPLER_INIT } from "../../../hooks/frame-budget.ts";
-import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../../testing/layout-stability.ts";
+import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../../perf/layout-stability.ts";
 import { chromium } from "playwright";
 import { compileTailwindTheme } from "../../../testing/e2e-runner/index.ts";
 import { createAssertGate } from "../../../testing/e2e-runner/index.ts";
@@ -25,7 +25,7 @@ import { resolve } from "node:path";
 import { rm } from "node:fs/promises";
 import { stubNodeBuiltins } from "../../../testing/e2e-runner/index.ts";
 import { summarizeFrameSamples } from "../../../hooks/frame-budget.ts";
-import { summarizeStability } from "../../../testing/layout-stability.ts";
+import { summarizeStability } from "../../../perf/layout-stability.ts";
 import { touchDragHold } from "../../../testing/real-touch-gestures.ts";
 import { touchLongPress } from "../../../testing/real-touch-gestures.ts";
 import { touchSwipe } from "../../../testing/real-touch-gestures.ts";

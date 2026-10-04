@@ -112,7 +112,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "exact cloud resolver request/response trajectory proving Opus 4.7 adaptive thinking reaches Anthropic without budget_tokens",
   },
   {
-    file: "packages/app/src/services/coding-account-bridge.live.test.ts",
+    file: "packages/auth/src/accounts/coding-account-bridge.live.test.ts",
     optIn: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
     notes: "operator-run multi-account integration; not part of routine CI",
   },

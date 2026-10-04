@@ -11,13 +11,13 @@ import {
   withReviewedRetiredLocalAgentBackups,
 } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
   ServiceType,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { z } from "zod";
 import {
   executeRawSql,

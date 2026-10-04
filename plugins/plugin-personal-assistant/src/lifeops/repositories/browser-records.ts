@@ -1,6 +1,7 @@
 /** Defines and parses browser records for the host persistence adapter, preserving canonical domain contracts. */
 
 import crypto from "node:crypto";
+import type { LifeOpsBrowserSession } from "@elizaos/contracts";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -8,7 +9,6 @@ import type {
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
 } from "@elizaos/plugin-browser";
-import type { LifeOpsBrowserSession } from "../../contracts/index.js";
 import {
   executeRawSqlTx,
   parseJsonArray,

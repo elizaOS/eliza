@@ -3,7 +3,7 @@
  * adapter, including repeated updates after the persisted revision advances.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "./errors";
 import { AgentRuntime } from "./runtime";

@@ -86,8 +86,12 @@ def _workspace_root() -> Path:
 
 
 def test_discovery_covers_all_real_benchmark_directories() -> None:
+    from benchmarks.orchestrator.full_campaign import DIRECT_CAMPAIGN_ENTRIES
+
     discovery = discover_adapters(_workspace_root())
-    covered_dirs = {adapter.directory for adapter in discovery.adapters.values()}
+    covered_dirs = {adapter.directory for adapter in discovery.adapters.values()} | {
+        entry.directory for entry in DIRECT_CAMPAIGN_ENTRIES
+    }
 
     assert set(discovery.all_directories) - covered_dirs == set()
     assert ".pytest_cache" not in discovery.all_directories
@@ -290,50 +294,11 @@ def test_voice_audio_defaults_do_not_publish_mock_fixture_runs(
     assert voiceagentbench_extra.get("no_judge") is not True
 
 
-def test_gauntlet_rejects_placeholder_transaction_agents_even_with_surfpool(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_gauntlet_real_surfpool_backend",
-        lambda: False,
-    )
+def test_gauntlet_rejects_placeholder_transaction_agents() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
     assert adapter.agent_compatibility == ()
-    assert _is_harness_compatible(adapter, "eliza") is False
-    assert _is_harness_compatible(adapter, "hermes") is False
-    assert _is_harness_compatible(adapter, "openclaw") is False
-
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_gauntlet_real_surfpool_backend",
-        lambda: True,
-    )
-    adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
-    assert adapter.agent_compatibility == ()
-    assert _is_harness_compatible(adapter, "eliza") is False
-    assert _is_harness_compatible(adapter, "hermes") is False
-    assert _is_harness_compatible(adapter, "openclaw") is False
-
-
-def test_gauntlet_accepts_current_surfpool_remote_datasource_help(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    orchestrator_adapters._GAUNTLET_REAL_SURFPOOL_AVAILABLE = None
-    monkeypatch.setattr(
-        orchestrator_adapters.shutil, "which", lambda _name: "/bin/surfpool"
-    )
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_surfpool_start_help",
-        lambda _binary: (
-            "Usage: surfpool start --network <NETWORK> --rpc-url <RPC_URL> --no-tui"
-        ),
-    )
-    try:
-        assert orchestrator_adapters._has_gauntlet_real_surfpool_backend() is True
-    finally:
-        orchestrator_adapters._GAUNTLET_REAL_SURFPOOL_AVAILABLE = None
+    for harness in ("eliza", "hermes", "openclaw"):
+        assert _is_harness_compatible(adapter, harness) is False
 
 
 def test_gauntlet_surfpool_manager_uses_current_mainnet_datasource_cli(
@@ -652,7 +617,7 @@ def test_synthetic_calibration_payloads_exercise_all_score_extractors(
             if (
                 benchmark_id == "action-calling"
                 and not importlib.import_module(
-                    "benchmarks.action-calling.cli"
+                    "benchmarks.suites.action-calling.cli"
                 ).DEFAULT_TEST.is_file()
             ):
                 assert baseline.status == "incompatible"
@@ -1015,9 +980,6 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
         orchestrator_adapters, "_has_osworld_docker_backend", lambda: True
     )
     monkeypatch.setattr(
-        orchestrator_adapters, "_has_gauntlet_real_surfpool_backend", lambda: True
-    )
-    monkeypatch.setattr(
         orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True
     )
     monkeypatch.setattr(
@@ -1108,11 +1070,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         orchestrator_adapters,
         "_has_swe_bench_docker_backend",
         lambda: True,
-    )
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_gauntlet_real_surfpool_backend",
-        lambda: False,
     )
     monkeypatch.setattr(
         orchestrator_adapters,
@@ -1217,11 +1174,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
 def test_real_matrix_compatible_commands_do_not_default_to_mock_or_stub(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_has_gauntlet_real_surfpool_backend",
-        lambda: False,
-    )
     report = build_cross_matrix_report(
         _workspace_root(),
         provider="cerebras",
@@ -3248,7 +3200,7 @@ def test_lifeops_required_env_tracks_static_vs_live_modes() -> None:
 
 
 def test_action_calling_eliza_generation_uses_captured_runtime_calls() -> None:
-    module = importlib.import_module("benchmarks.action-calling.cli")
+    module = importlib.import_module("benchmarks.suites.action-calling.cli")
 
     class Response:
         text = ""
@@ -3310,7 +3262,7 @@ def test_action_calling_rejects_smoke_ledger_claiming_full_corpus() -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "action-calling"
     ]
-    action_cli = importlib.import_module("benchmarks.action-calling.cli")
+    action_cli = importlib.import_module("benchmarks.suites.action-calling.cli")
     cases = action_cli._expand_cases(
         action_cli._load_cases(action_cli.SMOKE_TEST, None)
     )
@@ -3455,7 +3407,7 @@ def test_action_calling_registry_forwards_full_corpus_count(tmp_path: Path) -> N
 
 
 def test_action_calling_cli_accepts_tool_choice_none() -> None:
-    module = importlib.import_module("benchmarks.action-calling.cli")
+    module = importlib.import_module("benchmarks.suites.action-calling.cli")
     parser = module._build_argparser()
 
     args = parser.parse_args(

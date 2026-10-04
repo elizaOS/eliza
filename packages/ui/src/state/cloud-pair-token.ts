@@ -10,14 +10,14 @@
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/contracts";
 import {
   CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,
 } from "../components/auth/CloudPairRelay";
 import { shellLocalStorage } from "../surface-realm-channel";
+import type { AgentProfile } from "./agent-profile-types";
 import {
-  type AgentProfile,
   loadAgentProfileRegistry,
   saveAgentProfileRegistry,
 } from "./agent-profiles";

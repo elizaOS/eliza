@@ -7,9 +7,9 @@
 import {
   type LifeOpsRegularityClass,
   type LifeOpsWorkflowSchedule,
-} from "@elizaos/core/contracts/personal-assistant";
-import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
-import { type LifeOpsScheduleMergedStateRecord } from "./repository.js";
+  parseIsoMs,
+} from "@elizaos/contracts";
+import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
 
 const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {

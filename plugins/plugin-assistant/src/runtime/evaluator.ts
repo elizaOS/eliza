@@ -1,4 +1,5 @@
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+
 /**
  * Evaluator stage of the planner loop: renders the evaluator model input, runs
  * the evaluator model call, and parses/repairs/sanitizes its structured
@@ -6,6 +7,10 @@ import { projectBackgroundHistory } from "../services/message/history-discovery.
  * Also records each evaluation as a trajectory stage for offline review.
  */
 
+import {
+  CALENDAR_READ_ACTIONS,
+  type CalendarReadBinding,
+} from "@elizaos/contracts";
 import type {
   ContextEvent,
   ContextObject,
@@ -58,10 +63,6 @@ import {
   toWellFormedUnicode,
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
-import {
-  CALENDAR_READ_ACTIONS,
-  type CalendarReadBinding,
-} from "@elizaos/core/contracts/calendar";
 import {
   EVALUATOR_CONTEXT_ROUTES,
   type EvaluatorRestorableContext,

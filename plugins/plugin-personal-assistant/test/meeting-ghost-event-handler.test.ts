@@ -6,7 +6,7 @@
  * ledger rows under PGlite.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { type MeetingTranscriptFinalizedPayload } from "@elizaos/core/meetings";
+import type { MeetingTranscriptFinalizedPayload } from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { runMeetingGhostForTranscript } from "../src/lifeops/meeting-ghost/consumer.js";
 import {

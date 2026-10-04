@@ -106,8 +106,6 @@ vi.mock("../../hooks/useActiveAgentAuthority", () => ({
 vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (select: (state: typeof appState) => unknown) =>
     select(appState),
-}));
-vi.mock("../../state", () => ({
   useAppSelector: (select: (state: unknown) => unknown) =>
     select({
       t: (key: string, options?: { defaultValue?: string }) =>
@@ -115,7 +113,8 @@ vi.mock("../../state", () => ({
       copyToClipboard: vi.fn(),
     }),
 }));
-vi.mock("../../agent-surface", () => ({
+
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 vi.mock("../RoleGate", () => ({

@@ -9,6 +9,7 @@
  * default packs into a runnable Eliza plugin; it owns no domain logic itself.
  */
 
+import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
 import {
   type EventPayload,
   EventType,
@@ -20,18 +21,17 @@ import {
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import type {
   IPermissionsRegistry,
   PermissionState,
   Platform,
   Prober,
-} from "@elizaos/core/contracts/permissions";
-import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
+} from "@elizaos/core/protocol";
 import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
   type MeetingTranscriptFinalizedPayload,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   getDefaultTriageService,
   messagingTriageActions,

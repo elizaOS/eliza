@@ -5,7 +5,7 @@
  * adapter, no model calls.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";

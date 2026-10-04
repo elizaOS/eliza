@@ -11,9 +11,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from benchmarks.visualwebbench.runner import VisualWebBenchRunner
-from benchmarks.visualwebbench.dataset import VisualWebBenchDataset
-from benchmarks.visualwebbench.types import (
+from benchmarks.suites.visualwebbench.runner import VisualWebBenchRunner
+from benchmarks.suites.visualwebbench.dataset import VisualWebBenchDataset
+from benchmarks.suites.visualwebbench.types import (
     VISUALWEBBENCH_TASK_TYPES,
     VisualWebBenchConfig,
     VisualWebBenchTaskType,

@@ -12,16 +12,21 @@
  * `persistFirstRun` helper, so a completed onboarding posts exactly once.
  */
 
-import { client } from "../api";
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
-import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
+import { client } from "../api/client";
 import {
+  type DedicatedAdoptionConfirmationRequester,
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
+
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import type { DedicatedActivationConfirmationRequester } from "../api/dedicated-activation-confirmation";
-import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
+import {
+  getDesktopRuntimeMode,
+  invokeDesktopBridgeRequest,
+} from "../bridge/electrobun-rpc";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import {
   clearPendingCloudHandoff,
@@ -33,7 +38,6 @@ import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
 import { getBootConfig } from "../config/boot-config";
-import type { UiLanguage } from "../i18n";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
 import {
   isAndroid,
@@ -41,18 +45,17 @@ import {
   isIOS,
   isNative,
 } from "../platform/init";
+import { addAgentProfile, removeAgentProfile } from "../state/agent-profiles";
+import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import {
-  addAgentProfile,
   createPersistedActiveServer,
   loadPersistedActiveServer,
-  removeAgentProfile,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
-} from "../state";
-import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
+} from "../state/persistence";
 import type { CloudLoginOptions } from "../state/types";
-import { isCloudStatusAuthenticated } from "../utils";
 import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
+import { isCloudStatusAuthenticated } from "../utils/cloud-status";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";

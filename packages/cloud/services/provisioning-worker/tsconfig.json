@@ -7,7 +7,6 @@
     "declarationMap": false,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core/*": ["../../../../packages/core/src/*"],
       "@elizaos/cloud-sdk/*": ["../../sdk/src/*"]
     }
   },

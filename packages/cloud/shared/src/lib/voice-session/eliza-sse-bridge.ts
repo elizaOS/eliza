@@ -21,8 +21,8 @@
  */
 
 import { stringToUuid } from "@elizaos/core";
-import { normalizeCompletedActionHandoffId } from "@elizaos/core/events";
-import { REALTIME_VOICE_CLIENT_TRANSPORT, type VoiceUiContext } from "@elizaos/core/voice";
+import { normalizeCompletedActionHandoffId } from "@elizaos/core/protocol";
+import { REALTIME_VOICE_CLIENT_TRANSPORT, type VoiceUiContext } from "@elizaos/host/protocol";
 import { ELIZA_TRACE_ID_HEADER } from "../observability/http-telemetry";
 import { logger } from "../utils/logger";
 

@@ -17,9 +17,9 @@
  */
 
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
+import type { SecureStoreSecretKind } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
-import type { SecureStoreSecretKind } from "./platform-secure-store";
 import {
   createNodePlatformSecureStore,
   isWalletOsStoreReadEnabled,

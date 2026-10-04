@@ -33,7 +33,7 @@
  */
 
 import process from "node:process";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { startLocalAgentServer } from "./private-dispatch.ts";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────

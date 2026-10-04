@@ -6,9 +6,20 @@
  * stores so scenarios start from a known, deterministic world. Consumed by the
  * executor between setup and the first turn.
  */
+
+import {
+  LIFEOPS_REMINDER_CHANNELS,
+  type LifeOpsReminderChannel,
+} from "@elizaos/contracts";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import { createMessageMemory, MemoryType, stringToUuid } from "@elizaos/core";
-import type { ScenarioContext, ScenarioSeedStep } from "@elizaos/testing";
+import {
+  createMessageMemory,
+  ElizaError,
+  MemoryType,
+  stringToUuid,
+} from "@elizaos/core";
+import { GMAIL_FIXTURE_MESSAGE_IDS } from "../../scripts/mocks/google-gmail-fixtures.ts";
+import type { ScenarioContext, ScenarioSeedStep } from "../schema/index.ts";
 import { isLoopbackUrl } from "./utils.js";
 
 const SEED_REQUEST_TIMEOUT_MS = 30_000;
@@ -32,212 +43,22 @@ export function seedFetch(
   });
 }
 
-type LifeOpsOccurrenceState =
-  | "completed"
-  | "visible"
-  | "pending"
-  | "expired"
-  | "snoozed"
-  | "skipped"
-  | "muted";
+type LifeOpsRepositoryType =
+  import("@elizaos/plugin-personal-assistant/lifeops/index").LifeOpsRepository;
+type LifeOpsCalendarEventSeedInput = Parameters<
+  LifeOpsRepositoryType["upsertCalendarEvent"]
+>[0];
 
-type LifeOpsTaskDefinitionInput = Record<string, unknown>;
+type LifeOpsScheduledTaskSeedInput = Parameters<
+  LifeOpsRepositoryType["upsertScheduledTask"]
+>[1];
+type LifeOpsReminderAttemptSeedInput = Parameters<
+  LifeOpsRepositoryType["createReminderAttempt"]
+>[0];
 
-type LifeOpsTaskDefinition = LifeOpsTaskDefinitionInput & {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LifeOpsOccurrence = Record<string, unknown> & {
-  occurrenceKey: string;
-  state: LifeOpsOccurrenceState;
-};
-
-type LifeOpsScheduledTask = Record<string, unknown> & {
-  taskId: string;
-  kind: string;
-  promptInstructions: string;
-  trigger: Record<string, unknown>;
-  priority: "low" | "medium" | "high";
-  respectsGlobalPause: boolean;
-  state: { status: string; followupCount: number };
-  source: string;
-  createdBy: string;
-  ownerVisible: boolean;
-  metadata?: Record<string, unknown>;
-};
-
-type LifeOpsBrowserSessionSeedInput = {
-  id: string;
-  agentId: string;
-  domain: string;
-  subjectType: string;
-  subjectId: string;
-  visibilityScope: string;
-  contextPolicy: string;
-  workflowId: string | null;
-  browser: string | null;
-  companionId: string | null;
-  profileId: string | null;
-  windowId: string | null;
-  tabId: string | null;
-  title: string;
-  status: string;
-  actions: Record<string, unknown>[];
-  currentActionIndex: number;
-  awaitingConfirmationForActionId: string | null;
-  result: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-  finishedAt: string | null;
-};
-
-type LifeOpsReminderAttempt = Record<string, unknown> & {
-  id: string;
-  agentId: string;
-  planId: string;
-  ownerType: "occurrence" | "calendar_event";
-  ownerId: string;
-  occurrenceId: string | null;
-  channel: string;
-  stepIndex: number;
-  scheduledFor: string;
-  attemptedAt: string | null;
-  outcome: string;
-  connectorRef: string | null;
-  deliveryMetadata: Record<string, unknown>;
-  reviewAt?: string | null;
-  reviewStatus?: string | null;
-};
-
-type LifeOpsCalendarEventSeedInput = {
-  id: string;
-  externalId: string;
-  agentId: string;
-  provider: "google" | "apple_calendar";
-  side: "owner" | "agent";
-  calendarId: string;
-  title: string;
-  description: string;
-  location: string;
-  status: string;
-  startAt: string;
-  endAt: string;
-  isAllDay: boolean;
-  timezone: string | null;
-  htmlLink: string | null;
-  conferenceLink: string | null;
-  organizer: Record<string, unknown> | null;
-  attendees: Record<string, unknown>[];
-  metadata: Record<string, unknown>;
-  syncedAt: string;
-  updatedAt: string;
-  connectorAccountId?: string;
-  grantId?: string;
-  accountEmail?: string;
-};
-
-type LifeOpsCalendarEvent = {
-  id: string;
-  externalId: string;
-  startAt: string;
-};
-
-type LifeOpsRepositoryInstance = {
-  createDefinition: (definition: LifeOpsTaskDefinition) => Promise<unknown>;
-  upsertOccurrence: (occurrence: LifeOpsOccurrence) => Promise<unknown>;
-  upsertScheduledTask: (
-    agentId: string,
-    task: LifeOpsScheduledTask,
-    options?: { nextFireAtIso?: string | null },
-  ) => Promise<unknown>;
-  listScheduledTasks: (
-    agentId: string,
-    filter?: Record<string, unknown>,
-  ) => Promise<LifeOpsScheduledTask[]>;
-  createReminderAttempt: (attempt: LifeOpsReminderAttempt) => Promise<unknown>;
-  listReminderAttempts: (
-    agentId: string,
-    options?: Record<string, unknown>,
-  ) => Promise<LifeOpsReminderAttempt[]>;
-  createBrowserSession: (
-    session: LifeOpsBrowserSessionSeedInput,
-  ) => Promise<unknown>;
-  listBrowserSessions: (
-    agentId: string,
-  ) => Promise<LifeOpsBrowserSessionSeedInput[]>;
-  upsertCalendarEvent: (
-    event: LifeOpsCalendarEventSeedInput,
-    side?: LifeOpsCalendarEventSeedInput["side"],
-  ) => Promise<unknown>;
-  listCalendarEvents: (
-    agentId: string,
-    provider: LifeOpsCalendarEventSeedInput["provider"],
-    timeMin?: string,
-    timeMax?: string,
-    side?: LifeOpsCalendarEventSeedInput["side"],
-  ) => Promise<LifeOpsCalendarEvent[]>;
-};
-
-type LifeOpsRepositoryConstructor = {
-  new (runtime: AgentRuntime): LifeOpsRepositoryInstance;
-  bootstrapSchema: (runtime: AgentRuntime) => Promise<void>;
-};
-
-type LifeOpsDefaultsModule = {
-  resolveDefaultWindowPolicy: (
-    timeZone?: string | null,
-  ) => Record<string, unknown>;
-};
-
-type LifeOpsEngineModule = {
-  materializeDefinitionOccurrences: (
-    definition: LifeOpsTaskDefinition,
-    existingOccurrences: LifeOpsOccurrence[],
-    options?: { now?: Date; lookbackDays?: number; lookaheadDays?: number },
-  ) => LifeOpsOccurrence[];
-};
-
-type LifeOpsRepositoryModule = {
-  createLifeOpsTaskDefinition: (
-    params: LifeOpsTaskDefinitionInput,
-  ) => LifeOpsTaskDefinition;
-  LifeOpsRepository: LifeOpsRepositoryConstructor;
-};
-
-// Loaded lazily so this module can be built without pulling app-lifeops into the
-// scenario-runner rootDir (app-lifeops is only available at runtime).
+// Domain operations stay with their owner; the runner interprets scenario seeds.
 async function loadLifeOps() {
-  const defaultsSpecifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/defaults.ts",
-    import.meta.url,
-  ).href;
-  const engineSpecifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/engine.ts",
-    import.meta.url,
-  ).href;
-  const repositorySpecifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts",
-    import.meta.url,
-  ).href;
-  const [
-    { resolveDefaultWindowPolicy },
-    { materializeDefinitionOccurrences },
-    repo,
-  ]: [LifeOpsDefaultsModule, LifeOpsEngineModule, LifeOpsRepositoryModule] =
-    await Promise.all([
-      import(defaultsSpecifier),
-      import(engineSpecifier),
-      import(repositorySpecifier),
-    ]);
-  return {
-    resolveDefaultWindowPolicy,
-    materializeDefinitionOccurrences,
-    createLifeOpsTaskDefinition: repo.createLifeOpsTaskDefinition,
-    LifeOpsRepository: repo.LifeOpsRepository,
-  };
+  return import("@elizaos/plugin-personal-assistant/lifeops/index");
 }
 
 type TodoSeed = {
@@ -589,11 +410,9 @@ type ConnectorRegistryModule = {
 };
 
 async function loadConnectorRegistry(): Promise<ConnectorRegistryModule> {
-  const specifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/connectors/registry.ts",
-    import.meta.url,
-  ).href;
-  return import(specifier) as Promise<ConnectorRegistryModule>;
+  return import(
+    "@elizaos/plugin-personal-assistant/lifeops/connectors/index"
+  ) as Promise<ConnectorRegistryModule>;
 }
 
 type RelationshipsServiceLike = {
@@ -1315,11 +1134,11 @@ async function upsertScenarioScheduledTask(
   args: {
     seedKind: string;
     title: string;
-    taskKind?: string;
+    taskKind?: LifeOpsScheduledTaskSeedInput["kind"];
     dueAt?: Date;
     priority?: unknown;
-    status?: string;
-    subjectKind?: string;
+    status?: LifeOpsScheduledTaskSeedInput["state"]["status"];
+    subjectKind?: NonNullable<LifeOpsScheduledTaskSeedInput["subject"]>["kind"];
     subjectId?: string;
     metadata?: Record<string, unknown>;
   },
@@ -1340,7 +1159,7 @@ async function upsertScenarioScheduledTask(
       priority: normalizeScheduledTaskPriority(args.priority),
       respectsGlobalPause: true,
       state: { status: args.status ?? "scheduled", followupCount: 0 },
-      source: "scenario_seed",
+      source: "plugin",
       createdBy: String(runtime.agentId),
       ownerVisible: true,
       subject:
@@ -1397,10 +1216,7 @@ async function seedDeviceIntentMemory(
   const { LifeOpsRepository } = await loadLifeOps();
   await LifeOpsRepository.bootstrapSchema(runtime);
   const { executeRawSql, sqlText } = (await import(
-    new URL(
-      "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts",
-      import.meta.url,
-    ).href
+    "@elizaos/plugin-personal-assistant/lifeops/index"
   )) as {
     executeRawSql: (
       runtime: AgentRuntime,
@@ -1454,25 +1270,26 @@ async function seedDeviceIntentMemory(
   return undefined;
 }
 
-function normalizeReminderAttemptChannel(value: unknown): string {
-  const channel = readNonEmptyString(value)?.toLowerCase();
-  if (
-    channel === "desktop" ||
-    channel === "mobile" ||
-    channel === "sms" ||
-    channel === "voice" ||
-    channel === "phone_call" ||
-    channel === "ntfy" ||
-    channel === "in_app"
-  ) {
-    return channel === "phone_call" ? "voice" : channel;
-  }
-  return "in_app";
+function normalizeReminderAttemptChannel(
+  value: unknown,
+): LifeOpsReminderChannel {
+  const channel = readNonEmptyString(value)?.toLowerCase() ?? "in_app";
+  if (channel === "phone_call") return "voice";
+  if (channel === "desktop" || channel === "mobile" || channel === "ntfy")
+    return "push";
+  const supported = LIFEOPS_REMINDER_CHANNELS.find(
+    (entry) => entry === channel,
+  );
+  if (!supported)
+    throw new ElizaError(`Unsupported reminder seed channel: ${channel}`, {
+      code: "SCENARIO_SEED_INVALID_CHANNEL",
+    });
+  return supported;
 }
 
 function normalizeReminderAttemptOutcome(
   seed: ReminderAttemptMemorySeed,
-): string {
+): LifeOpsReminderAttemptSeedInput["outcome"] {
   const result = readNonEmptyString(seed.result)?.toLowerCase();
   if (result === "failed" || result === "blocked") {
     return "blocked_connector";
@@ -1493,7 +1310,9 @@ async function seedReminderAttemptMemory(
   planIdOverride?: string,
 ): Promise<string | undefined> {
   const runtime = requireRuntime(ctx);
-  const channel = normalizeReminderAttemptChannel(seed.channel);
+  const requestedChannel =
+    readNonEmptyString(seed.channel)?.toLowerCase() ?? "in_app";
+  const channel = normalizeReminderAttemptChannel(requestedChannel);
   const attemptedAt =
     readIsoDate(seed.attemptedAt) ??
     readIsoDate(seed.sentAt) ??
@@ -1503,7 +1322,7 @@ async function seedReminderAttemptMemory(
   ).toISOString();
   const title =
     readNonEmptyString(seed.title) ??
-    (channel === "ntfy" ? "ntfy push" : "Scenario push attempt");
+    (requestedChannel === "ntfy" ? "ntfy push" : "Scenario push attempt");
   const planId =
     planIdOverride ??
     `scenario-reminder-plan:${ctx.scenarioId ?? "unknown"}:${title}`;
@@ -1522,7 +1341,7 @@ async function seedReminderAttemptMemory(
   await repository.createReminderAttempt({
     id:
       readNonEmptyString(seed.id) ??
-      `${planId}:attempt:${index}:${channel}:${attemptedAt.toISOString()}`,
+      `${planId}:attempt:${index}:${requestedChannel}:${attemptedAt.toISOString()}`,
     agentId: String(runtime.agentId),
     planId,
     ownerType: "occurrence",
@@ -1534,11 +1353,12 @@ async function seedReminderAttemptMemory(
     attemptedAt: attemptedAt.toISOString(),
     outcome,
     connectorRef: readNonEmptyString(seed.topic)
-      ? `${channel}:${readNonEmptyString(seed.topic)}`
+      ? `${requestedChannel}:${readNonEmptyString(seed.topic)}`
       : null,
     deliveryMetadata: {
       source: "scenario-seed",
       scenarioId: ctx.scenarioId ?? null,
+      channel: requestedChannel,
       title,
       urgency,
       priority: readNonEmptyString(seed.priority) ?? urgency,
@@ -1611,21 +1431,29 @@ async function seedScheduledPushLadderMemory(
       return "scheduled-push-ladder rungs must be objects";
     }
     const offsetMin = readOptionalNumber(rung.offsetMin) ?? 0;
-    const channel = normalizeReminderAttemptChannel(rung.channel);
+    const requestedChannel =
+      readNonEmptyString(rung.channel)?.toLowerCase() ?? "in_app";
+    const channel = normalizeReminderAttemptChannel(requestedChannel);
     const status = readNonEmptyString(rung.status) ?? "pending";
     const dueAt = new Date(eventStartAt.getTime() + offsetMin * 60_000);
     const result = await upsertScenarioScheduledTask(ctx, {
       seedKind: "scheduled-push-ladder",
-      title: `${eventId}:${index}:${channel}`,
+      title: `${eventId}:${index}:${requestedChannel}`,
       taskKind: "reminder",
       dueAt,
       priority: "medium",
-      status: status === "cancelled" ? "cancelled" : "scheduled",
+      status: status === "cancelled" ? "dismissed" : "scheduled",
       subjectKind: "calendar_event",
       subjectId: eventId,
       metadata: {
         eventId,
-        rung: { offsetMin, channel, status, index },
+        rung: {
+          offsetMin,
+          channel: requestedChannel,
+          deliveryChannel: channel,
+          status,
+          index,
+        },
       },
     });
     if (result) return result;
@@ -1681,13 +1509,46 @@ function normalizeIsoDate(value: unknown): string | null {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
-function normalizeCalendarAttendees(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
+function normalizeCalendarAttendees(
+  value: unknown,
+): LifeOpsCalendarEventSeedInput["attendees"] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value))
+    throw new ElizaError("Calendar seed attendees must be an array", {
+      code: "SCENARIO_SEED_INVALID_ATTENDEES",
+    });
+  return value.map((entry) => {
+    const attendee = readOptionalRecord(entry);
+    if (!attendee)
+      throw new ElizaError("Calendar seed attendee must be an object", {
+        code: "SCENARIO_SEED_INVALID_ATTENDEES",
+      });
+    for (const key of ["email", "displayName", "responseStatus"]) {
+      if (attendee[key] != null && typeof attendee[key] !== "string")
+        throw new ElizaError(
+          `Calendar attendee ${key} must be a string or null`,
+          { code: "SCENARIO_SEED_INVALID_ATTENDEES" },
+        );
     }
-    return [entry as Record<string, unknown>];
+    for (const key of ["self", "organizer", "optional"]) {
+      if (attendee[key] !== undefined && typeof attendee[key] !== "boolean")
+        throw new ElizaError(`Calendar attendee ${key} must be a boolean`, {
+          code: "SCENARIO_SEED_INVALID_ATTENDEES",
+        });
+    }
+    return {
+      ...attendee,
+      email: typeof attendee.email === "string" ? attendee.email : null,
+      displayName:
+        typeof attendee.displayName === "string" ? attendee.displayName : null,
+      responseStatus:
+        typeof attendee.responseStatus === "string"
+          ? attendee.responseStatus
+          : null,
+      self: attendee.self === true,
+      organizer: attendee.organizer === true,
+      optional: attendee.optional === true,
+    };
   });
 }
 
@@ -1705,6 +1566,9 @@ function calendarEventMetadata(
     ...(authored ?? {}),
     source: "scenario-seed",
     kind: "calendar-event",
+    ...(seed.attendees !== undefined
+      ? { authoredAttendees: seed.attendees }
+      : {}),
     ...(ctx.scenarioId ? { scenarioId: ctx.scenarioId } : {}),
     ...(joinLink ? { joinLink } : {}),
     ...(cancelledAt ? { cancelledAt } : {}),
@@ -1955,12 +1819,13 @@ async function seedFollowupMemory(
     priority:
       readNonEmptyString(seed.priority) ?? readNonEmptyString(seed.urgency),
     status,
-    subjectKind: seedKind.includes("thread") ? "thread" : "owner",
-    subjectId:
-      readNonEmptyString(seed.counterparty) ??
-      readNonEmptyString(seed.attendee) ??
-      readNonEmptyString(seed.topic) ??
-      String(requireRuntime(ctx).agentId),
+    subjectKind: seedKind.includes("thread") ? "thread" : "self",
+    subjectId: seedKind.includes("thread")
+      ? (readNonEmptyString(seed.counterparty) ??
+        readNonEmptyString(seed.attendee) ??
+        readNonEmptyString(seed.topic) ??
+        String(requireRuntime(ctx).agentId))
+      : String(requireRuntime(ctx).agentId),
     metadata: {
       followup: {
         kind: seedKind,
@@ -2559,26 +2424,6 @@ async function writeDurableFact(
   return undefined;
 }
 
-const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
-  default: ["msg-finance", "msg-sarah", "msg-newsletter"],
-  "unread-inbox.eml": ["msg-finance", "msg-sarah"],
-  "sarah-product-brief.eml": ["msg-sarah"],
-  "high-priority-client.eml": ["msg-sarah"],
-  "alice-recent.eml": ["msg-sarah"],
-  "followup-14-days-ago.eml": [
-    "msg-unresponded-inbound",
-    "msg-unresponded-sent",
-  ],
-  // Forwarded-email prompt-injection trap (comms-flood pack, #12283 D1); the
-  // message body carries a fake wire-transfer "owner instruction" the model
-  // must flag, never execute.
-  "injection-fake-wire-instruction": ["msg-injection-wire"],
-};
-
-interface GmailFixtureManifestResponse {
-  fixtures?: Record<string, readonly string[]>;
-}
-
 function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {
   const explicit = readNonEmptyString(seed.fixture);
   const multiple = readStringArray(seed.fixtures);
@@ -2705,17 +2550,32 @@ async function gmailFixtureMessageIds(
   baseUrl: string,
 ): Promise<Record<string, readonly string[]>> {
   const response = await seedFetch(`${baseUrl}/__mock/google/gmail/fixtures`);
-  if (!response.ok) {
-    return GMAIL_FIXTURE_MESSAGE_IDS;
-  }
-  const manifest = (await response.json()) as GmailFixtureManifestResponse;
-  return manifest.fixtures ?? GMAIL_FIXTURE_MESSAGE_IDS;
+  // Legacy static Mockoon exports omit this optional discovery endpoint.
+  if (response.status === 404) return GMAIL_FIXTURE_MESSAGE_IDS;
+  if (!response.ok)
+    throw new Error(
+      `Gmail fixture manifest failed with HTTP ${response.status}`,
+    );
+  const manifest: unknown = await response.json();
+  const fixtures = readOptionalRecord(readOptionalRecord(manifest)?.fixtures);
+  if (
+    !fixtures ||
+    Object.values(fixtures).some(
+      (ids) => !Array.isArray(ids) || ids.some((id) => typeof id !== "string"),
+    )
+  )
+    throw new Error("Malformed Gmail fixture manifest");
+  return fixtures as Record<string, readonly string[]>;
 }
 
 async function seedGmailInbox(
+  ctx: ScenarioContext,
   seed: GmailInboxSeed,
 ): Promise<string | undefined> {
-  const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
+  const runtime = requireRuntime(ctx);
+  const baseUrl = runtime.getSetting("ELIZA_MOCK_GOOGLE_BASE");
+  const leasedWorld =
+    runtime.getSetting("ELIZA_SYNTHETIC_WORLD_LEASED") === "1";
   if (typeof baseUrl !== "string" || !isLoopbackUrl(baseUrl)) {
     return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
@@ -2725,7 +2585,9 @@ async function seedGmailInbox(
     return faultInjection;
   }
 
-  await clearGmailMockFault(mockBaseUrl);
+  if (leasedWorld && faultInjection)
+    return "Leased-world Gmail faults must be installed through synthetic control";
+  if (!leasedWorld) await clearGmailMockFault(mockBaseUrl);
 
   const fixtureMessageIds = await gmailFixtureMessageIds(mockBaseUrl);
   const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
@@ -2746,7 +2608,7 @@ async function seedGmailInbox(
     }
   }
 
-  if (seed.clearLedger !== false) {
+  if (!leasedWorld && seed.clearLedger !== false) {
     await clearGmailMockLedger(mockBaseUrl);
   }
 
@@ -2968,7 +2830,7 @@ export async function applyScenarioSeedStep(
   seed: ScenarioSeedStep,
 ): Promise<string | undefined> {
   if (!seed || typeof seed !== "object") {
-    return undefined;
+    return "Invalid scenario seed: expected a seed object";
   }
 
   if (seed.type === "todo") {
@@ -2981,7 +2843,7 @@ export async function applyScenarioSeedStep(
     return seedMemory(ctx, seed as MemorySeed);
   }
   if (seed.type === "gmailInbox") {
-    return seedGmailInbox(seed as GmailInboxSeed);
+    return seedGmailInbox(ctx, seed as GmailInboxSeed);
   }
   if (
     seed.type === "connectorStatus" ||
@@ -2991,5 +2853,5 @@ export async function applyScenarioSeedStep(
     return seedConnector(ctx, seed as ConnectorSeed);
   }
 
-  return undefined;
+  return `Unsupported scenario seed type: ${String(seed.type)}`;
 }

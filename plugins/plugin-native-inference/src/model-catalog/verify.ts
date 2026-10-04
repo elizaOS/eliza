@@ -21,16 +21,10 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import type {
-  InstalledModel,
-  VerifyResult,
-} from "@elizaos/core/contracts/local-inference";
+import type { InstalledModel, VerifyResult } from "@elizaos/contracts";
 import { registryPath } from "./paths.js";
 
-export type {
-  VerifyResult,
-  VerifyState,
-} from "@elizaos/core/contracts/local-inference";
+export type { VerifyResult, VerifyState } from "@elizaos/contracts";
 
 const GGUF_MAGIC = Buffer.from("GGUF", "ascii");
 

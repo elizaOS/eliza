@@ -4,16 +4,14 @@
 import {
   type Action,
   ChannelType,
+  conversationClientUserMemoryId,
   type EffectReceipt,
   hashStableJson,
   isObjectRecord,
   type Memory,
   normalizeEffectReceipts,
-} from "@elizaos/core";
-import {
-  conversationClientUserMemoryId,
   readDurableConversationChatMarker,
-} from "@elizaos/core/conversation-chat-marker";
+} from "@elizaos/core";
 
 const NAVIGATION_FIELDS = new Set([
   "effect",

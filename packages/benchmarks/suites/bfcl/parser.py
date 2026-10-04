@@ -15,7 +15,7 @@ import re
 from typing import Optional
 from xml.etree import ElementTree
 
-from benchmarks.bfcl.types import ArgumentValue, FunctionCall
+from benchmarks.suites.bfcl.types import ArgumentValue, FunctionCall
 
 logger = logging.getLogger(__name__)
 

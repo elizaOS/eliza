@@ -3,8 +3,10 @@
  * into shell navigation. Chat streams exist on every runtime transport, so this
  * is the reliable handoff when a platform intentionally runs without WebSockets.
  */
-import { ElizaError } from "@elizaos/core/errors";
-import { normalizeCompletedActionHandoffId } from "@elizaos/core/events";
+import {
+  ElizaError,
+  normalizeCompletedActionHandoffId,
+} from "@elizaos/core/protocol";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { fetchWithCsrf } from "./api/csrf-client";
 import { dispatchCompletedActionNavigation } from "./completed-action-navigation";

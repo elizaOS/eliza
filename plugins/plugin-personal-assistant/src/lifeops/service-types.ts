@@ -4,12 +4,12 @@
  * LifeOpsServiceError.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
-import {
-  type LifeOpsCircadianState,
-  type LifeOpsWorkflowRun,
-} from "../contracts/index.js";
+import type {
+  LifeOpsCircadianState,
+  LifeOpsWorkflowRun,
+} from "@elizaos/contracts";
+import { LifeOpsServiceError } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 
 // LifeOpsServiceError is a runtime-level primitive in `@elizaos/core`,
 // re-exported here for `./service-types.js` callers.

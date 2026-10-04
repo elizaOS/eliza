@@ -20,7 +20,7 @@
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountRole,
-} from "../../api/client-agent";
+} from "../../api/client-agent-connector-accounts";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
 import {

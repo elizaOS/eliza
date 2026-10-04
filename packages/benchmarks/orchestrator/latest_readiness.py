@@ -25,7 +25,6 @@ class ReadinessFinding:
 @dataclass(frozen=True)
 class ReadinessReport:
     latest_dir: str
-    tolerance: float
     findings: tuple[ReadinessFinding, ...]
 
     @property
@@ -36,7 +35,6 @@ class ReadinessReport:
         return json.dumps(
             {
                 "latest_dir": self.latest_dir,
-                "tolerance": self.tolerance,
                 "ok": self.ok,
                 "findings": [asdict(finding) for finding in self.findings],
             },
@@ -49,7 +47,6 @@ class ReadinessReport:
 def validate_latest_readiness(
     workspace_root: Path,
     *,
-    tolerance: float = 0.08,
     latest_dir: Path | None = None,
     check_runtime_gates: bool = True,
     include_benchmarks: set[str] | None = None,
@@ -164,7 +161,6 @@ def validate_latest_readiness(
     )
     comparability = validate_latest_comparability(
         workspace_root,
-        tolerance=tolerance,
         latest_dir=target_dir,
         include_benchmarks=include_benchmarks,
         exclude_benchmarks=exclude_benchmarks,
@@ -192,7 +188,6 @@ def validate_latest_readiness(
 
     return ReadinessReport(
         latest_dir=str(target_dir),
-        tolerance=tolerance,
         findings=tuple(findings),
     )
 
@@ -200,7 +195,7 @@ def validate_latest_readiness(
 def print_readiness_report(report: ReadinessReport) -> None:
     print(
         "Latest readiness: "
-        f"tolerance={report.tolerance} findings={len(report.findings)}"
+        f"findings={len(report.findings)}"
     )
     if report.ok:
         print("Latest benchmark matrix is complete, publishable, and comparable.")

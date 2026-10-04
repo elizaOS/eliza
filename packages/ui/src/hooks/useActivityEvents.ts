@@ -6,13 +6,13 @@
  * moving rail layer — then flushed once on settle.
  */
 
-import { activityEventToPlaintext } from "@elizaos/core/activity-plaintext";
 import {
+  activityEventToPlaintext,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import { parseProactiveMessageEvent } from "../state/parsers";
 import {
   isRailGestureActive,

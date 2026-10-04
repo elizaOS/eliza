@@ -9,9 +9,12 @@
  */
 
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
-import type { SmsMessageSummary } from "@elizaos/plugin-native-messages/bridge";
-import { Messages } from "@elizaos/plugin-native-messages/bridge";
-import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
+import {
+  Messages,
+  type SmsMessageSummary,
+} from "@elizaos/plugin-native-messages/bridge";
+
+import { consumeNavigateViewPayload } from "@elizaos/ui";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

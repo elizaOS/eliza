@@ -104,8 +104,9 @@ Interactive task events are committed atomically with each SQLite checkpoint.
 The authenticated `GET /tasks/:id/events?after=-1` endpoint returns ordered pages
 of up to 128 events, a cursor and `hasMore`; clients must follow all pages.
 Older journals begin with an explicit `checkpoint` event rather than invented
-history. `@elizaos/core/messaging/task-events` provides a browser-safe validator
-and merge helper that reject gaps, conflicting replay and wrong-task data.
+history. `@elizaos/core/protocol` exports a browser-safe validator and merge
+helper (`validateTaskEvent`, `mergeTaskEvents`) that reject gaps, conflicting
+replay and wrong-task data.
 The feed contains lifecycle metadata, not page text, credentials or transcripts.
 
 `services/sqlite-message-interaction-session-store` adapts the existing

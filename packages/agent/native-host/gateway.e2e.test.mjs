@@ -253,3 +253,62 @@ for (const transition of ["reset", "rotate"]) {
     }
   });
 }
+
+test("allowlisted renderer preflight is answered before bearer authentication", async () => {
+  const gateway = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: "http://127.0.0.1:9",
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+  });
+  const base = await listen(gateway);
+  // A browser preflight: Origin and Access-Control-Request-*, no Authorization.
+  const options = (origin, extra = {}) =>
+    new Promise((resolve, reject) => {
+      const req = http.request(`${base}/conversations`, {
+        method: "OPTIONS",
+        headers: {
+          Origin: origin,
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "authorization,content-type",
+          ...extra,
+        },
+      });
+      req.on("response", (res) => {
+        res.resume();
+        res.on("end", () => resolve(res));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+  try {
+    const granted = await options("https://example.org");
+    assert.equal(granted.statusCode, 204);
+    assert.equal(
+      granted.headers["access-control-allow-origin"],
+      "https://example.org",
+    );
+    assert.match(
+      granted.headers["access-control-allow-headers"],
+      /\bAuthorization\b/,
+    );
+    assert.equal((await options("https://untrusted.example")).statusCode, 403);
+    assert.equal(
+      (await options("https://example.org", { Host: "attacker.example" }))
+        .statusCode,
+      403,
+    );
+    // Everything but a preflight still needs the bearer token.
+    const unauthenticated = await fetch(`${base}/conversations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://example.org",
+      },
+      body: "{}",
+    });
+    assert.equal(unauthenticated.status, 401);
+  } finally {
+    await close(gateway);
+  }
+});

@@ -1,6 +1,6 @@
 /** Resolves Cloud model and endpoint settings from runtime and environment state. */
-import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL } from "@elizaos/host/protocol";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/host/protocol";
 import { ElizaError } from "@elizaos/core";
 import { captureDevCloudEnvAuthoritySnapshot } from "../cloud-config/dev-cloud-env-authority.js";
 import { logger } from "@elizaos/core";

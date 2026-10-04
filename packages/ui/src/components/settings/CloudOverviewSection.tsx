@@ -17,8 +17,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useCallback } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { useAppSelectorShallow } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { shellHistory } from "../../surface-realm-channel";
 import { Button } from "../ui/button";

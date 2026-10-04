@@ -18,18 +18,14 @@ import {
 } from "node:crypto";
 import {
   type ActionResult,
-  type AppPackageRouteContext,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
   getCapabilityRouter,
-  getHttpRuntime,
-  getPluginHttpRoutes,
   type IAgentRuntime,
   type JsonObject,
   type JsonValue,
   type ModelTypeName,
-  type HttpPlugin as Plugin,
   type PluginAppBridge,
   type PluginAppLaunchDiagnostic,
   type PluginAppLaunchPreparation,
@@ -46,13 +42,19 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEffect,
   type ResponseHandlerFieldEvaluator,
-  type Route,
-  type RouteHandlerContext,
   type RuntimeEventStorage,
   Service,
   type ServiceClass,
   type ViewDeclaration,
 } from "@elizaos/core";
+import {
+  type AppPackageRouteContext,
+  getHttpRuntime,
+  getPluginHttpRoutes,
+  type HttpPlugin as Plugin,
+  type Route,
+  type RouteHandlerContext,
+} from "@elizaos/host/protocol";
 
 import {
   type AppRouteModule,

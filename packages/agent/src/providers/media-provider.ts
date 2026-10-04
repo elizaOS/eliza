@@ -16,7 +16,7 @@ import {
   type VisionAnalysisProvider,
   type VisionAnalysisResult,
   withMediaProviderErrorBoundary as withProviderErrorBoundary,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 export type {
   AudioGenerationOptions,
@@ -32,8 +32,8 @@ export type {
   VisionAnalysisOptions,
   VisionAnalysisProvider,
   VisionAnalysisResult,
-} from "@elizaos/core";
-export { fetchMediaProviderResponse as fetchWithTimeout } from "@elizaos/core";
+} from "@elizaos/host/protocol";
+export { fetchMediaProviderResponse as fetchWithTimeout } from "@elizaos/host/protocol";
 
 import { AnthropicVisionProvider } from "@elizaos/plugin-anthropic/direct-media";
 import {
@@ -63,20 +63,22 @@ export {
  * - "own-key" mode uses the user's own API keys
  */
 
+import type {
+  AudioGenConfig,
+  AudioGenProvider,
+  AudioKind,
+  ImageConfig,
+  MediaConfig,
+  VideoConfig,
+  VisionConfig,
+} from "@elizaos/contracts";
 import {
-  type AudioGenConfig,
-  type AudioGenProvider,
-  type AudioKind,
   fetchRemoteMedia,
-  type ImageConfig,
   logger,
-  type MediaConfig,
   nodeLookupFn,
   nodePinnedFetch,
   sleepWithAbort,
   VISION_IMAGE_MAX_BYTES,
-  type VideoConfig,
-  type VisionConfig,
 } from "@elizaos/core";
 
 // ============================================================================

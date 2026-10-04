@@ -5,11 +5,12 @@
 
 import type { Action, IAgentRuntime } from "@elizaos/core";
 import type { CapturedAction, ScenarioTurnExecution } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-  scenario,
-} from "@elizaos/testing";
+  transientTurnEvaluationSeed,
+} from "@elizaos/testing/models";
 import type { BrowserService } from "../../../../../plugins/plugin-browser/src/browser-service.ts";
 import { browserPlugin } from "../../../../../plugins/plugin-browser/src/plugin.ts";
 import {
@@ -17,7 +18,6 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 
 const strictBrowserRoutes = [
   {

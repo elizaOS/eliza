@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from benchmarks.swe_bench.native import parse_native_result, validate_native_trajectory
+from benchmarks.suites.swe_bench.native import parse_native_result, validate_native_trajectory
 
 
 def test_native_receipt_preserves_complete_response() -> None:
@@ -92,8 +92,8 @@ def test_native_runner_gates_grading_and_preserves_generated_patch(tmp_path, mon
     """Controlled process/evaluator boundaries verify the runner, not agent quality."""
     import asyncio
     from pathlib import Path
-    import benchmarks.swe_bench.native as native
-    from benchmarks.swe_bench.types import PatchStatus, SWEBenchConfig, SWEBenchInstance, SWEBenchResult
+    import benchmarks.suites.swe_bench.native as native
+    from benchmarks.suites.swe_bench.types import PatchStatus, SWEBenchConfig, SWEBenchInstance, SWEBenchResult
 
     patch = "diff --git a/code.py b/code.py\n--- a/code.py\n+++ b/code.py\n@@ -1 +1 @@\n-bad\n+good\n"
     managers = []
@@ -161,8 +161,8 @@ def test_native_timeout_settles_child_and_retains_attempted_patch(tmp_path, monk
     """Real subprocess timeout lifecycle; this is not an agent-quality test."""
     import asyncio
     import sys
-    import benchmarks.swe_bench.native as native
-    from benchmarks.swe_bench.types import PatchStatus, SWEBenchConfig, SWEBenchInstance
+    import benchmarks.suites.swe_bench.native as native
+    from benchmarks.suites.swe_bench.types import PatchStatus, SWEBenchConfig, SWEBenchInstance
 
     processes = []
     cleaned = []

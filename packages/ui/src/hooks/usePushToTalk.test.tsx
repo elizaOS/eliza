@@ -8,7 +8,7 @@
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PUSH_TO_TALK_HOLD_MS } from "../gestures";
+import { PUSH_TO_TALK_HOLD_MS } from "../gestures/constants";
 import { usePushToTalk } from "./usePushToTalk";
 
 interface HarnessProps {

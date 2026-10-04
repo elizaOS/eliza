@@ -10,7 +10,7 @@ import {
   ModelType,
   runWithStreamingContext,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { rewriteActionCallbackInCharacter } from "./delivery";
 import { reviewRecoveredReply } from "./recovery-grounding";

@@ -2,10 +2,12 @@
  * Connects the production Notes transport to the reusable presentation surface.
  * Mutations stay in chat so the planner and visible collection share one path.
  */
+import {
+  consumeNavigateViewPayload,
+  NAVIGATE_VIEW_EVENT,
+  useActiveAgentAuthority,
+} from "@elizaos/ui";
 
-import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useEffect, useState } from "react";
 import { NotesSurface } from "./NotesSurface.js";
 import { useNotesState } from "./useNotesState.js";

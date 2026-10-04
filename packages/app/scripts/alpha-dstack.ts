@@ -13,7 +13,7 @@ import {
   buildRemoteAgentPairingUri,
   normalizeRemoteAgentOrigin,
   REMOTE_AGENT_ENDPOINTS,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import {
   signAlphaProcessorPolicy,
   verifyAlphaAttestation,

@@ -3,7 +3,7 @@
 import {
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
   type ProgressiveContentExternalMutantId,
-} from "@elizaos/testing";
+} from "@elizaos/testing/progressive-content";
 import { describe, expect, it } from "vitest";
 import { createProgressiveContentExternalMutantExecutors } from "./progressive-content-external-mutants.ts";
 

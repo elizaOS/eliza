@@ -12,10 +12,10 @@ import {
   AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
   AgentBackupRestoreV3SourceAuthorityObjectSchema,
   canonicalizeAgentBackupRestoreV3SourceAuthority,
-  ElizaError,
   parseAgentBackupRestoreV3AuthorityFence,
   parseAgentBackupRestoreV3SourceAuthority,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   type AgentBackupRestoreSourceV3,
   type AgentBackupRestoreSourceV3Input,

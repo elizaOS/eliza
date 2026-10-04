@@ -25,7 +25,7 @@ import type {
   ConnectorAccountActionResult,
   ConnectorAccountRecord,
   ConnectorAccountStatus,
-} from "../api/client-agent";
+} from "../api/client-agent-connector-accounts";
 
 export type ConnectorReconnectPhase =
   | "idle"

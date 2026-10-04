@@ -10,9 +10,9 @@ import {
   type AgentBackupRestoreV3IsolatedCandidateStaging,
   type AgentBackupRestoreV3OperationControl,
   type AgentBackupRestoreV3StagingSession,
-  ElizaError,
   parseAgentBackupRestoreV3CandidateReceipt,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { assembleAgentBackupRestoreV3Candidate } from "./agent-backup-restore-v3-candidate-assembly";
 import { materializeAgentBackupRestoreV3CandidateCharacter } from "./agent-backup-restore-v3-candidate-character";
 import { validateAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database-validation";

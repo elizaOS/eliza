@@ -8,6 +8,7 @@ import {
   tryParseJson,
 } from "../src/metrics.ts";
 import { CerebrasMode } from "../src/modes/cerebras.ts";
+import { skeletonFromHint } from "../src/modes/guided.ts";
 import { buildTableRows } from "../src/report.ts";
 import type { ModeRequest } from "../src/types.ts";
 
@@ -163,4 +164,20 @@ test("HTTP fallback attempts sum observed usage over the measured duration", asy
       server.close((error) => (error ? reject(error) : resolve())),
     );
   }
+});
+
+// Generated literal spans must remain valid JSON for arbitrary field names.
+test("guided skeletons preserve empty objects and escaped keys", () => {
+  assert.deepEqual(skeletonFromHint({ type: "object", freeFields: [] }).spans, [
+    { kind: "literal", value: "{}" },
+  ]);
+  const key = 'quoted"\\key';
+  const skeleton = skeletonFromHint({
+    type: "object",
+    freeFields: [{ key, kind: "string" }],
+  });
+  const rendered = skeleton.spans
+    .map((span) => (span.kind === "literal" ? span.value : '"value"'))
+    .join("");
+  assert.deepEqual(JSON.parse(rendered), { [key]: "value" });
 });

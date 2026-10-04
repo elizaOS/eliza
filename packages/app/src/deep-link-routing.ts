@@ -14,9 +14,12 @@
  * unrecognized paths, so an unknown deep link is non-routable rather than
  * silently opening chat.
  */
-import { validateUuid } from "@elizaos/core/utils/uuid";
-import type { NotificationChatRequest } from "@elizaos/ui/state/notifications/navigate-deep-link";
-import { readNotificationChatTarget } from "@elizaos/ui/state/notifications/navigate-deep-link";
+
+import { validateUuid } from "@elizaos/core/protocol";
+import {
+  type NotificationChatRequest,
+  readNotificationChatTarget,
+} from "@elizaos/ui";
 
 const ASSISTANT_ENTRY_SOURCE = "assistant-entry";
 const ASSISTANT_LAUNCH_TEXT_KEYS = ["text", "q", "query", "body"] as const;

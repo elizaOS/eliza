@@ -13,7 +13,6 @@ import {
   elizaLogger,
   type JSONSchema,
   type Memory,
-  type MessageProcessingResult,
   ModelType,
   type Plugin,
   runWithLlmInputSubstringAttestation,
@@ -22,7 +21,7 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { LifeOpsFakeBackend } from "@elizaos/lifeops-bench";
 import {
   LifeOpsBenchHandler,
@@ -45,13 +44,9 @@ import {
   runWithLifecycleTaskCapture,
 } from "./lifecycle-task-action.js";
 import {
-  clearCapturedAction,
   createBenchmarkPlugin,
-  getCapturedAction,
-  getCapturedActions,
   lifecycleBenchmarkProviderPayloadIsNeutral,
   runWithBenchmarkContext,
-  setBenchmarkContext,
 } from "./plugin";
 import {
   type BenchmarkLlmCallUsage,
@@ -2004,24 +1999,21 @@ export async function startBenchmarkServer() {
         throw new Error("Runtime message service is not available");
       }
       const messageService = runtime.messageService;
-      clearCapturedAction();
-      setBenchmarkContext(benchmarkContext);
       const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-      let result: MessageProcessingResult;
-      try {
-        result = await usageCapture.run(turnUsageBuffer, () =>
-          messageService.handleMessage(runtime, incomingMessage, callback),
-        );
-      } finally {
-        setBenchmarkContext(null);
-      }
+      const { result, capturedActions } = await runWithBenchmarkContext(
+        benchmarkContext,
+        () =>
+          usageCapture.run(turnUsageBuffer, () =>
+            messageService.handleMessage(runtime, incomingMessage, callback),
+          ),
+      );
       const responseText =
         typeof result.responseContent?.text === "string"
           ? result.responseContent.text
           : callbackTexts.join("\n\n");
       const actions = coerceActions(result.responseContent?.actions);
       const params = coerceParams(result.responseContent?.params);
-      const capturedAction = getCapturedAction();
+      const capturedAction = capturedActions.at(-1) ?? null;
       // Map captured Eliza actions into lifeops_bench tool calls.
       // Strategy: each action name in `actions` is treated as a tool name;
       // its arguments come from `params[actionName]` when present, otherwise
@@ -2138,6 +2130,7 @@ export async function startBenchmarkServer() {
       res.end(
         JSON.stringify({
           status: "ready",
+          benchmark_model: process.env.BENCHMARK_MODEL_NAME ?? null,
           agent_name: runtime.character.name ?? "Eliza",
           plugins: plugins.length,
           native_runtime_class: "@elizaos/core.AgentRuntime",
@@ -3152,7 +3145,6 @@ export async function startBenchmarkServer() {
             throw new Error("Runtime message service is not available");
           }
           const messageService = runtime.messageService;
-          clearCapturedAction();
           const lifecycleSystemHint =
             typeof benchmarkContext.system_hint === "string"
               ? benchmarkContext.system_hint.trim()
@@ -3189,7 +3181,7 @@ export async function startBenchmarkServer() {
               )
             : null;
           const lifecycleTurn = lifecycleDispatch?.result ?? null;
-          const result = lifecycleTurn
+          const { result, capturedActions } = lifecycleTurn
             ? lifecycleTurn.result
             : await handleNativeTurn();
           if (
@@ -3233,8 +3225,7 @@ export async function startBenchmarkServer() {
               );
             }
           }
-          const capturedAction = getCapturedAction();
-          const capturedActions = getCapturedActions();
+          const capturedAction = capturedActions.at(-1) ?? null;
           if (lifecycleProfile && !lifecycleTurn) {
             throw new Error(
               "Lifecycle profile completed without request-scoped TASKS capture",

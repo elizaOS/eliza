@@ -9,7 +9,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   SnapshotPayloadTooLargeError,
-} from "@elizaos/core/agent-backup-limits";
+} from "@elizaos/core/protocol";
 import {
   and,
   asc,

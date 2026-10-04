@@ -11,7 +11,7 @@ import {
   PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION,
   type ProgressiveContentTarget,
   type ProgressiveContentTargetFactory,
-} from "@elizaos/testing";
+} from "@elizaos/testing/progressive-content";
 import {
   deleteMediaFile,
   mediaFileNameFromUrl,

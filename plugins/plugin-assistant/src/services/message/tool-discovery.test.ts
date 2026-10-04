@@ -12,7 +12,7 @@ import {
   normalizeActionJsonSchema,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin.ts";
 import { documentAction } from "../../features/documents/actions";

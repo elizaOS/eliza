@@ -22,7 +22,7 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   type CloudPairExchangeResponse,
   isCloudPairAgentId,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/contracts";
 import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();

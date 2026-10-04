@@ -20,12 +20,12 @@
  * calls without exercising a live provider.
  */
 
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   CALENDAR_TIME_ZONE_INVALID,
   CALENDAR_TIME_ZONE_UNAVAILABLE,
   registerCalendarTimeZoneResolver,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runLifeConnectedQuery } from "../src/actions/life.js";
 import type { LifeOpsService } from "../src/lifeops/service.js";

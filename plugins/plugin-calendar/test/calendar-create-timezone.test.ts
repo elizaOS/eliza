@@ -8,11 +8,12 @@
  * call are inspected. Clock pinned to Saturday 2026-09-05 so "tuesday"
  * resolves to 2026-09-08. The extractor model is a fixture; no database.
  */
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+
 import type {
   CreateLifeOpsCalendarEventRequest,
   LifeOpsCalendarEvent,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,

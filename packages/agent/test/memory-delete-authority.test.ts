@@ -9,9 +9,9 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { memoryAction } from "@elizaos/plugin-assistant";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, expect, it } from "vitest";
-import { memoryAction } from "../src/actions/memories.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {

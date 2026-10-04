@@ -41,7 +41,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
       ),
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 vi.mock("../../../lib/api-client", () => ({
   api: (...args: unknown[]) => apiMock(...args),
@@ -58,7 +60,7 @@ vi.mock("../../../lib/api-client", () => ({
   },
 }));
 
-vi.mock("../../../../components/primitives", () => ({
+vi.mock("../../../../components/ui/button", () => ({
   Button: ({
     children,
     onClick,
@@ -80,7 +82,7 @@ vi.mock("../../../../components/primitives", () => ({
   },
 }));
 
-import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../../../../api/direct-cloud-endpoints";
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import { ApiError } from "../../../lib/api-client";
 import AuthSuccessPage, {
   resolveAuthSuccessCandidate,

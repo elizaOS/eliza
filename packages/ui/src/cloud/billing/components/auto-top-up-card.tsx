@@ -19,7 +19,6 @@
 
 "use client";
 
-import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   CreditCard,
@@ -36,7 +35,9 @@ import {
 } from "../../../components/settings/settings-agent-rows";
 import { Alert } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 

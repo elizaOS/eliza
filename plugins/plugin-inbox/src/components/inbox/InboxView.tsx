@@ -22,7 +22,7 @@
  * (`LifeOpsInbox` / `LifeOpsInboxMessage` in @elizaos/core).
  */
 
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,

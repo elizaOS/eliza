@@ -58,27 +58,31 @@ import {
 } from "@elizaos/auth/auth";
 import { fetchCodexUsage, probeDirectApiKey } from "@elizaos/auth/providers";
 import {
-  type AccountPoolBrokerSnapshot,
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
-  type ElizaConfig,
-  ElizaError,
-  type IAgentRuntime,
-  isLinkedAccountProviderId,
-  type LinkedAccountConfig,
-  type LinkedAccountProviderId,
-  logger,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
-  type RouteRequestContext,
-  resolveServiceRoutingInConfig,
+} from "@elizaos/contracts";
+import {
+  type AccountPoolBrokerSnapshot,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
   resolveStateDir,
-  type ServiceRouteAccountStrategy,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  type ElizaConfig,
+  isLinkedAccountProviderId,
+  type LinkedAccountConfig,
+  type LinkedAccountProviderId,
+  type RouteRequestContext,
+  resolveServiceRoutingInConfig,
+  type ServiceRouteAccountStrategy,
+} from "@elizaos/host/protocol";
 
 import * as zod from "zod";
 import {
@@ -844,7 +848,7 @@ export async function handleAccountsRoutes(
     }
     writeAccountStrategy(ctx.state.config, providerId, parsed.data.strategy);
     ctx.saveConfig(ctx.state.config);
-    await syncDirectProviderCredentials(ctx, providerId);
+    await applyAccountPoolToRuntime(ctx);
     json(res, { providerId, strategy: parsed.data.strategy });
     return true;
   }
@@ -1164,6 +1168,12 @@ export async function syncDirectProviderCredentials(
   providerId: string,
 ): Promise<void> {
   if (!isDirectAccountProvider(providerId)) return;
+  await applyAccountPoolToRuntime(ctx);
+}
+
+async function applyAccountPoolToRuntime(
+  ctx: Pick<AccountsRouteContext, "state">,
+): Promise<void> {
   const config = ctx.state.config as Record<string, unknown>;
   const serviceRouting = resolveServiceRoutingInConfig(config);
   const accountStrategies = config.accountStrategies;

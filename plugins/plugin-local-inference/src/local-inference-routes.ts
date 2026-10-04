@@ -12,23 +12,19 @@ import type * as http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import {
+	AGENT_MODEL_SLOTS,
+	type AgentModelSlot,
+	type CatalogModel as SharedCatalogModel,
+	type VerifyResult,
+} from "@elizaos/contracts";
+import {
 	type ContentValue,
 	type IAgentRuntime,
 	logger,
 	resolveStateDir,
 } from "@elizaos/core";
-import {
-	readJsonBody,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import { resolveElizaCloudTopology } from "@elizaos/core/contracts/cloud-topology";
-import {
-	AGENT_MODEL_SLOTS,
-	type AgentModelSlot,
-	type CatalogModel as SharedCatalogModel,
-	type VerifyResult,
-} from "@elizaos/core/contracts/local-inference";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
+import { resolveElizaCloudTopology } from "@elizaos/host/protocol";
 import {
 	isCatalogModelOfferable,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,

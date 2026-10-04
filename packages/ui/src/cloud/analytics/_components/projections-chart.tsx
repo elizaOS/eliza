@@ -20,15 +20,19 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Badge,
+} from "../../../components/ui/alert";
+import { Badge } from "../../../components/ui/badge";
+import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+} from "../../../components/ui/card";
+import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "../../../cloud-ui";
+} from "../../../components/ui/chart";
 import { formatUsd as formatCurrency } from "../../../utils/format.js";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 

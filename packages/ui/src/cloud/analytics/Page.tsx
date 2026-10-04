@@ -16,8 +16,8 @@ import { useSearchParams } from "react-router-dom";
 import {
   DashboardErrorState,
   DashboardLoadingState,
-  EnsurePageHeaderProvider,
-} from "../../cloud-ui";
+} from "../../cloud-ui/components/dashboard/route-placeholders";
+import { EnsurePageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AnalyticsPageClient } from "./_components/analytics-page-client";
 import {

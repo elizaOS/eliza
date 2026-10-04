@@ -2,10 +2,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
-import {
-  installCancellationTestSchema,
-  seedCancellationTestAccount,
-} from "./subscription-cancellation-test-fixture";
+import { installOrganizationUpgradeTestSchema } from "./organization-upgrade-test-fixture";
+import { seedCancellationTestAccount } from "./subscription-cancellation-test-fixture";
 
 const url = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schema = `cancellation_${randomUUID().replaceAll("-", "_")}`;
@@ -38,7 +36,7 @@ async function waitForPublicationLock() {
     await setup.connect();
     await setup.query(`CREATE SCHEMA ${schema}`);
     await setup.query(`SET search_path TO ${schema},public`);
-    await installCancellationTestSchema((query) => setup.query(query));
+    await installOrganizationUpgradeTestSchema((query) => setup.query(query));
     const target = new URL(url!);
     target.searchParams.set("options", `-c search_path=${schema},public`);
     target.searchParams.set("application_name", schema);
@@ -59,6 +57,65 @@ async function waitForPublicationLock() {
     await close?.();
     await setup.query(`DROP SCHEMA ${schema} CASCADE`);
     await setup.end();
+  });
+  test("plan review captures current authority without admitting a command", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    const captured = await readOrganizationPlanChangeSource(f.input);
+    expect(captured.source.id).toBe(f.input.subscriptionId);
+    expect(captured.organizationCustomerId).toBe(f.source.stripe_customer_id);
+    const rows = await setup.query(
+      "SELECT id FROM billing_subscription_commands WHERE organization_id=$1",
+      [f.input.organizationId],
+    );
+    expect(rows.rowCount).toBe(0);
+  });
+  test("plan review rejects foreign actors, stale revisions and missing projections", async () => {
+    const f = await seed();
+    const other = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await expect(
+      readOrganizationPlanChangeSource({ ...f.input, actorId: other.input.actorId }),
+    ).rejects.toThrow();
+    await expect(
+      readOrganizationPlanChangeSource({ ...f.input, expectedSubscriptionRevision: 2 }),
+    ).rejects.toThrow();
+    await setup.query("DELETE FROM organization_entitlements WHERE organization_id=$1", [
+      f.input.organizationId,
+    ]);
+    await expect(readOrganizationPlanChangeSource(f.input)).rejects.toThrow();
+  });
+  test("plan review rejects an admitted cancellation before provider dispatch", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await repo.prepareCancellation(f.input);
+    await expect(readOrganizationPlanChangeSource(f.input)).rejects.toThrow();
+  });
+  test("plan review rechecks actor revocation after waiting for the organization lock", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    const holder = await connect();
+    let pending: Promise<unknown> | undefined;
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        f.input.organizationId,
+      ]);
+      pending = readOrganizationPlanChangeSource(f.input).then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      );
+      await waitForPublicationLock();
+      await holder.query("UPDATE users SET role='member' WHERE id=$1", [f.input.actorId]);
+      await holder.query("COMMIT");
+      expect(await pending).toMatchObject({
+        error: { code: "SUBSCRIPTION_PLAN_CHANGE_FORBIDDEN" },
+      });
+    } finally {
+      await holder.query("ROLLBACK");
+      await pending;
+      await holder.end();
+    }
   });
   async function reviewedUndo() {
     const f = await seed();

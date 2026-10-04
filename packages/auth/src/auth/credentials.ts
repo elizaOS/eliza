@@ -19,14 +19,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  ElizaError,
   getElizaNamespace,
   logger,
-  resolveAliasedEnvValue,
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import type { SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
+import { ElizaError } from "@elizaos/core/protocol";
+import type { SubscriptionCredentialSource } from "@elizaos/host/protocol";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import {
   type AccountCredentialRecord,
   type AccountDeletionPlan,
@@ -509,7 +509,7 @@ function readConfiguredAnthropicSetupToken(): string | null {
   }
 }
 
-export type { SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
+export type { SubscriptionCredentialSource } from "@elizaos/host/protocol";
 /**
  * Per-account subscription status row used by the dashboard / API.
  *

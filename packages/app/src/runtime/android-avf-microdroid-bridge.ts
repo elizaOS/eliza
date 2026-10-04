@@ -1,6 +1,6 @@
 /**
  * Maps the Android native virtualization bridge (AVF / Microdroid, exposed on
- * `globalThis.ElizaNative`) into the mobile-safe runtime surface. Reads the
+ * `globalThis.ElizaNative`) into typed capability probes and requests. Reads the
  * native probe JSON to build a feature probe — capability state, availability
  * flags, and the `ELIZA_ANDROID_*` env hints the runtime consumes — and, when a
  * request bridge is present, wraps it as an `AndroidAvfMicrodroidBoundary` that
@@ -9,13 +9,87 @@
  * payload. All native JSON is parsed defensively: malformed or mismatched
  * responses become structured, non-retryable errors rather than throwing.
  */
-import type {
-  AndroidAvfMicrodroidBoundary,
-  AndroidAvfMicrodroidCapabilityState,
-  MobileSafeRuntimeCapabilityRequest,
-  MobileSafeRuntimeCapabilityResponse,
-  MobileSafeRuntimeFeatureProbe,
-} from "./mobile-safe-runtime";
+export type MobileSafeRuntimePlatform = "ios" | "android" | "web" | "unknown";
+
+export type AndroidAvfMicrodroidCapabilityState =
+  | "unsupported-platform"
+  | "unsupported-api"
+  | "framework-unavailable"
+  | "permission-denied"
+  | "service-unavailable"
+  | "payload-missing"
+  | "ready";
+
+export type MobileSafeRuntimeCapability =
+  | "fs.read"
+  | "fs.write"
+  | "fs.delete"
+  | "fs.mkdir"
+  | "fs.stat"
+  | "fs.list"
+  | "fs.snapshot"
+  | "fs.diff"
+  | "fs.rollback"
+  | "fs.quota"
+  | "net.fetch"
+  | "crypto.random"
+  | "model.inference"
+  | "shell.exec"
+  | "app.compile"
+  | "app.load"
+  | "app.run"
+  | (string & {});
+
+export interface MobileSafeRuntimeFeatureProbe {
+  env?: Record<string, string | undefined>;
+  globals?: Record<string, unknown>;
+  platform?: MobileSafeRuntimePlatform;
+  androidAvfAvailable?: boolean;
+  androidMicrodroidAvailable?: boolean;
+  androidAvfPayloadAvailable?: boolean;
+  androidAvfCapabilityState?: AndroidAvfMicrodroidCapabilityState;
+  androidIsolatedProcessAvailable?: boolean;
+  iosJavaScriptCoreAvailable?: boolean;
+  iosQuickJsAvailable?: boolean;
+  allowInProcessSafeJsApplet?: boolean;
+}
+
+export interface MobileSafeRuntimeCapabilityRequest<
+  TArgs extends Record<string, unknown> = Record<string, unknown>,
+> {
+  id: string;
+  capability: MobileSafeRuntimeCapability;
+  operation: string;
+  args: TArgs;
+  subject?: string;
+  timeoutMs?: number;
+}
+
+export type MobileSafeRuntimeCapabilityResponse<TResult = unknown> =
+  | {
+      id: string;
+      ok: true;
+      result: TResult;
+    }
+  | {
+      id: string;
+      ok: false;
+      error: {
+        code: string;
+        message: string;
+        retryable?: boolean;
+      };
+    };
+
+export interface AndroidAvfMicrodroidBoundary {
+  kind: "android-avf-microdroid";
+  capabilityState?: AndroidAvfMicrodroidCapabilityState;
+  reason?: string;
+  capabilities?: string[];
+  request(
+    request: MobileSafeRuntimeCapabilityRequest,
+  ): Promise<MobileSafeRuntimeCapabilityResponse>;
+}
 
 export const ANDROID_AVF_MICRODROID_REQUEST_CONTRACT_VERSION = 1;
 

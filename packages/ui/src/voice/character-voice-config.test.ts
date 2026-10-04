@@ -1,4 +1,4 @@
-import { PREMADE_VOICES } from "@elizaos/core/voice";
+import { PREMADE_VOICES } from "@elizaos/host/protocol";
 import { describe, expect, it } from "vitest";
 import { resolveCharacterVoiceConfigFromAppConfig } from "./character-voice-config";
 

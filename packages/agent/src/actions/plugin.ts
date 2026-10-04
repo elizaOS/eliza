@@ -9,14 +9,16 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
-  createSelfApiRequestHeaders,
   ElizaError,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
-  requireRestartHandler,
 } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import {
+  createSelfApiRequestHeaders,
+  requireRestartHandler,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 import {
   isPluginManagerLike,

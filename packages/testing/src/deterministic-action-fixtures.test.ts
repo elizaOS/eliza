@@ -1,10 +1,11 @@
 /** Verifies exact deterministic request matching against current and legacy context framing, including adversarial envelopes. */
-import { describe, expect, it } from "vitest";
+
 import {
   buildStageChatMessages,
   renderContextObject,
   segmentBlock,
-} from "../../core/src/runtime/context-renderer.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { matchesScenarioInput } from "./deterministic-action-fixtures.ts";
 
 const input = "Say hello in one short sentence.";

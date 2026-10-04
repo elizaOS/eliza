@@ -59,7 +59,7 @@ const returnToSpies = vi.hoisted(() => ({
 // Keep this focused login test on the Alert primitive the section actually
 // uses; evaluating the broad primitives barrel pulls in unrelated optional
 // controls and their peer dependencies.
-vi.mock("../../../../components/primitives", async () => {
+vi.mock("../../../../components/ui/alert", async () => {
   const { Alert, AlertDescription } = await import(
     "../../../../components/ui/alert"
   );

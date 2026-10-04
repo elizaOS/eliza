@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { getBootConfig, setBootConfig } from '@elizaos/core/config/boot-config-store';
+import { getBootConfig, setBootConfig } from '@elizaos/host/protocol';
 import {
   acquireWorkerLease,
   inspectWorkerLease,

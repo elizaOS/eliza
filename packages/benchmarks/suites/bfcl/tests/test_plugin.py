@@ -1,7 +1,7 @@
 """Tests for BFCL plugin schema helpers."""
 
-from benchmarks.bfcl.plugin import generate_function_schema
-from benchmarks.bfcl.types import FunctionDefinition, FunctionParameter
+from benchmarks.suites.bfcl.plugin import generate_function_schema
+from benchmarks.suites.bfcl.types import FunctionDefinition, FunctionParameter
 
 
 def test_any_parameter_type_is_unconstrained() -> None:

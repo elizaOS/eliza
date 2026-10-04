@@ -18,7 +18,7 @@ import {
   Contacts,
   type CreateContactOptions,
 } from "@elizaos/plugin-native-contacts/bridge";
-import { isNative } from "@elizaos/ui/platform";
+import { isNative } from "@elizaos/ui";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { matchesQuery } from "./ContactsAppView.helpers.ts";

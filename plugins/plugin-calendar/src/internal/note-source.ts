@@ -1,6 +1,7 @@
 /** Validates the cross-domain Notes reference before calendar preparation or dispatch. */
+
+import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { CalendarNoteSourceReference } from "@elizaos/core/contracts/calendar";
 
 export function parseCalendarNoteSource(
   value: unknown,

@@ -8,12 +8,9 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  isTruthyEnvValue,
-  logger,
-  resolveApiToken,
-  sendJsonError,
-} from "@elizaos/core";
+import { isTruthyEnvValue, logger } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/host";
+import { resolveApiToken } from "@elizaos/host/protocol";
 
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { serializeInlineScriptValue } from "./inline-script-serialization.ts";

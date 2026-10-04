@@ -1,6 +1,7 @@
 /** Exercises current and historical calendar requests at the actual argument-validation boundary. */
+
+import { validateToolArgs } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { validateToolArgs } from "../../../packages/core/src/actions/validate-tool-args";
 import {
   createCalendarActionRunner,
   normalizeCalendarDetails,

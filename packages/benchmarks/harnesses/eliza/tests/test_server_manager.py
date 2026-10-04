@@ -108,7 +108,7 @@ def test_server_manager_uses_ephemeral_port_by_default(
 def test_server_manager_pins_tsx_to_executable_workspace_sources(
     monkeypatch, tmp_path: Path
 ) -> None:
-    server = tmp_path / "packages" / "lifeops-bench" / "src" / "server.ts"
+    server = tmp_path / "packages" / "benchmarks" / "harnesses" / "eliza" / "runner" / "src" / "cli.ts"
     server.parent.mkdir(parents=True)
     server.write_text("console.log('fake benchmark server')\n", encoding="utf-8")
     (tmp_path / "tsconfig.json").write_text("{}\n", encoding="utf-8")

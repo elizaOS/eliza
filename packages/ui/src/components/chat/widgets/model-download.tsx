@@ -6,8 +6,8 @@
  * shows no floating pill) and self-hides when no local slot needs a download.
  */
 
-import type { LocalInferenceSlotReadiness } from "@elizaos/core/contracts/local-inference";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import type { LocalInferenceSlotReadiness } from "@elizaos/contracts";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { Download, Loader2, TriangleAlert } from "lucide-react";
 import {
   useCallback,
@@ -16,8 +16,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { client } from "../../../api/client";
 import { isDesktopExternalApiBaseUrl } from "../../../api/desktop-external-api-base";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../../events";
 import { readPersistedMobileRuntimeMode } from "../../../first-run/mobile-runtime-mode";

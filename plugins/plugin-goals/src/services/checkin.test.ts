@@ -16,8 +16,8 @@
  * `checkin.real.test.ts`.
  */
 
+import type { LifeOpsGoalDefinition } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsGoalDefinition } from "@elizaos/core/contracts/personal-assistant";
 import {
   createAnchorRegistry,
   createCompletionCheckRegistry,
@@ -193,7 +193,10 @@ describe("checkinTriggersForGoal — cadence → trigger mapping", () => {
       makeGoal({ cadence: { kind: "once", dueAt: DENVER_9AM_UTC_ISO } }),
     );
     expect(plans).toEqual([
-      { slotKey: "once", trigger: { kind: "once", atIso: DENVER_9AM_UTC_ISO } },
+      {
+        slotKey: `once:${DENVER_9AM_UTC_ISO}`,
+        trigger: { kind: "once", atIso: DENVER_9AM_UTC_ISO },
+      },
     ]);
   });
 
@@ -353,6 +356,124 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     expect(resync.edited).toHaveLength(0);
     const [task] = await spine.runner.list({ kind: "checkin" });
     expect(task.state.status).toBe("dismissed");
+  });
+
+  it("schedules a new check-in when a once goal that already fired is moved", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const firstDue = "2026-10-05T15:00:00.000Z";
+    const movedDue = "2026-10-12T15:00:00.000Z";
+
+    const first = await service.syncGoalCheckins(
+      makeGoal({ cadence: { kind: "once", dueAt: firstDue } }),
+    );
+    await spine.runner.apply(first.scheduled[0].taskId, "complete", {});
+    const moved = await service.syncGoalCheckins(
+      makeGoal({ cadence: { kind: "once", dueAt: movedDue } }),
+    );
+
+    expect(moved.edited).toHaveLength(0);
+    expect(moved.scheduled).toHaveLength(1);
+    expect(moved.scheduled[0]).toMatchObject({
+      trigger: { kind: "once", atIso: movedDue },
+      state: { status: "scheduled" },
+    });
+    const tasks = await spine.runner.list({ kind: "checkin" });
+    expect(tasks.map((task) => task.state.status).sort()).toEqual([
+      "completed",
+      "scheduled",
+    ]);
+  });
+
+  it("does not re-arm a once instant that already ran or was dismissed, under any key", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const dueAt = "2026-10-05T15:00:00.000Z";
+    const goal = makeGoal({ cadence: { kind: "once", dueAt } });
+    // A check-in stored under the older unkeyed `once` slot that already ran.
+    const legacy = await spine.runner.schedule({
+      ...buildCheckinTaskInput(
+        goal,
+        { slotKey: "once", trigger: { kind: "once", atIso: dueAt } },
+        CREATED_ISO,
+      ),
+    });
+    await spine.runner.apply(legacy.taskId, "complete", {});
+
+    const resync = await service.syncGoalCheckins(goal);
+
+    expect(resync.scheduled).toHaveLength(0);
+    expect(resync.dismissedTaskIds).toHaveLength(0);
+    expect(await spine.runner.list({ kind: "checkin" })).toHaveLength(1);
+  });
+
+  it.each([
+    ["scheduled", "once"],
+    ["completed", "once"],
+    ["dismissed", "once"],
+    ["scheduled", "once:2026-10-05T15:00:00.000Z"],
+    ["completed", "once:2026-10-05T15:00:00.000Z"],
+    ["dismissed", "once:2026-10-05T15:00:00.000Z"],
+  ] as const)(
+    "preserves a %s once task with key %s across equivalent timestamps",
+    async (status, slotKey) => {
+      const spine = makeSpine();
+      const service = makeService(spine);
+      const goal = makeGoal({
+        cadence: { kind: "once", dueAt: "2026-10-05T15:00:00.000Z" },
+      });
+      const legacy = await spine.runner.schedule(
+        buildCheckinTaskInput(
+          goal,
+          {
+            slotKey,
+            trigger: { atIso: "2026-10-05T11:00:00-04:00", kind: "once" },
+          },
+          CREATED_ISO,
+        ),
+      );
+      if (status !== "scheduled")
+        await spine.runner.apply(
+          legacy.taskId,
+          status === "completed" ? "complete" : "dismiss",
+          {},
+        );
+      expect(await service.syncGoalCheckins(goal)).toEqual({
+        scheduled: [],
+        edited: [],
+        dismissedTaskIds: [],
+      });
+      expect(await spine.runner.list({ kind: "checkin" })).toHaveLength(1);
+      expect(
+        checkinTriggersForGoal(
+          makeGoal({
+            cadence: { kind: "once", dueAt: "2026-10-05T11:00:00-04:00" },
+          }),
+        ),
+      ).toEqual(checkinTriggersForGoal(goal));
+    },
+  );
+
+  it("moves a still-pending once check-in to the new instant", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const first = await service.syncGoalCheckins(
+      makeGoal({
+        cadence: { kind: "once", dueAt: "2026-10-05T15:00:00.000Z" },
+      }),
+    );
+    const moved = await service.syncGoalCheckins(
+      makeGoal({
+        cadence: { kind: "once", dueAt: "2026-10-12T15:00:00.000Z" },
+      }),
+    );
+
+    expect(moved.dismissedTaskIds).toEqual([first.scheduled[0].taskId]);
+    expect(moved.scheduled).toHaveLength(1);
+    expect(moved.scheduled[0].trigger).toEqual({
+      kind: "once",
+      atIso: "2026-10-12T15:00:00.000Z",
+    });
   });
 });
 

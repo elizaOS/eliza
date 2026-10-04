@@ -219,7 +219,8 @@ export function registerBuiltinWidgetDeclarations(): void {}
 
 export function registerBuiltinWidgets(): void {}
 
-export function registerAppShellPage(): void {}
+export { registerAppShellPage } from "../../../../packages/ui/src/app-shell-registry";
+export { registerRendererService } from "../../../../packages/ui/src/platform/renderer-services";
 
 export function registerOverlayApp(): void {}
 
@@ -230,4 +231,4 @@ export function getAppBlockerPlugin(): Record<string, unknown> {
 export {
   RadioGroup,
   RadioGroupItem,
-} from "../../../../packages/ui/src/components/ui/radio-group.js";
+} from "../../../../packages/ui/src/components/ui/radio-group";

@@ -34,11 +34,6 @@ declare module "react-syntax-highlighter/dist/esm/prism-light.js" {
   export default PrismLight;
 }
 
-declare module "refractor/lang/*" {
-  const lang: unknown;
-  export default lang;
-}
-
 declare module "react-syntax-highlighter/dist/esm/languages/prism/*" {
   const language: unknown;
   export default language;

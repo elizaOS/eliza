@@ -12,7 +12,7 @@ import {
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3OperationControl,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import {
   type AgentBackupRestoreV3CandidateFs,
   openAgentBackupRestoreV3CandidateFs,

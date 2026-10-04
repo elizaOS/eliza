@@ -6,14 +6,14 @@
  */
 
 import { useCallback, useState } from "react";
+import type { TriggerRunRecord } from "../api/client";
+import { client } from "../api/client";
 import type {
   CreateTriggerRequest,
   TriggerHealthSnapshot,
-  TriggerRunRecord,
   TriggerSummary,
   UpdateTriggerRequest,
-} from "../api";
-import { client } from "../api";
+} from "../api/client-types-core";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 

@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from openclaw_adapter.bfcl import (
     OpenClawBFCLAgent,
-    _provider_safe_tools,
     build_bfcl_agent_fn,
 )
 from openclaw_adapter.client import MessageResponse, OpenClawClient
@@ -30,7 +29,7 @@ def _fake_client(tmp_path: Path) -> OpenClawClient:
 
 
 def test_openclaw_bfcl_agent_maps_provider_safe_tool_names_back(tmp_path: Path) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -128,7 +127,7 @@ def test_build_bfcl_agent_fn_default_client_uses_embedded_runtime() -> None:
 def test_openclaw_bfcl_agent_parallel_case_requires_one_native_call_per_operation(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -222,7 +221,7 @@ def test_openclaw_bfcl_agent_parallel_case_requires_one_native_call_per_operatio
 def test_openclaw_bfcl_agent_irrelevant_case_disables_tool_calls(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import BFCLCategory, BFCLTestCase
+    from benchmarks.suites.bfcl.types import BFCLCategory, BFCLTestCase
 
     client = _fake_client(tmp_path)
     agent = OpenClawBFCLAgent(client=client, model_name="gpt-oss-120b")

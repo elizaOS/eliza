@@ -10,7 +10,7 @@ import { ElizaClient } from "./client-base";
 // Declaration merging
 // ---------------------------------------------------------------------------
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     /**
      * Re-host a user-picked wallpaper (downscaled data URL) into the

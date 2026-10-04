@@ -24,21 +24,21 @@ import os
 import time
 from typing import Optional
 
-from benchmarks.bfcl.agent import BFCLAgent, MockBFCLAgent
-from benchmarks.bfcl.dataset import BFCLDataset, expand_test_cases
-from benchmarks.bfcl.evaluators import (
+from benchmarks.suites.bfcl.agent import BFCLAgent, MockBFCLAgent
+from benchmarks.suites.bfcl.dataset import BFCLDataset, expand_test_cases
+from benchmarks.suites.bfcl.evaluators import (
     ASTEvaluator,
     ExecutionEvaluator,
     RelevanceEvaluator,
 )
-from benchmarks.bfcl.executable_runtime import (
+from benchmarks.suites.bfcl.executable_runtime import (
     MEMORY_PREREQ_CONVERSATION_PATH,
     RuntimeNetworkRequired,
     decode_python_calls,
 )
-from benchmarks.bfcl.metrics import MetricsCalculator
-from benchmarks.bfcl.reporting import BFCLReporter
-from benchmarks.bfcl.types import (
+from benchmarks.suites.bfcl.metrics import MetricsCalculator
+from benchmarks.suites.bfcl.reporting import BFCLReporter
+from benchmarks.suites.bfcl.types import (
     BFCLBenchmarkResults,
     BFCLCategory,
     BFCLConfig,
@@ -575,7 +575,7 @@ class BFCLRunner:
 
         # Drive the agent turn-by-turn. We synthesize a single-turn-shaped
         # BFCLTestCase per turn so the existing agent.query interface works.
-        from benchmarks.bfcl.types import BFCLTestCase as _TC
+        from benchmarks.suites.bfcl.types import BFCLTestCase as _TC
 
         long_context = test_case.category == BFCLCategory.MULTI_TURN_LONG_CONTEXT
 
@@ -698,7 +698,7 @@ class BFCLRunner:
             ``possible_answers`` extracted from the test case metadata or
             ground truth.
         """
-        from benchmarks.bfcl.executable_runtime import extract_memory_backend_type
+        from benchmarks.suites.bfcl.executable_runtime import extract_memory_backend_type
 
         cat_name = test_case.category.value
         try:

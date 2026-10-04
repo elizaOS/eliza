@@ -22,12 +22,13 @@
  * Per-runtime, `WeakMap`-keyed like `FamilyRegistry` so lifetime tracks the
  * runtime and nothing leaks across tests.
  */
-import { type IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsActivitySignal,
-  type LifeOpsActivitySignalSourceName,
-  type LifeOpsTelemetryPayload,
-} from "@elizaos/core/contracts/personal-assistant";
+
+import type {
+  LifeOpsActivitySignal,
+  LifeOpsActivitySignalSourceName,
+  LifeOpsTelemetryPayload,
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 export interface SignalSourceContribution {
   /** Open-string source identifier (built-in or contributed). */
   source: LifeOpsActivitySignalSourceName;

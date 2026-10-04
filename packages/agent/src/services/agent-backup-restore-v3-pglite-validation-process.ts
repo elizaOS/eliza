@@ -8,7 +8,7 @@ import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import { AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_DIRECTORY } from "./agent-backup-restore-v3-candidate-database";
 import {
   type AgentBackupRestoreV3CandidateFs,

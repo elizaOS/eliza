@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections import defaultdict
 from statistics import mean
 
-from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
+from benchmarks.suites.orchestrator_lifecycle.events import extract_lifecycle_events
 
 from .types import LaneResult, TaskRun
 

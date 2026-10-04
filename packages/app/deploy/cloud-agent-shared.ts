@@ -7,9 +7,9 @@
  */
 import * as crypto from "node:crypto";
 import * as http from "node:http";
+import { ElizaError } from "@elizaos/core/protocol";
 import type { AgentRemoteBrowserController } from "@elizaos/plugin-browser/remote-controller";
 import { sql } from "drizzle-orm";
-import { ElizaError } from "../../core/src/errors";
 import restartExitCodeDefinition from "../../core/src/restart-exit-code.json" with {
   type: "json",
 };

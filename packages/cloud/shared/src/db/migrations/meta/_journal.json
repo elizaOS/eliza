@@ -3368,6 +3368,48 @@
       "when": 1796083200128,
       "tag": "0510_subscription_renewal_review_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 481,
+      "version": "7",
+      "when": 1796083200129,
+      "tag": "0511_organization_plan_change_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 482,
+      "version": "7",
+      "when": 1796083200130,
+      "tag": "0512_organization_upgrade_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 483,
+      "version": "7",
+      "when": 1796083200131,
+      "tag": "0513_organization_upgrade_live_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1796083200132,
+      "tag": "0514_organization_upgrade_quote_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 485,
+      "version": "7",
+      "when": 1796083200133,
+      "tag": "0515_organization_upgrade_invoice_origins",
+      "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1796083200134,
+      "tag": "0516_organization_upgrade_paid_finalization",
+      "breakpoints": true
     }
   ]
 }

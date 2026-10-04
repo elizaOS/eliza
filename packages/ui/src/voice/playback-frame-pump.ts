@@ -9,7 +9,7 @@
  */
 
 import { fetchWithCsrf } from "../api/csrf-client";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 import { ttsDebug } from "../utils/tts-debug";
 import { resolveAudioWorkletModuleUrl } from "./audio-worklet-module-urls";
 import {

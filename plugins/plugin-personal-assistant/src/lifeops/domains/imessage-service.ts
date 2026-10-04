@@ -6,9 +6,9 @@
  */
 
 import { basename } from "node:path";
+import type { LifeOpsIMessageConnectorStatus } from "@elizaos/contracts";
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { type LifeOpsIMessageConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   assertConnectorSenderIdentity,

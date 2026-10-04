@@ -14,7 +14,7 @@ import {
   type State,
   tagsRequireEffectReceipts,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
 import { composePromptFromState } from "../../../text/template-rendering.js";
 import { replyTemplate } from "../prompts.js";

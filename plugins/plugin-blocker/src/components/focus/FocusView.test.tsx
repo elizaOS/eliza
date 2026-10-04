@@ -23,15 +23,9 @@ const sendChatRest = vi.hoisted(() => vi.fn());
 // `@elizaos/ui` is the giant renderer barrel; the wrapper only touches
 // `client.getBaseUrl()` / `client.stopWebsiteBlock()` on its default fetcher
 // seam, which every test overrides via the injection props.
-vi.mock("@elizaos/ui", () => ({
-  client: {
-    getBaseUrl: () => "http://test.local",
-    sendChatRest,
-    stopWebsiteBlock: vi.fn(async () => ({ success: true, removed: true })),
-  },
-}));
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
 
-vi.mock("@elizaos/ui/api", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatRest,

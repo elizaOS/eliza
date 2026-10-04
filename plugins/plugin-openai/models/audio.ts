@@ -119,7 +119,7 @@ export async function handleTranscription(
 
   if (typeof input === "string") {
     logger.debug(`[OpenAI] Fetching audio from URL: ${input}`);
-    blob = await fetchAudioFromUrl(input);
+    blob = await fetchAudioFromUrl(input, callerSignal);
   } else if (isBlobOrFile(input)) {
     blob = input;
   } else if (isBuffer(input)) {
@@ -140,7 +140,7 @@ export async function handleTranscription(
     }
   } else if (isCoreTranscriptionParams(input)) {
     logger.debug(`[OpenAI] Fetching audio from URL: ${input.audioUrl}`);
-    blob = await fetchAudioFromUrl(input.audioUrl);
+    blob = await fetchAudioFromUrl(input.audioUrl, callerSignal);
     extraParams = { prompt: input.prompt };
   } else {
     throw new Error(

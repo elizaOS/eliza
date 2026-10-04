@@ -1,11 +1,10 @@
 import type http from "node:http";
 import {
-  ElizaError,
-  logger,
   PostPluginCoreToggleRequestSchema,
   PutPluginRequestSchema,
   PutSecretsRequestSchema,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError, logger } from "@elizaos/core";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {

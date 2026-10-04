@@ -10,11 +10,9 @@ import {
 } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  AgentSurfaceProvider,
-  getViewRegistry,
-  handleAgentSurfaceCapability,
-} from "../../agent-surface";
+import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
+import { handleAgentSurfaceCapability } from "../../agent-surface/capabilities";
+import { getViewRegistry } from "../../agent-surface/registry";
 import { registerAppShellPage } from "../../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../../registry-host.js";
 import {

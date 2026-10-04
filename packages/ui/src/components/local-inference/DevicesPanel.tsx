@@ -1,6 +1,6 @@
 /** Renders ranked local-inference bridge devices and their availability. */
 
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
+import type { DeviceBridgeStatus } from "../../api/local-inference-response-types";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 

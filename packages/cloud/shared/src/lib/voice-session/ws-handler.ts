@@ -20,7 +20,7 @@
  * `WebSocket` to this shape.
  */
 
-import { type VoiceUiContext } from "@elizaos/core/voice";
+import { type VoiceUiContext } from "@elizaos/host/protocol";
 import { type VoiceSessionTokenClaims, verifyVoiceSessionToken } from "./jwt";
 import type { ServerControlFrame } from "./protocol";
 import {

@@ -7,7 +7,8 @@
 import { MoreHorizontal, PencilLine, X } from "lucide-react";
 import type React from "react";
 import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
-import { useClickSuppression, usePressAndHold } from "../../../gestures";
+import { useClickSuppression } from "../../../gestures/useClickSuppression";
+import { usePressAndHold } from "../../../gestures/usePressAndHold";
 
 // z-[200] mirrors Z_OVERLAY in ../../../lib/floating-layers.ts.
 // Tailwind v4 cannot detect classes built from runtime template literals,

@@ -12,6 +12,10 @@
  * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASKS`.
  */
 
+import {
+  LIFEOPS_MESSAGE_CHANNELS,
+  type LifeOpsMessageChannel,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionResult,
@@ -27,10 +31,6 @@ import {
   ElizaError,
   ModelType,
 } from "@elizaos/core";
-import {
-  LIFEOPS_MESSAGE_CHANNELS,
-  type LifeOpsMessageChannel,
-} from "@elizaos/core/contracts/personal-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,

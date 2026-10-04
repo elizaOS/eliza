@@ -10,7 +10,6 @@
 import {
   type Action,
   type ActionResult,
-  createSelfApiRequestHeaders,
   elizaLogger,
   type HandlerCallback,
   type HandlerOptions,
@@ -18,7 +17,10 @@ import {
   logger,
   type Memory,
 } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import {
+  createSelfApiRequestHeaders,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 const LOGS_OPS = ["search", "delete", "set_level"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];

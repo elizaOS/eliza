@@ -6,21 +6,12 @@
  * switch on the input itself.
  */
 import type * as React from "react";
+import { assignRef } from "../../../lib/refs";
 
 import { cn } from "../../../lib/utils";
 import type { ChatVariant } from "./chat-types";
 
 type RefLike<T> = ((instance: T | null) => void) | { current: T | null } | null;
-
-function assignRef<T>(ref: RefLike<T> | undefined, value: T | null): void {
-  if (typeof ref === "function") {
-    ref(value);
-    return;
-  }
-  if (ref) {
-    ref.current = value;
-  }
-}
 
 export interface ChatComposerShellProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {

@@ -13,9 +13,8 @@
  * serialize a successor's start behind this instance's async cleanup
  * (#17110).
  */
+import { registerAppShellPage, registerRendererService } from "@elizaos/ui";
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { registerRendererService } from "@elizaos/ui/platform/renderer-services";
 import { startLifeOpsActivitySignalCapture } from "./lifeops/activity-signals-capture.js";
 
 registerAppShellPage({

@@ -4,8 +4,8 @@
  * during the conversational turn.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -113,6 +113,7 @@ async function runCreate(
       debug: vi.fn(),
     },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
   const deps: CalendarActionDeps = {

@@ -2,7 +2,7 @@
  * Browser-safe routing policy contracts shared by UI and runtime consumers.
  */
 
-import type { AgentModelSlot } from "@elizaos/core/contracts/local-inference";
+import type { AgentModelSlot } from "@elizaos/contracts";
 
 export type RoutingPolicy =
   | "manual"

@@ -19,7 +19,7 @@ import {
   type WeatherKind,
 } from "../../hooks/useWeather";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 

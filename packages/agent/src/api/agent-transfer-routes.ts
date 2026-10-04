@@ -13,11 +13,11 @@ import type http from "node:http";
 import {
   AGENT_TRANSFER_MAX_PASSWORD_BYTES,
   AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
-  type AgentRuntime,
   PostAgentExportRequestSchema,
-  type RouteRequestContext,
-  readRequestBodyBuffer,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/host";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 const MAX_IMPORT_BYTES = 512 * 1_048_576;
 

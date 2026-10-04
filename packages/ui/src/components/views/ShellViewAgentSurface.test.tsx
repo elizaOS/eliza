@@ -11,7 +11,7 @@ import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native
 import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-phone/src/view-capabilities";
 
 const sendWsMessage = vi.fn();
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     sendWsMessage,
     fetch: vi.fn(async () => ({ claimId: "execution-claim" })),

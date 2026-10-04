@@ -1,4 +1,4 @@
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { createAssistantPlugin } from "../index.ts";
 
 /**

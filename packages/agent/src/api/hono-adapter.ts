@@ -1,10 +1,9 @@
+import type { AccessContext, IAgentRuntime } from "@elizaos/core";
 import {
-  type AccessContext,
   getHttpRuntime,
-  type IAgentRuntime,
   type Route,
   type RouteHandlerResult,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { type Context, Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";

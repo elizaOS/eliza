@@ -1,13 +1,14 @@
 /** Binds Calendar reads in the existing Stage-1 interpretation, without another model call. */
+
+import {
+  CALENDAR_READ_ACTIONS,
+  type CalendarReadBinding,
+} from "@elizaos/contracts";
 import {
   isObjectRecord,
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
-import {
-  CALENDAR_READ_ACTIONS,
-  type CalendarReadBinding,
-} from "@elizaos/core/contracts/calendar";
 
 type RequestedRead = Pick<
   CalendarReadBinding,

@@ -7,7 +7,7 @@
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { getXFeed } from "@elizaos/cloud-shared/lib/services/x";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 import { xRouteErrorResponse } from "../error-response";
 
