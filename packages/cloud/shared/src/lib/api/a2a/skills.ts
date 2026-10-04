@@ -10,9 +10,9 @@
  * the A2A protocol which only provides user/org context, not agent personality.
  */
 
+import { SAVE_MEMORY_PRICE_USD } from "@elizaos/cloud-sdk/browser-contracts";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
-import { SAVE_MEMORY_PRICE_USD } from "../../../billing/organization-credits";
 import { BITROUTER_DEFAULT_TEXT_MODEL } from "../../models/catalog";
 import { calculateCost, estimateRequestCost, getProviderFromModel } from "../../pricing";
 import {

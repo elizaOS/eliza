@@ -3,17 +3,15 @@
  * realtime voice session while preserving metering, interruption, and tenancy.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
   createDurableVoiceUsageStore,
   InMemoryVoiceUsageStore,
   type VoiceUsageStore,
-} from "@/lib/services/voice-usage-meter";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   isFishAudioDataGovernanceApproved,
   isFishRealtimeTtsEnabled,
@@ -26,18 +24,23 @@ import {
   resolveMaxSessions,
   resolveVoiceUsageLimits,
   type VoiceRealtimeEnv,
-} from "@/lib/voice-session/config";
+} from "@elizaos/cloud-shared/lib/voice-session/config";
 import {
   claimVoiceSessionToken,
   isVoiceSessionTokenRevoked,
   revokeVoiceSessionToken,
-} from "@/lib/voice-session/jwt";
-import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
+} from "@elizaos/cloud-shared/lib/voice-session/jwt";
+import { getVoiceSessionRegistry } from "@elizaos/cloud-shared/lib/voice-session/session-registry";
 import type {
   ServerWebSocketLike,
   VoiceSessionDownlink,
-} from "@/lib/voice-session/ws-handler";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/voice-session/ws-handler";
+import type {
+  AppEnv,
+  Bindings,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { createInternalElizaConversationFetchFactory } from "../../../voice/session/lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,

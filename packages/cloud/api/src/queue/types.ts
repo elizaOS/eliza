@@ -1,2 +1,2 @@
 // Defines cloud API src queue types queue contracts for Worker consumers.
-export type { StripeEventMessage } from "@/types/stripe-queue-message";
+export type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";

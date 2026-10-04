@@ -19,6 +19,7 @@ import type {
   GenericBillingCommandResult,
 } from "../../lib/services/generic-billing-command-types";
 import type { CheckoutContract } from "../../lib/services/subscription-checkout-contract";
+import type { SubscriptionRenewalReview } from "../../lib/services/subscription-renewal-review-contract";
 import { appBillingScopes, billingMerchants } from "./app-billing";
 import { appClientRegistrations } from "./app-delegations";
 import { apps } from "./apps";
@@ -533,3 +534,32 @@ export const billingSubscriptionIncidents = pgTable(
 
 export type BillingSubscriptionIncident = InferSelectModel<typeof billingSubscriptionIncidents>;
 export type NewBillingSubscriptionIncident = InferInsertModel<typeof billingSubscriptionIncidents>;
+
+/** Immutable terms accepted for a reviewed organization cancellation reversal. */
+export const billingSubscriptionRenewalReviews = pgTable(
+  "billing_subscription_renewal_reviews",
+  {
+    command_id: uuid("command_id").primaryKey(),
+    organization_id: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    payload: jsonb("payload").$type<SubscriptionRenewalReview>().notNull(),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    command_tenant_fk: foreignKey({
+      name: "billing_renewal_review_command_tenant_fk",
+      columns: [table.command_id, table.organization_id],
+      foreignColumns: [billingSubscriptionCommands.id, billingSubscriptionCommands.organization_id],
+    }).onDelete("restrict"),
+    tenant_idx: index("billing_renewal_review_tenant_idx").on(
+      table.organization_id,
+      table.command_id,
+    ),
+    payload_check: check(
+      "billing_renewal_review_payload_check",
+      sql`(jsonb_typeof(${table.payload})='object' AND ${table.payload}->>'kind'='renewal_estimate' AND ${table.payload}->>'termsDigest' ~ '^[a-f0-9]{64}$' AND ${table.payload}->>'expectedSubscriptionRevision' ~ '^[1-9][0-9]*$') IS TRUE`,
+    ),
+  }),
+);

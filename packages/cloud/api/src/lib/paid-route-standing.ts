@@ -6,13 +6,13 @@
  * of their synchronous receipt, debit, refund, and reconciliation semantics.
  */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   type GenerativeRouteCaller,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext } from "@/types/cloud-worker-env";
 
 const DEFAULT_COLD_STANDING_DEADLINE_MS = 2_500;
 
@@ -71,9 +71,11 @@ async function compatibilityStandingReason(
   // does not uniformly prove current user and organization lifecycle. Resolve
   // that primary authority once here; this path never addresses Redis again.
   if (compatibility === "raw") {
-    const { usersRepository } = await import("@/db/repositories/users");
+    const { usersRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/users"
+    );
     const { organizationLifecycleAllowsNewWork } = await import(
-      "@/lib/services/account-lifecycle-authority"
+      "@elizaos/cloud-shared/lib/services/account-lifecycle-authority"
     );
     const current = await usersRepository.findWithOrganizationForWrite(
       caller.user.id,
@@ -101,7 +103,9 @@ async function compatibilityStandingReason(
     }
   }
 
-  const { adminService } = await import("@/lib/services/admin");
+  const { adminService } = await import(
+    "@elizaos/cloud-shared/lib/services/admin"
+  );
   return (await adminService.shouldBlockUser(caller.user.id))
     ? "moderation_blocked"
     : null;

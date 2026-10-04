@@ -20,6 +20,7 @@ import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
 } from "./subscription-catalog";
+import type { SubscriptionRenewalReview } from "./subscription-renewal-review-contract";
 
 const cents = z.number().int().safe();
 const seconds = z.number().int().positive().max(8_640_000_000_000).safe();
@@ -72,7 +73,7 @@ export function projectSubscriptionRenewalReview(input: {
   raw: unknown;
   environment: Record<string, string | undefined>;
   observedAt: Date;
-}) {
+}): SubscriptionRenewalReview {
   const { source } = input;
   assertOrganizationSubscription(source);
   const parsed = previewSchema.safeParse(input.raw);
@@ -168,6 +169,22 @@ export async function readOrganizationSubscriptionRenewalReview(
 ) {
   await revalidateSession();
   const captured = await readCancellationUndoReviewSource(input);
+  const review = await previewSubscriptionRenewalTerms(captured);
+  await revalidateSession();
+  const current = await readCancellationUndoReviewSource(input);
+  if (
+    JSON.stringify(current) !== JSON.stringify(captured) ||
+    Date.now() >= Date.parse(review.expiresAt)
+  )
+    cancellationReobserve("renewal_review_expired_or_source_changed");
+  return review;
+}
+
+/** Also used inside a claimed command; primary command authority is fenced by its caller. */
+export async function previewSubscriptionRenewalTerms(captured: {
+  source: BillingSubscription;
+  organizationCustomerId: string | null;
+}): Promise<SubscriptionRenewalReview> {
   const stripe = requireStripe();
   const environment = getCloudAwareEnv();
   const startedAt = new Date();
@@ -187,18 +204,10 @@ export async function readOrganizationSubscriptionRenewalReview(
     preview_mode: "next",
     subscription_details: { cancel_at_period_end: false, proration_behavior: "none" },
   });
-  const review = projectSubscriptionRenewalReview({
+  return projectSubscriptionRenewalReview({
     source: captured.source,
     raw: preview,
     environment,
     observedAt: startedAt,
   });
-  await revalidateSession();
-  const current = await readCancellationUndoReviewSource(input);
-  if (
-    JSON.stringify(current) !== JSON.stringify(captured) ||
-    Date.now() >= Date.parse(review.expiresAt)
-  )
-    cancellationReobserve("renewal_review_expired_or_source_changed");
-  return review;
 }

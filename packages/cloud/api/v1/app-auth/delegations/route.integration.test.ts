@@ -11,8 +11,8 @@ import type {
   AppDelegationResult,
   AppDelegationScope,
 } from "@elizaos/cloud-sdk/app-delegation";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -37,11 +37,13 @@ const SCOPES: AppDelegationScope[] = [
   "billing:write",
   "inference",
 ];
-let database: ReturnType<typeof import("@/db/client").getPgliteClientForTests>;
-let close: typeof import("@/db/client").closeDatabaseConnectionsForTests;
-let repository: typeof import("@/db/repositories/app-delegations").appDelegationsRepository;
-let service: typeof import("@/lib/services/app-delegation-adapter").appDelegationService;
-let issueCode: typeof import("@/lib/services/app-auth-codes").issueAppAuthCode;
+let database: ReturnType<
+  typeof import("@elizaos/cloud-shared/db/client").getPgliteClientForTests
+>;
+let close: typeof import("@elizaos/cloud-shared/db/client").closeDatabaseConnectionsForTests;
+let repository: typeof import("@elizaos/cloud-shared/db/repositories/app-delegations").appDelegationsRepository;
+let service: typeof import("@elizaos/cloud-shared/lib/services/app-delegation-adapter").appDelegationService;
+let issueCode: typeof import("@elizaos/cloud-shared/lib/services/app-auth-codes").issueAppAuthCode;
 let routes: Hono<AppEnv>;
 let clientA: { clientId: string; clientSecret: string; revision: number };
 let clientB: typeof clientA;
@@ -123,22 +125,22 @@ async function googleRequest(token: string, url: string, body?: string) {
 }
 
 beforeAll(async () => {
-  const db = await import("@/db/client");
+  const db = await import("@elizaos/cloud-shared/db/client");
   database = db.getPgliteClientForTests();
   close = db.closeDatabaseConnectionsForTests;
   ({ appDelegationsRepository: repository } = await import(
-    "@/db/repositories/app-delegations"
+    "@elizaos/cloud-shared/db/repositories/app-delegations"
   ));
   ({ appDelegationService: service } = await import(
-    "@/lib/services/app-delegation-adapter"
+    "@elizaos/cloud-shared/lib/services/app-delegation-adapter"
   ));
   ({ issueAppAuthCode: issueCode } = await import(
-    "@/lib/services/app-auth-codes"
+    "@elizaos/cloud-shared/lib/services/app-auth-codes"
   ));
   const { createAppDelegationRoutes, appDelegationErrorResponse } =
     await import("./_handlers");
   const { requireAppActor, requireAppBillingActor } = await import(
-    "@/lib/auth/app-delegation-auth"
+    "@elizaos/cloud-shared/lib/auth/app-delegation-auth"
   );
   const { default: connectRoutes } = await import("../connect/route");
   await database.exec(`
@@ -321,7 +323,7 @@ describe("registered app delegation HTTP and database authority", () => {
   test("database consumption fence survives revocation even if a code backend returns stale data", async () => {
     await consent();
     const { AppDelegationService } = await import(
-      "@/lib/services/app-delegation"
+      "@elizaos/cloud-shared/lib/services/app-delegation"
     );
     const binding = await service.consentBinding(APP_A, USER, {
       clientId: clientA.clientId,

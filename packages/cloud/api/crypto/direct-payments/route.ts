@@ -5,22 +5,22 @@
  * recipient, token, and amount on-chain before issuing org credits.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-shared/billing";
-import { Hono } from "hono";
-import { z } from "zod";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type DirectWalletNetwork,
   directWalletPaymentsService,
-} from "@/lib/services/direct-wallet-payments";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/direct-wallet-payments";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const createSchema = z.object({
   amount: z

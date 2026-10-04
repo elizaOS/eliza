@@ -12,9 +12,9 @@
  * Repayment (credits added while held) and dispute reinstatement clear it.
  */
 
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
-import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "../../billing/organization-credits";
 import {
   listActivePaymentReversalHolds,
   type ReversalShortfallSettlement,

@@ -1712,6 +1712,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1ElizaGoogleGmailInboxV1<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/inbox-v1"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/eliza/google/gmail/inbox-v1", TResponse>(
+      "GET /api/v1/eliza/google/gmail/inbox-v1",
+      options,
+    );
+  }
+
   getApiV1ElizaGoogleGmailRead<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/read"> = {},
   ): Promise<TResponse> {
@@ -2472,6 +2481,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "GET /api/v1/subscriptions/cancel/undo/{commandId}",
       TResponse
     >("GET /api/v1/subscriptions/cancel/undo/{commandId}", options);
+  }
+
+  getApiV1SubscriptionsCancelUndoReview<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/undo/review"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/cancel/undo/review", TResponse>(
+      "GET /api/v1/subscriptions/cancel/undo/review",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsCheckoutPayer<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/checkout/payer"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/checkout/payer", TResponse>(
+      "GET /api/v1/subscriptions/checkout/payer",
+      options,
+    );
   }
 
   getApiV1SubscriptionsCommands<TResponse = unknown>(
@@ -5119,6 +5146,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1SubscriptionsCancelUndoConfirm<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo/confirm"> = {},
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/subscriptions/cancel/undo/confirm",
+      TResponse
+    >("POST /api/v1/subscriptions/cancel/undo/confirm", options);
+  }
+
   postApiV1SubscriptionsCheckout<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout"> = {},
   ): Promise<TResponse> {
@@ -6868,6 +6904,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/eliza/google/calendar/feed", options);
   }
 
+  getApiV1ElizaGoogleGmailInboxV1Raw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/inbox-v1"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/eliza/google/gmail/inbox-v1", options);
+  }
+
   getApiV1ElizaGoogleGmailReadRaw(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/read"> = {},
   ): Promise<Response> {
@@ -7415,6 +7457,21 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "GET /api/v1/subscriptions/cancel/undo/{commandId}",
       options,
     );
+  }
+
+  getApiV1SubscriptionsCancelUndoReviewRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/undo/review"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/cancel/undo/review",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsCheckoutPayerRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/checkout/payer"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/subscriptions/checkout/payer", options);
   }
 
   getApiV1SubscriptionsCommandsRaw(
@@ -9365,6 +9422,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/subscriptions/cancel/undo", options);
+  }
+
+  postApiV1SubscriptionsCancelUndoConfirmRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo/confirm"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/subscriptions/cancel/undo/confirm",
+      options,
+    );
   }
 
   postApiV1SubscriptionsCheckoutRaw(

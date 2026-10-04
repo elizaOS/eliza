@@ -5,8 +5,8 @@
  */
 
 import { expect, test } from "bun:test";
-import { mobileApiKeyIngressRateLimitKey } from "@/lib/auth/mobile-api-key";
-import type { Bindings } from "@/types/cloud-worker-env";
+import { mobileApiKeyIngressRateLimitKey } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import type { Bindings } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const {
   createApp,
