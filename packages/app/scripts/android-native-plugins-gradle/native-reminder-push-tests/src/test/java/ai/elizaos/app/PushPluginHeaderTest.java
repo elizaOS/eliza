@@ -82,4 +82,37 @@ public class PushPluginHeaderTest {
         assertEquals(1, taps.size());
         assertTrue(taps.get(0).toString().contains("11111111-1111-4111-8111-111111111111"));
     }
+    private static class ChannelCall extends com.getcapacitor.PluginCall {
+        com.getcapacitor.JSObject result;
+        ChannelCall(com.getcapacitor.JSObject request) {
+            super(null, "PushNotifications", "channel-test", "resolveReminderChannel", request);
+        }
+        @Override public void resolve(com.getcapacitor.JSObject result) { this.result = result; }
+        @Override public void reject(String message) { throw new AssertionError(message); }
+    }
+    @Test public void foregroundSelectorPreservesGroupAndReportsBlockedState() throws Exception {
+        InitialActivity activity = Robolectric.buildActivity(InitialActivity.class).create().get();
+        android.app.NotificationManager manager = activity.getSystemService(android.app.NotificationManager.class);
+        android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("muted-reminders", "Muted reminders");
+        org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", true);
+        manager.createNotificationChannelGroup(group);
+        android.app.NotificationChannel updates = new android.app.NotificationChannel("eliza_updates", "Updates", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setGroup("muted-reminders");
+        updates.setLockscreenVisibility(android.app.Notification.VISIBILITY_SECRET);
+        manager.createNotificationChannel(updates);
+        SafePushNotificationsPlugin plugin = (SafePushNotificationsPlugin) activity.getBridge().getPlugin("PushNotifications").getInstance();
+        com.getcapacitor.JSObject request = new com.getcapacitor.JSObject();
+        request.put("priority", "high"); request.put("ownerType", "occurrence");
+        ChannelCall blocked = new ChannelCall(request);
+        plugin.resolveReminderChannel(blocked);
+        assertEquals("eliza_updates", blocked.result.getString("channelId"));
+        assertTrue(blocked.result.getBoolean("blocked"));
+        org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", false);
+        manager.createNotificationChannelGroup(group);
+        ChannelCall unblocked = new ChannelCall(request);
+        plugin.resolveReminderChannel(unblocked);
+        assertEquals("eliza_updates", unblocked.result.getString("channelId"));
+        assertFalse(unblocked.result.getBoolean("blocked"));
+        assertEquals(android.app.Notification.VISIBILITY_SECRET, manager.getNotificationChannel("eliza_updates").getLockscreenVisibility());
+    }
 }
