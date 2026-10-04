@@ -2,11 +2,14 @@
  * Renders the provider-neutral Maps workspace and keeps every domain read on
  * the authenticated view broker while persistent actions hand off to Eliza.
  */
+import {
+  Button,
+  dispatchChatPrefill,
+  Input,
+  useAgentElement,
+  useAppSelector,
+} from "@elizaos/ui";
 
-import { Button, Input } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { dispatchChatPrefill } from "@elizaos/ui/events";
-import { useAppSelector } from "@elizaos/ui/state";
 import {
   Bike,
   Bus,

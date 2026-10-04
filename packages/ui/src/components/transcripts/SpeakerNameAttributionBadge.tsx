@@ -7,7 +7,7 @@
 import type {
   SpeakerNameAttribution,
   SpeakerNameEvidenceSource,
-} from "@elizaos/core/speaker-name-inference";
+} from "@elizaos/core/protocol";
 import type * as React from "react";
 import { StatusBadge } from "../ui/status-badge";
 

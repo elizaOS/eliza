@@ -72,9 +72,11 @@ vi.mock("../../../shell/StewardProvider", () => ({
   clearStaleStewardSession,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
-vi.mock("../../../../components/primitives", () => ({
+vi.mock("../../../../components/ui/button", () => ({
   Button: ({
     asChild,
     children,

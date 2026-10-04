@@ -5,7 +5,7 @@
  */
 // @vitest-environment jsdom
 
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
+import type { UiSpec } from "@elizaos/host/protocol";
 import { cleanup, render, screen } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

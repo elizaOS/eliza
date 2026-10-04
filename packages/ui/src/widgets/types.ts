@@ -4,7 +4,7 @@
  */
 
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
+import type { UiSpec } from "@elizaos/host/protocol";
 import type { ComponentType } from "react";
 import type { PluginInfo } from "../api/client-types-config";
 import type { ActivityEvent } from "../hooks/useActivityEvents";

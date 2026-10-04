@@ -1,5 +1,5 @@
 /** Maps canonical feed events to visible civil days without shifting all-day dates through the viewer's timezone. */
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 
 function localDay(instant: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

@@ -12,6 +12,31 @@ class FaultError extends Error {
 }
 
 describe("progressive content fault registry", () => {
+  it.each(["missing", "throws", "unknown", "malformed"])(
+    "fails when the observer is %s",
+    async (mode) => {
+      const report = await runProgressiveContentFaultRegistry({
+        executors: {
+          unauthorized: {
+            execute() {
+              throw new FaultError("CONTENT_ACCESS_DENIED");
+            },
+            ...(mode === "missing"
+              ? {}
+              : {
+                  observeEffects: () => {
+                    if (mode === "throws") throw new Error("offline");
+                    if (mode === "malformed") return null as never;
+                    return ["unknown-effect"];
+                  },
+                }),
+          },
+        },
+      });
+      expect(report.results[0].status).toBe("failed");
+    },
+  );
+
   it("retains missing injectors as failed rows", async () => {
     const report = await runProgressiveContentFaultRegistry({ executors: {} });
     expect(report).toMatchObject({

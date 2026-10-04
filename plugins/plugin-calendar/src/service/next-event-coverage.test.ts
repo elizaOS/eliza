@@ -1,10 +1,11 @@
 /** Verifies the real next-event projection over a supplied multi-event feed;
  * source freshness must never imply that its single result is a full agenda. */
-import { AgentRuntime, type Memory } from "@elizaos/core";
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
+import { AgentRuntime, type Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../actions/calendar-handler.js";
 import { CalendarService } from "./CalendarService.js";

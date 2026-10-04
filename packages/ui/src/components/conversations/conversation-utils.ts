@@ -6,7 +6,7 @@
  * and framework-free (re-exports `formatRelativeTime` for callers).
  */
 
-import { VRM_COUNT } from "../../state";
+import { VRM_COUNT } from "../../state/vrm";
 import { formatRelativeTime } from "../../utils/format";
 
 export { formatRelativeTime };

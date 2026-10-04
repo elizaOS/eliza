@@ -4,7 +4,7 @@
  * test; no runtime, model, or calendar service.
  */
 
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import { resolveCalendarMutationCandidates } from "./calendar-handler.js";
 

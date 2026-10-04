@@ -17,34 +17,37 @@ import type {
   WalletMarketOverviewSource,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/core/contracts/wallet-types";
-import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client, isApiError } from "@elizaos/ui/api";
-import { shellLocalStorage } from "@elizaos/ui/bridge";
+} from "@elizaos/contracts";
 import {
+  type ActivityEvent,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Button,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  client,
+  cn,
+  copyTextToClipboard,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  ListSkeleton,
-} from "@elizaos/ui/components";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import {
-  type ActivityEvent,
   getActiveAgentAuthority,
+  getStorageValue,
+  type InventoryChainFilters,
+  isApiError,
+  ListSkeleton,
+  PagePanel,
+  setStorageValue,
   useActiveAgentAuthority,
   useActivityEvents,
-} from "@elizaos/ui/hooks";
-import type {
-  InventoryChainFilters,
-  WalletResourceStatus,
-} from "@elizaos/ui/state";
-import { useAppSelectorShallow } from "@elizaos/ui/state";
-import { cn, copyTextToClipboard } from "@elizaos/ui/utils";
+  useAgentElement,
+  useAppSelectorShallow,
+  type WalletResourceStatus,
+} from "@elizaos/ui";
+
 import {
   Activity,
   AlertTriangle,
@@ -118,7 +121,8 @@ function supportedWalletNfts(walletNfts: WalletNftsResponse | null): NftItem[] {
   return items.filter((nft) => isSupportedWalletAssetChain(nft.chain));
 }
 
-const HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
+const HIDDEN_TOKEN_IDS_KEY = "wallet:hidden-token-ids:v1";
+const LEGACY_HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
 const WALLET_REFRESH_INTERVAL_MS = 20_000;
 type OptionalCapabilityState = "unknown" | "supported" | "unavailable";
 interface InventoryPositionAsset {
@@ -218,40 +222,30 @@ function marketOverviewUnavailable(
   };
 }
 
-function readHiddenTokenIds(): Set<string> {
+function parseHiddenTokenIds(raw: string | null): Set<string> {
+  if (!raw) return new Set();
+  const parsed: unknown = JSON.parse(raw);
+  return new Set(
+    Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [],
+  );
+}
+
+function readLegacyHiddenTokenIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem(HIDDEN_TOKEN_IDS_KEY);
-    if (!raw) return new Set();
-
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(
-      parsed.filter((item): item is string => typeof item === "string"),
+    return parseHiddenTokenIds(
+      window.localStorage.getItem(LEGACY_HIDDEN_TOKEN_IDS_KEY),
     );
   } catch {
     return new Set();
   }
 }
 
-function writeHiddenTokenIds(next: Set<string>): void {
-  if (typeof window === "undefined") return;
-  // HIDDEN_TOKEN_IDS_KEY is under the shell-reserved `eliza:` namespace, so a
-  // raw localStorage write is denied by the surface-realm raw-global guard
-  // (SurfaceRealmDeniedError) while this view holds the foreground scope, and a
-  // local try/catch would swallow it into silent persistence loss. Route
-  // reserved-key writes through the shell-privileged channel — the sanctioned
-  // path for every reserved-key writer (surface-realm-broker.ts /
-  // scan-reserved-storage-writers.ts).
-  try {
-    shellLocalStorage.setItem(HIDDEN_TOKEN_IDS_KEY, JSON.stringify([...next]));
-  } catch {
-    // error-policy:J4 the hide-set is best-effort view preference; a genuine
-    // storage-unavailable environment (quota/private mode) degrades to an
-    // unpersisted hide for this session rather than throwing out of the click
-    // handler.
-    return;
-  }
+async function writeHiddenTokenIds(next: Set<string>): Promise<void> {
+  // The view storage facade scopes dynamic bundles to their granted keyspace.
+  await setStorageValue(HIDDEN_TOKEN_IDS_KEY, JSON.stringify([...next]));
 }
 
 function tokenId(row: TokenRow): string {
@@ -1945,8 +1939,39 @@ export function InventoryAppView() {
   }));
   const { events: activityEvents } = useActivityEvents();
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
-    readHiddenTokenIds(),
+    readLegacyHiddenTokenIds(),
   );
+  const hiddenTokenEdits = useRef(0);
+  const hiddenTokenSave = useRef(Promise.resolve());
+  const persistHiddenTokenIds = useCallback(
+    (next: Set<string>) => {
+      hiddenTokenSave.current = hiddenTokenSave.current
+        .then(() => writeHiddenTokenIds(next))
+        .catch(() =>
+          setActionNotice(
+            "Token visibility changed for this session but could not be saved.",
+          ),
+        );
+    },
+    [setActionNotice],
+  );
+
+  useEffect(() => {
+    let active = true;
+    void getStorageValue(HIDDEN_TOKEN_IDS_KEY)
+      .then((raw) => {
+        if (active && hiddenTokenEdits.current === 0 && raw !== null)
+          setHiddenTokenIds(parseHiddenTokenIds(raw));
+      })
+      .catch(() => {
+        if (active)
+          setActionNotice("Hidden-token preferences could not be restored.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [setActionNotice]);
+
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
   const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
@@ -2130,19 +2155,21 @@ export function InventoryAppView() {
     (row: TokenRow) => {
       const next = new Set(hiddenTokenIds);
       next.add(tokenId(row));
+      hiddenTokenEdits.current += 1;
       setHiddenTokenIds(next);
-      writeHiddenTokenIds(next);
+      persistHiddenTokenIds(next);
       setActionNotice(`${row.symbol} hidden from this wallet view.`);
     },
-    [hiddenTokenIds, setActionNotice],
+    [hiddenTokenIds, persistHiddenTokenIds, setActionNotice],
   );
 
   const handleRestoreHiddenTokens = useCallback(() => {
     const next = new Set<string>();
+    hiddenTokenEdits.current += 1;
     setHiddenTokenIds(next);
-    writeHiddenTokenIds(next);
+    persistHiddenTokenIds(next);
     setActionNotice("Hidden tokens are visible again.");
-  }, [setActionNotice]);
+  }, [persistHiddenTokenIds, setActionNotice]);
 
   const handleOpenRpcSettings = useCallback(() => {
     setTab("settings");

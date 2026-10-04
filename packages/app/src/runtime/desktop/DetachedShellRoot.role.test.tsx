@@ -7,12 +7,12 @@ import { DetachedShellRoot } from "./DetachedShellRoot";
 
 const setup = vi.hoisted(() => ({ complete: true }));
 const auth = vi.hoisted(() => ({ phase: "authenticated", role: "OWNER" }));
-vi.mock("@elizaos/ui/hooks/useAuthStatus", () => ({
+vi.mock("../../../../ui/src/hooks/useAuthStatus", () => ({
   useAuthStatus: () => ({
     state: { phase: auth.phase, access: { role: auth.role, mode: "session" } },
   }),
 }));
-vi.mock("@elizaos/ui/state/useApp", () => ({
+vi.mock("../../../../ui/src/state/useApp", () => ({
   useApp: () => ({
     firstRunComplete: setup.complete,
     authRequired: false,
@@ -21,23 +21,23 @@ vi.mock("@elizaos/ui/state/useApp", () => ({
     t: (key: string) => key,
   }),
 }));
-vi.mock("@elizaos/ui/components/workspace/AppWorkspaceChrome", () => ({
+vi.mock("../../../../ui/src/components/workspace/AppWorkspaceChrome", () => ({
   AppWorkspaceChrome: ({ main }: { main: ReactNode }) => main,
 }));
-vi.mock("@elizaos/ui/components/pages/PluginsPageView", () => ({
+vi.mock("../../../../ui/src/components/pages/PluginsPageView", () => ({
   PluginsPageView: () => null,
 }));
-vi.mock("@elizaos/ui/components/shell/ActionNoticeToast", () => ({
+vi.mock("../../../../ui/src/components/shell/ActionNoticeToast", () => ({
   ActionNoticeToast: () => null,
 }));
-vi.mock("@elizaos/ui/components/shell/PairingView", () => ({
+vi.mock("../../../../ui/src/components/shell/PairingView", () => ({
   PairingView: () => null,
 }));
-vi.mock("@elizaos/ui/components/shell/StartupFailureView", () => ({
+vi.mock("../../../../ui/src/components/shell/StartupFailureView", () => ({
   StartupFailureView: () => null,
 }));
-vi.mock("@elizaos/ui/components/pages/SettingsView", async () => {
-  const { RoleGate } = await import("@elizaos/ui/components/RoleGate");
+vi.mock("../../../../ui/src/components/pages/SettingsView", async () => {
+  const { RoleGate } = await import("../../../../ui/src/components/RoleGate");
   return {
     SettingsView: () => (
       <RoleGate minRole="OWNER" fallback={<p>Access denied</p>}>

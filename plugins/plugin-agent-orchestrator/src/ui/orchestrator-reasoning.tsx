@@ -2,9 +2,8 @@
  * Renders agent-addressable reasoning blocks in task transcripts while
  * preserving the streaming shimmer and disclosure state.
  */
+import { Button, Card, useAgentElement } from "@elizaos/ui";
 
-import { Button, Card } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MarkdownText } from "./orchestrator-markdown";

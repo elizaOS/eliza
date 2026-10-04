@@ -12,7 +12,7 @@
  */
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import type { AppContextValue } from "../../../state/internal";
+import type { AppContextValue } from "../../../state/types";
 import { seedAppValue } from "../../../state/app-store";
 import { PermissionPrimingModal } from "../PermissionPrimingModal";
 

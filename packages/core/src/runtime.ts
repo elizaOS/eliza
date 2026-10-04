@@ -63,6 +63,7 @@ import { createLogger } from "./logger";
 import type { FetchLike } from "./media/fetch";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
+import { runPluginMigrations } from "./provisioning";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { resolveActionGateFailure } from "./runtime/action-gate";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
@@ -245,7 +246,6 @@ import type { Task, TaskWorker } from "./types/task.js";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
-import { isExactTrueEnvFlag } from "./utils/env";
 import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
@@ -1950,69 +1950,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async runPluginMigrations(): Promise<void> {
-		if (!this.adapter) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"Database adapter not found, skipping plugin migrations",
-			);
-			return;
-		}
-
-		if (typeof this.adapter.runPluginMigrations !== "function") {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"Database adapter does not support plugin migrations",
-			);
-			return;
-		}
-
-		const pluginsWithSchemas = this.plugins
-			.filter((p) => p.schema)
-			.map((p) => {
-				const schema = p.schema || {};
-				const normalizedSchema: Record<string, JsonValue> = {};
-				for (const [key, value] of Object.entries(schema)) {
-					if (
-						typeof value === "string" ||
-						typeof value === "number" ||
-						typeof value === "boolean" ||
-						value === null ||
-						(typeof value === "object" && value !== null)
-					) {
-						normalizedSchema[key] = value as JsonValue;
-					}
-				}
-				return { name: p.name, schema: normalizedSchema };
-			});
-
-		if (pluginsWithSchemas.length === 0) {
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId },
-				"No plugins with schemas, skipping migrations",
-			);
-			return;
-		}
-
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, count: pluginsWithSchemas.length },
-			"Found plugins with schemas",
-		);
-
-		const isProduction = process.env.NODE_ENV === "production";
-		const forceDestructive = isExactTrueEnvFlag(
-			process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
-		);
-
-		await this.adapter.runPluginMigrations(pluginsWithSchemas, {
-			verbose: !isProduction,
-			force: forceDestructive,
-			dryRun: false,
-		});
-
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId },
-			"Plugin migrations completed",
-		);
+		await runPluginMigrations(this);
 	}
 
 	async getConnection(): Promise<object> {
@@ -4831,7 +4769,7 @@ export class AgentRuntime implements IAgentRuntime {
 		worldId,
 	}: Room): Promise<UUID> {
 		if (!worldId) throw new Error("worldId is required");
-		const res = await this.adapter.createRooms([
+		const res = await this.createRooms([
 			{
 				id,
 				name,
@@ -4843,15 +4781,15 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 		]);
 		if (!res.length) throw new Error("Failed to create room");
-		// Bust a possibly-memoized null from a pre-creation lookup.
-		this.roomReadMemo.invalidate(res[0]);
-		if (id) this.roomReadMemo.invalidate(id);
 		return res[0];
 	}
 
 	async createRooms(rooms: Room[]): Promise<UUID[]> {
 		const ids = await this.adapter.createRooms(rooms);
 		for (const roomId of ids) this.roomReadMemo.invalidate(roomId);
+		for (const room of rooms) {
+			if (room.id) this.roomReadMemo.invalidate(room.id);
+		}
 		return ids;
 	}
 	async upsertRooms(rooms: Room[]): Promise<void> {
@@ -4982,8 +4920,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async createTask(task: Task): Promise<UUID> {
-		const ids = await this.adapter.createTasks([task]);
-		this._markLocalTasksDirty();
+		const ids = await this.createTasks([task]);
 		return ids[0];
 	}
 
@@ -5018,13 +4955,11 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
-		await this.adapter.updateTasks([{ id, task }]);
-		this._markLocalTasksDirty();
+		await this.updateTasks([{ id, task }]);
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
-		await this.adapter.deleteTasks([id]);
-		this._markLocalTasksDirty();
+		await this.deleteTasks([id]);
 	}
 
 	async log(params: {

@@ -6,11 +6,11 @@
 import { ModelType } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { MessageManager } from "@elizaos/plugin-telegram";
+import type { DeterministicModelFixture } from "@elizaos/testing/models";
 import {
   createTestRuntimeWithModelProvider,
-  type DeterministicModelFixture,
   type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import type { Context } from "telegraf";
 import { Telegraf } from "telegraf";
 import { afterEach, describe, expect, it } from "vitest";

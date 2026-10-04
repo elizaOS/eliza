@@ -74,13 +74,6 @@ export interface BatchQueueOptions<T> {
 	/** Optional repeat task description in the task store. */
 	taskDescription?: string;
 	drainHighPriorityOnStop?: boolean;
-	/**
-	 * When true (default), high-priority flush on {@link BatchQueue.dispose} uses {@link BatchProcessor}
-	 * with `maxParallel: 1`, `maxAttemptsCap: 1`, and the same `process` / `onExhausted` / `shouldRetry`
-	 * as scheduled drains — bounded concurrency and a single attempt per item (no long retry tail on stop).
-	 * When false, uses a direct `process` loop (legacy best-effort; no semaphore).
-	 */
-	disposeHighPriorityViaProcessor?: boolean;
 }
 
 /**
@@ -94,7 +87,7 @@ export interface BatchQueueOptions<T> {
  *
  * **Flush path:** By default the high-priority shutdown slice runs through a dedicated
  * {@link BatchProcessor} (serial, one attempt per item) so behavior stays aligned with bounded
- * concurrency; set `disposeHighPriorityViaProcessor: false` only if you need the old direct loop.
+ * concurrency.
  */
 export class BatchQueue<T> {
 	private readonly priorityQueue: PriorityQueue<T>;
@@ -315,34 +308,18 @@ export class BatchQueue<T> {
 			const high = this.priorityQueue.drain(
 				(item) => this.options.getPriority(item) === "high",
 			);
-			const viaProcessor =
-				this.options.disposeHighPriorityViaProcessor !== false;
 			if (high.length > 0) {
-				if (viaProcessor) {
-					const flushProcessor = new BatchProcessor<T>({
-						maxParallel: 1,
-						maxRetriesAfterFailure: 0,
-						maxAttemptsCap: 1,
-						process: this.options.process,
-						onExhausted: this.options.onExhausted,
-						shouldRetry: this.options.shouldRetry,
-						retryPolicy: this.options.retryPolicy,
-					});
-					const flushOutcomes = await flushProcessor.processBatch(high);
-					this.options.onDrainBatchOutcomes?.(flushOutcomes);
-				} else {
-					for (const item of high) {
-						try {
-							await this.options.process(item);
-						} catch (error) {
-							// error-policy:J6 High-priority shutdown flush is
-							// best-effort after normal draining has stopped.
-							runtime.reportError("BatchQueue.shutdownFlush", error, {
-								queue: this.options.name,
-							});
-						}
-					}
-				}
+				const flushProcessor = new BatchProcessor<T>({
+					maxParallel: 1,
+					maxRetriesAfterFailure: 0,
+					maxAttemptsCap: 1,
+					process: this.options.process,
+					onExhausted: this.options.onExhausted,
+					shouldRetry: this.options.shouldRetry,
+					retryPolicy: this.options.retryPolicy,
+				});
+				const flushOutcomes = await flushProcessor.processBatch(high);
+				this.options.onDrainBatchOutcomes?.(flushOutcomes);
 			}
 		}
 		await this.taskDrain?.dispose(runtime);

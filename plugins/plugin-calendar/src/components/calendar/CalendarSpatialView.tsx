@@ -15,14 +15,14 @@
  */
 
 import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
+  SpatialHStack as HStack,
+  SpatialList as List,
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 import type { CalendarSurfaceStatus } from "../../hooks/useCalendarWeek.js";
 import type { CalendarSourceHealthRow } from "./source-health.js";
 import type { CalendarSourceManagerSnapshot } from "./source-manager.js";

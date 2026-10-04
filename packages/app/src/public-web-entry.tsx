@@ -1,3 +1,9 @@
+import {
+  CloudRouterShell,
+  ErrorBoundary,
+  loadManagedCloudPage,
+} from "@elizaos/ui";
+import { registerPublicCloudSurfaces } from "./renderer/cloud-registration";
 /**
  * Mounts the Cloud public, account-management, and marketing shell for a cold hosted
  * public URL. The full application graph stays out of anonymous `/login`, then
@@ -8,9 +14,6 @@
 import "@elizaos/ui/styles";
 import "./renderer-build-stamp";
 
-import { ErrorBoundary } from "@elizaos/ui";
-import { registerPublicCloudSurfaces } from "@elizaos/ui/cloud/register-public";
-import { CloudRouterShell } from "@elizaos/ui/cloud/shell/CloudRouterShell";
 import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -18,9 +21,7 @@ import { renderBootFailure } from "./boot-failure";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
 
-const ManagedCloudPage = lazy(
-  () => import("@elizaos/ui/cloud/shell/ManagedCloudPage"),
-);
+const ManagedCloudPage = lazy(() => loadManagedCloudPage());
 
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;

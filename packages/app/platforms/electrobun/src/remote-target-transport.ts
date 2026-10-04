@@ -3,7 +3,7 @@
  * process. Host and owner bearers are placed in request headers, never URLs or
  * returned diagnostics, and response bodies are rejected above a fixed limit.
  */
-import { ElizaError } from "@elizaos/core";
+
 import {
 	canonicalizeRemoteControlValue,
 	type EncryptedRemoteControlEnvelope,
@@ -11,7 +11,8 @@ import {
 	isRemoteControllerPublicIdentity,
 	REMOTE_TARGET_PAIRING_CAPABILITIES,
 	type RemoteControllerPublicIdentity,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import type { RemoteTargetManagedNetworkEnrollment } from "./remote-target-managed-network";
 import type { EnrolledRemoteTargetVaultRecord } from "./remote-target-vault";
 

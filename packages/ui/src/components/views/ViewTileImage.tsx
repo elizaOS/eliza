@@ -12,11 +12,11 @@
  */
 
 import { useState } from "react";
-import { client } from "../../api";
 import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { emitViewInteraction } from "../../view-telemetry";

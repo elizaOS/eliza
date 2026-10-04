@@ -3,7 +3,7 @@
  * route-helper spies.
  */
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/core/api/route-helpers";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { handleIMessageRoute } from "./imessage-routes.js";
 

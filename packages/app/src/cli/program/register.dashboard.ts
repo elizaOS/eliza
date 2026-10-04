@@ -9,9 +9,9 @@
  * keeps holding the UI port; Windows tree-kills via taskkill /t /f.
  */
 
-import { type ChildProcess } from "node:child_process";
-import { resolveDesktopUiPort } from "@elizaos/core/runtime-env";
-import { type Command } from "commander";
+import type { ChildProcess } from "node:child_process";
+import { resolveDesktopUiPort } from "@elizaos/host/protocol";
+import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
 
 async function isPortListening(

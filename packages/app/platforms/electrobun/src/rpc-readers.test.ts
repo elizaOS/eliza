@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
+import type { PlatformSecureStore } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { describe, expect, it } from "vitest";
-import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { createDatabaseSnapshot } from "./database";
 import {
 	LaunchOrchestrator,

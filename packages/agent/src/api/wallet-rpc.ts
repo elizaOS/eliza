@@ -9,15 +9,17 @@
 
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
-  ElizaError,
-  isElizaCloudServiceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
+import {
+  isElizaCloudServiceSelectedInConfig,
+  migrateLegacyRuntimeConfig,
+} from "@elizaos/host/protocol";
 
 import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import {

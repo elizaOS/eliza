@@ -6,10 +6,12 @@
  */
 import type http from "node:http";
 import { type RoleGateRole, roleRank } from "@elizaos/core";
-import { resolveApiToken } from "@elizaos/core/runtime-env";
+import { resolveApiToken } from "@elizaos/host/protocol";
+import type {
+  AuthIdentityRow,
+  AuthRepository,
+} from "../services/auth-repository.js";
 import {
-  type AuthIdentityRow,
-  type AuthRepository,
   type AuthRuntimeSource,
   authStoreForRuntime,
 } from "../services/auth-store.js";
@@ -194,7 +196,7 @@ export async function ensureCompatApiAuthorizedAsync(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   res: http.ServerResponse,
   options: {
-    store: import("../services/auth-store").AuthRepository;
+    store: import("../services/auth-repository").AuthRepository;
     now?: number;
     readSetting?: (key: string) => unknown;
     /**

@@ -50,6 +50,8 @@ export async function createTestRuntimeWithModelProvider(
   const runtime = await createTestRuntime({
     characterName: options.characterName ?? "ModelProviderTestAgent",
     settings: options.settings,
+    enableAutonomy: options.enableAutonomy,
+    configureRuntime: options.configureRuntime,
     embeddingDimensions,
     plugins: [modelProvider, ...(options.plugins ?? [])],
     pgliteDir: options.pgliteDir,

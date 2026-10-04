@@ -5,7 +5,7 @@
 import type {
   LocalInferenceReadiness,
   LocalInferenceSlotReadiness,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 export type HomeModelStatusKind =
   | "not-required"
   | "ready"

@@ -8,8 +8,8 @@ import {
   type CloudPairRelaySession,
   cloudPairTokenKeyForAgent,
   parseCloudPairRelaySession,
-} from "@elizaos/core/contracts/cloud-pair";
-import { setElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+} from "@elizaos/contracts";
+import { setElizaApiToken } from "@elizaos/host/protocol";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,

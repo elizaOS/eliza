@@ -4,10 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  clearElizaApiToken,
-  getElizaApiToken,
-} from "@elizaos/core/utils/eliza-globals";
+import { clearElizaApiToken, getElizaApiToken } from "@elizaos/host/protocol";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

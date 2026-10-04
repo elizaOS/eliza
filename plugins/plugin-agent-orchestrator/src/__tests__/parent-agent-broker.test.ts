@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { getProjectById, upsertProject } from "@elizaos/core";
+import { getProjectById, upsertProject } from "@elizaos/host";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,

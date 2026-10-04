@@ -6,7 +6,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/host/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { solanaSignRoutes } from "./sign";
 

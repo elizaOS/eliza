@@ -22,12 +22,14 @@
 import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
   scenario,
   successfulActionData,
   toRecord,
 } from "@elizaos/testing";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/testing/models";
 
 const OWNER_HEALTH = "OWNER_HEALTH";
 const STATUS_INPUT = "Run OWNER_HEALTH to check my health backend status.";

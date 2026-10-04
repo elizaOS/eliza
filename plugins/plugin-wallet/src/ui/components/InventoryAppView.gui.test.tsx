@@ -16,7 +16,7 @@ import type {
   WalletMarketOverviewResponse,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import {
   cleanup,
   fireEvent,
@@ -41,22 +41,13 @@ const appHooks = vi.hoisted(() => ({
   authority: "https://agent-a.test",
   activityEvents: { events: [] as Array<Record<string, unknown>> },
 }));
-// The view persists its hidden-token set under the shell-reserved
-// `eliza:wallet:` key, which the surface-realm raw-global guard denies for a
-// raw `window.localStorage.setItem` while the view is foreground. The mock
-// mirrors the real `shellLocalStorage` (a privileged pass-through to
-// window.localStorage) so the spy proves the write goes through the sanctioned
-// channel, and the existing persistence/reload assertions still observe the
-// value on the seeded localStorage.
+// Storage is the view-facing async host facade.
 const bridgeMocks = vi.hoisted(() => ({
-  shellSetItem: vi.fn<(key: string, value: string) => void>((key, value) => {
+  setStorageValue: vi.fn<(key: string, value: string) => void>((key, value) => {
     globalThis.window.localStorage.setItem(key, value);
   }),
 }));
 
-// The plugin vitest config collapses `@elizaos/ui/<subpath>` (incl. `/bridge`)
-// onto this single mock, so `shellLocalStorage` lives here alongside the rest of
-// the `@elizaos/ui` surface the view imports.
 vi.mock("@elizaos/ui", () => {
   const CollapsibleContext = React.createContext<{
     open: boolean;
@@ -69,12 +60,9 @@ vi.mock("@elizaos/ui", () => {
 
   return {
     useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-    shellLocalStorage: {
-      setItem: bridgeMocks.shellSetItem,
-      removeItem: (key: string) =>
-        globalThis.window.localStorage.removeItem(key),
-      clear: () => globalThis.window.localStorage.clear(),
-    },
+    getStorageValue: async (key: string) => window.localStorage.getItem(key),
+    setStorageValue: async (key: string, value: string) =>
+      bridgeMocks.setStorageValue(key, value),
     client: walletClient,
     // Mirrors the real guard's contract (an ApiError carries a numeric
     // `status`); tests reject fetches with Object.assign(new Error(body),
@@ -838,15 +826,14 @@ describe("InventoryView GUI — hide token", () => {
     expect(state.setActionNotice).toHaveBeenCalledWith(
       "USDC hidden from this wallet view.",
     );
-    // Persisted through the shell-privileged channel (not a raw reserved-key
-    // write the surface-realm guard would deny), under the documented key.
-    expect(bridgeMocks.shellSetItem).toHaveBeenCalledWith(
-      "eliza:wallet:hidden-token-ids:v1",
-      expect.stringContaining("0xusdc00000000000000000000000000000000000000"),
+    // Persisted through the view storage facade under its own preference key.
+    await waitFor(() =>
+      expect(bridgeMocks.setStorageValue).toHaveBeenCalledWith(
+        "wallet:hidden-token-ids:v1",
+        expect.stringContaining("0xusdc00000000000000000000000000000000000000"),
+      ),
     );
-    const stored = window.localStorage.getItem(
-      "eliza:wallet:hidden-token-ids:v1",
-    );
+    const stored = window.localStorage.getItem("wallet:hidden-token-ids:v1");
     expect(stored).toBeTruthy();
     const ids = JSON.parse(stored ?? "[]") as string[];
     expect(
@@ -855,15 +842,17 @@ describe("InventoryView GUI — hide token", () => {
       ),
     ).toBe(true);
 
-    // Re-mount: readHiddenTokenIds() keeps USDC filtered out, others remain.
+    // Re-mount: restored preferences keep USDC filtered out, others remain.
     unmount();
     const reloadedState = makeAppState();
     appHooks.useApp.mockReturnValue(reloadedState);
     render(React.createElement(InventoryAppView));
     const reloaded = await screen.findByTestId("wallets-sidebar");
-    expect(
-      within(reloaded).queryByText(hasFlatText("100.0000 USDC")),
-    ).toBeNull();
+    await waitFor(() =>
+      expect(
+        within(reloaded).queryByText(hasFlatText("100.0000 USDC")),
+      ).toBeNull(),
+    );
     expect(within(reloaded).getAllByText("AERO").length).toBeGreaterThan(0);
 
     // Hiding is reversible in-context; users no longer need to clear storage
@@ -874,9 +863,11 @@ describe("InventoryView GUI — hide token", () => {
     expect(
       await within(reloaded).findByText(hasFlatText("100.0000 USDC")),
     ).toBeTruthy();
-    expect(bridgeMocks.shellSetItem).toHaveBeenLastCalledWith(
-      "eliza:wallet:hidden-token-ids:v1",
-      "[]",
+    await waitFor(() =>
+      expect(bridgeMocks.setStorageValue).toHaveBeenLastCalledWith(
+        "wallet:hidden-token-ids:v1",
+        "[]",
+      ),
     );
     expect(reloadedState.setActionNotice).toHaveBeenCalledWith(
       "Hidden tokens are visible again.",

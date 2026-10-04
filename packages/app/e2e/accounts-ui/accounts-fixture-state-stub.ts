@@ -8,14 +8,22 @@
  * AddAccountDialog, RotationStrategyPicker, EditableAccountLabel, useAccounts,
  * and the REAL ElizaClient network layer — stays real.
  */
-
 import {
   appNameInterpolationVars,
+  createTranslator,
   DEFAULT_BRANDING,
-} from "../../../ui/src/config/branding-base";
-import { createTranslator } from "../../../ui/src/i18n";
+} from "@elizaos/ui";
 
-const t = createTranslator("en", appNameInterpolationVars(DEFAULT_BRANDING));
+// The public UI barrel also imports state consumers. Defer reading its exports
+// until rendering, after the barrel has completed module initialization.
+let translator: ReturnType<typeof createTranslator> | undefined;
+const t: ReturnType<typeof createTranslator> = (...args) => {
+  translator ??= createTranslator(
+    "en",
+    appNameInterpolationVars(DEFAULT_BRANDING),
+  );
+  return translator(...args);
+};
 
 const fixtureState: Record<string, unknown> = {
   t,
@@ -39,4 +47,9 @@ export function useAppSelectorShallow<T>(
   selector: (state: Record<string, unknown>) => T,
 ): T {
   return selector(fixtureState);
+}
+
+// This isolated surface has no shell notice sink; use the viewport fallback.
+export function getActionNoticeSink(): null {
+  return null;
 }

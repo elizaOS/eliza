@@ -1,3 +1,5 @@
+import { getDefaultStylePreset } from "@elizaos/host/protocol";
+
 /**
  * Deterministic first-run helpers shared by the in-chat onboarding conductor
  * and the headless finish path: draft normalization, runtime-target mapping,
@@ -6,12 +8,11 @@
  * state — onboarding state lives in the conductor's refs plus `firstRunComplete`.
  */
 
-import { getDefaultStylePreset } from "@elizaos/core/character-presets";
+import type { UiLanguage } from "@elizaos/core/protocol";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core/contracts/service-routing";
-import type { UiLanguage } from "../i18n";
+} from "@elizaos/host/protocol";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   type BuildFirstRunRuntimeConfigResult,

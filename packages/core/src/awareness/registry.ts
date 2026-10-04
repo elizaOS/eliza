@@ -49,7 +49,10 @@ export function normalizeSummaryLine(line: string): string {
 export class AwarenessRegistry {
 	private readonly contributors: AwarenessContributor[] = [];
 	private readonly contributorIds = new Set<string>();
-	private readonly cache = new Map<string, CacheEntry>();
+	private readonly cache = new Map<
+		string,
+		WeakMap<IAgentRuntime, CacheEntry>
+	>();
 
 	register(contributor: AwarenessContributor): void {
 		if (this.contributorIds.has(contributor.id)) {
@@ -75,7 +78,10 @@ export class AwarenessRegistry {
 			let line: string;
 			try {
 				line = await this.getCachedSummary(contributor, runtime);
-			} catch {
+			} catch (error) {
+				runtime.reportError("AwarenessRegistry.summary", error, {
+					contributorId: contributor.id,
+				});
 				line = `[${contributor.id}: unavailable]`;
 			}
 
@@ -114,7 +120,10 @@ export class AwarenessRegistry {
 		try {
 			const detail = await contributor.detail(runtime, level);
 			return contributor.trusted !== true ? sanitize(detail) : detail;
-		} catch {
+		} catch (error) {
+			runtime.reportError("AwarenessRegistry.detail", error, {
+				contributorId: contributor.id,
+			});
 			return `[${contributor.id}: unavailable]`;
 		}
 	}
@@ -132,7 +141,12 @@ export class AwarenessRegistry {
 		runtime: IAgentRuntime,
 	): Promise<string> {
 		const ttl = contributor.cacheTtl ?? DEFAULT_CACHE_TTL_MS;
-		const cached = this.cache.get(contributor.id);
+		let cache = this.cache.get(contributor.id);
+		if (!cache) {
+			cache = new WeakMap();
+			this.cache.set(contributor.id, cache);
+		}
+		const cached = cache.get(runtime);
 		const now = Date.now();
 
 		if (cached && cached.expiresAt > now) {
@@ -140,7 +154,7 @@ export class AwarenessRegistry {
 		}
 
 		const value = await contributor.summary(runtime);
-		this.cache.set(contributor.id, {
+		cache.set(runtime, {
 			value,
 			expiresAt: now + ttl,
 		});
@@ -163,7 +177,10 @@ export class AwarenessRegistry {
 					detail = sanitize(detail);
 				}
 				parts.push(detail);
-			} catch {
+			} catch (error) {
+				runtime.reportError("AwarenessRegistry.detail", error, {
+					contributorId: contributor.id,
+				});
 				parts.push(`[${contributor.id}: unavailable]`);
 			}
 		}

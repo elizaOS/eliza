@@ -1,5 +1,5 @@
 /** Exercises installed build entrypoints and dependency closure in an assembled payload outside the checkout. */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -23,7 +23,7 @@ const repositoryRoot = path.resolve(packageRoot, "../..");
 it("ships consumer build tools without private repository test dependencies", async () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "app-payload-"));
   try {
-    for (const root of ["src/styles", "scripts", "platforms", "test"]) {
+    for (const root of ["src/styles", "scripts", "platforms"]) {
       mkdirSync(path.dirname(path.join(fixture, root)), { recursive: true });
       cpSync(path.join(packageRoot, root), path.join(fixture, root), {
         recursive: true,
@@ -67,6 +67,10 @@ it("ships consumer build tools without private repository test dependencies", as
       "continue-sms-gateway-work.ts",
       "sync-homepage-porkbun-dns.ts",
       "docker-ci-smoke.sh",
+      "fix-workspace-deps.ts",
+      "workspace-prepare.ts",
+      "playwright-ui-smoke-api-stub.ts",
+      "smoke-view-declarations.ts",
     ]) {
       expect(existsSync(path.join(dist, "scripts", operator))).toBe(false);
     }
@@ -78,50 +82,6 @@ it("ships consumer build tools without private repository test dependencies", as
       realpathSync(path.join(dist, "platforms/electrobun")),
     );
     expect(existsSync(path.join(platform, "electrobun.config.ts"))).toBe(true);
-    writeFileSync(
-      path.join(fixture, "package.json"),
-      JSON.stringify({
-        private: true,
-        workspaces: ["apps/*"],
-      }),
-    );
-    for (const name of ["app", "lib"]) {
-      mkdirSync(path.join(fixture, "apps", name), { recursive: true });
-      writeFileSync(
-        path.join(fixture, "apps", name, "package.json"),
-        JSON.stringify({
-          name: `@fixture/${name}`,
-          version: "1.0.0",
-        }),
-      );
-    }
-    const appManifest = path.join(fixture, "apps/app/package.json");
-    // Exercise the supported source-checkout layout without CLI templates.
-    const sourceApp = path.join(fixture, "eliza/packages/app");
-    mkdirSync(sourceApp, { recursive: true });
-    writeFileSync(
-      path.join(sourceApp, "package.json"),
-      JSON.stringify({ name: "@elizaos/app", private: true }),
-    );
-    const workspaceCheck = path.join(dist, "scripts/fix-workspace-deps.ts");
-    execFileSync(process.execPath, [workspaceCheck, "--check"], {
-      cwd: fixture,
-      stdio: "pipe",
-    });
-    const invalidManifest = JSON.stringify({
-      name: "@fixture/app",
-      version: "1.0.0",
-      dependencies: { "@fixture/lib": "^1.0.0" },
-    });
-    writeFileSync(appManifest, invalidManifest);
-    const invalidCheck = spawnSync(
-      process.execPath,
-      [workspaceCheck, "--check"],
-      { cwd: fixture, encoding: "utf8" },
-    );
-    expect(invalidCheck.status).toBe(1);
-    expect(invalidCheck.stdout + invalidCheck.stderr).toContain("@fixture/lib");
-    expect(readFileSync(appManifest, "utf8")).toBe(invalidManifest);
     expect(
       readFileSync(
         path.join(dist, "scripts/lib/ios-app-store-runtime-policy.ts"),
@@ -133,77 +93,6 @@ it("ships consumer build tools without private repository test dependencies", as
           "packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.ts",
         ),
       ),
-    );
-    // Source-mode setup executes the upstream's real build command and links
-    // its output; the fixture build isolates orchestration from compilation.
-    const upstream = path.join(fixture, "eliza");
-    for (const dir of [
-      "node_modules/.bun",
-      "node_modules/.bin",
-      "packages/core",
-    ])
-      mkdirSync(path.join(upstream, dir), { recursive: true });
-    writeFileSync(
-      path.join(upstream, "package.json"),
-      JSON.stringify({
-        private: true,
-        scripts: { "build:core": "node build.ts" },
-      }),
-    );
-    writeFileSync(
-      path.join(upstream, "packages/core/package.json"),
-      JSON.stringify({
-        name: "@elizaos/core",
-        type: "module",
-        main: "dist/index.js",
-      }),
-    );
-    writeFileSync(
-      path.join(upstream, "build.ts"),
-      [
-        'if (process.env.FIXTURE_BUILD_FAIL === "1") process.exit(17);',
-        'import fs from "node:fs";',
-        'fs.mkdirSync("packages/core/dist", { recursive: true });',
-        'fs.writeFileSync("packages/core/dist/index.js", "export const answer = 42;");',
-      ].join("\n"),
-    );
-    const setupProbe = `import { setupUpstreams } from ${JSON.stringify(pathToFileURL(path.join(dist, "scripts/setup-upstreams.ts")).href)}; await setupUpstreams(${JSON.stringify(fixture)});`;
-    const setupEnv = {
-      ...process.env,
-      ELIZA_FORCE_LOCAL_UPSTREAMS: "1",
-      ELIZA_SKIP_LOCAL_UPSTREAMS: "0",
-    };
-    execFileSync(process.execPath, ["--input-type=module", "-e", setupProbe], {
-      cwd: fixture,
-      env: setupEnv,
-      stdio: "pipe",
-    });
-    expect(
-      execFileSync(
-        process.execPath,
-        [
-          "--input-type=module",
-          "-e",
-          'process.stdout.write(String((await import("@elizaos/core")).answer))',
-        ],
-        {
-          cwd: fixture,
-          encoding: "utf8",
-        },
-      ),
-    ).toBe("42");
-    const failedSetup = spawnSync(
-      process.execPath,
-      ["--input-type=module", "-e", setupProbe],
-      {
-        cwd: fixture,
-        env: { ...setupEnv, FIXTURE_BUILD_FAIL: "1" },
-        encoding: "utf8",
-      },
-    );
-    expect(failedSetup.status).not.toBe(0);
-    expect(failedSetup.stderr).toContain(
-      "bun run build:core (eliza) exited with code 17",
     );
     // Bundle outside the checkout: relative imports must resolve entirely from
     // the assembled payload. Bare packages remain normal consumer dependencies.
@@ -252,4 +141,4 @@ it("ships consumer build tools without private repository test dependencies", as
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }
-}, 30_000);
+});

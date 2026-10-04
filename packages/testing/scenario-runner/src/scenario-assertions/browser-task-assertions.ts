@@ -4,7 +4,7 @@ import type {
   ScenarioCheckResult,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "../../schema/index.js";
+} from "../../schema/index.ts";
 
 type BrowserTaskExpectation = {
   description: string;

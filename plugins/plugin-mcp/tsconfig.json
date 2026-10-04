@@ -20,7 +20,7 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "paths": {
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     },
     "types": ["node"]
   },

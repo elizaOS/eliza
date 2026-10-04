@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
-/** Runs the When2Speak Stage-1 batch evaluator and writes its evidence report. */
 import fs from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import type { LiveProviderName } from "@elizaos/testing";
+/** Runs the When2Speak Stage-1 batch evaluator and writes its evidence report. */
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import type { LiveProviderName } from "../../src/live-provider.ts";
 import type {
   TimingCharacterPreset,
   TimingInputFormat,
@@ -73,7 +74,7 @@ const checkpointEvery = positiveInteger("checkpoint-every") ?? 1;
 const attempt = positiveInteger("attempt") ?? 1;
 const resume = option("resume");
 const output = path.resolve(
-  option("output") ?? "../../../reports/group-chat-timing/when2speak.json",
+  option("output") ?? testOutputPath("group-chat-timing", "when2speak.json"),
 );
 const trajectoryDir = path.resolve(
   option("run-dir") ?? path.join(path.dirname(output), "trajectories"),

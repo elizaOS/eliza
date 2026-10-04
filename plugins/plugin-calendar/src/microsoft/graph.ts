@@ -5,12 +5,12 @@
  * calendar persistence sees it.
  */
 import { createHash } from "node:crypto";
-import { ElizaError, type FetchLike, type IAgentRuntime } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   LifeOpsCalendarEventAttendee,
-} from "@elizaos/core/contracts/calendar";
-import type { LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
+  LifeOpsConnectorSide,
+} from "@elizaos/contracts";
+import { ElizaError, type FetchLike, type IAgentRuntime } from "@elizaos/core";
 import {
   DefaultMicrosoftCalendarTokenResolver,
   listMicrosoftCalendarAccounts,

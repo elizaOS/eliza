@@ -18,7 +18,7 @@ const { listAutomationsMock, listScheduledTasksMock } = vi.hoisted(() => ({
   listAutomationsMock: vi.fn(),
   listScheduledTasksMock: vi.fn(),
 }));
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     listAutomations: listAutomationsMock,
     listScheduledTasks: listScheduledTasksMock,

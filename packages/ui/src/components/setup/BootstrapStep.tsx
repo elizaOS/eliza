@@ -21,10 +21,10 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
-import { startFreshFirstRunReload } from "../../platform";
+import { startFreshFirstRunReload } from "../../platform/first-run-reset";
 import { persistActiveServerCredential } from "../../state/active-server-credential";
 import {
   type TranslationContextValue,

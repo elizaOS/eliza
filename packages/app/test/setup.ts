@@ -7,6 +7,7 @@
 import {
   createMemoryStorage,
   hasStorageApi,
+  installIdleResizeObserver,
   suppressReactTestConsoleErrors,
 } from "@elizaos/testing/browser-mocks";
 import React from "react";
@@ -22,6 +23,8 @@ const JSDOM_NAVIGATION_ERROR = [
   "Not",
   "implemented: navigation to another Document",
 ].join(" ");
+
+installIdleResizeObserver();
 
 globalThis.React = React;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

@@ -4,7 +4,7 @@
  * component so the mapping is unit-testable and reused by the editor.
  */
 
-import type { StylePreset } from "@elizaos/core/contracts/first-run-options";
+import type { StylePreset } from "@elizaos/host/protocol";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 export const SLANT_CLIP =
   "polygon(32px 0, 100% 0, calc(100% - 32px) 100%, 0 100%)";

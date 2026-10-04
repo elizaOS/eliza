@@ -26,9 +26,9 @@
  * {@link resolveMeetingRuntimeSupport}; see docs/DEPLOYMENT.md for the matrix.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { type MeetingPlatform } from "@elizaos/core/meetings";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { MeetingPlatform } from "@elizaos/core/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { getMeetingTranscriptAction } from "./actions/get-meeting-transcript.js";
 import { joinMeetingAction } from "./actions/join-meeting.js";
 import { leaveMeetingAction } from "./actions/leave-meeting.js";
@@ -40,7 +40,7 @@ import { importZoomCloudMeeting } from "./platforms/zoom/cloud-import.js";
 import { activeMeetingsProvider } from "./providers/active-meetings.js";
 import { meetingsRoutes } from "./routes/meetings-routes.js";
 import { MeetingService } from "./service.js";
-import { type MeetingPlatformAdapter } from "./types.js";
+import type { MeetingPlatformAdapter } from "./types.js";
 
 export { MeetingEventEmitter } from "./events.js";
 export { isHallucination } from "./pipeline/hallucination-filter";

@@ -38,15 +38,6 @@ import type {
 } from "../types/runtime";
 import { Service } from "../types/service";
 
-// Re-export the policy types whose canonical home is types/connector-account-policy.
-export type {
-	ConnectorAccountAccessGate,
-	ConnectorAccountPolicy,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAccountStatus,
-} from "../types/connector-account-policy";
-
 export const CONNECTOR_ACCOUNT_SERVICE_TYPE = "connector_account";
 export const CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE =
 	"connector_account_storage";

@@ -20,23 +20,24 @@ const authorityState = vi.hoisted(() => ({
   value: "profile-a\u0000https://same-agent.test",
 }));
 
-vi.mock("@elizaos/ui/api", () => ({
-  client: {
-    onWsEvent: (eventType: string, callback: () => void) => {
-      transport.wsEvents.set(eventType, callback);
-      return () => transport.wsEvents.delete(eventType);
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  ...(await (async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: {
+      onWsEvent: (eventType: string, callback: () => void) => {
+        transport.wsEvents.set(eventType, callback);
+        return () => transport.wsEvents.delete(eventType);
+      },
     },
-  },
-}));
-
-vi.mock("@elizaos/ui/events", () => ({
+  }))(importOriginal)),
   VIEW_EVENTS: { VIEW_REFRESH: "view:refresh" },
   useViewEvent: (eventType: string, callback: () => void) => {
     transport.viewEvents.set(eventType, callback);
   },
 }));
 
-vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
+vi.mock("../../../../packages/ui/src/hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
 }));
 
@@ -47,7 +48,7 @@ vi.mock("./notesData.js", () => ({
   NOTES_STATE_UPDATED_EVENT: "notes:state-updated",
 }));
 
-import { ApiError } from "@elizaos/ui/api/client-types-core";
+import { ApiError } from "../../../../packages/ui/src/api/client-types-core";
 import { useNotesState } from "./useNotesState.js";
 
 function snapshot(revision: number): NotesSnapshot {

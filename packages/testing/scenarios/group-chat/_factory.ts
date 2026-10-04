@@ -1,14 +1,11 @@
-/**
- * Builds transcript, room, and turn setup for generated group-chat timing
- * scenarios. Acceptance assertions and judge rubrics stay in each executable
- * scenario file so reviewers can inspect the contract without chasing a
- * shared factory.
- */
+/** Shared setup and acceptance contract for the When2Speak corpus. */
+
 import type {
   ScenarioDefinition,
   ScenarioSeedStep,
   ScenarioTurn,
 } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type MessageTurn = ScenarioTurn;
 type GroupChatTimingSetup = Pick<
@@ -28,6 +25,7 @@ export type GroupChatSpeakerTurn = {
 };
 
 export type GroupChatTimingScenarioConfig = {
+  lane?: "live-only";
   /** Static string literal at the call site — the loader reads it via AST. */
   id: string;
   title: string;
@@ -107,4 +105,41 @@ export function buildGroupChatTimingSetup(
       content: { senderName: config.decisionTurn.speaker },
     },
   } satisfies GroupChatTimingSetup;
+}
+
+export function groupChatTimingScenario(config: GroupChatTimingScenarioConfig) {
+  const setup = buildGroupChatTimingSetup(config);
+  return scenario({
+    lane: "live-only",
+    id: config.id,
+    title: config.title,
+    domain: "group-chat",
+    ...setup,
+    turns: [
+      {
+        ...setup.decisionTurn,
+        assertResponse(text: string) {
+          const responseLength = text.trim().length;
+          if (config.label === "silent" && responseLength > 0)
+            return `label is SILENT — expected no agent response, got ${responseLength} characters`;
+          if (config.label === "speak" && responseLength === 0)
+            return "label is SPEAK — an apt intervention was expected here, got no reply";
+        },
+      },
+    ],
+    finalChecks: [
+      {
+        type: "judgeRubric",
+        name: `timing:${config.label}`,
+        minimumScore: 0.7,
+        rubric:
+          config.label === "silent"
+            ? "This is a group chat between human participants. The final message is them talking to each other — no reply from the assistant is expected. Score 1.0 only if the assistant stayed silent; score 0.0 for any reaction, substantive contribution, commentary, agreement, or follow-up question."
+            : "This is a group chat between human participants, and the final message is a moment where an assistant participant should genuinely intervene. Score whether the reply is a concise, substantive, on-topic contribution that answers the open question, supplies the missing fact, or synthesizes the thread." +
+              (config.referenceIntervention
+                ? ` A corpus reference intervention supplies gold flavor, not required wording: ${JSON.stringify(config.referenceIntervention)}`
+                : ""),
+      },
+    ],
+  });
 }

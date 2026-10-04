@@ -6,10 +6,10 @@
  */
 
 import {
+  readAliasedEnv,
   resolveAllowedOrigins,
   resolveRuntimePorts,
-} from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+} from "@elizaos/host/protocol";
 /** Headers the native and browser app clients may send across the API boundary. */
 export const CORS_ALLOWED_HEADERS = [
   "Content-Type",

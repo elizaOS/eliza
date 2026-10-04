@@ -8,14 +8,14 @@
  * remote-access pairing code.
  */
 import crypto from "node:crypto";
+import { isLoopbackBindHost } from "@elizaos/core/protocol";
 import {
-  isLoopbackBindHost,
   resolveApiBindHost,
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-} from "@elizaos/core/runtime-env";
-import { type Command } from "commander";
+} from "@elizaos/host/protocol";
+import type { Command } from "commander";
 import { bootLap } from "../../boot-profile";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";

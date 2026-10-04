@@ -16,7 +16,7 @@ import {
   AGENT_MODEL_SLOTS,
   type AgentModelSlot,
   TEXT_GENERATION_SLOTS,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import { localInferenceRoot } from "./paths.js";
 import {
   isRoutingPolicy,

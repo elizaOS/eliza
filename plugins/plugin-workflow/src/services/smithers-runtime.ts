@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { ElizaError, redactSensitiveText } from '@elizaos/core';
-import { resolveAliasedEnvValue } from '@elizaos/core/config/boot-config-store';
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from '@elizaos/host/protocol';
 import type {
   WorkflowDefinitionResponse,
   WorkflowExecutionMode,

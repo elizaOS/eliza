@@ -22,7 +22,7 @@
  * mounts (in its unauthenticated state) rather than white-screening.
  */
 
-import { logger as appLogger } from "@elizaos/ui/logger";
+import { logger as appLogger } from "@elizaos/ui";
 
 export type EmbedPlatform = "telegram" | "discord";
 

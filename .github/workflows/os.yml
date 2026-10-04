@@ -53,6 +53,9 @@ jobs:
 
       - run: bun install --frozen-lockfile --ignore-scripts
         working-directory: .
+      - name: Build installer workspace dependencies
+        working-directory: .
+        run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/ui
       - name: Install native compilation prerequisites
         run: |
           sudo apt-get update -qq

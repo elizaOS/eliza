@@ -8,7 +8,7 @@ import {
   PINNED_ZIG_SERIES_FOR_MUSL_LINK,
   zigSeries,
   zigTriplesForAbis,
-} from "./compile-libllama.ts";
+} from "./zig-toolchain.ts";
 
 // Pins zig to the 0.13.x series for the aarch64/x86_64 `*-linux-musl` link.
 // zig 0.16's bundled lld SIGSEGVs that link (a silent host-toolchain break);

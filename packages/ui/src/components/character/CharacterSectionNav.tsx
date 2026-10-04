@@ -18,7 +18,7 @@
  * own "Knowledge" header rather than rendering under this "Character" one.
  */
 
-import { FramedPageNavigation } from "../../layouts/framed-page";
+import { FramedPageNavigation } from "../../layouts/framed-page/framed-page";
 import {
   navigateToSectionPath,
   normalizeSectionPath,

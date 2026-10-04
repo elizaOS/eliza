@@ -151,17 +151,24 @@ async function bundleFixture() {
   const result = await build({
     entryPoints: [join(here, "accounts-fixture.tsx")],
     bundle: true,
-    format: "iife",
+    format: "esm",
     platform: "browser",
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [stubAppState, stubElizaCore, stubNodeBuiltins],
     write: false,
+    outfile: join(here, "fixture.js"),
     absWorkingDir: repoRoot,
     logLevel: "silent",
   });
-  return result.outputFiles[0].text;
+  const js = result.outputFiles.find((file) => file.path.endsWith(".js"));
+  if (!js) throw new Error("Accounts fixture JavaScript was not emitted");
+  return {
+    js: js.text,
+    css:
+      result.outputFiles.find((file) => file.path.endsWith(".css"))?.text ?? "",
+  };
 }
 
 async function compileCss(bundleJsPath) {
@@ -186,10 +193,10 @@ const elizaHome = join(workDir, "eliza-home");
 await mkdir(fixtureDir, { recursive: true });
 await mkdir(elizaHome, { recursive: true });
 
-const js = await bundleFixture();
+const { js, css: importedCss } = await bundleFixture();
 const jsPath = join(fixtureDir, "fixture.js");
 await writeFile(jsPath, js);
-const css = await compileCss(jsPath);
+const css = `${await compileCss(jsPath)}\n${importedCss}`;
 await writeFile(join(fixtureDir, "fixture.css"), css);
 await writeFile(
   join(fixtureDir, "index.html"),
@@ -199,7 +206,7 @@ await writeFile(
 <link rel="stylesheet" href="/fixture.css">
 <style>html,body{margin:0;min-height:100%;background:var(--bg,#0b0b0b);color:var(--text,#eee)}</style>
 <script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-</head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`,
+</head><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>`,
 );
 console.log(`fixture bundled (${js.length} bytes js, ${css.length} bytes css)`);
 
@@ -354,7 +361,10 @@ const desktopContext = await browser.newContext({
 });
 const page = await desktopContext.newPage();
 const desktopVideo = page.video();
-page.on("pageerror", (e) => pageErrors.push(String(e)));
+page.on("pageerror", (e) => {
+  pageErrors.push(String(e));
+  console.error(`[browser] ${e.stack ?? e}`);
+});
 page.on("console", (m) => consoleLog.push(`[${m.type()}] ${m.text()}`));
 page.on("request", (r) => {
   if (r.url().includes("/api/") || r.url().includes("/__e2e__/")) {

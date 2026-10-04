@@ -21,7 +21,7 @@ import type {
 } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { validateToolArgs } from "../../../packages/core/src/actions/validate-tool-args";
+import { validateToolArgs } from "@elizaos/core";
 import {
   extractSpeakerName,
   identifySpeakerAction,

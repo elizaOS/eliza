@@ -11,16 +11,6 @@
  */
 
 import { createHash } from "node:crypto";
-import {
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  Service,
-  SsrfBlockedError,
-  stableStringify,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
 import type {
   CalendarNoteSourceReference,
   CreateLifeOpsCalendarEventAttendee,
@@ -29,6 +19,7 @@ import type {
   CreateLifeOpsIcsCalendarSourceRequest,
   CreateLifeOpsLinkedCalendarLinkRequest,
   DisconnectLifeOpsLinkedCalendarRequest,
+  FeatureResult,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarAllDayRange,
   LifeOpsCalendarEvent,
@@ -41,6 +32,9 @@ import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSourceKey,
   LifeOpsCalendarSummary,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
   LifeOpsIcsCalendarSource,
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsLinkedCalendarControl,
@@ -60,13 +54,17 @@ import type {
   SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
   UpdateLifeOpsLinkedCalendarControlRequest,
-} from "@elizaos/core/contracts/calendar";
-import type { FeatureResult } from "@elizaos/core/contracts/feature-result";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  Service,
+  SsrfBlockedError,
+  stableStringify,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   isSerializedSecretHandle,
   SECRETS_SERVICE_TYPE,

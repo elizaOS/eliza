@@ -803,6 +803,12 @@ export function createNativeCloudAuth({
               message("error18", "Cancellation is not confirmed."),
               502,
             );
+          // The superseded attempt may have activated this key before cancel
+          // caught up with it. Cloud has now confirmed it is revoked, so it
+          // must not stay the host's active credential. (Until confirmation,
+          // an outage keeps it, as for any unconfirmed revocation.)
+          if (!disconnect && (await readActive()) === saved.proof.secret)
+            await clearActive();
         }
         await pendingStore.clear();
         return { status: "cancelled" };

@@ -14,7 +14,7 @@ import {
   isRemoteControlIdentifier,
   isRemoteTargetPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import { Hono } from "hono";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import { enrollManagedNetwork, managedNetworkConfig } from "../managed-network";

@@ -8,14 +8,15 @@
  * rewrites speaker names and `{{agentName}}`/`{{name}}` tokens in the message
  * examples so the persona stays self-consistent.
  */
+
+import { PostCharacterGenerateRequestSchema } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ModelType,
-  PostCharacterGenerateRequestSchema,
-  type RouteRequestContext,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import {
   buildCharacterHistorySnapshot,

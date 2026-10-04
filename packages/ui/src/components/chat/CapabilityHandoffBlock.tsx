@@ -4,7 +4,7 @@
  * prefill, but never automatically send, the original request.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import { useCallback, useState } from "react";
 import { useInRouterContext } from "react-router-dom";
 import {

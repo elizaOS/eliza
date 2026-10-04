@@ -4,6 +4,7 @@
  * receipt transport, not the semantic accuracy of a live language model.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { PlannerRuntime, PlannerToolCall } from "@elizaos/core";
 import {
   type ActionResult,
@@ -14,7 +15,6 @@ import {
   ModelType,
   NoModelProviderConfiguredError,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

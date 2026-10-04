@@ -94,7 +94,9 @@
         "@elizaos/auth": "workspace:*",
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/cloud-routing": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
@@ -126,7 +128,6 @@
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "@noble/curves": "2.2.0",
         "@noble/hashes": "2.2.0",
         "drizzle-orm": "0.45.3",
@@ -218,7 +219,9 @@
         "@elizaos/capacitor-talkmode": "workspace:*",
         "@elizaos/capacitor-websiteblocker": "workspace:*",
         "@elizaos/cloud-routing": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
@@ -289,19 +292,21 @@
         "style-to-js": "^1.1.21",
         "tar": "7.5.22",
         "three": "^0.184.0",
+        "use-sync-external-store": "1.7.0",
         "util": "^0.12.5",
         "ws": "^8.21.3",
         "zod": "^4.6.5",
       },
       "devDependencies": {
         "@capacitor/cli": "8.5.2",
-        "@elizaos/agent": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/testing": "workspace:*",
+        "@elizaos/voice": "workspace:*",
         "@playwright/test": "^1.63.0",
         "@tailwindcss/postcss": "^4.3.1",
         "@tailwindcss/vite": "^4.3.1",
+        "@testing-library/user-event": "^14.6.7",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
         "@types/ws": "^8.18.1",
@@ -316,7 +321,6 @@
         "fflate": "^0.8.3",
         "ffprobe-static": "^3.1.0",
         "jsdom": "^30.1.1",
-        "json5": "^2.2.3",
         "nodemailer": "^10.0.12",
         "pathe": "^2.0.3",
         "playwright": "^1.63.0",
@@ -332,9 +336,9 @@
         "tw-animate-css": "^1.4.0",
         "typescript": "^6.0.3",
         "uuid": "^14.0.0",
+        "viem": "^2.56.9",
         "vite": "^8.3.0",
         "vitest": "^5.0.2",
-        "ws": "^8.21.3",
         "yaml": "^2.9.0",
       },
       "optionalDependencies": {
@@ -383,11 +387,14 @@
       "dependencies": {
         "@elizaos/agent": "workspace:*",
         "@elizaos/app": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
+        "@elizaos/voice": "workspace:*",
         "@napi-rs/keyring": "^1.1.6",
         "bonjour-service": "1.4.2",
         "electrobun": "^1.18.1",
@@ -407,7 +414,9 @@
       "dependencies": {
         "@aws-sdk/client-kms": "^3.1136.0",
         "@electric-sql/pglite": "^0.4.2",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@napi-rs/keyring": "^1.1.6",
         "@noble/curves": "^1.6.0",
         "@noble/hashes": "^1.7.0",
@@ -443,8 +452,13 @@
       "name": "elizaos-benchmarks",
       "version": "0.1.0",
       "devDependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/testing": "workspace:*",
         "@elizaos/vitest-vite": "npm:vite@7.3.5",
+        "fflate": "^0.8.3",
         "tsx": "^4.20.0",
+        "vitest": "^5.0.2",
+        "zod": "^4.6.5",
       },
     },
     "packages/benchmarks/framework/typescript": {
@@ -467,7 +481,9 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/agent": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/lifeops-bench": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
@@ -532,6 +548,9 @@
         "@elizaos/testing": "workspace:*",
         "zod": "^4.6.5",
       },
+      "devDependencies": {
+        "@elizaos/host": "workspace:*",
+      },
     },
     "packages/benchmarks/suites/configbench": {
       "name": "@elizaos/configbench",
@@ -557,6 +576,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
@@ -583,11 +603,13 @@
       "name": "@elizaos/entity-voice-bench",
       "dependencies": {
         "@elizaos/agent": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/plugin-relationships": "workspace:*",
         "@elizaos/testing": "workspace:*",
+        "@elizaos/voice": "workspace:*",
       },
       "devDependencies": {
         "vitest": "5.0.2",
@@ -628,6 +650,7 @@
     "packages/benchmarks/suites/memperf": {
       "name": "memperf-suite",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
       },
       "devDependencies": {
@@ -696,6 +719,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
       },
       "devDependencies": {
@@ -738,11 +762,15 @@
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
+        "@elizaos/voice": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@fal-ai/server-proxy": "^1.2.1",
         "@upstash/redis": "^1.37.0",
@@ -830,6 +858,9 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
+      },
+      "devDependencies": {
+        "playwright": "^1.63.0",
       },
     },
     "packages/cloud/sdk": {
@@ -1003,7 +1034,9 @@
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-google-workspace": "workspace:*",
@@ -1079,6 +1112,7 @@
       },
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "hono": "4.13.8",
@@ -1088,6 +1122,20 @@
         "@elizaos/plugin-github": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
+      },
+    },
+    "packages/contracts": {
+      "name": "@elizaos/contracts",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.2",
       },
     },
     "packages/core": {
@@ -1110,7 +1158,21 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "@vitest/coverage-v8": "^5.0.2",
         "dotenv": "^17.2.3",
-        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.2",
+      },
+    },
+    "packages/host": {
+      "name": "@elizaos/host",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/contracts": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -1212,6 +1274,11 @@
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@elizaos/ui": "workspace:*",
+        "@elizaos/voice": "workspace:*",
+      },
+      "devDependencies": {
+        "@elizaos/plugin-local-inference": "workspace:*",
+        "elizaos-benchmarks": "workspace:*",
       },
     },
     "packages/testing": {
@@ -1221,7 +1288,9 @@
         "eliza-scenarios": "./scenario-runner/bin/eliza-scenarios",
       },
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
         "ffmpeg-static": "^5.3.0",
@@ -1234,6 +1303,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@octokit/rest": "^22.0.0",
         "@playwright/test": "^1.63.0",
         "@types/bun": "1.4.2",
         "@types/node": "^25.0.3",
@@ -1241,7 +1311,6 @@
         "bun-types": "1.4.2",
         "drizzle-kit": "^0.31.10",
         "drizzle-orm": "0.45.3",
-        "fflate": "^0.8.3",
         "vitest": "^5.0.2",
       },
       "peerDependencies": {
@@ -1297,16 +1366,15 @@
       "name": "@elizaos/ui",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@babel/runtime": "^8.0.5",
-        "@capacitor/core": "8.4.0",
         "@elizaos/auth": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/voice": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
-        "@json-render/core": "0.20.0",
-        "@json-render/react": "0.19.0",
         "@metamask/connect-evm": "2.1.1",
         "@paulmillr/qr": "0.2.1",
         "@pixiv/three-vrm": "^3.4.5",
@@ -1332,7 +1400,6 @@
         "@radix-ui/react-tooltip": "^1.2.8",
         "@rainbow-me/rainbowkit": "^2.2.11",
         "@shadcn/react": "0.3.0",
-        "@simplewebauthn/browser": "^13.0.0",
         "@solana/spl-token": "^0.4.14",
         "@solana/wallet-adapter-coin98": "^0.5.24",
         "@solana/wallet-adapter-coinbase": "^0.1.23",
@@ -1344,7 +1411,6 @@
         "@solana/web3.js": "1.98.4",
         "@tanstack/react-query": "^5.90.20",
         "@xyflow/react": "^12.10.2",
-        "chalk": "^6.0.1",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cron-parser": "^5.5.0",
@@ -1359,7 +1425,6 @@
         "react-router-dom": "^7.0.0",
         "react-syntax-highlighter": "^16.1.0",
         "recharts": "^3.8.1",
-        "refractor": "^5.0.0",
         "sonner": "^2.0.7",
         "tailwind-merge": "^3.7.0",
         "tailwindcss": "^4.3.1",
@@ -1368,12 +1433,13 @@
         "vaul": "^1.1.2",
         "viem": "^2.56.9",
         "wagmi": "^2.19.5",
-        "ws": "^8.21.3",
       },
       "devDependencies": {
+        "@capacitor/core": "8.5.0",
         "@capacitor/haptics": "8.0.2",
         "@capacitor/keyboard": "8.0.5",
         "@capacitor/preferences": "^8.0.1",
+        "@elizaos/testing": "workspace:*",
         "@storybook/addon-a11y": "^10.6.0",
         "@storybook/addon-docs": "^10.6.0",
         "@storybook/addon-themes": "^10.6.0",
@@ -1390,7 +1456,6 @@
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
         "@types/three": "^0.185.0",
-        "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "@vitejs/plugin-react-swc": "^4.3.1",
         "esbuild": "^0.28.0",
@@ -1415,6 +1480,7 @@
       },
       "peerDependencies": {
         "@capacitor/app": "^8.0.0",
+        "@capacitor/core": "^8.5.0",
         "@elizaos/capacitor-agent": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
         "llama-cpp-capacitor": "^0.1.5",
@@ -1428,11 +1494,26 @@
         "llama-cpp-capacitor",
       ],
     },
+    "packages/voice": {
+      "name": "@elizaos/voice",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.2",
+      },
+    },
     "plugins/plugin-agent-orchestrator": {
       "name": "@elizaos/plugin-agent-orchestrator",
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/auth": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -1475,6 +1556,8 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.9",
+        "@elizaos/contracts": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "ai": "^6.0.23",
       },
       "devDependencies": {
@@ -1499,7 +1582,9 @@
         "@ai-sdk/anthropic": "^3.0.13",
         "@ai-sdk/google": "^3.0.130",
         "@ai-sdk/openai": "^3.0.9",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@openrouter/ai-sdk-provider": "^2.0.0",
         "ai": "^6.0.30",
@@ -1559,7 +1644,9 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/auth": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "drizzle-orm": "0.45.3",
@@ -1584,7 +1671,9 @@
       "dependencies": {
         "@capacitor/core": "8.4.0",
         "@elizaos/capacitor-calendar": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
@@ -1614,6 +1703,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@vscode/ripgrep": "^1.15.9",
         "cross-spawn": "^7.0.6",
@@ -1637,6 +1727,8 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/cloud-routing": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@nut-tree-fork/nut-js": "^4.2.6",
         "puppeteer-core": "^24.9.0",
@@ -1680,6 +1772,7 @@
         "@discordjs/voice": "^0.19.2",
         "@discordjs/ws": "^1.2.3",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-meetings": "workspace:*",
@@ -1721,7 +1814,9 @@
         "@ai-sdk/provider": "3.0.14",
         "@ai-sdk/provider-utils": "5.0.5",
         "@elizaos/cloud-sdk": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@noble/curves": "2.2.0",
         "@noble/hashes": "1.8.0",
@@ -1808,6 +1903,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "uuid": "^14.0.0",
       },
@@ -1825,6 +1921,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@octokit/rest": "^22.0.0",
       },
       "devDependencies": {
@@ -1843,6 +1940,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/agent": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -1874,6 +1972,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "google-auth-library": "^11.1.0",
         "googleapis": "^169.0.0",
@@ -1894,6 +1993,7 @@
       "name": "@elizaos/plugin-health",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
@@ -1923,6 +2023,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "zod": "^4.6.5",
       },
@@ -1938,7 +2039,9 @@
       "name": "@elizaos/plugin-inbox",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -1969,6 +2072,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
@@ -1993,12 +2097,16 @@
       "name": "@elizaos/plugin-local-inference",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/auth": "workspace:*",
         "@elizaos/cloud-routing": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-computeruse": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
+        "@elizaos/voice": "workspace:*",
         "@huggingface/tokenizers": "0.1.3",
         "phonemizer": "^1.2.1",
         "ws": "^8.21.3",
@@ -2007,14 +2115,13 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
-        "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@types/node": "24.12.2",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
-        "yaml": "^2.8.2",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -2063,6 +2170,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
         "ajv": "^8.17.1",
@@ -2085,6 +2193,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "playwright-core": "^1.56.0",
       },
       "devDependencies": {
@@ -2316,7 +2425,9 @@
       "name": "@elizaos/plugin-native-inference",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@huggingface/tokenizers": "0.1.3",
         "llama-cpp-capacitor": "^0.1.5",
@@ -2340,9 +2451,11 @@
         "@capacitor/core": "^8.3.1",
         "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-local-inference": "workspace:*",
       },
       "optionalPeers": [
         "@elizaos/agent",
+        "@elizaos/plugin-local-inference",
       ],
     },
     "plugins/plugin-native-location": {
@@ -2606,7 +2719,9 @@
       "name": "@elizaos/plugin-notes",
       "version": "2.0.0",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
@@ -2632,6 +2747,8 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.9",
+        "@elizaos/contracts": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "ai": "^6.0.30",
         "gpt-tokenizer": "^4.0.0",
         "js-tiktoken": "^1.0.21",
@@ -2680,7 +2797,9 @@
         "@elizaos/agent": "workspace:*",
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/macosreminders": "workspace:*",
         "@elizaos/native-activity-tracker": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
@@ -2742,6 +2861,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
@@ -2761,6 +2881,7 @@
       "name": "@elizaos/plugin-relationships",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "drizzle-orm": "0.45.3",
@@ -2813,7 +2934,9 @@
       "name": "@elizaos/plugin-scheduling",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "drizzle-orm": "0.45.3",
         "zod": "^4.6.5",
       },
@@ -2912,6 +3035,7 @@
       "dependencies": {
         "@elizaos/auth": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@telegraf/types": "^7.1.0",
         "@types/node": "^24.0.10",
@@ -2980,6 +3104,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "ffmpeg-static": "^5.3.0",
         "fluent-ffmpeg": "2.1.3",
         "youtube-dl-exec": "^3.1.5",
@@ -2995,7 +3120,9 @@
       "name": "@elizaos/plugin-vision",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "jimp": "^1.6.0",
         "sharp": "^0.35.3",
       },
@@ -3021,6 +3148,8 @@
       "dependencies": {
         "@coral-xyz/anchor": "^0.32.1",
         "@elizaos/cloud-routing": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -3082,6 +3211,8 @@
       "name": "@elizaos/plugin-workflow",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@smthrs/engine": "0.35.0",
         "@types/bun": "1.4.2",
         "@types/json-schema": "7.0.15",
@@ -3381,7 +3512,7 @@
 
     "@babel/parser": ["@babel/parser@7.29.9", "", { "dependencies": { "@babel/types": "^7.29.8" }, "bin": "./bin/babel-parser.js" }, "sha512-CjXrNHTnvqBVqHgdBysY3vk2T8tpJHb5/RMeHJBTyVa9xgugCB0CJTx/3oO8RV2QRQP391RWpB7D6hLjm8V9uA=="],
 
-    "@babel/runtime": ["@babel/runtime@8.0.5", "", {}, "sha512-7NK+Lz3spQ52XsUGTxIEVU4jYN2/dIaX8sTxRFAUtYmttYZnVh3aehiihv+/Gb7+duMNHl2OrFcBQRyOHScxpg=="],
+    "@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
     "@babel/template": ["@babel/template@7.29.7", "", { "dependencies": { "@babel/code-frame": "^7.29.7", "@babel/parser": "^7.29.7", "@babel/types": "^7.29.7" } }, "sha512-puq+Gf35oI24FeN11LkoUQFqv9uwNeWpxXZi/Ji3rRIoKAzKnxRaZ+Gkj0vKS9ZCiTESfng1N9LyOyXvo+m+Gg=="],
 
@@ -3731,6 +3862,8 @@
 
     "@elizaos/container-control-plane": ["@elizaos/container-control-plane@workspace:packages/cloud/services/container-control-plane"],
 
+    "@elizaos/contracts": ["@elizaos/contracts@workspace:packages/contracts"],
+
     "@elizaos/core": ["@elizaos/core@workspace:packages/core"],
 
     "@elizaos/electrobun": ["@elizaos/electrobun@workspace:packages/app/platforms/electrobun"],
@@ -3740,6 +3873,8 @@
     "@elizaos/gateway-discord": ["@elizaos/gateway-discord@workspace:packages/cloud/services/gateway-discord"],
 
     "@elizaos/gateway-webhook": ["@elizaos/gateway-webhook@workspace:packages/cloud/services/gateway-webhook"],
+
+    "@elizaos/host": ["@elizaos/host@workspace:packages/host"],
 
     "@elizaos/interrupt-bench": ["@elizaos/interrupt-bench@workspace:packages/benchmarks/suites/interrupt-bench"],
 
@@ -3888,6 +4023,8 @@
     "@elizaos/ui": ["@elizaos/ui@workspace:packages/ui"],
 
     "@elizaos/vitest-vite": ["vite@7.3.5", "", { "dependencies": { "esbuild": "^0.27.0", "fdir": "^6.5.0", "picomatch": "^4.0.3", "postcss": "^8.5.6", "rollup": "^4.43.0", "tinyglobby": "^0.2.15" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "jiti": ">=1.21.0", "less": "^4.0.0", "lightningcss": "^1.21.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "jiti", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-KuOaNhcnGFN2zIPGA7wRmzF+lJA1sea7rHq17aiJ++9lzY1WWG6Jpwqwe1KNbRVPIqHmr8GLYx7jbrQcN/7/ww=="],
+
+    "@elizaos/voice": ["@elizaos/voice@workspace:packages/voice"],
 
     "@elizaos/voice-rtt-bench": ["@elizaos/voice-rtt-bench@workspace:packages/benchmarks/suites/voice-rtt"],
 
@@ -4286,10 +4423,6 @@
     "@jsep-plugin/assignment": ["@jsep-plugin/assignment@1.3.0", "", { "peerDependencies": { "jsep": "^0.4.0||^1.0.0" } }, "sha512-VVgV+CXrhbMI3aSusQyclHkenWSAm95WaiKrMxRFam3JSUiIaQjoMIw2sEs/OX4XifnqeQUN4DYbJjlA8EfktQ=="],
 
     "@jsep-plugin/regex": ["@jsep-plugin/regex@1.0.4", "", { "peerDependencies": { "jsep": "^0.4.0||^1.0.0" } }, "sha512-q7qL4Mgjs1vByCaTnDFcBnV9HS7GVPJX5vyVoCgZHNSC9rjwIlmbXG5sUuorR5ndfHAIlJ8pVStxvjXHbNvtUg=="],
-
-    "@json-render/core": ["@json-render/core@0.20.0", "", { "dependencies": { "zod": "^4.3.6" } }, "sha512-cXAXn7h3QaylefQgh85AEGPuVq4C8SJ3k9JqigWLJhaBSozF1Fmsrm43DP16RmkqNiVgj5pBRdmB48lEO5qlow=="],
-
-    "@json-render/react": ["@json-render/react@0.19.0", "", { "dependencies": { "@json-render/core": "0.19.0" }, "peerDependencies": { "react": "^19.2.3" } }, "sha512-kTW6b6cSNRrlEfCUf/69SLoLn+CufC968ruge9tnQlp9pDTGG/SK8pgM541FdgwMFA4zm3s5mpM3G8rdODKc/A=="],
 
     "@keyv/bigmap": ["@keyv/bigmap@1.3.1", "", { "dependencies": { "hashery": "^1.4.0", "hookified": "^1.15.0" }, "peerDependencies": { "keyv": "^5.6.0" } }, "sha512-WbzE9sdmQtKy8vrNPa9BRnwZh5UF4s1KTmSK0KUVLo3eff5BlQNNWDnFOouNpKfPKDnms9xynJjsMYjMaT/aFQ=="],
 
@@ -9641,6 +9774,8 @@
 
     "@elizaos/searchbench/uuid": ["uuid@11.1.1", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
 
+    "@elizaos/ui/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
+
     "@elizaos/vitest-vite/esbuild": ["esbuild@0.27.7", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.7", "@esbuild/android-arm": "0.27.7", "@esbuild/android-arm64": "0.27.7", "@esbuild/android-x64": "0.27.7", "@esbuild/darwin-arm64": "0.27.7", "@esbuild/darwin-x64": "0.27.7", "@esbuild/freebsd-arm64": "0.27.7", "@esbuild/freebsd-x64": "0.27.7", "@esbuild/linux-arm": "0.27.7", "@esbuild/linux-arm64": "0.27.7", "@esbuild/linux-ia32": "0.27.7", "@esbuild/linux-loong64": "0.27.7", "@esbuild/linux-mips64el": "0.27.7", "@esbuild/linux-ppc64": "0.27.7", "@esbuild/linux-riscv64": "0.27.7", "@esbuild/linux-s390x": "0.27.7", "@esbuild/linux-x64": "0.27.7", "@esbuild/netbsd-arm64": "0.27.7", "@esbuild/netbsd-x64": "0.27.7", "@esbuild/openbsd-arm64": "0.27.7", "@esbuild/openbsd-x64": "0.27.7", "@esbuild/openharmony-arm64": "0.27.7", "@esbuild/sunos-x64": "0.27.7", "@esbuild/win32-arm64": "0.27.7", "@esbuild/win32-ia32": "0.27.7", "@esbuild/win32-x64": "0.27.7" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w=="],
 
     "@esbuild-kit/core-utils/esbuild": ["esbuild@0.18.20", "", { "optionalDependencies": { "@esbuild/android-arm": "0.18.20", "@esbuild/android-arm64": "0.18.20", "@esbuild/android-x64": "0.18.20", "@esbuild/darwin-arm64": "0.18.20", "@esbuild/darwin-x64": "0.18.20", "@esbuild/freebsd-arm64": "0.18.20", "@esbuild/freebsd-x64": "0.18.20", "@esbuild/linux-arm": "0.18.20", "@esbuild/linux-arm64": "0.18.20", "@esbuild/linux-ia32": "0.18.20", "@esbuild/linux-loong64": "0.18.20", "@esbuild/linux-mips64el": "0.18.20", "@esbuild/linux-ppc64": "0.18.20", "@esbuild/linux-riscv64": "0.18.20", "@esbuild/linux-s390x": "0.18.20", "@esbuild/linux-x64": "0.18.20", "@esbuild/netbsd-x64": "0.18.20", "@esbuild/openbsd-x64": "0.18.20", "@esbuild/sunos-x64": "0.18.20", "@esbuild/win32-arm64": "0.18.20", "@esbuild/win32-ia32": "0.18.20", "@esbuild/win32-x64": "0.18.20" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-ceqxoedUrcayh7Y7ZX6NdbbDzGROiyVBgC4PriJThBKSVPWnnFHZAkfI1lJT8QFkOwH4qOS2SJkS4wvpGl8BpA=="],
@@ -9773,8 +9908,6 @@
 
     "@joshwooding/vite-plugin-react-docgen-typescript/glob": ["glob@13.0.6", "", { "dependencies": { "minimatch": "^10.2.2", "minipass": "^7.1.3", "path-scurry": "^2.0.2" } }, "sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw=="],
 
-    "@json-render/react/@json-render/core": ["@json-render/core@0.19.0", "", { "dependencies": { "zod": "^4.3.6" } }, "sha512-vvcyZ+10EDZKbEyB1J2kXOGfDaiZR2LurZGSqi2r5STHyKr+Te85DWaBxTwRGgM7U1LtIvNx85BzzjElRKoAIg=="],
-
     "@kubernetes/client-node/isomorphic-ws": ["isomorphic-ws@5.0.0", "", { "peerDependencies": { "ws": "*" } }, "sha512-muId7Zzn9ywDsyXgTIafTry2sV3nySZeUDe6YedVd1Hvuuep5AsIlqK+XefWpYTyJG5e503F2xIuT2lcU6rCSw=="],
 
     "@lifi/sdk/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw=="],
@@ -9822,8 +9955,6 @@
     "@metamask/scure-bip39/@noble/hashes": ["@noble/hashes@1.3.2", "", {}, "sha512-MVC8EAQp7MvEcm30KWENFjgR+Mkmf+D189XJTkFIlwohU5hcBbn1ZkKq7KVTi2Hme3PMGF390DaL52beVrIihQ=="],
 
     "@metamask/scure-bip39/@scure/base": ["@scure/base@1.1.9", "", {}, "sha512-8YKhl8GHiNI/pU2VMaofa2Tor7PJRAjwQLBBuilkJ9L5+13yVbC7JO/wS7piioAvPSwR3JKM1IJ/u4xQzbcXKg=="],
-
-    "@metamask/sdk/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
     "@metamask/sdk/cross-fetch": ["cross-fetch@4.1.0", "", { "dependencies": { "node-fetch": "^2.7.0" } }, "sha512-uKm5PU+MHTootlWEY+mZ4vvXoCn4fLQxT9dSc1sXVMSFkINTJVN8cAQROpwcKm8bJ/c7rgZVIBWzH5T78sNZZw=="],
 
@@ -9968,8 +10099,6 @@
     "@react-native/dev-middleware/serve-static": ["serve-static@1.16.3", "", { "dependencies": { "encodeurl": "~2.0.0", "escape-html": "~1.0.3", "parseurl": "~1.3.3", "send": "~0.19.1" } }, "sha512-x0RTqQel6g5SY7Lg6ZreMmsOzncHFU7nhnRWkKgWuMTu5NN0DR5oruckMqRvacAN9d5w6ARnRBXl9xhDCgfMeA=="],
 
     "@react-native/dev-middleware/ws": ["ws@7.5.13", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": "^5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-rsKI6xDBFVf4r/x8XyChGK04QR/XHroxs/jUcoWvtEZM8TPU/X/uIY9B1CsSzYws9ZJb/6bbBu7dPhFW00CAoA=="],
-
-    "@react-three/fiber/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
     "@redis/client/cluster-key-slot": ["cluster-key-slot@1.1.2", "", {}, "sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA=="],
 
@@ -10137,8 +10266,6 @@
 
     "@solana/wallet-standard-util/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw=="],
 
-    "@solana/web3.js/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
-
     "@solana/web3.js/@noble/curves": ["@noble/curves@1.9.7", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw=="],
 
     "@solana/web3.js/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
@@ -10169,11 +10296,7 @@
 
     "@tailwindcss/oxide-wasm32-wasi/tslib": ["tslib@2.8.1", "", { "bundled": true }, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
-    "@testing-library/dom/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
-
     "@testing-library/jest-dom/dom-accessibility-api": ["dom-accessibility-api@0.6.3", "", {}, "sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w=="],
-
-    "@testing-library/react/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
     "@types/jsdom/undici-types": ["undici-types@8.11.0", "", {}, "sha512-Ophcodxps+mlNdcccUrHXy+Pp8X7Q0ycBk3QelSNl+jBAPMh6cEB/5xs9xDL3PJVnVs2Cp//nnsJySuD9D2WFA=="],
 
@@ -10547,8 +10670,6 @@
 
     "json-rpc-engine/@metamask/safe-event-emitter": ["@metamask/safe-event-emitter@2.0.0", "", {}, "sha512-/kSXhY692qiV1MXu6EeOZvg5nECLclxNXcKCxJ3cXQgYuRymRHpdx/t7JXfsK+JLjwA1e1c1/SBrlQYpusC29Q=="],
 
-    "json-schema-to-ts/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
-
     "katex/commander": ["commander@8.3.0", "", {}, "sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww=="],
 
     "keccak/node-addon-api": ["node-addon-api@2.0.2", "", {}, "sha512-Ntyt4AIXyaLIuMHF6IOoTakB3K+RWxwtsHNRxllEoA6vPwP9o4866g6YWDLUdnucilZhmkxiHwHr11gAENw+QA=="],
@@ -10599,15 +10720,11 @@
 
     "mdast-util-find-and-replace/escape-string-regexp": ["escape-string-regexp@5.0.0", "", {}, "sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw=="],
 
-    "media-query-parser/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
-
     "merge-options/is-plain-obj": ["is-plain-obj@2.1.0", "", {}, "sha512-YWnfyRwxL/+SsrWYfOpUtz5b3YD+nyfkHvjbcanzk8zgyO4ASD67uVMRt8k5bM4lLMDnXfriRhOpemw+NfT1eA=="],
 
     "metro/source-map": ["source-map@0.5.7", "", {}, "sha512-LbrmJOMUSdEVxIKvdcJzQC+nQhe8FUZQTXQy6+I75skNgn3OoQ0DZA8YnFa7gp8tqtL3KPf1kmo0R5DoApeSGQ=="],
 
     "metro/ws": ["ws@7.5.13", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": "^5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-rsKI6xDBFVf4r/x8XyChGK04QR/XHroxs/jUcoWvtEZM8TPU/X/uIY9B1CsSzYws9ZJb/6bbBu7dPhFW00CAoA=="],
-
-    "metro-runtime/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
     "metro-source-map/source-map": ["source-map@0.5.7", "", {}, "sha512-LbrmJOMUSdEVxIKvdcJzQC+nQhe8FUZQTXQy6+I75skNgn3OoQ0DZA8YnFa7gp8tqtL3KPf1kmo0R5DoApeSGQ=="],
 
@@ -10815,8 +10932,6 @@
 
     "react-router/set-cookie-parser": ["set-cookie-parser@2.7.2", "", {}, "sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw=="],
 
-    "react-syntax-highlighter/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
-
     "readable-stream/safe-buffer": ["safe-buffer@5.1.2", "", {}, "sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g=="],
 
     "readable-web-to-node-stream/readable-stream": ["readable-stream@4.7.0", "", { "dependencies": { "abort-controller": "^3.0.0", "buffer": "^6.0.3", "events": "^3.3.0", "process": "^0.11.10", "string_decoder": "^1.3.0" } }, "sha512-oIGGmcpTLwPga8Bn6/Z75SVaH1z5dUut2ibSyAMVhmUggWpmDn2dapB0n7f8nwaSiRtepAsfJyfXIO5DCVAODg=="],
@@ -10906,8 +11021,6 @@
     "tsyringe/tslib": ["tslib@1.14.1", "", {}, "sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg=="],
 
     "tuf-js/make-fetch-happen": ["make-fetch-happen@15.0.6", "", { "dependencies": { "@gar/promise-retry": "^1.0.0", "@npmcli/agent": "^4.0.0", "@npmcli/redact": "^4.0.0", "cacache": "^20.0.1", "http-cache-semantics": "^4.1.1", "minipass": "^7.0.2", "minipass-fetch": "^5.0.0", "minipass-flush": "^1.0.5", "minipass-pipeline": "^1.2.4", "negotiator": "^1.0.0", "proc-log": "^6.0.0", "ssri": "^13.0.0" } }, "sha512-Je0fLJ0F5atA7F+eIlLzk+Wkcl57JDf4kf+EW8xiP5E31xOQxkIxTbgf1Oi1Lw9tRI9UEMRdI5Vz2xTzoNU1Jw=="],
-
-    "twitter-text/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
     "type-is/content-type": ["content-type@2.1.0", "", {}, "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag=="],
 
@@ -11234,8 +11347,6 @@
     "@metamask/providers/@metamask/utils/uuid": ["uuid@9.0.1", "", { "bin": { "uuid": "dist/bin/uuid" } }, "sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA=="],
 
     "@metamask/providers/readable-stream/string_decoder": ["string_decoder@1.3.0", "", { "dependencies": { "safe-buffer": "~5.2.0" } }, "sha512-hkRX8U1WjJFd8LsDJ2yQ/wWWxaopEsABU1XfkM8A+j0+85JAGppt16cr1Whg6KIbb4okU6Mql6BOj+uup/wKeA=="],
-
-    "@metamask/sdk-communication-layer/date-fns/@babel/runtime": ["@babel/runtime@7.29.7", "", {}, "sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw=="],
 
     "@metamask/sdk-communication-layer/debug/ms": ["ms@2.1.2", "", {}, "sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w=="],
 

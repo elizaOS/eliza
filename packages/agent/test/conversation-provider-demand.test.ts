@@ -11,7 +11,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { recentMessagesProvider } from "../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
 import { selectV5PlannerStateProviderNames } from "../../../plugins/plugin-assistant/src/services/message/provider-state.ts";

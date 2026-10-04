@@ -3,7 +3,7 @@
  * capability display. Keeping the catalog outside the dialog prevents
  * presentational components from depending on the enrollment state machine.
  */
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 export type AccountProviderCategory = "chat" | "coding" | "local" | "cloud";
 export interface AccountProviderOption {
   id: LinkedAccountProviderId;

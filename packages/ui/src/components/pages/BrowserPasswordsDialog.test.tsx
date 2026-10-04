@@ -22,7 +22,7 @@ vi.mock("../../bridge/storage-bridge", () => ({
   getStorageValue: boundary.get,
   setStorageValue: boundary.set,
 }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     getBaseUrl: () => "https://cloud-agent.example.test",
     fetch: boundary.fetch,

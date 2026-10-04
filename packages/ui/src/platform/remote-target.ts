@@ -1,6 +1,6 @@
 /** Native device lifecycle stays on the local host even when the selected agent is remote. */
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import type { RemoteTargetPublicIdentity } from "@elizaos/core/contracts/remote-control";
+import type { RemoteTargetPublicIdentity } from "@elizaos/contracts";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 

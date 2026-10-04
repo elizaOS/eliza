@@ -3,7 +3,7 @@
  * The send pipeline consumes this pure routing description so view names,
  * context scopes, and capability hints stay independent of transport state.
  */
-import { asRecord } from "@elizaos/core/type-guards";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import { readSettingsHashSectionId } from "../components/settings/settings-route";
 import { getWindowNavigationPath, type Tab } from "../navigation";
 import { getClientBrowserSurface } from "../platform/browser-surface";

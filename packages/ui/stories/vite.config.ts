@@ -10,10 +10,12 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type Plugin } from "vite";
 import { rejectRuntimeInRendererPlugin } from "../../app/scripts/lib/renderer-runtime-boundary.ts";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const uiSrc = path.resolve(here, "../src");
+const designOutput = testOutputPath("ui-design-lab", "dist");
 const brandAssets = path.resolve(here, "../assets");
 const cleanupHelper = path.resolve(
   repoRoot,
@@ -50,7 +52,7 @@ function brandAssetsPlugin(): Plugin {
       });
     },
     closeBundle() {
-      const dest = path.resolve(here, "dist/brand");
+      const dest = path.join(designOutput, "brand");
       execFileSync("node", [cleanupHelper, dest], {
         cwd: repoRoot,
         stdio: "inherit",
@@ -61,9 +63,19 @@ function brandAssetsPlugin(): Plugin {
 }
 export default defineConfig({
   root: here,
-  // Shared UI source reads Node's `process.env` (terminal/theme, globals, etc.)
-  // unguarded at module load; shim it to an empty object so those modules can
-  // be imported in the browser catalog.
+  build: {
+    outDir: designOutput,
+    emptyOutDir: true,
+    rolldownOptions: {
+      input: Object.fromEntries(
+        ["lab", "voice", "permission-preview", "launcher-icons"].map((name) => [
+          name,
+          path.join(here, `${name}.html`),
+        ]),
+      ),
+    },
+  },
+  // Renderer dependencies can inspect environment flags during initialization.
   define: {
     "process.env": "({})",
   },

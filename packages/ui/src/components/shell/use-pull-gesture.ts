@@ -5,18 +5,20 @@
 import * as React from "react";
 import {
   AXIS_COMMIT_SLOP,
-  commitAxis,
   DEFAULT_PULL_DISTANCE,
   DEFAULT_PULL_VELOCITY,
   DEFAULT_SWIPE_DISTANCE,
   DEFAULT_SWIPE_VELOCITY,
   HORIZONTAL_DOMINANCE_RATIO,
-  isRealCaptureLoss,
+  TAP_SLOP,
+} from "../../gestures/constants";
+import { isRealCaptureLoss } from "../../gestures/lost-capture";
+import {
+  commitAxis,
   resolvePull,
   resolveSwipe,
-  TAP_SLOP,
-  useRafCoalescer,
-} from "../../gestures";
+} from "../../gestures/recognizers";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 
 /**
  * Pull/flick + swipe gesture detection for the homescreen shell — a thin adapter

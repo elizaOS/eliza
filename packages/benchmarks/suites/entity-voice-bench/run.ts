@@ -50,6 +50,7 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   ChannelType,
   createMessageMemory,
@@ -58,7 +59,6 @@ import {
   type UUID,
   type VoiceEntityBoundPayload,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   allUtterances,
@@ -223,10 +223,10 @@ async function runKgSession(
   transcripts: Map<string, string>,
 ): Promise<SessionObservation> {
   const { createScenarioRuntime } = await import(
-    "@elizaos/testing/scenario-runner/runtime-factory"
+    "@elizaos/testing/scenario-runner"
   );
   const { runtime, cleanup } = await createScenarioRuntime({
-    useDeterministicLlmProxy: true,
+    useDeterministicModel: true,
   });
   try {
     const baseline = await readKnowledgeGraph(runtime);
@@ -305,9 +305,7 @@ async function runLlmSession(
   session: BenchSession,
   transcripts: Map<string, string>,
 ): Promise<SessionObservation> {
-  const factory = await import(
-    "@elizaos/testing/scenario-runner/runtime-factory"
-  );
+  const factory = await import("@elizaos/testing/scenario-runner");
   // A stray proxy env var would silently replace the live model.
   delete process.env.SCENARIO_USE_LLM_PROXY;
   delete process.env.ELIZA_SCENARIO_USE_LLM_PROXY;

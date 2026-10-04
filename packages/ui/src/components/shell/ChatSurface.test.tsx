@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ImageAttachment } from "../../api/client-types-chat";
-import { PUSH_TO_TALK_HOLD_MS } from "../../gestures";
+import { PUSH_TO_TALK_HOLD_MS } from "../../gestures/constants";
 import { __setAppValueForTests } from "../../state/app-store";
 import { ChatComposerCtx } from "../../state/ChatComposerContext.hooks";
 import { MockAppProvider } from "../../storybook/mock-providers";

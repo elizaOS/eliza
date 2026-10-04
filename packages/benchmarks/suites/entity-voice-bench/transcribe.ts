@@ -26,8 +26,9 @@ import { fileURLToPath } from "node:url";
 import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
 import { loadElizaInferenceFfi } from "@elizaos/plugin-local-inference/services/voice/ffi-bindings";
 import { decodeMonoPcm16Wav } from "@elizaos/plugin-local-inference/services/voice/wav-codec";
+import { wordErrorRate } from "@elizaos/voice";
 import { allUtterances, speakerByKey } from "./corpus.ts";
-import { nameHitRate, normalize, wordErrorRate } from "./metrics.ts";
+import { nameHitRate, normalize } from "./metrics.ts";
 
 const REQUIRE = ["1", "true", "yes"].includes(
   process.env.ENTITY_VOICE_REAL_REQUIRE?.trim().toLowerCase() ?? "",

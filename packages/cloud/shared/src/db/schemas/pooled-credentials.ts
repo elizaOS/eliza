@@ -15,10 +15,7 @@
  * answerable. Replaces the self-host JSONL usage log in cloud.
  */
 
-import {
-  type LinkedAccountHealthDetail,
-  type LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
+import { type LinkedAccountHealthDetail, type LinkedAccountUsage } from "@elizaos/host/protocol";
 import { type InferInsertModel, type InferSelectModel } from "drizzle-orm";
 import {
   boolean,

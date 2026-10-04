@@ -22,8 +22,9 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "uuid": "^14.0.0",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "uuid": "^14.0.0"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

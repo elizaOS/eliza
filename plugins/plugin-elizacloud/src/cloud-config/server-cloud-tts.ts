@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getCloudSecret } from "./cloud-secrets.js";
 import { getElizaNamespace } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/host/protocol";
 import { resolveCloudApiBaseUrl } from "./base-url.js";
 import { resolveDevCloudAuthorityEnvValue } from "./dev-cloud-env-authority.js";
 import { resolveDevCloudEnvAuthority } from "./dev-cloud-env-authority.js";

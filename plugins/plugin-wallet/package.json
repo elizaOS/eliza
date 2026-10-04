@@ -98,7 +98,9 @@
     "viem": "^2.56.9",
     "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/plugin-scheduling": "workspace:*"
+    "@elizaos/plugin-scheduling": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
