@@ -450,7 +450,7 @@ const definition = scenario({
           // the original request stays in the earlier context message.
           input: {
             pattern:
-              "^# Current decision state\\n[\\s\\S]*\\nQueued call IDs: \\[\\]\\nCommitted effect receipt IDs: \\[\\]\\n[\\s\\S]*\\nrequiresReplyField: true\\nhasUnresolvedToolFailure: false\\n[\\s\\S]*\\nintent:1: create reminder\\nEvidence step sources[^\\n]*\\nstep:1: OWNER_REMINDERS_CREATE; success=false$",
+              "^# Current decision state\\n[\\s\\S]*\\nQueued call IDs: \\[\\]\\nCommitted effect receipt IDs: \\[\\]\\n[\\s\\S]*\\nrequiresReplyField: false\\nhasUnresolvedToolFailure: false\\n[\\s\\S]*\\nintent:1: create reminder\\nEvidence step sources[^\\n]*\\nstep:1: OWNER_REMINDERS_CREATE; success=false$",
           },
           toolNames: [],
         },

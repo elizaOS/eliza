@@ -1,7 +1,7 @@
-import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { expect, test } from "vitest";
 import { findWorkspaceSourceEntry } from "../scripts/mobile-workspace-entry";
 
 test("mobile source fallback follows declared subpaths and preserves browser selection", () => {

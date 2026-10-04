@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, test } from "vitest";
 import { collectPluginNames } from "../src/runtime/plugin-collector";
 
 const saved = { ...process.env };

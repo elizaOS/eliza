@@ -32,10 +32,11 @@ describe("cloudSafeMainActivityJava", () => {
       "super.onCreate(savedInstanceState);",
     );
     const guardedPushRegistration = source.indexOf(
-      "getBridge().registerPlugin(SafePushNotificationsPlugin.class);",
+      "initialPlugins.add(SafePushNotificationsPlugin.class);",
     );
 
-    expect(guardedPushRegistration).toBeGreaterThan(bridgeCreation);
+    expect(guardedPushRegistration).toBeGreaterThanOrEqual(0);
+    expect(guardedPushRegistration).toBeLessThan(bridgeCreation);
     expect(source).not.toContain("GatewayConnectionService");
   });
 
