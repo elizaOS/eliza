@@ -22,7 +22,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_FILE="$HERE/$(basename "${BASH_SOURCE[0]}")"
 cd "$HERE"
 
-RM_PATH_RECURSIVE_HOST="$(cd "$HERE/../.." && pwd)/scripts/rm-path-recursive.ts"
+RM_PATH_RECURSIVE_HOST="$(cd "$HERE/../../.." && pwd)/scripts/rm-path-recursive.ts"
 [ -r "$RM_PATH_RECURSIVE_HOST" ] || {
     echo "FATAL: cleanup helper not found at $RM_PATH_RECURSIVE_HOST" >&2
     exit 1

@@ -8,7 +8,7 @@ import test from "node:test";
 test("Bun wrapper rejects invalid jobs and selects Rust WebKit overrides with shared recipes", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bun wrapper-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const toolchain = path.join(root, "toolchains/bun-riscv64");
+  const toolchain = path.join(root, "os/toolchains/bun-riscv64");
   const bin = path.join(root, "bin");
   await mkdir(toolchain, { recursive: true });
   await mkdir(bin);

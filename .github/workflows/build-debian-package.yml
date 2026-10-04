@@ -258,4 +258,4 @@ jobs:
           retention-days: 30
       - name: Remove package workspace
         if: always()
-        run: sudo node scripts/rm-path-recursive.ts "$WORK_ROOT"
+        run: sudo node ../scripts/rm-path-recursive.ts "$WORK_ROOT"

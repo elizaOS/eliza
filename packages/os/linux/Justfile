@@ -26,4 +26,4 @@ test:
     make -C elizaos lint
 
 clean:
-    node ../scripts/rm-path-recursive.ts elizaos/out
+    node ../../scripts/rm-path-recursive.ts elizaos/out

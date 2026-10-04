@@ -400,7 +400,7 @@ jobs:
 
       - name: Remove privileged build workspace
         if: always()
-        run: sudo node scripts/rm-path-recursive.ts "$WORK_ROOT"
+        run: sudo node ../scripts/rm-path-recursive.ts "$WORK_ROOT"
 
   sign-and-stage:
     if: github.event_name != 'pull_request' && vars.HETZNER_FLEET_ONLINE == 'true'
@@ -600,4 +600,4 @@ jobs:
 
       - name: Remove signing workspace
         if: always()
-        run: node scripts/rm-path-recursive.ts "$WORK_ROOT"
+        run: node ../scripts/rm-path-recursive.ts "$WORK_ROOT"
