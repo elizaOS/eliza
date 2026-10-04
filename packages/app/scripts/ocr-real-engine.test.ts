@@ -22,12 +22,19 @@ import {
   evaluateOcrContent,
   type OcrResult,
 } from "../test/ui-smoke/ocr-content-rules";
+import {
+  loadBaselineManifest,
+  resolveBaselinePath,
+} from "./mvp-visual-verify/baselines.ts";
 import { runOcrTriage } from "./ocr-triage";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LAUNCHER_CAPTURE = resolve(
-  HERE,
-  "mvp-visual-verify/baseline/mobile-portrait/builtin-rolodex.png",
+const baselineRoot = resolve(HERE, "mvp-visual-verify/baseline");
+const LAUNCHER_CAPTURE = resolveBaselinePath(
+  baselineRoot,
+  await loadBaselineManifest(baselineRoot),
+  "mobile-portrait",
+  "builtin-rolodex",
 );
 const dir = mkdtempSync(join(tmpdir(), "ocr-real-engine-"));
 const previousEngine = process.env.ELIZA_MVP_OCR_ENGINE;

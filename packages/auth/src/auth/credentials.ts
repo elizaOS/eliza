@@ -19,12 +19,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  ElizaError,
   getElizaNamespace,
   logger,
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import type { SubscriptionCredentialSource } from "@elizaos/host/protocol";
 import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import {

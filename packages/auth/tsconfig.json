@@ -25,6 +25,7 @@
     "src/kms/**/*",
     "src/index.ts",
     "test/*.ts",
+    "src/accounts/**/*",
     "src/providers/**/*"
   ]
 }

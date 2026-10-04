@@ -49,7 +49,6 @@
     "src/desktop-fn-hold-policy.ts",
     "src/public-web-boot-config.ts",
     "src/renderer-entry.ts",
-    "src/deep-link-handler.ts",
     "src/ios-cloud-onboarding-smoke.ts",
     "src/sw-registration.ts",
     "src/packaged-shell-storage-test-bridge.ts",

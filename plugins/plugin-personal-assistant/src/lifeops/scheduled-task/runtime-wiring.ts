@@ -1,3 +1,4 @@
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 /**
  * Runtime wiring for the ScheduledTask spine.
  *
@@ -17,8 +18,6 @@ import {
   resolveOwnerContactWithFallback,
   resolveOwnerEntityId,
 } from "@elizaos/agent";
-import { getHostExecutionCapabilities } from "@elizaos/app/services/task-host-capabilities";
-import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -131,6 +130,7 @@ import {
   prepareDossierAutomaticFire,
   resolveOwnerDossierActivityAnchor,
 } from "./dossier-activity-runtime.js";
+import { getHostExecutionCapabilities } from "./host-capabilities.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -1368,7 +1368,7 @@ export interface CreateRuntimeRunnerOptions {
   subjectStore?: SubjectStoreView;
   /**
    * Override the host-capability probe. The default reads
-   * `getHostExecutionCapabilities(runtime)` from `@elizaos/app`,
+   * `getHostExecutionCapabilities(runtime)` from this scheduler module,
    * which detects iOS BackgroundRunner / Android FGS / Node desktop. Tests
    * inject a fixed set to exercise substitution behavior.
    */

@@ -8,7 +8,7 @@
  * the UI / CLI calls once the user has copied the code.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import { generatePKCE } from "../../../contracts/index.ts";
 
 const decode = (s: string): string => atob(s);

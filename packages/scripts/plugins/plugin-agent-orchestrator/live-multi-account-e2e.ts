@@ -40,7 +40,7 @@ import { assessCodingAccountReadiness } from "../../../../plugins/plugin-agent-o
 type SaveAccount = typeof import("@elizaos/auth/auth").saveAccount;
 type AccountStoragePolicy = import("@elizaos/auth/auth").AccountStoragePolicy;
 type GetBridge =
-  typeof import("../../../app/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
+  typeof import("@elizaos/auth/accounts").getCodingAgentSelectorBridge;
 let saveAccount: SaveAccount;
 let storagePolicy: AccountStoragePolicy;
 let getCodingAgentSelectorBridge: GetBridge;
@@ -192,9 +192,7 @@ async function main(): Promise<void> {
   const accountStorage = await import("@elizaos/auth/auth");
   saveAccount = accountStorage.saveAccount;
   storagePolicy = accountStorage.createIsolatedAccountStoragePolicy(home);
-  ({ getCodingAgentSelectorBridge } = await import(
-    "../../../app/src/services/coding-account-bridge.ts"
-  ));
+  ({ getCodingAgentSelectorBridge } = await import("@elizaos/auth/accounts"));
 
   const claudeIds = seedClaude(claudeTokens);
   const codexIds = seedCodex(codexBlobs);

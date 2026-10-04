@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
+import { fixtureAgentStatus } from "../fixtures/agent-status";
 
 export interface MockApiServerOptions {
   port?: number;
@@ -533,13 +534,14 @@ export async function startMockApiServer(
     },
   };
 
-  const statusPayload = () => ({
-    state: agentState,
-    agentName,
-    model: "mock-model",
-    startedAt: Date.now() - 60_000,
-    uptime: 60_000,
-  });
+  const statusPayload = () =>
+    fixtureAgentStatus({
+      state: agentState,
+      agentName,
+      model: "mock-model",
+      startedAt: Date.now() - 60_000,
+      uptime: 60_000,
+    });
 
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? "GET";

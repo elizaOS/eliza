@@ -1,3 +1,4 @@
+import { drainAppRoutePluginLoaders } from "@elizaos/host";
 /**
  * Registry-driven app-route, runtime-hook, and pre-ready boot contributors for
  * app startup. This module owns optional package resolution and contributor
@@ -19,14 +20,11 @@ import {
 import { formatErrorWithStack } from "@elizaos/core/protocol";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
+  type AppRoutePluginRegistryEntry,
   isOptionalAppRoutePluginUnavailableError,
+  listAppRoutePluginLoaders,
   OptionalAppRoutePluginUnavailableError,
 } from "@elizaos/host/protocol";
-import {
-  type AppRoutePluginRegistryEntry,
-  drainAppRoutePluginLoaders,
-  listAppRoutePluginLoaders,
-} from "../app-route-plugin-registry.js";
 
 const _require = createRequire(import.meta.url);
 // ---------------------------------------------------------------------------

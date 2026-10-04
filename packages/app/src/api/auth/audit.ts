@@ -19,7 +19,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { RuntimeEnvRecord } from "@elizaos/host/protocol";
-import type { AuthRepository } from "../../services/auth-store";
+import type { AuthRepository } from "../../services/auth-repository";
 import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
 export const AUDIT_LOG_FILENAME = "audit.log";
 export const AUDIT_LOG_ROTATE_FILENAME = "audit.log.1";

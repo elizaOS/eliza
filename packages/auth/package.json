@@ -320,6 +320,13 @@
       "types": "./dist/contracts/crypto.d.ts",
       "import": "./dist/contracts/crypto.js",
       "default": "./dist/contracts/crypto.js"
+    },
+    "./accounts": {
+      "browser": null,
+      "eliza-source": "./src/accounts/index.ts",
+      "types": "./dist/accounts/index.d.ts",
+      "import": "./dist/accounts/index.js",
+      "default": "./dist/accounts/index.js"
     }
   },
   "scripts": {
