@@ -235,3 +235,38 @@ test("missing declared input reports a typed failure without creating output", (
   );
   assert.equal(fs.existsSync(options.output), false);
 });
+
+test("independent modules remain included without becoming app dependencies", (t) => {
+  const { options, generate } = setup(t);
+  options.profile.modules = [
+    { name: "library", source: { root: "consumer", path: "src" } },
+    {
+      name: "updater",
+      source: { root: "consumer", path: "src" },
+      appDependency: false,
+    },
+  ];
+  generate();
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.deepEqual(
+    profile.modules.map(({ name, appDependency }) => ({ name, appDependency })),
+    [
+      { name: "library", appDependency: true },
+      { name: "updater", appDependency: false },
+    ],
+  );
+  for (const value of [null, "false", 0, {}]) {
+    options.profile.modules[1].appDependency = value;
+    assert.throws(generate, /appDependency must be a boolean/);
+    assert.deepEqual(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(options.output, ".eliza-consumer-profile.json"),
+        ),
+      ),
+      profile,
+    );
+  }
+});
