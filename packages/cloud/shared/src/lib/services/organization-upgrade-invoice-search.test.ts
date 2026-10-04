@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import { findOriginalUpgradeInvoiceEvent as find } from "./organization-upgrade-invoice-search";
 
 const observedAt = new Date("2026-10-04T12:00:00Z");
@@ -132,4 +132,32 @@ test("an early match cannot hide a conflicting invoice beyond page one hundred",
   const r = reader(pages);
   await expect(find({ reader: r, originalRequest, observedAt })).rejects.toThrow();
   expect(r.list).toHaveBeenCalledTimes(102);
+});
+
+test("repeated healthy 25-second observations complete without a separate 20-second cutoff", async () => {
+  let elapsed = 0;
+  const clock = spyOn(performance, "now").mockImplementation(() => elapsed);
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      elapsed = 0;
+      let calls = 0;
+      const r = {
+        list: mock(async () => {
+          const index = calls++;
+          elapsed += 500;
+          return page(
+            [event(`evt_page${index}`, "in_original", index === 49 ? "owned-key" : "unrelated")],
+            index < 49,
+          );
+        }),
+      };
+      const result = await find({ reader: r, originalRequest, observedAt });
+      expect(result.origin.invoiceId).toBe("in_original");
+      expect(elapsed).toBe(25000);
+      expect(elapsed).toBeLessThan(60000);
+      expect(r.list).toHaveBeenCalledTimes(50);
+    }
+  } finally {
+    clock.mockRestore();
+  }
 });

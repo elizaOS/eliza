@@ -380,5 +380,123 @@ async function state(commandId: string) {
       expect(replay).toEqual(original);
       expect(mutation).toHaveBeenCalledTimes(1);
     });
+
+    test("failed original-event search releases only its lease and retains started unknown", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      originalKey = "foreign-request-key";
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      await expect(recover(f.identity)).rejects.toThrow();
+      const row = (
+        await db.query(
+          "SELECT status,lease_token,attempt_count,organization_upgrade_dispatch_state AS dispatch FROM billing_subscription_commands WHERE id=$1",
+          [f.identity.commandId],
+        )
+      ).rows[0];
+      expect(row).toEqual({
+        status: "OUTCOME_UNKNOWN",
+        lease_token: null,
+        attempt_count: 2,
+        dispatch: "started",
+      });
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    test("recovery incidents deduplicate and only applied authority resolves them", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      const issue = { ...f.identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" };
+      expect((await record(issue)).recorded).toBe(true);
+      await record(issue);
+      expect((await record({ ...issue, issueCode: null })).resolved).toBe(0);
+      const incidents = await db.query(
+        "SELECT occurrence_count,status,context FROM billing_subscription_incidents WHERE command_id=$1",
+        [f.identity.commandId],
+      );
+      expect(incidents.rows).toHaveLength(1);
+      expect(incidents.rows[0].occurrence_count).toBe(2);
+      expect(incidents.rows[0].status).toBe("open");
+      expect(incidents.rows[0].context).toEqual({
+        owner: "organization_upgrade_recovery",
+        code: "UPGRADE_RECOVERY_UNAVAILABLE",
+      });
+      await expiredLease(f.identity.commandId);
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      expect((await recover(f.identity)).status).toBe("applied");
+      expect((await record({ ...issue, issueCode: null })).resolved).toBe(1);
+      expect((await record(issue)).recorded).toBe(false);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM billing_subscription_incidents WHERE command_id=$1 AND status='open'",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    test("incident ownership rejects foreign tenant and unbounded raw error content", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      await expect(
+        record({ ...f.identity, organizationId: randomUUID(), issueCode: "UPGRADE_UNAVAILABLE" }),
+      ).rejects.toThrow();
+      await expect(
+        record({ ...f.identity, issueCode: "raw provider body must not be stored" }),
+      ).rejects.toThrow();
+    });
+
+    test("maintenance records failure and resolves it after a later paid recovery", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const original = originalKey;
+      originalKey = "unattributed-request";
+      await db.query(
+        "UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second',updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+        [f.identity.commandId],
+      );
+      const { recoverOrganizationUpgrades: run } = await import(
+        "./organization-upgrade-maintenance"
+      );
+      const failed = await run(5);
+      expect(failed.unavailable).toBe(1);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM billing_subscription_incidents WHERE command_id=$1 AND status='open'",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect((await run(5)).inspected).toBe(0);
+      originalKey = original;
+      await db.query(
+        "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+        [f.identity.commandId],
+      );
+      expect((await run(5)).applied).toBe(1);
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.identity.commandId,
+          ])
+        ).rows[0].status,
+      ).toBe("resolved");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
   },
 );
