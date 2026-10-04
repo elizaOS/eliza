@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-import finetune_kokoro_full  # type: ignore  # noqa: E402
+from eliza_training.kokoro import finetune_kokoro_full  # type: ignore  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ def test_cli_default_config_is_sam_full() -> None:
 
 def test_config_has_full_mode_and_correct_thresholds() -> None:
     """The shipped config must declare mode=full + relaxed SpkSim gate."""
-    from _config import load_config  # type: ignore  # noqa: PLC0415
+    from eliza_training.kokoro._config import load_config  # type: ignore  # noqa: PLC0415
 
     cfg = load_config("kokoro_same_full.yaml")
     assert cfg["mode"] == "full"

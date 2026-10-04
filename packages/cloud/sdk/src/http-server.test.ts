@@ -2,8 +2,9 @@
  * Exercises parsed SDK response contracts over real localhost HTTP, including
  * public account access and raw/bodyless protocol behavior without fetch mocks.
  */
+
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createServer } from "node:http";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppDelegationManagementClient } from "./app-delegation.js";
 import { ElizaCloudClient } from "./client.js";
 import { CloudApiClient, ElizaCloudHttpClient } from "./http.js";

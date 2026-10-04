@@ -108,4 +108,4 @@ export {
   type CodingAuthFailureReason,
   classifyAuthFailureReason,
   isTokenExpiryText,
-} from "@elizaos/auth/auth/token-expiry";
+} from "@elizaos/auth/auth";

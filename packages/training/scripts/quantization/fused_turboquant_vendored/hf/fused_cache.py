@@ -35,7 +35,7 @@ from typing import Optional
 import torch
 from transformers import DynamicCache
 
-from quantization.fused_turboquant_vendored.core.quantizer import CompressedTensor, TurboQuantMSE
+from eliza_training.quantization.fused_turboquant_vendored.core.quantizer import CompressedTensor, TurboQuantMSE
 
 logger = logging.getLogger(__name__)
 
@@ -337,7 +337,7 @@ def make_fused_attention_forward(
                 layer_idx,
             )
 
-    from quantization.fused_turboquant_vendored.kernels.triton_attention import fused_qk_scores_rht
+    from eliza_training.quantization.fused_turboquant_vendored.kernels.triton_attention import fused_qk_scores_rht
 
     rht_signs = quantizer.rotation.signs
     centroids = quantizer.quantizer.levels
@@ -436,7 +436,7 @@ def make_fused_attention_forward(
         if q_len == 1:
             compressed = cache.get_compressed_key(layer_idx)
 
-            from quantization.fused_turboquant_vendored.core.hadamard import randomized_hadamard
+            from eliza_training.quantization.fused_turboquant_vendored.core.hadamard import randomized_hadamard
             q_flat = query_states.float().reshape(-1, head_dim)
             q_rot = randomized_hadamard(q_flat, rht_signs)
             q_rot = q_rot.view_as(query_states)

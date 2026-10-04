@@ -25,15 +25,15 @@
  * Worker.
  */
 
+import { appFrontendDeploymentsRepository } from "@elizaos/cloud-shared/db/repositories/app-frontend-deployments";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { appFrontendHostingService } from "@elizaos/cloud-shared/lib/services/app-frontend-hosting";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { managedDomainsService } from "@elizaos/cloud-shared/lib/services/managed-domains";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { safeAnalyticsId } from "@elizaos/cloud-shared/lib/utils/safe-analytics-id";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { appFrontendDeploymentsRepository } from "@/db/repositories/app-frontend-deployments";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
-import { appFrontendHostingService } from "@/lib/services/app-frontend-hosting";
-import { appsService } from "@/lib/services/apps";
-import { managedDomainsService } from "@/lib/services/managed-domains";
-import { logger } from "@/lib/utils/logger";
-import { safeAnalyticsId } from "@/lib/utils/safe-analytics-id";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const SERVE_MARKER = "/hosted-frontend/serve";
 const VISITOR_COOKIE = "eliza_visitor_id";

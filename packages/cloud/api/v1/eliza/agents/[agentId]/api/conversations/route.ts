@@ -1,22 +1,25 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations route traffic with route-local auth expectations.
 
-import type { Context } from "hono";
-import { Hono } from "hono";
 import {
   personalDirectChatRefusalResponse,
   resolveSharedSurfaceTarget,
-} from "@/lib/services/personal-direct-chat-route";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { prewarmResolvedSharedAgentSession } from "@/lib/services/shared-runtime/prewarm-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { prewarmResolvedSharedAgentSession } from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestConversationCreate,
   sharedRestConversationsList,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context } from "hono";
+import { Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
 /**

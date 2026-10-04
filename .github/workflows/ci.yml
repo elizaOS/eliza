@@ -127,7 +127,8 @@ jobs:
           - partition: agent
             filter: ^@elizaos/agent \(packages/agent\)#test$
           - partition: remaining
-            filter: ^(?!@elizaos/agent \(packages/agent\)#test$)
+            # OS verification owns the Linux installer tests.
+            filter: ^(?!@elizaos/agent \(packages/agent\)#test$|@elizaos/linux-installer-plan )
     env:
       TEST_PACKAGE_FILTER: ${{ matrix.filter }}
       PGLITE_WASM_MODE: node
@@ -152,6 +153,43 @@ jobs:
         run: bun run --cwd packages/testing gepa:setup
       - name: Server tests
         run: bun run test:server
+  tests_auth_integration:
+    name: Login browser and PostgreSQL integration
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: login_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      LOGIN_TEST_DATABASE_URL: postgres://postgres:login_test@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          install-protoc: "false"
+          setup-python: "false"
+      - name: Build core dependency graph
+        run: bun run build:core
+      - name: Install browser for login contracts
+        run: bunx playwright install --with-deps chromium
+      - name: Browser and required PostgreSQL contracts
+        run: bun run --cwd packages/auth test:integration
   tests_client:
     name: Tests (client)
     needs: preflight
@@ -175,8 +213,8 @@ jobs:
       - name: Install browser for client integration tests
         run: bunx playwright install --with-deps chromium
       - name: Client tests
-        # The plugin matrix owns the same personal-assistant test command.
-        run: bun run test:client --filter='^(?!@elizaos/plugin-personal-assistant )'
+        # The plugin matrix owns personal-assistant; OS verification owns installers.
+        run: bun run test:client --filter='^(?!@elizaos/(?:plugin-personal-assistant|os|setup|os-usb-installer) )'
   tests_plugins:
     name: Plugin Tests (${{ matrix.shard }}/4)
     needs: preflight
@@ -249,6 +287,7 @@ jobs:
       - quality
       - tests
       - tests_server
+      - tests_auth_integration
       - tests_client
       - tests_plugins
       - preflight
@@ -270,6 +309,7 @@ jobs:
             quality=${{ needs.quality.result }}
             tests=${{ needs.tests.result }}
             tests_server=${{ needs.tests_server.result }}
+            tests_auth_integration=${{ needs.tests_auth_integration.result }}
             tests_client=${{ needs.tests_client.result }}
             tests_plugins=${{ needs.tests_plugins.result }}
             preflight=${{ needs.preflight.result }}

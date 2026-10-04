@@ -24,6 +24,11 @@ import {
   registerSubscriptionAuthProvider,
 } from "./registry.ts";
 
+import type {
+  DiscoveredSubscriptionCredential,
+  SubscriptionAuthProvider,
+} from "./types.ts";
+
 // ── openai-codex: ~/.codex/auth.json (Codex CLI ChatGPT login) ───────────────
 
 /** Shape of `~/.codex/auth.json` (Codex CLI); fields vary by CLI version. */
@@ -123,52 +128,53 @@ function hasCommandOnPath(commandName: string): boolean {
  * registry.
  */
 export function ensureBuiltinSubscriptionAuthProviders(): void {
-  // Any built-in present ⇒ already seeded. `openai-codex` is the sentinel.
-  if (hasSubscriptionAuthProvider("openai-codex")) return;
-
-  registerSubscriptionAuthProvider({
-    id: "openai-codex",
-    detectExternalCredentials: (): DiscoveredSubscriptionCredential | null => {
-      const state = codexCliSubscriptionState();
-      return state === "absent"
-        ? null
-        : {
-            accountId: "codex-cli",
-            label: "Codex CLI",
-            source: "codex-cli",
-            configured: true,
-            valid: state === "valid",
-            expiresAt: null,
-          };
+  const defaults: SubscriptionAuthProvider[] = [
+    {
+      id: "openai-codex",
+      detectExternalCredentials:
+        (): DiscoveredSubscriptionCredential | null => {
+          const state = codexCliSubscriptionState();
+          return state === "absent"
+            ? null
+            : {
+                accountId: "codex-cli",
+                label: "Codex CLI",
+                source: "codex-cli",
+                configured: true,
+                valid: state === "valid",
+                expiresAt: null,
+              };
+        },
     },
-  });
-
-  registerSubscriptionAuthProvider({
-    id: "gemini-cli",
-    detectExternalCredentials: (): DiscoveredSubscriptionCredential => {
-      const detected = hasCommandOnPath("gemini");
-      return {
-        accountId: "gemini-cli",
-        label: "Gemini CLI",
-        source: detected ? "gemini-cli" : null,
-        configured: detected,
-        valid: detected,
+    {
+      id: "gemini-cli",
+      detectExternalCredentials: (): DiscoveredSubscriptionCredential => {
+        const detected = hasCommandOnPath("gemini");
+        return {
+          accountId: "gemini-cli",
+          label: "Gemini CLI",
+          source: detected ? "gemini-cli" : null,
+          configured: detected,
+          valid: detected,
+          expiresAt: null,
+        };
+      },
+    },
+    {
+      id: "deepseek-coding",
+      detectExternalCredentials: (): DiscoveredSubscriptionCredential => ({
+        accountId: "deepseek-coding",
+        label: "DeepSeek Coding Plan",
+        source: "unavailable",
+        configured: false,
+        valid: false,
         expiresAt: null,
-      };
+      }),
     },
-  });
-
-  registerSubscriptionAuthProvider({
-    id: "deepseek-coding",
-    detectExternalCredentials: (): DiscoveredSubscriptionCredential => ({
-      accountId: "deepseek-coding",
-      label: "DeepSeek Coding Plan",
-      source: "unavailable",
-      configured: false,
-      valid: false,
-      expiresAt: null,
-    }),
-  });
+  ];
+  for (const provider of defaults) {
+    if (!hasSubscriptionAuthProvider(provider.id)) {
+      registerSubscriptionAuthProvider(provider);
+    }
+  }
 }
-
-import type { DiscoveredSubscriptionCredential } from "./types.ts";

@@ -16,18 +16,21 @@
  * runtime does, through the owner-scoped proxy middleware registered before
  * every handler here and on each sibling.
  */
-import { type Context, Hono } from "hono";
-import { MAX_MOBILE_PUSH_TOKEN_CHARACTERS } from "@/lib/mobile-push/types";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+
+import { MAX_MOBILE_PUSH_TOKEN_CHARACTERS } from "@elizaos/cloud-shared/lib/mobile-push/types";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   coordinateSharedPushList,
   coordinateSharedPushRegister,
   coordinateSharedPushUnregister,
-} from "@/lib/services/shared-runtime/conversation-coordinator";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestAgentEvents,
   sharedRestAgentStart,
@@ -47,8 +50,9 @@ import {
   sharedRestStreamSettings,
   sharedRestViewNavigate,
   sharedRestViews,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
 import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
 import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
@@ -315,7 +319,7 @@ async function memoriesResponse(
   },
 ): Promise<Response> {
   const { sharedMemoryRestRequest } = await import(
-    "@/lib/services/shared-runtime/shared-memory-rest-adapter"
+    "@elizaos/cloud-shared/lib/services/shared-runtime/shared-memory-rest-adapter"
   );
   const result = await sharedMemoryRestRequest({
     path,

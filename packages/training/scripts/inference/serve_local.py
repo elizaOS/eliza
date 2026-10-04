@@ -29,11 +29,10 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from training.model_registry import get as registry_get  # noqa: E402
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import (  # noqa: E402
+from eliza_training.training.model_registry import get as registry_get  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import (  # noqa: E402
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
@@ -50,7 +49,7 @@ def main() -> int:
     ap.add_argument("--checkpoint", default=None,
                     help="Local checkpoint dir; defaults to the registry hf_id.")
     ap.add_argument("--polarquant", default=None,
-                    help="Path to PolarQuant artifacts dir (sidecar safetensors).")
+                    help="Checkpoint directory saved by the PolarQuant quantizer.")
     ap.add_argument("--turboquant", default=None,
                     help="Path to turboquant.json sidecar (pure-PyTorch turbokv).")
     ap.add_argument("--fused-turboquant", default=None,
@@ -81,7 +80,11 @@ def main() -> int:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    model_path = args.checkpoint or entry.hf_id
+    if args.polarquant and args.checkpoint and Path(args.polarquant).resolve() != Path(args.checkpoint).resolve():
+        ap.error("--polarquant and --checkpoint must name the same saved checkpoint")
+    if args.polarquant and not (Path(args.polarquant) / "config.json").is_file():
+        ap.error("--polarquant requires the saved quantized checkpoint, not an artifact sidecar")
+    model_path = args.polarquant or args.checkpoint or entry.hf_id
     log.info("loading tokenizer from %s", model_path)
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
@@ -98,18 +101,13 @@ def main() -> int:
     log.info("model loaded; baseline peak %.2f GB",
              torch.cuda.max_memory_allocated() / 1024**3)
 
-    if args.polarquant:
-        from quantization.polarquant_apply import apply_sidecar_to_model
-        log.info("applying PolarQuant weights from %s", args.polarquant)
-        apply_sidecar_to_model(model, Path(args.polarquant))
-
     # KV-cache backend selection. Gemma 4 is dense (MQA + windowed-SWA +
     # shared-KV), so the cache is always flat: a TurboQuant/fused-TurboQuant
     # KV cache when a legacy KV recipe is passed, otherwise stock attention.
     past_key_values = None
 
     if args.fused_turboquant:
-        from quantization.fused_turboquant_vendored.hf import (
+        from eliza_training.quantization.fused_turboquant_vendored.hf import (
             patch_model as _ft_patch,
         )
         log.info("loading fused-turboquant config from %s", args.fused_turboquant)
@@ -133,7 +131,7 @@ def main() -> int:
     if args.qjl and past_key_values is not None:
             log.info("applying QJL 1-bit key compression from %s", args.qjl)
             try:
-                from quantization.qjl_apply import attach_qjl_to_cache
+                from eliza_training.quantization.qjl_apply import attach_qjl_to_cache
                 qjl_cfg = json.loads(Path(args.qjl).read_text())
                 past_key_values = attach_qjl_to_cache(
                     model=model, cache=past_key_values, **qjl_cfg,
@@ -179,7 +177,7 @@ def main() -> int:
     if args.entropix:
         from transformers import LogitsProcessorList
 
-        from scripts.inference.entropix_sampler import (
+        from eliza_training.inference.entropix_sampler import (
             EntropixLogitsProcessor,
             EntropixThresholds,
         )

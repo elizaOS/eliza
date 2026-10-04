@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
+from eliza_training.lib.file_integrity import sha256_file
+
 import json
 import os
 import shutil
@@ -37,12 +38,6 @@ def now_iso() -> str:
     return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as file_handle:
-        for block in iter(lambda: file_handle.read(chunk), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def json_write(path: Path, data: Mapping[str, Any]) -> None:

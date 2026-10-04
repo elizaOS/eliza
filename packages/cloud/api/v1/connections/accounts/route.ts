@@ -6,19 +6,19 @@
  * the projection layer never reads token or ciphertext columns into the DTO.
  */
 
-import { Hono } from "hono";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   CONNECTED_ACCOUNT_MODES,
   type ConnectedAccountMode,
   connectedCapabilitiesService,
-} from "@/lib/services/connected-capabilities";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/connected-capabilities";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { parsePaginationParam } from "../../pagination";
 
 const app = new Hono<AppEnv>();

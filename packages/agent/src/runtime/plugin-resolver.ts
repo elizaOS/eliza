@@ -1,4 +1,5 @@
 import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+import { uniquePaths } from "../utils/paths.ts";
 /**
  * Plugin discovery and resolution logic.
  *
@@ -625,19 +626,6 @@ async function ensureStagedPackageDependencies(params: {
 // ---------------------------------------------------------------------------
 // Workspace plugin overrides
 // ---------------------------------------------------------------------------
-
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const candidate of paths) {
-    const resolved = path.resolve(candidate);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      ordered.push(resolved);
-    }
-  }
-  return ordered;
-}
 
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {

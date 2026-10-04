@@ -1,12 +1,7 @@
-/**
- * DTOs mirrored from the Cloud API schema (`CurrentUserDto`, `AgentDetailDto`,
- * the `ApiSuccessEnvelope`/`ApiErrorEnvelope` wrappers, etc.). These must stay in
- * exact sync with the actual API responses — do not add computed or client-only
- * fields here.
- */
+/** Canonical public Cloud transport contracts. Backend-only records stay in cloud-shared. */
 
 export type IsoDateString = string;
-type DateLike = Date | IsoDateString;
+export type DateLike = Date | IsoDateString;
 
 export interface ApiSuccessEnvelope<TData> {
   success: true;
@@ -30,6 +25,36 @@ export interface OrganizationSubscriptionCancellationRequest {
 
 export type OrganizationSubscriptionCancellationResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionCancellationDto>;
+
+/** A next-invoice estimate, not a price lock or authorization token. */
+export interface OrganizationSubscriptionRenewalReviewDto {
+  kind: "renewal_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  interval: "month";
+  intervalCount: 1;
+  baseAmountCents: number;
+  renewalAt: string;
+  nextPeriodEnd: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  startingBalanceCents: number;
+  amountDueCents: number;
+  observedAt: string;
+  expiresAt: string;
+  termsDigest: string;
+}
+export type OrganizationSubscriptionRenewalReviewResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionRenewalReviewDto>;
+export interface OrganizationSubscriptionReviewedUndoRequest
+  extends OrganizationSubscriptionCancellationRequest {
+  expectedRenewalTermsDigest: string;
+}
 
 export interface CurrentUserOrganizationDto {
   id: string;
@@ -274,7 +299,7 @@ export interface NormalizedAgentListItemDto
   activeJob: AgentActiveJobDto | null;
 }
 
-interface AgentAdminDetailsDto {
+export interface AgentAdminDetailsDto {
   nodeId: string | null;
   containerName: string | null;
   internalBridgeUrl: string | null;

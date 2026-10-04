@@ -11,10 +11,13 @@
  * injected by the trusted reverse proxy. Do not expose this endpoint publicly.
  */
 
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

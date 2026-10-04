@@ -17,7 +17,7 @@
  * (fixtures.ts) were authored against it.
  */
 
-import type { TriageClassification } from "@eliza-repo/plugins/plugin-inbox/src/inbox/types.ts";
+import type { TriageClassification } from "@elizaos/plugin-inbox";
 
 export const TRIAGE_CLASSES: readonly TriageClassification[] = [
   "ignore",

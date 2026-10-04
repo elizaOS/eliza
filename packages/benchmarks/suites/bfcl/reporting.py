@@ -12,8 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from suites.bfcl.metrics import MetricsCalculator
-from suites.bfcl.types import (
+from benchmarks.bfcl.metrics import MetricsCalculator
+from benchmarks.bfcl.types import (
     BFCLBenchmarkResults,
     BFCLCategory,
     BFCLConfig,
@@ -88,10 +88,14 @@ class BFCLReporter:
             existing_score = float(existing_score_raw) if existing_score_raw else 0.0
             if results.metrics.overall_score > existing_score:
                 best_results[model_name] = current
-                logger.info(f"New best score for {model_name}: {results.metrics.overall_score:.2%}")
+                logger.info(
+                    f"New best score for {model_name}: {results.metrics.overall_score:.2%}"
+                )
         else:
             best_results[model_name] = current
-            logger.info(f"First result for {model_name}: {results.metrics.overall_score:.2%}")
+            logger.info(
+                f"First result for {model_name}: {results.metrics.overall_score:.2%}"
+            )
 
         # Save updated best results
         with open(self.best_results_file, "w") as f:
@@ -159,7 +163,9 @@ class BFCLReporter:
                 "dataset": results.config.huggingface_dataset,
                 "dataset_revision": results.config.dataset_revision,
                 "require_complete_dataset": results.config.require_complete_dataset,
-                "categories": [c.value for c in results.config.categories] if results.config.categories else None,
+                "categories": [c.value for c in results.config.categories]
+                if results.config.categories
+                else None,
                 "max_tests_per_category": results.config.max_tests_per_category,
             },
             "metrics": {
@@ -277,25 +283,29 @@ class BFCLReporter:
                     f"{cat_metrics.avg_latency_ms:.0f}ms |"
                 )
 
-        lines.extend([
-            "",
-            "## Latency Statistics",
-            "",
-            f"- **Average:** {metrics.avg_latency_ms:.1f}ms",
-            f"- **P50:** {metrics.latency_p50:.1f}ms",
-            f"- **P95:** {metrics.latency_p95:.1f}ms",
-            f"- **P99:** {metrics.latency_p99:.1f}ms",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Latency Statistics",
+                "",
+                f"- **Average:** {metrics.avg_latency_ms:.1f}ms",
+                f"- **P50:** {metrics.latency_p50:.1f}ms",
+                f"- **P95:** {metrics.latency_p95:.1f}ms",
+                f"- **P99:** {metrics.latency_p99:.1f}ms",
+                "",
+            ]
+        )
 
         # Add baseline comparison
         if results.baseline_comparison:
-            lines.extend([
-                "## Baseline Comparison",
-                "",
-                "| Model | Difference |",
-                "|-------|------------|",
-            ])
+            lines.extend(
+                [
+                    "## Baseline Comparison",
+                    "",
+                    "| Model | Difference |",
+                    "|-------|------------|",
+                ]
+            )
             for model, diff in sorted(
                 results.baseline_comparison.items(),
                 key=lambda x: x[1],
@@ -307,12 +317,14 @@ class BFCLReporter:
 
         # Add summary
         if results.summary:
-            lines.extend([
-                "## Summary",
-                "",
-                f"**Status:** {results.summary.get('status', 'unknown')}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "## Summary",
+                    "",
+                    f"**Status:** {results.summary.get('status', 'unknown')}",
+                    "",
+                ]
+            )
 
             findings = results.summary.get("key_findings", [])
             if findings:
@@ -332,12 +344,14 @@ class BFCLReporter:
 
         # Add error analysis
         if metrics.error_counts:
-            lines.extend([
-                "## Error Analysis",
-                "",
-                "| Error Type | Count |",
-                "|------------|-------|",
-            ])
+            lines.extend(
+                [
+                    "## Error Analysis",
+                    "",
+                    "| Error Type | Count |",
+                    "|------------|-------|",
+                ]
+            )
             for error_type, count in sorted(
                 metrics.error_counts.items(),
                 key=lambda x: x[1],
@@ -364,11 +378,15 @@ class BFCLReporter:
         filepath = self.output_dir / filename
 
         if not LEADERBOARD_SCORES:
-            filepath.write_text("# BFCL Leaderboard Comparison\n\nNo comparable reference runs are configured. No rank is assigned.\n")
+            filepath.write_text(
+                "# BFCL Leaderboard Comparison\n\nNo comparable reference runs are configured. No rank is assigned.\n"
+            )
             return str(filepath)
 
         metrics = results.metrics
-        position, closest = self.metrics_calculator.calculate_leaderboard_position(metrics)
+        position, closest = self.metrics_calculator.calculate_leaderboard_position(
+            metrics
+        )
 
         lines = [
             "# BFCL Leaderboard Comparison",
@@ -418,21 +436,25 @@ class BFCLReporter:
                 f"**{metrics.exec_accuracy:.2%}** |"
             )
 
-        lines.extend([
-            "",
-            "## Category Comparison",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Category Comparison",
+                "",
+            ]
+        )
 
         # Add category comparison with GPT-4o as reference
         gpt4o = LEADERBOARD_SCORES.get("gpt-5")
         if gpt4o:
-            lines.extend([
-                "### vs GPT-4o",
-                "",
-                "| Category | ElizaOS | GPT-4o | Difference |",
-                "|----------|---------|--------|------------|",
-            ])
+            lines.extend(
+                [
+                    "### vs GPT-4o",
+                    "",
+                    "| Category | ElizaOS | GPT-4o | Difference |",
+                    "|----------|---------|--------|------------|",
+                ]
+            )
 
             category_score_map = {
                 BFCLCategory.SIMPLE: gpt4o.simple,

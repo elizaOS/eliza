@@ -11,12 +11,12 @@
  * the app lookup and returns 403 — not 404 — on a cross-org app.)
  */
 
-import type { ManagedDomain } from "@/db/schemas/managed-domains";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { type App, appsService } from "@/lib/services/apps";
-import { managedDomainsService } from "@/lib/services/managed-domains";
-import type { AppContext } from "@/types/cloud-worker-env";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import type { ManagedDomain } from "@elizaos/cloud-shared/db/schemas/managed-domains";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { type App, appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { managedDomainsService } from "@elizaos/cloud-shared/lib/services/managed-domains";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 /**
  * Explicit result shapes (instead of inferred literal unions) so `"error" in

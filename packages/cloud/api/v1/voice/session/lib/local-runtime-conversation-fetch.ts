@@ -6,16 +6,16 @@
  */
 
 import {
+  VOICE_CHANNEL_TYPE,
+  VOICE_STREAM_PROTOCOL,
+} from "@elizaos/cloud-shared/lib/voice-session/eliza-sse-bridge";
+import {
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   parseVoiceUiContext,
   REALTIME_VOICE_CLIENT_TRANSPORT,
   type VoiceUiContext,
 } from "@elizaos/core/voice";
-import {
-  VOICE_CHANNEL_TYPE,
-  VOICE_STREAM_PROTOCOL,
-} from "@/lib/voice-session/eliza-sse-bridge";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/;

@@ -45,9 +45,106 @@ export function deletionBillingGuardQueries(migration: string): string[] {
   return guards;
 }
 
-export async function readDeletionBillingProvenance(
-  client: IdentityQueryClient,
+interface DeletionBillingReportClient extends IdentityQueryClient {
+  query(text: string, parameters?: unknown[]): Promise<{ rows: unknown[] }>;
+}
+
+const agentAuthorityFacts = {
+  targetCount: "true",
+  credentialOrganizationMatchCount:
+    "EXISTS (SELECT 1 FROM fixture WHERE fixture.organization_id = a.organization_id)",
+  credentialUserMatchCount:
+    "EXISTS (SELECT 1 FROM fixture WHERE fixture.organization_id = a.organization_id AND fixture.user_id = a.user_id)",
+  missingPreviousStatusCount: "a.deletion_previous_status IS NULL",
+  missingPreviousBillingStatusCount:
+    "a.deletion_previous_billing_status IS NULL",
+  hasDeletionAttemptCount: "a.deletion_attempt_id IS NOT NULL",
+  hasActiveDeleteJobCount:
+    "EXISTS (SELECT 1 FROM jobs j WHERE j.organization_id = a.organization_id AND j.agent_id = a.id::text AND j.type = 'agent_delete' AND j.status IN ('pending', 'in_progress'))",
+  hasCompletedDeleteJobCount:
+    "EXISTS (SELECT 1 FROM jobs j WHERE j.organization_id = a.organization_id AND j.agent_id = a.id::text AND j.type = 'agent_delete' AND j.status = 'completed')",
+  hasFailedDeleteJobCount:
+    "EXISTS (SELECT 1 FROM jobs j WHERE j.organization_id = a.organization_id AND j.agent_id = a.id::text AND j.type = 'agent_delete' AND j.status = 'failed')",
+  hasFundingCount:
+    "EXISTS (SELECT 1 FROM agent_compute_funding f WHERE f.organization_id = a.organization_id AND f.agent_id = a.id)",
+  hasProviderStoppedFundingReceiptCount:
+    "EXISTS (SELECT 1 FROM agent_compute_funding f WHERE f.organization_id = a.organization_id AND f.agent_id = a.id AND f.provider_stopped_at IS NOT NULL AND f.provider_stop_receipt IS NOT NULL)",
+  hasProviderConfirmedStopIntentCount:
+    "EXISTS (SELECT 1 FROM agent_compute_stop_intents i WHERE i.organization_id = a.organization_id AND i.agent_id = a.id AND i.status = 'provider_confirmed' AND i.provider_confirmed_at IS NOT NULL)",
+  hasDockerLocatorCount:
+    "NULLIF(btrim(a.node_id), '') IS NOT NULL AND NULLIF(btrim(a.container_name), '') IS NOT NULL",
+} as const;
+
+/** Classify exact guarded subjects without IDs. Record presence does not authorize repair. */
+async function readAgentAuthorityFacts(
+  client: DeletionBillingReportClient,
   migration: string,
+  fixtureApiKey: string,
+) {
+  const guard = deletionBillingGuardQueries(migration)[1];
+  const prefix = "SELECT count(*)::integer AS unresolved_count";
+  if (!guard.startsWith(prefix)) {
+    throw new DeletionBillingProvenanceReportError(
+      "migration_guard_contract_changed",
+    );
+  }
+  const selector = guard.replace(prefix, "SELECT a.*").replace(/;\s*$/, "");
+  const hash = createHash("sha256").update(fixtureApiKey).digest("hex");
+  const { rows } = await client.query(
+    `
+    WITH unresolved_agents AS (${selector}), fixture AS (
+      SELECT k.organization_id, k.user_id FROM api_keys k
+      JOIN users u ON u.id = k.user_id AND u.organization_id = k.organization_id
+      WHERE k.key_hash = $1 AND k.is_active = true AND k.deleted_at IS NULL
+        AND (k.expires_at IS NULL OR k.expires_at > CURRENT_TIMESTAMP)
+        AND u.is_active = true AND u.deleted_at IS NULL
+    )
+    SELECT (SELECT count(*)::integer FROM fixture) AS fixture_count,
+      ${Object.entries(agentAuthorityFacts)
+        .map(
+          ([key, predicate]) =>
+            `count(*) FILTER (WHERE ${predicate})::integer AS "${key}"`,
+        )
+        .join(",\n      ")}
+    FROM unresolved_agents a
+  `,
+    [hash],
+  );
+  const row = rows[0];
+  if (
+    rows.length !== 1 ||
+    !row ||
+    typeof row !== "object" ||
+    !("fixture_count" in row) ||
+    row.fixture_count !== 1
+  ) {
+    throw new DeletionBillingProvenanceReportError(
+      "fixture_identity_unavailable",
+    );
+  }
+  const facts = {} as Record<keyof typeof agentAuthorityFacts, number>;
+  for (const key of Object.keys(agentAuthorityFacts) as Array<
+    keyof typeof agentAuthorityFacts
+  >) {
+    const count = Reflect.get(row, key);
+    if (
+      typeof count !== "number" ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    ) {
+      throw new DeletionBillingProvenanceReportError(
+        "invalid_guard_authority_count",
+      );
+    }
+    facts[key] = count;
+  }
+  return facts;
+}
+
+export async function readDeletionBillingProvenance(
+  client: DeletionBillingReportClient,
+  migration: string,
+  options?: { fixtureApiKey: string },
 ) {
   const queries = deletionBillingGuardQueries(migration);
   await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -78,6 +175,15 @@ export async function readDeletionBillingProvenance(
       databaseIdentity: identity,
       unresolvedContainerHistoryCount: counts[0],
       unresolvedAgentProvenanceCount: counts[1],
+      ...(options
+        ? {
+            agentAuthorityFacts: await readAgentAuthorityFacts(
+              client,
+              migration,
+              options.fixtureApiKey,
+            ),
+          }
+        : {}),
     };
   } finally {
     await client.query("ROLLBACK");
@@ -105,7 +211,19 @@ if (import.meta.main) {
     );
     client = await createRuntimePgClient(process.env.DATABASE_URL);
     await client.connect();
-    const receipt = await readDeletionBillingProvenance(client, migration);
+    const includeAuthority =
+      process.env.ELIZA_DELETION_BILLING_AUTHORITY_REPORT === "1";
+    const fixtureApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
+    if (includeAuthority && !fixtureApiKey) {
+      throw new DeletionBillingProvenanceReportError(
+        "fixture_identity_required",
+      );
+    }
+    const receipt = await readDeletionBillingProvenance(
+      client,
+      migration,
+      includeAuthority && fixtureApiKey ? { fixtureApiKey } : undefined,
+    );
     const json = `${JSON.stringify({ ...receipt, sourceSha: process.env.GITHUB_SHA })}\n`;
     const output = testOutputPath(
       "issue-review-cloud",
