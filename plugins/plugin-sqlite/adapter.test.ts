@@ -585,6 +585,9 @@ describe("durable SQLite agent adapter", () => {
   it("restores document permissions and commits only one concurrent revision", async () => {
     const adapter = await open();
     const document = memory("private original");
+    await adapter.createRooms([
+      { id: roomId, agentId, source: "test", type: ChannelType.GROUP },
+    ]);
     await adapter.createRoomParticipants([entityId], roomId);
     const documentMetadata = {
       type: MemoryType.DOCUMENT,
@@ -1317,6 +1320,71 @@ it("keeps another agent's worlds out of listing, updates, and metadata swaps", a
     agentId: otherAgentId,
     name: "secret",
   });
+});
+
+it("keeps another agent's rooms out of lookup and world deletion", async () => {
+  const adapter = await open();
+  const worldId = id();
+  const ownedRoom = id();
+  const unscopedRoom = id();
+  const foreignRoom = id();
+  const otherAgentId = id();
+  await adapter.createWorlds([{ id: worldId, name: "Shared", agentId }]);
+  await adapter.createRooms([
+    {
+      id: ownedRoom,
+      agentId,
+      worldId,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "owned",
+    },
+    {
+      id: unscopedRoom,
+      worldId,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "unscoped",
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("rooms", foreignRoom, {
+    id: foreignRoom,
+    agentId: otherAgentId,
+    worldId,
+    source: "test",
+    type: ChannelType.GROUP,
+    name: "foreign",
+  });
+  await adapter.createRoomParticipants([entityId], ownedRoom);
+  await adapter.createRoomParticipants([entityId], unscopedRoom);
+  await storage.set("participants", id(), {
+    id: id(),
+    entityId,
+    roomId: foreignRoom,
+  });
+
+  const visible = [ownedRoom, unscopedRoom].sort();
+  expect(
+    (await adapter.getRoomsByIds([foreignRoom, ownedRoom, unscopedRoom]))
+      .map((room) => room.id)
+      .sort(),
+  ).toEqual(visible);
+  expect(
+    (await adapter.getRoomsByWorlds([worldId])).map((room) => room.id).sort(),
+  ).toEqual(visible);
+  expect((await adapter.getRoomsForParticipants([entityId])).sort()).toEqual(
+    visible,
+  );
+
+  await adapter.deleteRoomsByWorldIds([worldId]);
+  expect(await storage.get("rooms", foreignRoom)).toMatchObject({
+    id: foreignRoom,
+    agentId: otherAgentId,
+    name: "foreign",
+  });
+  expect(await storage.get("rooms", ownedRoom)).toBeNull();
+  expect(await storage.get("rooms", unscopedRoom)).toBeNull();
 });
 
 const LOWER_PAIRING_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;

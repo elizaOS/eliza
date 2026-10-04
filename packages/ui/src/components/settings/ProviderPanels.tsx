@@ -10,7 +10,8 @@ import type {
   SubscriptionProviderSelectionId,
 } from "@elizaos/host/protocol";
 import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
-import { type ComponentType, type ReactNode, useState } from "react";
+import type { ComponentType, ReactNode } from "react";
+import { useState } from "react";
 import type { SUBSCRIPTION_PROVIDER_SELECTIONS } from "../../providers";
 import { useAppSelector } from "../../state/app-store";
 import { openExternalUrl } from "../../utils/openExternalUrl";
@@ -21,7 +22,8 @@ import { Button } from "../ui/button";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
-import { type ServingAxes, servingProviderLabel } from "./resolveServingAxes";
+import type { ServingAxes } from "./resolveServingAxes";
+import { servingProviderLabel } from "./resolveServingAxes";
 import { SettingsActionButton } from "./settings-agent-rows";
 import type { PluginInfo } from "./useProviderEntries";
 
