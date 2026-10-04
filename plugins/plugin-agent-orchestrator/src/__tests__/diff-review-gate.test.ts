@@ -410,6 +410,11 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["chart/values.yaml", "  tokenUrl: https://auth.example.test/token"],
     ["chart/values.yaml", "  passwordFile: /run/secrets/db"],
     ["chart/values.yaml", "  password: null"],
+    ["chart/values.yaml", "  password: null # supplied separately"],
+    [
+      "k8s/deployment.yaml",
+      "automountServiceAccountToken: false # disable automatic mounting",
+    ],
     ["chart/values.yaml", "  secret: |"],
     ["chart/values.yaml", "automountServiceAccountToken: false"],
     ["chart/values.yaml", "max_tokens: 4096"],

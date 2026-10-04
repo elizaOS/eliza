@@ -570,7 +570,9 @@ function hasSensitiveYamlScalar(line: string): boolean {
 
 function isLiteralYamlScalar(value: string): boolean {
   if (/^[|>&*!{[$~#]/.test(value)) return false;
-  return !/^(?:null|true|false|yes|no|on|off)$/i.test(value);
+  return !/^(?:null|true|false|yes|no|on|off)$/i.test(
+    value.replace(/\s+#.*$/, "").trimEnd(),
+  );
 }
 
 /**
