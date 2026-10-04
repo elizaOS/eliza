@@ -34,7 +34,7 @@ import org.robolectric.annotation.Config;
 
 /** Executes the production receiver in Android's host framework, without a device/WebView/Google send. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35, application = android.app.Application.class)
+@Config(sdk = 36, application = android.app.Application.class)
 public class ElizaReminderMessagingServiceTest {
     private static final String A = "11111111-1111-4111-8111-111111111111";
     private static final String B = "22222222-2222-4222-8222-222222222222";
@@ -57,6 +57,16 @@ public class ElizaReminderMessagingServiceTest {
             new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(context.getPackageName()), activity
         );
     }
+    private StatusBarNotification[] reminderChildren() {
+        return java.util.Arrays.stream(manager.getActiveNotifications())
+            .filter(n -> n.getTag() != null && n.getTag().startsWith("eliza.reminder:"))
+            .toArray(StatusBarNotification[]::new);
+    }
+    private Notification summary(String channel) {
+        return java.util.Arrays.stream(manager.getActiveNotifications())
+            .filter(n -> ("eliza.reminder.summary:" + channel).equals(n.getTag()))
+            .findFirst().map(StatusBarNotification::getNotification).orElse(null);
+    }
     private ElizaReminderMessagingService receiver() {
         return Robolectric.buildService(ElizaReminderMessagingService.class).create().get();
     }
@@ -78,7 +88,7 @@ public class ElizaReminderMessagingServiceTest {
         ElizaReminderMessagingService service = receiver();
         service.onMessageReceived(message(data(A), "google-a"));
         service.onMessageReceived(message(data(B), "google-b"));
-        StatusBarNotification[] delivered = manager.getActiveNotifications();
+        StatusBarNotification[] delivered = reminderChildren();
         assertEquals(2, delivered.length);
         assertNotEquals(delivered[0].getTag(), delivered[1].getTag());
         for (StatusBarNotification row : delivered) {
@@ -99,7 +109,7 @@ public class ElizaReminderMessagingServiceTest {
         receiver().onMessageReceived(message(data(A), "google-first"));
         manager.cancelAll();
         receiver().onMessageReceived(message(data(A), "google-redelivery"));
-        assertEquals(0, manager.getActiveNotifications().length);
+        assertEquals(0, reminderChildren().length);
         assertTrue(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).getLong(A, 0) > 0);
     }
     @Test public void receiptsCoverTheEntireFcmLifetimeThenExpire() {
@@ -108,11 +118,11 @@ public class ElizaReminderMessagingServiceTest {
         context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).edit()
             .putLong(A, System.currentTimeMillis() - TimeUnit.DAYS.toMillis(28) + 60_000).commit();
         receiver().onMessageReceived(message(data(A), "still-live"));
-        assertEquals(0, manager.getActiveNotifications().length);
+        assertEquals(0, reminderChildren().length);
         context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).edit()
             .putLong(A, System.currentTimeMillis() - TimeUnit.DAYS.toMillis(28) - 1).commit();
         receiver().onMessageReceived(message(data(A), "new-after-retention"));
-        assertEquals(1, manager.getActiveNotifications().length);
+        assertEquals(1, reminderChildren().length);
     }
     @Test public void expiredReceiptsArePrunedWithoutARandomCountEviction() {
         long now = System.currentTimeMillis();
@@ -122,7 +132,8 @@ public class ElizaReminderMessagingServiceTest {
         edit.putLong(B, now);
         edit.commit();
         receiver().onMessageReceived(message(data(A), "current"));
-        assertEquals(2, prefs.getAll().size());
+        assertEquals(2L, prefs.getAll().values().stream().filter(value -> value instanceof Long).count());
+        assertTrue(prefs.getAll().get("tap:" + A) instanceof String);
         assertTrue(prefs.contains(B));
         assertTrue(prefs.contains(A));
     }
@@ -131,15 +142,15 @@ public class ElizaReminderMessagingServiceTest {
         ElizaReminderMessagingService service = receiver();
         service.onMessageReceived(message(data(A), "google-first"));
         service.onMessageReceived(message(data(A), "google-repeat"));
-        assertEquals(1, manager.getActiveNotifications().length);
-        assertTrue((manager.getActiveNotifications()[0].getNotification().flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0);
+        assertEquals(1, reminderChildren().length);
+        assertTrue((reminderChildren()[0].getNotification().flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0);
     }
     @Test public void coldChatTapSurvivesBridgeReplacementThroughTheExistingUrlBuffer() {
         Map<String, String> data = data(A); data.put("deepLink", "/chat");
         data.put("conversationId", B); data.put("messageId", A);
         data.put("voice", "1"); data.put("action", "send");
         receiver().onMessageReceived(message(data, "cold-launch"));
-        Intent tap = shadowOf(manager.getActiveNotifications()[0].getNotification().contentIntent).getSavedIntent();
+        Intent tap = shadowOf(reminderChildren()[0].getNotification().contentIntent).getSavedIntent();
         assertEquals(Intent.ACTION_VIEW, tap.getAction());
         assertEquals("elizaos", tap.getData().getScheme());
         assertEquals("chat", tap.getData().getHost());
@@ -160,11 +171,11 @@ public class ElizaReminderMessagingServiceTest {
     @Test public void deniedNotificationPermissionDoesNotPostOrConsumeReceipt() {
         shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.POST_NOTIFICATIONS);
         receiver().onMessageReceived(message(data(A), "denied"));
-        assertEquals(0, manager.getActiveNotifications().length);
+        assertEquals(0, reminderChildren().length);
         assertFalse(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
         shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         receiver().onMessageReceived(message(data(A), "granted"));
-        assertEquals(1, manager.getActiveNotifications().length);
+        assertEquals(1, reminderChildren().length);
     }
     @Test public void channelsPreserveSystemDndPolicy() {
         Map<String, String> data = data(A); data.put("priority", "urgent");
@@ -174,13 +185,13 @@ public class ElizaReminderMessagingServiceTest {
     }
     @Test public void normalCalendarReminderKeepsDefaultTier() {
         receiver().onMessageReceived(message(data(A), "normal-calendar"));
-        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_updates", reminderChildren()[0].getNotification().getChannelId());
         assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel("eliza_updates").getImportance());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
-    @Test public void highOccurrenceReminderUsesExistingHeadsUpTierWithoutBypassingDnd() {
-        Map<String, String> high = data(A); high.put("priority", "high");
-        receiver().onMessageReceived(message(high, "high-alert"));
+    @Test public void highOccurrenceUsesExistingHeadsUpTierWithoutBypassingDnd() {
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "high-alert"));
         NotificationChannel channel = manager.getNotificationChannel("eliza_notifications");
         assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.getImportance());
         assertFalse(channel.canBypassDnd());
@@ -188,13 +199,13 @@ public class ElizaReminderMessagingServiceTest {
     @Test public void explicitLowReminderStaysQuiet() {
         Map<String, String> quiet = data(A); quiet.put("priority", "low");
         receiver().onMessageReceived(message(quiet, "quiet"));
-        assertEquals("eliza_quiet", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_quiet", reminderChildren()[0].getNotification().getChannelId());
         assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel("eliza_quiet").getImportance());
     }
     @Test public void existingQuietUpdatesChoiceIsPreserved() {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Quiet", NotificationManager.IMPORTANCE_LOW));
         receiver().onMessageReceived(message(data(A), "user-quiet"));
-        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_updates", reminderChildren()[0].getNotification().getChannelId());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
     @Test @Config(sdk = {26, 29}) public void legacyDefaultImportanceCustomSoundIsPreserved() {
@@ -204,7 +215,7 @@ public class ElizaReminderMessagingServiceTest {
         manager.createNotificationChannel(updates);
         Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
         receiver().onMessageReceived(message(occurrence, "legacy-sound"));
-        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_updates", reminderChildren()[0].getNotification().getChannelId());
         assertEquals(sound, manager.getNotificationChannel("eliza_updates").getSound());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
@@ -218,21 +229,21 @@ public class ElizaReminderMessagingServiceTest {
     @Test public void mutedChannelDoesNotPostOrConsumeReceipt() {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Muted", NotificationManager.IMPORTANCE_NONE));
         receiver().onMessageReceived(message(data(A), "muted"));
-        assertEquals(0, manager.getActiveNotifications().length);
+        assertEquals(0, reminderChildren().length);
         assertFalse(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
     }
     @Test public void existingQuietHighTierIsPreservedForOccurrenceAlerts() {
         manager.createNotificationChannel(new NotificationChannel("eliza_notifications", "Quiet", NotificationManager.IMPORTANCE_LOW));
         Map<String, String> high = data(A); high.put("priority", "high");
         receiver().onMessageReceived(message(high, "quiet-high"));
-        assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_notifications", reminderChildren()[0].getNotification().getChannelId());
         assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel("eliza_notifications").getImportance());
     }
     @Test public void occurrenceHighPreservesLegacyQuietUpdates() {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Quiet", NotificationManager.IMPORTANCE_LOW));
         Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
         receiver().onMessageReceived(message(occurrence, "occurrence-quiet"));
-        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_updates", reminderChildren()[0].getNotification().getChannelId());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
     @Test public void occurrenceHighPreservesLegacyMutedUpdatesWithoutReceipt() {
@@ -246,13 +257,13 @@ public class ElizaReminderMessagingServiceTest {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT));
         Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
         receiver().onMessageReceived(message(occurrence, "occurrence-default"));
-        assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_notifications", reminderChildren()[0].getNotification().getChannelId());
     }
     @Test public void calendarHighDoesNotInheritOccurrenceLegacyChoice() {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Quiet", NotificationManager.IMPORTANCE_LOW));
         Map<String, String> calendar = data(A); calendar.put("priority", "high"); calendar.put("ownerType", "calendar_event");
         receiver().onMessageReceived(message(calendar, "calendar-high"));
-        assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_notifications", reminderChildren()[0].getNotification().getChannelId());
     }
     @Test public void occurrenceAlertPreservesRestrictiveVisibility() {
         NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
@@ -260,7 +271,7 @@ public class ElizaReminderMessagingServiceTest {
         manager.createNotificationChannel(updates);
         Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
         receiver().onMessageReceived(message(occurrence, "private-occurrence"));
-        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_updates", reminderChildren()[0].getNotification().getChannelId());
         assertEquals(Notification.VISIBILITY_PRIVATE, manager.getNotificationChannel("eliza_updates").getLockscreenVisibility());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
@@ -272,7 +283,7 @@ public class ElizaReminderMessagingServiceTest {
         manager.createNotificationChannel(updates);
         Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
         receiver().onMessageReceived(message(occurrence, "grouped-occurrence"));
-        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("eliza_updates", reminderChildren()[0].getNotification().getChannelId());
         assertEquals("reminders", manager.getNotificationChannel("eliza_updates").getGroup());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
@@ -292,8 +303,139 @@ public class ElizaReminderMessagingServiceTest {
         manager.createNotificationChannelGroup(group);
         assertFalse(manager.getNotificationChannelGroup("muted-reminders").isBlocked());
         receiver().onMessageReceived(message(occurrence, "unblocked-group"));
-        assertEquals(1, manager.getActiveNotifications().length);
+        assertEquals(1, reminderChildren().length);
         assertTrue(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
+    }
+    @Test public void firstAndAccumulatedChildrenHaveRealSummaryWithoutAbsorbingLegacyRows() {
+        manager.notify("eliza.reminder:33333333-3333-4333-8333-333333333333", 0,
+            new android.app.Notification.Builder(context, "eliza_updates").setContentTitle("Legacy").build());
+        receiver().onMessageReceived(message(data(A), "first"));
+        receiver().onMessageReceived(message(data(B), "second"));
+        Notification group = summary("eliza_updates");
+        assertNotNull(group);
+        assertEquals("Reminders", group.extras.getString(Notification.EXTRA_TITLE));
+        assertEquals("eliza.reminders.channel:eliza_updates", group.getGroup());
+        assertTrue((group.flags & Notification.FLAG_GROUP_SUMMARY) != 0);
+        assertEquals(Notification.GROUP_ALERT_CHILDREN, group.getGroupAlertBehavior());
+        assertEquals(2, group.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES).length);
+        for (StatusBarNotification child : reminderChildren()) {
+            if (child.getTag().endsWith(A) || child.getTag().endsWith(B)) {
+                assertEquals(group.getGroup(), child.getNotification().getGroup());
+                assertEquals(Notification.GROUP_ALERT_CHILDREN, child.getNotification().getGroupAlertBehavior());
+            }
+        }
+    }
+    @Test public void ownDismissAndLastRemovalRetireSummaryButPreserveReplayReceipt() {
+        receiver().onMessageReceived(message(data(A), "first"));
+        receiver().onMessageReceived(message(data(B), "second"));
+        for (String id : new String[]{A, B}) {
+            Notification child = java.util.Arrays.stream(reminderChildren()).filter(n -> n.getTag().endsWith(id))
+                .findFirst().get().getNotification();
+            Intent deleted = shadowOf(child.deleteIntent).getSavedIntent();
+            new ReminderNotificationDismissReceiver().onReceive(context, deleted);
+        }
+        assertEquals(0, reminderChildren().length);
+        assertNull(summary("eliza_updates"));
+        assertTrue(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).getLong(A, 0) > 0);
+        receiver().onMessageReceived(message(data(A), "replay"));
+        assertEquals(0, manager.getActiveNotifications().length);
+    }
+    @Test public void canonicalChatTapRetiresChildOnlyWithOriginalTokenAndUri() {
+        Map<String, String> current = data(A); current.put("deepLink", "/chat"); current.put("conversationId", B); current.put("messageId", A);
+        receiver().onMessageReceived(message(current, "chat-tap"));
+        Intent tap = shadowOf(reminderChildren()[0].getNotification().contentIntent).getSavedIntent();
+        assertEquals(Intent.ACTION_VIEW, tap.getAction());
+        Intent spoof = new Intent(tap);
+        spoof.removeExtra("elizaReminderTapToken");
+        ElizaReminderMessagingService.onReminderOpened(context, spoof);
+        assertEquals(1, reminderChildren().length);
+        Intent wrongUri = new Intent(tap).setData(tap.getData().buildUpon().appendQueryParameter("voice", "1").build());
+        ElizaReminderMessagingService.onReminderOpened(context, wrongUri);
+        assertEquals(1, reminderChildren().length);
+        DeepLinkBufferPlugin.captureIntent(context, tap);
+        ElizaReminderMessagingService.onReminderOpened(context, tap);
+        assertEquals(0, reminderChildren().length);
+        assertNull(summary("eliza_updates"));
+        assertEquals(tap.getData().toString(), context.getSharedPreferences("eliza_deep_link_buffer", Context.MODE_PRIVATE).getString("pending_url", null));
+    }
+    @Test public void deferredPostAndCancellationSnapshotsDoNotLosePeersOrResurrectSummary() {
+        receiver().onMessageReceived(message(data(A), "pending-first"));
+        Notification first = reminderChildren()[0].getNotification();
+        // Control a snapshot gap using the existing framework fake; no delete callback.
+        // The accepted post is still in the native transient pending overlay.
+        manager.cancelAll();
+        receiver().onMessageReceived(message(data(B), "pending-second"));
+        Notification second = reminderChildren()[0].getNotification();
+        assertEquals(2, summary("eliza_updates").extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES).length);
+        manager.notify("eliza.reminder:" + A, 0, first); // NMS exposes prior accepted child.
+        new ReminderNotificationDismissReceiver().onReceive(context, shadowOf(first.deleteIntent).getSavedIntent());
+        manager.notify("eliza.reminder:" + A, 0, first); // Report stale cancel-pending snapshot.
+        new ReminderNotificationDismissReceiver().onReceive(context, shadowOf(second.deleteIntent).getSavedIntent());
+        assertNull(summary("eliza_updates")); // Retired private token prevents resurrection.
+        manager.cancel("eliza.reminder:" + A, 0); // NMS finishes queued cancellation.
+        assertEquals(0, manager.getActiveNotifications().length);
+    }
+    @Test public void summaryLaunchIsGeneralAndDismissesOnlyItsOwnGroup() {
+        receiver().onMessageReceived(message(data(A), "summary-first"));
+        Notification grouped = summary("eliza_updates");
+        Intent open = shadowOf(grouped.contentIntent).getSavedIntent();
+        assertFalse(open.hasExtra("notificationId")); assertFalse(open.hasExtra("deepLink"));
+        assertFalse((grouped.flags & Notification.FLAG_AUTO_CANCEL) != 0);
+        Map<String, String> high = data(B); high.put("priority", "high");
+        receiver().onMessageReceived(message(high, "other-channel"));
+        new ReminderNotificationDismissReceiver().onReceive(context, shadowOf(grouped.deleteIntent).getSavedIntent());
+        assertNull(summary("eliza_updates"));
+        assertNotNull(summary("eliza_notifications"));
+        assertEquals(1, reminderChildren().length);
+    }
+    @Test public void tokenPruningRetainsAcceptedChildrenButRemovesExpiredOrCorruptNamespaces() {
+        receiver().onMessageReceived(message(data(A), "accepted"));
+        android.content.SharedPreferences prefs = context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE);
+        String token = prefs.getString("tap:" + A, null);
+        String expired = "33333333-3333-4333-8333-333333333333";
+        prefs.edit().putLong(expired, 1L).putString("tap:" + expired, B).putString("tap:bad", A).putLong("tap:" + B, 1L).putString("corrupt", "bad").commit();
+        receiver().onMessageReceived(message(data(B), "fresh"));
+        assertEquals(token, prefs.getString("tap:" + A, null));
+        assertFalse(prefs.contains(expired)); assertFalse(prefs.contains("tap:" + expired)); assertFalse(prefs.contains("tap:bad")); assertFalse(prefs.contains("corrupt"));
+    }
+    @Test public void declaredBackendGroupReplacesOnlyItsPriorCanonicalChildAndExactTap() {
+        Map<String, String> first = data(A); first.put("groupKey", "reminder:occurrence:owned");
+        receiver().onMessageReceived(message(first, "first-grouped"));
+        Map<String, String> next = data(B); next.put("groupKey", "reminder:occurrence:owned"); next.put("deepLink", "/chat"); next.put("messageId", B); next.put("conversationId", A); next.put("body", "Newest reminder body");
+        assertTrue(ElizaReminderMessagingService.projectReminder(context, next, "foreground-newest"));
+        assertEquals(1, reminderChildren().length);
+        assertEquals("eliza.reminder:" + B, reminderChildren()[0].getTag());
+        Intent tap = shadowOf(reminderChildren()[0].getNotification().contentIntent).getSavedIntent();
+        assertEquals(B, tap.getStringExtra("notificationId")); assertEquals(B, tap.getData().getQueryParameter("messageId"));
+        android.content.SharedPreferences prefs = context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE);
+        assertTrue(prefs.getLong(A, 0) > 0); assertFalse(prefs.contains("tap:" + A));
+        receiver().onMessageReceived(message(first, "old-group-replay"));
+        assertEquals("eliza.reminder:" + B, reminderChildren()[0].getTag());
+    }
+    @Test public void distinctBackendGroupsDoNotCoalesceAndInvalidKeysAreRejected() {
+        Map<String, String> first = data(A); first.put("groupKey", "first");
+        Map<String, String> second = data(B); second.put("groupKey", "second");
+        receiver().onMessageReceived(message(first, "first")); receiver().onMessageReceived(message(second, "second"));
+        assertEquals(2, reminderChildren().length);
+        for (String invalid : new String[]{"", "bad\nkey", new String(new char[513]).replace('\0', 'x')}) {
+            Map<String, String> rejected = data("33333333-3333-4333-8333-333333333333"); rejected.put("groupKey", invalid);
+            assertFalse(ElizaReminderMessagingService.projectReminder(context, rejected, "rejected"));
+        }
+        assertEquals(2, reminderChildren().length);
+    }
+    @Test public void mutedLegacyChoiceCreatesNeitherChildNorSummary() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Muted", NotificationManager.IMPORTANCE_NONE));
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        assertFalse(ElizaReminderMessagingService.projectReminder(context, occurrence, "muted"));
+        assertEquals(0, manager.getActiveNotifications().length);
+    }
+    @Test public void foregroundAndFcmShareCanonicalIdentityAndReceipt() {
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        assertTrue(ElizaReminderMessagingService.projectReminder(context, occurrence, "foreground"));
+        receiver().onMessageReceived(message(occurrence, "fcm-replay"));
+        assertEquals(1, reminderChildren().length);
+        assertNotNull(summary("eliza_notifications"));
+        assertEquals(2, manager.getActiveNotifications().length);
     }
     @Test public void malformedRequiredFieldsNeverProject() {
         for (String field : new String[]{"notificationId", "title", "body", "priority", "category"}) {
@@ -304,7 +446,7 @@ public class ElizaReminderMessagingServiceTest {
             Map<String, String> malformed = data(A); malformed.put(field, "");
             receiver().onMessageReceived(message(malformed, field));
         }
-        assertEquals(0, manager.getActiveNotifications().length);
+        assertEquals(0, reminderChildren().length);
     }
     @Test public void payloadCannotSelectExternalIntentComponentsOrActions() {
         Map<String, String> data = data(A);
@@ -312,7 +454,7 @@ public class ElizaReminderMessagingServiceTest {
         data.put("component", "malicious.external.Activity");
         data.put("action", Intent.ACTION_VIEW);
         receiver().onMessageReceived(message(data, "safe-app-tap"));
-        Intent tap = shadowOf(manager.getActiveNotifications()[0].getNotification().contentIntent).getSavedIntent();
+        Intent tap = shadowOf(reminderChildren()[0].getNotification().contentIntent).getSavedIntent();
         assertEquals(context.getPackageName(), tap.getComponent().getPackageName());
         assertNotEquals(Intent.ACTION_VIEW, tap.getAction());
         assertNull(tap.getData());
@@ -322,7 +464,7 @@ public class ElizaReminderMessagingServiceTest {
         Map<String, String> legacy = new HashMap<>(); legacy.put("kind", "intent.session.start");
         RemoteMessage message = message(legacy, "generic-data");
         receiver().onMessageReceived(message);
-        assertEquals(0, manager.getActiveNotifications().length);
+        assertEquals(0, reminderChildren().length);
         assertSame(message, PushNotificationsPlugin.lastMessage);
         assertEquals(MessagingService.class, ElizaReminderMessagingService.class.getMethod("onNewToken", String.class).getDeclaringClass());
     }

@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowWebView;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = 36)
 public class PushPluginHeaderTest {
     @Before public void availableWebView() {
         PackageInfo info = new PackageInfo();
@@ -55,6 +55,7 @@ public class PushPluginHeaderTest {
         LateActivity activity = Robolectric.buildActivity(LateActivity.class).create().get();
         assertFalse(activity.initialHeader.contains("getReminderDataCapabilities"));
         assertFalse(activity.initialHeader.contains("resolveReminderChannel"));
+        assertFalse(activity.initialHeader.contains("presentReminderNotification"));
         assertEquals(SafePushNotificationsPlugin.class,
             activity.getBridge().getPlugin("PushNotifications").getPluginClass());
     }
@@ -64,6 +65,7 @@ public class PushPluginHeaderTest {
             activity.getBridge().getPlugin("PushNotifications").getPluginClass());
         assertTrue(activity.initialHeader.contains("getReminderDataCapabilities"));
         assertTrue(activity.initialHeader.contains("resolveReminderChannel"));
+        assertTrue(activity.initialHeader.contains("presentReminderNotification"));
         assertTrue(activity.initialHeader.contains("checkPermissions"));
         assertTrue(activity.initialHeader.contains("register"));
         assertTrue(activity.initialHeader.contains("addListener"));
