@@ -4,6 +4,11 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import {
+  AGENT_TRANSFER_MAX_PASSWORD_BYTES,
+  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+  agentTransferPasswordByteLength,
+} from "@elizaos/core/contracts/agent-routes";
 import { ElizaError } from "@elizaos/core/errors";
 import {
   clearStoredStewardToken,
@@ -94,7 +99,6 @@ import { fetchAgentTransport } from "./transport";
 // Module-level constants
 // ---------------------------------------------------------------------------
 
-const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
 // Cloud account reads can legitimately take longer than 15 seconds on a cold
 // regional worker. Keep the request bounded, but leave enough room for the
 // billing/credits response the desktop dashboard depends on.
@@ -3428,6 +3432,14 @@ ElizaClient.prototype.exportAgent = async function (
       `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
     );
   }
+  if (
+    agentTransferPasswordByteLength(password) >
+    AGENT_TRANSFER_MAX_PASSWORD_BYTES
+  ) {
+    throw new Error(
+      `Password must be at most ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded.`,
+    );
+  }
   return this.rawRequest("/api/agent/export", {
     method: "POST",
     headers: {
@@ -3449,6 +3461,14 @@ ElizaClient.prototype.importAgent = async function (
   if (password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
     throw new Error(
       `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
+    );
+  }
+  if (
+    agentTransferPasswordByteLength(password) >
+    AGENT_TRANSFER_MAX_PASSWORD_BYTES
+  ) {
+    throw new Error(
+      `Password must be at most ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded.`,
     );
   }
   const passwordBytes = new TextEncoder().encode(password);

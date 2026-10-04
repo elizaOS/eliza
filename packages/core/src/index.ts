@@ -969,7 +969,10 @@ export {
 	validateAgentBackupRestoreV3CandidateSealAuthorization,
 } from "./contracts/agent-backup-restore-v3-stream.js";
 export {
+	AGENT_TRANSFER_MAX_PASSWORD_BYTES,
 	AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+	AgentTransferPasswordSchema,
+	agentTransferPasswordByteLength,
 	type PostAgentAutonomyRequest,
 	PostAgentAutonomyRequestSchema,
 	type PostAgentExportRequest,
