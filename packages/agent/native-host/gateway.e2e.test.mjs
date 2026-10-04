@@ -185,3 +185,71 @@ test("runtime supervisor starts real processes in isolated account storage and s
     await rm(root, { recursive: true, force: true });
   }
 });
+
+for (const transition of ["reset", "rotate"]) {
+  test(`request admission rechecks account after task presentation: ${transition}`, async () => {
+    let owner = "first";
+    let messageRequests = 0;
+    const entered = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    const upstream = http.createServer((req, res) => {
+      if (req.url.endsWith("/messages")) messageRequests++;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+      );
+    });
+    const target = await listen(upstream);
+    const gateway = createLocalAgentGateway({
+      upstream: target,
+      token: "upstream-authority",
+      inboundToken: "host-authority",
+      credentialGate: async () => owner,
+      hostPolicy: {
+        ...policy,
+        prepareMessage: (input) => ({
+          body: { text: input.text },
+          chatTask: { id: "task" },
+        }),
+      },
+      taskGateway: {
+        revoke: async () => {},
+        presentationForConversation: async () => {
+          entered.resolve();
+          await release.promise;
+          return { choice: null };
+        },
+      },
+      cloudHandler: async (req, res, url, { json }) => {
+        if (url.pathname !== "/identity/logout") return false;
+        json(res, 200, { disconnected: true });
+        return true;
+      },
+    });
+    const base = await listen(gateway);
+    const post = (path, body = {}) =>
+      fetch(base + path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer host-authority",
+        },
+        body: JSON.stringify(body),
+      });
+    try {
+      assert.equal((await post("/conversations")).status, 200);
+      const pending = post(`/conversations/${id}/messages`, { text: "hello" });
+      await entered.promise;
+      if (transition === "reset")
+        assert.equal((await post("/identity/logout")).status, 200);
+      else owner = "second";
+      release.resolve();
+      assert.equal((await pending).status, 409);
+      assert.equal(messageRequests, 0);
+    } finally {
+      release.resolve();
+      await close(gateway);
+      await close(upstream);
+    }
+  });
+}

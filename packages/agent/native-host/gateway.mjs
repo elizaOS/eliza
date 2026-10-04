@@ -319,6 +319,15 @@ export function createLocalAgentGateway({
       let response;
       let data;
       try {
+        if (isMessage || isCreate || isAbort) {
+          const currentOwner = (await credentialGate?.()) || "local:gateway";
+          if (
+            controller.signal.aborted ||
+            requestEpoch !== epoch ||
+            currentOwner !== owner
+          )
+            throw ownershipError();
+        }
         response = await fetchImpl(new URL(route, target), {
           method: req.method,
           headers: {
