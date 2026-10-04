@@ -581,6 +581,7 @@ describe("automatic morning configured source selection", () => {
     "agent-only",
     "calendar-only",
     "reauth",
+    "google-reauth",
     "connected-failure",
     "multiple",
     "partial",
@@ -657,6 +658,7 @@ describe("automatic morning configured source selection", () => {
         .mockImplementation(async (_url, request) => {
           if (
             mode === "connected-failure" ||
+            mode === "google-reauth" ||
             (mode.startsWith("partial") && request?.grantId === failedGrant)
           )
             throw new Error("Connected Gmail fetch failed");
@@ -713,7 +715,12 @@ describe("automatic morning configured source selection", () => {
               role: mode === "agent-only" ? "AGENT" : "OWNER",
               purpose: ["messaging"],
               accessGate: "owner",
-              status: mode === "pending" ? "pending" : "connected",
+              status:
+                mode === "pending"
+                  ? "pending"
+                  : mode === "google-reauth"
+                    ? "error"
+                    : "connected",
               metadata: {
                 grantedCapabilities: [
                   mode === "calendar-only" ? "calendar.read" : "gmail.read",
@@ -726,6 +733,12 @@ describe("automatic morning configured source selection", () => {
                 "owner",
               )
             ).find((item) => item.grant?.connectorAccountId === account.id);
+            if (mode === "google-reauth")
+              expect(status).toMatchObject({
+                configured: true,
+                connected: false,
+                reason: "needs_reauth",
+              });
             if (mode !== "agent-only") {
               if (!status?.grant) throw new Error("Missing real account grant");
               grants.push(status.grant.id);
@@ -743,8 +756,8 @@ describe("automatic morning configured source selection", () => {
         const googleSection = report.briefingSections.find(
           (section) => section.key === "gmail",
         );
-        const xSections = report.briefingSections.filter((section) =>
-          section.key.startsWith("x_"),
+        const xSections = report.briefingSections.filter(
+          (section) => section.key === "x" || section.key.startsWith("x_"),
         );
         if (
           [
@@ -779,6 +792,10 @@ describe("automatic morning configured source selection", () => {
               "Connected X feed failed",
               "Connected X feed failed",
             ]);
+          } else if (mode === "google-reauth") {
+            expect(googleSection?.error).toBe("Connected Gmail fetch failed");
+            expect(googleSection?.items).toEqual([]);
+            expect(report.summaryText).toContain("Gmail unavailable");
           } else if (mode.startsWith("partial")) {
             expect(googleSection?.coverage).toBe("partial");
             expect(googleSection?.error).toBe("Connected Gmail fetch failed");
@@ -810,6 +827,11 @@ describe("automatic morning configured source selection", () => {
             expect(googleSection?.items).toHaveLength(
               mode === "multiple" ? 2 : 1,
             );
+          if (mode === "probe-failure" || mode === "reauth") {
+            expect(xSections.map((section) => section.key)).toEqual(["x"]);
+            expect(report.summaryText).toContain("X unavailable");
+            expect(report.summaryText).not.toContain("X (DMs)");
+          }
           if (mode === "probe-failure") {
             expect(xSections[0]?.error).toBe("X status probe failed");
             expect(dms).not.toHaveBeenCalled();
@@ -821,9 +843,16 @@ describe("automatic morning configured source selection", () => {
             expect(feeds).not.toHaveBeenCalled();
           }
           if (mode === "probe-failure") {
-            await expect(service.getXConnectorStatus()).rejects.toThrow(
-              "X status probe failed",
+            await expect(service.getXConnectorStatus()).resolves.toMatchObject({
+              connected: false,
+              probeError: "X status probe failed",
+            });
+            const { createXConnectorContribution } = await import(
+              "../connectors/x.js"
             );
+            await expect(
+              createXConnectorContribution(fixture.runtime).verify(),
+            ).resolves.toBe(false);
           }
           if (mode === "dm-only") {
             expect(xSections.map((section) => section.key)).toEqual(["x_dms"]);
