@@ -32,33 +32,35 @@ export function extractVerifiedPackage(archive, integrity, destination) {
     throw new NativeHostError("Document package integrity mismatch");
   let size = 0;
   const names = new Set();
-  tar.t({
-    file: archive,
-    sync: true,
-    strict: true,
-    onReadEntry(entry) {
-      const name = entry.path.replace(/\/$/, "");
-      if (
-        !/^package(?:\/[A-Za-z0-9_.@-]+)*$/.test(name) ||
-        name.split("/").some((part) => part === ".." || part === ".") ||
-        !["File", "Directory"].includes(entry.type) ||
-        names.has(name)
-      )
-        throw new NativeHostError("Unsafe document package entry");
-      names.add(name);
-      size += entry.size;
-      if (size > 100 * 1024 ** 2)
-        throw new NativeHostError("Document package is too large");
-    },
-  });
+  tar
+    .t({
+      sync: true,
+      strict: true,
+      onReadEntry(entry) {
+        const name = entry.path.replace(/\/$/, "");
+        if (
+          !/^package(?:\/[A-Za-z0-9_.@-]+)*$/.test(name) ||
+          name.split("/").some((part) => part === ".." || part === ".") ||
+          !["File", "Directory"].includes(entry.type) ||
+          names.has(name)
+        )
+          throw new NativeHostError("Unsafe document package entry");
+        names.add(name);
+        size += entry.size;
+        if (size > 100 * 1024 ** 2)
+          throw new NativeHostError("Document package is too large");
+      },
+    })
+    .end(bytes);
   fs.mkdirSync(destination, { recursive: true });
-  tar.x({
-    file: archive,
-    cwd: destination,
-    strip: 1,
-    sync: true,
-    strict: true,
-  });
+  tar
+    .x({
+      cwd: destination,
+      strip: 1,
+      sync: true,
+      strict: true,
+    })
+    .end(bytes);
 }
 export function verifyAndroidDocuments(output) {
   const main = path.join(output, mainPath);
