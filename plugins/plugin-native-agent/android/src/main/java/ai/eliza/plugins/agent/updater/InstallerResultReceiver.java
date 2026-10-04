@@ -21,22 +21,22 @@ public abstract class InstallerResultReceiver extends BroadcastReceiver {
  }
  public static void reconcile(Context context,String target,String action,UpdateJournal journal,Intent intent)throws Exception {
   if(target==null||target.isEmpty()||action==null||action.isEmpty())throw new IllegalArgumentException("Explicit target and callback action required");
-    if(intent==null||!action.equals(intent.getAction()))return;
-        UpdateJournal.Snapshot state=journal.read();
-        String transaction=intent.getStringExtra("transaction");int session=intent.getIntExtra("expectedSession",-1);
-        // Require the framework session id as well as our immutable callback
-        // identity. A missing status is malformed, not a terminal failure.
-        if(state.plan==null||!state.plan.id.equals(transaction)||state.sessionId!=session
-            ||intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID,-1)!=session
-            ||!intent.hasExtra(PackageInstaller.EXTRA_STATUS)||!UpdateJournal.awaitingInstaller(state))return;
-        String reportedPackage=intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME);
-        if(reportedPackage!=null&&!target.equals(reportedPackage))return;
-        int status=intent.getIntExtra(PackageInstaller.EXTRA_STATUS,PackageInstaller.STATUS_FAILURE);
-        String blocked=status==PackageInstaller.STATUS_PENDING_USER_ACTION?"user_action_required":
-          status==PackageInstaller.STATUS_FAILURE_BLOCKED?"policy_blocked":null;
-        // Includes success, all failure codes and unknown future statuses. Never
-        // launch EXTRA_INTENT or treat delivery itself as installation evidence.
-        boolean pendingSession=PackageInstallCoordinator.hasPendingSession(context,target,session);
-        journal.reconcileInstallerResult(transaction,session,PackageInstallCoordinator.installed(context,target),pendingSession,blocked);
+  if(intent==null||!action.equals(intent.getAction()))return;
+  UpdateJournal.Snapshot state=journal.read();
+  String transaction=intent.getStringExtra("transaction");int session=intent.getIntExtra("expectedSession",-1);
+  // Require the framework session id as well as our immutable callback
+  // identity. A missing status is malformed, not a terminal failure.
+  if(state.plan==null||!state.plan.id.equals(transaction)||state.sessionId!=session
+      ||intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID,-1)!=session
+      ||!intent.hasExtra(PackageInstaller.EXTRA_STATUS)||!UpdateJournal.awaitingInstaller(state))return;
+  String reportedPackage=intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME);
+  if(reportedPackage!=null&&!target.equals(reportedPackage))return;
+  int status=intent.getIntExtra(PackageInstaller.EXTRA_STATUS,PackageInstaller.STATUS_FAILURE);
+  String blocked=status==PackageInstaller.STATUS_PENDING_USER_ACTION?"user_action_required":
+    status==PackageInstaller.STATUS_FAILURE_BLOCKED?"policy_blocked":null;
+  // Includes success, all failure codes and unknown future statuses. Never
+  // launch EXTRA_INTENT or treat delivery itself as installation evidence.
+  boolean pendingSession=PackageInstallCoordinator.hasPendingSession(context,target,session);
+  journal.reconcileInstallerResult(transaction,session,PackageInstallCoordinator.installed(context,target),pendingSession,blocked);
  }
 }
