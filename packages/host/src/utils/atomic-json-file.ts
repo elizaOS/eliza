@@ -1,5 +1,6 @@
 /** Same-directory replacement for small host registries; callers retain schema and concurrency policy. */
 import {
+  chmodSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -26,6 +27,9 @@ export function writeJsonFileAtomic(filePath: string, value: unknown): void {
   try {
     const temporary = join(staging, "value.json");
     writeFileSync(temporary, `${serialized}\n`, { encoding: "utf8", mode });
+    // The creation mode is filtered by the process umask; restore the replaced
+    // file's exact mode so a shared (for example 0664) registry stays shared.
+    if (mode !== undefined) chmodSync(temporary, mode);
     renameSync(temporary, filePath);
   } finally {
     rmSync(staging, { recursive: true, force: true });
