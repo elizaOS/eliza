@@ -22,6 +22,8 @@ const hostPackages = new Set([
   "@node-rs/argon2",
   "@node-rs/argon2-wasm32-wasi",
   "drizzle-orm",
+  "mammoth",
+  "unpdf",
 ]);
 const hostEntries = new Set([
   "@elizaos/auth/vault",

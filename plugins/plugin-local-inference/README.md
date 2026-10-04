@@ -19,3 +19,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-local-inference build  # build
 bun run --cwd plugins/plugin-local-inference test   # tests
 ```
+
+`bench:streaming` and `bench:stt` measure runtime dispatch with simulated
+providers. `voice:hardware --help` describes opt-in model/artifact and trace
+checks; these do not run as part of the offline unit suite.
