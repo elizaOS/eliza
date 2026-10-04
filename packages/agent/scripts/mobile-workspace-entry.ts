@@ -13,7 +13,7 @@ export function canUseWorkspaceEntry(
       readFileSync(path.join(packageDir, "package.json"), "utf8"),
     );
     const subpath = specifier.split("/").slice(2).join("/");
-    let exported: string[] | undefined;
+    let exported: ReturnType<typeof resolveExports>;
     try {
       exported = resolveExports(manifest, specifier, { browser: true });
     } catch (error) {
@@ -73,7 +73,7 @@ export function findWorkspaceSourceEntry(
     const manifest = JSON.parse(
       readFileSync(path.join(packageDir, "package.json"), "utf8"),
     );
-    let exported: string[] | undefined;
+    let exported: ReturnType<typeof resolveExports>;
     try {
       exported = resolveExports(
         manifest,
