@@ -14,7 +14,9 @@ export function createDocumentImageDescriber({
     typeof readAuthority !== "function" ||
     typeof assertOwner !== "function"
   )
-    throw new NativeCloudServiceError("Document vision configuration unavailable");
+    throw new NativeCloudServiceError(
+      "Document vision configuration unavailable",
+    );
   return async (params) => {
     const check = async () => {
       params.signal?.throwIfAborted();

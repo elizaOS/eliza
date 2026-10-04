@@ -1,8 +1,8 @@
-import { NativeCloudServiceError } from "./errors.mjs";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { NativeCloudServiceError } from "./errors.mjs";
 /** Host-owned artifact, built from reviewed source. Never accepts a renderer path. */
 export async function loadDocumentRuntime(
   file,
@@ -11,7 +11,8 @@ export async function loadDocumentRuntime(
   if (
     !path.isAbsolute(file) ||
     !/^[a-f0-9]{40}$/.test(sourceCommit) ||
-    (typeof canvasVersion !== "string" || !canvasVersion.trim())
+    typeof canvasVersion !== "string" ||
+    !canvasVersion.trim()
   )
     throw new NativeCloudServiceError("Invalid document runtime configuration");
   const provenance = JSON.parse(await fs.readFile(`${file}.json`, "utf8"));
