@@ -16,7 +16,7 @@ export function observeOriginalUpgradeInvoiceState(input: {
   const parsed = observation.safeParse(input.raw);
   if (!parsed.success)
     throw new ElizaError("Upgrade invoice observation is incomplete", {
-      code: "SUBSCRIPTION_UPGRADE_/Users/shawwalters/.codex/worktrees/senior-organization-plan-change/packages/cloud/shared/src/lib/services/stripe-invoice-observation_RECOVERY_UNAVAILABLE",
+      code: "SUBSCRIPTION_UPGRADE_INVOICE_RECOVERY_UNAVAILABLE",
     });
   const invoice = parsed.data;
   if (
@@ -29,7 +29,7 @@ export function observeOriginalUpgradeInvoiceState(input: {
     invoice.paid_out_of_band
   )
     throw new ElizaError("Upgrade invoice identity or payment channel changed", {
-      code: "SUBSCRIPTION_UPGRADE_/Users/shawwalters/.codex/worktrees/senior-organization-plan-change/packages/cloud/shared/src/lib/services/stripe-invoice-observation_RECOVERY_UNAVAILABLE",
+      code: "SUBSCRIPTION_UPGRADE_INVOICE_RECOVERY_UNAVAILABLE",
     });
   if (invoice.status === "paid" && invoice.paid && invoice.amount_remaining === 0)
     return "paid_candidate" as const;

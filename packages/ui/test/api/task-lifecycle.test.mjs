@@ -274,3 +274,33 @@ test("a transition cannot regress the authoritative task epoch", async () => {
   assert.equal(await client.control("pause"), false);
   assert.equal(state.error, messages.pause);
 });
+
+test("unchanged or opposite-state acknowledgements keep controls unconfirmed", async () => {
+  for (const [command, current, reply] of [
+    ["pause", task, task],
+    ["pause", task, { ...task, revision: 4, epoch: 2 }],
+    ["pause", task, { ...task, revision: 4, status: "paused" }],
+    [
+      "resume",
+      { ...task, status: "paused" },
+      { ...task, revision: 4, status: "paused" },
+    ],
+    ["cancel", task, { ...task, revision: 4, epoch: 2 }],
+    ["cancel", task, { ...task, revision: 4, epoch: 2, status: "paused" }],
+  ]) {
+    let state;
+    const client = new TaskLifecycle(
+      async (path) => ({ task: path === "/tasks/current" ? current : reply }),
+      (next) => {
+        state = next;
+      },
+    );
+    assert.equal(
+      await client.control(command),
+      false,
+      `${command} must be confirmed`,
+    );
+    assert.equal(state.error, messages[command]);
+    assert.equal(state.pending, false);
+  }
+});
