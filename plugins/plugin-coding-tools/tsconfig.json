@@ -6,7 +6,6 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "outDir": "./dist",
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -27,7 +26,8 @@
       "@elizaos/testing/progressive-content-target": [
         "../../packages/testing/src/progressive-content-target.ts"
       ]
-    }
+    },
+    "rootDir": "../.."
   },
   "include": ["./**/*"],
   "exclude": [

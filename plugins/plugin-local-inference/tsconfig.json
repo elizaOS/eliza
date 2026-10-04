@@ -10,7 +10,6 @@
 		"ignoreDeprecations": "6.0",
 		"declaration": true,
 		"declarationMap": true,
-		"outDir": "./dist",
 		"lib": ["ES2024", "DOM"],
 		"types": ["node"],
 		"allowImportingTsExtensions": true,
@@ -71,7 +70,8 @@
 				"../plugin-native-inference/src/*"
 			],
 			"@elizaos/core/*": ["../../packages/core/src/*"]
-		}
+		},
+		"rootDir": "../.."
 	},
 	"include": ["src/**/*"],
 	"exclude": [

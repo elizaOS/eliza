@@ -10,6 +10,7 @@
 				"../plugin-native-inference/dist/*"
 			],
 			"@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"]
-		}
+		},
+		"outDir": "./dist"
 	}
 }

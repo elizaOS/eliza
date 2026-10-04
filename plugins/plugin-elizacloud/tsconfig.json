@@ -15,7 +15,6 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "noEmit": true,
-    "outDir": "./dist",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "bun-types"],
     "noUnusedLocals": false,
@@ -25,7 +24,8 @@
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core/*": ["../../packages/core/src/*"]
-    }
+    },
+    "rootDir": "../.."
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],
   "exclude": [
