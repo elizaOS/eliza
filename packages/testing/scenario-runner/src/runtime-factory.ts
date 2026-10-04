@@ -1199,6 +1199,10 @@ export async function createScenarioRuntime(
       await runtime.registerPlugin(localEmbedding.default);
     }
 
+    // Seeds and providers read runtime settings, not the process environment.
+    // Keep compatibility mocks scoped to the runtime that owns their cleanup.
+    if (mockedEnvironment)
+      applyRuntimeSettings(runtime, mockedEnvironment.envVars);
     applyRuntimeSettings(runtime, providerConfig.env);
     if (worldSettings) applyRuntimeSettings(runtime, worldSettings);
     if (skipEmbeddingPlugin) {

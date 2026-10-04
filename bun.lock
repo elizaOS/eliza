@@ -1368,6 +1368,7 @@
         "@elizaos/host": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-local-inference": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
         "@metamask/connect-evm": "2.1.1",
         "@paulmillr/qr": "0.2.1",
