@@ -203,3 +203,10 @@ lists, DNS dependencies, compiler environment and task build callback. They pin
 source identity, serialize staging and publish provenance only after success.
 Failed staging can leave partial files: verification rejects source/generated
 hash mismatches; this is not an atomic or durable publication API.
+
+`NativeRuntimeSession` composes the existing process supervisor with named process
+bindings, redacted log draining, readiness and once-only response epoch fencing.
+Hosts provide commands, environment, log policy, readiness probes and active-host
+identity. It selects no provider, routes or credentials and never retries requests.
+Its portable contract covers replacement during a request and paired startup
+failure; Android service, real runtime and device qualification remain host tests.
