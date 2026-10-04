@@ -188,7 +188,7 @@ export function generateProjections(
     combined.push({
       timestamp: futureDate,
       totalRequests: Math.round(requestsVariance),
-      totalCost: Math.round(costVariance),
+      totalCost: costVariance,
       inputTokens: Math.round(inputTokensVariance),
       outputTokens: Math.round(outputTokensVariance),
       successRate: projectedSuccessRate,
