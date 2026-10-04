@@ -26,8 +26,7 @@ OS image builds are separate from the installer frontend build. See
 [Linux](linux/README.md), [Android](android/README.md), and the
 [USB installer](usb-installer/README.md) for their entrypoints.
 
-The Linux tree currently retains both mkosi and older live-build paths; mkosi is
-the persistent workstation image. Release builds require signed desktop artifacts
+mkosi builds the persistent workstation image. Release builds require signed desktop artifacts
 and the control-broker inputs checked by `mkosi.postinst.chroot`. Those inputs are
 not supplied by a frontend build. A successful configuration or planner test does
 not demonstrate boot, persistence, or installation onto an internal disk.

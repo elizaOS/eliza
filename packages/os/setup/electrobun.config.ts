@@ -38,12 +38,6 @@ export default {
       dist: "renderer",
       "../android/hardware-targets.json": "android/hardware-targets.json",
       "../android/release-trust.json": "android/release-trust.json",
-      "../android/installer/install-elizaos-android.sh":
-        "android/installer/install-elizaos-android.sh",
-      "../scripts/android-installer/validate-release-manifest.ts":
-        "scripts/android-installer/validate-release-manifest.ts",
-      "../scripts/android-installer/validate-post-flash.sh":
-        "scripts/android-installer/validate-post-flash.sh",
       "../scripts/android/install-release.ts":
         "scripts/android/install-release.ts",
       "../scripts/android/release-contract.ts":

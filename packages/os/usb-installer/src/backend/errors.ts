@@ -1,8 +1,6 @@
-// Typed errors for the macOS USB installer backend.
-//
-// These exist so the UI can distinguish "user clicked Cancel" from "diskutil
-// refused due to permissions" from "the plist we got back was garbage", instead
-// of getting an opaque generic Error.
+export class UnsupportedPlatformError extends Error {
+  override readonly name = "UnsupportedPlatformError";
+}
 
 export class UserCancelledAuthError extends Error {
   override readonly name = "UserCancelledAuthError";

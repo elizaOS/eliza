@@ -26,7 +26,7 @@ require_file "${MKOSI_DIR}/mkosi.postinst.chroot"
 [ -x "${MKOSI_DIR}/mkosi.postinst.chroot" ] || bad "mkosi.postinst.chroot is not executable"
 [ ! -e "${MKOSI_DIR}/mkosi.postinst" ] || bad "unsuffixed mkosi.postinst would run on the host"
 [ ! -e "${MKOSI_DIR}/mkosi.finalize" ] || bad "legacy pre-output finalize script is present"
-[ ! -e "${MKOSI_DIR}/mkosi.skeleton" ] || bad "mkosi.skeleton must not import the live-build tree"
+[ ! -e "${MKOSI_DIR}/mkosi.skeleton" ] || bad "use mkosi.extra for image integration"
 
 for arch in amd64 arm64 riscv64; do
     require_file "${MKOSI_DIR}/mkosi.conf.d/10-arch-${arch}.conf"

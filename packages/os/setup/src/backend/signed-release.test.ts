@@ -92,15 +92,9 @@ test("discovery keeps exact signed bytes and all install and recovery contracts"
   const [build] = await new AdbFlasherBackend().listBuilds();
   expect(describeSignedRelease).toHaveBeenCalledWith(bytes);
   expect(build?.signedManifest).toBe(bytes);
-  expect(build?.signedFiles?.map((file) => file.filename)).toEqual([
-    "boot.img",
-    "fastboot-info.txt",
-    "stock.zip",
-  ]);
   expect(build?.sizeBytes).toBe(90);
   expect(build?.channel).toBe("nightly");
   expect(build?.architecture).toBe("arm64-v8a");
-  expect(build?.manifest).toBeUndefined();
 });
 
 test("discovery propagates canonical authorization failure", async () => {

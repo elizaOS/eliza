@@ -5,8 +5,7 @@ runs workflows in the repository-root [workflow directory](../../../../.github/w
 OS validation runs from reusable [os.yml](../../../../.github/workflows/os.yml),
 required by canonical [CI](../../../../.github/workflows/ci.yml) under Develop Full.
 PR Static Smoke owns pre-merge static validation. The former nested release-validation
-workflow is consolidated into OS CI, including Android wrapper refusals, the
-checked-in release plan, and USB desktop/mobile browser flows.
+workflow is consolidated into OS CI, including the checked-in release plan, and USB desktop/mobile browser flows.
 Debian packaging runs from [build-debian-package.yml](../../../../.github/workflows/build-debian-package.yml).
 Android tool checksum refresh is manually dispatched through
 [update-vendor-checksums.yml](../../../../.github/workflows/update-vendor-checksums.yml).
