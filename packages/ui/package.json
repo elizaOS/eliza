@@ -104,6 +104,12 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
+    "./api/task-lifecycle": {
+      "eliza-source": "./src/api/task-lifecycle.ts",
+      "types": "./dist/api/task-lifecycle.d.ts",
+      "import": "./dist/api/task-lifecycle.js",
+      "default": "./dist/api/task-lifecycle.js"
+    },
     "./styles": "./dist/styles.js",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui": {
