@@ -119,3 +119,15 @@ success/failure hints never substitute for installed-identity and live-session
 readback, and user-action intents are never launched. The Android contract uses
 real PackageInstaller sessions; hosts must also qualify actual installation,
 callback delivery, process death and cached recovery with their signed fixtures.
+
+### Local runtime health sampling
+
+`health.LocalRuntimeHealth` reads a host-supplied immutable runtime snapshot and
+uses the host's authenticated local transport with an explicit per-probe timeout.
+It samples the agent status and gateway health/storage protocols, rejects a
+changed process lifetime, and rechecks reported process liveness. Transport
+failures produce unavailable observations; malformed protocol payloads fail the
+read. The host owns current-process binding, transport credentials, budgets and
+update admission. The helper neither starts the runtime nor admits an update.
+`LocalRuntimeHealthInstrumentedTest` exercises the shared protocol/lifecycle
+contract; maintained consumers separately qualify their actual IPC binding.
