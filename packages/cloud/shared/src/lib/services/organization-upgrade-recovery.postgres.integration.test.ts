@@ -15,6 +15,8 @@ let pending = false;
 let objects: ReturnType<typeof upgradePaidObjects>;
 let dispatched = false;
 let originalKey = "";
+let historicalTargetEvent: unknown = null;
+let afterTargetSearch = async () => {};
 
 process.env.ENVIRONMENT = "local";
 process.env.STRIPE_SECRET_KEY = ["sk", "test", "upgradepreview"].join("_");
@@ -118,22 +120,34 @@ const preview = mock(
 mock.module("../stripe", () => ({
   requireStripe: () => ({
     events: {
-      list: async () => ({
-        object: "list",
-        has_more: false,
-        data: [
-          {
-            id: `evt_${fixtureData.input.subscriptionId.replaceAll("-", "")}`,
-            object: "event",
-            type: "invoice.created",
-            api_version: "2024-11-20.acacia",
-            created: objects.rawInvoice.created,
-            livemode: false,
-            request: { id: `req_${schema.replaceAll("_", "")}`, idempotency_key: originalKey },
-            data: { object: objects.rawInvoice },
-          },
-        ],
-      }),
+      list: async (input: { types?: string[] }) => {
+        if (input.types) await afterTargetSearch();
+        return input.types
+          ? {
+              object: "list",
+              has_more: false,
+              data: historicalTargetEvent ? [historicalTargetEvent] : [],
+            }
+          : {
+              object: "list",
+              has_more: false,
+              data: [
+                {
+                  id: `evt_${fixtureData.input.subscriptionId.replaceAll("-", "")}`,
+                  object: "event",
+                  type: "invoice.created",
+                  api_version: "2024-11-20.acacia",
+                  created: objects.rawInvoice.created,
+                  livemode: false,
+                  request: {
+                    id: `req_${schema.replaceAll("_", "")}`,
+                    idempotency_key: originalKey,
+                  },
+                  data: { object: objects.rawInvoice },
+                },
+              ],
+            };
+      },
     },
     customers: {
       retrieve: async () => {
@@ -185,8 +199,10 @@ mock.module("../stripe", () => ({
 
 let close: typeof import("../../db/client").closeDatabaseConnectionsForTests;
 let dispatch: typeof import("./organization-upgrade-dispatch").dispatchOrganizationUpgrade;
-async function seed() {
-  fixtureData = await seedCancellationTestAccount((q, v) => db.query(q, v));
+async function seed(period?: { start: Date; end: Date }) {
+  fixtureData = await seedCancellationTestAccount((q, v) => db.query(q, v), period);
+  historicalTargetEvent = null;
+  afterTargetSearch = async () => {};
   dispatched = false;
   pending = false;
   writeFailure = false;
@@ -838,5 +854,90 @@ async function state(commandId: string) {
         ).rows[0].n,
       ).toBe(0);
     });
+
+    test("expired observation lease retains historical evidence for a new claimant", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await seed({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      historicalTargetEvent = historicalEvent();
+      await expiredLease(f.identity.commandId);
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      objects.rawSubscription = {
+        ...objects.rawSubscription,
+        current_period_start: second + 5,
+        current_period_end: second + 86405,
+      };
+      afterTargetSearch = async () => {
+        await expiredLease(f.identity.commandId);
+      };
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      await expect(recover(f.identity)).rejects.toThrow();
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      historicalTargetEvent = null;
+      afterTargetSearch = async () => {
+        throw new Error("Retained target must prevent a repeated search");
+      };
+      expect((await recover(f.identity)).status).toBe("applied");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    }, 10000);
+
+    test("lost response after renewal searches and retains historical target before original settlement", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await seed({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      historicalTargetEvent = historicalEvent();
+      await expiredLease(f.identity.commandId);
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      objects.rawSubscription = {
+        ...objects.rawSubscription,
+        current_period_start: second + 5,
+        current_period_end: second + 86405,
+      };
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      expect((await recover(f.identity)).status).toBe("applied");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        (
+          await db.query(
+            "SELECT available_amount FROM subscription_allowance_periods WHERE organization_id=$1",
+            [f.identity.organizationId],
+          )
+        ).rows[0].available_amount,
+      ).toBe("0.000000");
+      expect(mutation).toHaveBeenCalledTimes(1);
+      historicalTargetEvent = null;
+      expect((await recover(f.identity)).status).toBe("applied");
+    }, 10000);
   },
 );
