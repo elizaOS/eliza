@@ -23,7 +23,8 @@
     "native-host/document-runtime.mjs",
     "native-host/document-image-describer.mjs",
     "native-host/managed-google-read-port.mjs",
-    "native-host/errors.mjs"
+    "native-host/errors.mjs",
+    "native-host/subscription-review.mjs"
   ],
   "sideEffects": false,
   "scripts": {
