@@ -154,6 +154,9 @@
         "@elizaos/plugin-pdf#build"
       ]
     },
+    "@elizaos/benchmark-eliza-host#typecheck": {
+      "dependsOn": ["typecheck:deps", "^build"]
+    },
     "@elizaos/app#typecheck": {
       "dependsOn": [
         "typecheck:deps",
