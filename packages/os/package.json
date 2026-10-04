@@ -44,7 +44,6 @@
     "test:trust": "vitest run --environment node trust/*.test.ts"
   },
   "dependencies": {
-    "@elizaos/ui": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*"
   },
   "devDependencies": {

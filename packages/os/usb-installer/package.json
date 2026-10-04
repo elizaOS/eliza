@@ -42,7 +42,7 @@
   "dependencies": {
     "@fontsource/poppins": "^5.2.7",
     "vite": "^8.0.0",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/os": "workspace:*"
   },
   "peerDependencies": {
@@ -59,7 +59,6 @@
     "@playwright/test": "^1.59.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sharp": "^0.35.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"

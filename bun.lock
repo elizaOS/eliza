@@ -1182,7 +1182,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/plugin-browser": "workspace:*",
-        "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
@@ -1237,8 +1236,8 @@
       "name": "@elizaos/os-usb-installer",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/host": "workspace:*",
         "@elizaos/os": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
         "vite": "^8.0.0",
       },
@@ -1253,7 +1252,6 @@
         "jsdom": "^30.1.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "sharp": "^0.35.3",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
