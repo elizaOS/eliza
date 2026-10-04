@@ -81,3 +81,15 @@ supports standalone/launcher distributions and fixed runtime/UI observation stat
 reports never mark a journal healthy or authorize recovery. The Android contract
 checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
 IPC, process death and observation providers in their packaged applications.
+
+`NativeProcessSupervisor` owns a host's direct child processes, bounded readiness,
+restart budget, per-launch cleanup and generation fences. Hosts supply commands,
+credentials, readiness probes and timing policy. Cancelled or retired scopes refuse
+late spawns and readiness; a group death retires every child before restarting.
+Probes must release their own resources when interrupted; a daemon probe that ignores
+interruption cannot publish readiness after its deadline. Detached processes and
+process descendants require the host's existing ownership protocol. The canonical
+Android service shares the direct-child termination helper while retaining its
+detached-agent policy. Portable real-process tests run in `test:native-host`;
+`NativeProcessSupervisorInstrumentedTest` checks the primitive with app-domain
+processes on Android. Neither suite establishes full agent or foreground-service lifetime.
