@@ -340,6 +340,32 @@
       "dependsOn": ["^typecheck:deps"],
       "outputs": []
     },
+    "@elizaos/plugin-local-inference#typecheck:deps": {
+      "dependsOn": [
+        "@elizaos/auth#typecheck:deps",
+        "@elizaos/cloud-routing#typecheck:deps",
+        "@elizaos/cloud-sdk#typecheck:deps",
+        "@elizaos/contracts#typecheck:deps",
+        "@elizaos/core#typecheck:deps",
+        "@elizaos/host#typecheck:deps",
+        "@elizaos/plugin-assistant#typecheck:deps",
+        "@elizaos/plugin-browser#typecheck:deps",
+        "@elizaos/plugin-elizacloud#typecheck:deps"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/ui/**",
+        "$TURBO_ROOT$/plugins/plugin-native-inference/**",
+        "$TURBO_ROOT$/plugins/plugin-computeruse/**",
+        "!$TURBO_ROOT$/packages/ui/dist/**",
+        "!$TURBO_ROOT$/packages/ui/node_modules/**",
+        "!$TURBO_ROOT$/plugins/plugin-native-inference/dist/**",
+        "!$TURBO_ROOT$/plugins/plugin-native-inference/node_modules/**",
+        "!$TURBO_ROOT$/plugins/plugin-computeruse/dist/**",
+        "!$TURBO_ROOT$/plugins/plugin-computeruse/node_modules/**"
+      ],
+      "outputs": []
+    },
     "@elizaos/agent-server#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-sql#build"]
     },
