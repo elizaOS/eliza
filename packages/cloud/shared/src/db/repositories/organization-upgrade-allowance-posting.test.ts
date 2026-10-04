@@ -78,7 +78,7 @@ test("previous adjustments are retained with exact micro-unit accounting", () =>
   p.adjustment_amount = "0.000001";
   p.available_amount = "12.000001";
   const r = project(p, "0.000001", now);
-  expect(r.periodChanges.adjustment_amount).toBe("0.000002");
+  expect<string>(r.periodChanges.adjustment_amount).toBe("0.000002");
   expect(r.periodChanges.available_amount).toBe("12.000002");
 });
 test("unconserved or invalid terminal input is rejected", () => {
