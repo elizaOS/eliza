@@ -641,10 +641,18 @@ export class GoogleGmailClient {
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
     }
   ): Promise<GoogleGmailSendResult> {
+    const threadId = params.threadId.trim();
+    if (!threadId) {
+      throw new ElizaError("Gmail reply send requires the original thread id.", {
+        code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED",
+        severity: "fatal",
+      });
+    }
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc && params.cc.length > 0
@@ -658,7 +666,7 @@ export class GoogleGmailClient {
       "",
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
-    return this.sendRawGmailMessage(params, raw, "gmail.sendGmailReply");
+    return this.sendRawGmailMessage({ ...params, threadId }, raw, "gmail.sendGmailReply");
   }
 
   async sendGmailMessage(
@@ -888,14 +896,15 @@ export class GoogleGmailClient {
   }
 
   private async sendRawGmailMessage(
-    params: GoogleAccountRef,
+    params: GoogleAccountRef & { threadId?: string | null },
     raw: string,
     reason: string
   ): Promise<GoogleGmailSendResult> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.send"], reason);
+    const threadId = params.threadId?.trim();
     const response = await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw },
+      requestBody: threadId ? { raw, threadId } : { raw },
     });
     return {
       messageId: response.data.id ?? null,
