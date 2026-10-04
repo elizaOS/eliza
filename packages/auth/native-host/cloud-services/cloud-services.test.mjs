@@ -25,6 +25,11 @@ const policy = {
 test("independent host selects its plan and speech policy without exposing authority", async () => {
   const calls = [];
   let checkoutMode = "embedded";
+  let checkoutQuote = {
+    amountDueCents: 3000,
+    currency: "usd",
+    interval: "month",
+  };
   const routes = createCloudRoutes({
     hostPolicy: {
       ...policy,
@@ -67,6 +72,7 @@ test("independent host selects its plan and speech policy without exposing autho
         return Response.json({
           data: {
             status: "open",
+            ...checkoutQuote,
             uiMode: checkoutMode,
             clientSecret: "cs_test_checkout_secret_reviewed",
             publishableKey: "pk_test_cloudcheckout",
@@ -140,13 +146,45 @@ test("independent host selects its plan and speech policy without exposing autho
     const checkoutInput = { planKey: "annual_team", presentation: "embedded" };
     const checkout = await post("/cloud/account/checkout", checkoutInput);
     assert.equal(checkout.status, 200);
-    assert.equal((await checkout.json()).uiMode, "embedded");
+    assert.deepEqual(await checkout.json(), {
+      status: "open",
+      uiMode: "embedded",
+      clientSecret: "cs_test_checkout_secret_reviewed",
+      publishableKey: "pk_test_cloudcheckout",
+      amountDueCents: 3000,
+      currency: "usd",
+      interval: "month",
+    });
     assert.equal(
       calls.at(-1).init.headers.Authorization,
       "Bearer billing-session",
     );
     for (const unsupported of [undefined, null, "elements", "unknown"]) {
       checkoutMode = unsupported;
+      const response = await post("/cloud/account/checkout", checkoutInput);
+      assert.equal(response.status, 502);
+      assert.deepEqual(await response.json(), {
+        error: "Invalid payment response",
+      });
+    }
+    checkoutMode = "embedded";
+    checkoutQuote = { amountDueCents: 0, currency: "usd", interval: "month" };
+    const zeroQuote = await post("/cloud/account/checkout", checkoutInput);
+    assert.equal(zeroQuote.status, 200);
+    assert.equal((await zeroQuote.json()).amountDueCents, 0);
+    for (const invalidQuote of [
+      { amountDueCents: undefined, currency: "usd", interval: "month" },
+      { amountDueCents: -1, currency: "usd", interval: "month" },
+      { amountDueCents: 0.5, currency: "usd", interval: "month" },
+      {
+        amountDueCents: Number.MAX_SAFE_INTEGER + 1,
+        currency: "usd",
+        interval: "month",
+      },
+      { amountDueCents: 3000, currency: "eur", interval: "month" },
+      { amountDueCents: 3000, currency: "usd", interval: "year" },
+    ]) {
+      checkoutQuote = invalidQuote;
       const response = await post("/cloud/account/checkout", checkoutInput);
       assert.equal(response.status, 502);
       assert.deepEqual(await response.json(), {

@@ -76,6 +76,10 @@ export function projectCheckout(data, presentation, forget) {
   if (presentation === "embedded") {
     if (
       data.uiMode !== "embedded" ||
+      !Number.isSafeInteger(data.amountDueCents) ||
+      data.amountDueCents < 0 ||
+      data.currency !== "usd" ||
+      data.interval !== "month" ||
       typeof data.clientSecret !== "string" ||
       !/^cs_(live|test)_[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(
         data.clientSecret,
@@ -89,11 +93,9 @@ export function projectCheckout(data, presentation, forget) {
       uiMode: data.uiMode,
       clientSecret: data.clientSecret,
       publishableKey: data.publishableKey,
-      ...(Number.isSafeInteger(data.amountDueCents) &&
-      typeof data.currency === "string"
-        ? { amountDueCents: data.amountDueCents, currency: data.currency }
-        : {}),
-      ...(typeof data.interval === "string" ? { interval: data.interval } : {}),
+      amountDueCents: data.amountDueCents,
+      currency: data.currency,
+      interval: data.interval,
     };
   }
   let url;
