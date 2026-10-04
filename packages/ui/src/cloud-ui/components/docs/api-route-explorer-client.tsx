@@ -541,7 +541,7 @@ export function ApiRouteExplorerClient({
                   />
                   <span>Source:</span>
                   <code className="font-mono text-muted">
-                    {selected.filePath.replace(process.cwd?.() || "", "")}
+                    {selected.filePath}
                   </code>
                 </div>
               </div>

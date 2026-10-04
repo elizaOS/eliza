@@ -1,6 +1,9 @@
 /** Verifies detached Settings authorization context through the real shell and role gate with a controlled auth snapshot. */
 // @vitest-environment jsdom
-import { parseWindowShellRoute, resolveDetachedShellTarget } from "@elizaos/ui";
+import {
+  resolveDetachedShellTarget,
+  resolveWindowShellRoute,
+} from "@elizaos/ui";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -107,7 +110,7 @@ it("routes a desktop automation window through the renderer surface protocol", (
     "http://localhost/index.html",
     "automations",
   );
-  const route = parseWindowShellRoute(new URL(url).search);
+  const route = resolveWindowShellRoute(new URL(url).search);
   expect(route).toEqual({ mode: "surface", tab: "automations" });
   expect(resolveDetachedShellTarget(route)).toEqual({ tab: "automations" });
 });
