@@ -216,3 +216,12 @@ Hosts provide commands, environment, log policy, readiness probes and active-hos
 identity. It selects no provider, routes or credentials and never retries requests.
 Its portable contract covers replacement during a request and paired startup
 failure; Android service, real runtime and device qualification remain host tests.
+
+`EmbeddedRuntimeGroup` orders agent readiness, private token/binding publication,
+credential-broker attachment and gateway readiness inside one existing session
+scope. Hosts supply commands, readiness probes, a private publisher and broker
+custody. The publisher receives the standard agent-token, gateway-token and
+credential-binding.json names; hosts retain storage layout and binding schema.
+Endpoints alone do not prove readiness: requests still need session fencing.
+Portable tests use real authenticated loopback child processes and verify broker
+cleanup and cancellation between startup stages.
