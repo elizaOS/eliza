@@ -219,7 +219,14 @@ export function createBillTaskRoutes({
           const text = await request.text();
           if (text.length > 2048)
             return Response.json({ code: "TASK_INVALID" }, { status: 400 });
-          const input = JSON.parse(text);
+          let input;
+          try {
+            input = JSON.parse(text);
+          } catch {
+            // Malformed client input, not an unavailable workflow (the source
+            // route answers the same way).
+            return Response.json({ code: "TASK_INVALID" }, { status: 400 });
+          }
           if (
             input &&
             Object.keys(input).length === 1 &&
