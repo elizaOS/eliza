@@ -8,6 +8,7 @@ import * as tar from "tar";
 import {
   assertArm64Library,
   extractVerifiedPackage,
+  stageAndroidDocuments,
   verifyAndroidDocuments,
 } from "./android-documents.mjs";
 
@@ -139,4 +140,19 @@ test("Android document admission checks bytes and task source before packaging",
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test("caller cancellation rejects staging before reading source or publishing files", async () => {
+  const controller = new AbortController();
+  const reason = new Error("Caller stopped document packaging");
+  controller.abort(reason);
+  await assert.rejects(
+    stageAndroidDocuments("/missing-output", "/missing-source", {
+      sourceCommit: "a".repeat(40),
+      canvasVersion: "0.1.100",
+      lockedPackages: {},
+      signal: controller.signal,
+    }),
+    (error) => error === reason,
+  );
 });

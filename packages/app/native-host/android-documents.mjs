@@ -149,8 +149,9 @@ export function verifyAndroidDocuments(output) {
 export async function stageAndroidDocuments(
   output,
   source,
-  { sourceCommit, canvasVersion, lockedPackages },
+  { sourceCommit, canvasVersion, lockedPackages, signal },
 ) {
+  signal?.throwIfAborted();
   output = fs.realpathSync(output);
   const temporary = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-android-documents-"),
@@ -175,7 +176,7 @@ export async function stageAndroidDocuments(
       )
         throw new NativeHostError("Missing locked document dependency");
       const response = await fetch(entry.resolved, {
-        signal: AbortSignal.timeout(60000),
+        signal,
         redirect: "error",
       });
       if (!response.ok)
@@ -183,6 +184,7 @@ export async function stageAndroidDocuments(
       const chunks = [];
       let size = 0;
       for await (const chunk of response.body) {
+        signal?.throwIfAborted();
         size += chunk.length;
         if (size > 50 * 1024 ** 2)
           throw new NativeHostError("Document archive is too large");
@@ -261,6 +263,7 @@ export async function stageAndroidDocuments(
       throw new NativeHostError(
         "Stage the current task gateway before document services",
       );
+    signal?.throwIfAborted();
     fs.rmSync(
       path.join(
         output,
