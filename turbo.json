@@ -687,9 +687,6 @@
         "XDG_RUNTIME_DIR",
         "XDG_CONFIG_HOME"
       ]
-    },
-    "@elizaos/os-usb-installer#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     }
   }
 }

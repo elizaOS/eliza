@@ -1274,6 +1274,7 @@
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@elizaos/ui": "workspace:*",
+        "@elizaos/voice": "workspace:*",
       },
       "devDependencies": {
         "@elizaos/plugin-local-inference": "workspace:*",

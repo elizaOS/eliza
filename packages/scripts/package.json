@@ -11,7 +11,8 @@
     "@elizaos/plugin-native-inference": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/testing": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/ui": "workspace:*",
+    "@elizaos/voice": "workspace:*"
   },
   "exports": {
     ".": "./lib/index.ts"

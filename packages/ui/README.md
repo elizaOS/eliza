@@ -5,7 +5,7 @@ instrumentation, GenUI, voice, and host capability interfaces.
 
 Public JavaScript APIs use the package root; UI internals import owner files directly.
 The app owns renderer composition and native transport selection. Consumers render
-domain DTOs; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
+domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
 
 ## Development
