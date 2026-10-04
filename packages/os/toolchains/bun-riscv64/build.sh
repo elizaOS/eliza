@@ -93,7 +93,7 @@ if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
     git config user.name "bun-riscv64 build"
     while IFS= read -r p; do
         log "  -> $p"
-        git apply "$p" || die "WebKit patch failed: $p — see webkit-patches/README.md for rebase guidance"
+        git apply "$p" || die "WebKit patch failed: $p"
     done < <(find /opt/webkit-patches -maxdepth 1 -type f -name '*.patch' | sort)
     cd "$SRC_ROOT"
 else
@@ -174,7 +174,7 @@ cmake \
     || die "WebKit cmake configure failed."
 
 ninja -j"$JOBS" jsc \
-    || die "WebKit ninja build failed. See webkit-patches/README.md if the failure is in offlineasm or LLInt."
+    || die "WebKit ninja build failed."
 prepare_ninja_object_dirs "$WEBKIT_BUILD_DIR/build.ninja"
 
 log "── stage 5: Bun build ───────────────────────────────────────────────"
@@ -230,33 +230,33 @@ BUN_BIN="$SRC_ROOT/bun/build/release/bun"
 
 file "$BUN_BIN"
 
-log "Smoke test: qemu-riscv64-static --version"
-qemu-riscv64-static --version | head -1
+log "Smoke test: qemu-riscv64 --version"
+qemu-riscv64 --version | head -1
 
-log "Smoke test: qemu-riscv64-static bun --version"
-QEMU_OUT="$(qemu-riscv64-static -L /sysroot "$BUN_BIN" --version 2>&1)" || \
-    die "qemu-riscv64-static bun --version failed: $QEMU_OUT"
+log "Smoke test: qemu-riscv64 bun --version"
+QEMU_OUT="$(qemu-riscv64 -L /sysroot "$BUN_BIN" --version 2>&1)" || \
+    die "qemu-riscv64 bun --version failed: $QEMU_OUT"
 log "  → bun reports: $QEMU_OUT"
 
-log "Smoke test: qemu-riscv64-static bun -e"
-QEMU_EVAL_OUT="$(qemu-riscv64-static -L /sysroot "$BUN_BIN" -e 'console.log("bun-riscv64-eval-ok", process.arch)' 2>&1)" || \
-    die "qemu-riscv64-static bun -e failed: $QEMU_EVAL_OUT"
+log "Smoke test: qemu-riscv64 bun -e"
+QEMU_EVAL_OUT="$(qemu-riscv64 -L /sysroot "$BUN_BIN" -e 'console.log("bun-riscv64-eval-ok", process.arch)' 2>&1)" || \
+    die "qemu-riscv64 bun -e failed: $QEMU_EVAL_OUT"
 case "$QEMU_EVAL_OUT" in
     *"bun-riscv64-eval-ok riscv64"*) ;;
-    *) die "qemu-riscv64-static bun -e returned unexpected output: $QEMU_EVAL_OUT" ;;
+    *) die "qemu-riscv64 bun -e returned unexpected output: $QEMU_EVAL_OUT" ;;
 esac
 log "  → eval reports: $QEMU_EVAL_OUT"
 
-log "Smoke test: qemu-riscv64-static bun <script.js>"
+log "Smoke test: qemu-riscv64 bun <script.js>"
 SMOKE_DIR="$(mktemp -d /tmp/bun-riscv64-smoke.XXXXXX)"
 trap 'remove_path_recursive "$SMOKE_DIR"' EXIT
 SMOKE_JS="$SMOKE_DIR/entrypoint.js"
 printf '%s\n' 'console.log("bun-riscv64-script-ok", process.arch);' > "$SMOKE_JS"
-QEMU_SCRIPT_OUT="$(qemu-riscv64-static -L /sysroot "$BUN_BIN" "$SMOKE_JS" 2>&1)" || \
-    die "qemu-riscv64-static bun script entrypoint failed: $QEMU_SCRIPT_OUT"
+QEMU_SCRIPT_OUT="$(qemu-riscv64 -L /sysroot "$BUN_BIN" "$SMOKE_JS" 2>&1)" || \
+    die "qemu-riscv64 bun script entrypoint failed: $QEMU_SCRIPT_OUT"
 case "$QEMU_SCRIPT_OUT" in
     *"bun-riscv64-script-ok riscv64"*) ;;
-    *) die "qemu-riscv64-static bun script entrypoint returned unexpected output: $QEMU_SCRIPT_OUT" ;;
+    *) die "qemu-riscv64 bun script entrypoint returned unexpected output: $QEMU_SCRIPT_OUT" ;;
 esac
 log "  → script reports: $QEMU_SCRIPT_OUT"
 

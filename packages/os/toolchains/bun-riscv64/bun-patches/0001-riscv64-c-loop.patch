@@ -22,7 +22,7 @@ index fc1a748..68cebe7 100644
      const arch = cfg.x64 ? "x86_64" : "aarch64";
      testCmd = `${envWrap} setarch ${arch} -R ${exe} --revision || ${envWrap} ${exe} --revision`;
 +  } else if (cfg.riscv64) {
-+    testCmd = `${envWrap} qemu-riscv64-static -L /sysroot ${exe} --revision`;
++    testCmd = `${envWrap} qemu-riscv64 -L /sysroot ${exe} --revision`;
    } else if (cfg.windows) {
      // Windows: no setarch, no env wrapper syntax differences matter for
      // this simple case. cmd /c handles the pipe.
@@ -315,7 +315,7 @@ index e57282b..1e4bd35 100644
 +    args.push(`-DCMAKE_SYSTEM_NAME=Linux`);
 +    args.push(`-DCMAKE_SYSTEM_PROCESSOR=riscv64`);
 +    args.push(`-DCMAKE_SYSROOT=${process.env.BUN_SYSROOT ?? "/sysroot"}`);
-+    args.push(`-DCMAKE_CROSSCOMPILING_EMULATOR=qemu-riscv64-static;-L;${process.env.BUN_SYSROOT ?? "/sysroot"}`);
++    args.push(`-DCMAKE_CROSSCOMPILING_EMULATOR=qemu-riscv64;-L;${process.env.BUN_SYSROOT ?? "/sysroot"}`);
 +  }
    if (cfg.windows) {
      // Windows-specific toolchain forwarding. When CMAKE_C_COMPILER is

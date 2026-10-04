@@ -26,7 +26,7 @@
   },
   "patches": {
     "bun": {
-      "0001-riscv64-c-loop.patch": "9ffe68d5f4b2024f18e406ca8fe6f8bc967d64e6eddd30f6c37f8c7686991ecd"
+      "0001-riscv64-c-loop.patch": "33d7d7e9612cb7e92fa1a03cb4f236c18f7baf1bb74a7f4ca6483e23ac8051fd"
     },
     "webkit": {
       "0001-riscv64-c-loop.patch": "9c08d4aa82e65b85b3b90280e6d73174f82d1e6710a7e5a5df974dcce68211f5"

@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libstdc++-14-dev \
         gnupg2 \
         ssh-client \
-        qemu-user-static \
+        qemu-user \
     && rm -rf /var/lib/apt/lists/*
 
 ARG CMAKE_VERSION=4.4.4
@@ -136,9 +136,6 @@ if [ "$compile_only" = "1" ]; then
         --gcc-toolchain=/sysroot/usr \
         -Qunused-arguments \
         -B/sysroot/gcc \
-        -stdlib=libstdc++ \
-        -isystem /sysroot/cxx \
-        -isystem /sysroot/cxx/riscv64-alpine-linux-musl \
         -march=rv64gc \
         -mabi=lp64d \
         "$@"
@@ -199,6 +196,11 @@ RUN chmod +x /opt/cross/bin/riscv64-linux-musl-clang /opt/cross/bin/riscv64-linu
         ln -s "/usr/local/bin/llvm-${tool}" "/opt/cross/bin/riscv64-linux-musl-${tool}"; \
     done; \
     ln -s /usr/local/bin/ld.lld /opt/cross/bin/riscv64-linux-musl-ld
+
+RUN printf '#include <stdatomic.h>\nint load(_Atomic int *p) { return atomic_load(p); }\n' | \
+    /opt/cross/bin/riscv64-linux-musl-clang -std=c11 -x c -c -o /dev/null - && \
+    printf '#include <atomic>\nint load(std::atomic<int> *p) { return p->load(); }\n' | \
+    /opt/cross/bin/riscv64-linux-musl-clang++ -std=c++23 -x c++ -c -o /dev/null -
 
 ENV PATH=/opt/cross/bin:$PATH
 
