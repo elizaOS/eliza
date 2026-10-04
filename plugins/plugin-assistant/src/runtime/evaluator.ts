@@ -2093,13 +2093,13 @@ function calendarCoverageSourceFacts(
       asOf >= requestedAt &&
       isObjectRecord(reply) &&
       reply.domain === "calendar" &&
-      typeof reply.facts === "string" &&
+      typeof reply.userFacingFacts === "string" &&
       (reply.scenario === "feed_results" ||
         (data.event === null &&
           isObjectRecord(scope) &&
           scope.exhaustive === false))
     ) {
-      facts.push(reply.facts);
+      facts.push(reply.userFacingFacts);
       calendarScopeReported = true;
     }
   }

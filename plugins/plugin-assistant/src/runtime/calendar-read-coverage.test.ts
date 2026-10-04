@@ -1,11 +1,17 @@
 /** Verifies operation substitution, source provenance and future-window proof through real evaluation. */
-import type {
-  ContextObject,
-  EvaluatorOutput,
-  PlannerTrajectory,
+import {
+  AgentRuntime,
+  type ContextObject,
+  type EvaluatorOutput,
+  type PlannerTrajectory,
 } from "@elizaos/core";
-import type { CalendarReadBinding } from "@elizaos/core/contracts/calendar";
-import { describe, expect, it } from "vitest";
+import type {
+  CalendarReadBinding,
+  LifeOpsCalendarFeed,
+} from "@elizaos/core/contracts/calendar";
+import { describe, expect, it, vi } from "vitest";
+import { createCalendarActionRunner } from "../../../plugin-calendar/src/actions/calendar-handler.ts";
+import { CalendarService } from "../../../plugin-calendar/src/service/CalendarService.ts";
 import { calendarReadCoverage, runEvaluator } from "./evaluator.ts";
 
 const requestedAt = Date.parse("2026-10-04T01:19:35Z");
@@ -97,6 +103,132 @@ function fixture() {
 }
 
 describe("request-bound Calendar read coverage", () => {
+  it("uses the real empty NEXT producer's human channel without exposing its model instructions", async () => {
+    const f = fixture();
+    const runtime = new AgentRuntime({
+      character: { name: "Real bounded NEXT", bio: [] },
+      logLevel: "fatal",
+    });
+    const service = new CalendarService(runtime);
+    const now = new Date("2026-10-04T01:19:36Z");
+    const feed: LifeOpsCalendarFeed = {
+      calendarId: "primary",
+      events: [],
+      source: "synced",
+      state: "complete",
+      sources: [
+        {
+          key: "private-source-key",
+          summary: "Eliza Calendar",
+          accessRole: "owner",
+          visibility: "details",
+          status: "fresh",
+          syncedAt: now.toISOString(),
+          error: null,
+        },
+      ],
+      timeMin: "2026-10-03T07:00:00Z",
+      timeMax: "2026-11-02T08:00:00Z",
+      syncedAt: now.toISOString(),
+    };
+    vi.spyOn(service, "getCalendarFeed").mockResolvedValue(feed);
+    const context = await service.getNextCalendarEventContext(
+      new URL("http://localhost/"),
+      { timeZone: "America/Los_Angeles" },
+      now,
+    );
+    vi.spyOn(service, "getNextCalendarEventContext").mockResolvedValue(context);
+    runtime.services.set(CalendarService.serviceType, [service]);
+    const noModel = async () => {
+      throw new Error("Unexpected producer model call");
+    };
+    const action = createCalendarActionRunner({
+      runTextModel: noModel,
+      runJsonModel: noModel,
+      recentConversationTexts: async () => [],
+    });
+    const outcome = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000091",
+        entityId: "00000000-0000-0000-0000-000000000092",
+        roomId: "00000000-0000-0000-0000-000000000093",
+        agentId: runtime.agentId,
+        createdAt: requestedAt,
+        content: { text: "Read my next Calendar event" },
+      },
+      undefined,
+      {
+        parameters: {
+          subaction: "next_event",
+          details: { timeZone: "America/Los_Angeles" },
+        },
+      },
+    );
+    if (!outcome || typeof outcome !== "object")
+      throw new Error("Missing real producer result");
+    const reply = outcome.data?.replyContext as Record<string, unknown>;
+    expect(reply.facts).toContain("Report absence only");
+    expect(reply.userFacingFacts).toBe(
+      "No upcoming event was found in Eliza Calendar from Oct 3, 2026 to before Nov 2, 2026.",
+    );
+    const bindings = f.context.metadata
+      ?.calendarReadBindings as CalendarReadBinding[];
+    bindings[0].intentId = "intent:3";
+    f.trajectory.outcomeIntents = [
+      "Open Notes",
+      "Read latest note",
+      "Read next Calendar event",
+    ];
+    f.trajectory.steps = [
+      {
+        iteration: 1,
+        toolCall: { id: "view", name: "VIEWS_SHOW", params: {} },
+        result: {
+          success: true,
+          data: { navigation: { status: "delivered", label: "Notes" } },
+        },
+      },
+      {
+        iteration: 1,
+        toolCall: { id: "notes", name: "NOTES_LIST", params: {} },
+        result: {
+          success: true,
+          data: { total: 0, lookupMode: "all", filterApplied: false },
+        },
+      },
+      {
+        iteration: 1,
+        toolCall: { id: "next", name: "CALENDAR_NEXT_EVENT", params: {} },
+        result: outcome,
+      },
+    ];
+    f.output.outcomeCoverage = [1, 2, 3].map((i) => ({
+      intentId: `intent:${i}`,
+      status: "completed",
+      evidenceStepIds: [`step:${i}`],
+    }));
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(false);
+    expect(result.decision).toBe("FINISH");
+    expect(result.messageToUser).toContain(
+      "Notes view is open. No notes exist in Notes.",
+    );
+    expect(result.messageToUser).toContain(String(reply.userFacingFacts));
+    for (const forbidden of [
+      "Report absence",
+      "do not generalize",
+      "non-exhaustive",
+      "private-source-key",
+      "2026-10-03T07:00:00Z",
+      "No upcoming events on any calendar",
+    ])
+      expect(result.messageToUser).not.toContain(forbidden);
+  });
   it("preserves the existing false-condition verdict from a current successful Notes read", async () => {
     const f = fixture();
     const bindings = f.context.metadata
@@ -306,7 +438,9 @@ describe("request-bound Calendar read coverage", () => {
             replyContext: {
               domain: "calendar",
               scenario: "feed_results",
-              facts: "No events from October 3 through October 10, inclusive.",
+              facts: "INTERNAL MODEL GUIDANCE",
+              userFacingFacts:
+                "No events from October 3 through October 10, inclusive.",
               context: {
                 asOf: "2026-10-04T01:19:36Z",
                 selection: "bounded_agenda",
@@ -350,6 +484,7 @@ describe("request-bound Calendar read coverage", () => {
       domain: "calendar",
       scenario: "feed_results",
       facts: "STALE SAME-DAY FACT",
+      userFacingFacts: "STALE SAME-DAY FACT",
       context: { asOf: "2026-10-03T23:58:33Z", selection: "bounded_agenda" },
     };
     const stale = await runEvaluator({
