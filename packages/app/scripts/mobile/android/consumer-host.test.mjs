@@ -181,7 +181,7 @@ test("toolchain is hash pinned and optional runtime preserves exact native bytes
 
 test("a symlinked checkout root uses canonical ownership without admitting descendant symlinks", (t) => {
   const { options, generate } = setup(t);
-  const actual = options.consumerRoot,
+  const actual = fs.realpathSync(options.consumerRoot),
     alias = `${actual}-alias`;
   fs.symlinkSync(actual, alias, "junction");
   t.after(() => fs.unlinkSync(alias));
