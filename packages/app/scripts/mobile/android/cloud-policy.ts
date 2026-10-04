@@ -948,6 +948,7 @@ export function createAndroidPlayManifestPolicy({
   };
   if (!firebaseIndependent) return policy;
   const firebaseComponents = [
+    "activity:com.google.android.gms.common.api.GoogleApiActivity",
     "provider:com.google.firebase.provider.FirebaseInitProvider",
     "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
     "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
@@ -959,6 +960,7 @@ export function createAndroidPlayManifestPolicy({
     "service:com.google.firebase.messaging.FirebaseMessagingService",
   ];
   const firebaseMetadata = [
+    "com.google.android.gms.version",
     "backend:com.google.android.datatransport.cct.CctBackendFactory",
     "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
     "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
