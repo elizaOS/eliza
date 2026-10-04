@@ -128,7 +128,7 @@ test("real signed validator rejects legacy artifacts before any reboot or unlock
   const progress = vi.fn();
   await expect(
     new AdbFlasherBackend().executeFlashPlan(plan, progress),
-  ).rejects.toThrow();
+  ).rejects.toThrow("installation requires a signed schemaVersion 2 contract");
   expect(
     vi
       .mocked(spawnSync)
