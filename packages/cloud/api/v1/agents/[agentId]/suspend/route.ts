@@ -18,6 +18,7 @@ import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -34,11 +35,22 @@ app.post("/", async (c) => {
     const agent = await elizaSandboxService.getAgentById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
 
-    const raw = await c.req.json().catch(() => ({}));
-    const parsed = suspendSchema.safeParse(raw);
-    const reason = parsed.success
-      ? parsed.data.reason
-      : "owner requested suspension";
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = suspendSchema.safeParse(decodedBody.value);
+    if (!parsed.success) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid request data",
+          details: parsed.error.issues,
+        },
+        400,
+      );
+    }
+    const { reason } = parsed.data;
 
     logger.info("[service-api] Suspend requested", { agentId, reason });
 

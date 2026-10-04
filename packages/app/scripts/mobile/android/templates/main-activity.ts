@@ -129,13 +129,8 @@ ${
 `;
   const safePushRegistration = safePushNotifications
     ? `
-        // Capacitor discovers the community push plugin before Firebase is
-        // available in builds without google-services.json. Replace it after
-        // bridge creation so registration reports unavailable instead of
-        // terminating the process when the renderer requests notifications.
-        if (getBridge() != null) {
-            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
-        }
+        // Appended after discovery, before the first bridge JS/header export.
+        initialPlugins.add(SafePushNotificationsPlugin.class);
 `
     : "";
   return `package ${androidPackage};
@@ -177,9 +172,9 @@ ${launcherConstants}
         registerPlugin(ElizaPlayVoicePlugin.class);
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
+${safePushRegistration}
         super.onCreate(savedInstanceState);
         keepScreenAwake();
-${safePushRegistration}
 
 ${launcherSetup}
 

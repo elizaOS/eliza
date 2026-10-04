@@ -39,9 +39,26 @@ const requestSchema = z.object({
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    // An empty or absent body means "initiate with defaults". A NON-empty
+    // body that is not valid JSON is a client error and must never fall back
+    // to those defaults — that turned a truncated request into an initiated
+    // connection flow.
+    const rawBody = await c.req.text();
+    let bodyValue: unknown = {};
+    if (rawBody.trim().length > 0) {
+      try {
+        bodyValue = JSON.parse(rawBody);
+      } catch {
+        // error-policy:J3 malformed JSON is invalid request input.
+        return c.json(
+          {
+            error: "Invalid Google connector request: body is not valid JSON.",
+          },
+          400,
+        );
+      }
+    }
+    const parsed = requestSchema.safeParse(bodyValue);
     if (!parsed.success) {
       return c.json(
         {

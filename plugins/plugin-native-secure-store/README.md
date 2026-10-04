@@ -26,3 +26,13 @@ remain compatible. Keystore availability does not assert StrongBox protection.
 Device tests use synthetic credentials in an isolated UID and cover complete
 262,144-byte values, backup recovery, corruption and concurrent cold key creation.
 Inspect the terminal instrumentation result, not only the shell exit status.
+
+The Android `nativeonly` package provides host-configured password custody,
+credential persistence, exact-origin autofill validation and one-shot sessions.
+These are native APIs; they are not registered Capacitor methods. Hosts retain
+picker UI, signer trust, permission declarations and release/debug policy, and
+must preserve deployed aliases, AAD and filenames when adopting them. Custody
+uses Android API 26+; browser structure parsing requires API 28+. Production
+password keys must require device authentication. The unauthenticated constructor
+mode is only for host-restricted synthetic tests. Autofill metadata key strings
+retain their existing browser wire protocol identifiers.

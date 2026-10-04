@@ -7,10 +7,8 @@
 # Invariants:
 #   1. The Eliza APK is installed as a privileged system app.
 #   2. The privapp / default-permissions XMLs ship under /system/etc/.
-#   3. Every stock app whose role we override is removed from
-#      PRODUCT_PACKAGES so the resolver has a single answer for HOME,
-#      DIALER, SMS, ASSISTANT, contacts, browser, calendar, camera,
-#      gallery, music, deskclock, search.
+#   3. Role defaults select Eliza; inherited stock packages are not removed
+#      by this product layer.
 #   4. First-boot setup wizard / provisioning is disabled — the device
 #      must boot directly to Eliza, not to a Google "Welcome" flow.
 #   5. Brand properties land on /product/ where the product layer owns
@@ -28,33 +26,10 @@ PRODUCT_PACKAGES += \
     default-permissions-ai.elizaos.app.xml \
     privapp-permissions-ai.elizaos.app.xml
 
-# KNOWN GAP: `-=` is not a make (or kati) operator — this block is currently
-# a no-op that defines a stray variable, so none of these stock apps are
-# actually removed from any image. Even a working subtraction here could not
-# remove packages contributed by inherited makefiles (inherit-product
-# aggregation is deferred past this file's evaluation). Role/HOME defaults in
-# vendor/eliza/overlays keep Eliza in front regardless; the real de-bloat
-# needs a supported mechanism and boot-level verification. Tracked as a
-# follow-up; do not trust this list as a removal contract.
-PRODUCT_PACKAGES -= \
-    Browser2 \
-    Calendar \
-    Camera2 \
-    Contacts \
-    DeskClock \
-    Dialer \
-    Email \
-    Gallery2 \
-    Launcher3 \
-    Launcher3QuickStep \
-    ManagedProvisioning \
-    Messaging \
-    messaging \
-    Music \
-    Provision \
-    QuickSearchBox \
-    SetupWizard \
-    Trebuchet
+# Role/HOME defaults in vendor/eliza/overlays keep Eliza in front. Removing
+# inherited stock packages needs a supported mechanism and boot verification:
+# inherit-product aggregation is deferred past this file's evaluation. Do not
+# use `PRODUCT_PACKAGES -=`: it is not a make operator and GNU Make 4 rejects it.
 
 PRODUCT_PACKAGE_OVERLAYS += \
     vendor/eliza/overlays

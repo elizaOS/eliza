@@ -102,7 +102,7 @@ async function handleMobileConnect(
   input: z.infer<typeof MobileConnectSchema>,
 ): Promise<Response> {
   const user = await requireUserWithOrg(c);
-  const { registration } = await requireRegisteredMobileApp(c);
+  const { registration } = await requireRegisteredMobileApp(c, input.clientId);
   validateMobileAppAuthPkceBinding(registration, input);
   return await runMobileAppAuthGrantAdmission(c, user.id, async () => {
     // app_users records durable consent, not possession of a transient code.

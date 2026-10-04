@@ -49,8 +49,9 @@ public class GatewayConnectionService extends Service {
     public static final String STATUS_CONNECTED = "connected";
     public static final String STATUS_DISCONNECTED = "disconnected";
     public static final String STATUS_RECONNECTING = "reconnecting";
+    private static final String STATUS_UNKNOWN = "unknown";
 
-    private volatile String currentStatus = STATUS_DISCONNECTED;
+    private volatile String currentStatus = STATUS_UNKNOWN;
     private volatile Thread notificationWorker;
     private volatile boolean stopping;
 
@@ -255,9 +256,13 @@ public class GatewayConnectionService extends Service {
                 title = "Eliza Gateway · Reconnecting";
                 text = "Attempting to restore connection…";
                 break;
-            default:
+            case STATUS_DISCONNECTED:
                 title = "Eliza Gateway";
                 text = "Disconnected";
+                break;
+            default:
+                title = "Eliza Gateway";
+                text = "Background service running";
                 break;
         }
 

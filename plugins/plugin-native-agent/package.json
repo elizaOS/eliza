@@ -47,7 +47,8 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:native-host": "node scripts/test-native-host.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

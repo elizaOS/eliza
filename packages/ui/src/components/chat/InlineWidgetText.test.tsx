@@ -108,6 +108,22 @@ describe("InlineWidgetText", () => {
     expect(container.textContent).toContain("just a normal reply");
   });
 
+  it("retains the source message when choosing a reminder in the shell", () => {
+    const id = "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9";
+    const view = withApp(
+      <InlineWidgetText
+        messageId={id}
+        content={
+          "[CHOICE:lifeops-reminder id=reminder-source]\ndone=Done\n[/CHOICE]"
+        }
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(view.sendActionMessage).toHaveBeenCalledWith("done", {
+      metadata: { replyToMessageId: id, reminderChoiceId: "reminder-source" },
+    });
+  });
+
   it("renders a choice picker and does not leak the [CHOICE] marker", () => {
     const { container } = withApp(
       <InlineWidgetText
@@ -295,5 +311,29 @@ describe("InlineWidgetText", () => {
         "__permission_card__:granted feature=lifeops.reminders.create permission=reminders",
       ),
     );
+  });
+
+  it.each(["lifeops-reminder", "lifeops-calendar-reminder"])(
+    "hides historical %s panels only for reminder producer messages",
+    (scope) => {
+      const content = `Reminder: Take your meds.\n\n[CHOICE:${scope} id=history]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]`;
+      const before = content;
+      withApp(<InlineWidgetText content={content} producerScope="reminder" />);
+      expect(screen.getByText(/Reminder: Take your meds/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+      expect(content).toBe(before);
+    },
+  );
+  it("keeps ordinary agent question choices visible", () => {
+    withApp(
+      <InlineWidgetText
+        content={
+          "[CHOICE:clarification id=question]\nyes=Yes\nno=No\n[/CHOICE]"
+        }
+        producerScope="reminder"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Yes" })).toBeTruthy();
   });
 });

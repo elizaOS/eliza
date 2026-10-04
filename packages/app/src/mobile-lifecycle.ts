@@ -22,6 +22,9 @@ import {
 } from "@elizaos/ui/events";
 import { isStandalonePwa } from "@elizaos/ui/platform";
 
+/** Native consumption may follow either applied navigation or explicit rejection. */
+export type DeepLinkApplicationResult = boolean | { rejected: true };
+
 export interface MobileLifecycleContext {
   isNative: boolean;
   isIOS: boolean;
@@ -34,7 +37,9 @@ export interface MobileLifecycleContext {
    * awaits it before acknowledging the Android buffer — see
    * `acknowledgeBufferedUrl` below.
    */
-  handleDeepLink: (url: string) => undefined | Promise<boolean>;
+  handleDeepLink: (
+    url: string,
+  ) => undefined | Promise<DeepLinkApplicationResult>;
   androidDeepLinkBuffer?: AndroidDeepLinkBuffer;
 }
 
@@ -117,7 +122,10 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       pendingDeepLinkAcknowledgements.set(trimmed, queued);
     }
     const result = ctx.handleDeepLink(trimmed);
-    if (result && typeof (result as Promise<boolean>).then === "function") {
+    if (
+      result &&
+      typeof (result as Promise<DeepLinkApplicationResult>).then === "function"
+    ) {
       // Record every asynchronous application attempt, including one first
       // observed through Capacitor getLaunchUrl without an acknowledgement.
       // A concurrent DeepLinkBuffer peek of the same URL must queue behind this
@@ -125,9 +133,12 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       if (!pendingDeepLinkAcknowledgements.has(trimmed)) {
         pendingDeepLinkAcknowledgements.set(trimmed, []);
       }
-      void (result as Promise<boolean>)
+      void (result as Promise<DeepLinkApplicationResult>)
         .then((applied) => {
-          if (!applied) {
+          if (
+            applied !== true &&
+            !(typeof applied === "object" && applied?.rejected === true)
+          ) {
             pendingDeepLinkAcknowledgements.delete(trimmed);
             handledDeepLinks.delete(trimmed);
             return;

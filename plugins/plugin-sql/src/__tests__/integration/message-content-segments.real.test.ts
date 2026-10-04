@@ -117,4 +117,62 @@ describe("PGlite message content segments", () => {
     ).resolves.toEqual({ status: "forbidden" });
     await adapter.close();
   }, 60_000);
+
+  it("removes a message's content segments with every message delete path", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-message-segments-"));
+    cleanupPaths.push(dataDir);
+    const agentId = uuidv4() as UUID;
+    const entityId = uuidv4() as UUID;
+    const roomId = uuidv4() as UUID;
+    const adapter = await open(dataDir, agentId, true);
+    await adapter.createAgent({ id: agentId, name: "Segment agent" } as Agent);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["Segment writer"] }]);
+    await adapter.createRooms([
+      { id: roomId, agentId, source: "test", type: "GROUP", name: "Room" },
+    ]);
+    await adapter.createRoomParticipants([entityId], roomId);
+
+    const publishLarge = async (label: string): Promise<UUID> => {
+      const message: Memory & { id: UUID } = {
+        id: uuidv4() as UUID,
+        agentId,
+        entityId,
+        roomId,
+        createdAt: Date.now(),
+        content: { text: `${label} private note\n`.repeat(8_000) },
+        metadata: { type: "message", scope: "room" },
+      };
+      const projection = buildMessageContentProjection(message);
+      expect(projection.segments.length).toBeGreaterThan(0);
+      await adapter.publishMessageContentSegments({
+        mode: "create",
+        parent: { ...message, content: projection.content },
+        segments: projection.segments,
+      });
+      return message.id;
+    };
+    const segmentMessageIds = async () =>
+      (
+        await adapter.getMemories({
+          tableName: "message_content_segments",
+          roomId,
+          unique: false,
+        })
+      ).map((segment) => (segment.metadata as { messageId?: string } | undefined)?.messageId);
+
+    const single = await publishLarge("single");
+    const batch = await publishLarge("batch");
+    const room = await publishLarge("room");
+    expect(new Set(await segmentMessageIds())).toEqual(new Set([single, batch, room]));
+
+    await adapter.deleteMemory(single);
+    expect(await segmentMessageIds()).not.toContain(single);
+
+    await adapter.deleteManyMemories([batch]);
+    expect(await segmentMessageIds()).not.toContain(batch);
+
+    await adapter.deleteAllMemories([roomId], "messages");
+    expect(await segmentMessageIds()).toEqual([]);
+    await adapter.close();
+  }, 60_000);
 });

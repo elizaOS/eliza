@@ -6,7 +6,7 @@ import { dbRead } from "@/db/helpers";
 import { usageRecords } from "@/db/schemas/usage-records";
 import { requireAdminWithResponse } from "@/lib/auth/admin";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Month-to-date cost breakdown for a single user: rawCost (input+output
@@ -34,11 +34,11 @@ function firstOfCurrentMonthUtc(): Date {
 }
 
 async function __hono_GET(
-  request: Request,
+  c: AppContext,
   context: { params: Promise<{ userId: string }> },
 ): Promise<Response> {
   const authResult = await requireAdminWithResponse(
-    request,
+    c,
     "[Admin] Billing breakdown auth error",
   );
   if (authResult instanceof Response) {
@@ -116,7 +116,7 @@ async function __hono_GET(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
+  __hono_GET(c, {
     params: Promise.resolve({ userId: c.req.param("userId")! }),
   }),
 );

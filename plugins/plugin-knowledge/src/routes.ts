@@ -1389,7 +1389,7 @@ export async function handleDocumentsRoutes(
       content = `[Image: ${document.filename}]\n\n${descText}`;
       contentType = "text/plain";
     }
-    if (document.filename.endsWith(".mdx")) {
+    if (document.filename.toLowerCase().endsWith(".mdx")) {
       contentType = "text/markdown";
     }
     const textBacked =

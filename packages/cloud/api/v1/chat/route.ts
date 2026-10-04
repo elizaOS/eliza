@@ -705,11 +705,6 @@ app.post("/", async (c) => {
         cotBudget ?? undefined,
       ),
       onFinish: async ({ text, usage, finishReason }) => {
-        assertModelOutputComplete({
-          finishReason,
-          provider,
-          model: selectedModel,
-        });
         await settleOffResponsePath(executionCtx, async () => {
           if (!usage) {
             await settleUnknownReservation?.();
@@ -842,6 +837,11 @@ app.post("/", async (c) => {
               error: error instanceof Error ? error.message : String(error),
             });
           }
+        });
+        assertModelOutputComplete({
+          finishReason,
+          provider,
+          model: selectedModel,
         });
       },
       onAbort: async () => {
