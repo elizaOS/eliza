@@ -43,8 +43,7 @@ export type ChatState = Pick<
   | "ptySessions"
   | "unreadConversations"
   | "chatPendingImages"
-  | "chatReplyTarget"
->;
+> & { chatReplyTarget: ChatReplyTarget | null };
 
 function createInitialChatState(): ChatState {
   return {
