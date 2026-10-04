@@ -315,19 +315,37 @@ test.each(['finished', 'failed', 'continued'] as const)(
       error: status === 'failed' ? { message: 'native error', stack: 'native stack' } : undefined,
       nextRunId: status === 'continued' ? 'next-native-run' : undefined,
     };
-    const timer = setTimeout(() => controller.abort(), 300);
     try {
       const result = await run('event-before-result', {
         signal: controller.signal,
         input: { terminalResult },
-        onEvent: () => new Promise(() => {}),
+        onEvent: async (event) => {
+          // Observe the real worker exit before releasing blocked delivery. A
+          // timer measured from spawn can abort before any receipt under load.
+          const pid = event.payload.workerPid;
+          if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0)
+            throw Error('Missing fixture worker PID');
+          const deadline = Date.now() + 5000;
+          for (;;) {
+            try {
+              process.kill(pid, 0);
+            } catch (error) {
+              if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break;
+              throw error;
+            }
+            if (Date.now() >= deadline) throw Error('Fixture worker did not exit');
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          controller.abort();
+          await new Promise(() => {});
+        },
       });
       expect(result.status).toBe(status);
       expect(result.output).toEqual(terminalResult.output);
       expect(result.error).toEqual(terminalResult.error);
       expect(result.nextRunId).toBe(terminalResult.nextRunId);
     } finally {
-      clearTimeout(timer);
+      controller.abort();
     }
   }
 );

@@ -72,7 +72,7 @@ if (mode === 'exit-seven') {
     emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
   }, 5);
 } else if (mode === 'event-before-result') {
-  emit({ kind: 'event', event: { type: 'TaskStarted' } });
+  emit({ kind: 'event', event: { type: 'TaskStarted', workerPid: process.pid } });
   emit({
     kind: 'result',
     result: { runId: payload.runId, status: 'finished', ...payload.input.terminalResult },
