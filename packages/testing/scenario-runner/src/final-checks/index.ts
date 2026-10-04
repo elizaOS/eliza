@@ -34,6 +34,7 @@ const MODEL_CALL_OCCURRED_POLL_INTERVAL_MS = 50;
 export interface FinalCheckHandlerContext {
   runtime: FinalCheckRuntime;
   ctx: ScenarioContext;
+  abortSignal?: AbortSignal;
   /** Host-owned API/store readback covering the rejected actions; empty means observed no effects. */
   observeRejectedEffects?: (
     actionNames: readonly string[],
@@ -916,6 +917,7 @@ type GmailMockRequest = {
 
 async function readGmailMockRequests(
   runtime: FinalCheckRuntime,
+  signal?: AbortSignal,
 ): Promise<GmailMockRequest[]> {
   const base =
     runtime.getSetting?.("ELIZA_MOCK_GOOGLE_BASE") ??
@@ -926,7 +928,7 @@ async function readGmailMockRequests(
     );
   }
   const response = await fetch(`${base}/__mock/requests`, {
-    signal: AbortSignal.timeout(30_000),
+    signal,
   });
   if (!response.ok) {
     throw new Error(
@@ -2314,49 +2316,52 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler("gmailMockRequest", async (check, { runtime }) => {
-  const { method, path, body, expected, minCount } = check as {
-    method?: string | string[];
-    path?: string | string[];
-    body?: Record<string, unknown>;
-    expected?: boolean;
-    minCount?: number;
-  };
-  const requests = await readGmailMockRequests(runtime);
-  const matched = requests.filter((entry) =>
-    gmailRequestMatches(entry, { method, path, body }),
-  );
-  const wantPresent = expected ?? true;
-  const wantCount = typeof minCount === "number" ? minCount : 1;
-  if (wantPresent) {
-    if (matched.length < wantCount) {
+registerFinalCheckHandler(
+  "gmailMockRequest",
+  async (check, { runtime, abortSignal }) => {
+    const { method, path, body, expected, minCount } = check as {
+      method?: string | string[];
+      path?: string | string[];
+      body?: Record<string, unknown>;
+      expected?: boolean;
+      minCount?: number;
+    };
+    const requests = await readGmailMockRequests(runtime, abortSignal);
+    const matched = requests.filter((entry) =>
+      gmailRequestMatches(entry, { method, path, body }),
+    );
+    const wantPresent = expected ?? true;
+    const wantCount = typeof minCount === "number" ? minCount : 1;
+    if (wantPresent) {
+      if (matched.length < wantCount) {
+        return {
+          status: "failed",
+          detail: `expected ${wantCount} Gmail mock request(s), saw ${matched.length} of ${requests.length}`,
+        };
+      }
+      return {
+        status: "passed",
+        detail: `${matched.length} Gmail mock request(s) matched`,
+      };
+    }
+    if (matched.length > 0) {
       return {
         status: "failed",
-        detail: `expected ${wantCount} Gmail mock request(s), saw ${matched.length} of ${requests.length}`,
+        detail: `expected no Gmail mock request match, saw ${matched.length}`,
       };
     }
     return {
       status: "passed",
-      detail: `${matched.length} Gmail mock request(s) matched`,
+      detail: "no matching Gmail mock request observed",
     };
-  }
-  if (matched.length > 0) {
-    return {
-      status: "failed",
-      detail: `expected no Gmail mock request match, saw ${matched.length}`,
-    };
-  }
-  return {
-    status: "passed",
-    detail: "no matching Gmail mock request observed",
-  };
-});
+  },
+);
 
 registerFinalCheckHandler(
   "gmailDraftCreated",
-  async (check, { ctx, runtime }) => {
+  async (check, { ctx, runtime, abortSignal }) => {
     const { expected } = check as { expected?: boolean };
-    const requests = await readGmailMockRequests(runtime);
+    const requests = await readGmailMockRequests(runtime, abortSignal);
     const ledgerHit = requests.some((entry) =>
       gmailRequestMatches(entry, {
         method: "POST",
@@ -2378,113 +2383,128 @@ registerFinalCheckHandler(
   },
 );
 
-registerFinalCheckHandler("gmailDraftDeleted", async (check, { runtime }) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests(runtime);
-  const any = requests.some(
-    (entry) =>
-      String(entry.method ?? "").toUpperCase() === "DELETE" &&
-      /^\/gmail\/v1\/users\/me\/drafts\/[^/]+$/.test(String(entry.path ?? "")),
-  );
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailDraftDeleted=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected gmailDraftDeleted=${want}, saw ${any}`,
-  };
-});
+registerFinalCheckHandler(
+  "gmailDraftDeleted",
+  async (check, { runtime, abortSignal }) => {
+    const { expected } = check as { expected?: boolean };
+    const requests = await readGmailMockRequests(runtime, abortSignal);
+    const any = requests.some(
+      (entry) =>
+        String(entry.method ?? "").toUpperCase() === "DELETE" &&
+        /^\/gmail\/v1\/users\/me\/drafts\/[^/]+$/.test(
+          String(entry.path ?? ""),
+        ),
+    );
+    const want = expected ?? true;
+    if (any === want) {
+      return { status: "passed", detail: `gmailDraftDeleted=${want}` };
+    }
+    return {
+      status: "failed",
+      detail: `expected gmailDraftDeleted=${want}, saw ${any}`,
+    };
+  },
+);
 
-registerFinalCheckHandler("gmailMessageSent", async (check, { runtime }) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests(runtime);
-  const any = requests.some((entry) =>
-    gmailRequestMatches(entry, {
-      method: "POST",
-      path: gmailSendLedgerPaths(),
-    }),
-  );
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailMessageSent=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected gmailMessageSent=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("gmailBatchModify", async (check, { runtime }) => {
-  const { expected, body } = check as {
-    expected?: boolean;
-    body?: Record<string, unknown>;
-  };
-  const requests = await readGmailMockRequests(runtime);
-  const any = requests.some((entry) =>
-    gmailRequestMatches(entry, {
-      method: "POST",
-      path: "/gmail/v1/users/me/messages/batchModify",
-      body,
-    }),
-  );
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailBatchModify=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected gmailBatchModify=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("gmailApproval", async (check, { ctx, runtime }) => {
-  const { state } = check as {
-    state: "pending" | "confirmed" | "canceled" | "cancelled";
-  };
-  if (state === "pending") {
-    const any =
-      (ctx.approvalRequests ?? []).some(
-        (request) =>
-          matchesActionName(request.actionName, [
-            "MESSAGE",
-            "GMAIL_ACTION",
-            "send_email",
-          ]) && request.state === "pending",
-      ) ||
-      ctx.actionsCalled.some((action) => {
-        const data = actionResultData(action);
-        return (
-          data?.pendingApproval === true || data?.requiresConfirmation === true
-        );
-      });
-    return any
-      ? { status: "passed", detail: "pending Gmail approval observed" }
-      : { status: "failed", detail: "no pending Gmail approval observed" };
-  }
-  if (state === "confirmed") {
-    const requests = await readGmailMockRequests(runtime);
-    const sendHit = requests.some((entry) =>
+registerFinalCheckHandler(
+  "gmailMessageSent",
+  async (check, { runtime, abortSignal }) => {
+    const { expected } = check as { expected?: boolean };
+    const requests = await readGmailMockRequests(runtime, abortSignal);
+    const any = requests.some((entry) =>
       gmailRequestMatches(entry, {
         method: "POST",
         path: gmailSendLedgerPaths(),
       }),
     );
-    const actionHit = ctx.actionsCalled.some((action) =>
-      hasConfirmedGmailSendAction(action),
+    const want = expected ?? true;
+    if (any === want) {
+      return { status: "passed", detail: `gmailMessageSent=${want}` };
+    }
+    return {
+      status: "failed",
+      detail: `expected gmailMessageSent=${want}, saw ${any}`,
+    };
+  },
+);
+
+registerFinalCheckHandler(
+  "gmailBatchModify",
+  async (check, { runtime, abortSignal }) => {
+    const { expected, body } = check as {
+      expected?: boolean;
+      body?: Record<string, unknown>;
+    };
+    const requests = await readGmailMockRequests(runtime, abortSignal);
+    const any = requests.some((entry) =>
+      gmailRequestMatches(entry, {
+        method: "POST",
+        path: "/gmail/v1/users/me/messages/batchModify",
+        body,
+      }),
     );
-    return sendHit || actionHit
-      ? { status: "passed", detail: "confirmed Gmail send observed" }
-      : { status: "failed", detail: "no confirmed Gmail send observed" };
-  }
-  const canceled = ctx.actionsCalled.some((action) => {
-    const data = actionResultData(action);
-    return data?.noop === true && data?.cancelled === true;
-  });
-  return canceled
-    ? { status: "passed", detail: "canceled Gmail approval observed" }
-    : { status: "failed", detail: "no canceled Gmail approval observed" };
-});
+    const want = expected ?? true;
+    if (any === want) {
+      return { status: "passed", detail: `gmailBatchModify=${want}` };
+    }
+    return {
+      status: "failed",
+      detail: `expected gmailBatchModify=${want}, saw ${any}`,
+    };
+  },
+);
+
+registerFinalCheckHandler(
+  "gmailApproval",
+  async (check, { ctx, runtime, abortSignal }) => {
+    const { state } = check as {
+      state: "pending" | "confirmed" | "canceled" | "cancelled";
+    };
+    if (state === "pending") {
+      const any =
+        (ctx.approvalRequests ?? []).some(
+          (request) =>
+            matchesActionName(request.actionName, [
+              "MESSAGE",
+              "GMAIL_ACTION",
+              "send_email",
+            ]) && request.state === "pending",
+        ) ||
+        ctx.actionsCalled.some((action) => {
+          const data = actionResultData(action);
+          return (
+            data?.pendingApproval === true ||
+            data?.requiresConfirmation === true
+          );
+        });
+      return any
+        ? { status: "passed", detail: "pending Gmail approval observed" }
+        : { status: "failed", detail: "no pending Gmail approval observed" };
+    }
+    if (state === "confirmed") {
+      const requests = await readGmailMockRequests(runtime, abortSignal);
+      const sendHit = requests.some((entry) =>
+        gmailRequestMatches(entry, {
+          method: "POST",
+          path: gmailSendLedgerPaths(),
+        }),
+      );
+      const actionHit = ctx.actionsCalled.some((action) =>
+        hasConfirmedGmailSendAction(action),
+      );
+      return sendHit || actionHit
+        ? { status: "passed", detail: "confirmed Gmail send observed" }
+        : { status: "failed", detail: "no confirmed Gmail send observed" };
+    }
+    const canceled = ctx.actionsCalled.some((action) => {
+      const data = actionResultData(action);
+      return data?.noop === true && data?.cancelled === true;
+    });
+    return canceled
+      ? { status: "passed", detail: "canceled Gmail approval observed" }
+      : { status: "failed", detail: "no canceled Gmail approval observed" };
+  },
+);
 
 registerFinalCheckHandler("gmailNoRealWrite", () => {
   if (!isLoopbackUrl(process.env.ELIZA_MOCK_GOOGLE_BASE)) {

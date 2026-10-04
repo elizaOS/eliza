@@ -37,6 +37,8 @@ export interface SyntheticScenarioWorldOptions<T> {
   /** Control sessions may supply their already-acquired lease and retain release ownership. */
   authority?: SyntheticEnvironmentLeaseAuthority;
   signal?: AbortSignal;
+  /** Cancel initialization without binding a ready world to its seed request. */
+  initializationSignal?: AbortSignal;
   leaseDurationMs?: number;
 }
 
@@ -129,10 +131,14 @@ export async function startSyntheticScenarioWorld<T>(
 ): Promise<SyntheticScenarioWorld> {
   const { services, seeds } = parseSyntheticScenarioManifest(options.manifest);
   options.signal?.throwIfAborted();
+  options.initializationSignal?.throwIfAborted();
   const controller = new AbortController();
   const signal = options.signal
     ? AbortSignal.any([options.signal, controller.signal])
     : controller.signal;
+  const initializationSignal = options.initializationSignal
+    ? AbortSignal.any([signal, options.initializationSignal])
+    : signal;
   const leaseDurationMs = options.leaseDurationMs ?? 300_000;
   if (
     options.authority &&
@@ -303,7 +309,7 @@ export async function startSyntheticScenarioWorld<T>(
         headers: { "content-type": "application/json" },
         ...(seed.body !== undefined ? { body: JSON.stringify(seed.body) } : {}),
         redirect: "error",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+        signal: initializationSignal,
       });
       await response.arrayBuffer();
       if (!response.ok)
@@ -312,6 +318,7 @@ export async function startSyntheticScenarioWorld<T>(
           { code: "SYNTHETIC_WORLD_SEED_FAILED" },
         );
     }
+    initializationSignal.throwIfAborted();
     const owned = mocks;
     const world: SyntheticScenarioWorld = {
       namespace: authority.namespace,

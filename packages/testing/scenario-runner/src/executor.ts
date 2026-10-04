@@ -3358,6 +3358,7 @@ async function runObservedScenario(
           runtime,
           ctx,
           observeRejectedEffects: opts.observeRejectedEffects,
+          abortSignal: opts.abortSignal,
         });
       }
       report.finalChecks.push(result);

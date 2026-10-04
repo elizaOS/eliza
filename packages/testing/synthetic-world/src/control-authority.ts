@@ -185,6 +185,7 @@ export function createSyntheticWorldControlAuthority<T>(options: {
       try {
         world = await startSyntheticScenarioWorld({
           manifest: command.manifest,
+          initializationSignal: context.signal,
           leaseStore: options.leaseStore,
           authority,
           leaseDurationMs,
