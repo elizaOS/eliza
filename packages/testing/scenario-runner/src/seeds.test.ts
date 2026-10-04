@@ -49,7 +49,13 @@ it("uses a supported scheduler source and retains scenario provenance", async ()
   const runtime = createMockRuntime();
   expect(
     await applyScenarioSeedStep(
-      { runtime, actionsCalled: [], scenarioId: "seed-contract" },
+      {
+        runtime,
+        actionsCalled: [],
+        scenarioId: "seed-contract",
+        primaryRoomId: runtime.agentId,
+        primaryUserId: runtime.agentId,
+      },
       {
         type: "memory",
         content: { kind: "open-decision", title: "Choose a time" },
