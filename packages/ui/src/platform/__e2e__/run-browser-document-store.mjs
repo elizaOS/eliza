@@ -17,6 +17,10 @@ const url = `http://127.0.0.1:${server.address().port}/`;
 try {
   for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
     const browser = await engine.launch({ headless: true });
+    const deadline = setTimeout(() => {
+      console.error(`${name}: document-store checks exceeded 60 seconds`);
+      void browser.close();
+    }, 60000);
     try {
       const context = await browser.newContext();
       const a = await context.newPage(), b = await context.newPage();
@@ -143,6 +147,6 @@ try {
       });
       assert.equal(afterReload.raw, "survivor");
       console.log(`${name}: async conflict, tab death and reload recovery pass`);
-    } finally { await browser.close(); }
+    } finally { clearTimeout(deadline); await browser.close(); }
   }
 } finally { await new Promise(resolve => server.close(resolve)); }
