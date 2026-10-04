@@ -886,4 +886,65 @@ describe("XService trusted account routing", () => {
       failure,
     );
   });
+  it("attributes the account's own DMs to the agent in connector memories", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    async function* events() {
+      yield {
+        id: "1",
+        sender_id: "current-user",
+        participant_ids: ["current-user", "alice"],
+        text: "outbound",
+      };
+      yield {
+        id: "2",
+        sender_id: "alice",
+        participant_ids: ["current-user", "alice"],
+        text: "inbound",
+      };
+    }
+    const iterator = Object.assign(events(), {
+      includes: {
+        users: [
+          { id: "current-user", username: "current" },
+          { id: "alice", username: "alice" },
+        ],
+      },
+    });
+    const session = dmSession("current-user", {
+      listDmEvents: vi.fn(async () => iterator),
+    });
+    const base = {
+      profile: { id: "current-user", username: "current" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    const memories = await service.fetchConnectorMessages(
+      { runtime, source: "x" } as Parameters<
+        XService["fetchConnectorMessages"]
+      >[0],
+      {},
+    );
+
+    const byText = new Map(
+      memories.map((memory) => [memory.content.text, memory]),
+    );
+    expect(byText.get("outbound")).toMatchObject({
+      entityId: runtime.agentId,
+      metadata: { fromBot: true },
+    });
+    expect(byText.get("inbound")?.entityId).not.toBe(runtime.agentId);
+    expect(byText.get("inbound")?.metadata).toMatchObject({ fromBot: false });
+  });
 });
