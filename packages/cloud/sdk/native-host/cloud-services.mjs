@@ -546,6 +546,27 @@ export function createCloudRoutes({
         });
         return true;
       }
+      // Auth owns sign-in factors; keep this transport separate from Google
+      // connector consent and never forward caller-supplied authority or URLs.
+      const accountMethods = {
+        "/cloud/account/methods": "account-methods",
+        "/cloud/account/methods/unlink": "account-unlink",
+        "/cloud/account/methods/phone/start": "account-phone-start",
+        "/cloud/account/methods/phone/verify": "account-phone-verify",
+        "/cloud/account/security/status": "account-security-status",
+        "/cloud/account/security/enroll/start": "account-security-enroll-start",
+        "/cloud/account/security/enroll/verify":
+          "account-security-enroll-verify",
+        "/cloud/account/security/start": "account-security-start",
+        "/cloud/account/security/verify": "account-security-verify",
+      };
+      if (method === "POST" && Object.hasOwn(accountMethods, path)) {
+        if (!nativeAuth?.handle)
+          throw fail("Sign-in management is unavailable", 503);
+        const input = await body(req, 4096);
+        send(res, 200, await nativeAuth.handle(accountMethods[path], input));
+        return true;
+      }
       // Billing uses a short-lived signed-in session held only by the native
       // enrollment host; the inference key is never sent to billing routes.
       const billingMatch = path.match(

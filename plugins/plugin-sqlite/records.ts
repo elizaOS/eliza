@@ -722,6 +722,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (params.names.length === 0) return [];
     const set = new Set(params.names);
     return this.storage.getWhere<Entity>(COLLECTIONS.ENTITIES, (e) => {
+      if (e.agentId !== params.agentId) return false;
       const names = (e as Entity & { names?: string[] }).names ?? [];
       return names.some((name) => set.has(name));
     });
@@ -736,11 +737,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const matches = await this.storage.getWhere<Entity>(
       COLLECTIONS.ENTITIES,
       (e) => {
+        if (e.agentId !== params.agentId) return false;
         const names = (e as Entity & { names?: string[] }).names ?? [];
         return names.some((name) => name.toLowerCase().includes(q));
       },
     );
-    return params.limit ? matches.slice(0, params.limit) : matches;
+    // An omitted limit is the complete match set. An explicit limit, including
+    // 0, is a page — `limit ?` treated 0 as "no page" and returned every row.
+    if (params.limit === undefined) return matches;
+    return matches.slice(0, Math.max(0, params.limit));
   }
 
   async queryEntities(params: {

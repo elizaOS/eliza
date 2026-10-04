@@ -15,7 +15,6 @@ from .analyze_trajectory import summarize as summarize_trajectory
 
 DEFAULT_MODEL = "gemma-4-31b"
 
-DEFAULT_LOG_LIMIT_BYTES = 16 * 1024 * 1024
 
 SECRET_ENV_RE = re.compile(
     r"(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|AUTH|BEARER|SESSION|COOKIE)",
@@ -643,30 +642,6 @@ def redact_text(text: str, env: dict[str, str]) -> str:
     redacted = SECRET_ASSIGNMENT_RE.sub(r"\1\2[REDACTED]", redacted)
     redacted = LONG_SECRET_RE.sub("[REDACTED]", redacted)
     return redacted
-
-
-def log_limit_bytes() -> int:
-    raw = os.environ.get("CODE_AGENT_MATRIX_LOG_LIMIT_BYTES", "").strip()
-    if not raw:
-        return DEFAULT_LOG_LIMIT_BYTES
-    try:
-        return max(1024, int(raw))
-    except ValueError:
-        return DEFAULT_LOG_LIMIT_BYTES
-
-
-def truncate_log_text(text: str, *, limit_bytes: int | None = None) -> str:
-    limit = log_limit_bytes() if limit_bytes is None else limit_bytes
-    encoded = text.encode("utf-8", errors="replace")
-    if len(encoded) <= limit:
-        return text
-    marker = (
-        f"\n[code-agent-matrix: log truncated to last {limit} bytes "
-        f"from {len(encoded)} bytes]\n"
-    )
-    keep = max(0, limit - len(marker.encode("utf-8")))
-    tail = encoded[-keep:].decode("utf-8", errors="replace") if keep else ""
-    return marker + tail
 
 
 def _write_cell_metadata(cell: MatrixCell) -> None:

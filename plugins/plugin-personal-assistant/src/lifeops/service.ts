@@ -170,7 +170,6 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
-import { resolveDefaultTimeZone } from "./defaults.js";
 import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
@@ -218,7 +217,10 @@ import {
 import { WorkflowsDomain } from "./domains/workflows-service.js";
 import { XReadDomain } from "./domains/x-read-service.js";
 import { XDomain } from "./domains/x-service.js";
-import { resolveOwnerFactStore } from "./owner/fact-store.js";
+import {
+  resolveOwnerFactStore,
+  resolveOwnerTimeZone,
+} from "./owner/fact-store.js";
 import type {
   LifeOpsScheduleInspection,
   LifeOpsScheduleSummary,
@@ -1750,7 +1752,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
   async listOwnerOccurrencesCompletedToday(
     now = new Date(),
   ): Promise<LifeOpsOccurrenceView[]> {
-    const timeZone = resolveDefaultTimeZone();
+    const timeZone = await resolveOwnerTimeZone(this.runtime, now);
     const dayKey = (date: Date): string => {
       const parts = getZonedDateParts(date, timeZone);
       return `${parts.year}-${parts.month}-${parts.day}`;
@@ -1761,14 +1763,15 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // applied AFTER it: with the filter in TypeScript, agent-subject
     // completions under multi-room load consumed the LIMIT window and
     // silently evicted owner wins from the recap (#16966 post-merge review).
-    // The scan limit is sized for the 36h window, newest-first — the local-day
-    // filter below only trims the older-than-today tail, so today's rows are
-    // never the ones cut. The final cap bounds the provider/brief block.
+    // Known completion timestamps are bounded through now before the scan
+    // limit, so future timestamps cannot evict real wins. The local-day filter
+    // then removes the lookback tail; the final cap bounds the provider block.
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
       {
         subjectType: "owner",
+        throughIso: now.toISOString(),
         definitionScopes: [
           {
             domain: "user_lifeops",
@@ -1780,9 +1783,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
       },
     );
     return views
-      .filter(
-        (occurrence) => dayKey(new Date(occurrence.updatedAt)) === todayKey,
-      )
+      .filter((occurrence) => {
+        const completedAt = occurrence.completionPayload?.completedAt;
+        if (typeof completedAt !== "string") return false;
+        const completedMs = Date.parse(completedAt);
+        return (
+          Number.isFinite(completedMs) &&
+          new Date(completedMs).toISOString() === completedAt &&
+          completedMs <= now.getTime() &&
+          dayKey(new Date(completedMs)) === todayKey
+        );
+      })
       .slice(0, 24);
   }
 

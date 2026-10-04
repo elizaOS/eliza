@@ -661,7 +661,7 @@ describe("LifeOps Gmail provider draft", () => {
   });
 
   it("sends a reply through sendGmailReply with threadId and RFC headers", async () => {
-    const { domain, google } = harness({});
+    const { domain, google, repository } = harness({});
 
     await domain.sendGmailReply(new URL("http://127.0.0.1/"), {
       messageId: "message-1",
@@ -677,6 +677,38 @@ describe("LifeOps Gmail provider draft", () => {
         inReplyTo: "<provider-message@example.com>",
         references:
           "<earlier-message@example.com> <provider-message@example.com>",
+      }),
+    );
+    expect(repository.attributeBriefItemEngagement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        sourceId: "agent-1:account-1:gmail:message-1",
+        eventType: "replied",
+      }),
+    );
+  });
+});
+
+describe("LifeOps Gmail committed read attribution", () => {
+  it("uses the actual mutation account in the brief source identity", async () => {
+    const { domain, google, repository } = harness({});
+    await domain.manageGmailMessages(new URL("http://127.0.0.1/"), {
+      operation: "mark_read",
+      messageIds: ["message-1"],
+      executionMode: "execute",
+      confirmAction: true,
+    });
+    expect(google.modifyGmailMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-1",
+        messageIds: ["message-1"],
+      }),
+    );
+    expect(repository.attributeBriefItemEngagement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        sourceId: "agent-1:account-1:gmail:message-1",
+        eventType: "opened",
       }),
     );
   });
