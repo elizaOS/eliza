@@ -337,3 +337,24 @@ test("durable publication persists verified floors before storage and rejects co
     }
   }
 });
+
+test("publication has no default graph or preflight authority", () => {
+  const s = scenario();
+  assert.throws(
+    () => createPublicationAuthorizer(s.options),
+    /verification ports required/,
+  );
+  assert.throws(
+    () =>
+      createPublicationAuthorizer(s.options, {
+        verifyGraph: s.ports.verifyGraph,
+      }),
+    /verification ports required/,
+  );
+  assert.throws(
+    () =>
+      createPublicationAuthorizer(s.options, { preflight: s.ports.preflight }),
+    /verification ports required/,
+  );
+  assert.deepEqual(s.calls, []);
+});

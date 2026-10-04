@@ -140,3 +140,19 @@ test("failed verifier is propagated and temporary snapshot removed", () =>
       /public release unavailable/,
     );
   }));
+
+test("preflight requires host policy and propagates its rejection before verifiers", async () => {
+  await assert.rejects(sharedPreflight({}, {}), /verification ports required/);
+  await scenario(async (s) => {
+    await assert.rejects(
+      sharedPreflight(s.options, {
+        ...s.ports,
+        validateRelease: () => {
+          throw Error("host rejects descriptor");
+        },
+      }),
+      /host rejects descriptor/,
+    );
+    assert.deepEqual(s.order, []);
+  });
+});
