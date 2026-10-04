@@ -14,7 +14,7 @@ public abstract class InstallerResultReceiver extends BroadcastReceiver {
   java.util.concurrent.atomic.AtomicBoolean finished=new java.util.concurrent.atomic.AtomicBoolean();
   Runnable finish=()->{if(finished.compareAndSet(false,true))pending.finish();};
   try{callbackExecutor().execute(()->{
-   try{reconcile(context,targetPackage(),callbackAction(),journal(context),intent);}
+   try{String action=callbackAction();if(intent==null||!action.equals(intent.getAction()))return;reconcile(context,targetPackage(),action,journal(context),intent);}
    catch(Exception failure){reportFailure(failure);}
    finally{finish.run();}
   });}catch(RuntimeException rejected){try{reportFailure(rejected);}finally{finish.run();}}
