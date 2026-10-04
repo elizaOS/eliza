@@ -402,8 +402,12 @@ export const blockAction: Action & {
     // Shared duration param (semantics differ slightly; each backend honors its own bounds).
     {
       name: "durationMinutes",
+      // Omission, not null, is "indefinite": tool-argument validation rejects
+      // null for this number schema, and OpenAI strict mode already sends
+      // null for "no value", which is dropped so the handler can read a
+      // duration from the message text.
       description:
-        "Block duration minutes. Omit/null = indefinite until manual removal.",
+        "Block duration in minutes. Omit to block until manually removed.",
       required: false,
       schema: { type: "number" as const },
     },

@@ -51,11 +51,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
 # Re-use the canonical prompt resolver so Together training sees the same
 # conditioning surface as the Gemma / Gemini formatters.
-from format_for_training import system_prompt_for  # noqa: E402
+from eliza_training.format_for_training import system_prompt_for  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Together.ai SFT limits

@@ -5,13 +5,13 @@
  * Includes webhook info from Telegram API for debugging.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { telegramAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { telegramAutomationService } from "@/lib/services/telegram-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

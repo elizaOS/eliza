@@ -10,14 +10,14 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from suites.bfcl.models import (
+from benchmarks.bfcl.models import (
     BenchmarkModelConfig,
     get_default_model_config,
     get_model_config,
 )
-from suites.bfcl.parser import FunctionCallParser
-from suites.bfcl.plugin import generate_openai_tools_format
-from suites.bfcl.types import BFCLConfig, BFCLTestCase, FunctionCall
+from benchmarks.bfcl.parser import FunctionCallParser
+from benchmarks.bfcl.plugin import generate_openai_tools_format
+from benchmarks.bfcl.types import BFCLConfig, BFCLTestCase, FunctionCall
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,9 @@ def get_model_provider_plugin() -> tuple[_ProviderPlugin | None, str | None]:
     config = get_default_model_config()
     if config is None:
         return None, None
-    return _ProviderPlugin(name=config.provider.value, config=config), config.full_model_name
+    return _ProviderPlugin(
+        name=config.provider.value, config=config
+    ), config.full_model_name
 
 
 class MockBFCLAgent:
@@ -122,7 +124,7 @@ class BFCLAgent:
             if resolved is not None:
                 return resolved
         if provider:
-            from suites.bfcl.models import ModelProvider, PROVIDER_CONFIGS
+            from benchmarks.bfcl.models import ModelProvider, PROVIDER_CONFIGS
             import os
 
             try:
@@ -227,7 +229,9 @@ class BFCLAgent:
             ):
                 data = self._call_prompt_only(url, headers, timeout_s, test_case, tools)
             else:
-                raise RuntimeError(f"BFCL provider HTTP {exc.code}: {error_body}") from exc
+                raise RuntimeError(
+                    f"BFCL provider HTTP {exc.code}: {error_body}"
+                ) from exc
 
         return self._extract_response_text(data)
 

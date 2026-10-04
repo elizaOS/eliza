@@ -6,7 +6,7 @@ reads the same JSONL through a different code path.
 
 Usage from `training/`:
 
-    python -m scripts.inference.stats_summary \\
+    python -m eliza_training.inference.stats_summary \\
         --in ~/.eliza/inference-stats.jsonl \\
         --label adhoc-h200-eliza-1-4b \\
         --last-minutes 30

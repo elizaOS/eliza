@@ -15,7 +15,7 @@ import {
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { type AgentBillingRunItem, agentBillingRunItems } from "../../db/schemas/compute-billing";
 import { deferFundedAgentStopInTransaction } from "./agent-compute-stop-schedule";
-import { lockAgentSuspendTargetInTx, provisioningJobService } from "./provisioning-jobs";
+import { lockAgentSuspendTargetInTx, provisioningJobService } from "./provisioning-job-queue";
 
 export async function enqueueAgentUnfundedStopForRun(
   input: AgentBillingRunLeaseAuthority & {

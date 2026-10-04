@@ -9,6 +9,7 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
+  BrowserDockState,
   CreateSurfaceOptions,
   ElizaSurfaceManagerPlugin,
   NativePageRead,
@@ -30,6 +31,45 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async getBrowserHelperEntryState(): Promise<{
+    permissionGranted: boolean;
+    visible: boolean;
+    fullScreen: boolean;
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async requestBrowserHelperEntryPermission(): Promise<{
+    status: "dispatched";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async hideBrowserDockWithEntry(_options: {
+    label: string;
+    description: string;
+  }): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async restoreBrowserDockFromEntry(): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async setBrowserDockVisible(_options: {
+    visible: boolean;
+  }): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+
+  async openDockedBrowser(_options: {
+    url: string;
+    panelWidthDp?: number;
+  }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    status: "dispatched";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async getBrowserDockState(): Promise<BrowserDockState> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async presentBrowser(): Promise<{
     packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
   }> {

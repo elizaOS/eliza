@@ -97,7 +97,7 @@ def test_eliza_lane_factory_builds_without_usage_fix_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The eliza lane must build ungated: per-session usage attribution is the
-    AsyncLocalStorage buffer in suites/lifeops-bench/runner/src/server.ts (#13777),
+    AsyncLocalStorage buffer in harnesses/eliza/runner/src/server.ts (#13777),
     so the old MULTITASK_ELIZA_USAGE_FIX escape hatch no longer exists."""
     captured: dict[str, object] = {}
 

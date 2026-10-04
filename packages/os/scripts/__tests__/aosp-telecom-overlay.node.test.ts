@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -38,4 +45,21 @@ test("product validation rejects Telecom classes from a different dialer", (t) =
 
 test("the shipped vendor product has matching Telecom defaults", () => {
   validateProductLayer(vendor, brand);
+});
+
+test("product validation rejects unsupported package subtraction", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "product-subtraction-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  cpSync(vendor, root, {
+    recursive: true,
+    filter: (source) => !/\.(apk|zip|png|webp|so|woff2?)$/.test(source),
+  });
+  appendFileSync(
+    path.join(root, brand.commonMakefile),
+    "\nPRODUCT_PACKAGES -= Provision\n",
+  );
+  assert.throws(
+    () => validateProductLayer(root, brand),
+    /unsupported PRODUCT_PACKAGES subtraction/,
+  );
 });

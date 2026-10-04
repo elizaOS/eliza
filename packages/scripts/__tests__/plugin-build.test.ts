@@ -170,6 +170,43 @@ afterEach(() => {
 });
 
 describe("buildPlugin (shared driver, issue #10200)", () => {
+  test("split entrypoints preserve published paths and shared state", async () => {
+    makeFixture({
+      src: 'export { state } from "./state.ts";',
+      tsconfig: false,
+    });
+    writeFileSync(
+      path.join(fixtureDir, "src/state.ts"),
+      "export const state = { value: 0 };",
+    );
+    mkdirSync(path.join(fixtureDir, "src/sdk"));
+    writeFileSync(
+      path.join(fixtureDir, "src/sdk/index.ts"),
+      'export { state } from "../state.ts";',
+    );
+    await buildPlugin({
+      name: "@elizaos/fixture-plugin",
+      targets: [
+        {
+          label: "Node",
+          entry: ["src/index.ts", "src/sdk/index.ts"],
+          root: "src",
+          outSubdir: "",
+          target: "node",
+          format: "esm",
+          splitting: true,
+          naming: { entry: "[dir]/[name].[ext]" },
+          renames: [["index.js", "index.mjs"]],
+        },
+      ],
+    });
+    const root = await import(distPath("index.mjs"));
+    const sdk = await import(distPath("sdk/index.js"));
+    root.state.value = 7;
+    expect(sdk.state).toBe(root.state);
+    expect(sdk.state.value).toBe(7);
+  });
+
   test("empty-targets + dtsProject emits declarations only (the tsc-only plugin path)", async () => {
     makeFixture({});
     await buildPlugin({

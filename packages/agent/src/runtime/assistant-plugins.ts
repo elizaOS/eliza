@@ -63,5 +63,5 @@ export function createAssistantPlugins(character: Character): Plugin[] {
       : []),
     ...(character.advancedMemory ? [createAdvancedMemoryPlugin()] : []),
     ...(character.advancedPlanning ? [createAdvancedPlanningPlugin()] : []),
-  ];
+  ].map((plugin) => ({ ...plugin }));
 }

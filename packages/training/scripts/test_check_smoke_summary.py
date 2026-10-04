@@ -5,7 +5,7 @@ import os
 import time
 from pathlib import Path
 
-from check_smoke_summary import candidate_paths, validate_smoke_summary
+from eliza_training.check_smoke_summary import candidate_paths, validate_smoke_summary
 
 
 def _write_summary(root: Path, registry_key: str, payload: dict) -> Path:

@@ -592,6 +592,24 @@ export type CreateLifeOpsCalendarEventResponse =
 			event: null;
 			writeOnlyReceipt: LifeOpsCalendarWriteOnlyCreateReceipt;
 	  };
+/** Current-request interpretation only; never action authorization or completion proof. */
+export const CALENDAR_READ_ACTIONS = {
+	feed: "CALENDAR_FEED",
+	next_event: "CALENDAR_NEXT_EVENT",
+	search_events: "CALENDAR_SEARCH_EVENTS",
+} as const;
+
+export type CalendarReadBinding = {
+	intentId: string;
+	operation: "feed" | "next_event" | "search_events";
+	/** Conditional applicability remains the existing planner's semantic judgment. */
+	execution: "required" | "conditional";
+	sourceMessageId: string;
+	roomId: string;
+	actorId: string;
+	requestedAt: number;
+};
+
 export interface LifeOpsNextCalendarEventContext {
 	event: LifeOpsCalendarEvent | null;
 	/** Exact service snapshot and requested display zone; older results may omit it. */

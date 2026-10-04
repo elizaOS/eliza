@@ -10,7 +10,7 @@ resulting bundle is installable on a device whose backend the manifest verified
 
 Usage:
     cd packages/training
-    HF_TOKEN=... uv run --extra train python -m scripts.publish.stage_base_v1_candidate \
+    HF_TOKEN=... uv run --extra train python -m eliza_training.publish.stage_base_v1_candidate \
         --tier 2b \
         --text-gguf checkpoints/eliza-1-2b-apollo-<run>/bundle/text/eliza-1-2b-q4.gguf \
         --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/bundle/text/eliza-1-2b-q4.gguf.eliza1.json \
@@ -25,8 +25,9 @@ Usage:
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file
+
 import argparse
-import hashlib
 import json
 import shutil
 import subprocess
@@ -37,12 +38,11 @@ from typing import Any
 
 _HERE = Path(__file__).resolve()
 _TRAINING_ROOT = _HERE.parents[2]
-sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import eliza1_manifest as M  # noqa: E402
-from scripts.manifest import eliza1_platform_plan as PP  # noqa: E402
-from scripts.manifest import stage_eliza1_bundle_assets as A  # noqa: E402
-from scripts.manifest import stage_kokoro_assets as K  # noqa: E402
+from eliza_training.manifest import eliza1_manifest as M  # noqa: E402
+from eliza_training.manifest import eliza1_platform_plan as PP  # noqa: E402
+from eliza_training.manifest import stage_eliza1_bundle_assets as A  # noqa: E402
+from eliza_training.manifest import stage_kokoro_assets as K  # noqa: E402
 
 
 REQUIRED_KERNELS_BY_TIER = {
@@ -91,15 +91,6 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            b = f.read(chunk)
-            if not b:
-                break
-            h.update(b)
-    return h.hexdigest()
 
 
 def git_short_sha() -> str:
@@ -409,14 +400,14 @@ def main(argv: list[str] | None = None) -> int:
     ]
     vad_files = [f_sha(out / "vad" / "silero-vad-v5.gguf")]
     cache_files = [f_sha(out / "cache" / "voice-preset-default.bin")]
-    mtp_files = [
+    mtp_files: list[dict[str, Any]] = [
         {"path": f"mtp/drafter-{tier}.gguf", "sha256": drafter_sha},
         f_sha(out / "mtp" / "target-meta.json"),
     ]
-    vision_files = [
+    vision_files: list[dict[str, Any]] = [
         {"path": f"vision/mmproj-{tier}.gguf", "sha256": vision_sha},
     ]
-    text_files = [
+    text_files: list[dict[str, Any]] = [
         {
             "path": text_rel,
             "sha256": text_sha,
@@ -438,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
             shutil.copy2(sib, out / "evals" / sib.name)
     elif args.run_evals:
         cmd = [
-            sys.executable, "-m", "scripts.eval.eliza1_eval_suite",
+            sys.executable, "-m", "eliza_training.eval.eliza1_eval_suite",
             "--bundle-dir", str(out), "--tier", tier,
         ]
         print("running eval suite:", " ".join(cmd), flush=True)

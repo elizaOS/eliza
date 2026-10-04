@@ -17,6 +17,13 @@ back into the next call.
 
 from __future__ import annotations
 
+from elizaos_tau_bench import (
+    strip_cerebras_quirks as _strip_cerebras_quirks,
+    scrub_history_for_cerebras as _scrub_history_for_cerebras,
+)
+
+from benchmarks.lib import CostAccumulator, cost_from_usage
+
 import logging
 from typing import Any, Final
 
@@ -38,37 +45,6 @@ logger = logging.getLogger(__name__)
 # ``_CEREBRAS_PRICING`` constant in ``hermes_adapter.lifeops_bench`` so
 # tau-bench's per-trial ``agent_cost`` is consistent with lifeops-bench
 # numbers when both hit the same provider.
-_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
-    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
-}
-
-
-def _compute_cost_usd(
-    model: str | None, prompt_tokens: int, completion_tokens: int
-) -> float:
-    """Return USD cost for a Cerebras completion or ``0.0`` when unpriced."""
-    if not model:
-        return 0.0
-    bare = model.rsplit("/", 1)[-1]
-    pricing = _CEREBRAS_PRICING.get(bare)
-    if pricing is None:
-        return 0.0
-    return (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"] + (
-        completion_tokens / 1_000_000.0
-    ) * pricing["output_per_million_usd"]
-
-
-def _strip_cerebras_quirks(message: dict[str, Any]) -> dict[str, Any]:
-    """Strip fields Cerebras emits but rejects on re-submission.
-
-    ``reasoning_content`` and ``provider_specific_fields`` are returned on
-    assistant turns by gpt-oss-120b but cause ``BadRequestError:
-    messages.X.assistant.reasoning_content: property unsupported`` if echoed
-    back in the conversation history.
-    """
-    for key in ("reasoning_content", "provider_specific_fields"):
-        message.pop(key, None)
-    return message
 
 
 class HermesTauAgent(BaseTauAgent):
@@ -113,7 +89,7 @@ class HermesTauAgent(BaseTauAgent):
         obs = reset.observation
         info: dict[str, Any] = reset.info.model_dump()
         reward = 0.0
-        total_cost = 0.0
+        costs = CostAccumulator()
         num_tool_calls = 0
         actions_taken: list[Action] = []
 
@@ -135,18 +111,7 @@ class HermesTauAgent(BaseTauAgent):
                     if isinstance(response.params, dict)
                     else None
                 )
-                if isinstance(usage, dict):
-                    prompt_tokens = int(
-                        usage.get("prompt_tokens") or usage.get("promptTokens") or 0
-                    )
-                    completion_tokens = int(
-                        usage.get("completion_tokens")
-                        or usage.get("completionTokens")
-                        or 0
-                    )
-                    total_cost += _compute_cost_usd(
-                        self.model, prompt_tokens, completion_tokens
-                    )
+                costs.add(cost_from_usage(self.model, usage))
 
                 action = _message_to_action(next_message)
                 actions_taken.append(action)
@@ -196,22 +161,22 @@ class HermesTauAgent(BaseTauAgent):
             return AgentRunResult(
                 reward=reward,
                 messages=messages,
-                info=info,
+                info={**info, **costs.metadata()},
                 actions_taken=actions_taken,
                 num_tool_calls=num_tool_calls,
                 num_turns=len(messages),
-                agent_cost=total_cost,
+                agent_cost=costs.total,
                 error=str(e),
             )
 
         return AgentRunResult(
             reward=reward,
             messages=messages,
-            info=info,
+            info={**info, **costs.metadata()},
             actions_taken=actions_taken,
             num_tool_calls=num_tool_calls,
             num_turns=len(messages),
-            agent_cost=total_cost,
+            agent_cost=costs.total,
         )
 
     # ------------------------------------------------------------------
@@ -260,24 +225,6 @@ class HermesTauAgent(BaseTauAgent):
             if not msg["content"]:
                 msg["content"] = None
         return msg
-
-
-def _scrub_history_for_cerebras(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop Cerebras-only fields from prior assistant turns before resending.
-
-    Returns a shallow copy with ``reasoning_content`` /
-    ``provider_specific_fields`` removed from every assistant message.
-    """
-    out: list[dict[str, Any]] = []
-    for m in messages:
-        if m.get("role") == "assistant":
-            scrubbed = dict(m)
-            scrubbed.pop("reasoning_content", None)
-            scrubbed.pop("provider_specific_fields", None)
-            out.append(scrubbed)
-        else:
-            out.append(m)
-    return out
 
 
 __all__ = ["HermesTauAgent"]

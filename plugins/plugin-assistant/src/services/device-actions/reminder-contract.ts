@@ -1,6 +1,14 @@
 /** Selected device records only. Observations never grant execution authority. */
 export const REMINDER_CAPABILITY = "reminders.local-record.v1";
+export const REMINDER_TIMING_CAPABILITY = "reminders.local-record.v2";
+export type ReminderTiming = { dueAt?: number; alertMinutes?: number | null };
+export function reminderTiming(value: ReminderTiming): ReminderTiming {
+  return value.alertMinutes === undefined
+    ? {}
+    : { dueAt: value.dueAt, alertMinutes: value.alertMinutes };
+}
 export interface ReminderTarget {
+  timingVersion?: 2;
   sourceId: string;
   sourceRevision: string;
   reminderId: string;
@@ -17,6 +25,8 @@ export interface ReminderRepeat {
 export type ReminderSchedule = {
   at: number;
   recurrence: ReminderRepeat | null;
+  dueAt?: number;
+  alertMinutes?: number | null;
 };
 export interface ReminderFields {
   title: string;
@@ -43,6 +53,8 @@ export interface ReminderResult {
   status: string;
   at: number;
   fields?: ReminderFields;
+  dueAt?: number;
+  alertMinutes?: number | null;
 }
 function object(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v))
@@ -93,16 +105,17 @@ function instant(v: unknown) {
 }
 export function reminderTarget(value: unknown): ReminderTarget {
   const v = object(value);
-  keys(v, [
-    "sourceId",
-    "sourceRevision",
-    "reminderId",
-    "occurrenceId",
-    "revision",
-  ]);
+  keys(
+    v,
+    ["sourceId", "sourceRevision", "reminderId", "occurrenceId", "revision"],
+    ["timingVersion"],
+  );
+  if (v.timingVersion !== undefined && v.timingVersion !== 2)
+    throw Error("Invalid reminder timing version");
   const reminderId = id(v.reminderId, 100);
   if (!/^[A-Za-z0-9_-]+$/.test(reminderId)) throw Error("Invalid reminder ID");
   return {
+    ...(v.timingVersion === 2 ? { timingVersion: 2 as const } : {}),
     sourceId: id(v.sourceId),
     sourceRevision: revision(v.sourceRevision),
     reminderId,
@@ -119,7 +132,7 @@ export function reminderFields(value: unknown): ReminderFields {
   };
   if (v.schedule !== undefined) {
     const s = object(v.schedule);
-    keys(s, ["at", "recurrence"]);
+    keys(s, ["at", "recurrence"], ["dueAt", "alertMinutes"]);
     let recurrence: ReminderRepeat | null = null;
     if (s.recurrence !== null) {
       const r = object(s.recurrence);
@@ -153,8 +166,36 @@ export function reminderFields(value: unknown): ReminderFields {
       };
     }
     result.schedule = { at: instant(s.at), recurrence };
+    const timing = checkedTiming(s);
+    if (timing.alertMinutes !== undefined) {
+      if (
+        timing.dueAt === undefined ||
+        result.schedule.at !==
+          timing.dueAt - (timing.alertMinutes ?? 0) * 60000 ||
+        (recurrence && recurrence.leadMinutes !== (timing.alertMinutes ?? 0))
+      )
+        throw Error("Reminder timing changed");
+      Object.assign(result.schedule, timing);
+    }
   }
   return result;
+}
+function checkedTiming(v: Record<string, unknown>): ReminderTiming {
+  if ((v.dueAt === undefined) !== (v.alertMinutes === undefined))
+    throw Error("Incomplete reminder timing");
+  if (v.alertMinutes === undefined) return {};
+  if (
+    v.alertMinutes !== null &&
+    (typeof v.alertMinutes !== "number" ||
+      !Number.isInteger(v.alertMinutes) ||
+      v.alertMinutes < 0 ||
+      v.alertMinutes > 10080)
+  )
+    throw Error("Invalid reminder alert");
+  return {
+    dueAt: instant(v.dueAt),
+    alertMinutes: v.alertMinutes as number | null,
+  };
 }
 export function isReminderOperation(
   value: unknown,
@@ -182,6 +223,11 @@ export function validateReminderOperation(value: unknown): ReminderOperation {
       : ["type", "target"],
   );
   const target = reminderTarget(v.target);
+  if (v.type === "reminder_update" && target.timingVersion === 2) {
+    const fields = reminderFields(v.fields);
+    if (fields.schedule && fields.schedule.alertMinutes === undefined)
+      throw Error("Explicit reminder timing cannot be discarded");
+  }
   return v.type === "reminder_update"
     ? { type: v.type, target, fields: reminderFields(v.fields) }
     : { type: v.type, target };
@@ -203,7 +249,9 @@ export function validateReminderResult(
       "status",
       "at",
     ],
-    op.type === "reminder_read_selected" ? ["fields"] : [],
+    op.type === "reminder_read_selected"
+      ? ["fields", "dueAt", "alertMinutes"]
+      : ["dueAt", "alertMinutes"],
   );
   if (
     v.version !== 1 ||
@@ -219,10 +267,36 @@ export function validateReminderResult(
     "cancelled",
     "permission-denied",
     "scheduling-failed",
+    "pending",
   ];
   if (!statuses.includes(String(v.status)))
     throw Error("Invalid reminder result status");
+  const timing = checkedTiming(v);
+  if (timing.alertMinutes !== undefined && !reminderRequiresV2(op))
+    throw Error("Unexpected reminder timing result");
+  if (
+    (op.target.timingVersion === 2 ||
+      (op.type === "reminder_update" &&
+        op.fields.schedule?.alertMinutes !== undefined)) &&
+    timing.alertMinutes === undefined
+  )
+    throw Error("Missing reminder timing result");
+  if (
+    (v.status === "pending" && timing.alertMinutes !== null) ||
+    (timing.alertMinutes === null &&
+      !["pending", "completed", "cancelled"].includes(String(v.status)))
+  )
+    throw Error("Invalid no-alert reminder result");
+  if (
+    op.type === "reminder_update" &&
+    op.fields.schedule?.alertMinutes !== undefined &&
+    (timing.dueAt !== op.fields.schedule.dueAt ||
+      timing.alertMinutes !== op.fields.schedule.alertMinutes ||
+      v.at !== op.fields.schedule.at)
+  )
+    throw Error("Reminder timing result changed");
   const result: ReminderResult = {
+    ...timing,
     version: 1,
     kind: op.type,
     sourceId: id(v.sourceId),
@@ -239,11 +313,29 @@ export function validateReminderResult(
     )
       throw Error("Reminder read changed");
     result.fields = reminderFields(v.fields);
+    if (
+      timing.alertMinutes !== undefined &&
+      (result.fields.schedule?.dueAt !== timing.dueAt ||
+        result.fields.schedule?.alertMinutes !== timing.alertMinutes)
+    )
+      throw Error("Reminder read timing changed");
   }
-  if (op.type === "reminder_complete" && v.status !== "completed")
-    throw Error("Reminder was not completed");
   if (op.type === "reminder_cancel" && v.status !== "cancelled")
     throw Error("Reminder was not cancelled");
+  if (
+    op.type === "reminder_complete" &&
+    v.status !== "completed" &&
+    (![
+      "scheduled",
+      "pending",
+      "permission-denied",
+      "scheduling-failed",
+    ].includes(String(v.status)) ||
+      v.occurrenceId === op.target.occurrenceId)
+  )
+    throw Error("Reminder was not completed");
+  if (op.type === "reminder_snooze" && timing.alertMinutes === null)
+    throw Error("No-alert reminder cannot be snoozed");
   if (
     op.type === "reminder_snooze" &&
     v.occurrenceId !== op.target.occurrenceId
@@ -252,4 +344,22 @@ export function validateReminderResult(
   if (new TextEncoder().encode(JSON.stringify(result)).byteLength > 32000)
     throw Error("Reminder result exceeds bound");
   return result;
+}
+/** Extended timing is explicit and never downgraded for an older peer. */
+export function reminderRequiresV2(operation: ReminderOperation): boolean {
+  return (
+    operation.target.timingVersion === 2 ||
+    (operation.type === "reminder_update" &&
+      operation.fields.schedule?.alertMinutes !== undefined)
+  );
+}
+export function reminderCapabilityAvailable(
+  operation: ReminderOperation,
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return (
+    !!capabilities?.includes(REMINDER_TIMING_CAPABILITY) ||
+    (!reminderRequiresV2(operation) &&
+      !!capabilities?.includes(REMINDER_CAPABILITY))
+  );
 }

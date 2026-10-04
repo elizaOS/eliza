@@ -54,12 +54,10 @@ _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parents[3]
 _QUANT_DIR = _REPO_ROOT / "packages" / "training" / "scripts" / "quantization"
 
-if str(_QUANT_DIR) not in sys.path:
-    sys.path.insert(0, str(_QUANT_DIR))
 
 # Reuse the same write_sidecar helper as the LM K-quant siblings so the
 # manifest pipeline can parse turn-detector sidecars identically.
-from _common import write_sidecar  # noqa: E402
+from eliza_training.quantization._common import write_sidecar  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"

@@ -13,7 +13,7 @@
 import type {
   AccountDeletionAcceptedDto,
   AccountDeletionStatusDto,
-} from "@elizaos/cloud-shared/types/account-lifecycle";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core/errors";
 import { shellLocalStorage } from "../../../surface-realm-channel";
 import { api, apiFetch } from "../../lib/api-client";

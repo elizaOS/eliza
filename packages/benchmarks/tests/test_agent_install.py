@@ -27,7 +27,7 @@ def isolated_agent_root(tmp_path, monkeypatch):
     monkeypatch.setenv("ELIZA_AGENTS_ROOT", str(tmp_path))
     import importlib
 
-    import lib.agent_install as agent_install
+    import benchmarks.lib.agent_install as agent_install
 
     importlib.reload(agent_install)
     assert agent_install.AGENT_ROOT == tmp_path
@@ -47,7 +47,12 @@ def test_manifest_roundtrip(isolated_agent_root):
         agent_id="openclaw",
         version="2026.5.7",
         install_path=tmp_path / "openclaw" / "2026.5.7",
-        binary_path=tmp_path / "openclaw" / "2026.5.7" / "node_modules" / ".bin" / "openclaw",
+        binary_path=tmp_path
+        / "openclaw"
+        / "2026.5.7"
+        / "node_modules"
+        / ".bin"
+        / "openclaw",
         env={"FOO": "bar"},
     )
 

@@ -1381,6 +1381,7 @@ describe("google plugin", () => {
         to: ["ada@example.com"],
         subject: "Need response",
         bodyText: "Done",
+        threadId: "thread_1",
         inReplyTo: "<msg_1@example.com>",
       })
     ).resolves.toEqual({ messageId: "sent_1", threadId: "thread_1", labelIds: ["SENT"] });

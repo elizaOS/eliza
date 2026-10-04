@@ -6,11 +6,8 @@
 #   - scripts/training/                           (APOLLO, Liger, FA2/3)
 #   - scripts/inference/serve_vllm.py             (vllm 0.20+, optional `serve`)
 #
-# CUDA / torch alignment
-# ----------------------
-# training/pyproject.toml pins torch>=2.5.0,<2.11 in the `train` extra.
-# uv.lock currently resolves torch 2.10.0 + triton 3.6.0. Torch 2.10 ships
-# `cu126` wheels by default, so the toolchain image is CUDA 12.6.
+# CUDA toolkit matches the CUDA 13 runtime resolved for Torch in uv.lock.
+# Override CUDA_IMAGE only with a matching compiler/runtime toolchain.
 #
 # Image goal: build QJL extensions at *image-build* time so the first
 # `docker run` does not pay for a 5+ minute nvcc compile. fused-turboquant's
@@ -21,7 +18,7 @@
 # compile artifacts; `runtime` keeps the venv + compiled .so files but
 # drops apt caches and -dev headers we no longer need at runtime.
 
-ARG CUDA_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04
+ARG CUDA_IMAGE=nvidia/cuda:13.0.2-devel-ubuntu22.04@sha256:1c517d4fb96528c8999e14e6e6b16d7e2ff9ae8d194fd788d60fdc88e693e982
 
 # -------------------------------------------------------------------
 # Stage 1: builder — system deps, uv, python venv, QJL nvcc compile
@@ -58,7 +55,8 @@ RUN apt-get update \
 
 # Install uv from the upstream installer; pin the install dir so the
 # binary lands somewhere we can copy to the runtime stage.
-ENV UV_INSTALL_DIR=/usr/local/bin
+ENV UV_INSTALL_DIR=/usr/local/bin \
+    UV_PYTHON_INSTALL_DIR=/opt/uv-python
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
  && uv --version
 
@@ -70,23 +68,25 @@ COPY pyproject.toml ./
 COPY uv.lock ./
 
 # Create the venv with python 3.12 (uv-managed) and install the train
-# extra. We deliberately do NOT install `--extra serve` here because vllm
-# pulls a different torch ABI and conflicts with the train extra (see
-# pyproject.toml [tool.uv].conflicts). serve is intentionally a separate
-# image.
-RUN uv venv --python 3.12 /workspace/.venv \
+# extra. Serving is installed separately so this image contains only
+# dependencies needed for training and conversion.
+RUN uv python install 3.12 \
+ && uv venv --managed-python --python 3.12 /workspace/.venv \
  && . /workspace/.venv/bin/activate \
  && uv sync --extra train --locked --no-install-project
 
 ENV VIRTUAL_ENV=/workspace/.venv \
-    PATH=/workspace/.venv/bin:$PATH \
-    PYTHONPATH=/workspace/scripts
+    PATH=/workspace/.venv/bin:$PATH
 
 # Copy the rest of the source. We only need scripts/ for QJL and runtime,
 # but bring the whole training tree so test runs work.
 COPY scripts ./scripts
 COPY datasets.yaml ./datasets.yaml
 COPY README.md ./README.md
+COPY setup.py ./setup.py
+COPY config ./config
+COPY tests ./tests
+RUN uv pip install --no-deps -e .
 
 # Build QJL CUDA extensions. TORCH_CUDA_ARCH_LIST covers Ampere (A100),
 # Hopper (H100/H200), Blackwell datacenter (B200), and Blackwell consumer
@@ -103,7 +103,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/workspace/.venv \
-    PYTHONPATH=/workspace/scripts \
     PATH=/workspace/.venv/bin:/usr/local/bin:$PATH
 
 # Runtime needs gcc + python headers because fused-turboquant's Triton
@@ -136,12 +135,13 @@ COPY --from=builder /usr/local/bin/uvx /usr/local/bin/uvx
 # Bring the venv (with all wheels) and the source tree (including the
 # now-compiled QJL .so files and the build/ artifacts).
 COPY --from=builder /workspace /workspace
+COPY --from=builder /opt/uv-python /opt/uv-python
 
 WORKDIR /workspace
 
 # Sanity-check the import surface at build time so we fail the image
 # build instead of the first `docker run`.
-RUN python -c "from training.model_registry import REGISTRY; print('registry size:', len(REGISTRY))" \
+RUN python -c "from eliza_training.training.model_registry import REGISTRY; print('registry size:', len(REGISTRY))" \
  && python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)" \
  && python -c "import triton; print('triton', triton.__version__)"
 

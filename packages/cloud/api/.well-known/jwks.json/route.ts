@@ -3,13 +3,13 @@
  * Returns the public keys used for JWT verification (RFC 7517).
  */
 
-import { Hono } from "hono";
 import {
   getAgentTokenJWKS,
   isAgentTokenSigningConfigured,
-} from "@/lib/auth/agent-token";
-import { getJWKS, isJWKSConfigured } from "@/lib/auth/jwks";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/auth/agent-token";
+import { getJWKS, isJWKSConfigured } from "@elizaos/cloud-shared/lib/auth/jwks";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

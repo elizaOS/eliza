@@ -48,13 +48,13 @@ final class AgentSecureStore implements AutoCloseable {
                 socket.setSoTimeout(15000);
                 InputStream input = socket.getInputStream();
                 while (!closed) {
-                    byte[] header = input.readNBytes(4);
+                    byte[] header = SecureStoreFrameInput.readBounded(input, 4);
                     if (header.length == 0) break;
                     if (header.length != 4) throw new IOException("Incomplete secure-store frame");
                     long size = 0;
                     for (int i = 0; i < 4; i++) size |= ((long) header[i] & 255) << (i * 8);
                     if (size < 1 || size > MAX_FRAME) throw new IOException("Secure-store frame exceeds limit");
-                    byte[] bytes = input.readNBytes((int) size);
+                    byte[] bytes = SecureStoreFrameInput.readBounded(input, (int) size);
                     if (bytes.length != size) throw new IOException("Incomplete secure-store request");
                     JSONObject request = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
                     JSONObject response;

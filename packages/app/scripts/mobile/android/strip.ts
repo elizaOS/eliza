@@ -29,6 +29,7 @@ import {
   ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidPlayManifestHardening,
+  isAndroidFirebaseIndependentRemoteBuild,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
   resolveAndroidCloudCapacitorConfigPolicy,
@@ -314,11 +315,14 @@ export function stripAndroidNativePlugins(strippedPlugins, label) {
   }
 }
 
-export function stripAndroidCloudNativePlugins() {
-  stripAndroidNativePlugins(
-    ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
-    "cloud-disallowed",
-  );
+export function stripAndroidCloudNativePlugins(env = process.env) {
+  const strippedPlugins = isAndroidFirebaseIndependentRemoteBuild(env)
+    ? [
+        ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+        ["@capacitor/push-notifications", "capacitor-push-notifications"],
+      ]
+    : ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS;
+  stripAndroidNativePlugins(strippedPlugins, "cloud-disallowed");
 }
 
 /**
@@ -561,7 +565,7 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
   //    embed bun, musl, libstdc++, libgcc, llama-server, or the
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
-  stripAndroidCloudNativePlugins();
+  stripAndroidCloudNativePlugins(env);
   sanitizeAndroidCloudPackagedConfig(env);
 }
 

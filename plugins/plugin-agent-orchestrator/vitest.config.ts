@@ -15,12 +15,6 @@ export default defineConfig({
             import.meta.url,
           ),
         ),
-        "@elizaos/auth/auth/token-expiry": fileURLToPath(
-          new URL(
-            "../../packages/auth/src/auth/token-expiry.ts",
-            import.meta.url,
-          ),
-        ),
         "@elizaos/auth/auth": new URL(
           "../../packages/auth/src/auth/index.ts",
           import.meta.url,

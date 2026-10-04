@@ -11,6 +11,15 @@ import { acquireDeviceLease } from "./lib/device-lease.ts";
 const root = path.resolve(import.meta.dirname, "../../..");
 
 export function inventory(repoRoot = root) {
+  const descriptors = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        root,
+        "packages/app/scripts/android-native-plugins-gradle/bridge-tests/plugins.json",
+      ),
+      "utf8",
+    ),
+  );
   return fs
     .readdirSync(path.join(repoRoot, "plugins"))
     .filter(
@@ -43,7 +52,10 @@ export function inventory(repoRoot = root) {
         android,
         tests,
         expectedTests:
-          tests.reduce((sum, test) => sum + test.count, 0) + (android ? 1 : 0),
+          tests.reduce((sum, test) => sum + test.count, 0) +
+          (android && descriptors[directory]?.kind !== "host-configured-library"
+            ? 1
+            : 0),
       };
     });
 }

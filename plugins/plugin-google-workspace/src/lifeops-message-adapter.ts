@@ -71,9 +71,10 @@ interface GmailDraftContext {
     accountId: string;
     to: string;
     subject: string;
-    inReplyTo: string | null;
-    references: string | null;
+    inReplyTo: string;
+    references: string;
     externalId: string;
+    threadId: string;
   };
 }
 
@@ -117,10 +118,20 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function mapGmailMessage(accountId: string, message: GoogleGmailMessageSummary): MessageRef {
+function gmailReplyReferences(referencesHeader: string | null, messageIdHeader: string): string {
+  if (!referencesHeader) return messageIdHeader;
+  if (referencesHeader.includes(messageIdHeader)) return referencesHeader;
+  return `${referencesHeader} ${messageIdHeader}`;
+}
+
+function mapGmailMessage(
+  agentId: string,
+  accountId: string,
+  message: GoogleGmailMessageSummary
+): MessageRef {
   const fromIdentifier = message.fromEmail?.trim() || message.from.trim();
   return {
-    id: refId(message.externalId),
+    id: `${agentId}:${accountId}:gmail:${message.externalId}`,
     source: "gmail",
     externalId: message.externalId,
     threadId: message.threadId,
@@ -290,16 +301,33 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       maxResults: opts.limit,
     });
     return this.cacheAndFilter(
-      messages.map((message) => mapGmailMessage(accountId, message)),
+      messages.map((message) => mapGmailMessage(String(runtime.agentId), accountId, message)),
       opts
     );
   }
 
   protected async getMessageImpl(runtime: IAgentRuntime, id: string): Promise<MessageRef | null> {
-    const cached = this.messageCache.get(id) ?? this.messageCache.get(refId(id));
-    if (cached) return cached;
-    const messages = await this.listMessages(runtime, {});
-    return messages.find((message) => message.id === id || message.id === refId(id)) ?? null;
+    const prefix = `${runtime.agentId}:`;
+    const cached = this.messageCache.get(id);
+    if (cached?.id.startsWith(prefix)) return cached;
+    const marker = id.lastIndexOf(":gmail:");
+    const scopedAccount = marker >= 0 ? id.slice(0, marker) : undefined;
+    if (scopedAccount && !scopedAccount.startsWith(prefix)) return null;
+    const accountId = scopedAccount?.slice(prefix.length);
+    const externalId = externalMessageId(id);
+    const matches = [...this.messageCache.values()].filter(
+      (message) =>
+        message.id.startsWith(prefix) &&
+        message.externalId === externalId &&
+        (!accountId || message.worldId === accountId)
+    );
+    if (matches.length > 1)
+      throw new ElizaError("Select the Gmail account for this message.", {
+        code: "GMAIL_MESSAGE_ACCOUNT_AMBIGUOUS",
+      });
+    if (matches[0]) return matches[0];
+    const messages = await this.listMessages(runtime, accountId ? { worldIds: [accountId] } : {});
+    return messages.find((message) => message.externalId === externalId) ?? null;
   }
 
   protected async readMessageImpl(
@@ -524,7 +552,9 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       includeSpamTrash: true,
       maxResults: filters.limit,
     });
-    const refs = messages.map((message) => mapGmailMessage(accountId, message));
+    const refs = messages.map((message) =>
+      mapGmailMessage(String(runtime.agentId), accountId, message)
+    );
     return this.cacheAndFilter(refs, {
       sinceMs: filters.sinceMs,
       limit: filters.limit,
@@ -550,17 +580,34 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       return { draftId, preview, snapshot: structuredClone(draft) };
     }
     const message = await this.ensureMessage(runtime, draft.inReplyToId);
+    const threadId = message.threadId?.trim();
+    if (!threadId) {
+      throw new ElizaError("Gmail reply requires the original thread id", {
+        code: "GMAIL_REPLY_THREAD_REQUIRED",
+      });
+    }
+    const inReplyTo = metadataString(message.metadata ?? {}, "messageIdHeader");
+    if (!inReplyTo) {
+      throw new ElizaError("Gmail reply requires the original Message-ID header", {
+        code: "GMAIL_REPLY_MESSAGE_ID_REQUIRED",
+      });
+    }
     const replyEnvelope = {
       accountId: messageAccountId(message),
       to: metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier,
       subject: message.subject ?? "Re: your message",
-      inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
-      references: metadataString(message.metadata ?? {}, "references"),
+      inReplyTo,
+      references: gmailReplyReferences(
+        metadataString(message.metadata ?? {}, "referencesHeader"),
+        inReplyTo
+      ),
       externalId: message.externalId,
+      threadId,
     };
     draft.to = [{ identifier: replyEnvelope.to }];
     draft.worldId = replyEnvelope.accountId;
     draft.subject = replyEnvelope.subject;
+    draft.threadId = replyEnvelope.threadId;
     this.draftCache.set(draftId, { request: draft, preview, replyEnvelope });
     return { draftId, preview, snapshot: structuredClone(draft) };
   }
@@ -596,6 +643,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       bodyText: request.body,
       inReplyTo: envelope.inReplyTo,
       references: envelope.references,
+      threadId: envelope.threadId,
     });
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {
@@ -688,7 +736,6 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         continue;
       }
       this.messageCache.set(message.id, message);
-      this.messageCache.set(gmailId(message.id), message);
       out.push(message);
     }
     return out.slice(0, opts.limit ?? out.length);

@@ -4,13 +4,16 @@
  * Removes Blooio credentials for an organization.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { blooioAutomationService } from "@elizaos/cloud-shared/lib/services/blooio-automation";
+import { invalidateOAuthState } from "@elizaos/cloud-shared/lib/services/oauth/invalidation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { blooioAutomationService } from "@/lib/services/blooio-automation";
-import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
