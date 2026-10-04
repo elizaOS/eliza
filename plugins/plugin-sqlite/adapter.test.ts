@@ -1473,3 +1473,48 @@ it("returns messages from the requested world and treats limit 0 as empty", asyn
   );
   expect(await adapter.getMemoriesByWorldId({ worldId, limit: 0 })).toEqual([]);
 });
+
+it("keeps entity name lookups inside the requested agent and honors an explicit empty page", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const entities = Array.from({ length: 11 }, (_, index) => ({
+    id: id(),
+    agentId,
+    names: [`Patron ${index}`],
+  }));
+  await adapter.createEntities(entities);
+  const storage = await adapter.getConnection();
+  await storage.set("entities", id(), {
+    id: id(),
+    agentId: otherAgentId,
+    names: ["Patron 0"],
+  });
+
+  const named = await adapter.getEntitiesByNames({
+    names: ["Patron 0"],
+    agentId,
+  });
+  expect(named.map((entity) => entity.id)).toEqual([entities[0]?.id]);
+
+  const all = await adapter.searchEntitiesByName({
+    query: "patron",
+    agentId,
+  });
+  expect(all).toHaveLength(11);
+  expect(all.every((entity) => entity.agentId === agentId)).toBe(true);
+
+  expect(
+    await adapter.searchEntitiesByName({
+      query: "patron",
+      agentId,
+      limit: 0,
+    }),
+  ).toEqual([]);
+  expect(
+    await adapter.searchEntitiesByName({
+      query: "patron",
+      agentId,
+      limit: 1,
+    }),
+  ).toHaveLength(1);
+});

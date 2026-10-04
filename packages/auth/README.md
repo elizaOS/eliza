@@ -75,9 +75,13 @@ Mutations require recent MFA. `account-security-status` lists enabled TOTP/SMS
 methods; `account-security-start` (`{method}`) and `account-security-verify`
 (`{sessionId, code}`) step up that session. Replacement authority must resolve to
 the same Cloud user and organization before it is retained. All operations share
-enrollment serialization and cancellation. These operations do not enroll a first
-MFA method, link another email, or link Google OAuth; hosts must not advertise
-those capabilities through this adapter. Sign-in methods are separate from Gmail
+enrollment serialization and cancellation. For first SMS MFA setup, use `account-security-enroll-start` (`{phone}`) and
+`account-security-enroll-verify` (`{sessionId, code}`). Auth enforces recent
+factor-enrollment authority; enabled TOTP/SMS methods must use step-up instead.
+Confirmed enrollment clears revoked authority and requires reauthentication.
+Ambiguous enrollment verification also clears authority and must not replay.
+This does not enroll TOTP, link another email, or link Google OAuth; hosts must
+not advertise those capabilities through this adapter. Sign-in methods are separate from Gmail
 consent and inference credentials.
 
 The protected App Live E2E workflow also offers an explicit staging credential

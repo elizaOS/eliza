@@ -54,6 +54,7 @@ public class PushPluginHeaderTest {
     @Test public void lateReplacementDoesNotExportCapabilityToInitialRenderer() {
         LateActivity activity = Robolectric.buildActivity(LateActivity.class).create().get();
         assertFalse(activity.initialHeader.contains("getReminderDataCapabilities"));
+        assertFalse(activity.initialHeader.contains("resolveReminderChannel"));
         assertEquals(SafePushNotificationsPlugin.class,
             activity.getBridge().getPlugin("PushNotifications").getPluginClass());
     }
@@ -62,6 +63,7 @@ public class PushPluginHeaderTest {
         assertEquals(SafePushNotificationsPlugin.class,
             activity.getBridge().getPlugin("PushNotifications").getPluginClass());
         assertTrue(activity.initialHeader.contains("getReminderDataCapabilities"));
+        assertTrue(activity.initialHeader.contains("resolveReminderChannel"));
         assertTrue(activity.initialHeader.contains("checkPermissions"));
         assertTrue(activity.initialHeader.contains("register"));
         assertTrue(activity.initialHeader.contains("addListener"));

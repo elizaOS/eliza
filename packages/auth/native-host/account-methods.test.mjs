@@ -457,3 +457,142 @@ test("an accepted MFA code cannot replay after replacement authority is refused"
     1,
   );
 });
+
+function firstSecurityFixture() {
+  const f = fixture();
+  f.override((path) => {
+    if (path.endsWith("/status")) return { ok: true, enabled: false };
+    if (path === "/auth/mfa/sms/enroll")
+      return {
+        ok: true,
+        phone: "***0123",
+        expiresAt: new Date(initial + 300000).toISOString(),
+      };
+    if (path === "/auth/mfa/sms/verify")
+      return { ok: true, enabled: true, phone: "***0123" };
+  });
+  return f;
+}
+test("first SMS security enrollment clears revoked authority and never exposes its phone or code", async () => {
+  const f = firstSecurityFixture();
+  const step = await f.host.handle("account-security-enroll-start", {
+    phone: "+15555550123",
+  });
+  assert.equal(step.destination, "***0123");
+  assert.ok(!JSON.stringify(step).includes("+15555550123"));
+  const result = await f.host.handle("account-security-enroll-verify", {
+    sessionId: step.sessionId,
+    code: "123456",
+  });
+  assert.deepEqual(result, {
+    status: "enabled",
+    reauthenticationRequired: true,
+  });
+  assert.equal(f.calls.at(-1).path, "/auth/mfa/sms/verify");
+  assert.deepEqual(f.calls.at(-1).input, { code: "123456" });
+  await assert.rejects(f.host.handle("account-security-status"), {
+    status: 428,
+  });
+});
+test("first security setup refuses existing methods and server enrollment denial", async () => {
+  const existing = fixture();
+  await assert.rejects(
+    existing.host.handle("account-security-enroll-start", {
+      phone: "+15555550123",
+    }),
+    { code: "account_security_already_enabled" },
+  );
+  assert.equal(
+    existing.calls.filter((x) => x.path.endsWith("/enroll")).length,
+    0,
+  );
+  const f = firstSecurityFixture();
+  f.override((path) => {
+    if (path.endsWith("/status")) return { ok: true, enabled: false };
+    if (path.endsWith("/enroll"))
+      throw Object.assign(Error("Recent identity verification required"), {
+        status: 403,
+      });
+  });
+  await assert.rejects(
+    f.host.handle("account-security-enroll-start", { phone: "+15555550123" }),
+    { status: 403 },
+  );
+});
+test("ambiguous security enrollment verification clears authority rather than replaying a code", async () => {
+  for (const mode of ["lost", "wrong-phone"]) {
+    const f = firstSecurityFixture(),
+      step = await f.host.handle("account-security-enroll-start", {
+        phone: "+15555550123",
+      });
+    f.override((path) => {
+      if (path.endsWith("/verify")) {
+        if (mode === "lost") throw Error("Lost response");
+        return { ok: true, enabled: true, phone: "***9999" };
+      }
+    });
+    const input = { sessionId: step.sessionId, code: "123456" };
+    await assert.rejects(
+      f.host.handle("account-security-enroll-verify", input),
+      { code: "account_security_enrollment_unknown" },
+    );
+    await assert.rejects(
+      f.host.handle("account-security-enroll-verify", input),
+      { status: 428 },
+    );
+    assert.equal(f.calls.filter((x) => x.path.endsWith("/verify")).length, 1);
+  }
+});
+test("security enrollment supports explicit wrong-code correction but expires and fences account changes", async () => {
+  const f = firstSecurityFixture(),
+    step = await f.host.handle("account-security-enroll-start", {
+      phone: "+15555550123",
+    });
+  f.override((path) => {
+    if (path.endsWith("/verify"))
+      throw Object.assign(Error("Wrong code"), { status: 401 });
+  });
+  await assert.rejects(
+    f.host.handle("account-security-enroll-verify", {
+      sessionId: step.sessionId,
+      code: "123456",
+    }),
+    { status: 401 },
+  );
+  f.override((path) =>
+    path.endsWith("/verify")
+      ? { ok: true, enabled: true, phone: "***0123" }
+      : null,
+  );
+  assert.equal(
+    (
+      await f.host.handle("account-security-enroll-verify", {
+        sessionId: step.sessionId,
+        code: "234567",
+      })
+    ).status,
+    "enabled",
+  );
+  for (const change of [
+    (x) => x.advance(300001),
+    (x) =>
+      x.setAuthority({
+        token: token(initial - 1),
+        expiresAt: new Date(initial + 3600000).toISOString(),
+      }),
+  ]) {
+    const g = firstSecurityFixture(),
+      next = await g.host.handle("account-security-enroll-start", {
+        phone: "+15555550123",
+      });
+    change(g);
+    await assert.rejects(
+      g.host.handle("account-security-enroll-verify", {
+        sessionId: next.sessionId,
+        code: "123456",
+      }),
+      { status: 410 },
+    );
+    assert.equal(g.calls.filter((x) => x.path.endsWith("/verify")).length, 0);
+  }
+});

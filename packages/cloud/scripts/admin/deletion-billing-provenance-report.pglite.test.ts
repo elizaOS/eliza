@@ -1,7 +1,16 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { hydrateJob } from "../../shared/src/db/repositories/jobs";
+import type { Job } from "../../shared/src/db/schemas/jobs";
+import { isAgentDeleteJobData } from "../../shared/src/lib/services/provisioning-job-policy";
+import {
+  getObjectStorageClient,
+  resetObjectStorageClientForTests,
+} from "../../shared/src/lib/storage/s3-compatible-client";
 import {
   deletionBillingGuardQueries,
   readDeletionBillingProvenance,
@@ -79,8 +88,7 @@ const fixtureKey = "owned-staging-fixture-test-credential";
 const fixtureUser = "00000000-0000-4000-8000-000000000004";
 const otherOrg = "00000000-0000-4000-8000-000000000005";
 
-test("classifies the exact guarded agent without exposing IDs or inventing missing authority", async () => {
-  db = new PGlite();
+async function seedAuthorityFixture(db: PGlite) {
   await db.exec(`
     CREATE TABLE containers(id uuid, organization_id uuid, lifecycle_revision int, status text);
     CREATE TABLE compute_billing_rate_segments(id int, organization_id uuid, workload_kind text, workload_id uuid, lifecycle_revision int, billing_state text, rate_per_hour numeric, effective_at timestamptz);
@@ -96,6 +104,11 @@ test("classifies the exact guarded agent without exposing IDs or inventing missi
     INSERT INTO agent_sandboxes VALUES('${agent}', '${otherOrg}', '${fixtureUser}', 'private-node', 'private-container', '${container}', 'deletion_failed', 'suspended', NULL, 'dedicated-always', NULL, NULL, NULL, NULL);
     INSERT INTO jobs VALUES('${otherOrg}', '${agent}', 'agent_delete', 'failed');
   `);
+}
+
+test("classifies the exact guarded agent without exposing IDs or inventing missing authority", async () => {
+  db = new PGlite();
+  await seedAuthorityFixture(db);
   const report = await readDeletionBillingProvenance(db, migration, {
     fixtureApiKey: fixtureKey,
   });
@@ -165,4 +178,185 @@ test("classifies the exact guarded agent without exposing IDs or inventing missi
   expect(
     (await db.query("SELECT count(*)::integer AS count FROM jobs")).rows,
   ).toEqual([{ count: 1 }]);
+});
+
+test("classifies complete offloaded failed jobs over real S3 HTTP and refuses missing authority", async () => {
+  db = new PGlite();
+  await seedAuthorityFixture(db);
+  const directory = await mkdtemp(join(tmpdir(), "failed-job-object-fixture-"));
+  const data = {
+    agentId: agent,
+    organizationId: otherOrg,
+    userId: fixtureUser,
+    authorization: "user_request",
+    stateLossAcknowledged: true,
+    stateLossAcknowledgedByUserId: fixtureUser,
+    stateLossAcknowledgedAt: "2026-10-04T00:00:00.000Z",
+  };
+  const privateError = `private-diagnostic ${fixtureKey}\n${"x".repeat(70_000)}\nTypeError: value.toISOString is not a function\n`;
+  await writeFile(join(directory, "data.json"), JSON.stringify(data));
+  await writeFile(
+    join(directory, "result.json"),
+    JSON.stringify({
+      cloudAgentId: agent,
+      containerStopped: true,
+      rowDeleted: false,
+    }),
+  );
+  await writeFile(join(directory, "error.txt"), privateError);
+  const reads: string[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      expect(request.method).toBe("GET");
+      const path = new URL(request.url).pathname;
+      reads.push(path);
+      const key = path.replace("/guarded-job-fixture/", "");
+      if (!["data.json", "result.json", "error.txt"].includes(key)) {
+        return new Response("<Error><Code>NoSuchKey</Code></Error>", {
+          status: 404,
+          headers: { "content-type": "application/xml" },
+        });
+      }
+      const file = Bun.file(join(directory, key));
+      if (!(await file.exists())) {
+        return new Response("<Error><Code>NoSuchKey</Code></Error>", {
+          status: 404,
+          headers: { "content-type": "application/xml" },
+        });
+      }
+      return new Response(file);
+    },
+  });
+  const environment = {
+    STORAGE_PROVIDER: "s3",
+    STORAGE_ENDPOINT: server.url.origin,
+    STORAGE_REGION: "us-east-1",
+    STORAGE_ACCESS_KEY_ID: "fixture-key",
+    STORAGE_SECRET_ACCESS_KEY: "fixture-secret",
+    STORAGE_FORCE_PATH_STYLE: "true",
+    STORAGE_HEAVY_PAYLOADS_BUCKET: "guarded-job-fixture",
+  };
+  const previous = Object.fromEntries(
+    Object.keys(environment).map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, environment);
+  resetObjectStorageClientForTests();
+  try {
+    await db.exec(`
+      ALTER TABLE jobs ADD COLUMN id uuid DEFAULT '${container}', ADD COLUMN created_at timestamptz DEFAULT NOW(),
+        ADD COLUMN user_id uuid DEFAULT '${fixtureUser}', ADD COLUMN data jsonb DEFAULT '{}',
+        ADD COLUMN data_storage text DEFAULT 'r2', ADD COLUMN data_key text DEFAULT 'data.json',
+        ADD COLUMN result jsonb DEFAULT '{"containerStopped":false}', ADD COLUMN result_storage text DEFAULT 'r2',
+        ADD COLUMN result_key text DEFAULT 'result.json', ADD COLUMN error text DEFAULT 'inline preview',
+        ADD COLUMN error_storage text DEFAULT 'r2', ADD COLUMN error_key text DEFAULT 'error.txt';
+      INSERT INTO jobs(organization_id, agent_id, type, status, id) VALUES('${org}', '${agent}', 'agent_delete', 'failed', '${fixtureUser}');
+    `);
+    const rawJob = (
+      await db.query("SELECT * FROM jobs WHERE organization_id = $1", [
+        otherOrg,
+      ])
+    ).rows[0] as Job;
+    const completeJob = await hydrateJob(rawJob, { strict: true });
+    expect(completeJob.data).toEqual(data);
+    expect(isAgentDeleteJobData(completeJob.data)).toBe(true);
+    expect(completeJob.error).toBe(privateError);
+    expect(completeJob.result).toEqual({
+      cloudAgentId: agent,
+      containerStopped: true,
+      rowDeleted: false,
+    });
+    reads.length = 0;
+    const report = await readDeletionBillingProvenance(db, migration, {
+      fixtureApiKey: fixtureKey,
+      includeFailedJobs: true,
+    });
+    expect(report.failedDeleteJobFacts).toEqual({
+      scope: "migration_0398_unresolved_agents_failed_delete_jobs",
+      status: "failed",
+      failedJobCount: 1,
+      validDeleteJobDataCount: 1,
+      tenantMetadataMatchCount: 1,
+      completeStateLossAcknowledgementCount: 1,
+      containerStoppedResultCount: 1,
+      rowDeletedResultCount: 0,
+      offloadedPayloadJobCount: 1,
+      recordedErrorCount: 1,
+      legacyDateFailureCount: 1,
+    });
+    expect(reads.sort()).toEqual([
+      "/guarded-job-fixture/data.json",
+      "/guarded-job-fixture/error.txt",
+      "/guarded-job-fixture/result.json",
+    ]);
+    expect(report.agentAuthorityFacts?.missingPreviousStatusCount).toBe(1);
+    expect(report.agentAuthorityFacts?.missingPreviousBillingStatusCount).toBe(
+      1,
+    );
+    expect(report.unresolvedAgentProvenanceCount).toBe(1);
+    const closed = JSON.stringify(report);
+    for (const forbidden of [
+      agent,
+      otherOrg,
+      fixtureUser,
+      fixtureKey,
+      privateError,
+      data.stateLossAcknowledgedAt,
+      "data.json",
+      "private-diagnostic",
+    ]) {
+      expect(closed).not.toContain(forbidden);
+    }
+    const legacyAcknowledgement: Partial<typeof data> = { ...data };
+    delete legacyAcknowledgement.stateLossAcknowledgedByUserId;
+    delete legacyAcknowledgement.stateLossAcknowledgedAt;
+    await writeFile(
+      join(directory, "data.json"),
+      JSON.stringify(legacyAcknowledgement),
+    );
+    const legacy = await readDeletionBillingProvenance(db, migration, {
+      fixtureApiKey: fixtureKey,
+      includeFailedJobs: true,
+    });
+    expect(legacy.failedDeleteJobFacts?.validDeleteJobDataCount).toBe(1);
+    expect(
+      legacy.failedDeleteJobFacts?.completeStateLossAcknowledgementCount,
+    ).toBe(0);
+    await rm(join(directory, "error.txt"));
+    await expect(
+      readDeletionBillingProvenance(db, migration, {
+        fixtureApiKey: fixtureKey,
+        includeFailedJobs: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "failed_job_payload_unavailable",
+      cause: { code: "OBJECT_STORAGE_FIELD_UNAVAILABLE" },
+    });
+    expect(
+      (
+        await db.query(
+          "SELECT status, deletion_previous_status, deletion_previous_billing_status FROM agent_sandboxes",
+        )
+      ).rows,
+    ).toEqual([
+      {
+        status: "deletion_failed",
+        deletion_previous_status: null,
+        deletion_previous_billing_status: null,
+      },
+    ]);
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM jobs")).rows,
+    ).toEqual([{ count: 2 }]);
+  } finally {
+    getObjectStorageClient()?.destroy();
+    resetObjectStorageClientForTests();
+    await server.stop(true);
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
 });

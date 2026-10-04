@@ -1,3 +1,4 @@
+import { gmailBriefSourceId } from "./gmail-message-id.js";
 /**
  * `GoogleGmailAdapter` — projects Gmail into the core message-triage adapter
  * shape consumed by assistant plugins such as LifeOps. Maps Gmail triage
@@ -91,10 +92,6 @@ function readInteger(value: number | undefined, fallback: number, maximum: numbe
   return value;
 }
 
-function refId(messageId: string): string {
-  return `gmail:${messageId}`;
-}
-
 function gmailId(messageId: string): string {
   return messageId.startsWith("gmail:") ? messageId.slice("gmail:".length) : messageId;
 }
@@ -131,7 +128,7 @@ function mapGmailMessage(
 ): MessageRef {
   const fromIdentifier = message.fromEmail?.trim() || message.from.trim();
   return {
-    id: `${agentId}:${accountId}:gmail:${message.externalId}`,
+    id: gmailBriefSourceId({ agentId, accountId, externalId: message.externalId }),
     source: "gmail",
     externalId: message.externalId,
     threadId: message.threadId,
@@ -220,6 +217,7 @@ async function emitCommittedGmailMutation(
   runtime: IAgentRuntime,
   receipt: {
     messageId: string;
+    accountId: string;
     operation: "mark_read" | "replied";
     domainEventId: string;
   }
@@ -228,7 +226,11 @@ async function emitCommittedGmailMutation(
     await runtime.emitEvent(EventType.MESSAGE_MUTATED, {
       runtime,
       messageSource: "gmail",
-      messageId: refId(receipt.messageId),
+      messageId: gmailBriefSourceId({
+        agentId: runtime.agentId,
+        accountId: receipt.accountId,
+        externalId: receipt.messageId,
+      }),
       operation: receipt.operation,
       domainEventId: receipt.domainEventId,
       committedAt: new Date().toISOString(),
@@ -648,6 +650,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {
         messageId: envelope.externalId,
+        accountId: envelope.accountId,
         operation: "replied",
         domainEventId: `gmail_reply:${envelope.accountId}:${sent.messageId}`,
       });
@@ -698,6 +701,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       const externalId = externalMessageId(messageId);
       await emitCommittedGmailMutation(runtime, {
         messageId: externalId,
+        accountId,
         operation: "mark_read",
         domainEventId: `gmail_mark_read:${accountId}:${externalId}`,
       });
