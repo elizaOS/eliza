@@ -25,12 +25,10 @@ import {
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
-  parseBooleanValue,
   type ReadJsonBodyOptions,
   type StreamEventEnvelope,
   validateUuid,
 } from "@elizaos/core";
-
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
@@ -39,6 +37,7 @@ import {
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
 import { customActionGenerateTemplate } from "./custom-action-prompt.js";
+import { parseOptionalBooleanQuery } from "./query-parameters.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import {
@@ -180,19 +179,6 @@ function resolveTerminalShellCommand(): {
       (isAndroidMobile() ? "/system/bin/sh" : "/bin/sh"),
     argsFor: (command) => ["-c", command],
   };
-}
-function parseOptionalBooleanQuery(raw: string | null):
-  | {
-      ok: true;
-      value?: boolean;
-    }
-  | {
-      ok: false;
-    } {
-  if (raw === null) return { ok: true };
-  const parsed = parseBooleanValue(raw);
-  if (parsed === undefined) return { ok: false };
-  return { ok: true, value: parsed };
 }
 function toTerminalRunRequestBody(
   body: Record<string, unknown>,

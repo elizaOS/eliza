@@ -145,7 +145,6 @@
       },
       "devDependencies": {
         "@elizaos/testing": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "@types/bun": "1.4.2",
         "@types/node": "^25.2.0",
         "@types/pg": "^8.23.1",
@@ -156,7 +155,6 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "ai": "^6.0.134",
         "bun-types": "1.4.2",
-        "fast-check": "^4.10.2",
         "resolve.exports": "2.0.3",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
@@ -497,6 +495,13 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/agent": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/plugin-local-inference": "workspace:*",
+        "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/testing": "workspace:*",
+        "zod": "^4.6.5",
       },
     },
     "packages/benchmarks/suites/claude-subscription-gateway": {
@@ -3008,6 +3013,7 @@
         "@coral-xyz/anchor": "^0.32.1",
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@lifi/sdk": "^3.7.9",
         "@meteora-ag/dlmm": "^1.9.7",

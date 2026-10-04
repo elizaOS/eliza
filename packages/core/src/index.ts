@@ -253,6 +253,10 @@ export type {
 	TriggerTaskMetadata,
 	UpdateTriggerRequest,
 } from "./api/agent-api-types.js";
+export {
+	DELTA_STREAM_PROTOCOL,
+	type DeltaStreamProtocol,
+} from "./api/agent-api-types.js";
 export { drainAppRoutePluginLoaders } from "./api/drain-app-route-plugins.js";
 export {
 	DEFAULT_MAX_BODY_BYTES,
@@ -2702,6 +2706,7 @@ export {
 	markdownToIR,
 	markdownToIRWithMeta,
 } from "./markdown/ir.js";
+export * from "./media/provider.js";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";

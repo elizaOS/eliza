@@ -10,7 +10,7 @@
  * fixes attack measured dominators instead of guesses.
  *
  * Run from the repo root:
- *   bun packages/agent/scripts/bench-relevant-conversations.ts \
+ *   bun packages/benchmarks/scripts/eliza-benchmark-scripts/agent/bench-relevant-conversations.ts \
  *     [--vectors=8000] [--hash=2000] [--rooms=64] [--reps=5] [--embed-ms=0]
  */
 
@@ -18,6 +18,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import {
+  HASH_MEMORY_SOURCE,
+  rankByKeyword,
+} from "@elizaos/agent/api/memory-routes";
+import { relevantConversationsProvider } from "@elizaos/agent/providers/relevant-conversations";
+import {
+  executeRawSql,
+  extractRows,
+} from "@elizaos/agent/runtime/trajectory-internals";
 import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
@@ -29,12 +38,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { embedRecallQuery } from "@elizaos/plugin-assistant";
-import { HASH_MEMORY_SOURCE, rankByKeyword } from "../src/api/memory-routes.ts";
-import { relevantConversationsProvider } from "../src/providers/relevant-conversations.ts";
-import {
-  executeRawSql,
-  extractRows,
-} from "../src/runtime/trajectory-internals.ts";
 
 interface BenchArgs {
   vectors: number;
@@ -537,9 +540,10 @@ async function run(runtime: AgentRuntime, args: BenchArgs): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  process.stderr.write(
-    `bench failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-  );
-  process.exit(1);
-});
+if (import.meta.main)
+  main().catch((error: unknown) => {
+    process.stderr.write(
+      `bench failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    );
+    process.exit(1);
+  });
