@@ -60,6 +60,65 @@ async function waitForPublicationLock() {
     await setup.query(`DROP SCHEMA ${schema} CASCADE`);
     await setup.end();
   });
+  test("plan review captures current authority without admitting a command", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    const captured = await readOrganizationPlanChangeSource(f.input);
+    expect(captured.source.id).toBe(f.input.subscriptionId);
+    expect(captured.organizationCustomerId).toBe(f.source.stripe_customer_id);
+    const rows = await setup.query(
+      "SELECT id FROM billing_subscription_commands WHERE organization_id=$1",
+      [f.input.organizationId],
+    );
+    expect(rows.rowCount).toBe(0);
+  });
+  test("plan review rejects foreign actors, stale revisions and missing projections", async () => {
+    const f = await seed();
+    const other = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await expect(
+      readOrganizationPlanChangeSource({ ...f.input, actorId: other.input.actorId }),
+    ).rejects.toThrow();
+    await expect(
+      readOrganizationPlanChangeSource({ ...f.input, expectedSubscriptionRevision: 2 }),
+    ).rejects.toThrow();
+    await setup.query("DELETE FROM organization_entitlements WHERE organization_id=$1", [
+      f.input.organizationId,
+    ]);
+    await expect(readOrganizationPlanChangeSource(f.input)).rejects.toThrow();
+  });
+  test("plan review rejects an admitted cancellation before provider dispatch", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await repo.prepareCancellation(f.input);
+    await expect(readOrganizationPlanChangeSource(f.input)).rejects.toThrow();
+  });
+  test("plan review rechecks actor revocation after waiting for the organization lock", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    const holder = await connect();
+    let pending: Promise<unknown> | undefined;
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        f.input.organizationId,
+      ]);
+      pending = readOrganizationPlanChangeSource(f.input).then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      );
+      await waitForPublicationLock();
+      await holder.query("UPDATE users SET role='member' WHERE id=$1", [f.input.actorId]);
+      await holder.query("COMMIT");
+      expect(await pending).toMatchObject({
+        error: { code: "SUBSCRIPTION_PLAN_CHANGE_FORBIDDEN" },
+      });
+    } finally {
+      await holder.query("ROLLBACK");
+      await pending;
+      await holder.end();
+    }
+  });
   async function reviewedUndo() {
     const f = await seed();
     const cancel = await repo.prepareCancellation(f.input);
