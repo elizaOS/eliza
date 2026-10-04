@@ -184,3 +184,11 @@ It does not restart processes or replace the account supervisor. Parent
 directories must be private and host-controlled, and receipt callbacks must
 settle. The native-host end-to-end suite covers real disk and child-process
 isolation, failure cleanup and cancellation during launch.
+
+`native-host/task-evidence-store.mjs` stores host-validated append-only evidence
+separately from the task transition journal. Supply a trusted table name, source,
+input validator, record limit and authenticated owner. The task reader must use
+the same synchronous SQLite connection without starting its own transaction.
+The store serializes ownership/epoch checks, sequencing and idempotency with
+writes; it never advances tasks or authorizes effects. Keep product measurement
+schemas and summaries in the host. Existing compatible tables are preserved.
