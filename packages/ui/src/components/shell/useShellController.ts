@@ -14,16 +14,14 @@
  * and the overlay stay in lock-step without double-mounting this hook.
  */
 
+import type { ChatTurnStatus } from "@elizaos/core/contracts/chat";
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
 } from "@elizaos/core/events";
 import type { TranscriptSegment } from "@elizaos/core/transcripts";
 import * as React from "react";
-import type {
-  ChatTurnStatus,
-  ImageAttachment,
-} from "../../api/client-types-chat";
+import type { ImageAttachment } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import { subscribeDesktopBridgeEvent } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
@@ -43,15 +41,12 @@ import {
 } from "../../hooks/useRealtimeVoiceSession";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import {
-  useChatComposer,
-  useChatTurnStatus,
-  useConversationMessages,
-} from "../../state";
 import { dispatchConversationResync } from "../../state/AppContext.hooks";
 import { useAppSelectorShallow } from "../../state/app-store";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { useChatTurnStatus } from "../../state/ChatTurnStatusContext.hooks";
+import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
-import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -59,7 +54,8 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
-import { deriveAgentReady } from "../../state/types";
+import { type AppContextValue, deriveAgentReady } from "../../state/types";
+
 import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";

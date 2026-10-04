@@ -5,6 +5,7 @@
  * API transport, device services and EventSource are deterministic fixtures.
  */
 
+import type { ModelHubSnapshot } from "@elizaos/core/contracts/local-inference";
 import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import {
   act,
@@ -15,7 +16,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelHubSnapshot } from "../../api/client-local-inference";
 import { ApiError } from "../../api/client-types-core";
 import { LocalInferencePanel } from "./LocalInferencePanel";
 
@@ -46,7 +46,7 @@ const appStateMock = vi.hoisted(() => ({
     },
   ) => options?.defaultValue ?? _key,
 }));
-vi.mock("../../api", () => ({ client: clientMock }));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 vi.mock("../../hooks/useRenderGuard", () => ({ useRenderGuard: vi.fn() }));
 vi.mock("../../hooks/useRole", () => ({
   useRole: () => ({ isOwner: true }),
@@ -54,11 +54,11 @@ vi.mock("../../hooks/useRole", () => ({
 vi.mock("../../state/TranslationContext.hooks", () => ({
   useTranslation: () => ({ t: appStateMock.t }),
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (selector: (state: unknown) => unknown) =>
     selector(appStateMock),
 }));
-vi.mock("@elizaos/ui/utils/asset-url", async (importOriginal) => ({
+vi.mock("../../utils/asset-url", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/asset-url.js")>()),
   resolveApiUrl: (path: string) => path,
 }));

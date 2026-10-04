@@ -2,6 +2,13 @@
  * Plugin list utilities — pure functions, constants, and type aliases
  * shared across the plugin management UI.
  */
+
+import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
+import type { JsonSchemaObject } from "@elizaos/core/config/config-catalog";
+import type {
+  TranslateFn as AppTranslateFn,
+  ConfigUiHint,
+} from "@elizaos/core/contracts/host-types";
 import {
   Binary,
   Bird,
@@ -76,10 +83,8 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import type { PluginInfo, PluginParamDef } from "../../api";
-import type { JsonSchemaObject } from "../../config/config-catalog";
-import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
-import { resolveAppAssetUrl } from "../../utils";
+import type { PluginInfo } from "../../api/client-types-config";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import { autoLabel } from "../../utils/labels.js";
 import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";
 

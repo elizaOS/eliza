@@ -6,7 +6,7 @@
  * against down/ready keyword sets since connectors report free-form statuses.
  */
 
-import type { AppRunSummary } from "../../api";
+import type { AppRunSummary } from "@elizaos/core/contracts/apps";
 
 const HEARTBEAT_STALE_MS = 2 * 60 * 1000;
 const DOWN_STATUS_PATTERNS = [

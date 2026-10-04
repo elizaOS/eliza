@@ -9,15 +9,17 @@
  *  - UI chrome: command palette, emote picker, dropped files
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AppRunSummary,
   AppSessionState,
+} from "@elizaos/core/contracts/apps";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
   McpMarketplaceResult,
   McpRegistryServerDetail,
   McpServerConfig,
   McpServerStatus,
-} from "../api";
+} from "../api/client-types-chat";
 import { sanitizeGameViewerSandbox } from "../components/apps/viewer-auth";
 
 /**

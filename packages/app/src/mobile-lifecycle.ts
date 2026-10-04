@@ -11,16 +11,16 @@
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
-import { initializeIosKeyboardAccessoryBar } from "@elizaos/ui/components/shell/ios-chat-accessory-bar";
+import type { NetworkStatusChangeDetail } from "@elizaos/core/events";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   dispatchAppEvent,
   dispatchBackIntent,
+  initializeIosKeyboardAccessoryBar,
+  isStandalonePwa,
   NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
-} from "@elizaos/ui/events";
-import { isStandalonePwa } from "@elizaos/ui/platform";
+} from "@elizaos/ui";
 
 /** Native consumption may follow either applied navigation or explicit rejection. */
 export type DeepLinkApplicationResult = boolean | { rejected: true };

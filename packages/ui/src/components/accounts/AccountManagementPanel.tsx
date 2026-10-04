@@ -4,16 +4,16 @@
  * authoritative; loading, empty, and failed reads render as distinct states.
  */
 
+import type { SubscriptionProviderSelectionId } from "@elizaos/core/contracts/first-run-options";
 import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import { AlertTriangle, ChevronRight, Plus, RotateCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type {
   AccountStrategy,
   AccountWithCredentialFlag,
-} from "../../api/client-agent";
+} from "../../api/client-agent-accounts";
 import { useAccounts } from "../../hooks/useAccounts";
 import { cn } from "../../lib/utils";
-import type { SubscriptionProviderSelectionId } from "../../providers";
 import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";

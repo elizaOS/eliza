@@ -28,19 +28,19 @@ import "../api/client-lifeops.js";
 // bloats the renderer bundle and breaks under node module resolution in test
 // lanes. (isApiError also only carries its type-guard on the /api subpath.)
 import {
-  client as apiClient,
-  isApiError,
-  isCloudAgentGoneError,
-} from "@elizaos/ui/api";
-import {
+  APP_PAUSE_EVENT,
+  APP_RESUME_EVENT,
   type AuthStatusState,
+  client as apiClient,
   getAuthStatusSnapshot,
+  isApiError,
   isAuthenticatedNow,
+  isCloudAgentGoneError,
+  isElectrobunRuntime,
+  loadDesktopWorkspaceSnapshot,
   subscribeAuthStatus,
-} from "@elizaos/ui/auth-status";
-import { isElectrobunRuntime } from "@elizaos/ui/bridge";
-import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
-import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/ui/events";
+} from "@elizaos/ui";
+
 import type { LifeOpsElizaClientMethods } from "../api/client-lifeops.js";
 import type {
   CaptureLifeOpsActivitySignalRequest,

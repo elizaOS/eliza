@@ -18,7 +18,7 @@ import {
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
 } from "@elizaos/core/contracts/service-routing-types";
 import { ElizaError } from "@elizaos/core/errors";
-import type { AccountsListResponse } from "./client-agent";
+import type { AccountsListResponse } from "./client-agent-accounts";
 /** Stable classification for malformed account inventory responses. */
 export const ACCOUNTS_RESPONSE_INVALID_CODE = "ACCOUNTS_RESPONSE_INVALID";
 function isRecord(value: unknown): value is Record<string, unknown> {

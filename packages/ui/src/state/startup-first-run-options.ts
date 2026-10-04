@@ -5,9 +5,12 @@
  */
 
 import { getStylePresets } from "@elizaos/core/character-presets";
-import { FIRST_RUN_PROVIDER_CATALOG } from "@elizaos/core/contracts/first-run-options";
-import type { FirstRunOptions } from "../api";
-import type { UiLanguage } from "../i18n";
+import {
+  FIRST_RUN_PROVIDER_CATALOG,
+  type FirstRunOptions,
+} from "@elizaos/core/contracts/first-run-options";
+
+import type { UiLanguage } from "@elizaos/core/i18n/language";
 export function buildStaticFirstRunOptions(
   uiLanguage: UiLanguage,
 ): FirstRunOptions {

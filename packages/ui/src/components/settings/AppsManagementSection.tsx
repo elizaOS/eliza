@@ -3,6 +3,10 @@
  * "Create new app" and "Load from directory" entry points.
  */
 
+import type {
+  AppRunSummary,
+  AppStopResult,
+} from "@elizaos/core/contracts/apps";
 import { Boxes, Loader2, MoreHorizontal, Play, Plus } from "lucide-react";
 import {
   type Dispatch,
@@ -13,14 +17,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
-import type {
-  AppRunSummary,
-  AppStopResult,
-  InstalledAppInfo,
-} from "../../api/client-types-cloud";
-import { useAppSelector } from "../../state";
+import type { InstalledAppInfo } from "../../api/client-types-cloud";
+import { useAppSelector } from "../../state/app-store";
 import { PageLoadingState } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {

@@ -5,14 +5,14 @@
  * Cloud panel signs the user in rather than pretending the route is live.
  */
 
-import type { ModelOption } from "@elizaos/core/contracts/first-run-options";
+import type {
+  ModelOption,
+  SubscriptionProviderSelectionId,
+} from "@elizaos/core/contracts/first-run-options";
 import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import { type ComponentType, type ReactNode, useState } from "react";
-import type {
-  SUBSCRIPTION_PROVIDER_SELECTIONS,
-  SubscriptionProviderSelectionId,
-} from "../../providers";
-import { useAppSelector } from "../../state";
+import type { SUBSCRIPTION_PROVIDER_SELECTIONS } from "../../providers";
+import { useAppSelector } from "../../state/app-store";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";

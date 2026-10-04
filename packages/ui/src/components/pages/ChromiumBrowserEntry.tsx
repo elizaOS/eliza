@@ -1,7 +1,9 @@
 /** Opens websites in the installed Chromium browser and leaves credentials and page state with that browser. */
+
+import type { NavigateViewDetail } from "@elizaos/core/events";
 import { Globe, KeyRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
+import { NAVIGATE_VIEW_EVENT } from "../../events";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { BrowserSearchSettings } from "./BrowserSearchSettings";

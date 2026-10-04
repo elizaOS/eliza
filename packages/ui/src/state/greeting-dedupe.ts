@@ -23,7 +23,7 @@
  * through.
  */
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/types/message-source";
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 
 /** Whether a message is an agent-greeting bubble. */
 export function isAgentGreetingMessage(message: ConversationMessage): boolean {

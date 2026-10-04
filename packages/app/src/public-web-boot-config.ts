@@ -8,7 +8,7 @@
  */
 
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
+import { getBootConfig, setBootConfig } from "@elizaos/ui";
 import { resolveIosRuntimeConfig } from "./ios-runtime";
 
 type RuntimeEnv = Record<string, string | boolean | undefined>;

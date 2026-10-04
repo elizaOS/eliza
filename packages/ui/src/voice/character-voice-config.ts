@@ -8,7 +8,7 @@ import {
   resolveStylePresetById,
 } from "@elizaos/core/character-presets";
 import { hasConfiguredApiKey, PREMADE_VOICES } from "@elizaos/core/voice";
-import type { VoiceConfig } from "../api/client";
+import type { VoiceConfig } from "../api/client-types-config";
 import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 

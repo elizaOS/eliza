@@ -3,12 +3,12 @@
  * queued capture requests and POSTs frames back, since Android has no
  * agent→renderer push channel. See the block below for the full protocol.
  */
-import { Capacitor } from "@capacitor/core";
 import {
   normalizeScreenCaptureRequestContract,
   type ScreenCaptureRequestContract,
 } from "@elizaos/core/contracts/screen-capture";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
+import { isNativeMobile } from "../platform/native-mobile";
 import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 
 /**
@@ -69,15 +69,7 @@ function clampQuality(quality: number): number {
   if (!Number.isFinite(quality)) return 70;
   return Math.min(100, Math.max(1, Math.round(quality)));
 }
-function isNativeMobile(): boolean {
-  try {
-    const platform = Capacitor.getPlatform();
-    return platform === "android" || platform === "ios";
-  } catch {
-    // error-policy:J3 an exotic host global shape reads as "not native".
-    return false;
-  }
-}
+
 async function postScreenFrame(
   body: Record<string, unknown>,
   signal: AbortSignal,

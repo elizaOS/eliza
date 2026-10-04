@@ -11,9 +11,9 @@
  * Every TurnStatus phase uses the same neutral shimmer so transport state never
  * changes the chat's accent color or flashes between unrelated treatments.
  */
-import { useEffect, useRef, useState } from "react";
 
-import type { ChatTurnStatus } from "../../../api/client-types-chat";
+import type { ChatTurnStatus } from "@elizaos/core/contracts/chat";
+import { useEffect, useRef, useState } from "react";
 import { Marker, MarkerContent, MarkerIcon } from "../../ui/marker";
 import { Spinner } from "../../ui/spinner";
 import { ChatBubble } from "./chat-bubble";

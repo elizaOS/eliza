@@ -14,8 +14,8 @@ import type {
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core/errors";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   type AppShellPageRegistration,
@@ -25,16 +25,15 @@ import {
   subscribeAppShellPages,
 } from "../app-shell-registry";
 import { isManagedCloudRuntime } from "../cloud/managed-cloud-runtime";
-import {
-  type BuiltinTab,
-  isAospShellEnabled,
-  TAB_PATHS,
-  titleForTab,
-} from "../navigation";
+import { isAospShellEnabled, TAB_PATHS, titleForTab } from "../navigation";
+import type { BuiltinTab } from "../navigation/builtin-route-descriptors";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";
-import type { StartupPhaseValue } from "../state/startup-coordinator";
-import { isShellPaintable } from "../state/startup-coordinator";
+import {
+  isShellPaintable,
+  type StartupPhaseValue,
+} from "../state/startup-coordinator";
+
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
 import { invalidate, startPolling } from "./resource-cache";
@@ -750,7 +749,7 @@ export function useAvailableViews(
   return {
     views,
     loading: networkEnabled && resource.status === "loading",
-    error: resource.status === "error" ? resource.error : null,
+    error: resource.revalidationError,
     refresh: networkEnabled ? refetch : () => {},
   };
 }

@@ -6,8 +6,8 @@
 
 import type { ResolvedContentPack } from "@elizaos/core/contracts/content-pack";
 import { Check } from "lucide-react";
-import { useAgentElement } from "../../agent-surface";
-import { useAppSelector } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { useAppSelector } from "../../state/app-store";
 import { ActionListRow } from "../shared/ActionListRow";
 import { SettingsGroup } from "./settings-layout";
 

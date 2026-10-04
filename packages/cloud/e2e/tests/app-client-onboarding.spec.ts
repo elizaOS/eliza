@@ -21,14 +21,13 @@
  *      shared adapter. This is the documented best-effort handoff contract.
  */
 
+import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { ElizaClient } from "@elizaos/ui/api";
-import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "@elizaos/ui/api/direct-cloud-endpoints";
-import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
+import { ElizaClient, getBootConfig, setBootConfig } from "@elizaos/ui";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 test.describe("app onboarding client ↔ real cloud-api", () => {

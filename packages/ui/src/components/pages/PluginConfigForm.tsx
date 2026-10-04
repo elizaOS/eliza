@@ -5,11 +5,13 @@
  * auto-generated ones (server wins), and drives the shared `ConfigRenderer`.
  * Value changes flow back out through `onParamChange`.
  */
+
+import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
+import type { ConfigUiHint } from "@elizaos/core/contracts/host-types";
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { PluginInfo, PluginParamDef } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
-import type { ConfigUiHint } from "../../types";
 import { Card } from "../ui/card";
 import { Switch } from "../ui/switch";
 import { paramsToSchema } from "./plugin-list-utils";

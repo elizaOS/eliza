@@ -5,7 +5,6 @@
     "customConditions": ["eliza-source"],
     "paths": {
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
-      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/app": ["./src/index.ts"],
@@ -30,6 +29,7 @@
     }
   },
   "include": [
+    "src/renderer",
     "src/first-run-boot-patches.ts",
     "src/native-transcript-bridge.ts",
     "src/env-prefix.js",

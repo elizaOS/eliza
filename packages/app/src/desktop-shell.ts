@@ -7,7 +7,7 @@
  * at `@elizaos/app` → `./browser.ts` for plugin hosts that need it.
  */
 
-export { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
+export { AppWindowRenderer } from "@elizaos/ui";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,
   IOS_FULL_BUN_SMOKE_RESULT_KEY,

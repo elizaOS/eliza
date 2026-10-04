@@ -5,7 +5,7 @@
  * different server that needs confirmation.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
 import { type ConnectRequestResult, listenForConnectRequests } from "../events";
 import {
@@ -14,7 +14,7 @@ import {
 } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
-import { applyLaunchConnection } from "../platform";
+import { applyLaunchConnection } from "../platform/browser-launch";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { useAppSelectorShallow } from "./app-store";
 import { runStartupProbe } from "./startup-probe";

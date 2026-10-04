@@ -5,6 +5,10 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
+import type {
+  AppRunSummary,
+  RegistryAppInfo,
+} from "@elizaos/core/contracts/apps";
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import {
   type ReactNode,
@@ -13,11 +17,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
+import { client } from "../../api/client";
 import { isOverlayApp } from "../../apps/overlay-app-registry.js";
 import { logger } from "../../logger.ts";
-import { useAppSelectorShallow } from "../../state";
-import { openExternalUrl } from "../../utils";
+import { useAppSelectorShallow } from "../../state/app-store";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { AppIdentityTile } from "../apps/app-identity";
 import { loadMergedCatalogApps } from "../apps/catalog-loader";
 import { getAppShortName } from "../apps/helpers";

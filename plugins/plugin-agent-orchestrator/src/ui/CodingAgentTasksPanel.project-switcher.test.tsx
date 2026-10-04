@@ -14,80 +14,75 @@ const calls = vi.hoisted(() => ({
   listCodingAgentTaskThreads: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
-}));
-
-vi.mock("@elizaos/ui/components", () => ({
-  ViewBackButton: () => <button type="button">Back</button>,
-}));
-
-vi.mock("@elizaos/ui/api", () => ({
-  ApiError: class ApiError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-  client: {
-    listProjects: () => calls.listProjects(),
-    listCodingAgentTaskThreads: (options: unknown) =>
-      calls.listCodingAgentTaskThreads(options),
-  },
-}));
-
-vi.mock("@elizaos/ui", () => ({
-  Button: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <button type="button" {...rest}>
-      {children}
-    </button>
-  ),
-  Card: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  Input: (props: Record<string, unknown>) => <input {...props} />,
-  Separator: () => <hr />,
-  StatusPulseDot: () => <span />,
-  DropdownMenu: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuContent: ({
-    children,
-    align: _align,
-    ...rest
-  }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  DropdownMenuItem: ({
-    children,
-    onSelect,
-    ...rest
-  }: {
-    children: ReactNode;
-    onSelect?: () => void;
-  } & Record<string, unknown>) => (
-    <button type="button" onClick={() => onSelect?.()} {...rest}>
-      {children}
-    </button>
-  ),
-  ChatEmptyStateWithRecommendations: ({
-    title,
-    testId,
-  }: {
-    title: ReactNode;
-    testId?: string;
-  }) => <div data-testid={testId}>{title}</div>,
-  useAppSelectorShallow: () => ({ t: undefined, uiLanguage: "en" }),
+  ...(await (async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    ViewBackButton: () => <button type="button">Back</button>,
+    ApiError: class ApiError extends Error {
+      status: number;
+      constructor(message: string, status: number) {
+        super(message);
+        this.status = status;
+      }
+    },
+    client: {
+      listProjects: () => calls.listProjects(),
+      listCodingAgentTaskThreads: (options: unknown) =>
+        calls.listCodingAgentTaskThreads(options),
+    },
+    Button: ({
+      children,
+      ...rest
+    }: { children: ReactNode } & Record<string, unknown>) => (
+      <button type="button" {...rest}>
+        {children}
+      </button>
+    ),
+    Card: ({
+      children,
+      ...rest
+    }: { children: ReactNode } & Record<string, unknown>) => (
+      <div {...rest}>{children}</div>
+    ),
+    Input: (props: Record<string, unknown>) => <input {...props} />,
+    Separator: () => <hr />,
+    StatusPulseDot: () => <span />,
+    DropdownMenu: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    DropdownMenuContent: ({
+      children,
+      align: _align,
+      ...rest
+    }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
+      <div {...rest}>{children}</div>
+    ),
+    DropdownMenuItem: ({
+      children,
+      onSelect,
+      ...rest
+    }: {
+      children: ReactNode;
+      onSelect?: () => void;
+    } & Record<string, unknown>) => (
+      <button type="button" onClick={() => onSelect?.()} {...rest}>
+        {children}
+      </button>
+    ),
+    ChatEmptyStateWithRecommendations: ({
+      title,
+      testId,
+    }: {
+      title: ReactNode;
+      testId?: string;
+    }) => <div data-testid={testId}>{title}</div>,
+    useAppSelectorShallow: () => ({ t: undefined, uiLanguage: "en" }),
+  }))(importOriginal)),
 }));
 
 import { CodingAgentTasksPanel } from "./CodingAgentTasksPanel";

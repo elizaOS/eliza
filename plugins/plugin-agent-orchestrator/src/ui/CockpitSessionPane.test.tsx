@@ -19,10 +19,6 @@
 // and override only `client`. The agent-surface hook is stubbed exactly as the
 // existing TaskInspector test does.
 
-import type {
-  CodingAgentTaskThreadDetail,
-  CodingAgentTaskTimelineItem,
-} from "@elizaos/ui/api/client-types-cloud";
 import {
   cleanup,
   fireEvent,
@@ -31,6 +27,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  CodingAgentTaskThreadDetail,
+  CodingAgentTaskTimelineItem,
+} from "../../../../packages/ui/src/api/client-types-cloud";
 
 // The REAL ELIZA_CLOUD_TIER_MODEL currently maps BOTH tiers to the same
 // Cerebras model (no smart model has shipped), which makes the pane hide the
@@ -58,7 +58,8 @@ const calls = {
 // TaskInspector wires a couple of agent elements (close button + priority
 // select) and only needs `ref` + `agentProps` back; the production hook is a
 // registration side effect for the agent overlay.
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: (descriptor: {
     id: string;
     role?: string;
@@ -71,43 +72,50 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
       "data-agent-label": descriptor.label,
     },
   }),
+  ...(await (async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    ...(await (async (
+      importOriginal: <T = Record<string, unknown>>() => Promise<T>,
+    ) => {
+      const actual = await importOriginal<Record<string, unknown>>();
+      return {
+        ...actual,
+        client: {
+          getOrchestratorStatus: () => calls.getOrchestratorStatus(),
+          listCodingAgentTaskThreads: (o: unknown) =>
+            calls.listCodingAgentTaskThreads(o),
+          getCodingAgentTaskThread: (id: string) =>
+            calls.getCodingAgentTaskThread(id),
+          listOrchestratorTaskTimeline: (id: string, o: unknown) =>
+            calls.listOrchestratorTaskTimeline(id, o),
+          streamOrchestratorTask: (id: string, cb: () => void) =>
+            calls.streamOrchestratorTask(id, cb),
+          pauseOrchestratorTask: (id: string) =>
+            calls.pauseOrchestratorTask(id),
+          postOrchestratorTaskMessage: (id: string, content: string) =>
+            calls.postOrchestratorTaskMessage(id, content),
+          getCodingAgentStatus: () => calls.getCodingAgentStatus(),
+          updateOrchestratorTask: (id: string, patch: unknown) =>
+            calls.updateOrchestratorTask(id, patch),
+          addOrchestratorAgent: (id: string, input: unknown) =>
+            calls.addOrchestratorAgent(id, input),
+          restartOrchestratorTask: (id: string, input: unknown) =>
+            calls.restartOrchestratorTask(id, input),
+        },
+      };
+    })(importOriginal)),
+    ...(await (async (
+      importOriginal: <T = Record<string, unknown>>() => Promise<T>,
+    ) => {
+      const actual = await importOriginal<Record<string, unknown>>();
+      return { ...actual, ELIZA_CLOUD_TIER_MODEL: tierModels };
+    })(importOriginal)),
+  }))(importOriginal)),
 }));
 
 // Keep the real UI components while replacing the API client boundary.
-vi.mock("@elizaos/ui/api", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return {
-    ...actual,
-    client: {
-      getOrchestratorStatus: () => calls.getOrchestratorStatus(),
-      listCodingAgentTaskThreads: (o: unknown) =>
-        calls.listCodingAgentTaskThreads(o),
-      getCodingAgentTaskThread: (id: string) =>
-        calls.getCodingAgentTaskThread(id),
-      listOrchestratorTaskTimeline: (id: string, o: unknown) =>
-        calls.listOrchestratorTaskTimeline(id, o),
-      streamOrchestratorTask: (id: string, cb: () => void) =>
-        calls.streamOrchestratorTask(id, cb),
-      pauseOrchestratorTask: (id: string) => calls.pauseOrchestratorTask(id),
-      postOrchestratorTaskMessage: (id: string, content: string) =>
-        calls.postOrchestratorTaskMessage(id, content),
-      getCodingAgentStatus: () => calls.getCodingAgentStatus(),
-      updateOrchestratorTask: (id: string, patch: unknown) =>
-        calls.updateOrchestratorTask(id, patch),
-      addOrchestratorAgent: (id: string, input: unknown) =>
-        calls.addOrchestratorAgent(id, input),
-      restartOrchestratorTask: (id: string, input: unknown) =>
-        calls.restartOrchestratorTask(id, input),
-    },
-  };
-});
 
-vi.mock("@elizaos/ui/components", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, ELIZA_CLOUD_TIER_MODEL: tierModels };
-});
-
-import { getViewChatBinding } from "@elizaos/ui/state";
+import { getViewChatBinding } from "@elizaos/ui";
 import { CockpitSessionPane } from "./CockpitSessionPane";
 
 const ISO = "2026-01-01T00:00:00.000Z";

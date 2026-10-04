@@ -21,10 +21,17 @@
  * fields the route emits — no fabricated rows.
  */
 
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import type { PresentedDocument } from "../../document-presenter.js";
 import {
   type DocumentCard,

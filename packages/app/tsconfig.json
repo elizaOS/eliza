@@ -7,7 +7,6 @@
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/app": ["../app/src/index.ts"],

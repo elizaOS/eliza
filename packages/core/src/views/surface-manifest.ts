@@ -22,9 +22,8 @@ export type {
 
 /**
  * How a view is separated from the host realm and from other views. Ordered
- * from least to most isolated. The catalogue in
- * `packages/ui/src/surface-isolation.ts` states which level each shipped view
- * uses and why, and maps each level to its per-platform embedding
+ * from least to most isolated. Each view declares its level in its manifest,
+ * which determines its per-platform embedding
  * (Electron `WebContentsView`, sandboxed `<iframe>`, `WKWebView`/Android
  * `WebView`).
  *

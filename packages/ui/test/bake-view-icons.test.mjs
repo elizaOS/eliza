@@ -42,7 +42,9 @@ function makeMirror() {
   const viewsDir = join(root, "pkg", "src", "components", "views");
   const assetDir = join(viewsDir, "view-icons");
   mkdirSync(scriptsDir, { recursive: true });
-  mkdirSync(assetDir, { recursive: true });
+  mkdirSync(join(assetDir, "ionicons"), { recursive: true });
+  writeFileSync(join(assetDir, "ionicons", "chat.svg"), "vendored-svg");
+  writeFileSync(join(assetDir, "LICENSE"), "required-attribution");
   cpSync(realScript, join(scriptsDir, "bake-view-icons.ts"));
   // Committed-state stand-ins the script must not destroy on refusal.
   writeFileSync(join(assetDir, "chat.png"), "png-bytes-chat");
@@ -94,8 +96,10 @@ describe("bake-view-icons fail-closed contract", () => {
     expect(result.stderr).toContain("does not exist");
     expect(result.stderr).toContain("gen-view-icons.ts");
     expect(readdirSync(mirror.assetDir).sort()).toEqual([
+      "LICENSE",
       "chat.png",
       "default.png",
+      "ionicons",
     ]);
     expect(readFileSync(mirror.generated, "utf8")).toContain("committed: true");
   });
@@ -109,8 +113,10 @@ describe("bake-view-icons fail-closed contract", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("no .png files");
     expect(readdirSync(mirror.assetDir).sort()).toEqual([
+      "LICENSE",
       "chat.png",
       "default.png",
+      "ionicons",
     ]);
     expect(readFileSync(mirror.generated, "utf8")).toContain("committed: true");
   });
@@ -121,13 +127,23 @@ describe("bake-view-icons fail-closed contract", () => {
     mkdirSync(source, { recursive: true });
     writeFileSync(join(source, "alpha.png"), "png-bytes-alpha");
     writeFileSync(join(source, "beta.png"), "png-bytes-beta");
+    writeFileSync(join(source, "default.png"), "png-bytes-default-new");
     const result = runBake(mirror.script, [source]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("packaged 2 icons");
+    expect(result.stdout).toContain("packaged 3 icons");
     expect(readdirSync(mirror.assetDir).sort()).toEqual([
+      "LICENSE",
       "alpha.png",
       "beta.png",
+      "default.png",
+      "ionicons",
     ]);
+    expect(readFileSync(join(mirror.assetDir, "LICENSE"), "utf8")).toBe(
+      "required-attribution",
+    );
+    expect(
+      readFileSync(join(mirror.assetDir, "ionicons", "chat.svg"), "utf8"),
+    ).toBe("vendored-svg");
     // Assert via the asset URL paths: the script's trailing best-effort Biome
     // pass may reformat key quoting when a global bunx is on PATH.
     const generated = readFileSync(mirror.generated, "utf8");
@@ -135,4 +151,35 @@ describe("bake-view-icons fail-closed contract", () => {
     expect(generated).toContain("./view-icons/beta.png");
     expect(existsSync(join(mirror.assetDir, "chat.png"))).toBe(false);
   });
+  it.each(["missing-default", "partial-manifest", "copy-failure"])(
+    "refuses %s without changing assets or the generated module",
+    (failure) => {
+      const mirror = makeMirror();
+      const source = join(dirname(mirror.assetDir), "incomplete");
+      mkdirSync(source);
+      writeFileSync(join(source, "alpha.png"), "new-icon");
+      if (failure === "copy-failure") mkdirSync(join(source, "default.png"));
+      if (failure === "partial-manifest") {
+        writeFileSync(join(source, "default.png"), "new-default");
+        writeFileSync(
+          join(source, "manifest.json"),
+          JSON.stringify({ expected: ["alpha", "default", "missing"] }),
+        );
+      }
+      const result = runBake(mirror.script, [source]);
+      expect(result.status).not.toBe(0);
+      expect(readFileSync(join(mirror.assetDir, "chat.png"), "utf8")).toBe(
+        "png-bytes-chat",
+      );
+      expect(readFileSync(join(mirror.assetDir, "default.png"), "utf8")).toBe(
+        "png-bytes-default",
+      );
+      expect(readFileSync(mirror.generated, "utf8")).toContain(
+        "committed: true",
+      );
+      expect(
+        readdirSync(mirror.assetDir).some((file) => file.startsWith(".bake-")),
+      ).toBe(false);
+    },
+  );
 });

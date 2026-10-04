@@ -18,12 +18,6 @@
     "paths": {
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
-      "@elizaos/ui/agent-surface": [
-        "../../packages/ui/src/agent-surface/index.ts"
-      ],
-      "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
-      "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],

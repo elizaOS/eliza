@@ -374,7 +374,8 @@
     "vite": "^8.3.0",
     "vitest": "^5.0.2",
     "ws": "^8.21.3",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "viem": "^2.56.9"
   },
   "elizaos": {
     "app": {
@@ -472,9 +473,9 @@
       "default": "./dist/api/compat-route-shared.js"
     },
     "./api/ios-local-agent-transport": {
-      "types": "./dist/api/ios-local-agent-transport.d.ts",
-      "import": "./dist/api/ios-local-agent-transport.js",
-      "default": "./dist/api/ios-local-agent-transport.js"
+      "types": "./dist/renderer/transports/ios-local-agent-transport.d.ts",
+      "import": "./dist/renderer/transports/ios-local-agent-transport.js",
+      "default": "./dist/renderer/transports/ios-local-agent-transport.js"
     },
     "./api/response": {
       "types": "./dist/api/response.d.ts",

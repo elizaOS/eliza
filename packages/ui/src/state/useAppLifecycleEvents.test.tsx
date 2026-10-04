@@ -5,18 +5,18 @@
  * @vitest-environment jsdom
  */
 
+import type { NavigateViewDetail } from "@elizaos/core/events";
 import { cleanup, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
   NETWORK_STATUS_CHANGE_EVENT,
 } from "../events";
-import type { LoadConversationMessagesResult } from "./internal";
+import type { LoadConversationMessagesResult } from "./types";
 import {
   RESUME_DEBOUNCE_MS,
   useAppLifecycleEvents,
@@ -51,9 +51,7 @@ const mocks = vi.hoisted(() => ({
   androidCloudBuild: vi.fn(() => false),
 }));
 
-vi.mock("../api", () => ({
-  client: mocks.client,
-}));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: mocks.fetchCurrentView,

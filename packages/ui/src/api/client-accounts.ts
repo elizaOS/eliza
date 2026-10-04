@@ -7,7 +7,7 @@ import type { ProviderRuntimeEligibility } from "@elizaos/core/contracts/coding-
 import type {
   AccountsListProvider,
   AccountsListResponse,
-} from "./client-agent";
+} from "./client-agent-accounts";
 
 export type { ProviderRuntimeEligibility } from "@elizaos/core/contracts/coding-agent-capabilities";
 export interface ProviderSelectionState {

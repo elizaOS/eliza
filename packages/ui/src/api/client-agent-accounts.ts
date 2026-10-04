@@ -51,7 +51,7 @@ export interface AccountOAuthStartResult {
   needsCodeSubmission: boolean;
   userCode?: string;
 }
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listAccounts(init?: RequestInit): Promise<AccountsListResponse>;
     createApiKeyAccount(

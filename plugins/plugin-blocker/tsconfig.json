@@ -8,10 +8,6 @@
     "sourceMap": false,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/ui/agent-surface": [
-        "../../packages/ui/src/agent-surface/index.ts"
-      ],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core/*": ["../../packages/core/src/*"]
     }
   },

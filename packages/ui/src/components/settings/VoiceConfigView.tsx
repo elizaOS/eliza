@@ -5,17 +5,24 @@
  * Barrel-exported from components/index.ts for consumers outside the Settings
  * section registry.
  */
-import { ASR_PROVIDERS } from "@elizaos/core/voice";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
 import {
-  type AsrProvider,
-  client,
-  type VoiceConfig,
-  type VoiceMode,
-  type VoiceProvider,
-} from "../../api";
-import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+  ASR_PROVIDERS,
+  hasConfiguredApiKey,
+  PREMADE_VOICES,
+  sanitizeApiKey,
+  VOICE_PROVIDERS,
+} from "@elizaos/core/voice";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type {
+  AsrProvider,
+  VoiceConfig,
+  VoiceMode,
+  VoiceProvider,
+} from "../../api/client-types-config";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   getSwabblePlugin,
   type SwabbleConfig,
@@ -23,15 +30,9 @@ import {
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import { useResolvedTtsDefault } from "../../hooks/useResolvedTtsDefault";
-import { useAppSelector } from "../../state";
-import {
-  hasConfiguredApiKey,
-  isCloudVoiceRunnable,
-  normalizeForWake,
-  PREMADE_VOICES,
-  sanitizeApiKey,
-  VOICE_PROVIDERS,
-} from "../../voice";
+import { useAppSelector } from "../../state/app-store";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
+import { normalizeForWake } from "../../voice/wake-name-match";
 import {
   CloudConnectionStatus,
   CloudSourceModeToggle,

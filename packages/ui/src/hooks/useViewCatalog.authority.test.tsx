@@ -1,9 +1,9 @@
 /** Ensures installable/installed launcher catalogs never cross agent bases. */
 // @vitest-environment jsdom
 
+import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { RegistryAppInfo } from "../api";
 import { publishAppValue, seedAppValue } from "../state/app-store";
 import { __resetResourceCache, invalidate } from "./resource-cache";
 
@@ -37,8 +37,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../api", () => ({ client: mocks.client }));
 vi.mock("../api/client", () => ({ client: mocks.client }));
+
 vi.mock("../api/app-shell-capabilities", () => ({
   supportsFullAppShellRoutes: () => mocks.appShellRoutesSupported.value,
 }));

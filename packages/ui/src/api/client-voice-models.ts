@@ -63,7 +63,7 @@ export interface VoiceModelsSetPreferencesResponse {
   readonly ok: true;
   readonly preferences: NetworkPolicyPreferences;
 }
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listVoiceModels(): Promise<VoiceModelsListResponse>;
     checkVoiceModelUpdates(options?: {

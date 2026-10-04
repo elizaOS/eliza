@@ -10,44 +10,38 @@
 // home); import them from there rather than the React package.
 
 export { resolveAppBranding } from "@elizaos/core/config/app-config";
-export {
-  type AppRunSummary,
-  type AppSessionJsonValue,
-  client,
-} from "@elizaos/ui/api";
-export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
-export type { AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
 export type {
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/ui/apps/overlay-app-api";
-export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
-export * from "@elizaos/ui/browser";
-export { ErrorBoundary } from "@elizaos/ui/browser";
+  AppRunSummary,
+  AppSessionJsonValue,
+} from "@elizaos/core/contracts/apps";
+export * from "@elizaos/ui";
 export {
+  type AppDetailExtensionProps,
+  Button,
+  client,
+  ErrorBoundary,
+  formatDetailTimestamp,
+  Input,
+  type IosRuntimeConfig,
+  type OverlayApp,
+  type OverlayAppContext,
+  PagePanel,
+  registerDetailExtension,
+  registerOverlayApp,
+  resolveIosRuntimeConfig,
+  Spinner,
+  StatusBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
   type SurfaceTone,
-} from "@elizaos/ui/components/apps/extensions/surface";
-export {
-  formatDetailTimestamp,
   selectLatestRunForApp,
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
-} from "@elizaos/ui/components/apps/extensions/surface.helpers";
-export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-export { Button } from "@elizaos/ui/components/ui/button";
-export { Input } from "@elizaos/ui/components/ui/input";
-export { Spinner } from "@elizaos/ui/components/ui/spinner";
-export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
-export {
-  type IosRuntimeConfig,
-  resolveIosRuntimeConfig,
-} from "@elizaos/ui/platform/ios-runtime";
-export { useApp } from "@elizaos/ui/state/useApp";
+  useApp,
+} from "@elizaos/ui";
 export {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,

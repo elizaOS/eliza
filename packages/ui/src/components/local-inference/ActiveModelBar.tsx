@@ -7,7 +7,7 @@
 import type {
   ActiveModelState,
   InstalledModel,
-} from "../../api/client-local-inference";
+} from "@elizaos/core/contracts/local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { displayModelName } from "./hub-utils";

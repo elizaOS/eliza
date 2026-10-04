@@ -15,8 +15,10 @@ import {
   MONTHLY_IDLE_COST,
   MONTHLY_RUNNING_COST,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { Card, CornerBrackets, StatusBadge } from "@elizaos/ui/cloud-ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
+import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import { useT } from "../lib/i18n";
 
 interface ElizaAgentPricingBannerProps {

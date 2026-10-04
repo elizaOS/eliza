@@ -114,7 +114,7 @@ export {
 export {
   EXPECTED_PHRASE,
   KNOWN_PHRASE_WAV_DATA_URL,
-} from "./voice-selftest/fixtures/known-phrase";
+} from "./voice-selftest/known-phrase";
 export {
   runVoiceSelfTest,
   type StageStatus,

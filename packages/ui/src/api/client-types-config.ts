@@ -6,16 +6,16 @@
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
+  TriggerRunRecord,
   ViewKind,
 } from "@elizaos/core";
 import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
+import type { ReleaseChannel } from "@elizaos/core/contracts/config";
 import type { MessageExampleContent } from "@elizaos/core/contracts/first-run-options";
-import type { ConfigUiHint } from "../types";
+import type { ConfigUiHint } from "@elizaos/core/contracts/host-types";
 import type {
   ConversationScope,
-  ReleaseChannel,
   ScheduledTaskView,
-  TriggerRunRecord,
   TriggerSummary,
 } from "./client-types-core";
 

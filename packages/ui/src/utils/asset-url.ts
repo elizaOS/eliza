@@ -163,3 +163,18 @@ export function resolveApiUrl(apiPath: string): string {
   const suffix = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
   return `${normalized}${suffix}`;
 }
+
+export function resolveWallpaperUrl(url: string): string {
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
+    url.startsWith("//")
+  ) {
+    return url;
+  }
+  if (url.startsWith("/api/") || url.startsWith("api/")) {
+    return resolveApiUrl(url);
+  }
+  return resolveAppAssetUrl(url);
+}

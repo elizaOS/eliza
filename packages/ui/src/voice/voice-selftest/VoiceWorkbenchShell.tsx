@@ -24,7 +24,7 @@ import { fetchWithCsrf } from "../../api/csrf-client";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { isAndroid } from "../../platform/init";
-import { resolveApiUrl } from "../../utils";
+import { resolveApiUrl } from "../../utils/asset-url";
 import { toSpeakableText } from "../voice-chat-playback";
 import type { VoicePlaybackEvidenceEvent } from "../voice-playback-evidence";
 import {

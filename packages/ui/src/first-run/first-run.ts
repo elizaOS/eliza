@@ -11,7 +11,7 @@ import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/core/contracts/service-routing";
-import type { UiLanguage } from "../i18n";
+import type { UiLanguage } from "@elizaos/core/i18n/language";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   type BuildFirstRunRuntimeConfigResult,

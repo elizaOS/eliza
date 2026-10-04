@@ -57,7 +57,7 @@ export interface TranscriptRevokeShareResult {
 export interface TranscriptPrivacyUpdateInput {
   sharing: Partial<TranscriptCaptureSharingState>;
 }
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listTranscripts(roomId?: string): Promise<{
       transcripts: TranscriptSummary[];

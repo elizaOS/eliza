@@ -20,7 +20,8 @@ const getCodingAgentTaskThread = vi.fn();
 const archiveCodingAgentTaskThread = vi.fn();
 const reopenCodingAgentTaskThread = vi.fn();
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   ApiError: class ApiError extends Error {
     status: number;
     constructor(message: string, status: number) {

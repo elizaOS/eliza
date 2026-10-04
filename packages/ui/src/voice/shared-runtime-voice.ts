@@ -7,7 +7,7 @@
  */
 
 import { getElizaApiBase } from "@elizaos/core/utils/eliza-globals";
-import { resolveDirectCloudAuthApiBase } from "../api/direct-cloud-endpoints";
+import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import { getBootConfig } from "../config/boot-config-store";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 /**

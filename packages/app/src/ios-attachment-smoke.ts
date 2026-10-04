@@ -13,7 +13,7 @@
  */
 import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { shellLocalStorage } from "@elizaos/ui/bridge";
+import { shellLocalStorage } from "@elizaos/ui";
 import {
   toWellFormedUnicode,
   truncateWellFormed,

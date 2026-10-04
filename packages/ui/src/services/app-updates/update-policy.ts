@@ -9,7 +9,7 @@ import type {
   AgentUpdateStatus,
 } from "@elizaos/core/contracts/update-status";
 import { type BuildVariant, getBuildVariant } from "../../build-variant";
-import { isElizaOS } from "../../platform";
+import { isElizaOS } from "../../platform/init";
 export type AppUpdatePlatform = "desktop" | "ios" | "android" | "web";
 export type AppDistributionChannel =
   | "desktop-direct"

@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CloudSignInRecoveryView } from "./CloudSignInRecoveryView";
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: <T,>(
     selector: (state: {
       t: (key: string, options?: { defaultValue?: string }) => string;

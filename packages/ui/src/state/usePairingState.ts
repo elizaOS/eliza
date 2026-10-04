@@ -8,7 +8,7 @@
 
 import { ElizaError } from "@elizaos/core/errors";
 import { useCallback, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import { resumeRemoteFirstRunAfterPairing } from "../first-run/adopt-remote-first-run";
 import {
   persistActiveServerCredential,

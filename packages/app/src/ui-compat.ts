@@ -14,42 +14,36 @@
 // dragged ~1000 React modules (and their deps) into the API process at boot.
 // Subpath imports pull only the specific component. Mirrors `browser.ts`.
 
-export {
-  type AppRunSummary,
-  type AppSessionJsonValue,
+export type {
+  AppRunSummary,
+  AppSessionJsonValue,
 } from "@elizaos/core/contracts/apps";
-export { client } from "@elizaos/ui/api";
-export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
-export { type AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
-export {
-  type OverlayApp,
-  type OverlayAppContext,
-} from "@elizaos/ui/apps/overlay-app-api";
-export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
-export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
-export {
-  SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
-  SurfaceSection,
-} from "@elizaos/ui/components/apps/extensions/surface";
-export {
-  formatDetailTimestamp,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-} from "@elizaos/ui/components/apps/extensions/surface.helpers";
-export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-export { Button } from "@elizaos/ui/components/ui/button";
-export { Input } from "@elizaos/ui/components/ui/input";
-export { Spinner } from "@elizaos/ui/components/ui/spinner";
-export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
 // app-store only pulls React + an erased type (same weight as useApp), so it
 // stays light enough for the Node API process — re-export the selector hooks so
 // app plugins can subscribe to AppContext slices instead of the whole value.
 export {
+  type AppDetailExtensionProps,
+  Button,
+  client,
+  formatDetailTimestamp,
+  Input,
+  type OverlayApp,
+  type OverlayAppContext,
+  PagePanel,
+  registerDetailExtension,
+  registerOverlayApp,
+  Spinner,
+  StatusBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  type SurfaceTone,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+  useApp,
   useAppSelector,
   useAppSelectorShallow,
-} from "@elizaos/ui/state/app-store";
-export { useApp } from "@elizaos/ui/state/useApp";
+} from "@elizaos/ui";

@@ -2074,13 +2074,8 @@ export default defineConfig(({ command, mode }) => ({
     // by scanning plugins/ for elizaos.appRegister markers. This plugin is the
     // only provider for that virtual module in production web/mobile builds.
     appSideEffectModulesPlugin([nativePluginsRoot]),
-    // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
-    // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
-    // cloud entry points are already aliased to passthrough stubs, but the main
-    // `@elizaos/ui` barrel ALSO re-exports the cloud namespace (`export * as
-    // cloud from "./cloud"`), which would otherwise drag the subtree (and its
-    // wallet/web3 deps) into every consumer of the barrel. Emptying the subtree
-    // cuts it at the source — the agent app never uses the cloud namespace.
+    // Disabled Cloud builds replace only documented entrypoint contracts.
+    // Unknown imports still fail; ordinary domain modules are never emptied.
     ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
       ? [
           {
@@ -2097,13 +2092,29 @@ export default defineConfig(({ command, mode }) => ({
               ) {
                 return "export function listExtraSettingsGroups() { return []; }";
               }
-              // Empty the broken cloud feature subtrees (their `./data/*` hooks
-              // were never migrated) plus the cloud barrel that re-exports them.
-              const broken =
-                /\/packages\/ui\/src\/cloud\/(account-security|admin|billing|instances|organization)\//.test(
-                  p,
-                ) || /\/packages\/ui\/src\/cloud\/index\.tsx?$/.test(p);
-              return broken ? "export {};" : null;
+              const uiCloudRoot = path
+                .join(uiPkgRoot, "src/cloud")
+                .split(path.sep)
+                .join("/");
+              if (p === `${uiCloudRoot}/shell/CloudRouterShell.tsx`) {
+                return fs.readFileSync(
+                  path.join(here, "src/shims/cloud-shell-stub.tsx"),
+                  "utf8",
+                );
+              }
+              if (
+                p ===
+                path
+                  .join(here, "src/renderer/cloud-registration.ts")
+                  .split(path.sep)
+                  .join("/")
+              ) {
+                return fs.readFileSync(
+                  path.join(here, "src/shims/cloud-registration-stub.ts"),
+                  "utf8",
+                );
+              }
+              return null;
             },
           },
         ]
@@ -2580,56 +2591,15 @@ export const INVALID_TRACER_PROVIDER = {};
       })),
       // Capacitor plugins — resolve to local plugin sources
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
-      // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
-      // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
-      // broad @elizaos/ui/* alias below (first match wins) so Rollup never
-      // resolves the cloud subtree, which would otherwise drag in its
-      // wallet/web3 deps.
-      ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
-        ? [
-            {
-              find: /^@elizaos\/ui\/cloud\/shell\/CloudRouterShell$/,
-              replacement: path.join(here, "src/shims/cloud-shell-stub.tsx"),
-            },
-            {
-              find: /^@elizaos\/ui\/cloud\/register-all$/,
-              replacement: path.join(
-                here,
-                "src/shims/cloud-register-all-stub.ts",
-              ),
-            },
-            {
-              find: /^@elizaos\/ui\/cloud\/register-public$/,
-              replacement: path.join(
-                here,
-                "src/shims/cloud-register-all-stub.ts",
-              ),
-            },
-          ]
-        : []),
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app sources directly.
       {
         find: /^@elizaos\/ui$/,
-        replacement: path.join(uiPkgRoot, "src/browser.ts"),
+        replacement: path.join(uiPkgRoot, "src/index.ts"),
       },
       {
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
-      },
-      ...[
-        ["button", "button.tsx"],
-        ["input", "input.tsx"],
-        ["textarea", "textarea.tsx"],
-        ["native-select", "native-select.tsx"],
-        ["native-dialog", "native-dialog.tsx"],
-      ].map(([subpath, source]) => ({
-        find: new RegExp(`^${escapeRegExp(`@elizaos/ui/${subpath}`)}$`),
-        replacement: path.join(uiPkgRoot, "src/components/ui", source),
-      })),
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: path.join(uiPkgRoot, "src/$1"),
       },
       // plugin-personal-assistant no longer ships a renderer view (the
       // legacy /lifeops dashboard was killed in the lifeops decomposition);
@@ -2760,17 +2730,8 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: sourceTarget,
           });
         }
-        const uiSource = path.resolve(elizaRoot, "packages/ui/src");
         return [
           ...generatedAliases,
-          {
-            find: /^@elizaos\/ui$/,
-            replacement: path.join(uiSource, "browser.ts"),
-          },
-          {
-            find: /^@elizaos\/ui\/(.+)$/,
-            replacement: path.join(uiSource, "$1"),
-          },
           {
             find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
             replacement: path.join(

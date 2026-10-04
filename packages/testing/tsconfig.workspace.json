@@ -2,7 +2,6 @@
   "compilerOptions": {
     "customConditions": ["eliza-source"],
     "paths": {
-      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/app": ["../app/src/index.ts"],
       "@elizaos/app/*": ["../app/src/*"],

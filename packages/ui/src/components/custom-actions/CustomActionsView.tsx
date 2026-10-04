@@ -10,7 +10,7 @@ import type { CustomActionDef } from "@elizaos/core/contracts/config";
 import { useCallback, useEffect, useId, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   alertDesktopMessage,
   confirmDesktopAction,

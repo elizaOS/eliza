@@ -15,7 +15,7 @@ import {
 } from "@elizaos/core/meetings";
 import { Video } from "lucide-react";
 import * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

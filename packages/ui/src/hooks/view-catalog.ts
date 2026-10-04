@@ -16,8 +16,8 @@
  */
 
 import type { EnabledViewKinds, ViewKind } from "@elizaos/core";
+import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
 import { dedupeModalities, isViewVisible } from "@elizaos/core/views/view-kind";
-import type { RegistryAppInfo } from "../api";
 import { resolveViewIconId } from "../components/views/view-icon-aliases";
 import { viewIconDataUri } from "../components/views/view-icons.generated";
 import type { ViewModality } from "../platform/platform-guards";

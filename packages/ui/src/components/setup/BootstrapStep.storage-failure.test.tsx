@@ -15,7 +15,7 @@ vi.mock("../../state/active-server-credential", () => ({
   persistActiveServerCredential: persistence.persist,
 }));
 
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     setToken: liveClient.setToken,
     postBootstrapExchange: vi.fn(),

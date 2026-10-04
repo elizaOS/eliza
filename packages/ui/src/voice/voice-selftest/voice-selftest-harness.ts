@@ -1,3 +1,4 @@
+import { measureBufferLevel } from "./audio-buffer";
 /**
  * Self-driving voice round-trip verifier — NO human, NO mocks.
  *
@@ -19,7 +20,7 @@
 import { wordErrorRate } from "@elizaos/core/voice-wer";
 import type { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
-import { resolveApiUrl } from "../../utils";
+import { resolveApiUrl } from "../../utils/asset-url";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { startLocalAsrRecorder } from "../local-asr-capture";
 import {
@@ -149,24 +150,7 @@ async function captureMicWav(opts: VoiceSelfTestOptions): Promise<{
  * pure silence decodes fine and reports a positive `duration`, so duration
  * alone never proves the TTS produced audible sound — these levels do.
  */
-function measureBufferLevel(buffer: AudioBuffer): {
-  peak: number;
-  rms: number;
-} {
-  let peak = 0;
-  let sumSquares = 0;
-  let count = 0;
-  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-    const data = buffer.getChannelData(channel);
-    for (let i = 0; i < data.length; i += 1) {
-      const v = Math.abs(data[i] ?? 0);
-      if (v > peak) peak = v;
-      sumSquares += v * v;
-      count += 1;
-    }
-  }
-  return { peak, rms: count > 0 ? Math.sqrt(sumSquares / count) : 0 };
-}
+
 /**
  * Push the decoded buffer through a real source → analyser → destination graph
  * (the same shape `useVoiceChat` uses) so the actual speaker path — Web Audio →

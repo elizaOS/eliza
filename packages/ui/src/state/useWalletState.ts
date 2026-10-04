@@ -16,6 +16,7 @@
  * - `confirmAction`   — confirmDesktopAction utility, used by handleExportKeys
  */
 
+import type { DropStatus, MintResult } from "@elizaos/core/contracts/drop";
 import type {
   WalletAddresses,
   WalletBalancesResponse,
@@ -28,14 +29,12 @@ import type {
   WalletSource,
 } from "@elizaos/core/contracts/wallet-types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  client,
-  type DropStatus,
-  type MintResult,
-  type RegistryStatus,
-  type WalletExportResult,
-  type WhitelistStatus,
-} from "../api";
+import { client } from "../api/client";
+import type {
+  RegistryStatus,
+  WhitelistStatus,
+} from "../api/client-types-cloud";
+import type { WalletExportResult } from "../api/client-types-config";
 import { isApiError } from "../api/client-types-core";
 import type { PromptOptions } from "../components/ui/confirm-dialog";
 import {

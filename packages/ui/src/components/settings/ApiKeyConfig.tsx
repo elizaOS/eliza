@@ -5,19 +5,21 @@
  * ConfigRenderer, and gates saving behind OWNER role. Server-side validation
  * warnings/errors flow in as props and surface inline.
  */
+
+import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
 import { API_KEY_PREFIX_HINTS } from "@elizaos/core/config/api-key-prefix-hints";
+import type { JsonSchemaObject } from "@elizaos/core/config/config-catalog";
+import type { ConfigUiHint } from "@elizaos/core/contracts/host-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type PluginParamDef } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import {
   defaultRegistry,
   useConfigValidation,
 } from "../../components/config-ui/config-renderer.helpers";
-import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
-import { useAppSelector } from "../../state";
-import type { ConfigUiHint } from "../../types";
+import { useAppSelector } from "../../state/app-store";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { autoLabel } from "../../utils/labels.js";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";

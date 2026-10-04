@@ -6,9 +6,12 @@
  * composites (`SidebarPanel`/`SidebarContent`/`SidebarScrollRegion`).
  */
 
+import type {
+  AppRunSummary,
+  RegistryAppInfo,
+} from "@elizaos/core/contracts/apps";
 import { Play, Star } from "lucide-react";
 import { memo, type ReactNode, useCallback, useMemo } from "react";
-import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";

@@ -16,11 +16,11 @@ import type {
 } from "@elizaos/core/contracts/wallet-types";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { navigateBrowserPath } from "../../app-navigate-view";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
-import { openExternalUrl } from "../../utils";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {

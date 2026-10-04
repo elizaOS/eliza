@@ -6,7 +6,7 @@
  */
 import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
 import { useEffect, useState } from "react";
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
+import type { DeviceBridgeStatus } from "../../api/local-inference-response-types";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { openEventSource } from "../../utils/event-source";
 export function buildDeviceBridgeStatusStreamUrl(

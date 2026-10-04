@@ -25,15 +25,16 @@ vi.mock("@capacitor/keyboard", () => ({
   KeyboardResize: { None: "none" },
 }));
 
-vi.mock("@elizaos/ui/components/shell/ios-chat-accessory-bar", () => ({
+vi.mock("../../../ui/src/components/shell/ios-chat-accessory-bar", () => ({
   initializeIosKeyboardAccessoryBar: vi.fn(async () => {}),
 }));
 
-vi.mock("@elizaos/ui/platform", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   isStandalonePwa: () => false,
 }));
 
-vi.mock("@elizaos/ui/events", () => ({
+vi.mock("../../../ui/src/events/index", () => ({
   APP_PAUSE_EVENT: "app-pause",
   APP_RESUME_EVENT: "app-resume",
   NETWORK_STATUS_CHANGE_EVENT: "network-status-change",

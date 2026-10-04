@@ -20,9 +20,9 @@ import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import {
   LocalStewardAuthContext,
-  type LocalStewardAuthValue,
   tokenIsExpired,
 } from "../shell/StewardProvider";
+import type { LocalStewardAuthValue } from "../shell/StewardProviderShared";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";
 export type StewardSessionUser = {

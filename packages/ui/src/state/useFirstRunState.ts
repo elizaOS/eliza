@@ -11,8 +11,8 @@
  */
 
 import { getDefaultStylePreset } from "@elizaos/core/character-presets";
+import type { FirstRunOptions } from "@elizaos/core/contracts/first-run-options";
 import { useReducer, useRef } from "react";
-import type { FirstRunOptions } from "../api";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";
 import {
   activeServerKindToFirstRunRuntimeTarget,

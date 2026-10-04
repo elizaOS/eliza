@@ -9,7 +9,7 @@
  */
 
 import { ElizaError } from "@elizaos/core/errors";
-import type { UiLanguage } from "../i18n";
+import type { UiLanguage } from "@elizaos/core/i18n/language";
 import { releasePendingFirstRunText } from "./first-run-pending-text";
 
 /**

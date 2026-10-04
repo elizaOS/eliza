@@ -5,8 +5,8 @@
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { AppWindowRenderer as CanonicalAppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { describe, expect, it, vi } from "vitest";
+import { AppWindowRenderer as CanonicalAppWindowRenderer } from "../../../ui/src/components/apps/AppWindowRenderer";
 
 describe("AppWindowRenderer exports", () => {
   it("desktop-shell re-exports the ui canonical component", async () => {

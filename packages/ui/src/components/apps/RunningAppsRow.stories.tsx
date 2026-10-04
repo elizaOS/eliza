@@ -3,9 +3,12 @@
  * run, and the stop-button-enabled variant.
  */
 
+import type {
+  AppRunSummary,
+  RegistryAppInfo,
+} from "@elizaos/core/contracts/apps";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { RunningAppsRow } from "./RunningAppsRow";
 
 function makeRun(overrides: Partial<AppRunSummary> = {}): AppRunSummary {

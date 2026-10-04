@@ -15,9 +15,10 @@ import {
 } from "@elizaos/core/voice";
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client, type VoiceConfig } from "../../api";
+import { client } from "../../api/client";
+import type { VoiceConfig } from "../../api/client-types-config";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import {
   DEFAULT_ELEVEN_FAST_MODEL,
   EDGE_VOICE_GROUPS,

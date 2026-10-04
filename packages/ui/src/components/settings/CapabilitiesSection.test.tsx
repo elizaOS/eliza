@@ -34,7 +34,7 @@ const clientMock = vi.hoisted(() => ({
   fetch: vi.fn(),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: typeof appMock.value) => unknown) =>

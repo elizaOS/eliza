@@ -5,8 +5,9 @@
  * views mounted for the same slug only hit the API once.
  */
 
+import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
 import { useEffect, useState } from "react";
-import { client, type RegistryAppInfo } from "../../api";
+import { client } from "../../api/client";
 
 interface RegistryCatalogState {
   catalog: RegistryAppInfo[] | null;

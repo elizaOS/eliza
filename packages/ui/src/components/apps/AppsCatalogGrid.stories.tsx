@@ -4,8 +4,8 @@
  * states.
  */
 
+import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
 import type { Meta, StoryObj } from "@storybook/react";
-import type { RegistryAppInfo } from "../../api";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { AppsCatalogGrid } from "./AppsCatalogGrid";
 

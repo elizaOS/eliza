@@ -6,12 +6,15 @@
  * concurrently without one response replacing another account's state.
  */
 
-import { type LifeOpsCalendarSummary } from "@elizaos/core/contracts/calendar";
-import { client } from "@elizaos/ui/api";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
+import type { LifeOpsCalendarSummary } from "@elizaos/core/contracts/calendar";
+import { client, useActiveAgentAuthority } from "@elizaos/ui";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CalendarClientMethods } from "../api/client-calendar.js";
-import { installCalendarClient } from "../api/client-calendar.js";
+import {
+  type CalendarClientMethods,
+  installCalendarClient,
+} from "../api/client-calendar.js";
+
 import {
   type CalendarSourceManagerStatus,
   calendarSourceIdentityKey,

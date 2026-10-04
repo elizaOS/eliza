@@ -25,7 +25,7 @@ const clientMock = vi.hoisted(() => ({
   unsubscribeBase: vi.fn(),
 }));
 const baseListeners = vi.hoisted(() => new Set<(baseUrl: string) => void>());
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appState) => unknown) =>
     selector(appState),
 }));

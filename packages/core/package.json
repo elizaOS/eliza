@@ -1473,6 +1473,66 @@
 			"types": "./dist/messaging/interactions/profile-catalog.d.ts",
 			"import": "./dist/messaging/interactions/profile-catalog.js",
 			"default": "./dist/messaging/interactions/profile-catalog.js"
+		},
+		"./contracts/native-transcript": {
+			"eliza-source": "./src/contracts/native-transcript.ts",
+			"types": "./dist/contracts/native-transcript.d.ts",
+			"import": "./dist/contracts/native-transcript.js",
+			"default": "./dist/contracts/native-transcript.js"
+		},
+		"./contracts/native-transcript/contract": {
+			"eliza-source": "./src/contracts/native-transcript/contract.ts",
+			"types": "./dist/contracts/native-transcript/contract.d.ts",
+			"import": "./dist/contracts/native-transcript/contract.js",
+			"default": "./dist/contracts/native-transcript/contract.js"
+		},
+		"./contracts/native-transcript/decode": {
+			"eliza-source": "./src/contracts/native-transcript/decode.ts",
+			"types": "./dist/contracts/native-transcript/decode.d.ts",
+			"import": "./dist/contracts/native-transcript/decode.js",
+			"default": "./dist/contracts/native-transcript/decode.js"
+		},
+		"./contracts/native-transcript/reduce": {
+			"eliza-source": "./src/contracts/native-transcript/reduce.ts",
+			"types": "./dist/contracts/native-transcript/reduce.d.ts",
+			"import": "./dist/contracts/native-transcript/reduce.js",
+			"default": "./dist/contracts/native-transcript/reduce.js"
+		},
+		"./contracts/native-transcript/view-model-decode": {
+			"eliza-source": "./src/contracts/native-transcript/view-model-decode.ts",
+			"types": "./dist/contracts/native-transcript/view-model-decode.d.ts",
+			"import": "./dist/contracts/native-transcript/view-model-decode.js",
+			"default": "./dist/contracts/native-transcript/view-model-decode.js"
+		},
+		"./contracts/os-intent/contract": {
+			"eliza-source": "./src/contracts/os-intent/contract.ts",
+			"types": "./dist/contracts/os-intent/contract.d.ts",
+			"import": "./dist/contracts/os-intent/contract.js",
+			"default": "./dist/contracts/os-intent/contract.js"
+		},
+		"./contracts/os-intent/decode": {
+			"eliza-source": "./src/contracts/os-intent/decode.ts",
+			"types": "./dist/contracts/os-intent/decode.d.ts",
+			"import": "./dist/contracts/os-intent/decode.js",
+			"default": "./dist/contracts/os-intent/decode.js"
+		},
+		"./contracts/os-intent/dedupe": {
+			"eliza-source": "./src/contracts/os-intent/dedupe.ts",
+			"types": "./dist/contracts/os-intent/dedupe.d.ts",
+			"import": "./dist/contracts/os-intent/dedupe.js",
+			"default": "./dist/contracts/os-intent/dedupe.js"
+		},
+		"./contracts/os-intent/router": {
+			"eliza-source": "./src/contracts/os-intent/router.ts",
+			"types": "./dist/contracts/os-intent/router.d.ts",
+			"import": "./dist/contracts/os-intent/router.js",
+			"default": "./dist/contracts/os-intent/router.js"
+		},
+		"./contracts/os-intent/assistant-launch": {
+			"eliza-source": "./src/contracts/os-intent/assistant-launch.ts",
+			"types": "./dist/contracts/os-intent/assistant-launch.d.ts",
+			"import": "./dist/contracts/os-intent/assistant-launch.js",
+			"default": "./dist/contracts/os-intent/assistant-launch.js"
 		}
 	},
 	"files": [

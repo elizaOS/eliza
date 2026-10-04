@@ -12,10 +12,11 @@
 import {
   codingAgentSpawnCapabilityForProvider,
   codingProviderDescriptorForProvider,
+  type ProviderRuntimeEligibility,
 } from "@elizaos/core/contracts/coding-agent-capabilities";
+
 import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
-import type { ProviderRuntimeEligibility } from "../../api/client-accounts";
-import type { AccountsListProvider } from "../../api/client-agent";
+import type { AccountsListProvider } from "../../api/client-agent-accounts";
 import type { AccountProviderOption } from "./account-provider-options";
 export interface ResolvedEligibility {
   chat: boolean;

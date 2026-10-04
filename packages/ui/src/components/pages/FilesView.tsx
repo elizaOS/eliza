@@ -28,21 +28,18 @@ import {
   Trash2,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type StoredFile } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { StoredFile } from "../../api/client-files";
 import {
   FramedPage,
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page";
+} from "../../layouts/framed-page/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import {
-  formatByteSize,
-  formatRelativeTime,
-  resolveAppAssetUrl,
-} from "../../utils";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
   canShareFiles,
@@ -50,6 +47,7 @@ import {
   filenameForMime,
   shareAttachment,
 } from "../../utils/download-share";
+import { formatByteSize, formatRelativeTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";

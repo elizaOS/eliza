@@ -19,10 +19,8 @@ import {
 // PA aliases the UI root and API barrel to one stub. Keep the real mounted
 // renderer and client together so this override cannot erase spatial exports.
 vi.mock("@elizaos/ui", async () => {
-  const api = await import("../../../packages/ui/src/api/client.ts");
-  const spatial = await import(
-    "../../../packages/ui/src/spatial/primitives.tsx"
-  );
+  const api = await import("../../../packages/ui/src/api/client");
+  const spatial = await import("../../../packages/ui/src/spatial/primitives");
   return {
     ...api,
     SpatialButton: spatial.Button,
@@ -35,7 +33,7 @@ vi.mock("@elizaos/ui", async () => {
   };
 });
 
-import { client } from "../../../packages/ui/src/api/client.ts";
+import { client } from "../../../packages/ui/src/api/client";
 import { TodosView } from "../../plugin-todos/src/components/todos/TodosView.tsx";
 import { todosPlugin } from "../../plugin-todos/src/plugin.ts";
 import { ownerTodosAction } from "../src/actions/owner-surfaces.ts";
@@ -102,11 +100,9 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
   );
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { DynamicViewLoader, __resetDynamicViewLoaderCacheForTests } =
-    await import(
-      "../../../packages/ui/src/components/views/DynamicViewLoader.tsx"
-    );
+    await import("../../../packages/ui/src/components/views/DynamicViewLoader");
   const { invokeViewInteract } = await import(
-    "../../../packages/ui/src/components/views/view-interact-registry.ts"
+    "../../../packages/ui/src/components/views/view-interact-registry"
   );
   Object.defineProperty(window, "CSS", {
     configurable: true,

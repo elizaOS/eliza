@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
  * Output is deterministic: re-running produces byte-identical files. Run with
  * `node packages/scripts/generate-view-heroes.ts` (requires `@elizaos/ui/view-hero-art` built).
  */
-import { renderViewHeroSvg, VIEW_HERO_ICONS } from "@elizaos/ui/view-hero-art";
+import { renderViewHeroSvg, VIEW_HERO_ICONS } from "../ui/src/view-hero-art";
 export const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",

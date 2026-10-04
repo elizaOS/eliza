@@ -12,9 +12,10 @@ import {
   isElizaCuratedAppName,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
+  type RegistryAppInfo,
 } from "@elizaos/core/contracts/apps";
+
 import { isViewVisible } from "@elizaos/core/views/view-kind";
-import type { RegistryAppInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config-store";
 import {
   getInternalToolAppCatalogOrder,

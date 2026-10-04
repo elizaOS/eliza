@@ -4,35 +4,35 @@
  * importing the package does not mutate client instances or issue requests.
  */
 
-import {
-  type CreateLifeOpsCalendarEventRequest,
-  type CreateLifeOpsCalendarEventResponse,
-  type CreateLifeOpsIcsCalendarSourceRequest,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarEventCancellationResult,
-  type LifeOpsCalendarEventMutationResult,
-  type LifeOpsCalendarEventUpdate,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarImportedDataPurgeReceipt,
-  type LifeOpsCalendarSeedReceipt,
-  type LifeOpsCalendarSummary,
-  type LifeOpsIcsCalendarSourceMutationResponse,
-  type LifeOpsIcsCalendarSyncResponse,
-  type LifeOpsLinkedCalendarControl,
-  type LifeOpsLinkedCalendarControlMutationResult,
-  type LifeOpsNextCalendarEventContext,
-  type ListLifeOpsCalendarsRequest,
-  type ListLifeOpsIcsCalendarSourcesResponse,
-  type PurgeLifeOpsCalendarImportedDataRequest,
-  type RebindLifeOpsLinkedCalendarRequest,
-  type RebindLifeOpsLinkedCalendarResponse,
-  type SeedLifeOpsCalendarRequest,
-  type SetLifeOpsCalendarIncludedRequest,
-  type SetLifeOpsCalendarIncludedResponse,
-  type UpdateLifeOpsIcsCalendarSourceRequest,
-  type UpdateLifeOpsLinkedCalendarControlRequest,
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
+  CreateLifeOpsIcsCalendarSourceRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEventCancellationResult,
+  LifeOpsCalendarEventMutationResult,
+  LifeOpsCalendarEventUpdate,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarImportedDataPurgeReceipt,
+  LifeOpsCalendarSeedReceipt,
+  LifeOpsCalendarSummary,
+  LifeOpsIcsCalendarSourceMutationResponse,
+  LifeOpsIcsCalendarSyncResponse,
+  LifeOpsLinkedCalendarControl,
+  LifeOpsLinkedCalendarControlMutationResult,
+  LifeOpsNextCalendarEventContext,
+  ListLifeOpsCalendarsRequest,
+  ListLifeOpsIcsCalendarSourcesResponse,
+  PurgeLifeOpsCalendarImportedDataRequest,
+  RebindLifeOpsLinkedCalendarRequest,
+  RebindLifeOpsLinkedCalendarResponse,
+  SeedLifeOpsCalendarRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
+  UpdateLifeOpsIcsCalendarSourceRequest,
+  UpdateLifeOpsLinkedCalendarControlRequest,
 } from "@elizaos/core/contracts/calendar";
-import { ElizaClient } from "@elizaos/ui/api";
+import { ElizaClient } from "@elizaos/ui";
 import type {
   MeetingAutoJoinPolicy,
   MeetingAutoJoinSettings,
@@ -124,10 +124,6 @@ export interface CalendarClientMethods {
 // and already installed on this same prototype via the `@elizaos/ui/api`
 // side-effect import. Do NOT re-declare meeting join/list methods here — call
 // the ui client's `requestMeetingBot` / `listMeetings` directly.
-
-declare module "@elizaos/ui/api/client-base" {
-  interface ElizaClient extends CalendarClientMethods {}
-}
 
 let installed = false;
 

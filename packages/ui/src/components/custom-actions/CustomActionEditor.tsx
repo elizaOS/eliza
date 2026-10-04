@@ -14,7 +14,7 @@ import type {
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../api/client";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

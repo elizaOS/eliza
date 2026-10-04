@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const registration = vi.hoisted(() => ({ register: vi.fn() }));
 
-vi.mock("@elizaos/ui/app-shell-registry", () => ({
+vi.mock("../../../packages/ui/src/app-shell-registry", () => ({
   registerAppShellPage: registration.register,
 }));
 vi.mock("@capacitor/core", async (importOriginal) => {
@@ -22,7 +22,8 @@ vi.mock("@capacitor/core", async (importOriginal) => {
     Capacitor: { ...actual.Capacitor, getPlatform: () => "android" },
   };
 });
-vi.mock("@elizaos/ui/components", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   PluginPageFrame: ({
     children,
     title,

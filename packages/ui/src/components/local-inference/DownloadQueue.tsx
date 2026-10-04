@@ -3,7 +3,7 @@
 import type {
   CatalogModel,
   DownloadJob,
-} from "../../api/client-local-inference";
+} from "@elizaos/core/contracts/local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

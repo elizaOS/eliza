@@ -8,11 +8,9 @@
  */
 
 import type { PageScope } from "@elizaos/core/contracts/page-scope";
-import { client } from "../../api";
-import type {
-  Conversation,
-  ConversationMetadata,
-} from "../../api/client-types-chat";
+import { client } from "../../api/client";
+import type { Conversation } from "../../api/client-types-chat";
+import type { ConversationMetadata } from "../../api/client-types-core";
 
 export {
   PAGE_SCOPES,

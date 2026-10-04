@@ -6,13 +6,13 @@
 import { format } from "date-fns";
 import { useCallback, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import {
-  Badge,
-  Button,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "../../../cloud-ui";
+} from "../../../components/ui/chart";
 import { formatUsd } from "../../../utils/format.js";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 

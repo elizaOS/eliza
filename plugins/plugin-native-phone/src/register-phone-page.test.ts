@@ -10,7 +10,7 @@ const registration = vi.hoisted(() => ({
 }));
 const platform = vi.hoisted(() => ({ current: "android" }));
 
-vi.mock("@elizaos/ui/app-shell-registry", () => ({
+vi.mock("../../../packages/ui/src/app-shell-registry", () => ({
   registerAppShellPage: registration.register,
 }));
 

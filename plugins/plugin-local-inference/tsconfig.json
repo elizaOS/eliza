@@ -57,7 +57,6 @@
 			"@elizaos/app": ["../../packages/app/src/index.ts"],
 			"@elizaos/app/*": ["../../packages/app/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
-			"@elizaos/ui/*": ["../../packages/ui/src/*"],
 			"@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
 			"@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
 			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],

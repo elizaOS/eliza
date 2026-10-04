@@ -50,98 +50,8 @@ const HOST_EXTERNAL_REGISTRATION_PATHS = [
     registrationPath: path.join(repoRoot, "packages/app/src/host-externals.ts"),
   },
 ];
-// Relative imports are loader-private implementation paths, so their public
-// specifier binding cannot be inferred from string equality. Keep the mapping
-// exact: any new alias must identify the concrete module it exposes.
-const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
-  ["@elizaos/ui/api", "../../api/index.ts"],
-  ["@elizaos/ui/api/csrf-client", "../../api/csrf-client.ts"],
-  ["@elizaos/ui/config", "../../config/index.ts"],
-  ["@elizaos/ui/events", "../../events/index.ts"],
-  ["@elizaos/ui/hooks", "../../hooks/index.ts"],
-  [
-    "@elizaos/ui/hooks/runtime-capability-retry",
-    "../../hooks/runtime-capability-retry.ts",
-  ],
-  [
-    "@elizaos/ui/hooks/useActiveAgentAuthority",
-    "../../hooks/useActiveAgentAuthority.ts",
-  ],
-  ["@elizaos/ui/layouts", "../../layouts/index.ts"],
-  ["@elizaos/ui/platform", "../../platform/index.ts"],
-  ["@elizaos/ui/platform/ios-runtime", "../../platform/ios-runtime.ts"],
-  ["@elizaos/ui/spatial", "../../spatial/index.ts"],
-  ["@elizaos/ui/state", "../../state/index.ts"],
-  ["@elizaos/ui/state/useApp", "../../state/useApp.ts"],
-  ["@elizaos/ui/utils", "../../utils/index.ts"],
-  ["@elizaos/ui/hooks/resource-cache", "../../hooks/resource-cache.ts"],
-  ["@elizaos/ui/utils/attachment-url", "../../utils/attachment-url.ts"],
-  ["@elizaos/ui/utils/desktop-dialogs", "../../utils/desktop-dialogs.ts"],
-  ["@elizaos/ui/utils/download-share", "../../utils/download-share.ts"],
-  [
-    "@elizaos/ui/components/composites/page-panel",
-    "../composites/page-panel/index.ts",
-  ],
-  [
-    "@elizaos/ui/components/composites/settings",
-    "../composites/settings/index.ts",
-  ],
-  [
-    "@elizaos/ui/components/shared/confirm-delete-control",
-    "../shared/confirm-delete-control.tsx",
-  ],
-  ["@elizaos/ui/components/shared/SectionNav", "../shared/SectionNav.tsx"],
-  ["@elizaos/ui/components/shared/ViewHeader", "../shared/ViewHeader.tsx"],
-  [
-    "@elizaos/ui/components/transcripts/TranscriptPlayer",
-    "../transcripts/TranscriptPlayer.tsx",
-  ],
-  [
-    "@elizaos/ui/components/transcripts/TranscriptsView",
-    "../transcripts/TranscriptsView.tsx",
-  ],
-  [
-    "@elizaos/ui/components/views/ShellViewAgentSurface",
-    "./ShellViewAgentSurface.tsx",
-  ],
-  [
-    "@elizaos/ui/components/composites/sidebar/sidebar-content",
-    "../composites/sidebar/sidebar-content.tsx",
-  ],
-  [
-    "@elizaos/ui/components/composites/sidebar/sidebar-panel",
-    "../composites/sidebar/sidebar-panel.tsx",
-  ],
-  [
-    "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region",
-    "../composites/sidebar/sidebar-scroll-region.tsx",
-  ],
-  [
-    "@elizaos/ui/components/pages/MemoryDetailPanel",
-    "../pages/MemoryDetailPanel.tsx",
-  ],
-  [
-    "@elizaos/ui/components/pages/vector-browser-utils",
-    "../pages/vector-browser-utils.ts",
-  ],
-  [
-    "@elizaos/ui/components/shared/AppPageSidebar",
-    "../shared/AppPageSidebar.tsx",
-  ],
-  ["@elizaos/ui/components/shared", "../shared/index.ts"],
-  ["@elizaos/ui/components/ui/button", "../ui/button.tsx"],
-  ["@elizaos/ui/components/ui/input", "../ui/input.tsx"],
-  ["@elizaos/ui/components/ui/select", "../ui/select.tsx"],
-  [
-    "@elizaos/ui/components/ui/settings-controls",
-    "../ui/settings-controls.tsx",
-  ],
-  ["@elizaos/ui/components/ui/spinner", "../ui/spinner.tsx"],
-  ["@elizaos/ui/components/ui/skeleton-layouts", "../ui/skeleton-layouts.tsx"],
-  ["@elizaos/ui/components/ui/tabs", "../ui/tabs.tsx"],
-  ["@elizaos/ui/components/ui/textarea", "../ui/textarea.tsx"],
-  ["@elizaos/ui/components/ui/tooltip-extended", "../ui/tooltip-extended.tsx"],
-]);
+// UI exposes one public root; loader-private modules are not public aliases.
+const LOADER_RELATIVE_IMPORT_BINDINGS = new Map<string, string>();
 // Compatibility importers assemble curated namespaces rather than importing a
 // same-named package. Their function identities are therefore part of the
 // loader contract and must not be interchangeable across map keys.
@@ -151,13 +61,8 @@ const LOADER_NAMED_IMPORTER_BINDINGS = new Map([
   ["@elizaos/app/ui-compat", "importAppCoreViewCompat"],
   ["@elizaos/core", "importCoreViewCompat"],
   ["@elizaos/ui", "importUiRootCompat"],
-  ["@elizaos/ui/app-navigate-view", "importUiAppNavigateViewCompat"],
-  ["@elizaos/ui/bridge", "importUiBridgeCompat"],
-  ["@elizaos/ui/components", "importUiComponentsCompat"],
 ]);
-const LOADER_NAMESPACE_IMPORT_BINDINGS = new Map([
-  ["@elizaos/ui/agent-surface", "../../agent-surface"],
-]);
+const LOADER_NAMESPACE_IMPORT_BINDINGS = new Map<string, string>();
 function parseSource(source, file, scriptKind) {
   const sourceFile = ts.createSourceFile(
     file,
@@ -871,11 +776,11 @@ export function hostExternalSpecifiersFromSources(
     const localRegistrationName = importedLocalName(
       sourceFile,
       "registerHostExternalImporter",
-      "@elizaos/ui/app-shell-registry",
+      "@elizaos/ui",
       file,
     );
     const initializers = exportedSynchronousInitializers(sourceFile, file);
-    let initializer;
+    let initializer: import("typescript").FunctionDeclaration | undefined;
     let calls = [];
     for (const candidate of initializers) {
       const candidateCalls = directRegistrationCalls(
@@ -1125,7 +1030,7 @@ async function listUnexpectedOutputs(expected) {
   const artifacts = [];
   for (const entry of expected) {
     const directory = path.dirname(entry.bundle);
-    let files;
+    let files: string[];
     try {
       files = await listOutputFiles(directory);
     } catch (error) {

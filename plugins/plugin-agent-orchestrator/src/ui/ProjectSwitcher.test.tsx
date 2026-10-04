@@ -27,60 +27,57 @@ const calls = vi.hoisted(() => ({
   activateProject: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
+  ...(await (async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: {
+      listProjects: () => calls.listProjects(),
+      activateProject: (id: string) => calls.activateProject(id),
+    },
+    Button: ({
+      children,
+      ...rest
+    }: { children: ReactNode } & Record<string, unknown>) => (
+      <button type="button" {...rest}>
+        {children}
+      </button>
+    ),
+    DropdownMenu: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    DropdownMenuContent: ({
+      children,
+      align: _align,
+      ...rest
+    }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
+      <div {...rest}>{children}</div>
+    ),
+    DropdownMenuItem: ({
+      children,
+      onSelect,
+      ...rest
+    }: {
+      children: ReactNode;
+      onSelect?: () => void;
+    } & Record<string, unknown>) => (
+      <button type="button" onClick={() => onSelect?.()} {...rest}>
+        {children}
+      </button>
+    ),
+    useAppSelectorShallow: () => ({ t: undefined }),
+  }))(importOriginal)),
 }));
 
 // Full mock (no importOriginal): the switcher only touches `client`,
 // `useAppSelectorShallow`, and `Button`, so stub them and keep @elizaos/core
 // out of the browser test graph (mirrors use-orchestrator-data.test.ts).
-vi.mock("@elizaos/ui/api", () => ({
-  client: {
-    listProjects: () => calls.listProjects(),
-    activateProject: (id: string) => calls.activateProject(id),
-  },
-}));
-
-vi.mock("@elizaos/ui", () => ({
-  Button: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <button type="button" {...rest}>
-      {children}
-    </button>
-  ),
-  DropdownMenu: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuContent: ({
-    children,
-    align: _align,
-    ...rest
-  }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  DropdownMenuItem: ({
-    children,
-    onSelect,
-    ...rest
-  }: {
-    children: ReactNode;
-    onSelect?: () => void;
-  } & Record<string, unknown>) => (
-    <button type="button" onClick={() => onSelect?.()} {...rest}>
-      {children}
-    </button>
-  ),
-}));
 
 // Selector returns a stable no-i18n object so the fallback translate runs.
-vi.mock("@elizaos/ui/state", () => ({
-  useAppSelectorShallow: () => ({ t: undefined }),
-}));
 
 import { ProjectSwitcher } from "./ProjectSwitcher";
 

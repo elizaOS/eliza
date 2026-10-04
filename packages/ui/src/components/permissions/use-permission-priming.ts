@@ -10,11 +10,8 @@ import type {
 } from "@elizaos/core/contracts/permissions";
 import * as React from "react";
 import { client } from "../../api/client";
-import {
-  checkDesktopPermissionFresh,
-  isDesktopPlatform,
-  isNative,
-} from "../../platform";
+import { checkDesktopPermissionFresh } from "../../platform/desktop-permissions-client";
+import { isDesktopPlatform, isNative } from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,

@@ -9,7 +9,7 @@ import type {
   AppRunHealthState,
   AppRunSummary,
   AppRunViewerAttachment,
-} from "../../../api";
+} from "@elizaos/core/contracts/apps";
 import type { SelectedAppRun, SurfaceTone } from "./surface";
 
 function toTimestamp(value: string | null | undefined): number {

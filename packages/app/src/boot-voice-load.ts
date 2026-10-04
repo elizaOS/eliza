@@ -1,3 +1,4 @@
+import { loadVoice } from "@elizaos/ui";
 /**
  * Single-flight loader for the lazy `@elizaos/ui/voice` chunk on the boot
  * path. main() kicks the download off before the storage-bridge hydration
@@ -11,12 +12,12 @@
  * mounting the app — callers skip the voice wiring and boot on.
  */
 
-export type VoiceModule = typeof import("@elizaos/ui/voice");
+export type VoiceModule = Awaited<ReturnType<typeof loadVoice>>;
 
 let voiceModuleLoad: Promise<VoiceModule | null> | null = null;
 
 export function startVoiceModuleLoad(
-  importer: () => Promise<VoiceModule> = () => import("@elizaos/ui/voice"),
+  importer: () => Promise<VoiceModule> = loadVoice,
 ): Promise<VoiceModule | null> {
   voiceModuleLoad ??= importer().catch((error: unknown) => {
     // error-policy:J4 designed degrade — the app mounts without the voice

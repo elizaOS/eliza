@@ -33,26 +33,26 @@ const { bridge, store } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/ui/bridge/electrobun-rpc", () => ({
+vi.mock("../../../../ui/src/bridge/electrobun-rpc", () => ({
   getElectrobunRendererRpc: () => ({ request: {} }),
   invokeDesktopBridgeRequest: bridge.invokeDesktopBridgeRequest,
   openDesktopAppWindow: bridge.openDesktopAppWindow,
   subscribeDesktopBridgeEvent: () => () => {},
 }));
 
-vi.mock("@elizaos/ui/bridge/electrobun-runtime", () => ({
+vi.mock("../../../../ui/src/bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => true,
 }));
 
-vi.mock("@elizaos/ui/utils/desktop-workspace", () => ({
+vi.mock("../../../../ui/src/utils/desktop-workspace", () => ({
   openDesktopWorkspaceWindow: bridge.openDesktopWorkspaceWindow,
   openDesktopSettingsWindow: bridge.openDesktopSettingsWindow,
 }));
 
-vi.mock("@elizaos/ui/state/useApp", () => ({ useApp: () => store }));
+vi.mock("../../../../ui/src/state/useApp", () => ({ useApp: () => store }));
 
-import { TRAY_ACTION_EVENT } from "@elizaos/ui/events";
-import { TOAST_TTL_MS } from "@elizaos/ui/state/action-notice";
+import { TRAY_ACTION_EVENT } from "../../../../ui/src/events/index";
+import { TOAST_TTL_MS } from "../../../../ui/src/state/action-notice";
 import { DesktopTrayRuntime } from "./DesktopTrayRuntime";
 
 function clickTray(itemId: string): void {

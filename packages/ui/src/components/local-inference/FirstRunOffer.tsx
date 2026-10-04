@@ -10,9 +10,12 @@ import type {
   DownloadJob,
   HardwareProbe,
   InstalledModel,
-} from "../../api/client-local-inference";
-import { isSettingsDefaultLocalModel } from "../../services/local-inference/catalog-policy";
-import { selectRecommendedModels } from "../../services/local-inference/recommendation";
+} from "@elizaos/core/contracts/local-inference";
+import { isSettingsDefaultLocalModel } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import {
+  selectRecommendedModels,
+  UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
+} from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { displayModelName, findInstalled } from "./hub-utils";
@@ -110,7 +113,9 @@ function pickRecommended(
   installed: InstalledModel[],
   hardware: HardwareProbe,
 ): CatalogModel | null {
-  const recommended = selectRecommendedModels(hardware, catalog);
+  const recommended = selectRecommendedModels(hardware, catalog, {
+    policy: UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
+  });
   for (const candidate of [
     recommended.TEXT_LARGE.model,
     recommended.TEXT_SMALL.model,

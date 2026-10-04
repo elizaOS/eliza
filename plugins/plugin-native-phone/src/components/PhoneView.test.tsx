@@ -6,7 +6,6 @@
 // the recent-call rows, the Contacts link, and the error path all reach the
 // native bridge with the exact normalized arguments.
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import {
   cleanup,
   configure,
@@ -17,6 +16,7 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NAVIGATE_VIEW_EVENT } from "../../../../packages/ui/src/events/index";
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -32,7 +32,7 @@ const phoneBridge = vi.hoisted(() => ({
 
 vi.mock("@elizaos/plugin-native-phone/bridge", () => ({ Phone: phoneBridge }));
 
-import { __setNavigateViewPayloadForTests } from "@elizaos/ui/app-navigate-view";
+import { __setNavigateViewPayloadForTests } from "../../../../packages/ui/src/app-navigate-view";
 import { PhoneView } from "./PhoneView";
 
 function makeCall(over: Record<string, unknown>) {

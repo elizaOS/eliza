@@ -10,8 +10,8 @@ import type {
   DownloadJob,
   HardwareProbe,
   InstalledModel,
-} from "../../api/client-local-inference";
-import { catalogDownloadSizeGb } from "../../services/local-inference/recommendation";
+} from "@elizaos/core/contracts/local-inference";
+import { catalogDownloadSizeGb } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

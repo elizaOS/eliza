@@ -25,10 +25,6 @@
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
-      "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/ui/api/client-types-cloud": [
-        "../ui/src/api/client-types-cloud.ts"
-      ],
       "@elizaos/agent/*": ["./src/*"],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],

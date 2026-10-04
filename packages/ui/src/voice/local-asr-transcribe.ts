@@ -18,7 +18,7 @@ import {
 } from "@elizaos/core/utils/unicode";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 import {
   buildSharedRuntimeSttBody,
   configuredCloudVoiceOrigin,

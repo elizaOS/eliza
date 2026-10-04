@@ -5,7 +5,10 @@
  * translate-with-fallback helper. Pure data; the section components render it.
  */
 
-import type { PermissionId, PermissionStatus } from "../../api";
+import type {
+  PermissionId,
+  PermissionStatus,
+} from "@elizaos/core/contracts/permissions";
 import type { CapabilityTone } from "../capabilities/connected-capability-presentation";
 
 /** Permission definition for UI rendering. */

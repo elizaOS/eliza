@@ -213,7 +213,7 @@ describe("ViewCapabilityDeniedError", () => {
 
 // ── Real-path: a mounted DynamicViewLoader gated by its manifest ─────────────
 const { sendWsMessage } = vi.hoisted(() => ({ sendWsMessage: vi.fn() }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     sendWsMessage,
     fetch: vi.fn(async () => ({ claimId: "execution-claim" })),
