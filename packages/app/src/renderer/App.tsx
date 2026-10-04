@@ -1690,9 +1690,7 @@ function renderViewRouterContent({
         }
       />
     ) : undefined;
-  // Native-OS feature surfaces are plugin-owned. Prefer the plugin's bundled
-  // registration when it is present; retain the legacy renderer only as a
-  // compatibility fallback while older builds finish migrating their plugin.
+  // Native OS plugins own these surfaces; missing registrations render unavailable.
   if (
     nativeOsSurfaceEnabled &&
     (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
