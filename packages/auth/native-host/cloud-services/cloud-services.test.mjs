@@ -353,4 +353,3 @@ test("a JSON-null saved pending sign-in stays benign across cloud routes", async
     await new Promise((resolve) => server.close(resolve));
   }
 });
-
