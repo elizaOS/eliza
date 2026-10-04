@@ -161,6 +161,10 @@ account matching, inference policy and renderer environment stay with the host.
 
 ## External Android consumers
 
+Modules default to app library dependencies. Set `appDependency: false` for
+independent application/test modules (for example an updater APK); they remain
+addressable Gradle projects without being linked into the consumer app.
+
 `scripts/mobile/android/consumer-host.mjs` generates an owned external Gradle
 project from explicit identity, manifest, variant, source and dependency data.
 It copies no product UI or native service tree. Input paths use declared consumer,
@@ -178,7 +182,8 @@ JDK 21, independently of the full app's newer default wrapper. The distribution
 and shared wrapper JAR are hash pinned. Run the filesystem contract with
 `node --test scripts/mobile/android/consumer-host.test.mjs`; with SDK 36 and
 build-tools 36.0.0, `node scripts/mobile/android/qualify-consumer-host.mjs` builds
-two independent identities and checks all eight debug/release variant APKs.
+two independent identities and checks eight host variant APKs plus four separate
+companion APKs. Linked-library compilation and companion asset isolation are checked.
 Reports go to root `test-results/android-consumer-host`. This is build/manifest
 qualification, not installed service, HOME-role, AOSP or device acceptance.
 

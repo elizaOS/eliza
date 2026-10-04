@@ -184,8 +184,17 @@ export function generateAndroidConsumerHost({
         !moduleNames.has(module.name),
       "Invalid or duplicate native module",
     );
+    requireValue(
+      module.appDependency === undefined ||
+        typeof module.appDependency === "boolean",
+      "Native module appDependency must be a boolean",
+    );
     moduleNames.add(module.name);
-    return { name: module.name, directory: input(module.source, "directory") };
+    return {
+      name: module.name,
+      directory: input(module.source, "directory"),
+      appDependency: module.appDependency ?? true,
+    };
   });
   requireValue(
     Array.isArray(profile.flavors) && profile.flavors.length > 0,

@@ -78,6 +78,9 @@ try {
           ":app:assembleStandaloneRelease",
           ":app:assembleLauncherRelease",
           ":app:lint",
+          ":companion:assembleDebug",
+          ":companion:assembleRelease",
+          ":companion:lint",
         ],
         {
           cwd: output,
@@ -93,6 +96,38 @@ try {
     } finally {
       fs.closeSync(log);
     }
+    const aapt = path.join(sdk, "build-tools/36.0.0/aapt");
+    for (const build of ["debug", "release"]) {
+      const name = `companion-${build}${build === "release" ? "-unsigned" : ""}.apk`;
+      const apk = path.join(
+        consumerRoot,
+        "companion/build/outputs/apk",
+        build,
+        name,
+      );
+      const bytes = fs.readFileSync(apk),
+        artifact = `${brand}-${name}`;
+      fs.writeFileSync(path.join(directory, artifact), bytes);
+      const badging = execFileSync(aapt, ["dump", "badging", apk], {
+        encoding: "utf8",
+      });
+      assert.equal(
+        /package: name='([^']+)'/.exec(badging)?.[1],
+        `${fixture.identity.appId}.companion`,
+      );
+      assert.ok(
+        execFileSync(aapt, ["list", apk], { encoding: "utf8" })
+          .split("\n")
+          .includes("assets/companion-only.txt"),
+      );
+      receipts.push({
+        appId: `${fixture.identity.appId}.companion`,
+        independentModule: true,
+        build,
+        artifact,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      });
+    }
     for (const variant of ["standalone", "launcher"])
       for (const build of ["debug", "release"]) {
         const name = `app-${variant}-${build}${build === "release" ? "-unsigned" : ""}.apk`;
@@ -103,10 +138,15 @@ try {
           build,
           name,
         );
+        assert.equal(
+          execFileSync(aapt, ["list", apk], { encoding: "utf8" })
+            .split("\n")
+            .includes("assets/companion-only.txt"),
+          false,
+        );
         const bytes = fs.readFileSync(apk),
           artifact = `${brand}-${name}`;
         fs.writeFileSync(path.join(directory, artifact), bytes);
-        const aapt = path.join(sdk, "build-tools/36.0.0/aapt");
         const badging = execFileSync(aapt, ["dump", "badging", apk], {
           encoding: "utf8",
         });
@@ -162,7 +202,7 @@ try {
   }
   fs.writeFileSync(
     path.join(directory, "verification.json"),
-    `${JSON.stringify({ scope: "Two independent generated hosts; real debug/release APK identity and HOME manifest checks. The second host configures synthetic runtime assets and verifies ABI-asset exclusion; no executable runtime is supplied. No installation, native runtime, AOSP or user acceptance.", receipts }, null, 2)}\n`,
+    `${JSON.stringify({ scope: "Two independent generated hosts with linked libraries and separate companion APK modules; real debug/release APK identity, companion asset isolation and HOME manifest checks. The second host configures synthetic runtime assets and verifies ABI-asset exclusion; no executable runtime is supplied. No installation, native runtime, AOSP or user acceptance.", receipts }, null, 2)}\n`,
   );
   console.log(`Qualified ${receipts.length} APKs: ${directory}`);
 } finally {
