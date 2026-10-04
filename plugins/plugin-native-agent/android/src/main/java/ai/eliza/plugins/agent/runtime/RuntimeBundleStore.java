@@ -40,6 +40,12 @@ public class RuntimeBundleStore {
     }
   }
 
+  /** Bound inventory loading before allocation, then use the existing verification path. */
+  public static Path prepareFromAsset(Path root, String inventory, Source source, Path nativeLibraries,
+      Durability durability, String format) throws IOException {
+    return prepare(root, RuntimeAssets.read(source, inventory, MAX_MANIFEST), source, nativeLibraries, durability, format);
+  }
+
   public static Path prepare(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, String format) throws IOException {
     return prepare(root, manifest, source, nativeLibraries, durability, NONE, format);
   }
