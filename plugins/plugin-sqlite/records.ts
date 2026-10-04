@@ -493,6 +493,16 @@ function compareStoredMemoriesNewestFirst(
   return compareMemoryIds(bId, aId);
 }
 
+/** Oldest pages use ascending UUID order; newest pages reverse it. */
+function comparePairingRowIds(
+  leftId: string,
+  rightId: string,
+  direction: number,
+): number {
+  const order = compareMemoryIds(leftId, rightId);
+  return direction === 1 ? order : -order;
+}
+
 const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
 
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
@@ -3373,9 +3383,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           : 0;
         const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return aId === bId ? 0 : aId < bId ? -direction : direction;
+        return comparePairingRowIds(String(a.id), String(b.id), direction);
       });
       if (!isPaged) {
         result.push({ channel, agentId, requests });
@@ -3426,9 +3434,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           : 0;
         const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return aId === bId ? 0 : aId < bId ? -direction : direction;
+        return comparePairingRowIds(String(a.id), String(b.id), direction);
       });
       if (!isPaged) {
         result.push({ channel, agentId, entries });
