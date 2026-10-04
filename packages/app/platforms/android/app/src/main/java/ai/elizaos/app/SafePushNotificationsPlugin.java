@@ -3,6 +3,7 @@ package ai.elizaos.app;
 import android.Manifest;
 import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 import com.getcapacitor.PluginCall;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
@@ -22,9 +23,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
  * Firebase-less build died the moment the shell painted.
  *
  * This subclass rejects the call cleanly when no FirebaseApp exists and
- * defers to the stock behavior otherwise. MainActivity registers it directly
- * on the live bridge after super.onCreate(), which wins the plugin-name slot
- * from the auto-registered stock plugin.
+ * defers to the stock behavior otherwise. MainActivity's initialPlugins list
+ * appends it after discovery and before the first renderer header export.
  */
 @CapacitorPlugin(
     name = "PushNotifications",
@@ -42,6 +42,13 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
         } catch (RuntimeException error) {
             return false;
         }
+    }
+
+    @PluginMethod
+    public void getReminderDataCapabilities(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("reminderDataNotifications", ElizaReminderMessagingService.isDeclaredHandler(getContext()));
+        call.resolve(result);
     }
 
     @Override

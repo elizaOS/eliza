@@ -16,8 +16,19 @@ import {
 it("labels exact originals and binds action selection in one native planner request", async () => {
   const context: ContextObject = {
     id: "request",
-    metadata: { roomId: "room", messageId: "message" },
+    metadata: {
+      roomId: "room",
+      messageId: "message",
+      historyReferenceEncoding: true,
+    },
     events: [
+      {
+        id: "live-time",
+        type: "provider",
+        name: "TIME",
+        text: "Fresh current-time canary",
+        stable: false,
+      },
       {
         id: "history:one",
         type: "segment",
@@ -68,6 +79,9 @@ it("labels exact originals and binds action selection in one native planner requ
     expect(messages).toContain("[h2]");
     expect(messages).toContain("Keep this correction.");
     expect(messages).toContain("Earlier unrelated reply.");
+    expect(messages.indexOf("Keep this correction.")).toBeLessThan(
+      messages.indexOf("Fresh current-time canary"),
+    );
     return {
       text: "",
       toolCalls: [
