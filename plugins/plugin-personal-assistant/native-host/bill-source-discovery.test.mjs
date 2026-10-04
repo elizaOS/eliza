@@ -75,6 +75,23 @@ test("source candidates are task-account scoped, exact-money and delivery indepe
   );
   assert.notEqual(other.candidates[0].billId, bill.billId);
 });
+test("addresses match regardless of letter case", async () => {
+  // Configured in mixed case, delivered lowercased by the provider.
+  const configured = await fixture().discovery.discover(
+    {
+      ...context,
+      recipient: "Person@Example.org",
+      senders: ["Bill@Example.org"],
+    },
+    signal(),
+  );
+  assert.equal(configured.status, "candidate");
+  // A recipient header kept as the sender wrote it.
+  const delivered = await fixture({
+    messages: [{ ...message("m1"), to: ["PERSON@EXAMPLE.ORG"] }],
+  }).discovery.discover(context, signal());
+  assert.equal(delivered.status, "candidate");
+});
 test("no bill, multiple invoices and conflicting invoice revisions stay distinct", async () => {
   assert.equal(
     (

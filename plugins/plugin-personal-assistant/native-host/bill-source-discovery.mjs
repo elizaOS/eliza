@@ -54,14 +54,20 @@ function scope(input) {
   Object.freeze(c.senders);
   return Object.freeze(c);
 }
+// Mail providers normalize addresses inconsistently (Gmail lowercases the
+// sender but keeps recipients as written), so compare them case-insensitively.
+const sameAddress = (a, b) =>
+  typeof a === "string" &&
+  typeof b === "string" &&
+  a.toLowerCase() === b.toLowerCase();
 function matches(m, c) {
   const time = Date.parse(m?.receivedAt);
   return (
     text(m?.externalId, 256) &&
     /^[A-Za-z0-9_-]+$/.test(m.externalId) &&
-    c.senders.includes(m.fromEmail) &&
+    c.senders.some((sender) => sameAddress(sender, m.fromEmail)) &&
     Array.isArray(m.to) &&
-    m.to.includes(c.recipient) &&
+    m.to.some((to) => sameAddress(to, c.recipient)) &&
     Number.isFinite(time) &&
     time >= c.after &&
     time < c.before
