@@ -94,7 +94,7 @@ it.each([true, false])(
       : "Your reminder wasn't created because its time was missing.";
     const result = await runPlannerLoop({
       codingMode: false,
-      context: { id: `trigger-schedule-recovery-${corrected}` },
+      context: { id: `trigger-schedule-recovery-${corrected}`, events: [] },
       runtime: {
         useModel: async () => {
           if (!corrected && plans === 1) {

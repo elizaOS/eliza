@@ -96,13 +96,11 @@ export async function writePrivateRuntimeJson(file, value) {
   }
 }
 
-/** Keep user-authored configuration separate from each selected launch. */
-export async function preparePrivateRuntimeFiles({
+/** Persistent host profile for runtimes that own updates to their config file. */
+export async function preparePrivateRuntimeProfile({
   tokenPath,
   configPath,
-  launchConfigPath,
   initialConfig,
-  selectConfig,
   createToken = () => randomBytes(48).toString("base64url"),
 }) {
   const validateToken = (value) => {
@@ -116,10 +114,28 @@ export async function preparePrivateRuntimeFiles({
   const token = validateToken(
     await privateFile(tokenPath, () => validateToken(createToken())),
   );
-  const existing = JSON.parse(
+  const config = JSON.parse(
     await privateFile(configPath, JSON.stringify(initialConfig, null, 2)),
   );
-  await writePrivateRuntimeJson(launchConfigPath, await selectConfig(existing));
+  return { token, config };
+}
+
+/** Keep user-authored configuration separate from each selected launch. */
+export async function preparePrivateRuntimeFiles({
+  tokenPath,
+  configPath,
+  launchConfigPath,
+  initialConfig,
+  selectConfig,
+  createToken,
+}) {
+  const { token, config } = await preparePrivateRuntimeProfile({
+    tokenPath,
+    configPath,
+    initialConfig,
+    createToken,
+  });
+  await writePrivateRuntimeJson(launchConfigPath, await selectConfig(config));
   return { token, launchConfigPath };
 }
 

@@ -342,6 +342,47 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
     expect(s.period.granted_amount).toBe("25.000000");
     expect(s.period.available_amount).toBe("25.000000");
   });
+  test("incident closure shares paid publication rollback and replay", async () => {
+    const f = await seed();
+    const {
+      recordOrganizationUpgradeRecoveryOutcome: record,
+      resolveAppliedUpgradeIncidentsInTransaction: resolve,
+    } = await import("./organization-upgrade-recovery-incidents");
+    const identity = { organizationId: f.input.organizationId, commandId: f.commandId };
+    await record({ ...identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" });
+    expect(await helpers.writeTransaction((tx) => resolve(tx, identity))).toBe(0);
+    const before = await state(f);
+    await db.query(
+      "CREATE FUNCTION reject_upgrade_incident_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='resolved' THEN RAISE EXCEPTION 'fixture incident resolution failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_upgrade_incident_fixture BEFORE UPDATE ON billing_subscription_incidents FOR EACH ROW EXECUTE FUNCTION reject_upgrade_incident_fixture();",
+    );
+    try {
+      await expect(service.finalizePaidOrganizationUpgrade(f.finalInput)).rejects.toThrow();
+      expect(await state(f)).toEqual(before);
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.commandId,
+          ])
+        ).rows,
+      ).toEqual([{ status: "open" }]);
+    } finally {
+      await db.query(
+        "DROP TRIGGER reject_upgrade_incident_fixture ON billing_subscription_incidents; DROP FUNCTION reject_upgrade_incident_fixture()",
+      );
+    }
+    await service.finalizePaidOrganizationUpgrade(f.finalInput);
+    expect(
+      (
+        await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+          f.commandId,
+        ])
+      ).rows,
+    ).toEqual([{ status: "resolved" }]);
+    const applied = await state(f);
+    expect((await service.finalizePaidOrganizationUpgrade(f.finalInput)).replayed).toBe(true);
+    expect(await state(f)).toEqual(applied);
+  });
+
   test("failure at command publication rolls back already staged source, journal and entitlement", async () => {
     const f = await seed();
     await db.query(
