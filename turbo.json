@@ -74,6 +74,9 @@
     },
     "@elizaos/ui#build": {
       "dependsOn": [
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build",
         "@elizaos/core#build",
         "@elizaos/cloud-sdk#build",
         "@elizaos/capacitor-secure-store#build"
