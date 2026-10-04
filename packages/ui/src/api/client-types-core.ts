@@ -1,8 +1,4 @@
-/**
- * Core-domain client DTOs: Database*, Agent*, ApiError, Runtime*, WebSocket*,
- * ConnectionState*, Sandbox*. One slice of the ElizaClient type surface,
- * re-exported through client-types.ts.
- */
+/** Agent, runtime, connection, and API error client DTOs. */
 
 import type {
   CustomActionDef,

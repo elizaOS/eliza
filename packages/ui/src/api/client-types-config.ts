@@ -1,8 +1,4 @@
-/**
- * Config-domain client DTOs: Config*, Plugin*, Secret*, Connector*, Trigger*,
- * Update*, Extension*, Workbench*, Character*, Voice*, Skill*. One
- * slice of the ElizaClient type surface, re-exported through client-types.ts.
- */
+/** Configuration, plugin, connector, and character client DTOs. */
 
 import type { ConfigUiHint, ReleaseChannel } from "@elizaos/contracts";
 import type {
