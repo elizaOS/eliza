@@ -21,6 +21,7 @@ try {
   );
   const shared = [
     "runtime/RuntimeBundleStore",
+    "runtime/RuntimeAssets",
     "runtime/PrivateOAuthCallback",
     "runtime/NativeProcessSupervisor",
     "runtime/NativeRuntimeSession",
@@ -54,6 +55,7 @@ try {
   });
   for (const [group, name] of [
     ["runtime.test", "RuntimeBundleStoreTest"],
+    ["runtime.test", "RuntimeAssetsTest"],
     ["runtime.test", "PrivateOAuthCallbackTest"],
     ["runtime.test", "NativeProcessSupervisorTest"],
     ["runtime.test", "NativeRuntimeSessionTest"],

@@ -1140,6 +1140,98 @@ async function state(commandId: string) {
       expect(mutation).toHaveBeenCalledTimes(1);
     }, 15000);
 
+    test("applied renewal replay ignores a later unsettled upgrade", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await seed({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      await expiredLease(f.identity.commandId);
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      renewal = renewalPaidObjects(fixtureData.source, fixtureData.provider, {
+        start: second + 5,
+        end: second + 86405,
+      });
+      objects.rawSubscription = renewal.subscription;
+      fixtureData.provider = renewal.subscription;
+      const { reconcileStripePaidRenewal: renew } = await import("./stripe-paid-renewal");
+      const event = {
+        id: `evt_replay${f.identity.subscriptionId.replaceAll("-", "")}`,
+        object: "event",
+        type: "invoice.paid",
+        api_version: "2024-11-20.acacia",
+        created: second + 5,
+        livemode: false,
+        data: { object: renewal.invoice },
+      };
+      const message = {
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      } as Parameters<typeof renew>[0];
+      await renew(message);
+      const { readOrganizationPlanChangeSource } = await import(
+        "../../db/repositories/organization-plan-change"
+      );
+      fixtureData.input = {
+        ...fixtureData.input,
+        expectedSubscriptionRevision: 2,
+        idempotencyKey: randomUUID(),
+      };
+      const captured = await readOrganizationPlanChangeSource(fixtureData.input);
+      fixtureData.source = captured.source;
+      fixtureData.provider = renewal.subscription;
+      const { createOrganizationUpgradeQuote } = await import("./organization-upgrade-preview");
+      const quote = await createOrganizationUpgradeQuote(
+        { ...fixtureData.input, targetPlanKey: "pro_monthly" },
+        async () => {},
+      );
+      objects = upgradePaidObjects({
+        ...fixtureData,
+        captured,
+        review: quote.review,
+        providerBinding: quote.provider_binding!,
+      });
+      const { prepareOrganizationUpgrade } = await import(
+        "../../db/repositories/organization-upgrade-commands"
+      );
+      const { claimOrganizationUpgrade } = await import(
+        "../../db/repositories/organization-upgrade-execution"
+      );
+      const { command } = await prepareOrganizationUpgrade({
+        ...fixtureData.input,
+        quoteId: quote.id,
+      });
+      originalKey = command.provider_idempotency_key;
+      const later = { ...fixtureData.input, commandId: command.id };
+      const claim = await claimOrganizationUpgrade(later);
+      if (!claim) throw new Error("Expected later upgrade claim");
+      pending = true;
+      await expect(dispatch(later, claim, async () => {})).rejects.toThrow();
+      expect((await state(later.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      const before = (
+        await db.query(
+          "SELECT count(*)::int n FROM subscription_allowance_periods WHERE organization_id=$1",
+          [later.organizationId],
+        )
+      ).rows[0].n;
+      await renew(message);
+      expect((await state(later.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM subscription_allowance_periods WHERE organization_id=$1",
+            [later.organizationId],
+          )
+        ).rows[0].n,
+      ).toBe(before);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    }, 15000);
+
     for (const started of [true, false])
       test(`renewal publication serializes against upgrade dispatch: started=${started}`, async () => {
         const second = Math.floor(Date.now() / 1000);

@@ -114,6 +114,23 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     await reconcileSubscriptionCheckout(session.id, source.organization_id);
     return;
   }
+  const recorded = await operations.recordEvent({
+    organizationId: source.organization_id,
+    subscriptionId: source.id,
+    providerEventId: event.id,
+    eventType: event.type,
+    providerObjectType: "invoice",
+    providerObjectId: event.data.object.id,
+    livemode: event.livemode,
+    eventCreatedAt: created,
+    payloadDigest: createHash("sha256").update(JSON.stringify(message.event)).digest("hex"),
+    now: new Date(),
+  });
+  if (
+    recorded.value.status === "applied" &&
+    recorded.value.disposition === PAID_RENEWAL_DISPOSITION
+  )
+    return;
   await reconcileOrganizationUpgradesBeforeRenewal({
     organizationId: source.organization_id,
     subscriptionId: source.id,
@@ -133,23 +150,6 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     );
   if (!source) renewalUnavailable("source_unavailable_after_upgrade_recovery");
   assertOrganizationSubscription(source);
-  const recorded = await operations.recordEvent({
-    organizationId: source.organization_id,
-    subscriptionId: source.id,
-    providerEventId: event.id,
-    eventType: event.type,
-    providerObjectType: "invoice",
-    providerObjectId: event.data.object.id,
-    livemode: event.livemode,
-    eventCreatedAt: created,
-    payloadDigest: createHash("sha256").update(JSON.stringify(message.event)).digest("hex"),
-    now: new Date(),
-  });
-  if (
-    recorded.value.status === "applied" &&
-    recorded.value.disposition === PAID_RENEWAL_DISPOSITION
-  )
-    return;
   const lease = {
     organizationId: source.organization_id,
     receiptId: recorded.value.id,

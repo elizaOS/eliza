@@ -51,6 +51,10 @@ test("Node inventory interoperates with immutable Java extraction, restart and i
         plugin,
         "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeBundleStore.java",
       ),
+      path.join(
+        plugin,
+        "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeAssets.java",
+      ),
       path.join(plugin, "test/native-host/RuntimeInventoryInterop.java"),
     ],
     { timeout: 60000 },
