@@ -10,6 +10,10 @@ import { requireStripe } from "../stripe";
 import { GENERIC_BILLING_STRIPE_API_VERSION } from "./generic-billing-provider-types";
 import { organizationUpgradeReviewSchema } from "./organization-plan-change-contract";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import {
+  assertOrganizationUpgradeProviderBindingCurrent,
+  resolveOrganizationUpgradeProviderBinding,
+} from "./organization-upgrade-provider-binding";
 import { invoiceSchema, projectSubscriptionUpdateInvoice } from "./stripe-invoice-observation";
 import {
   validateCancellationCustomer,
@@ -231,6 +235,11 @@ export async function createOrganizationUpgradeQuote(
     target.key,
     source.catalog_version,
   );
+  const providerBinding = resolveOrganizationUpgradeProviderBinding(
+    source,
+    target.key,
+    environment,
+  );
   const items = [{ id: source.stripe_subscription_item_id, price: binding.priceId, quantity: 1 }];
   const dueNow = await stripe.invoices.createPreview(
     {
@@ -263,5 +272,11 @@ export async function createOrganizationUpgradeQuote(
     recurring,
   });
   await revalidateSession();
-  return saveOrganizationUpgradeQuote({ identity: input, captured, review });
+  assertOrganizationUpgradeProviderBindingCurrent(
+    providerBinding,
+    source,
+    target.key,
+    getCloudAwareEnv(),
+  );
+  return saveOrganizationUpgradeQuote({ identity: input, captured, review, providerBinding });
 }

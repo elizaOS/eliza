@@ -7,6 +7,10 @@ import {
   organizationUpgradeReviewSchema,
 } from "./organization-plan-change-contract";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import {
+  type OrganizationUpgradeProviderBinding,
+  organizationUpgradeProviderBindingSchema,
+} from "./organization-upgrade-provider-binding";
 import { settlementDigest } from "./settlement-digest";
 import { invoiceSchema, projectSubscriptionUpdateInvoice } from "./stripe-invoice-observation";
 
@@ -53,7 +57,7 @@ export function observePaidOrganizationUpgradeInvoice(input: {
   expectedInvoiceId: string;
   source: BillingSubscription;
   review: OrganizationUpgradeReview;
-  binding: { sourcePriceId: string; targetPriceId: string; livemode: boolean };
+  binding: OrganizationUpgradeProviderBinding;
   observedAt: Date;
 }) {
   const { source } = input;
@@ -62,13 +66,7 @@ export function observePaidOrganizationUpgradeInvoice(input: {
   const parsed = settledInvoiceSchema.safeParse(input.raw);
   if (!parsed.success) reject("incomplete_or_unpaid_invoice");
   const wire = parsed.data;
-  const binding = z
-    .object({
-      sourcePriceId: z.string().regex(/^price_[A-Za-z0-9]+$/),
-      targetPriceId: z.string().regex(/^price_[A-Za-z0-9]+$/),
-      livemode: z.boolean(),
-    })
-    .parse(input.binding);
+  const binding = organizationUpgradeProviderBindingSchema.parse(input.binding);
   const observed = Math.floor(input.observedAt.getTime() / 1000);
   if (
     source.status !== "active" ||

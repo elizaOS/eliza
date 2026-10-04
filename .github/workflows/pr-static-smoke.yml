@@ -425,6 +425,8 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
           bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-binding-migration.pglite.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/subscription-reconciliation.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/subscription-renewal.postgres.integration.test.ts
