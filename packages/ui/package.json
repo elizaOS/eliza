@@ -96,6 +96,18 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
+    "./voice/pcm-wave": {
+      "eliza-source": "./src/voice/pcm-wave.ts",
+      "types": "./dist/voice/pcm-wave.d.ts",
+      "import": "./dist/voice/pcm-wave.js",
+      "default": "./dist/voice/pcm-wave.js"
+    },
+    "./api/task-lifecycle": {
+      "eliza-source": "./src/api/task-lifecycle.ts",
+      "types": "./dist/api/task-lifecycle.d.ts",
+      "import": "./dist/api/task-lifecycle.js",
+      "default": "./dist/api/task-lifecycle.js"
+    },
     "./styles": "./dist/styles.js",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui/index.css": "./dist/cloud-ui/index.css",

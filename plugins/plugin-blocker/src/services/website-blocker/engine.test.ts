@@ -36,6 +36,46 @@ describe("website-blocker engine", () => {
       expect(policy.blockedWebsites).toContain("sub.example.org");
       expect(policy.blockedWebsites).not.toContain("www.sub.example.org");
     });
+
+    it("adds the www variant for a country-code second-level registrable domain", () => {
+      // `bbc.co.uk`-style sites redirect the bare host to `www.`, so blocking
+      // only the bare host leaves the site reachable.
+      const policy = buildSelfControlBlockPolicy([
+        "example.co.uk",
+        "example.com.au",
+      ]);
+      expect(policy.blockedWebsites).toContain("www.example.co.uk");
+      expect(policy.blockedWebsites).toContain("www.example.com.au");
+      expect(
+        isWebsiteBlockedByPolicy(policy, "https://www.example.co.uk/news"),
+      ).toBe(true);
+    });
+
+    it("still treats a subdomain under a country-code SLD as a subdomain", () => {
+      const policy = buildSelfControlBlockPolicy(["news.example.co.uk"]);
+      expect(policy.blockedWebsites).toEqual(["news.example.co.uk"]);
+    });
+
+    it("blocks the bare domain when the request names its www host", () => {
+      const policy = buildSelfControlBlockPolicy(["https://www.example.com/"]);
+      expect(policy.requestedWebsites).toEqual(["www.example.com"]);
+      expect(policy.blockedWebsites).toContain("www.example.com");
+      expect(policy.blockedWebsites).toContain("example.com");
+      expect(isWebsiteBlockedByPolicy(policy, "example.com")).toBe(true);
+    });
+
+    it("applies a site's policy group when the request names its www host", () => {
+      const policy = buildSelfControlBlockPolicy(["www.twitter.com"]);
+      // twitter.com redirects to x.com; the group must apply as it does for
+      // a bare `twitter.com` request.
+      expect([...policy.blockedWebsites].sort()).toEqual(
+        [
+          ...buildSelfControlBlockPolicy(["twitter.com"]).blockedWebsites,
+        ].sort(),
+      );
+      expect(isWebsiteBlockedByPolicy(policy, "x.com")).toBe(true);
+      expect(isWebsiteBlockedByPolicy(policy, "api.twitter.com")).toBe(false);
+    });
   });
 
   describe("normalizeWebsiteTargets", () => {
