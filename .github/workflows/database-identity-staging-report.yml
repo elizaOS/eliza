@@ -20,6 +20,12 @@ on:
         default: false
         type: boolean
 
+      read_only_failed_agent_deletion_jobs:
+        description: Also classify complete failed deletion-job authority without IDs, raw payloads, retries or writes
+        required: false
+        default: false
+        type: boolean
+
 permissions:
   contents: read
 
@@ -96,16 +102,17 @@ jobs:
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts
 
       - name: Report deletion billing provenance counts without mutation
-        if: ${{ inputs.read_only_deletion_billing_provenance == true || inputs.read_only_agent_deletion_authority == true }}
+        if: ${{ inputs.read_only_deletion_billing_provenance == true || inputs.read_only_agent_deletion_authority == true || inputs.read_only_failed_agent_deletion_jobs == true }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_DELETION_BILLING_PROVENANCE_REPORT: "1"
-          ELIZA_DELETION_BILLING_AUTHORITY_REPORT: ${{ inputs.read_only_agent_deletion_authority == true && '1' || '0' }}
-          ELIZAOS_CLOUD_API_KEY: ${{ inputs.read_only_agent_deletion_authority == true && secrets.ELIZAOS_CLOUD_API_KEY || '' }}
+          ELIZA_DELETION_BILLING_AUTHORITY_REPORT: ${{ (inputs.read_only_agent_deletion_authority == true || inputs.read_only_failed_agent_deletion_jobs == true) && '1' || '0' }}
+          ELIZA_DELETION_FAILED_JOB_REPORT: ${{ inputs.read_only_failed_agent_deletion_jobs == true && '1' || '0' }}
+          ELIZAOS_CLOUD_API_KEY: ${{ (inputs.read_only_agent_deletion_authority == true || inputs.read_only_failed_agent_deletion_jobs == true) && secrets.ELIZAOS_CLOUD_API_KEY || '' }}
         run: bun run packages/cloud/scripts/admin/deletion-billing-provenance-report.ts
 
       - name: Retain closed deletion billing provenance receipt
-        if: ${{ inputs.read_only_deletion_billing_provenance == true || inputs.read_only_agent_deletion_authority == true }}
+        if: ${{ inputs.read_only_deletion_billing_provenance == true || inputs.read_only_agent_deletion_authority == true || inputs.read_only_failed_agent_deletion_jobs == true }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: deletion-billing-provenance-${{ github.run_id }}-${{ github.run_attempt }}
