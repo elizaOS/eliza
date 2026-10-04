@@ -12,11 +12,7 @@
  * authorized and only re-checks that a runtime is present.
  */
 import type http from "node:http";
-import {
-  checkRateLimit,
-  createIntegrationTelemetrySpan,
-  type RateLimitConfig,
-} from "@elizaos/agent";
+import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent";
 import {
   type AcknowledgeLifeOpsReminderRequest,
   type CaptureLifeOpsActivitySignalRequest,
@@ -75,6 +71,7 @@ import {
 } from "@elizaos/contracts";
 import {
   type AgentRuntime,
+  createIntegrationTelemetrySpan,
   logger,
   type Memory,
   requireConfirmation,

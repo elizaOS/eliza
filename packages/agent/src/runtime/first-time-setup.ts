@@ -27,7 +27,7 @@ import {
   type StylePreset,
 } from "@elizaos/host/protocol";
 
-import { persistConfigEnv } from "../api/config-env.ts";
+import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
   CLOUD_SOLANA_ADDRESS_ENV_KEY,

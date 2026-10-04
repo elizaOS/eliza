@@ -16,7 +16,7 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { rankByKeyword } from "@elizaos/agent/api";
+import { rankByKeyword } from "@elizaos/agent";
 import type { Memory, State, UUID } from "@elizaos/core";
 import {
   bm25Scores,

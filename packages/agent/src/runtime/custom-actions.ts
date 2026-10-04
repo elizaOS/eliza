@@ -29,7 +29,7 @@ import {
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
 
-import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
+import { hasSelectedContextOrSignalSync } from "@elizaos/plugin-assistant";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;

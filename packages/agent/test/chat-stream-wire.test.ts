@@ -4,9 +4,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   createChatTokenStreamWriter,
-  DELTA_STREAM_PROTOCOL,
   initSse,
-  writeChatTokenSse,
   writeSse,
   writeSseData,
   writeSseJson,
@@ -29,10 +27,7 @@ beforeAll(async () => {
       writeSseData(res, "payload", "unsafe\nevent: injected");
       writeSseJson(res, { text: "line\n界😀" }, "message.stop");
     } else {
-      const writer = createChatTokenStreamWriter(
-        req.url === "/delta" ? DELTA_STREAM_PROTOCOL : "legacy",
-        { writeChatTokenSse, writeSse },
-      );
+      const writer = createChatTokenStreamWriter();
       let accumulated = "";
       for (const [index, chunk] of chunks.entries()) {
         accumulated += chunk;
@@ -50,58 +45,50 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  server.closeAllConnections();
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+    server.closeAllConnections();
+  });
 });
 
-for (const protocol of ["legacy", "delta"] as const) {
-  it(`preserves complete ${protocol} text and authoritative replacements over HTTP`, async () => {
-    const response = await fetch(`${origin}/${protocol}`);
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("text/event-stream");
-    expect(response.headers.get("cache-control")).toBe(
-      "no-cache, no-transform",
-    );
-    const frames = (await response.text())
-      .trim()
-      .split("\n\n")
-      .map((frame) => {
-        expect(frame.startsWith("data: ")).toBe(true);
-        return JSON.parse(frame.slice(6)) as {
-          type: string;
-          text?: string;
-          fullText?: string;
-          provisional?: boolean;
-        };
-      });
-    expect(frames).toHaveLength(chunks.length + 2);
-    let reconstructed = "";
-    for (const [index, frame] of frames.slice(0, chunks.length).entries()) {
-      expect(frame.type).toBe("token");
-      expect(frame.text).toBe(chunks[index]);
-      expect(frame.provisional).toBe(index < 4 ? true : undefined);
-      reconstructed = frame.fullText ?? reconstructed + frame.text;
-      expect(reconstructed).toBe(chunks.slice(0, index + 1).join(""));
-    }
-    expect(reconstructed).toBe(complete);
-    const snapshots = frames
-      .slice(0, chunks.length)
-      .filter((frame) => frame.fullText !== undefined);
-    if (protocol === "legacy") expect(snapshots).toHaveLength(chunks.length);
-    else {
-      expect(snapshots.length).toBeGreaterThan(0);
-      expect(snapshots.length).toBeLessThan(chunks.length);
-    }
-    expect(frames[chunks.length]).toEqual({
-      type: "token",
-      fullText: replacement,
-      ...(protocol === "legacy" ? { text: replacement } : {}),
+it("preserves complete text and authoritative replacements over HTTP", async () => {
+  const response = await fetch(`${origin}/delta`);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toBe("text/event-stream");
+  expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
+  const frames = (await response.text())
+    .trim()
+    .split("\n\n")
+    .map((frame) => {
+      expect(frame.startsWith("data: ")).toBe(true);
+      return JSON.parse(frame.slice(6)) as {
+        type: string;
+        text?: string;
+        fullText?: string;
+        provisional?: boolean;
+      };
     });
-    expect(frames.at(-1)).toEqual({ type: "done", text: replacement });
+  expect(frames).toHaveLength(chunks.length + 2);
+  let reconstructed = "";
+  for (const [index, frame] of frames.slice(0, chunks.length).entries()) {
+    expect(frame.type).toBe("token");
+    expect(frame.text).toBe(chunks[index]);
+    expect(frame.provisional).toBe(index < 4 ? true : undefined);
+    reconstructed = frame.fullText ?? reconstructed + frame.text;
+    expect(reconstructed).toBe(chunks.slice(0, index + 1).join(""));
+  }
+  expect(reconstructed).toBe(complete);
+  const snapshots = frames
+    .slice(0, chunks.length)
+    .filter((frame) => frame.fullText !== undefined);
+  expect(snapshots.length).toBeGreaterThan(0);
+  expect(snapshots.length).toBeLessThan(chunks.length);
+  expect(frames[chunks.length]).toEqual({
+    type: "token",
+    fullText: replacement,
   });
-}
+  expect(frames.at(-1)).toEqual({ type: "done", text: replacement });
+});
 
 it("frames multiline data and rejects event-name injection without changing payloads", async () => {
   const response = await fetch(`${origin}/events`);
