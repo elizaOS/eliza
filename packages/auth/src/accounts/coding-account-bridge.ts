@@ -59,7 +59,6 @@ import {
   getAccessToken,
   saveCredentials,
 } from "../auth/credentials.js";
-import { probeDirectApiKey } from "../providers/direct-api-probe.ts";
 import { accountRefreshMutex } from "../auth/refresh-mutex.js";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
@@ -67,6 +66,7 @@ import {
   isDirectAccountProvider,
   isSubscriptionProvider,
 } from "../auth/types.js";
+import { probeDirectApiKey } from "../providers/direct-api-probe.ts";
 import type { AccountPool } from "./account-pool.js";
 import {
   configuredAccountStrategyForProvider,

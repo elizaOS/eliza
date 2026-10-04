@@ -59,6 +59,7 @@
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
 			"@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
+			"@elizaos/auth/accounts": ["../../packages/auth/src/accounts/index.ts"],
 			"@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
 			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
 			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],

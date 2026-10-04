@@ -277,7 +277,7 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
-    "resolves Cloud shared wildcard exports from workspace source while %s config resolves",
+    "resolves the Cloud SDK redemption contract from UI consumers while %s config resolves",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
 
@@ -292,10 +292,7 @@ describe("workspace package resolution", () => {
           );
         expect(resolved?.id).toBe(
           normalizePath(
-            path.resolve(
-              appRoot,
-              "../cloud/shared/src/types/redemption-contract.ts",
-            ),
+            path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
           ),
         );
       } finally {

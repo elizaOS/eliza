@@ -12,7 +12,9 @@ const appRoot = path.resolve(
 const lanes = discoverScriptTestLanes(appRoot);
 for (const [command, args] of [
   [process.execPath, ["--test", "--test-concurrency=1", ...lanes["node:test"]]],
-  ["bun", ["test", ...lanes["bun:test"]]],
+  // These suites install subprocess proxies and mutate process-wide platform
+  // settings. Keep each file's module cache and globals independent.
+  ["bun", ["test", "--isolate", "--timeout=120000", ...lanes["bun:test"]]],
 ] as const) {
   const result = spawnSync(command, [...args], {
     cwd: appRoot,
