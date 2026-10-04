@@ -24,7 +24,7 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const confidentialManifestPath = path.join(
   repoRoot,
-  "scripts/__tests__/fixtures/confidential-manifest.json",
+  "release/confidential-2026-05-21/manifest.json",
 );
 const digest = (char) => `sha256:${char.repeat(64)}`;
 
@@ -740,7 +740,7 @@ test("evidence bridge emits a normalized shape bound to golden measurements", as
   const manifest = await readJson(confidentialManifestPath);
   const golden = goldenMeasurementsOf(manifest);
   const evidence = await readJson(
-    path.join(repoRoot, "scripts/__tests__/fixtures/tee-evidence.json"),
+    path.join(repoRoot, "release/schema/tee-evidence.mock.json"),
   );
 
   const bound = buildBoundEvidence(evidence, golden);
@@ -759,10 +759,7 @@ test("evidence bridge fails closed on a runtime-vs-golden mismatch", async () =>
   const manifest = await readJson(confidentialManifestPath);
   const golden = goldenMeasurementsOf(manifest);
   const tampered = await readJson(
-    path.join(
-      repoRoot,
-      "scripts/__tests__/fixtures/tee-evidence-tampered.json",
-    ),
+    path.join(repoRoot, "release/schema/tee-evidence.tampered.mock.json"),
   );
 
   assert.throws(
