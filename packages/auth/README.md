@@ -49,25 +49,14 @@ storage, and host activation callbacks. Activation must call its guard immediate
 before committing. Keep storage and callbacks outside the renderer. Enrollment owns
 PKCE, acknowledgement, cancellation fencing and remote revocation receipts.
 
-The stored app credential stays inference-only. A successful code `verify`/`mfa`
-also keeps that Steward session in memory as billing authority, bound to the
-activated credential. `await auth.billingAuthority()` returns `{token, expiresAt}`
-or `null`. Use it only as `Authorization: Bearer` on organization billing routes
-from the trusted host, and never return it to a renderer. It is cleared on
-`cancel`, a new `start`, `clearBillingAuthority()`, expiry (JWT `exp`, at most
-one hour), or when the active credential changes. When it is missing (for
-example after a restart, or for Google/CLI keys), `billing-start` (`{method?,
-email?, phone?}`, defaulting to the account's own email, then phone) and
-`billing-verify`/`billing-mfa` (`{sessionId, code}`) repeat the code check.
-They never re-enroll or write storage, and they reject a different
-user/organization with `code: "billing_account_mismatch"`. `billing-status`
-returns `{status: "authorized", expiresAt}` or `{status: "required"}`.
+App credentials remain inference-only. Billing authority is an account-bound,
+short-lived in-memory Steward session; billing step-up restores it after restart
+without re-enrollment. Never return that token to the renderer. Native cloud service
+composition belongs to the [Cloud SDK](../cloud/sdk/README.md), which accepts the
+authentication flow through host callbacks.
 
 The protected App Live E2E workflow also offers an explicit staging credential
 fixture. It verifies single-use session PKCE, native credential acknowledgement,
 encrypted vault reopening, restored API access and exact-key revocation. Only a
 closed receipt is uploaded. It does not establish external provider sign-in,
 OS secure-store integration, or physical-device acceptance.
-
-Native Cloud service composition belongs to the [Cloud SDK](../cloud/sdk/README.md),
-which accepts the authentication flow through host callbacks.
