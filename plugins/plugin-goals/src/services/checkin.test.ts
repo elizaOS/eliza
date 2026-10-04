@@ -407,9 +407,16 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     expect(await spine.runner.list({ kind: "checkin" })).toHaveLength(1);
   });
 
-  it.each(["scheduled", "completed", "dismissed"] as const)(
-    "preserves a %s legacy once task across equivalent timestamps",
-    async (status) => {
+  it.each([
+    ["scheduled", "once"],
+    ["completed", "once"],
+    ["dismissed", "once"],
+    ["scheduled", "once:2026-10-05T15:00:00.000Z"],
+    ["completed", "once:2026-10-05T15:00:00.000Z"],
+    ["dismissed", "once:2026-10-05T15:00:00.000Z"],
+  ] as const)(
+    "preserves a %s once task with key %s across equivalent timestamps",
+    async (status, slotKey) => {
       const spine = makeSpine();
       const service = makeService(spine);
       const goal = makeGoal({
@@ -419,7 +426,7 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
         buildCheckinTaskInput(
           goal,
           {
-            slotKey: "once",
+            slotKey,
             trigger: { atIso: "2026-10-05T11:00:00-04:00", kind: "once" },
           },
           CREATED_ISO,

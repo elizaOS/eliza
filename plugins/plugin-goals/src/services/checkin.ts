@@ -483,7 +483,10 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
       // resurrect it for the same trigger shape.
       if (current.state.status === "dismissed") continue;
       const triggerChanged =
-        JSON.stringify(current.trigger) !== JSON.stringify(input.trigger);
+        current.trigger.kind === "once" && input.trigger.kind === "once"
+          ? Date.parse(current.trigger.atIso) !==
+            Date.parse(input.trigger.atIso)
+          : JSON.stringify(current.trigger) !== JSON.stringify(input.trigger);
       const titleChanged = current.metadata?.goalTitle !== goal.title;
       if (triggerChanged || titleChanged) {
         edited.push(
