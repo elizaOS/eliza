@@ -10,6 +10,7 @@ import type {
   ShellMessage,
   ShellPhase,
 } from "../../components/shell/shell-state.ts";
+import { withMockApp } from "../mock-providers.helpers";
 import { ThemeComparison } from "./ThemeComparison";
 
 const phases: readonly ShellPhase[] = [
@@ -47,6 +48,7 @@ const noop = (): void => undefined;
 
 export default {
   title: "Comparisons/Shell Foundation",
+  decorators: [withMockApp],
   parameters: { layout: "fullscreen" },
 } satisfies Meta;
 

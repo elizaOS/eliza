@@ -295,7 +295,7 @@ export const BrandHudContainer: StoryObj = {
         importPath: 'import { HUDContainer } from "@elizaos/ui"',
         render: () => (
           <HUDContainer className="p-6" cornerSize="md">
-            <p style={{ color: "#fff", margin: 0 }}>Install elizaOS</p>
+            <p style={{ color: "var(--txt)", margin: 0 }}>Install elizaOS</p>
           </HUDContainer>
         ),
       }}

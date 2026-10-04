@@ -30,47 +30,45 @@ const calls = vi.hoisted(() => ({
 vi.mock("@elizaos/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
-  ...(await (async (importOriginal) => ({
-    ...(await importOriginal<typeof import("@elizaos/ui")>()),
-    client: {
-      listProjects: () => calls.listProjects(),
-      activateProject: (id: string) => calls.activateProject(id),
-    },
-    Button: ({
-      children,
-      ...rest
-    }: { children: ReactNode } & Record<string, unknown>) => (
-      <button type="button" {...rest}>
-        {children}
-      </button>
-    ),
-    DropdownMenu: ({ children }: { children: ReactNode }) => (
-      <div>{children}</div>
-    ),
-    DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-      <div>{children}</div>
-    ),
-    DropdownMenuContent: ({
-      children,
-      align: _align,
-      ...rest
-    }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
-      <div {...rest}>{children}</div>
-    ),
-    DropdownMenuItem: ({
-      children,
-      onSelect,
-      ...rest
-    }: {
-      children: ReactNode;
-      onSelect?: () => void;
-    } & Record<string, unknown>) => (
-      <button type="button" onClick={() => onSelect?.()} {...rest}>
-        {children}
-      </button>
-    ),
-    useAppSelectorShallow: () => ({ t: undefined }),
-  }))(importOriginal)),
+
+  client: {
+    listProjects: () => calls.listProjects(),
+    activateProject: (id: string) => calls.activateProject(id),
+  },
+  Button: ({
+    children,
+    ...rest
+  }: { children: ReactNode } & Record<string, unknown>) => (
+    <button type="button" {...rest}>
+      {children}
+    </button>
+  ),
+  DropdownMenu: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuContent: ({
+    children,
+    align: _align,
+    ...rest
+  }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
+    <div {...rest}>{children}</div>
+  ),
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    ...rest
+  }: {
+    children: ReactNode;
+    onSelect?: () => void;
+  } & Record<string, unknown>) => (
+    <button type="button" onClick={() => onSelect?.()} {...rest}>
+      {children}
+    </button>
+  ),
+  useAppSelectorShallow: () => ({ t: undefined }),
 }));
 
 // Full mock (no importOriginal): the switcher only touches `client`,

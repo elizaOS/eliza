@@ -7,8 +7,7 @@ vi.mock("@elizaos/core/utils/eliza-globals", () => ({
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false },
 }));
-vi.mock("@elizaos/ui", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+vi.mock("@elizaos/ui", () => ({
   isElectrobunRuntime: () => false,
 }));
 afterEach(() => {

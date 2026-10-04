@@ -50,12 +50,12 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
 
   if (alerts.length === 0) {
     return (
-      <div className="rounded-sm border border-white/10 bg-white/[0.04] p-5 text-sm text-white">
+      <div className="rounded-sm border border-border bg-bg-muted p-5 text-sm text-txt">
         <div className="flex items-start gap-4">
           <TrendingDown className="size-5 shrink-0" />
           <div className="space-y-2">
             <p className="font-semibold">All good</p>
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-muted">
               Usage is tracking within healthy thresholds.
             </p>
           </div>

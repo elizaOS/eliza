@@ -12,7 +12,7 @@ import {
 } from "./contacts-app";
 
 const registerOverlayApp = vi.hoisted(() => vi.fn());
-vi.mock("../../../../packages/ui/src/apps/overlay-app-registry", () => ({
+vi.mock("@elizaos/ui", () => ({
   registerOverlayApp,
 }));
 describe("contacts overlay registration", () => {

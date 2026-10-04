@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchWithCsrf = vi.hoisted(() => vi.fn());
 
-vi.mock("../../../../packages/ui/src/api/csrf-client", () => ({
+vi.mock("@elizaos/ui", () => ({
   fetchWithCsrf,
 }));
 

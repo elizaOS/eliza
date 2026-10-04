@@ -12,9 +12,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const registration = vi.hoisted(() => ({ register: vi.fn() }));
 
-vi.mock("../../../packages/ui/src/app-shell-registry", () => ({
-  registerAppShellPage: registration.register,
-}));
 vi.mock("@capacitor/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@capacitor/core")>();
   return {
@@ -24,6 +21,7 @@ vi.mock("@capacitor/core", async (importOriginal) => {
 });
 vi.mock("@elizaos/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  registerAppShellPage: registration.register,
   PluginPageFrame: ({
     children,
     title,

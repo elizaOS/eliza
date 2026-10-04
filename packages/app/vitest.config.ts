@@ -132,6 +132,7 @@ export default defineConfig({
       "src/dev/**/*.test.{ts,tsx,mjs}",
       "src/native/**/*.test.{ts,tsx,mjs}",
       "src/public-web-entry.test.tsx",
+      "src/context-inspector-page.test.ts",
       "src/public-web-boot-config.test.ts",
       "src/web-entry-policy.test.ts",
       "src/__tests__/**/*.test.{ts,tsx,mjs}",

@@ -100,16 +100,7 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
       </div>
     );
   },
-  ...(await (async () => {
-    const apiMock = await import("@elizaos/ui");
-    return { CockpitView: apiMock.CockpitView };
-  })()),
 }));
-
-vi.mock("../../../../packages/ui/src/components/ui/button", async () => {
-  const apiMock = await import("@elizaos/ui");
-  return { Button: apiMock.Button };
-});
 
 // Stub the (separately-tested) heavy session pane — the container test only
 // proves the drill-in ROUTING (deck ⇄ pane), not the pane internals.

@@ -13,8 +13,7 @@
  * exact same art. This is the single source of truth for that art — the script
  * and the agent both import `renderViewHeroSvg` from here.
  *
- * Pure string generation only: no Node APIs, so this module stays importable
- * from the runtime-agnostic `@elizaos/ui/view-hero-art` barrel (browser + server).
+ * Pure string generation shared by the agent fallback and the asset generator.
  */
 
 import { trimBoundaryCharacters } from "@elizaos/core/utils/string-boundaries";

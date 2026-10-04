@@ -72,50 +72,33 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
       "data-agent-label": descriptor.label,
     },
   }),
-  ...(await (async (importOriginal) => ({
-    ...(await importOriginal<typeof import("@elizaos/ui")>()),
-    ...(await (async (
-      importOriginal: <T = Record<string, unknown>>() => Promise<T>,
-    ) => {
-      const actual = await importOriginal<Record<string, unknown>>();
-      return {
-        ...actual,
-        client: {
-          getOrchestratorStatus: () => calls.getOrchestratorStatus(),
-          listCodingAgentTaskThreads: (o: unknown) =>
-            calls.listCodingAgentTaskThreads(o),
-          getCodingAgentTaskThread: (id: string) =>
-            calls.getCodingAgentTaskThread(id),
-          listOrchestratorTaskTimeline: (id: string, o: unknown) =>
-            calls.listOrchestratorTaskTimeline(id, o),
-          streamOrchestratorTask: (id: string, cb: () => void) =>
-            calls.streamOrchestratorTask(id, cb),
-          pauseOrchestratorTask: (id: string) =>
-            calls.pauseOrchestratorTask(id),
-          postOrchestratorTaskMessage: (id: string, content: string) =>
-            calls.postOrchestratorTaskMessage(id, content),
-          getCodingAgentStatus: () => calls.getCodingAgentStatus(),
-          updateOrchestratorTask: (id: string, patch: unknown) =>
-            calls.updateOrchestratorTask(id, patch),
-          addOrchestratorAgent: (id: string, input: unknown) =>
-            calls.addOrchestratorAgent(id, input),
-          restartOrchestratorTask: (id: string, input: unknown) =>
-            calls.restartOrchestratorTask(id, input),
-        },
-      };
-    })(importOriginal)),
-    ...(await (async (
-      importOriginal: <T = Record<string, unknown>>() => Promise<T>,
-    ) => {
-      const actual = await importOriginal<Record<string, unknown>>();
-      return { ...actual, ELIZA_CLOUD_TIER_MODEL: tierModels };
-    })(importOriginal)),
-  }))(importOriginal)),
+  client: {
+    getOrchestratorStatus: () => calls.getOrchestratorStatus(),
+    listCodingAgentTaskThreads: (o: unknown) =>
+      calls.listCodingAgentTaskThreads(o),
+    getCodingAgentTaskThread: (id: string) =>
+      calls.getCodingAgentTaskThread(id),
+    listOrchestratorTaskTimeline: (id: string, o: unknown) =>
+      calls.listOrchestratorTaskTimeline(id, o),
+    streamOrchestratorTask: (id: string, cb: () => void) =>
+      calls.streamOrchestratorTask(id, cb),
+    pauseOrchestratorTask: (id: string) => calls.pauseOrchestratorTask(id),
+    postOrchestratorTaskMessage: (id: string, content: string) =>
+      calls.postOrchestratorTaskMessage(id, content),
+    getCodingAgentStatus: () => calls.getCodingAgentStatus(),
+    updateOrchestratorTask: (id: string, patch: unknown) =>
+      calls.updateOrchestratorTask(id, patch),
+    addOrchestratorAgent: (id: string, input: unknown) =>
+      calls.addOrchestratorAgent(id, input),
+    restartOrchestratorTask: (id: string, input: unknown) =>
+      calls.restartOrchestratorTask(id, input),
+  },
+  ELIZA_CLOUD_TIER_MODEL: tierModels,
 }));
 
 // Keep the real UI components while replacing the API client boundary.
 
-import { getViewChatBinding } from "@elizaos/ui";
+import { getViewChatBinding } from "../../../../packages/ui/src/state/view-chat-binding";
 import { CockpitSessionPane } from "./CockpitSessionPane";
 
 const ISO = "2026-01-01T00:00:00.000Z";

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const registerAppShellPage = vi.hoisted(() => vi.fn());
 
-vi.mock("../../../packages/ui/src/app-shell-registry", () => ({
+vi.mock("@elizaos/ui", () => ({
   registerAppShellPage,
 }));
 

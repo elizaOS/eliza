@@ -22,6 +22,7 @@ const openExternalUrlMock = vi.fn();
 
 vi.mock("@elizaos/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  openExternalUrl: (url: string) => openExternalUrlMock(url),
   client: {
     fetch: (path: string, init?: RequestInit) => fetchMock(path, init),
   },
@@ -48,10 +49,6 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
       <input {...rest} />
     ),
   },
-}));
-
-vi.mock("../../../../packages/ui/src/utils/openExternalUrl", () => ({
-  openExternalUrl: (url: string) => openExternalUrlMock(url),
 }));
 
 import { GitHubConnectionCard } from "./GitHubConnectionCard";

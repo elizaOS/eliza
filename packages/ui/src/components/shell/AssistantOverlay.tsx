@@ -168,6 +168,7 @@ export function AssistantOverlay({
         }}
         visualStyle={{
           borderColor: "var(--assistant-overlay-border)",
+          backgroundColor: "var(--assistant-overlay-card)",
         }}
         className="h-full w-full overflow-hidden motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       >

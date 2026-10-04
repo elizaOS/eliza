@@ -158,13 +158,16 @@ import { ThemeComparison } from "./ThemeComparison";
  * ------------------------------------------------------------------------ */
 function ControlledSwitch() {
   const [on, setOn] = useState(true);
-  return <Switch checked={on} onCheckedChange={setOn} />;
+  return (
+    <Switch aria-label="Notifications" checked={on} onCheckedChange={setOn} />
+  );
 }
 
 function ControlledCheckbox() {
   const [on, setOn] = useState(true);
   return (
     <Checkbox
+      aria-label="Enable local inference"
       checked={on}
       onCheckedChange={(v: boolean | "indeterminate") => setOn(v === true)}
     />
@@ -248,6 +251,7 @@ function ControlledSlider() {
   const [value, setValue] = useState<number[]>([42]);
   return (
     <Slider
+      aria-label="Volume"
       value={value}
       onValueChange={setValue}
       max={100}
@@ -575,7 +579,7 @@ export const PCheckbox: StoryObj = {
         render: () => (
           <>
             <ControlledCheckbox />
-            <Checkbox disabled />
+            <Checkbox aria-label="Unavailable option" disabled />
           </>
         ),
       }}
@@ -785,7 +789,7 @@ export const PSelect: StoryObj = {
           'import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@elizaos/ui"',
         render: () => (
           <Select defaultValue="eliza-1">
-            <SelectTrigger style={{ width: 200 }}>
+            <SelectTrigger aria-label="Model" style={{ width: 200 }}>
               <SelectValue placeholder="Pick a model" />
             </SelectTrigger>
             <SelectContent>
@@ -901,7 +905,7 @@ export const PSwitch: StoryObj = {
         render: () => (
           <>
             <ControlledSwitch />
-            <Switch disabled />
+            <Switch aria-label="Unavailable notifications" disabled />
           </>
         ),
       }}
