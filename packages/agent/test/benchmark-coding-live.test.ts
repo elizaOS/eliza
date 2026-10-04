@@ -14,7 +14,7 @@ import {
   summarizePlannerObservation,
   summarizePlannerTrajectories,
   validatePlannerFixture,
-} from "../scripts/cerebras-planner-workload.ts";
+} from "../../benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-planner-workload.ts";
 
 const enabled = process.env.BENCHMARK_NATIVE_CODING_E2E === "1";
 const repoRoot = path.resolve(import.meta.dirname, "../../..");

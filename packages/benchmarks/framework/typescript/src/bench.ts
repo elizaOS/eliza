@@ -24,7 +24,7 @@ import {
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
-import { testOutputPath } from "../../../../../scripts/lib/test-output.ts";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import {
   type BenchmarkResult,
   computeLatencyStats,
