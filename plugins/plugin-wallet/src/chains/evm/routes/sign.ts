@@ -13,6 +13,7 @@ import { createWalletClient } from "viem";
 import { http } from "viem";
 import { logger } from "@elizaos/core";
 import { publicActions } from "viem";
+import { browserSignTokenMatches } from "../../browser-sign-token";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 import { type Address } from "viem";
 import { type Chain } from "viem";
@@ -88,7 +89,8 @@ function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
         res.status(503).json({ error: "WALLET_BROWSER_SIGN_TOKEN not configured" });
         return false;
     }
-    if (readBearer(req) !== expected) {
+    const got = readBearer(req);
+    if (!got || !browserSignTokenMatches(expected, got)) {
         res.status(401).json({ error: "invalid sign token" });
         return false;
     }

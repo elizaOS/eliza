@@ -1444,9 +1444,27 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         if (params.worldId && m.worldId !== params.worldId) return false;
         if (params.tableName && storedMemoryTableName(m) !== params.tableName)
           return false;
-        if (params.start && m.createdAt && m.createdAt < params.start)
-          return false;
-        if (params.end && m.createdAt && m.createdAt > params.end) return false;
+        // 0 is a real timestamp. Truthiness checks dropped epoch rows and
+        // ignored an exclusive upper bound of 0 (`end: before - 1` when
+        // `before` is 1), so those queries returned the unfiltered set.
+        if (typeof params.start === "number" && Number.isFinite(params.start)) {
+          if (
+            typeof m.createdAt !== "number" ||
+            !Number.isFinite(m.createdAt) ||
+            m.createdAt < params.start
+          ) {
+            return false;
+          }
+        }
+        if (typeof params.end === "number" && Number.isFinite(params.end)) {
+          if (
+            typeof m.createdAt !== "number" ||
+            !Number.isFinite(m.createdAt) ||
+            m.createdAt > params.end
+          ) {
+            return false;
+          }
+        }
         if (params.unique && !m.unique) return false;
         if (params.metadata) {
           const md = (m.metadata ?? {}) as Record<string, unknown>;
