@@ -55,6 +55,7 @@ import {
 } from "./autonomy";
 import { normalizeConversationList } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
+import { compareConversationMessages } from "./conversation-message-order";
 import {
   applyStreamingTextModification,
   filterRenderableConversationMessages,
@@ -368,9 +369,7 @@ function mergeMessagesChronologically(
     message: ConversationMessage;
     serverIndex: number | null;
   }> = serverMessages.map((message, serverIndex) => ({ message, serverIndex }));
-  const orderedOverlay = [...localOverlay].sort(
-    (left, right) => left.timestamp - right.timestamp,
-  );
+  const orderedOverlay = [...localOverlay].sort(compareConversationMessages);
   for (const message of orderedOverlay) {
     let insertionIndex = merged.findIndex(
       (candidate) => candidate.message.timestamp > message.timestamp,
@@ -1192,9 +1191,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           .map((row) => [row.id, row]),
       );
       for (const row of changed) rows.set(row.id, row);
-      const orderedRows = [...rows.values()].sort(
-        (a, b) => a.timestamp - b.timestamp,
-      );
+      const orderedRows = [...rows.values()].sort(compareConversationMessages);
       setConversationMessages(
         mergeMessagesChronologically(
           orderedRows.filter((row) => row.assistantEphemeral !== true),

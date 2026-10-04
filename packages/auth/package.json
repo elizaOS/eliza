@@ -81,7 +81,7 @@
     "clean": "node ../scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "build": "bun scripts/clean-build.ts && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/prepare-package-dist.ts packages/auth && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/auth",
-    "test": "bun run build && bun run test:credentials && bun run test:login && bun run test:native-host",
+    "test": "bun run build && bun run test:credentials && bun run test:login && bun run test:native-host && bun run test:cloud-services",
     "test:watch": "node ../scripts/run-vitest.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.vault.json && tsc --noEmit -p tsconfig.login.json",
     "lint": "biome check src test scripts native-host",
@@ -95,7 +95,8 @@
     "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
     "test:credentials": "node ../scripts/run-vitest.ts run",
     "test:login": "bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack",
-    "test:native-host": "node --test native-host/*.test.mjs"
+    "test:native-host": "node --test native-host/*.test.mjs",
+    "test:cloud-services": "node --test native-host/cloud-services/*.test.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

@@ -151,16 +151,48 @@ export interface SubscriptionCheckoutRequest {
   planKey: SubscriptionPlanKey;
   /** Client-minted UUID; reuse it only to retry the same purchase intent. */
   idempotencyKey: string;
+  /**
+   * `hosted` (default): redirect this browser to Stripe Checkout.
+   * `embedded`: mount Stripe Embedded Checkout in the app (card only, never redirects).
+   * `shared`: a hosted link for someone else to pay without signing in.
+   * Switching plan or presentation closes the organization's previous unpaid checkout.
+   */
+  presentation?: "hosted" | "embedded" | "shared";
 }
 
 /**
- * `open`: redirect to `checkoutUrl` (https://checkout.stripe.com only).
+ * `open`: redirect to `checkoutUrl` (https://checkout.stripe.com only), or for
+ * `presentation: "embedded"` mount `clientSecret` with `publishableKey`.
  * `completed`: the payment is captured and its subscription is still live.
  * `expired`: the checkout expired or was replaced; mint a new idempotency key.
  * `stale_intent`: the key already bought a subscription that has ended; mint a new key.
+ * Retrying the same key reports `completed` once the server has verified payment.
  */
 export type SubscriptionCheckoutResult =
   | { status: "open"; commandId: string; checkoutUrl: string }
+  | {
+      status: "open";
+      presentation: "embedded";
+      commandId: string;
+      checkoutUrl: null;
+      /** Pass to `confirmSubscriptionCheckout` after the form completes. */
+      sessionId: string;
+      /** Stripe.js initializer: `embedded` = `createEmbeddedCheckoutPage`/`initEmbeddedCheckout`. */
+      uiMode: "embedded";
+      clientSecret: string;
+      publishableKey: string;
+      amountDueCents: number;
+      currency: "usd";
+      interval: "month";
+      expiresAt: string;
+    }
+  | {
+      status: "open";
+      presentation: "shared";
+      commandId: string;
+      checkoutUrl: string;
+      expiresAt: string;
+    }
   | {
       status: "completed" | "expired" | "stale_intent";
       commandId: string;

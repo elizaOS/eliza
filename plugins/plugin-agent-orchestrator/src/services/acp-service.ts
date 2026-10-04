@@ -256,6 +256,7 @@ type RunResult = {
   terminalFailure?: AcpTerminalFailure;
   protocolError?: string;
   cancelled?: boolean;
+  killedByService?: boolean;
   durationMs: number;
 };
 
@@ -2719,6 +2720,7 @@ export class AcpService extends Service {
     }
 
     if (
+      !result.killedByService &&
       (result.code === 0 || result.code === null) &&
       (stopReason !== "error" || result.finalText.trim().length > 0)
     ) {
@@ -4487,6 +4489,7 @@ export class AcpService extends Service {
           // pipeline.
           const cleanCompletion =
             !record.cancelled &&
+            !record.killedByService &&
             (code === 0 || code === null) &&
             finalText.trim().length > 0 &&
             !isIncompletePromptStopReason(stopReason);
@@ -4549,6 +4552,7 @@ export class AcpService extends Service {
           ...(terminalFailure ? { terminalFailure } : {}),
           ...(protocolError ? { protocolError } : {}),
           cancelled: record.cancelled,
+          killedByService: record.killedByService,
           durationMs: Date.now() - startedAt,
         });
       });

@@ -42,6 +42,7 @@ import {
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   logger,
   requireConfirmation,
+  resolveCalendarTimeZone,
   stringToUuid,
   toWellFormedUnicode,
 } from "@elizaos/core";
@@ -1604,6 +1605,7 @@ async function handleFollowup(
   const priority: "high" | "medium" | "low" =
     priorityRaw === "high" || priorityRaw === "low" ? priorityRaw : "medium";
   const messageText = readString(params.message);
+  const { timeZone } = await resolveCalendarTimeZone(runtime, new Date());
 
   const task = await followUpService.scheduleFollowUp(
     entityId,
@@ -1615,7 +1617,7 @@ async function handleFollowup(
 
   return {
     success: true,
-    text: `Scheduled follow-up with ${contactName ?? "contact"} for ${scheduledAt.toLocaleString()}.`,
+    text: `Scheduled follow-up with ${contactName ?? "contact"} for ${scheduledAt.toLocaleString("en-US", { timeZone })}.`,
     values: {
       op: "followup",
       contactId: String(entityId),

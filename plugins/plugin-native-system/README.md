@@ -33,3 +33,14 @@ CameraManager callbacks when the emulator exposes flash hardware. It exports
 native dialog screenshots, capabilities and receipts, then restores the torch and
 removes the test package. A device without flash must reject explicitly; emulator
 callbacks do not certify physical light output.
+
+The native-only `setup.DeviceSetup` helper reports installed/default browser and
+Autofill-provider packages and opens host-approved settings/app destinations.
+Hosts supply supported package sets, their selected browser/certificate trust
+verifier, and an Activity launch callback. The helper snapshots package policy,
+rejects unlisted app destinations and uses separate Android tasks. It never reads
+credentials, proves vault readiness or changes defaults silently. It adds no
+`ElizaSystem` bridge methods or permission grants. `DeviceSetupInstrumentedTest`
+checks independent host policy against Android observations while capturing
+navigation instead of launching screens or changing roles. Real settings/provider
+journeys and physical-device behavior require separate acceptance.

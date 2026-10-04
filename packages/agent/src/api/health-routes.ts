@@ -455,6 +455,10 @@ export function serializeForRuntimeDebug(
  * `true` at the exact moment the agent can answer a first turn. This is the
  * signal the UI uses to fade in first-turn capability: the shell paints early
  * (agentState "starting"), and the composer goes live when this flips.
+ *
+ * The local-inference router counts as a handler to the runtime, but it only
+ * dispatches to the other registered text handlers, so a runtime whose text
+ * slots hold nothing but the router cannot answer a turn.
  */
 export function computeCanRespond(
   runtime: AgentRuntime | null,
@@ -466,6 +470,7 @@ export function computeCanRespond(
   }
   try {
     if (!hasTextGenerationHandler(runtime)) return false;
+    if (!textRegistrationsBehindRouter(runtime).length) return false;
     if (localModelReadiness?.status === "model_not_loaded") return false;
   } catch {
     return false;
@@ -474,6 +479,35 @@ export function computeCanRespond(
 }
 
 const LOCAL_INFERENCE_ROUTER_PROVIDER = "eliza-router";
+
+const TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_MEGA,
+  ModelType.ACTION_PLANNER,
+  ModelType.RESPONSE_HANDLER,
+]);
+
+/**
+ * Text-slot registrations that can serve a turn. The local-inference plugin
+ * fronts its text slots with a prefer-local router (`ROUTER_PROVIDER` in
+ * router-handler.ts). It dispatches to the other registered handlers and
+ * serves nothing itself, so it neither makes a runtime "mixed" nor needs
+ * weights of its own, and it is left out here.
+ */
+function textRegistrationsBehindRouter(
+  runtime: AgentRuntime,
+): Array<{ modelType: string; provider: string }> {
+  return runtime
+    .getModelRegistrations()
+    .filter(
+      (entry) =>
+        TEXT_MODEL_TYPES.has(entry.modelType) &&
+        entry.provider !== LOCAL_INFERENCE_ROUTER_PROVIDER,
+    );
+}
 
 /** Readiness of this runtime's sole local text provider, without loading models. */
 export async function readLocalTextModelReadiness(
@@ -484,26 +518,7 @@ export async function readLocalTextModelReadiness(
 } | null> {
   if (!runtime) return null;
   try {
-    const textTypes: ReadonlySet<string> = new Set([
-      ModelType.TEXT_LARGE,
-      ModelType.TEXT_SMALL,
-      ModelType.TEXT_MEDIUM,
-      ModelType.TEXT_NANO,
-      ModelType.TEXT_MEGA,
-      ModelType.ACTION_PLANNER,
-      ModelType.RESPONSE_HANDLER,
-    ]);
-    // The local-inference plugin fronts its text slots with a prefer-local
-    // router (`ROUTER_PROVIDER` in router-handler.ts). It dispatches to the
-    // other registered handlers and serves nothing itself, so it neither
-    // makes a runtime "mixed" nor needs weights of its own.
-    const registrations = runtime
-      .getModelRegistrations()
-      .filter(
-        (entry) =>
-          textTypes.has(entry.modelType) &&
-          entry.provider !== LOCAL_INFERENCE_ROUTER_PROVIDER,
-      );
+    const registrations = textRegistrationsBehindRouter(runtime);
     if (
       !registrations.length ||
       registrations.some((entry) => entry.provider !== "eliza-local-inference")
@@ -624,7 +639,8 @@ export function readCloudModelReadiness(
  * True only on a positive catalog answer that a configured Cloud text model id
  * is not listed AND Eliza Cloud is the sole registered provider for that model
  * type, so no failover can serve it. Catalog outages stay `unknown` and never
- * gate chat (#30228).
+ * gate chat (#30228). The local-inference router is not a failover: it can
+ * only dispatch to the providers counted here.
  */
 function isCloudTextModelUnavailable(runtime: AgentRuntime): boolean {
   const readiness = readCloudModelReadiness(runtime);
@@ -637,7 +653,11 @@ function isCloudTextModelUnavailable(runtime: AgentRuntime): boolean {
   }
   return readiness.missing.some(({ modelType }) => {
     const providers = registrations
-      .filter((entry) => entry.modelType === modelType)
+      .filter(
+        (entry) =>
+          entry.modelType === modelType &&
+          entry.provider !== LOCAL_INFERENCE_ROUTER_PROVIDER,
+      )
       .map((entry) => entry.provider);
     return (
       providers.length > 0 &&

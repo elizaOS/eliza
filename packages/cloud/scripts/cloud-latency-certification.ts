@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { parseProbeCase } from "./chat-latency.ts";
 import {
   CloudflareTraceApiError,
   collectInferenceTraceEvidence,
@@ -75,6 +76,7 @@ export function parseCertificationArgs(argv) {
       "deploy-sha": { type: "string" },
       "output-dir": { type: "string" },
       "acknowledged-contract-digest": { type: "string", default: "" },
+      "probe-case": { type: "string", default: "qwen-3.8-27b@none@512" },
       auth: { type: "boolean", default: false },
       suspended: { type: "boolean", default: false },
     },
@@ -90,8 +92,11 @@ export function parseCertificationArgs(argv) {
   if (values.suspended && !values.auth) {
     throw new Error("--suspended requires --auth");
   }
+  const probeCase = values["probe-case"];
+  parseProbeCase(probeCase);
   return {
     deploySha,
+    probeCase,
     outputDir: resolve(outputDir),
     acknowledgedContractDigest: values["acknowledged-contract-digest"],
     runAuth: values.auth,
@@ -484,7 +489,13 @@ async function waitForSanitizedTail(rawPath, traceIds, deploySha) {
   );
 }
 
-async function runPaired({ deploySha, sourceSha, outputDir, env }) {
+async function runPaired({
+  deploySha,
+  sourceSha,
+  outputDir,
+  env,
+  probeCase = "qwen-3.8-27b@none@512",
+}) {
   requirePairedSecrets(env);
   const outputPath = join(outputDir, "paired.jsonl");
   const stderrPath = join(outputDir, ".paired.stderr");
@@ -505,7 +516,7 @@ async function runPaired({ deploySha, sourceSha, outputDir, env }) {
         "--direct-api-key-env",
         "CEREBRAS_API_KEY",
         "--case",
-        "qwen-3.8-27b@omit@512",
+        probeCase,
         "--repeat",
         "20",
         "--idle-ms",

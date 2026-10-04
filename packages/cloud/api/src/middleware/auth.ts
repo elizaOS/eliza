@@ -244,6 +244,14 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
   ) {
     return true;
   }
+  // Fixed-copy return page for shared subscription checkout links; it reads no account state.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/v1/subscriptions/checkout/payer" ||
+      pathname === "/api/v1/subscriptions/checkout/payer/")
+  ) {
+    return true;
+  }
   if (
     pathname === "/api/v1/oauth/success-proof/verify" ||
     pathname === "/api/v1/oauth/success-proof/verify/"

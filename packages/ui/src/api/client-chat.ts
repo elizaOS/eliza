@@ -340,13 +340,15 @@ declare module "./client-base" {
          */
         around?: string;
         /**
-         * When set, load one page STRICTLY OLDER than this createdAt cursor for
-         * the infinite upward scroll (#13532) — the client passes the createdAt
-         * of its current oldest message and prepends the returned page. Forces
-         * the HTTP path (the desktop-bridge RPC only serves the recent window)
-         * and makes the response carry `hasMore`.
+         * When set, load one page strictly older than this createdAt cursor for
+         * the infinite upward scroll (#13532). Pair it with `beforeId` so
+         * messages that share that millisecond are not skipped. Forces the HTTP
+         * path (the desktop-bridge RPC only serves the recent window) and makes
+         * the response carry `hasMore`.
          */
         before?: number;
+        /** Id of the oldest message already held, paired with `before`. */
+        beforeId?: string;
         /** Older-page size for the `before` cursor path. Server-clamped. */
         limit?: number;
       },
@@ -1266,6 +1268,7 @@ ElizaClient.prototype.getConversationMessages = async function (
     query = `?around=${encodeURIComponent(options.around)}`;
   } else if (options?.before !== undefined) {
     const params = new URLSearchParams({ before: String(options.before) });
+    if (options.beforeId) params.set("beforeId", options.beforeId);
     if (options.limit !== undefined) {
       params.set("limit", String(options.limit));
     }

@@ -16,6 +16,8 @@ const schema = z
   .object({
     planKey: z.enum(["plus_monthly", "pro_monthly"]),
     idempotencyKey: z.string().uuid(),
+    /** hosted (default) redirects this browser; embedded mounts an in-app form; shared is a link for another payer. */
+    presentation: z.enum(["hosted", "embedded", "shared"]).optional(),
   })
   .strict();
 const app = new Hono<AppEnv>();

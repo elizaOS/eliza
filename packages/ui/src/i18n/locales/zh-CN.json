@@ -161,6 +161,7 @@
   "appsview.Stopped": "已停止",
   "appsview.URL": "网址：",
   "appsview.Viewer": "查看器",
+  "appwindow.ExternalOpenFailed": "无法在浏览器中打开此应用：{{url}}",
   "appwindow.LaunchedNoViewer": "该应用启动时没有查看器 URL。请从应用目录中打开。",
   "appwindow.RetryingLaunch": "正在重试启动...",
   "aria.advancedNavigation": "高级导航",

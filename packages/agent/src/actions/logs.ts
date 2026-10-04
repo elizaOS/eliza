@@ -69,7 +69,7 @@ interface LogsResponseShape {
 }
 
 interface ClearResponseShape {
-  cleared?: number;
+  cleared?: unknown;
 }
 
 type RuntimeWithOverrides = IAgentRuntime & {
@@ -207,11 +207,30 @@ async function deleteLogs(): Promise<ActionResult> {
       "LOGS_DELETE_FAILED",
     );
   }
-  const data = (await resp.json().catch(() => ({}))) as ClearResponseShape;
-  const cleared =
-    typeof data.cleared === "number" && Number.isFinite(data.cleared)
-      ? data.cleared
-      : 0;
+  let cleared: number;
+  try {
+    const parsed: unknown = await resp.json();
+    const count =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as ClearResponseShape).cleared
+        : undefined;
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
+      throw new Error("Clear response did not report a cleared count.");
+    }
+    cleared = count;
+  } catch {
+    // error-policy:J3 untrusted clear-response parse — the route always
+    // answers { cleared: <count> }, so a 2xx proxy page, empty body, or
+    // missing count proves nothing was cleared; fail closed instead of
+    // reporting "Cleared 0 log entries."
+    logger.warn(
+      `[logs:delete] Clear response did not confirm the clear (${resp.status}).`,
+    );
+    return failure(
+      `Failed to clear logs: the server did not confirm the clear (HTTP ${resp.status}).`,
+      "LOGS_DELETE_FAILED",
+    );
+  }
   return {
     success: true,
     text: `Cleared ${cleared} log entries.`,
