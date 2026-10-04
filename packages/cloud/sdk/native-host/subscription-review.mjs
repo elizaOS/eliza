@@ -60,8 +60,12 @@ export function projectRenewalReview(value, policy, now = Date.now()) {
     Date.parse(value.renewalAt) <= now ||
     Date.parse(value.nextPeriodEnd) <= Date.parse(value.renewalAt) ||
     value.discountCents > value.subtotalCents ||
-    value.subtotalCents - value.discountCents + value.taxCents !==
-      value.totalCents
+    // taxCents reports inclusive tax (already inside the subtotal) and
+    // exclusive tax (added on top) together, so the total adds between none
+    // and all of it to the discounted subtotal.
+    value.totalCents < value.subtotalCents - value.discountCents ||
+    value.totalCents >
+      value.subtotalCents - value.discountCents + value.taxCents
   )
     return invalid();
   return Object.fromEntries(

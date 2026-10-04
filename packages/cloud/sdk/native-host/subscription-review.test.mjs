@@ -68,6 +68,24 @@ test("renewal projection preserves displayed financial terms and rejects stale o
       /unavailable/,
     );
 });
+test("renewal projection accepts inclusive, exclusive and mixed tax totals the server verified", () => {
+  const now = Date.now();
+  // The server checks total = subtotal - discount + exclusive tax and
+  // reports all tax, inclusive and exclusive, in taxCents.
+  for (const amounts of [
+    { subtotalCents: 1000, discountCents: 0, taxCents: 167, totalCents: 1000 },
+    { subtotalCents: 1000, discountCents: 100, taxCents: 90, totalCents: 990 },
+    { subtotalCents: 1000, discountCents: 100, taxCents: 90, totalCents: 940 },
+  ]) {
+    const v = { ...terms(now), ...amounts };
+    assert.deepEqual(projectRenewalReview(v, policy, now), v);
+  }
+  for (const totalCents of [899, 991])
+    assert.throws(
+      () => projectRenewalReview({ ...terms(now), totalCents }, policy, now),
+      /unavailable/,
+    );
+});
 test("private native lifecycle binds reviewed terms, supports restart and failed retry, and recovers without dispatch", async (t) => {
   let authorized = false,
     action = "undo",
