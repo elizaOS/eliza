@@ -696,6 +696,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-local-inference": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
@@ -975,6 +976,7 @@
       "name": "@elizaos/provisioning-worker",
       "version": "1.0.0",
       "dependencies": {
+        "@elizaos/auth": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
       },
