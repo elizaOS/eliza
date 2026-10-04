@@ -214,7 +214,7 @@ it("announces the checking notice outside the busy options", async () => {
   fireEvent.click(button);
   // The notice only exists while busy; inside an aria-busy subtree it could
   // be held back until it is already gone.
-  expect(button.closest('[aria-busy="true"]')).not.toBeNull();
+  expect(button.closest('[aria-busy="true"]')).toBe(button);
   expect(screen.getByRole("status").closest('[aria-busy="true"]')).toBeNull();
   await act(async () => {
     resolve();

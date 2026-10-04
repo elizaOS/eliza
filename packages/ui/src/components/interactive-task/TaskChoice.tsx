@@ -1,7 +1,5 @@
-import {
-  type TaskChoiceWidget,
-  validateTaskChoiceWidget,
-} from "@elizaos/core/protocol";
+import type { TaskChoiceWidget } from "@elizaos/core/protocol";
+import { validateTaskChoiceWidget } from "@elizaos/core/protocol";
 import { useEffect, useRef, useState } from "react";
 
 export interface TaskChoiceMessages {
@@ -117,27 +115,21 @@ export function TaskChoice({
           {messages?.failed ?? "The choice could not be sent. Try again."}
         </p>
       )}
-      {/* Only the options are busy: assistive technology may hold back live
-          regions inside an aria-busy subtree, and the checking notice exists
-          only while busy, so it would never be announced. */}
-      {showOptions && (
-        <div aria-busy={pending || busy}>
-          {widget.block.options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              disabled={!explainUnavailable && unavailable}
-              aria-disabled={
-                explainUnavailable && unavailable ? true : undefined
-              }
-              onClick={() => void choose(option.value)}
-            >
-              {option.label}
-              {option.description && <span>{option.description}</span>}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Live notices stay outside the options' busy state. */}
+      {showOptions &&
+        widget.block.options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-busy={pending || busy}
+            disabled={!explainUnavailable && unavailable}
+            aria-disabled={explainUnavailable && unavailable ? true : undefined}
+            onClick={() => void choose(option.value)}
+          >
+            {option.label}
+            {option.description && <span>{option.description}</span>}
+          </button>
+        ))}
       {checkingNotice && !expired && widget.state === "pending" && (
         <p role="status">
           {messages?.checking ??
