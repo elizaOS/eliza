@@ -140,3 +140,11 @@ replaced, including automatic retries: delayed `unchanged` checks use that
 identity. Schema-5 consumers supply the UUID identities required by
 `NativeHealthEvidence`. A gateway that dies during storage sampling reports
 `gatewayResponsive:false` and `taskStorage:unavailable` together.
+
+`PreparedRecovery` reopens cached recovery material through a host-authenticated
+authority. It requires the recovery-ready journal phase and matching installed
+candidate, checks material distribution, and rejects state or installed-identity
+changes during the authority read. It neither discovers nor installs releases;
+the installer must repeat current trust and APK checks at commit. Hosts retain
+security-floor policy, generated trust bindings and package identity. Its portable
+contract is included in `test:native-host`.
