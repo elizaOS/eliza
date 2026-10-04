@@ -17,7 +17,7 @@ func preparedFixture(t *testing.T) (string, string, string, admissionVector) {
 	r := fixture(t)
 	r.body = v.Release
 	r.publish(t, 1)
-	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
+	session := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, err := session.RunPrepared(schedule, cache, state, directory, r.root, baseURL, v.Device, v.Policy, 0)
 	if err != nil || result.Status != "admitted" || !validHex(result.AuthorizationID) {
 		t.Fatalf("prepared result %+v %v", result, err)
@@ -115,7 +115,7 @@ func TestPreparedPersistenceFailureRetries(t *testing.T) {
 	r := fixture(t)
 	r.body = v.Release
 	r.publish(t, 1)
-	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
+	session := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	if result, err := session.RunPrepared(schedule, cache, state, directory, r.root, baseURL, v.Device, v.Policy, 0); err == nil || result != nil {
 		t.Fatal("unpersisted authorization exposed")
 	}

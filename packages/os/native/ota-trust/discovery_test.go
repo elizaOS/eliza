@@ -36,7 +36,7 @@ func TestDiscoveryAuthenticatesThenDefers(t *testing.T) {
 	a, b := discoveryDirs(t)
 	r := fixture(t)
 	transport := &discoveryFixture{repository: r}
-	s := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: transport}
+	s := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: transport}
 	result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", 0)
 	if err != nil || result.Status != "authenticated" || !bytes.Equal(result.Descriptor, r.body) || result.DelayMillis < 5*60*60*1000 {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -48,7 +48,7 @@ func TestDiscoveryAuthenticatesThenDefers(t *testing.T) {
 		t.Fatal("session reused")
 	}
 	later := now.UnixMilli() + time.Since(started).Milliseconds() + 1000
-	s = &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{later, later}}, transport: &discoveryFixture{repository: r}}
+	s = &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{later, later}}, transport: &discoveryFixture{repository: r}}
 	result, err = s.Run(a, b, r.root, baseURL, "stable", "launcher", 0)
 	if err != nil || result.Status != "deferred" || len(result.Descriptor) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -58,7 +58,7 @@ func TestDiscoveryFailurePersistsServerDelay(t *testing.T) {
 	a, b := discoveryDirs(t)
 	r := fixture(t)
 	r.files = map[string][]byte{}
-	s := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r, hint: 120000}}
+	s := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r, hint: 120000}}
 	result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", 0)
 	if err != nil || result.Status != "deferred" || len(result.Descriptor) != 0 || result.DelayMillis < 120000 {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -74,7 +74,7 @@ func TestDiscoveryCancellationAndChannelRaceDiscardBytes(t *testing.T) {
 			a, b := discoveryDirs(t)
 			r := fixture(t)
 			transport := &discoveryFixture{repository: r}
-			s := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: transport}
+			s := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: transport}
 			transport.hook = func() {
 				switch change {
 				case "cancel":
@@ -109,7 +109,7 @@ func TestAuthenticatedDiscoveryPersistsAdmissionBeforeDelivery(t *testing.T) {
 	r := fixture(t)
 	r.body = v.Release
 	r.publish(t, 1)
-	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
+	session := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, err := session.RunAdmitted(schedule, cache, state, r.root, baseURL, v.Device, v.Policy, 0)
 	if err != nil || result.Status != "admitted" || result.Admission.Decision != "eligible" || !bytes.Equal(result.Descriptor, v.Release) {
 		t.Fatalf("%+v %v", result, err)
@@ -124,7 +124,7 @@ func TestAuthenticatedDiscoveryPersistsAdmissionBeforeDelivery(t *testing.T) {
 	})
 	r.publish(t, 2)
 	later := now.UnixMilli() + 31000
-	session = &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{later, later}}, transport: &discoveryFixture{repository: r}}
+	session = &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{later, later}}, transport: &discoveryFixture{repository: r}}
 	result, err = session.RunAdmitted(schedule, cache, state, r.root, baseURL, v.Device, v.Policy, 2)
 	if err != nil || result.Status != "deferred" || result.Admission.Reason != "rollout-paused" || len(result.Descriptor) != 0 {
 		t.Fatalf("paused result exposed: %+v %v", result, err)
@@ -144,7 +144,7 @@ func TestAdmissionStorageFailureSchedulesFailureNotSuccess(t *testing.T) {
 	if err := os.WriteFile(state+"/admission.json", []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
+	session := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, err := session.RunAdmitted(schedule, cache, state, r.root, baseURL, v.Device, v.Policy, 0)
 	if err == nil || result != nil {
 		t.Fatal("persistence failure exposed update")
@@ -168,7 +168,7 @@ func TestDiscoveryRejectsInvalidPolicyBeforeNetwork(t *testing.T) {
 			func(p map[string]any) { p["minimumSequence"] = 0 },
 		} {
 			transport := &discoveryFixture{repository: fixture(t), hook: func() { t.Fatal("invalid policy performed network I/O") }}
-			session := &DiscoverySession{transport: transport, source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}}
+			session := &discoverySession{transport: transport, source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}}
 			policy := mutateAdmission(t, v.Policy, mutation)
 			var err error
 			if prepare {

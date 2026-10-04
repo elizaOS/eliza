@@ -12,7 +12,7 @@ import (
 // repository, metadata base, or a different installed signer/cohort identity.
 // This API does not establish those live observations or authorize installation.
 type EnrolledDiscovery struct {
-	session    *DiscoverySession
+	session    *discoverySession
 	directory  string
 	identity   string
 	enrollment *Enrollment
@@ -50,7 +50,7 @@ func newEnrolledDiscovery(directory string, transport func(string) (discoveryTra
 	if err != nil {
 		return nil, err
 	}
-	return &EnrolledDiscovery{session: &DiscoverySession{transport: network}, directory: directory, identity: identity, enrollment: enrollment, config: config}, nil
+	return &EnrolledDiscovery{session: &discoverySession{transport: network}, directory: directory, identity: identity, enrollment: enrollment, config: config}, nil
 }
 func (d *EnrolledDiscovery) Close() { d.session.Close() }
 func (d *EnrolledDiscovery) unchanged() error {

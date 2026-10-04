@@ -61,7 +61,7 @@ func stageFixture(t *testing.T) *stagingFixture {
 	r.body = release
 	r.publish(t, 1)
 	schedule, cache := discoveryDirs(t)
-	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
+	session := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, e := session.RunPrepared(schedule, cache, state, f.prepared, r.root, baseURL, f.device, p, 0)
 	if e != nil || result.Status != "admitted" {
 		t.Fatalf("%+v %v", result, e)

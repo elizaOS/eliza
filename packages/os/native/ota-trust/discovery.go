@@ -12,10 +12,10 @@ type discoveryTransport interface {
 	RetryAfterMillis() int64
 }
 
-// DiscoverySession is single-use. Android must Close it on job cancellation.
+// discoverySession owns one attempt; Close cancels its transport.
 // Inputs are provisioned native values, never renderer or downloaded settings.
 // It authenticates metadata only; a result is not installation authorization.
-type DiscoverySession struct {
+type discoverySession struct {
 	mu        sync.Mutex
 	transport discoveryTransport
 	source    TrustedTimeSource
@@ -32,7 +32,7 @@ type DiscoveryResult struct {
 	AuthorizationID string
 }
 
-func (s *DiscoverySession) Close() {
+func (s *discoverySession) Close() {
 	s.closed.Store(true)
 	s.transport.Close()
 }
@@ -40,10 +40,10 @@ func (s *DiscoverySession) Close() {
 // Run reads fresh authenticated bounds from the bound native time source.
 // Schedule persistence must succeed before any authenticated bytes are exposed.
 // A caller must still recheck channel generation during admission and commit.
-func (s *DiscoverySession) Run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64) (*DiscoveryResult, error) {
+func (s *discoverySession) Run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64) (*DiscoveryResult, error) {
 	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, channel, distribution, generation, nil)
 }
-func (s *DiscoverySession) run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64, admit func([]byte, *TrustedTimeInterval) (*AdmissionResult, error)) (*DiscoveryResult, error) {
+func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64, admit func([]byte, *TrustedTimeInterval) (*AdmissionResult, error)) (*DiscoveryResult, error) {
 	s.mu.Lock()
 	if s.used || s.closed.Load() {
 		s.mu.Unlock()
@@ -118,7 +118,7 @@ func (s *DiscoverySession) run(scheduleDirectory, trustDirectory string, pinnedR
 // scheduling. Only an admitted result exposes descriptor bytes for downloading.
 // policyJSON's time must come from the qualified native clock. Device fields
 // must come from current supervisor observations, not renderer-provided JSON.
-func (s *DiscoverySession) RunAdmitted(scheduleDirectory, trustDirectory, admissionDirectory string, pinnedRoot []byte, metadataBase string, deviceJSON, policyJSON []byte, generation int64) (*DiscoveryResult, error) {
+func (s *discoverySession) RunAdmitted(scheduleDirectory, trustDirectory, admissionDirectory string, pinnedRoot []byte, metadataBase string, deviceJSON, policyJSON []byte, generation int64) (*DiscoveryResult, error) {
 	var device admissionDevice
 	var policy admissionPolicy
 	if err := decodeAdmission(deviceJSON, &device); err != nil {
@@ -142,7 +142,7 @@ func (s *DiscoverySession) RunAdmitted(scheduleDirectory, trustDirectory, admiss
 // RunPrepared persists the exact candidate/recovery authorization before exposing
 // an admitted result. Use AuthorizationID as the production journal plan ID.
 // No record is created for deferred or already-installed outcomes.
-func (s *DiscoverySession) RunPrepared(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory string, pinnedRoot []byte, metadataBase string, deviceJSON, policyJSON []byte, generation int64) (*DiscoveryResult, error) {
+func (s *discoverySession) RunPrepared(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory string, pinnedRoot []byte, metadataBase string, deviceJSON, policyJSON []byte, generation int64) (*DiscoveryResult, error) {
 	var device admissionDevice
 	var policy admissionPolicy
 	if err := decodeAdmission(deviceJSON, &device); err != nil {
