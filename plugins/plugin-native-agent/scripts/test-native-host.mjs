@@ -14,6 +14,7 @@ try {
     [
       "--test",
       path.join(root, "test/native-host/android-runtime-inventory.node.mjs"),
+      path.join(root, "test/native-host/local-credential-client.node.mjs"),
     ],
     { stdio: "inherit", timeout: 60000 },
   );
