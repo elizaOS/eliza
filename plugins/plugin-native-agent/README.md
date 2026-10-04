@@ -81,3 +81,11 @@ supports standalone/launcher distributions and fixed runtime/UI observation stat
 reports never mark a journal healthy or authorize recovery. The Android contract
 checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
 IPC, process death and observation providers in their packaged applications.
+
+`NativeStorageDiagnostic` runs a disposable SQLite write/close/reopen/integrity
+probe in a dedicated no-backup namespace on API 26+. Hosts supply the namespace,
+absolute elapsed-time deadline, database-byte budget and cleanup entry limit.
+A private no-follow file lock fences orphan cleanup; unknown entries, links and
+foreign ownership reject before deletion. It never opens application databases
+or declares an update healthy. Android tests cover readback, orphan cleanup,
+expired/invalid policy and unsafe files while preserving an external sentinel.
