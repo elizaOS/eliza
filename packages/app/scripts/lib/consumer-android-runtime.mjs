@@ -56,6 +56,7 @@ export function buildConsumerAndroidRuntime({
   // Exclusive destination prevents a failed rebuild from leaving a mixed payload.
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.mkdirSync(output);
+  output = fs.realpathSync(output);
 
   function execute(args, extraEnv = {}) {
     execFileSync("bun", ["--no-env-file", "--no-install", ...args], {

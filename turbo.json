@@ -458,7 +458,7 @@
       "dependsOn": [
         "typecheck:deps",
         "@elizaos/core#build",
-        "@elizaos/plugin-assistant#build"
+        "@elizaos/plugin-local-inference#build"
       ]
     },
     "@elizaos/benchmark-framework#typecheck": {
