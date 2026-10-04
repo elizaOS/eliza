@@ -496,12 +496,11 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const eliza = resolveElizaRepoDir();
 
-  const { promoteSubactionsToActions } = await importFromEliza<{
-    promoteSubactionsToActions: (action: ActionLike) => ActionLike[];
-  }>(eliza, "@elizaos/core");
-  const { buildPlannerToolsFromActions } = await importFromEliza<{
-    buildPlannerToolsFromActions: (actions: ActionLike[]) => PlannerTool[];
-  }>(eliza, "@elizaos/core");
+  const { promoteSubactionsToActions, buildPlannerToolsFromActions } =
+    await importFromEliza<{
+      promoteSubactionsToActions: (action: ActionLike) => ActionLike[];
+      buildPlannerToolsFromActions: (actions: ActionLike[]) => PlannerTool[];
+    }>(eliza, "@elizaos/core");
   const { calendarSourcesAction } = await importFromEliza<{
     calendarSourcesAction: ActionLike;
   }>(eliza, "@elizaos/plugin-calendar");
@@ -511,12 +510,11 @@ async function main(): Promise<void> {
   const { default: imessagePlugin } = await importFromEliza<{
     default: PluginLike;
   }>(eliza, "@elizaos/plugin-imessage");
-  const { ownerScreenTimeAction } = await importFromEliza<{
-    ownerScreenTimeAction: ActionLike;
-  }>(eliza, "@elizaos/plugin-personal-assistant");
-  const { personalAssistantPlugin } = await importFromEliza<{
-    personalAssistantPlugin: PluginLike;
-  }>(eliza, "@elizaos/plugin-personal-assistant");
+  const { ownerScreenTimeAction, personalAssistantPlugin } =
+    await importFromEliza<{
+      ownerScreenTimeAction: ActionLike;
+      personalAssistantPlugin: PluginLike;
+    }>(eliza, "@elizaos/plugin-personal-assistant");
   const { appPhonePlugin } = await importFromEliza<{
     appPhonePlugin: PluginLike;
   }>(eliza, "@elizaos/plugin-native-phone/plugin");
