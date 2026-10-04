@@ -48,6 +48,7 @@ export interface HabitSummary {
 }
 
 export type CheckinBriefingSectionKey =
+  | "x"
   | "x_dms"
   | "x_timeline"
   | "x_mentions"

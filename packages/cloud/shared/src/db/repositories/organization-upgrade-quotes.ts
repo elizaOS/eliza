@@ -6,6 +6,10 @@ import {
   organizationUpgradeReviewSchema,
 } from "../../lib/services/organization-plan-change-contract";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
+import {
+  type OrganizationUpgradeProviderBinding,
+  organizationUpgradeProviderBindingSchema,
+} from "../../lib/services/organization-upgrade-provider-binding";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import { proratedAllowanceIncrease } from "../../lib/services/subscription-allowance-proration";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
@@ -30,13 +34,16 @@ export async function saveOrganizationUpgradeQuote(input: {
   identity: OrganizationSubscriptionSourceInput;
   captured: CapturedSource;
   review: OrganizationUpgradeReview;
+  providerBinding: OrganizationUpgradeProviderBinding;
 }) {
   const review = organizationUpgradeReviewSchema.parse(input.review);
+  const providerBinding = organizationUpgradeProviderBindingSchema.parse(input.providerBinding);
   return writeTransaction(async (tx) => {
     const current = await lockOrganizationPlanChangeSource(tx, input.identity);
     const now = await readPostLockDatabaseNow(tx);
     const source = current.source;
     assertOrganizationSubscription(source);
+    if (providerBinding.livemode !== (source.provider_environment === "live")) conflict();
     const target = resolveSubscriptionPlanDefinition(review.targetPlanKey, review.catalogVersion);
     const previous = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version);
     const start = source.current_period_start?.getTime();
@@ -77,6 +84,7 @@ export async function saveOrganizationUpgradeQuote(input: {
         source_digest: settlementDigest(current),
         review_digest: settlementDigest(review),
         review,
+        provider_binding: providerBinding,
         created_at: now,
         expires_at: new Date(review.expiresAt),
       })
@@ -126,4 +134,6 @@ export function assertCurrentOrganizationUpgradeQuote(
   )
     conflict();
   organizationUpgradeReviewSchema.parse(quote.review);
+  const binding = organizationUpgradeProviderBindingSchema.parse(quote.provider_binding);
+  if (binding.livemode !== (current.source.provider_environment === "live")) conflict();
 }

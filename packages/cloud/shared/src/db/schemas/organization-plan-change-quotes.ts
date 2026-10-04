@@ -13,6 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { OrganizationUpgradeReview } from "../../lib/services/organization-plan-change-contract";
+import type { OrganizationUpgradeProviderBinding } from "../../lib/services/organization-upgrade-provider-binding";
 import { billingIdentitySubjects } from "./billing-identities";
 import { billingSubscriptions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
@@ -35,6 +36,7 @@ export const organizationPlanChangeQuotes = pgTable(
     source_digest: text("source_digest").notNull(),
     review_digest: text("review_digest").notNull(),
     review: jsonb("review").$type<OrganizationUpgradeReview>().notNull(),
+    provider_binding: jsonb("provider_binding").$type<OrganizationUpgradeProviderBinding>(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull(),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumed_by_command_id: uuid("consumed_by_command_id"),
@@ -55,6 +57,21 @@ export const organizationPlanChangeQuotes = pgTable(
       .on(t.consumed_by_command_id)
       .where(sql`${t.consumed_by_command_id} IS NOT NULL`),
     tenant: index("organization_plan_quote_tenant_idx").on(t.organization_id, t.created_at),
+    providerBindingShape: check(
+      "organization_upgrade_quote_binding_shape",
+      sql`${t.provider_binding} IS NULL OR (
+ jsonb_typeof(${t.provider_binding})='object'
+ AND (${t.provider_binding}-ARRAY['sourcePriceId','targetPriceId','sourceProductId','targetProductId','livemode','apiVersion'])='{}'::jsonb
+ AND ${t.provider_binding}->>'sourcePriceId' ~ '^price_[A-Za-z0-9]+$'
+ AND ${t.provider_binding}->>'targetPriceId' ~ '^price_[A-Za-z0-9]+$'
+ AND ${t.provider_binding}->>'sourceProductId' ~ '^prod_[A-Za-z0-9]+$'
+ AND ${t.provider_binding}->>'targetProductId' ~ '^prod_[A-Za-z0-9]+$'
+ AND ${t.provider_binding}->>'sourcePriceId'<>${t.provider_binding}->>'targetPriceId'
+ AND ${t.provider_binding}->>'sourceProductId'<>${t.provider_binding}->>'targetProductId'
+ AND jsonb_typeof(${t.provider_binding}->'livemode')='boolean'
+ AND ${t.provider_binding}->>'apiVersion'='2024-11-20.acacia'
+) IS TRUE`,
+    ),
     shape: check(
       "organization_plan_quote_shape",
       sql`${t.subscription_revision}>0 AND ${t.target_plan_key} IN ('plus_monthly','pro_monthly') AND ${t.source_digest} ~ '^[a-f0-9]{64}$' AND ${t.review_digest} ~ '^[a-f0-9]{64}$' AND ${t.expires_at}>${t.created_at} AND (${t.consumed_by_command_id} IS NULL)=(${t.consumed_at} IS NULL)`,

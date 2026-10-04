@@ -2,10 +2,11 @@
  * This is not command admission, provider mutation or allowance publication.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import { organizationEntitlements } from "../schemas/organization-entitlements";
+import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
 import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 import {
   lockCurrentOrganizationSubscription,
@@ -35,6 +36,39 @@ export async function lockOrganizationPlanChangeSource(
   const locked = await lockOrganizationSubscriptionManager(tx, input, reject);
   const source = await lockCurrentOrganizationSubscription(tx, input, locked, reject);
   if (source.cancel_at_period_end) reject("scheduled_cancellation_requires_resolution");
+  // A revoked original actor cannot claim its expired command. Current manager
+  // authority may retire only provably unstarted intents without a live lease;
+  // started effects keep blocking admission until their outcome is reconciled.
+  await tx
+    .update(billingSubscriptionCommands)
+    .set({
+      status: sql`CASE WHEN ${billingSubscriptionCommands.status} = 'PREPARED' THEN 'SUPERSEDED' ELSE 'FAILED' END`,
+      error_code: "UPGRADE_REVIEW_EXPIRED_BEFORE_DISPATCH",
+      completed_at: sql`clock_timestamp()`,
+      updated_at: sql`clock_timestamp()`,
+      state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
+      lease_token: null,
+      lease_expires_at: null,
+    })
+    .where(
+      and(
+        eq(billingSubscriptionCommands.organization_id, input.organizationId),
+        isNull(billingSubscriptionCommands.app_id),
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        eq(billingSubscriptionCommands.kind, "upgrade"),
+        eq(billingSubscriptionCommands.organization_upgrade_dispatch_state, "ready"),
+        inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN"]),
+        or(
+          isNull(billingSubscriptionCommands.lease_expires_at),
+          lte(billingSubscriptionCommands.lease_expires_at, sql`clock_timestamp()`),
+        ),
+        originalCommandId ? ne(billingSubscriptionCommands.id, originalCommandId) : undefined,
+        sql`EXISTS (SELECT 1 FROM ${organizationPlanChangeQuotes}
+          WHERE ${organizationPlanChangeQuotes.consumed_by_command_id} = ${billingSubscriptionCommands.id}
+          AND ${organizationPlanChangeQuotes.organization_id} = ${billingSubscriptionCommands.organization_id}
+          AND ${organizationPlanChangeQuotes.expires_at} <= clock_timestamp())`,
+      ),
+    );
   const [pending] = await tx
     .select({ id: billingSubscriptionCommands.id })
     .from(billingSubscriptionCommands)

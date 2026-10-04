@@ -195,3 +195,11 @@ and elapsed realtime. No clock authority, enrollment or installation policy is
 enabled by these adapters. `NativePreparationInstrumentedTest` exercises Android
 lock/cancellation/path rejection and persisted clock bounds; it does not establish
 live signed-release discovery, installation or recovery acceptance.
+
+`native-host/gateway-artifact` stages and verifies the shared Android gateway
+layout, including task-runtime outputs, reviewed upstream modules and mobile DNS
+bundling. Hosts supply trusted source/output directories, product/upstream file
+lists, DNS dependencies, compiler environment and task build callback. They pin
+source identity, serialize staging and publish provenance only after success.
+Failed staging can leave partial files: verification rejects source/generated
+hash mismatches; this is not an atomic or durable publication API.
