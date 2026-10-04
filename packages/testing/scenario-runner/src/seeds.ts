@@ -1538,9 +1538,13 @@ function normalizeCalendarAttendees(
     }
     return {
       ...attendee,
-      email: readNonEmptyString(attendee.email),
-      displayName: readNonEmptyString(attendee.displayName),
-      responseStatus: readNonEmptyString(attendee.responseStatus),
+      email: typeof attendee.email === "string" ? attendee.email : null,
+      displayName:
+        typeof attendee.displayName === "string" ? attendee.displayName : null,
+      responseStatus:
+        typeof attendee.responseStatus === "string"
+          ? attendee.responseStatus
+          : null,
       self: attendee.self === true,
       organizer: attendee.organizer === true,
       optional: attendee.optional === true,
@@ -1562,6 +1566,9 @@ function calendarEventMetadata(
     ...(authored ?? {}),
     source: "scenario-seed",
     kind: "calendar-event",
+    ...(seed.attendees !== undefined
+      ? { authoredAttendees: seed.attendees }
+      : {}),
     ...(ctx.scenarioId ? { scenarioId: ctx.scenarioId } : {}),
     ...(joinLink ? { joinLink } : {}),
     ...(cancelledAt ? { cancelledAt } : {}),
