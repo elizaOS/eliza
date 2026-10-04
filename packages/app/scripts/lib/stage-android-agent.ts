@@ -1671,42 +1671,8 @@ export async function stageAndroidAgentRuntime({
   // under a consumer/white-label repo, because their `scripts/` and
   // `packages/` directories live one level OUT from the eliza checkout.
   //
-  // The legacy fallback to `<repoRoot>/packages/agent/dist-mobile/` is kept
-  // for the standalone-eliza-monorepo build path where this same script
-  // also runs and the bundle sits at the consumer-repo root.
-  const elizaPackagesAgentDistMobile = path.resolve(
-    __dirname,
-    "..", // scripts/
-    "..", // app/
-    "..", // packages/
-    "agent",
-    "dist-mobile",
-  );
-  const consumerPackagesAgentDistMobile = path.resolve(
-    path.dirname(spikeDir),
-    "..",
-    "packages",
-    "agent",
-    "dist-mobile",
-  );
-  const distMobileCandidates = [
-    elizaPackagesAgentDistMobile,
-    consumerPackagesAgentDistMobile,
-  ];
-  let distMobileDir = null;
-  let distBundle = null;
-  for (const candidate of distMobileCandidates) {
-    const bundle = path.join(candidate, "agent-bundle.js");
-    if (fs.existsSync(bundle)) {
-      distMobileDir = candidate;
-      distBundle = bundle;
-      break;
-    }
-  }
-  if (!distBundle) {
-    distMobileDir = elizaPackagesAgentDistMobile;
-    distBundle = path.join(distMobileDir, "agent-bundle.js");
-  }
+  const distMobileDir = path.resolve(__dirname, "../../../agent/dist-mobile");
+  const distBundle = path.join(distMobileDir, "agent-bundle.js");
   if (!fs.existsSync(distBundle)) {
     throw new Error(
       `No mobile agent bundle found at ${distBundle}. Run ` +
