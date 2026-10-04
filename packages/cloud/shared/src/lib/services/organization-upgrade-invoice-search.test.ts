@@ -1,6 +1,5 @@
-import { expect, mock, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import { findOriginalUpgradeInvoiceEvent as find } from "./organization-upgrade-invoice-search";
-import { createOrganizationUpgradeReadBudget } from "./organization-upgrade-read-budget";
 
 const observedAt = new Date("2026-10-04T12:00:00Z");
 const start = Math.floor(observedAt.getTime() / 1000) - 30;
@@ -54,7 +53,7 @@ test("finds only original attribution across the complete fixed-window pages", a
       created: { gte: start, lte: start + 30 },
       starting_after: "evt_unrelated",
     },
-    { apiVersion: "2024-11-20.acacia", timeout: 10_000, maxNetworkRetries: 0 },
+    { apiVersion: "2024-11-20.acacia" },
   ]);
 });
 test("an early match cannot hide a conflicting later invoice", async () => {
@@ -112,32 +111,53 @@ test("provider failure after a match cannot return partial evidence", async () =
     "provider unavailable",
   );
 });
-test("search budget exhaustion retains uncertainty despite an early match", async () => {
+test("recovers original attribution after more than one hundred complete-window pages", async () => {
   const pages = Array.from({ length: 100 }, (_, i) =>
-    page([event(`evt_${i}`, "in_original", i === 0 ? "owned-key" : "unrelated")], true),
+    page([event(`evt_unrelated${i}`, "in_unrelated", "unrelated")], true),
   );
+  pages.push(page([event("evt_original")]));
+  const r = reader(pages);
+  const result = await find({ reader: r, originalRequest, observedAt });
+  expect(result.origin.invoiceId).toBe("in_original");
+  expect(r.list).toHaveBeenCalledTimes(101);
+});
+test("an early match cannot hide a conflicting invoice beyond page one hundred", async () => {
+  const pages = [page([event("evt_original")], true)];
+  pages.push(
+    ...Array.from({ length: 100 }, (_, i) =>
+      page([event(`evt_unrelated${i}`, "in_unrelated", "unrelated")], true),
+    ),
+  );
+  pages.push(page([event("evt_conflict", "in_different")]));
   const r = reader(pages);
   await expect(find({ reader: r, originalRequest, observedAt })).rejects.toThrow();
-  expect(r.list).toHaveBeenCalledTimes(100);
+  expect(r.list).toHaveBeenCalledTimes(102);
 });
 
-test("late complete page cannot authorize an origin after the shared deadline", async () => {
-  let clock = 0;
-  const budget = createOrganizationUpgradeReadBudget(100, () => clock);
-  const r = {
-    list: mock(async () => {
-      clock = 101;
-      return page([event()]);
-    }),
-  };
-  await expect(find({ reader: r, originalRequest, observedAt, budget })).rejects.toThrow();
-  expect(r.list).toHaveBeenCalledTimes(1);
-});
-test("exhausted budget makes no additional provider request", async () => {
-  let clock = 0;
-  const budget = createOrganizationUpgradeReadBudget(100, () => clock);
-  clock = 100;
-  const r = reader([page([event()])]);
-  await expect(find({ reader: r, originalRequest, observedAt, budget })).rejects.toThrow();
-  expect(r.list).not.toHaveBeenCalled();
+test("repeated healthy 25-second observations complete without a separate 20-second cutoff", async () => {
+  let elapsed = 0;
+  const clock = spyOn(performance, "now").mockImplementation(() => elapsed);
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      elapsed = 0;
+      let calls = 0;
+      const r = {
+        list: mock(async () => {
+          const index = calls++;
+          elapsed += 500;
+          return page(
+            [event(`evt_page${index}`, "in_original", index === 49 ? "owned-key" : "unrelated")],
+            index < 49,
+          );
+        }),
+      };
+      const result = await find({ reader: r, originalRequest, observedAt });
+      expect(result.origin.invoiceId).toBe("in_original");
+      expect(elapsed).toBe(25000);
+      expect(elapsed).toBeLessThan(60000);
+      expect(r.list).toHaveBeenCalledTimes(50);
+    }
+  } finally {
+    clock.mockRestore();
+  }
 });

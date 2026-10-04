@@ -7,16 +7,11 @@ import { readOrganizationUpgradeRecoveryContext } from "../../db/repositories/or
 import { releaseOrganizationUpgradeRecovery } from "../../db/repositories/organization-upgrade-recovery-release";
 import { requireStripe } from "../stripe";
 import { findOriginalUpgradeInvoiceEvent } from "./organization-upgrade-invoice-search";
-import { createOrganizationUpgradeReadBudget } from "./organization-upgrade-read-budget";
 import { observeOriginalUpgradeInvoiceState } from "./organization-upgrade-recovery-state";
-export async function reconcileOriginalOrganizationUpgrade(
-  input: {
-    organizationId: string;
-    commandId: string;
-  },
-  budgetMs = 20_000,
-) {
-  const budget = createOrganizationUpgradeReadBudget(budgetMs);
+export async function reconcileOriginalOrganizationUpgrade(input: {
+  organizationId: string;
+  commandId: string;
+}) {
   const claim = await claimOrganizationUpgradeObservation(input);
   if (!claim) {
     const context = await readOrganizationUpgradeRecoveryContext(input);
@@ -33,13 +28,13 @@ export async function reconcileOriginalOrganizationUpgrade(
   try {
     const context = await readOrganizationUpgradeRecoveryContext(input);
     const stripe = requireStripe();
+    const options = { apiVersion: context.binding.apiVersion };
     let origin = context.origin;
     if (!origin) {
       const found = await findOriginalUpgradeInvoiceEvent({
         reader: stripe.events,
         originalRequest: context.originalRequest,
         observedAt: new Date(),
-        budget,
       });
       origin = (
         await recordOrganizationUpgradeInvoiceOrigin({
@@ -48,12 +43,7 @@ export async function reconcileOriginalOrganizationUpgrade(
         })
       ).receipt;
     }
-    const rawInvoice = await stripe.invoices.retrieve(
-      origin.invoice_id,
-      {},
-      budget.requestOptions(),
-    );
-    budget.remainingMs();
+    const rawInvoice = await stripe.invoices.retrieve(origin.invoice_id, {}, options);
     const state = observeOriginalUpgradeInvoiceState({
       raw: rawInvoice,
       invoiceId: origin.invoice_id,
@@ -66,9 +56,8 @@ export async function reconcileOriginalOrganizationUpgrade(
       const rawSubscription = await stripe.subscriptions.retrieve(
         origin.subscription_id,
         {},
-        budget.requestOptions(),
+        options,
       );
-      budget.remainingMs();
       const finalized = await finalizePaidOrganizationUpgrade({
         ...identity,
         rawInvoice,
