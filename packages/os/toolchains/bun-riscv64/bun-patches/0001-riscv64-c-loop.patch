@@ -1,3 +1,20 @@
+diff --git a/patches/mimalloc/atomic-pause.patch b/patches/mimalloc/atomic-pause.patch
+new file mode 100644
+index 0000000..c093683
+--- /dev/null
++++ b/patches/mimalloc/atomic-pause.patch
+@@ -0,0 +1,11 @@
++--- a/include/mimalloc/atomic.h
+++++ b/include/mimalloc/atomic.h
++@@ -411,7 +411,7 @@
++ }
++ #else
++ static inline void mi_atomic_pause(void) {
++-  mi_atomic_thread_fence(mi_memory_order_seq_cst);
+++  mi_atomic(thread_fence)(mi_memory_order(seq_cst));
++ }
++ #endif
++ 
 diff --git a/scripts/build.ts b/scripts/build.ts
 index 46e0597..d1c5759 100644
 --- a/scripts/build.ts
@@ -173,6 +190,19 @@ index 224d1f3..53fb3e4 100644
      const srcDir = depSourceDir(cfg, "libjpeg-turbo");
      const hostWin = cfg.host.os === "windows";
      return {
+diff --git a/scripts/build/deps/mimalloc.ts b/scripts/build/deps/mimalloc.ts
+index 5e491a9..7b13da5 100644
+--- a/scripts/build/deps/mimalloc.ts
++++ b/scripts/build/deps/mimalloc.ts
+@@ -24,6 +24,8 @@ export const mimalloc: Dependency = {
+     commit: MIMALLOC_COMMIT,
+   }),
+ 
++  patches: cfg => cfg.riscv64 ? ["patches/mimalloc/atomic-pause.patch"] : [],
++
+   build: cfg => {
+     // ─── Override behavior (global malloc replacement) ───
+     //   ASAN:    OFF — ASAN interceptors must see the real malloc.
 diff --git a/scripts/build/deps/tinycc.ts b/scripts/build/deps/tinycc.ts
 index 7fa186c..8c8f267 100644
 --- a/scripts/build/deps/tinycc.ts
