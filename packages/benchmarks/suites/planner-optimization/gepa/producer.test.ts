@@ -328,25 +328,29 @@ test("last evaluator mutation of producer source invalidates the entire run", as
   );
   const original = await readFile(path, "utf8");
   try {
-    await expect(
-      runGepaPlannerOptimization(manifest(), {
-        python,
-        adapterSourcePaths,
-        reflect,
-        evaluate: async (evidence, input) => {
-          const score = await evaluate(evidence);
-          if (
-            input.caseId === "UNTOUCHED_TEST" &&
-            evidence.input.candidate.prompt === "fixture improved instruction"
-          )
-            await writeFile(
-              path,
-              `${original}\n# Last evaluator source mutation fixture.\n`,
-            );
-          return score;
-        },
-      }),
-    ).rejects.toMatchObject({ code: "GEPA_PRODUCER_SOURCE_INVALID" });
+    const outcome = await runGepaPlannerOptimization(manifest(), {
+      python,
+      adapterSourcePaths,
+      reflect,
+      evaluate: async (evidence, input) => {
+        const score = await evaluate(evidence);
+        if (
+          input.caseId === "UNTOUCHED_TEST" &&
+          evidence.input.candidate.prompt === "fixture improved instruction"
+        )
+          await writeFile(
+            path,
+            `${original}\n# Last evaluator source mutation fixture.\n`,
+          );
+        return score;
+      },
+    }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(outcome, String(outcome)).toMatchObject({
+      code: "GEPA_PRODUCER_SOURCE_INVALID",
+    });
   } finally {
     await writeFile(path, original);
   }
