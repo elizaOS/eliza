@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "react", "react-dom"],
+    "types": ["node", "react", "react-dom", "vite/client"],
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noEmit": true,

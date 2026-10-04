@@ -14,6 +14,14 @@
 
 // Preserve the public UI surface; only the explicit fixture seams below differ.
 export * from "../../../../ui/src/index.ts";
+export { useAgentElement } from "./elizaos-ui-agent-surface";
+export {
+  dispatchFocusConnector,
+  dispatchNavigateViewEvent,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "./elizaos-ui-events";
+export { useAppSelector } from "./elizaos-ui-state";
 
 import type {
   ButtonHTMLAttributes,
