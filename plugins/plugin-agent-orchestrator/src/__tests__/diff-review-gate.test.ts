@@ -383,6 +383,8 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["Dockerfile", `env DB_PASSWORD=${value}`],
     ["deploy/values.yaml", `password: &dbPassword ${value}`],
     ["deploy/values.yaml", `password: !!str ${value}`],
+    ["deploy/values.yaml", "password: !!str false"],
+    ["deploy/values.yaml", "password: &db !!str null"],
   ])("blocks %s line %s and keeps the value out of findings", (file, line) => {
     const result = review(file, line);
     expect(result.passed).toBe(false);
@@ -414,6 +416,10 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["chart/values.yaml", "  passwordFile: /run/secrets/db"],
     ["chart/values.yaml", "  password: null"],
     ["chart/values.yaml", "  password: null # supplied separately"],
+    ["chart/values.yaml", "  password: !!bool false # disabled"],
+    ["chart/values.yaml", '  password: !!bool "false" # disabled'],
+    ["chart/values.yaml", "  password: !!null null # supplied separately"],
+    ["chart/values.yaml", '  password: !!null "null" # supplied separately'],
     [
       "k8s/deployment.yaml",
       "automountServiceAccountToken: false # disable automatic mounting",
@@ -439,6 +445,10 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
   it.each([
     ["unquoted", `value: ${value}`],
     ["quoted", `value: "${value}"`],
+    ["quoted boolean spelling", 'value: "false"'],
+    ["quoted null spelling", "value: 'null'"],
+    ["quoted alias spelling", 'value: "*reference"'],
+    ["explicit string boolean spelling", "value: !!str false"],
   ])(
     "blocks a Kubernetes env entry with a %s literal value",
     (_case, valueLine) => {
@@ -466,8 +476,44 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
   });
 
   it.each([
+    ["another hunk", ["@@ -30 +30 @@"]],
+    [
+      "another file",
+      [
+        "diff --git a/other.yaml b/other.yaml",
+        "--- a/other.yaml",
+        "+++ b/other.yaml",
+        "@@ -30 +30 @@",
+      ],
+    ],
+  ])(
+    "does not bind an env name to an unrelated value in %s",
+    (_case, boundary) => {
+      const diff = [
+        "diff --git a/k8s/deployment.yaml b/k8s/deployment.yaml",
+        "--- a/k8s/deployment.yaml",
+        "+++ b/k8s/deployment.yaml",
+        "@@ -9,2 +9,2 @@",
+        "-        # previous description",
+        "+        # revised description",
+        "         - name: DB_PASSWORD",
+        ...boundary,
+        "-          value: info",
+        "+          value: debug",
+      ].join("\n");
+      expect(
+        reviewDiff({
+          diff,
+          changedFiles: ["k8s/deployment.yaml", "other.yaml"],
+        }).passed,
+      ).toBe(true);
+    },
+  );
+
+  it.each([
     ["a secret reference", "valueFrom:"],
     ["an interpolated value", "value: $(DB_PASSWORD)"],
+    ["a quoted interpolated value", 'value: "$(DB_PASSWORD)"'],
   ])("allows a Kubernetes env entry with %s", (_case, valueLine) => {
     const result = reviewDiff({
       diff: addedFileDiff("k8s/deployment.yaml", envEntry(valueLine)),

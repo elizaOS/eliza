@@ -314,18 +314,22 @@ function forbiddenReason(
  */
 function newFileLines(
   diff: string,
-): { file: string; line: string; added: boolean }[] {
-  const out: { file: string; line: string; added: boolean }[] = [];
+): { file: string; hunk: number; line: string; added: boolean }[] {
+  const out: { file: string; hunk: number; line: string; added: boolean }[] =
+    [];
   let file = "";
+  let hunk = 0;
   for (const line of diff.split("\n")) {
     // `+++ b/file` header lines start with `+++`; skip those, keep real adds.
     if (line.startsWith("+++")) {
       const target = line.slice(3).trim();
       file = target.startsWith("b/") ? target.slice(2) : target;
+    } else if (line.startsWith("@@")) {
+      hunk += 1;
     } else if (line.startsWith("+")) {
-      out.push({ file, line: line.slice(1), added: true });
+      out.push({ file, hunk, line: line.slice(1), added: true });
     } else if (line.startsWith(" ")) {
-      out.push({ file, line: line.slice(1), added: false });
+      out.push({ file, hunk, line: line.slice(1), added: false });
     }
   }
   return out;
@@ -416,14 +420,16 @@ export function reviewDiff(
   // 3) Secrets in ADDED lines — HARD.
   const seenSecretLines = new Set<string>();
   // Kubernetes env entries put the name and the literal on separate lines:
-  // `- name: DB_PASSWORD` then `value: …`. Remember the pending name per file.
-  let envName: { file: string; name: string } | null = null;
-  for (const { file, line, added } of newFileLines(diff)) {
+  // `- name: DB_PASSWORD` then `value: …`. Remember the pending name only within the same file and hunk.
+  let envName: { file: string; hunk: number; name: string } | null = null;
+  for (const { file, hunk, line, added } of newFileLines(diff)) {
+    if (envName && (envName.file !== file || envName.hunk !== hunk))
+      envName = null;
     let secret = added && matchesSecret(line, file);
     if (YAML_FILE.test(file)) {
       const named = YAML_ENV_NAME.exec(line);
       if (named) {
-        envName = { file, name: named[1] };
+        envName = { file, hunk, name: named[1] };
       } else if (envName?.file === file && line.trim() && !/^\s*#/.test(line)) {
         const value = YAML_ENV_VALUE.exec(line);
         if (
@@ -607,12 +613,27 @@ function isLiteralYamlScalar(value: string): boolean {
   // An anchor or tag can prefix the literal itself (`&db hunter2`,
   // `!!str hunter2`); an alias (`*db`) or a bare anchor/tag is not one.
   // A trailing comment is not part of the scalar.
+  const properties = /^(?:[&!]\S*\s+)+/.exec(value)?.[0] ?? "";
   const scalar = value
-    .replace(/^(?:[&!]\S*\s+)+/, "")
+    .slice(properties.length)
     .replace(/\s+#.*$/, "")
     .trimEnd();
-  const unquoted = /^(["'])(.*)\1$/.exec(scalar)?.[2] ?? scalar;
-  if (!unquoted || /^[|>&*!{[$~#]/.test(unquoted)) return false;
+  const quoted = /^(["'])(.*)\1$/.exec(scalar);
+  const unquoted = quoted?.[2] ?? scalar;
+  if (!unquoted) return false;
+  const explicitType = /(?:^|\s)!!(str|bool|null)(?:\s|$)/.exec(
+    properties,
+  )?.[1];
+  if (
+    explicitType === "bool" &&
+    /^(?:true|false|yes|no|on|off)$/i.test(unquoted)
+  )
+    return false;
+  if (explicitType === "null" && /^(?:null|~)$/i.test(unquoted)) return false;
+  // Quoted strings retain their literal type, except deployment interpolation.
+  if (quoted) return !/^\$/.test(unquoted);
+  if (/^[|>&*!{[$~#]/.test(unquoted)) return false;
+  if (explicitType === "str") return true;
   return !/^(?:null|true|false|yes|no|on|off)$/i.test(unquoted);
 }
 
