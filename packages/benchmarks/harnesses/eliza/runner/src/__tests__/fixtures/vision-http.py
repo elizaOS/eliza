@@ -1,6 +1,7 @@
 """Boot the candidate's real HTTP/runtime stack and assert missing vision fails."""
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -22,6 +23,16 @@ def interrupted(_signum, _frame):
 
 signal.signal(signal.SIGTERM, interrupted)
 
+
+def timeout_seconds(name, fallback):
+    value = float(os.environ.get(name, fallback))
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
+    return value
+
+
+startup_timeout = timeout_seconds("ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S", "90")
+request_timeout = timeout_seconds("ELIZA_BENCH_TEST_REQUEST_TIMEOUT_S", "30")
 root = Path(os.environ["BENCHMARK_VISION_TEST_OUTPUT"])
 root.mkdir(parents=True, exist_ok=True)
 server_entry = Path(os.environ["BENCHMARK_VISION_SERVER_ENTRY"])
@@ -190,19 +201,21 @@ with (
     )
     try:
         url = f"http://127.0.0.1:{port}/api/benchmark/"
-        deadline = time.monotonic() + 90
+        deadline = time.monotonic() + startup_timeout
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError(
-                    f"server exited {process.returncode}; see http-server.log"
+                    f"server exited {process.returncode}; see {log_path}"
                 )
             try:
                 urllib.request.urlopen(url + "health", timeout=1).close()
                 break
-            except (urllib.error.URLError, TimeoutError):
+            except (urllib.error.URLError, TimeoutError, socket.timeout):
                 time.sleep(0.25)
         else:
-            raise TimeoutError("Server startup exceeded90seconds")
+            raise TimeoutError(
+                f"Server startup exceeded {startup_timeout}s; see {log_path}"
+            )
         payload = {
             "text": "Inspect this screenshot.",
             "context": {
@@ -233,7 +246,7 @@ with (
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=request_timeout) as response:
                 status, body = response.status, response.read().decode()
         except urllib.error.HTTPError as error:
             status, body = error.code, error.read().decode()
