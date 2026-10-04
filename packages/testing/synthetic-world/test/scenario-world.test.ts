@@ -253,3 +253,63 @@ test("closing a world interrupts a partial HTTP body before waiting for its leas
     await rm(root, { recursive: true, force: true });
   }
 }, 60_000);
+
+test("seed-command cancellation does not cancel an already-published world", async () => {
+  const root = await mkdtemp(
+    path.join(tmpdir(), "synthetic-seed-cancellation-"),
+  );
+  const store = new SqliteSyntheticEnvironmentLeaseStore(
+    path.join(root, "lease.sqlite"),
+  );
+  const command = new AbortController();
+  const manifest = {
+    version: 1 as const,
+    namespace: "seed-cancellation",
+    manifestId: "seed-cancellation",
+    domains: {
+      slack: {
+        seed: [
+          {
+            method: "POST",
+            path: "/api/chat.postMessage",
+            body: { channel: "C001", text: "seeded" },
+          },
+        ],
+      },
+    },
+  };
+  const world = await startSyntheticScenarioWorld({
+    leaseStore: store,
+    manifest,
+    initializationSignal: command.signal,
+  });
+  try {
+    const reason = new Error("seed command completed");
+    command.abort(reason);
+    expect(world.signal.aborted).toBe(false);
+    const response = await fetch(
+      `${world.endpoints.slack}/api/chat.postMessage`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel: "C001", text: "after seed" }),
+      },
+    );
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(JSON.stringify(world.snapshot())).toContain("after seed");
+    await expect(
+      startSyntheticScenarioWorld({
+        leaseStore: store,
+        manifest: { ...manifest, namespace: "cancelled-before-acquire" },
+        initializationSignal: command.signal,
+      }),
+    ).rejects.toBe(reason);
+    expect(await store.read("cancelled-before-acquire")).toBeNull();
+  } finally {
+    await world.close();
+    expect((await store.read(manifest.namespace))?.status).toBe("released");
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
