@@ -547,9 +547,15 @@ export function createCloudRoutes({
         return true;
       }
       // Auth owns sign-in factors; keep this transport separate from Google
-      // connector consent and never forward caller-supplied authority or URLs.
+      // connector consent. Auth validates callback data against its private attempt;
+      // callers never select an outbound destination or supply authority.
       const accountMethods = {
         "/cloud/account/methods": "account-methods",
+        "/cloud/account/methods/google/start": "account-google-start",
+        "/cloud/account/methods/google/return": "account-google-return",
+        "/cloud/account/methods/google/status": "account-google-status",
+        "/cloud/account/methods/google/complete": "account-google-complete",
+        "/cloud/account/methods/google/cancel": "account-google-cancel",
         "/cloud/account/methods/unlink": "account-unlink",
         "/cloud/account/methods/phone/start": "account-phone-start",
         "/cloud/account/methods/phone/verify": "account-phone-verify",

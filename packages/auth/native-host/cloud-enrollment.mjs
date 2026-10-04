@@ -35,6 +35,21 @@ function sessionExpiry(token) {
     return null;
   }
 }
+// Admission only: Auth and Cloud still verify the signature and account ownership.
+function personalSessionUser(token) {
+  try {
+    const claims = JSON.parse(
+      Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
+    );
+    return typeof claims.userId === "string" &&
+      claims.userId &&
+      claims.tenantId === `personal-${claims.userId}`
+      ? claims.userId
+      : null;
+  } catch {
+    return null;
+  }
+}
 const maskDestination = (method, value) =>
   method === "phone"
     ? `\u2022\u2022\u2022${value.slice(-4)}`
@@ -51,6 +66,7 @@ export function createNativeCloudAuth({
   auth = "https://eliza.steward.fi",
   tenant = "elizacloud",
   binding,
+  accountLinkRedirectUri,
   appName,
   deviceName = appName,
   messages = {},
@@ -284,7 +300,9 @@ export function createNativeCloudAuth({
     }
     if (
       verified.id !== expected.account.id ||
-      verified.organizationId !== expected.account.organizationId
+      verified.organizationId !== expected.account.organizationId ||
+      (expected.purpose === "account" &&
+        personalSessionUser(value.token) !== verified.id)
     ) {
       clearBilling();
       throw fail(
@@ -318,6 +336,12 @@ export function createNativeCloudAuth({
         : { status: "required" };
     }
     if (operation === "billing-start") {
+      if (
+        input.purpose !== undefined &&
+        !["billing", "account"].includes(input.purpose)
+      )
+        throw fail("Choose a supported verification purpose.");
+      const purpose = input.purpose ?? "billing";
       const active = await readActive();
       check(ticket);
       if (!active)
@@ -379,7 +403,10 @@ export function createNativeCloudAuth({
       const value = await call(
           auth,
           method === "phone" ? "/auth/sms/send" : "/auth/email/send",
-          { ...identity, tenantId: tenant },
+          {
+            ...identity,
+            ...(purpose === "account" ? {} : { tenantId: tenant }),
+          },
           undefined,
           ticket,
         ),
@@ -390,6 +417,7 @@ export function createNativeCloudAuth({
           502,
         );
       billingAttempt = {
+        purpose,
         id: opaque(),
         method,
         identity,
@@ -429,7 +457,13 @@ export function createNativeCloudAuth({
           billingAttempt.method === "phone"
             ? "/auth/sms/verify"
             : "/auth/email/code/verify",
-          { ...billingAttempt.identity, code: input.code, tenantId: tenant },
+          {
+            ...billingAttempt.identity,
+            code: input.code,
+            ...(billingAttempt.purpose === "account"
+              ? {}
+              : { tenantId: tenant }),
+          },
           undefined,
           ticket,
         ),
@@ -488,7 +522,8 @@ export function createNativeCloudAuth({
       !latest ||
       latest.token !== expectedToken ||
       original.id !== replacement.id ||
-      original.organizationId !== replacement.organizationId
+      original.organizationId !== replacement.organizationId ||
+      personalSessionUser(token) !== replacement.id
     ) {
       clearBilling();
       throw fail(
@@ -501,7 +536,11 @@ export function createNativeCloudAuth({
       throw fail("Account security check expired", 410);
   }
   accountMethods = createNativeAccountMethods({
-    getAuthority: currentBilling,
+    accountLinkRedirectUri,
+    getAuthority: async () => {
+      const held = await currentBilling();
+      return held && personalSessionUser(held.token) ? held : null;
+    },
     clearAuthority: clearBilling,
     replaceAuthority: replaceAccountAuthority,
     request: (path, input, token, method, ticket) =>
