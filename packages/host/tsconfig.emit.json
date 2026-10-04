@@ -6,7 +6,8 @@
     "outDir": "dist",
     "noEmit": false,
     "declaration": true,
-    "declarationMap": false
+    "declarationMap": false,
+    "rewriteRelativeImportExtensions": true
   },
   "exclude": ["src/**/*.test.ts", "src/**/*.fixture.ts", "dist", "node_modules"]
 }

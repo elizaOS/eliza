@@ -3,36 +3,12 @@
  * keep clean-checkout tests independent of prebuilt peer-package artifacts.
  */
 
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 export default defineConfig({
   resolve: {
     conditions: ["eliza-source"],
-    alias: [
-      ...Object.entries({
-        "@elizaos/auth/auth/token-expiry": fileURLToPath(
-          new URL(
-            "../../packages/auth/src/auth/token-expiry.ts",
-            import.meta.url,
-          ),
-        ),
-        "@elizaos/auth/auth": new URL(
-          "../../packages/auth/src/auth/index.ts",
-          import.meta.url,
-        ).pathname,
-        // The auth source alias pulls in @elizaos/auth/vault, which resolves only
-        // through its built dist; pin it to source for clean-checkout runs.
-        "@elizaos/auth/vault": fileURLToPath(
-          new URL("../../packages/auth/src/vault/index.ts", import.meta.url),
-        ),
-        "@elizaos/plugin-sql": fileURLToPath(
-          new URL("../plugin-sql/src/index.ts", import.meta.url),
-        ),
-      }).map(([find, replacement]) => ({
-        find: new RegExp(`^${find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
-        replacement,
-      })),
-    ],
+    alias: buildWorkspaceSourceAliases(),
   },
   test: {
     environment: "node",

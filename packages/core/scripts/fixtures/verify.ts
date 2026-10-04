@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
+import { buildWalletRpcUpdateRequest } from "@elizaos/contracts";
 import {
 	AgentRuntime,
 	createLogger,
@@ -261,7 +262,7 @@ try {
 		solana: "eliza-cloud",
 	});
 	assert.deepEqual(
-		publicApi.buildWalletRpcUpdateRequest({
+		buildWalletRpcUpdateRequest({
 			rpcFieldValues: walletFields,
 			selectedProviders: walletProviders,
 			selectedNetwork: "testnet",
@@ -347,7 +348,6 @@ try {
 		"computeCallCostUsd",
 		"MODEL_PRICES_USD_PER_M_TOKENS",
 		"SQLiteDatabaseAdapter",
-		"trajectoryToPlaintext",
 		"messageHandlerTemplate",
 		"SetupStateMachine",
 		"CLISetupAdapter",
