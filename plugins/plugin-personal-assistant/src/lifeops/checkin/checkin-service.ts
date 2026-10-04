@@ -401,6 +401,10 @@ export function renderMorningCheckinReport(
   let gmailDisconnected = false;
   for (const section of report.briefingSections) {
     if (section.error && section.coverage !== "partial") {
+      if (section.key === "x") {
+        unavailable.push("X");
+        continue;
+      }
       if (
         section.key === "gmail" &&
         section.error === "Google Gmail is not connected."
@@ -1554,9 +1558,7 @@ async function collectBriefingSections(args: {
     xError = "The configured X connection needs reauthorization.";
   const readableX = xStatus?.connected;
   const sections = await Promise.all([
-    ...(xError
-      ? [Promise.resolve(unavailableSection("x_dms", "X", xError))]
-      : []),
+    ...(xError ? [Promise.resolve(unavailableSection("x", "X", xError))] : []),
     ...(readableX && xStatus?.dmRead ? [collectXDmSection(args.source)] : []),
     ...(readableX && xStatus?.feedRead
       ? [
