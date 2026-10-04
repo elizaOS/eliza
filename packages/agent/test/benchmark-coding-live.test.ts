@@ -6,7 +6,6 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
-import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   createPlannerTokenPacer,
   plannerRateLimitEvidence,
@@ -15,6 +14,7 @@ import {
   summarizePlannerTrajectories,
   validatePlannerFixture,
 } from "../../benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-planner-workload.ts";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const enabled = process.env.BENCHMARK_NATIVE_CODING_E2E === "1";
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
