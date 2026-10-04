@@ -3147,59 +3147,74 @@ async function searchConversationMessages(
     return true;
   }
   try {
-    // Corpus-wide FTS + trigram ranking in the store (#13534): the DB ranks
-    // by `ts_rank_cd` over a `websearch_to_tsquery` match (multi-word,
-    // non-adjacent, quoted phrases) plus a `pg_trgm` partial-word fallback,
-    // applying access-scoping and LIMIT/OFFSET *after* ranking. A relevant hit
-    // older than any recency window is therefore found and ordered — unlike
-    // the retired `ILIKE '%whole query%'` gate that ranked only a recency-
-    // truncated slice of exact-substring rows.
-    const hits = await runtime.searchMessages({
-      roomIds: accessibleRoomIds,
-      query,
-      tableName: "messages",
-      limit,
-      offset,
-      ...(since !== null ? { since } : {}),
-      ...(until !== null ? { until } : {}),
-    });
-    const results = hits.flatMap(({ memory, ftsRank, trigramSimilarity }) => {
-      const roomId = memory.roomId;
+    // Corpus-wide FTS + trigram ranking in the store (#13534). Visibility
+    // filters used to run after LIMIT, so a page of internal or legacy
+    // inventory rows came back empty even when a visible match existed
+    // further down the ranking. Scan raw hits until the requested visible
+    // page is filled.
+    const batchSize = Math.max(limit, 32);
+    const needed = offset + limit;
+    const visibleHits: Awaited<ReturnType<AgentRuntime["searchMessages"]>> = [];
+    let rawOffset = 0;
+    while (visibleHits.length < needed) {
+      const hits = await runtime.searchMessages({
+        roomIds: accessibleRoomIds,
+        query,
+        tableName: "messages",
+        limit: batchSize,
+        offset: rawOffset,
+        ...(since !== null ? { since } : {}),
+        ...(until !== null ? { until } : {}),
+      });
+      if (hits.length === 0) break;
+      rawOffset += hits.length;
+      for (const hit of hits) {
+        const roomId = hit.memory.roomId;
+        const conversation = roomId
+          ? conversationsByRoomId.get(roomId)
+          : undefined;
+        if (!roomId || !conversation) continue;
+        const content = hit.memory.content as
+          | Record<string, unknown>
+          | undefined;
+        if (content?.transcriptVisibility === "internal") continue;
+        if (
+          content &&
+          hit.memory.entityId === runtime.agentId &&
+          isLegacyViewsInventoryContent(content)
+        ) {
+          continue;
+        }
+        const text = content?.text;
+        if (typeof text !== "string" || !text.trim() || !hit.memory.id)
+          continue;
+        if (typeof hit.memory.createdAt !== "number") continue;
+        visibleHits.push(hit);
+      }
+      if (hits.length < batchSize) break;
+    }
+    const results = visibleHits.slice(offset, offset + limit).flatMap((hit) => {
+      const roomId = hit.memory.roomId;
       const conversation = roomId
         ? conversationsByRoomId.get(roomId)
         : undefined;
-      if (!roomId || !conversation) return [];
-      const content = memory.content as Record<string, unknown> | undefined;
-      if (content?.transcriptVisibility === "internal") return [];
-      if (
-        content &&
-        memory.entityId === runtime.agentId &&
-        isLegacyViewsInventoryContent(content)
-      ) {
-        return [];
-      }
-      const text = content?.text;
+      if (!roomId || !conversation || !hit.memory.id) return [];
+      const content = hit.memory.content as Record<string, unknown>;
+      const text = content.text;
       if (typeof text !== "string") return [];
       const rawText = text.trim();
-      if (!rawText || !memory.id) return [];
-      // A messages memory always carries a numeric createdAt; if it somehow
-      // does not, drop the row rather than inject epoch-0 into the DTO.
-      if (typeof memory.createdAt !== "number") return [];
-      // Rows matched only by the trigram/partial branch have ftsRank 0; expose
-      // the trigram similarity as the score so the client still orders them
-      // meaningfully. Both are real measured signals from the store.
-      const score = ftsRank > 0 ? ftsRank : trigramSimilarity;
+      const score = hit.ftsRank > 0 ? hit.ftsRank : hit.trigramSimilarity;
       return [
         {
-          messageId: memory.id,
+          messageId: hit.memory.id,
           conversationId: conversation.id,
           roomId,
-          role: (memory.entityId === runtime.agentId ? "assistant" : "user") as
-            | "assistant"
-            | "user",
+          role: (hit.memory.entityId === runtime.agentId
+            ? "assistant"
+            : "user") as "assistant" | "user",
           text: rawText,
           snippet: buildMessageSearchSnippet(rawText, query),
-          createdAt: memory.createdAt,
+          createdAt: hit.memory.createdAt as number,
           score,
         },
       ];
@@ -3211,7 +3226,7 @@ async function searchConversationMessages(
         offset,
         ...(since !== null ? { since } : {}),
         ...(until !== null ? { until } : {}),
-        rawHits: hits.length,
+        rawHits: rawOffset,
         results: results.length,
       },
       "[ConversationSearch] FTS message search completed",
