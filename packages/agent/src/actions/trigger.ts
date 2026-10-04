@@ -973,8 +973,15 @@ async function opUpdate(
     next.intervalMs = normalizedIntervalMs;
   }
   if (scheduledAtIso !== undefined && next.triggerType === "once") {
-    if (parseScheduledAtIso(scheduledAtIso) === null) {
-      return failed("update", "Invalid scheduledAtIso.", "INVALID_SCHEDULE");
+    const atMs = parseScheduledAtIso(scheduledAtIso);
+    // Same rule as create: a past once-time becomes updateInterval 0, and the
+    // scheduler then treats the repeat task as invalid and never fires it.
+    if (atMs === null || atMs <= Date.now()) {
+      return failed(
+        "update",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
     }
     dedupeIdentityChanged =
       dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
@@ -1165,6 +1172,20 @@ async function opToggle(
     params.enabled === undefined ? !trigger.enabled : readBool(params.enabled);
   const next: TriggerConfig = { ...trigger, enabled };
   const nowMs = Date.now();
+  if (enabled && next.triggerType === "once") {
+    const atMs = next.scheduledAtIso
+      ? parseScheduledAtIso(next.scheduledAtIso)
+      : null;
+    // Resuming after the fire time used to persist updateInterval 0 and
+    // report success. The scheduler skips that repeat task forever.
+    if (atMs === null || atMs <= nowMs) {
+      return failed(
+        "toggle",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
+    }
+  }
   // A disabled trigger has no next fire by definition — `resolveTriggerTiming`
   // returns null for `enabled === false`, so recomputing timing for the
   // about-to-be-paused config ALWAYS failed and pausing was structurally
