@@ -699,6 +699,48 @@ function createRequestDisconnectAbortTracker({
     },
   };
 }
+/**
+ * The bearer of a revocable, DB-backed paired-device session, or undefined.
+ *
+ * A device paired with a user code gets a USER machine session. One paired
+ * with the operator code gets a machine session bound to the owner identity,
+ * so its principal is `owner_session`. Both are paired devices whose turn
+ * should outlive a dropped socket. For the owner case the bearer must itself
+ * resolve to a live session for the authenticated identity: the static API
+ * token, the trusted-local bypass and cookie sessions keep the existing
+ * disconnect-as-cancel behavior.
+ */
+async function resolvePairedSessionToken(
+  req: http.IncomingMessage,
+  principal: TrustedApiPrincipal,
+  runtime: AgentRuntime | null | undefined,
+): Promise<string | undefined> {
+  const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
+  if (!bearer) return undefined;
+  if (principal.kind === "service_gateway") {
+    return principal.sessionRole === "USER" && principal.sessionIdentityId
+      ? bearer
+      : undefined;
+  }
+  if (principal.kind !== "owner_session") return undefined;
+  try {
+    const authorization =
+      await getAgentHostBridge().resolveSessionTokenAuthorization?.(
+        bearer,
+        runtime ?? null,
+      );
+    return authorization?.ok &&
+      authorization.identityId &&
+      authorization.identityId === principal.principalId
+      ? bearer
+      : undefined;
+  } catch {
+    // error-policy:J7 an unreadable session store denies continuation only;
+    // the request still runs with disconnect-as-cancel.
+    return undefined;
+  }
+}
+
 export function createConversationStreamDisconnectTracker({
   req,
   res,
@@ -5101,12 +5143,11 @@ async function streamConversationMessage(
   if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
     return true;
   }
-  const pairedSessionToken =
-    trustedApiPrincipal.kind === "service_gateway" &&
-    trustedApiPrincipal.sessionRole === "USER" &&
-    trustedApiPrincipal.sessionIdentityId
-      ? /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1]
-      : undefined;
+  const pairedSessionToken = await resolvePairedSessionToken(
+    req,
+    trustedApiPrincipal,
+    state.runtime,
+  );
   const disconnectTracker = createConversationStreamDisconnectTracker({
     req,
     res,
