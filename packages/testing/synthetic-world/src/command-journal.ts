@@ -10,12 +10,12 @@ import {
   type SyntheticEnvironmentLeaseAuthority,
   type SyntheticEnvironmentLeaseStore,
 } from "@elizaos/core/contracts/synthetic-environment-lease";
-import {
-  type SyntheticCommandJournalExpected,
-  type SyntheticCommandJournalIdentity,
-  type SyntheticCommandJournalPatch,
-  type SyntheticCommandJournalRepository,
-  type SyntheticCommandJournalRow,
+import type {
+  SyntheticCommandJournalExpected,
+  SyntheticCommandJournalIdentity,
+  SyntheticCommandJournalPatch,
+  SyntheticCommandJournalRepository,
+  SyntheticCommandJournalRow,
 } from "./journal-repository";
 import {
   SYNTHETIC_WORLD_COMMAND_VERSION,

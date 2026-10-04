@@ -6,7 +6,7 @@
 
 import { createServer } from "node:http";
 import { runWithTrajectoryContext } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import type { AgentRuntime } from "../../../packages/core/src/runtime";
 import { handleTextSmall } from "../models/text";

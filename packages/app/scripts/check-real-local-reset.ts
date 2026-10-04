@@ -33,7 +33,7 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { createIsolatedAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import { createDeterministicModelPlugin } from "@elizaos/testing";
+import { createDeterministicModelPlugin } from "@elizaos/testing/models";
 import {
   _clearCompatPgliteDataDirForTests,
   startApiServer,

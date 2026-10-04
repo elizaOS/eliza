@@ -34,7 +34,7 @@ import {
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 import { shutdownRuntime } from "../src/runtime/eliza.ts";
 import {

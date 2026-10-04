@@ -7,7 +7,7 @@ import {
   trajectoriesPlugin,
   tryHandleTrajectoryReadRoutes,
 } from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   createBaseTrajectory,

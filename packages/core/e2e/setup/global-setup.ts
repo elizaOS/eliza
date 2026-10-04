@@ -19,7 +19,7 @@ import {
 	createOllamaModelHandlers,
 	detectInferenceProviders,
 	SQLiteDatabaseAdapter,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing.js";
 import { AgentRuntime } from "../../src/runtime";

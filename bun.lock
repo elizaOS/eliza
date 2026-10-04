@@ -445,8 +445,13 @@
       "name": "elizaos-benchmarks",
       "version": "0.1.0",
       "devDependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/testing": "workspace:*",
         "@elizaos/vitest-vite": "npm:vite@7.3.5",
+        "fflate": "^0.8.3",
         "tsx": "^4.20.0",
+        "vitest": "^5.0.2",
+        "zod": "^4.6.5",
       },
     },
     "packages/benchmarks/framework/typescript": {
@@ -1195,6 +1200,9 @@
         "@elizaos/testing": "workspace:*",
         "@elizaos/ui": "workspace:*",
       },
+      "devDependencies": {
+        "elizaos-benchmarks": "workspace:*",
+      },
     },
     "packages/testing": {
       "name": "@elizaos/testing",
@@ -1216,6 +1224,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@octokit/rest": "^22.0.0",
         "@playwright/test": "^1.63.0",
         "@types/bun": "1.4.2",
         "@types/node": "^25.0.3",
@@ -1223,7 +1232,6 @@
         "bun-types": "1.4.2",
         "drizzle-kit": "^0.31.10",
         "drizzle-orm": "0.45.3",
-        "fflate": "^0.8.3",
         "vitest": "^5.0.2",
       },
       "peerDependencies": {
@@ -1495,8 +1503,8 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
-        "@electric-sql/pglite": "^0.4.0",
         "@biomejs/biome": "2.5.14",
+        "@electric-sql/pglite": "^0.4.0",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -9500,6 +9508,8 @@
     "@elizaos/gateway-webhook/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 
     "@elizaos/lifeops-quality-bench/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@elizaos/macosreminders/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/operator/esbuild": ["esbuild@0.28.1", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.28.1", "@esbuild/android-arm": "0.28.1", "@esbuild/android-arm64": "0.28.1", "@esbuild/android-x64": "0.28.1", "@esbuild/darwin-arm64": "0.28.1", "@esbuild/darwin-x64": "0.28.1", "@esbuild/freebsd-arm64": "0.28.1", "@esbuild/freebsd-x64": "0.28.1", "@esbuild/linux-arm": "0.28.1", "@esbuild/linux-arm64": "0.28.1", "@esbuild/linux-ia32": "0.28.1", "@esbuild/linux-loong64": "0.28.1", "@esbuild/linux-mips64el": "0.28.1", "@esbuild/linux-ppc64": "0.28.1", "@esbuild/linux-riscv64": "0.28.1", "@esbuild/linux-s390x": "0.28.1", "@esbuild/linux-x64": "0.28.1", "@esbuild/netbsd-arm64": "0.28.1", "@esbuild/netbsd-x64": "0.28.1", "@esbuild/openbsd-arm64": "0.28.1", "@esbuild/openbsd-x64": "0.28.1", "@esbuild/openharmony-arm64": "0.28.1", "@esbuild/sunos-x64": "0.28.1", "@esbuild/win32-arm64": "0.28.1", "@esbuild/win32-ia32": "0.28.1", "@esbuild/win32-x64": "0.28.1" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw=="],
 

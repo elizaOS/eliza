@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain

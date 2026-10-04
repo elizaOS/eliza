@@ -7,15 +7,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
 import {
-  createCoreProgressiveContentExternalMutantExecutors,
-  type ProgressiveContentExternalMutantExecutor,
-  type ProgressiveContentExternalMutantId,
-} from "@elizaos/testing";
-import {
   deleteShellOutputArtifact,
   persistShellOutputByteArtifact,
   readShellOutputArtifactBytePage,
 } from "../../../../plugins/plugin-coding-tools/src/lib/shell-output-artifact.ts";
+import { createCoreProgressiveContentExternalMutantExecutors } from "../../src/progressive-content-external-mutant-executors.ts";
+import type {
+  ProgressiveContentExternalMutantExecutor,
+  ProgressiveContentExternalMutantId,
+} from "../../src/progressive-content-mutants.ts";
 import { scenarioLiveProviderPreflightProblems } from "./runtime-factory.ts";
 
 const OWNER_AGENT = "00000000-0000-4000-8000-000000000101";

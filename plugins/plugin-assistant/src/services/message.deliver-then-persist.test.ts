@@ -25,7 +25,7 @@ import {
   PRIVACY_DENIED_TEXT,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";

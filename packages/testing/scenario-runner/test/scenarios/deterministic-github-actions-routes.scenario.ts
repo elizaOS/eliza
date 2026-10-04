@@ -11,21 +11,23 @@ import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import {
   type CapturedAction,
+  type ScenarioContext,
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/testing";
+import {
   type DeterministicModelFixture,
   finalMessageUserText,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-  type ScenarioContext,
-  type ScenarioTurnExecution,
-  scenario,
   strictActionRouteFixtures,
-} from "@elizaos/testing";
+  transientTurnEvaluationSeed,
+} from "@elizaos/testing/models";
 import { buildPreview } from "../../../../../plugins/plugin-github/src/actions/issue-op.ts";
 import { buildReviewPreview } from "../../../../../plugins/plugin-github/src/actions/pr-op.ts";
 import githubPlugin, {
   GitHubService,
 } from "../../../../../plugins/plugin-github/src/index.ts";
-import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";

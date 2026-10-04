@@ -9,7 +9,7 @@ import {
   MemoryType,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { documentAction } from "./actions.ts";
 import { DocumentService } from "./service.ts";

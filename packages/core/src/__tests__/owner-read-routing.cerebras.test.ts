@@ -8,7 +8,7 @@
 import {
 	createRealTestRuntime,
 	type RealTestRuntimeResult,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	type Action,

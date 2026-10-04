@@ -1,3 +1,4 @@
+import { syntheticWorldSettings } from "./synthetic-world-settings.ts";
 /**
  * Executes stability attempts in independent OS process groups while one
  * leased synthetic-control session owns the exact mock manifest per attempt.
@@ -467,6 +468,7 @@ function childEnvironment(
   input: Parameters<ScenarioStabilityExecutionAdapter["execute"]>[0],
   session: SyntheticControlSession,
   initialStateHash: string,
+  worldSettings: Readonly<Record<string, string>>,
 ): NodeJS.ProcessEnv {
   const mode = options.modelMode;
   return {
@@ -476,6 +478,14 @@ function childEnvironment(
     TZ: process.env.TZ ?? "UTC",
     ...options.env,
     ...options.mockServiceUrls,
+    ...worldSettings,
+    ...(session.seedData?.endpoints
+      ? {
+          ELIZA_SCENARIO_WORLD_ENDPOINTS: JSON.stringify(
+            session.seedData.endpoints,
+          ),
+        }
+      : {}),
     ELIZA_STABILITY_MODEL_MODE: mode.kind,
     ...(mode.kind === "deterministic-mock"
       ? {
@@ -545,6 +555,19 @@ export class ScenarioStabilitySubprocessAdapter
     this.#boundaries.set(input.attemptId, boundary);
     input.signal.throwIfAborted();
     const initialStateHash = await authorityInitialStateHash(session);
+    const worldSettings: Record<string, string> = {};
+    const endpoints = session.seedData?.endpoints;
+    if (endpoints !== undefined) {
+      Object.assign(worldSettings, syntheticWorldSettings(endpoints));
+      for (const [name, value] of Object.entries(worldSettings)) {
+        const declared =
+          this.options.mockServiceUrls?.[name] ?? this.options.env?.[name];
+        if (declared !== undefined && declared !== value)
+          throw new Error(
+            `Explicit setting ${name} conflicts with the leased world's endpoint settings`,
+          );
+      }
+    }
     input.signal.throwIfAborted();
     const attestationKey =
       this.options.modelMode.kind === "real-llm"
@@ -574,7 +597,13 @@ export class ScenarioStabilitySubprocessAdapter
         detached: true,
         shell: false,
         stdio: ["ignore", "pipe", "pipe", "pipe"],
-        env: childEnvironment(this.options, input, session, initialStateHash),
+        env: childEnvironment(
+          this.options,
+          input,
+          session,
+          initialStateHash,
+          worldSettings,
+        ),
       },
     );
     boundary.child = child;

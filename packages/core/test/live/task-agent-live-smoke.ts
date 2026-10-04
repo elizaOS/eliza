@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { createTestRuntime, selectLiveProvider } from "@elizaos/testing";
+import {
+	createTestRuntime,
+	selectLiveProvider,
+} from "@elizaos/testing/runtime";
 
 const {
 	default: agentOrchestratorPlugin,

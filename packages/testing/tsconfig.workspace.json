@@ -42,7 +42,6 @@
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],

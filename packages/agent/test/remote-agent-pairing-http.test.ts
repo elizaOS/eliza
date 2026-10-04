@@ -13,7 +13,7 @@ import {
   parseRemoteAgentPairingUri,
   REMOTE_AGENT_ENDPOINTS,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 

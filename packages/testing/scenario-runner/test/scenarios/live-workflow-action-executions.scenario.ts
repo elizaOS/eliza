@@ -11,8 +11,8 @@
  * lane.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import {
   type ScenarioContext,
@@ -24,7 +24,7 @@ import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
 } from "../../../../../plugins/plugin-workflow/src/services/index.ts";
-import { type WorkflowDefinition } from "../../../../../plugins/plugin-workflow/src/types/index.ts";
+import type { WorkflowDefinition } from "../../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../../plugins/plugin-workflow/src/utils/context.ts";
 
 const WORKFLOW_ID = "live-workflow-action-executions";

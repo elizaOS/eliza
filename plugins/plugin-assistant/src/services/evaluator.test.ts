@@ -18,7 +18,7 @@ import {
   ModelType,
   resolveEffectiveSystemPrompt,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import {
   factMemoryEvaluator,

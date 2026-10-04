@@ -23,7 +23,7 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 import { redactedSensitiveActionResult } from "./redaction.js";
 import { toRecord } from "./utils.js";
 
@@ -98,7 +98,11 @@ function toJsonSafe(
   }
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return value;
-  if (depth >= MAX_CAPTURED_PARAM_DEPTH) return null;
+  if (depth >= MAX_CAPTURED_PARAM_DEPTH) {
+    throw new RangeError(
+      `Captured action parameters exceed supported depth ${MAX_CAPTURED_PARAM_DEPTH}; refusing to truncate evidence`,
+    );
+  }
 
   const obj = value as object;
   if (seen.has(obj)) return null;
@@ -502,7 +506,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
             resultForReport,
           );
         } else {
-          entry.result = { success: true };
+          entry.result = typeof result === "boolean" ? { success: result } : {};
         }
         actions.push(entry);
         return result;
@@ -536,17 +540,24 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         tableName: string,
         unique?: boolean,
       ) => {
-        memoryWrites.push({
+        const write = {
           table: tableName,
           entityId:
             typeof memory.entityId === "string" ? memory.entityId : undefined,
           roomId: typeof memory.roomId === "string" ? memory.roomId : undefined,
           worldId:
             typeof memory.worldId === "string" ? memory.worldId : undefined,
-          content: memory.content,
+          content: structuredClone(memory.content),
           createdAt: new Date().toISOString(),
-        });
-        return originalCreateMemory.call(runtime, memory, tableName, unique);
+        };
+        const result = await originalCreateMemory.call(
+          runtime,
+          memory,
+          tableName,
+          unique,
+        );
+        memoryWrites.push(write);
+        return result;
       };
       Reflect.set(wrappedCreate, INTERCEPTOR_MARKER, true);
       Reflect.set(runtime, "createMemory", wrappedCreate);

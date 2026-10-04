@@ -138,9 +138,12 @@ jobs:
           python-version: "3.14.6"
       - name: Prepare pinned GEPA producer dependencies
         if: matrix.partition == 'remaining'
-        run: bun run --cwd packages/testing gepa:setup
+        run: bun run --cwd packages/benchmarks gepa:setup
       - name: Server tests
         run: bun run test:server
+      - name: Pinned GEPA integration tests
+        if: matrix.partition == 'remaining'
+        run: bun run --cwd packages/benchmarks test:gepa
   tests_client:
     name: Tests (client)
     needs: preflight
@@ -433,16 +436,16 @@ jobs:
         with:
           name: tests-zero-key-e2e-report
           path: |
-            reports/scenarios/pr-deterministic/
-            reports/scenarios/pr-deterministic-corpus/
-            reports/scenarios/pr-deterministic-orchestrator/
-            reports/scenarios/pr-deterministic-lifeops/
-            reports/scenarios/catalog-inventory/
+            test-results/scenario-runner/pr-deterministic/
+            test-results/scenario-runner/pr-deterministic-corpus/
+            test-results/scenario-runner/pr-deterministic-orchestrator/
+            test-results/scenario-runner/pr-deterministic-lifeops/
+            test-results/scenario-runner/catalog-inventory/
           if-no-files-found: ignore
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.ts reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report test-results/app
+        run: node packages/scripts/rm-path-recursive.ts test-results/scenario-runner/pr-deterministic test-results/scenario-runner/pr-deterministic-corpus test-results/scenario-runner/pr-deterministic-orchestrator test-results/scenario-runner/pr-deterministic-lifeops test-results/scenario-runner/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage

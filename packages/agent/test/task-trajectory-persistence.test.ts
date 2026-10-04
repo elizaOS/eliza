@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { ModelType } from "@elizaos/core";
 import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { PseudonymSession } from "../../core/src/security/pii-pseudonymizer.ts";
 import { SecretSwapSession } from "../../core/src/security/secret-swap.ts";

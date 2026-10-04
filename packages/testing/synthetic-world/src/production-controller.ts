@@ -5,8 +5,8 @@
  */
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
-import { type SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
+import type { SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
 import {
   SYNTHETIC_WORLD_CAPABILITIES,
   SYNTHETIC_WORLD_COMMAND_VERSION,

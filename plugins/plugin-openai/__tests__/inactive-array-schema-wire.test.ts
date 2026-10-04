@@ -4,7 +4,7 @@
  * admission failure; accepted calls preserve the complete prompt and tool result.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import type { JSONSchema } from "../../../packages/core/src/types/model";
 import { withoutInactiveFields } from "../../plugin-assistant/src/services/message/inactive-field-schema";

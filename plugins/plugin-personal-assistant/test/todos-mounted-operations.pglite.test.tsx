@@ -4,13 +4,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
+import {
+  createDeterministicModelPlugin,
+  strictTerminalReplyFixture,
+} from "@elizaos/testing/models";
 import { act, cleanup, render } from "@testing-library/react";
 import { JSDOM } from "jsdom";
 import { expect, it, vi } from "vitest";
 import { executePlannedToolCall } from "../../../packages/core/src/runtime/execute-planned-tool-call.ts";
 import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
-import { strictTerminalReplyFixture } from "../../../packages/testing/src/deterministic-action-fixtures.ts";
-import { createDeterministicModelPlugin } from "../../../packages/testing/src/deterministic-model-plugin.ts";
 import {
   handleLifeOpsRoutes,
   type LifeOpsRouteContext,

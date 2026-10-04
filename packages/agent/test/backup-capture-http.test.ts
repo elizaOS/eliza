@@ -19,7 +19,7 @@ import {
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Frames,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {
