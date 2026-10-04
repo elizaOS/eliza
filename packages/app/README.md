@@ -147,6 +147,14 @@ captures it when constructing the secure store; an unset or empty value uses
 The embedding app must start the corresponding app-UID-only Keystore broker;
 this option changes client routing, not broker permissions or availability.
 
+External development hosts can use `scripts/lib/dev-process-lifecycle.ts`'s
+`waitForDevelopmentReady` with their own health predicate, startup/poll budgets,
+child-liveness check and cancellation signal. Probes receive that signal and
+must release their resources on cancellation. `scripts/lib/shutdown-drain.ts`
+handles owned-child teardown; use process-group delivery and liveness from
+`kill-process-tree.ts` when children can outlive their launcher. Product ports,
+account matching, inference policy and renderer environment stay with the host.
+
 ## External Android consumers
 
 Shared local speech sources and reproducible runtime/model tooling are documented
