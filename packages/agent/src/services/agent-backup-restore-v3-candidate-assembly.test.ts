@@ -18,7 +18,15 @@ import {
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { assembleAgentBackupRestoreV3Candidate } from "./agent-backup-restore-v3-candidate-assembly";
 import { materializeAgentBackupRestoreV3CandidateCharacter } from "./agent-backup-restore-v3-candidate-character";
 import {
@@ -51,6 +59,31 @@ const CHARACTER = encode(
 const MEDIA = encode("private-media-20732");
 const STATE = encode('{"pluginFact":"tide-20732"}');
 const VAULT = encode("opaque-vault-ciphertext-20732");
+// Each case gets independent staging and a byte copy of this real physical archive.
+let databaseArchive: Uint8Array;
+beforeAll(async () => {
+  const root = await fs.mkdtemp(
+    path.join(await fs.realpath(os.tmpdir()), "restore-v3-assembly-source-"),
+  );
+  const db = new PGlite(path.join(root, "database"));
+  try {
+    await db.exec(
+      "CREATE TABLE assembly_fact (id integer PRIMARY KEY, fact text NOT NULL)",
+    );
+    await db.query("INSERT INTO assembly_fact VALUES ($1, $2)", [1, FACT]);
+    databaseArchive = new Uint8Array(
+      await (await db.dumpDataDir("gzip")).arrayBuffer(),
+    );
+  } finally {
+    try {
+      await db.close();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
+}, TEST_BUDGET_MS);
+afterAll(() => databaseArchive?.fill(0));
+
 const platformOptions = () =>
   process.platform === "linux"
     ? {}
@@ -89,22 +122,9 @@ async function fixture(
     cleanupRegistered: true,
     isolatedCandidate: true,
   });
-  let databaseBytes = new Uint8Array([1]);
-  if (realDatabase) {
-    const sourcePath = path.join(root, "source");
-    const db = new PGlite(sourcePath);
-    databases.add(db);
-    await db.exec(
-      "CREATE TABLE assembly_fact (id integer PRIMARY KEY, fact text NOT NULL)",
-    );
-    await db.query("INSERT INTO assembly_fact VALUES ($1, $2)", [1, FACT]);
-    databaseBytes = new Uint8Array(
-      await (await db.dumpDataDir("gzip")).arrayBuffer(),
-    );
-    await db.close();
-    databases.delete(db);
-    await fs.rm(sourcePath, { recursive: true });
-  }
+  const databaseBytes = realDatabase
+    ? Uint8Array.from(databaseArchive)
+    : new Uint8Array([1]);
   const contents = [CHARACTER, databaseBytes, MEDIA, STATE, VAULT];
   const paths = [null, null, "photo.bin", statePath, "vault.json"];
   const components: AgentBackupRestoreV3ComponentReceipt[] = [];
