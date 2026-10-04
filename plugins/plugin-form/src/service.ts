@@ -616,21 +616,20 @@ export class FormService extends Service {
 
     const now = Date.now();
 
-    // Add to history for undo
-    if (oldValue !== undefined) {
-      const historyEntry: FieldHistoryEntry = {
-        field,
-        oldValue,
-        newValue: value,
-        timestamp: now,
-      };
-      session.history.push(historyEntry);
+    // Add to history for undo. A first answer is recorded too (no oldValue),
+    // so undoing it clears the field instead of reverting an older change.
+    const historyEntry: FieldHistoryEntry = {
+      field,
+      ...(oldValue !== undefined ? { oldValue } : {}),
+      newValue: value,
+      timestamp: now,
+    };
+    session.history.push(historyEntry);
 
-      // Limit history size
-      const maxUndo = form.ux?.maxUndoSteps ?? 5;
-      if (session.history.length > maxUndo) {
-        session.history = session.history.slice(-maxUndo);
-      }
+    // Limit history size
+    const maxUndo = form.ux?.maxUndoSteps ?? 5;
+    if (session.history.length > maxUndo) {
+      session.history = session.history.slice(-maxUndo);
     }
 
     // Update field state
@@ -680,7 +679,7 @@ export class FormService extends Service {
   async undoLastChange(
     sessionId: string,
     entityId: UUID,
-  ): Promise<{ field: string; restoredValue: JsonValue } | null> {
+  ): Promise<{ field: string; restoredValue: JsonValue | undefined } | null> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);

@@ -7,6 +7,7 @@
  * 3. User is added to the allowlist and can now send DMs
  */
 
+import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import {
 	type ApprovePairingParams,
@@ -215,9 +216,7 @@ export class PairingService extends Service {
 			if (timeDifference !== 0) {
 				return timeDifference;
 			}
-			const aId = String(a.id);
-			const bId = String(b.id);
-			return aId === bId ? 0 : aId < bId ? 1 : -1;
+			return compareMemoryIds(String(b.id), String(a.id));
 		});
 	}
 

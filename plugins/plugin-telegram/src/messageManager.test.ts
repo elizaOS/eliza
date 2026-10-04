@@ -319,7 +319,7 @@ describe("MessageManager malformed payload handling", () => {
     ]);
   });
 
-  it("does not throw when image description fails after the byte fetch", async () => {
+  it("keeps the photo attachment when image description fails after the byte fetch", async () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/photo.jpg"),
     );
@@ -342,7 +342,18 @@ describe("MessageManager malformed payload handling", () => {
         chat: { id: 123, type: "private" },
         photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
       } as never),
-    ).resolves.toEqual({ processedContent: "", attachments: [] });
+    ).resolves.toEqual({
+      processedContent: "",
+      attachments: [
+        {
+          id: "p1",
+          url: "telegram-file:p1",
+          title: "Image Attachment",
+          source: "Image",
+          contentType: "image",
+        },
+      ],
+    });
     expect(useModel).toHaveBeenCalled();
   });
 

@@ -11,12 +11,20 @@
 import type { ConversationMessage } from "../api";
 import { filterRenderableConversationMessages } from "./conversation-message-filter";
 
+const CURSOR_MESSAGE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function cursorMessageId(id: string | undefined): string | undefined {
+  return id && CURSOR_MESSAGE_ID.test(id) ? id : undefined;
+}
+
 export interface LoadOlderClient {
   getConversationMessages(
     id: string,
     options?: {
       signal?: AbortSignal;
       before?: number;
+      beforeId?: string;
       limit?: number;
     },
   ): Promise<{ messages: ConversationMessage[]; hasMore?: boolean }>;
@@ -37,6 +45,8 @@ export interface LoadOlderConversationMessagesDeps {
   signal?: AbortSignal;
   /** Cursor returned by a prior time-sliced filtered-page traversal. */
   before?: number;
+  /** Message id paired with `before` from that same traversal. */
+  beforeId?: string;
   /** Wall-clock budget for one scroll action; traversal resumes on the next action. */
   maxDurationMs?: number;
   /** Deterministic clock seam for tests. */
@@ -50,6 +60,8 @@ export interface LoadOlderResult {
   prependedCount: number;
   /** Continuation for filtered pages when the current operation time slice ends. */
   resumeBefore?: number;
+  /** Message id paired with `resumeBefore`. */
+  resumeBeforeId?: string;
 }
 
 const DEFAULT_FILTERED_TRAVERSAL_DURATION_MS = 1_000;
@@ -78,13 +90,21 @@ export async function loadOlderConversationMessages(
       : DEFAULT_FILTERED_TRAVERSAL_DURATION_MS;
   const deadlineAt = now() + maxDurationMs;
   let cursor = deps.before ?? oldest.timestamp;
-  const seenCursors = new Set<number>([cursor]);
+  let cursorId =
+    deps.before !== undefined ? deps.beforeId : cursorMessageId(oldest.id);
+  const seenCursors = new Set<string>([`${cursor}:${cursorId ?? ""}`]);
   while (true) {
     if (now() >= deadlineAt) {
-      return { hasMore: true, prependedCount: 0, resumeBefore: cursor };
+      return {
+        hasMore: true,
+        prependedCount: 0,
+        resumeBefore: cursor,
+        resumeBeforeId: cursorId,
+      };
     }
     const response = await client.getConversationMessages(conversationId, {
       before: cursor,
+      ...(cursorId ? { beforeId: cursorId } : {}),
       ...(limit !== undefined ? { limit } : {}),
       ...(signal ? { signal } : {}),
     });
@@ -107,19 +127,30 @@ export async function loadOlderConversationMessages(
     // (messages arrive ascending; [0] is its oldest) and fetch the next one —
     // the retained thread's oldest message can't move, so without this hop the
     // next attempt would refetch this exact page.
-    const nextCursor = response.messages[0].timestamp;
-    if (
-      typeof nextCursor !== "number" ||
-      !Number.isFinite(nextCursor) ||
-      nextCursor >= cursor ||
-      seenCursors.has(nextCursor)
-    ) {
+    const nextMessage = response.messages[0];
+    const nextCursor = nextMessage?.timestamp;
+    const nextCursorId = cursorMessageId(nextMessage?.id);
+    const advanced =
+      typeof nextCursor === "number" &&
+      Number.isFinite(nextCursor) &&
+      (nextCursor < cursor ||
+        (nextCursor === cursor &&
+          nextCursorId !== undefined &&
+          nextCursorId !== cursorId));
+    const nextKey = `${nextCursor}:${nextCursorId ?? ""}`;
+    if (!advanced || seenCursors.has(nextKey)) {
       throw new Error("Conversation pagination did not return an older cursor");
     }
-    seenCursors.add(nextCursor);
+    seenCursors.add(nextKey);
     cursor = nextCursor;
+    cursorId = nextCursorId;
     if (now() >= deadlineAt) {
-      return { hasMore: true, prependedCount: 0, resumeBefore: cursor };
+      return {
+        hasMore: true,
+        prependedCount: 0,
+        resumeBefore: cursor,
+        resumeBeforeId: cursorId,
+      };
     }
   }
 }
