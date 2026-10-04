@@ -462,7 +462,8 @@ export async function controlSmithersRun(
   request: SmithersControlRequest
 ): Promise<{ status?: WorkflowExecutionStatus | null }> {
   const rootDir = resolveSmithersWorkflowDir(tenantId, workflowId);
-  await mkdir(rootDir, { recursive: true });
+  // Owner-only: the worker lease refuses a state root other users can write.
+  await mkdir(rootDir, { recursive: true, mode: 0o700 });
   const command = workflowProcessCommand('runtime', createSmithersControlScript());
   const payloadPath = join(rootDir, `.control-${randomUUID()}.json`);
   await writeFile(
@@ -606,7 +607,8 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     rootDir,
     `${safePathPart(request.workflow.versionId)}.${sourceDigest}.${request.workflow.language === 'tsx' ? 'tsx' : 'ts'}`
   );
-  await mkdir(rootDir, { recursive: true });
+  // Owner-only: the worker lease refuses a state root other users can write.
+  await mkdir(rootDir, { recursive: true, mode: 0o700 });
   // Windows uses a protected named pipe; its native backend verifies rootDir SID/DACL.
   const socketRoot =
     process.platform === 'win32'
