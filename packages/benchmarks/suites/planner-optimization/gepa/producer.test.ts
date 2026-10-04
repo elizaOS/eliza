@@ -299,12 +299,16 @@ test("cancellation during a real worker HTTP request reaps engine and worker", a
       worker = value;
     },
   });
-  const rejected = expect(run).rejects.toThrow("caller stop");
   try {
-    await active;
+    await Promise.race([
+      active,
+      run.then(() => {
+        throw new Error("GEPA run completed before the fixture request");
+      }),
+    ]);
     const disconnected = once(response, "close");
     controller.abort(new Error("caller stop"));
-    await rejected;
+    await expect(run).rejects.toThrow("caller stop");
     await disconnected;
     for (const processInfo of [engine, worker]) {
       expect(() => process.kill(processInfo.pid, 0)).toThrow();
