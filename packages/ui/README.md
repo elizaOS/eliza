@@ -32,6 +32,6 @@ shares lossless caption/playback chunks without importing the voice runtime.
 
 `voice/microphone-capture` shares cumulative sample previews and speech-pause
 observation without owning microphone tracks, transcription or message submission.
-Hosts supply timing/energy policy and the URL of `voice/microphone-samples.worklet.js`
+Hosts supply timing/energy policy and the URL of `voice/microphone-samples.worklet.mjs`
 (or a compatible mono worklet). Previews are single-flight and are not replayed;
 unsupported capture returns no observer so the host can retain final-recording UX.

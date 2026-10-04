@@ -45,7 +45,7 @@ export async function startCumulativeMicrophoneCapture(
       options.speechThreshold,
     ].every(positive)
   )
-    throw new Error("Invalid microphone capture policy");
+    throw new RangeError("Invalid microphone capture policy");
   if (
     typeof AudioContext === "undefined" ||
     typeof AudioWorkletNode === "undefined"
@@ -165,7 +165,7 @@ export function observeMicrophonePause(
     options.fftSize > 32768 ||
     (options.fftSize & (options.fftSize - 1)) !== 0
   )
-    throw new Error("Invalid speech pause policy");
+    throw new RangeError("Invalid speech pause policy");
   if (typeof AudioContext === "undefined") return () => {};
   let context: AudioContext | undefined,
     source: MediaStreamAudioSourceNode | undefined;

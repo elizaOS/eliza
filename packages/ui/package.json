@@ -622,7 +622,7 @@
       "default": "./dist/terminal/palette.js"
     },
     "./voice/microphone-capture": "./src/voice/microphone-capture.ts",
-    "./voice/microphone-samples.worklet.js": "./src/voice/microphone-samples.worklet.js"
+    "./voice/microphone-samples.worklet.mjs": "./src/voice/microphone-samples.worklet.mjs"
   },
   "peerDependencies": {
     "@capacitor/app": "^8.0.0",

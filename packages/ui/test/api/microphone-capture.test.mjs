@@ -229,7 +229,10 @@ test("the real worklet batches channel zero without monitoring audio", () => {
   });
   vm.runInContext(
     fs.readFileSync(
-      new URL("../../src/voice/microphone-samples.worklet.js", import.meta.url),
+      new URL(
+        "../../src/voice/microphone-samples.worklet.mjs",
+        import.meta.url,
+      ),
       "utf8",
     ),
     context,
