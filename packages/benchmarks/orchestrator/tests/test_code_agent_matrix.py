@@ -629,7 +629,7 @@ def test_agentbench_cell_runs_matrix_wrapper(tmp_path: Path) -> None:
     assert cell.command[:3] == [
         sys.executable,
         "-m",
-        "benchmarks.agentbench_matrix.code_agent_matrix",
+        "benchmarks.agentbench.code_agent_matrix",
     ]
     assert "--task-agent" in cell.command
     assert "opencode" in cell.command
@@ -5154,3 +5154,30 @@ def test_code_agent_run_index_links_multiple_summaries(tmp_path: Path) -> None:
     scan_data_js = Path(scan_paths["index_data"]).read_text(encoding="utf-8")
     assert "standard_humaneval" in scan_data_js
     assert "standard_humaneval" in data_js
+
+
+@pytest.mark.parametrize(
+    ("benchmark", "artifact"),
+    [
+        ("swe_bench_multilingual", "swe-bench-2026.json"),
+        ("standard_humaneval", "result.json"),
+        ("agentbench", "agentbench-matrix-results.json"),
+        ("mint", "mint-code-agent-results.json"),
+        ("vision_language", "vision-language-results.json"),
+        ("osworld", "computer/model/summary/results.json"),
+    ],
+)
+def test_declared_matrix_artifact_matches_producer(tmp_path, benchmark, artifact):
+    result = tmp_path / artifact
+    result.parent.mkdir(parents=True, exist_ok=True)
+    result.write_text('{"score": 0.5}')
+    (tmp_path / "unrelated-diagnostic.json").write_text('{"score": 1.0}')
+    assert find_latest_result(tmp_path, benchmark) == result
+
+
+def test_agentbench_matrix_module_is_importable():
+    import importlib.util
+
+    assert (
+        importlib.util.find_spec("benchmarks.agentbench.code_agent_matrix") is not None
+    )

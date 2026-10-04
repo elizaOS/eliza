@@ -111,14 +111,17 @@ def _cell_root(cell: MatrixCell) -> Path:
 
 _RESULT_PATTERNS = {
     "swe_bench": ("orchestrated-*.json", "swe-bench-*.json"),
+    "swe_bench_multilingual": ("orchestrated-*.json", "swe-bench-*.json"),
     "terminal_bench": ("terminal-bench-*.json", "**/summary/results.json"),
     "mind2web": ("mind2web-results.json",),
     "visualwebbench": ("visualwebbench-results.json",),
     "webshop": ("webshop-results.json",),
-    "osworld": ("osworld-eliza-results-*.json",),
+    "osworld": ("osworld-eliza-results-*.json", "**/summary/results.json"),
     "nl2repo": ("result.json",),
-    "humaneval": ("result.json", "humaneval-results.json"),
-    "agentbench": ("agentbench-results.json",),
+    "standard_humaneval": ("result.json",),
+    "agentbench": ("agentbench-matrix-results.json",),
+    "mint": ("mint-code-agent-results.json",),
+    "vision_language": ("vision-language-results.json",),
 }
 
 

@@ -1168,7 +1168,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.agentbench_matrix.code_agent_matrix",
+            "benchmarks.agentbench.code_agent_matrix",
             "--task-agent",
             adapter,
             "--model-provider",
