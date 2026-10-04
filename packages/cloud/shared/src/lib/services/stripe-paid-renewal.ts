@@ -14,6 +14,7 @@ import { billingSubscriptions } from "../../db/schemas/billing-subscriptions";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
 import { requireStripe } from "../stripe";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { reconcileOrganizationUpgradesBeforeRenewal } from "./organization-upgrade-renewal-ordering";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import { renewalUnavailable } from "./stripe-paid-renewal-validation";
 
@@ -59,7 +60,7 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     renewalUnavailable("event_identity_mismatch");
   const fetchedInvoice = await requireStripe().invoices.retrieve(event.data.object.id);
   const stripeSubscriptionId = invoiceSubscriptionId(fetchedInvoice);
-  const [source] = await dbWrite
+  let [source] = await dbWrite
     .select()
     .from(billingSubscriptions)
     .where(
@@ -113,6 +114,25 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     await reconcileSubscriptionCheckout(session.id, source.organization_id);
     return;
   }
+  await reconcileOrganizationUpgradesBeforeRenewal({
+    organizationId: source.organization_id,
+    subscriptionId: source.id,
+  });
+  // Recovery can publish the original target. Capture the renewed plan/revision only afterwards.
+  const originalSourceId = source.id;
+  const originalOrganizationId = source.organization_id;
+  [source] = await dbWrite
+    .select()
+    .from(billingSubscriptions)
+    .where(
+      and(
+        eq(billingSubscriptions.id, originalSourceId),
+        eq(billingSubscriptions.organization_id, originalOrganizationId),
+        isNull(billingSubscriptions.billing_scope_id),
+      ),
+    );
+  if (!source) renewalUnavailable("source_unavailable_after_upgrade_recovery");
+  assertOrganizationSubscription(source);
   const recorded = await operations.recordEvent({
     organizationId: source.organization_id,
     subscriptionId: source.id,
