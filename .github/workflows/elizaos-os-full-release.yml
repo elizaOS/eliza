@@ -10,7 +10,7 @@ on:
         type: string
         required: true
       manifest_path:
-        description: Tracked candidate manifest under release/<release>/manifest.json
+        description: Tracked candidate manifest under packages/os/release/<release>/manifest.json
         type: string
         required: true
       channel:
@@ -67,11 +67,14 @@ jobs:
       source-sha: ${{ steps.identity.outputs.source-sha }}
       source-date-epoch: ${{ steps.identity.outputs.source-date-epoch }}
       release-date: ${{ steps.identity.outputs.release-date }}
-      eliza-source-sha: ${{ steps.identity.outputs.eliza-source-sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
 
       - name: Validate release identity
         id: identity
@@ -92,8 +95,8 @@ jobs:
             echo "::error::tag must be a versioned elizaOS release tag"
             exit 1
           fi
-          if [[ "$MANIFEST_PATH" == /* || "$MANIFEST_PATH" == *..* || ! "$MANIFEST_PATH" =~ ^release/[^/]+/manifest\.json$ ]]; then
-            echo "::error::manifest_path must name release/<release>/manifest.json"
+          if [[ "$MANIFEST_PATH" == /* || "$MANIFEST_PATH" == *..* || ! "$MANIFEST_PATH" =~ ^packages/os/release/[^/]+/manifest\.json$ ]]; then
+            echo "::error::manifest_path must name packages/os/release/<release>/manifest.json"
             exit 1
           fi
           if [ ! -f "$MANIFEST_PATH" ] || [ -L "$MANIFEST_PATH" ]; then
@@ -101,8 +104,8 @@ jobs:
             exit 1
           fi
           git ls-files --error-unmatch "$MANIFEST_PATH" >/dev/null
-          node scripts/validate-release-manifest.ts --manifest "$MANIFEST_PATH"
-          node scripts/assert-canonical-linux-release.ts --manifest "$MANIFEST_PATH"
+          node packages/os/scripts/validate-release-manifest.ts --manifest "$MANIFEST_PATH"
+          node packages/os/scripts/assert-canonical-linux-release.ts --manifest "$MANIFEST_PATH"
           if [ "$PUBLISH" = "true" ] && [ "$SIGN" != "true" ]; then
             echo "::error::publish=true requires sign=true"
             exit 1
@@ -159,7 +162,6 @@ jobs:
             echo "source-sha=$source_sha"
             echo "source-date-epoch=$(git show -s --format=%ct "$source_sha")"
             echo "release-date=$(date -u +%F)"
-            echo "eliza-source-sha=$(node -e 'const lock=require("./release/eliza-source.lock.json"); process.stdout.write(lock.commit)')"
           } >> "$GITHUB_OUTPUT"
 
   build-linux-mkosi:
@@ -174,7 +176,7 @@ jobs:
       source_date_epoch: ${{ needs.prepare.outputs.source-date-epoch }}
       debian_snapshot_url: ${{ inputs.debian_snapshot_url }}
       desktop_run_id: ${{ inputs.desktop_run_id }}
-      desktop_source_sha: ${{ needs.prepare.outputs.eliza-source-sha }}
+      desktop_source_sha: ${{ needs.prepare.outputs.source-sha }}
     secrets: inherit
 
   build-debian-package:
@@ -182,7 +184,7 @@ jobs:
     uses: ./.github/workflows/build-debian-package.yml
     with:
       desktop_run_id: ${{ inputs.desktop_run_id }}
-      desktop_source_sha: ${{ needs.prepare.outputs.eliza-source-sha }}
+      desktop_source_sha: ${{ needs.prepare.outputs.source-sha }}
       source_date_epoch: ${{ needs.prepare.outputs.source-date-epoch }}
     secrets: inherit
 
@@ -259,6 +261,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.source-sha }}
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
       - name: Download all build outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -277,7 +283,7 @@ jobs:
           if [ "$SIGN" = true ]; then
             signature_args+=(--require-distribution-signatures)
           fi
-          node scripts/assemble-release-bundle.ts \
+          node packages/os/scripts/assemble-release-bundle.ts \
             --manifest "$MANIFEST_PATH" \
             --artifact-root _downloads \
             --output _release \
@@ -288,15 +294,15 @@ jobs:
             --source-sha "${{ needs.prepare.outputs.source-sha }}" \
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT"
-          node scripts/validate-release-manifest.ts \
+          node packages/os/scripts/validate-release-manifest.ts \
             --manifest "$assembled_manifest" \
             --require-publishable-checksums \
             "${signature_args[@]}"
-          node scripts/generate-release-checksums.ts \
+          node packages/os/scripts/generate-release-checksums.ts \
             --manifest "$assembled_manifest" \
             --artifact-root _release \
             --output _release/SHA256SUMS
-          node scripts/verify-release-checksums.ts \
+          node packages/os/scripts/verify-release-checksums.ts \
             --manifest "$assembled_manifest" \
             --artifact-root _release \
             --checksums _release/SHA256SUMS
@@ -333,19 +339,9 @@ jobs:
       source_ref: ${{ needs.prepare.outputs.source-sha }}
     secrets: inherit
 
-  rehearse-homepage:
-    name: Rehearse release-bound homepage publication
-    needs: [prepare, populate-manifest]
-    uses: ./.github/workflows/publish-os-homepage.yml
-    with:
-      source_ref: ${{ needs.prepare.outputs.source-sha }}
-      tag: ${{ needs.prepare.outputs.tag }}
-      dry_run: true
-    secrets: inherit
-
   stage-release:
     name: Stage the verified GitHub Release draft
-    needs: [prepare, populate-manifest, rehearse-apt, rehearse-homepage]
+    needs: [prepare, populate-manifest, rehearse-apt]
     if: inputs.publish == true
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -354,6 +350,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.prepare.outputs.source-sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
 
       - name: Download the verified canonical bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -369,11 +369,11 @@ jobs:
           metadata_manifest="_release-files/elizaos-os-${RELEASE_TAG}-manifest.json"
           test -s "$metadata_manifest"
           test -s _release-files/SHA256SUMS
-          node scripts/verify-release-checksums.ts \
+          node packages/os/scripts/verify-release-checksums.ts \
             --manifest "$metadata_manifest" \
             --artifact-root _release-files \
             --checksums _release-files/SHA256SUMS
-          node scripts/validate-release-manifest.ts \
+          node packages/os/scripts/validate-release-manifest.ts \
             --manifest "$metadata_manifest" \
             --require-publishable-checksums \
             --require-distribution-signatures
@@ -401,20 +401,10 @@ jobs:
       channel: ${{ inputs.channel }}
     secrets: inherit
 
-  publish-homepage:
-    needs: [prepare, stage-release, publish-apt]
-    if: inputs.publish == true && needs.publish-apt.result == 'success'
-    uses: ./.github/workflows/publish-os-homepage.yml
-    with:
-      source_ref: ${{ needs.prepare.outputs.source-sha }}
-      tag: ${{ needs.prepare.outputs.tag }}
-      dry_run: false
-    secrets: inherit
-
   publish-release:
     name: Promote the verified GitHub Release
-    needs: [prepare, populate-manifest, stage-release, publish-apt, publish-homepage]
-    if: inputs.publish == true && needs.publish-homepage.result == 'success'
+    needs: [prepare, populate-manifest, stage-release, publish-apt]
+    if: inputs.publish == true && needs.publish-apt.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: release
@@ -424,7 +414,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.prepare.outputs.source-sha }}
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24.15.0"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -491,11 +481,9 @@ jobs:
       - verify-artifacts
       - populate-manifest
       - rehearse-apt
-      - rehearse-homepage
       - stage-release
       - publish-release
       - publish-apt
-      - publish-homepage
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -513,9 +501,8 @@ jobs:
             echo "| Artifact verification | ${{ needs.verify-artifacts.result }} |"
             echo "| Manifest/checksum/attestation | ${{ needs.populate-manifest.result }} |"
             echo "| Signed APT rehearsal | ${{ needs.rehearse-apt.result }} |"
-            echo "| Homepage rehearsal | ${{ needs.rehearse-homepage.result }} |"
             echo "| GitHub Release draft | ${{ needs.stage-release.result }} |"
             echo "| GitHub Release | ${{ needs.publish-release.result }} |"
             echo "| APT repository | ${{ needs.publish-apt.result }} |"
-            echo "| OS homepage | ${{ needs.publish-homepage.result }} |"
+            echo "| OS homepage | ${{ needs.publish-apt.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -7,7 +7,7 @@ Chromium patch tests with `bun run --cwd packages/os test:browser`.
 
 Application and native-runtime sources belong to `packages/app` and its plugins.
 Builders use the enclosing Eliza checkout, or `ELIZAOS_ELIZA_ROOT` when explicitly
-set. Standalone OS checkouts use `.eliza-source` by default.
+set.
 
 Install workspace dependencies with Bun 1.4.2 at the repository root. Use Node
 24.15.0 for scripts. From the repository root:

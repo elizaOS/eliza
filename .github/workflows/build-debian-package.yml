@@ -111,8 +111,7 @@ jobs:
           test "$SOURCE_DATE_EPOCH" = "$(git show -s --format=%ct HEAD)"
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
           test "$(dpkg --print-architecture)" = "${{ matrix.debian-architecture }}"
-          pinned_commit="$(node --input-type=module -e 'import { readElizaSourceLock } from "./scripts/read-eliza-source-lock.ts"; process.stdout.write(readElizaSourceLock().commit);')"
-          test "$DESKTOP_SOURCE_SHA" = "$pinned_commit"
+          test "$DESKTOP_SOURCE_SHA" = "$(git rev-parse HEAD)"
       - name: Install deterministic Debian packaging tools
         run: |
           sudo apt-get update -qq

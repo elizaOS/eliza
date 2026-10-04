@@ -180,9 +180,7 @@ jobs:
           [[ "$EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{3})?Z$ ]]
           test "$SOURCE_DATE_EPOCH" = "$(git show -s --format=%ct HEAD)"
           test "$(dpkg --print-architecture)" = "${{ matrix.build-architecture }}"
-          node scripts/read-eliza-source-lock.ts --github-output > "$RUNNER_TEMP/eliza-source.outputs"
-          pinned_commit="$(sed -n 's/^commit=//p' "$RUNNER_TEMP/eliza-source.outputs")"
-          test "$DESKTOP_SOURCE_SHA" = "$pinned_commit"
+          test "$DESKTOP_SOURCE_SHA" = "$(git rev-parse HEAD)"
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
 
       - name: Download signed native desktop artifact

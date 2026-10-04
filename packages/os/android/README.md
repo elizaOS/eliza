@@ -34,8 +34,7 @@ Builds leave existing Cuttlefish sessions running. Stop selected instances
 explicitly when reclaiming memory before a build.
 
 Application sources resolve to the enclosing Eliza checkout. Set
-`ELIZAOS_ELIZA_ROOT` to use another checkout; a standalone OS checkout instead
-looks under `.eliza-source`. Native scripts and APK assets live under
+`ELIZAOS_ELIZA_ROOT` to use another checkout. Native scripts and APK assets live under
 `packages/app`, not this vendor tree. Licensed device inputs and release-signing
 material must be supplied separately.
 

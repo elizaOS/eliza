@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 90
     env:
       ELIZA_RISCV64_SMOKE: "1"
-      ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}/packages/os/.eliza-source
+      ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}
       # Keep the full shared-lib smoke on the same known-good linker as the
       # canonical AOSP/Cuttlefish build. Zig 0.14.x emits a non-PIC riscv64
       # compiler_rt archive and fails closed while linking libggml-base.so.
@@ -41,18 +41,6 @@ jobs:
         run: |
           report="$(node --input-type=module -e 'import { testOutputPath } from "../scripts/lib/test-output.ts"; console.log(testOutputPath("os-riscv64", "artifacts.json"));')"
           echo "RISCV_REPORT=$report" >> "$GITHUB_ENV"
-
-      - name: Resolve pinned Eliza source
-        id: eliza-source
-        run: node scripts/read-eliza-source-lock.ts --github-output >> "$GITHUB_OUTPUT"
-
-      - name: Checkout application native sources
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ${{ steps.eliza-source.outputs.repository }}
-          ref: ${{ steps.eliza-source.outputs.commit }}
-          path: packages/os/.eliza-source
-          submodules: recursive
 
       - name: Install QEMU + base tools
         run: |
@@ -79,13 +67,12 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.bun/install/cache
-          key: bun-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'packages/os/.eliza-source/bun.lock') }}
+          key: bun-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-downloads-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install workspace deps
         run: |
           (cd ../.. && bun install --frozen-lockfile --ignore-scripts)
-          bun install --cwd .eliza-source --frozen-lockfile --ignore-scripts
 
       # Fingerprint the riscv64 build inputs from the git index (blob SHAs of
       # tracked native sources + submodule pins). Fast (no byte reads), and it
@@ -96,8 +83,8 @@ jobs:
         run: |
           set -euo pipefail
           {
-            git -C .eliza-source submodule status --recursive
-            git -C .eliza-source ls-files -s \
+            git -C ../.. submodule status --recursive
+            git -C ../.. ls-files -s \
               plugins/plugin-local-inference/native/plugins \
               packages/app/scripts/aosp/compile-libllama.ts
             git ls-files -s \
@@ -116,8 +103,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
-            packages/os/.eliza-source/plugins/plugin-local-inference/native/plugins/*/build/riscv64
-            packages/os/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
+            plugins/plugin-local-inference/native/plugins/*/build/riscv64
+            packages/app/platforms/android/app/src/main/assets/agent/riscv64
             ~/.cache/eliza-android-agent/seccomp-shim/riscv64
           key: riscv64-out-${{ runner.os }}-${{ steps.riscv64-fp.outputs.hash }}
 
@@ -137,7 +124,7 @@ jobs:
             tail -n 250 "$log"
             echo "::endgroup::"
           done < <(
-            find .eliza-source/plugins/plugin-local-inference/native .eliza-source/plugins/plugin-vision/native build \
+            find ../../plugins/plugin-local-inference/native ../../plugins/plugin-vision/native build \
               -type f -name '*.log' -print0 2>/dev/null
           )
           if [ "$found" -eq 0 ]; then
@@ -150,10 +137,10 @@ jobs:
         with:
           name: riscv64-build-diagnostics
           path: |
-            packages/os/.eliza-source/plugins/plugin-local-inference/native/*/build/*.log
-            packages/os/.eliza-source/plugins/plugin-vision/native/*/build/*.log
-            packages/os/.eliza-source/plugins/plugin-local-inference/native/*/build/**/*.log
-            packages/os/.eliza-source/plugins/plugin-vision/native/*/build/**/*.log
+            plugins/plugin-local-inference/native/*/build/*.log
+            plugins/plugin-vision/native/*/build/*.log
+            plugins/plugin-local-inference/native/*/build/**/*.log
+            plugins/plugin-vision/native/*/build/**/*.log
             packages/os/build/*.log
           if-no-files-found: warn
           include-hidden-files: true
