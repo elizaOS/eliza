@@ -1,4 +1,5 @@
 /** Public surface of the local voice pipeline: audio ingest, barge-in, cancellation, streaming ASR, phrase scheduling, speaker attribution, and the engine bridge. */
+
 export {
 	type AttributedTurn,
 	type AttributedTurnListener,
@@ -51,25 +52,10 @@ export {
 	mergeContext,
 } from "./eager-context-builder";
 export {
-	DEFAULT_PLAYBACK_DELAY_MS,
-	type EchoDelayEstimate,
-	type EchoDelayOptions,
-	estimateEchoDelaySamples,
-	PLATFORM_PLAYBACK_DELAY_DEFAULTS,
-	platformPlaybackDelayMs,
-	platformPlaybackDelaySamples,
-} from "./echo-delay";
-export {
 	type AecCaptureReplayInput,
 	type AecCaptureReplayResult,
-	computeErle,
-	computeFarActiveErle,
 	replayAecCaptureErle,
 } from "./echo-metrics";
-export {
-	EchoReferenceBuffer,
-	type EchoReferenceBufferOptions,
-} from "./echo-reference-buffer";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
@@ -203,10 +189,6 @@ export {
 	resolveDesktopRecorder,
 } from "./mic-source";
 export {
-	NlmsEchoCanceller,
-	type NlmsEchoCancellerOptions,
-} from "./nlms-echo-canceller";
-export {
 	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,
 	OptimisticGenerationPolicy,
 	type OptimisticPolicyOptions,
@@ -296,7 +278,6 @@ export {
 	VoiceScheduler,
 } from "./scheduler";
 export {
-	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
 	AgentSelfVoiceImprint,
 	type AgentSelfVoiceImprintOptions,
 	type AgentSelfVoiceImprintSource,

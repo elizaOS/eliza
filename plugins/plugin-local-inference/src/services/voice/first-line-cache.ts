@@ -58,7 +58,7 @@ import {
 	type FirstSentenceSnipResult,
 	firstSentenceSnip,
 	wordCount,
-} from "./first-sentence-snip.js";
+} from "@elizaos/voice";
 
 // ---------------------------------------------------------------------------
 // Types

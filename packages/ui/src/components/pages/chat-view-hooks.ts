@@ -7,6 +7,7 @@
  * the file. See per-export JSDoc for the cloud-voice availability ordering.
  */
 
+import { buildVoiceTurnSignal } from "@elizaos/voice";
 import {
   useCallback,
   useEffect,
@@ -53,7 +54,6 @@ import {
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { VoiceTraceMark } from "../../voice/voice-session-client";
 import type { VoiceSessionMintResponse } from "../../voice/voice-session-protocol";
-import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 

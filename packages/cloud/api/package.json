@@ -58,7 +58,8 @@
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/voice": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/plugin-scheduling": "workspace:*",

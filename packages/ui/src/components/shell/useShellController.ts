@@ -19,6 +19,7 @@ import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
 } from "@elizaos/core/protocol";
+import { buildVoiceTurnSignal, shouldRespondToVoiceTurn } from "@elizaos/voice";
 import * as React from "react";
 import type {
   ChatTurnStatus,
@@ -68,7 +69,6 @@ import {
   queryMicrophonePermission,
   requestDesktopMicrophoneAccess,
 } from "../../voice/local-asr-capture";
-import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
   isTranscriptionExitPhrase,
@@ -90,7 +90,6 @@ import {
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
-import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import {

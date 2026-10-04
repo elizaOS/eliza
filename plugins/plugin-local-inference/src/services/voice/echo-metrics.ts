@@ -1,6 +1,6 @@
 /**
  * ERLE metrics for the voice pipeline. The math is canonical in
- * `@elizaos/plugin-local-inference/protocol`; this module re-exports it and adds the
+ * `@elizaos/voice`; this module re-exports it and adds the
  * capture-replay helper that turns an armed AEC evidence window (#11373)
  * into an offline ERLE measurement using the exact production canceller.
  */
@@ -8,10 +8,8 @@
 import {
 	computeErle,
 	computeFarActiveErle,
-} from "./echo-metrics-calculation.js";
-import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
-
-export { computeErle, computeFarActiveErle };
+	NlmsEchoCanceller,
+} from "@elizaos/voice";
 
 /** The slice of {@link AecCaptureSnapshot} the replay needs. */
 export interface AecCaptureReplayInput {

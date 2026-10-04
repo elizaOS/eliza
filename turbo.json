@@ -546,7 +546,11 @@
       ]
     },
     "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/plugin-assistant#build",
+        "@elizaos/voice#build"
+      ]
     },
     "@elizaos/plugin-meetings#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]

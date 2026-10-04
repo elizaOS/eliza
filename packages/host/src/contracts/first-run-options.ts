@@ -2,11 +2,7 @@
  * Shared first-run provider setup contracts.
  */
 
-import {
-  CHARACTER_LANGUAGES,
-  type CharacterLanguage,
-  isTruthyEnvValue,
-} from "@elizaos/core/protocol";
+import { isTruthyEnvValue } from "@elizaos/core/protocol";
 import { normalizeSecretString } from "./config-secret.js";
 import type {
   DeploymentTargetConfig,

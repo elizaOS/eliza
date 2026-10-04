@@ -78,7 +78,7 @@ function now(): number {
  * `[a-z0-9]` to whitespace, so apostrophes and non-ASCII letters are dropped.
  * That is fine here because the grind self-test compares against a fixed ASCII
  * English phrase (`GRIND_PHRASE`). The canonical, Unicode-aware WER used
- * elsewhere lives in `@elizaos/plugin-local-inference/protocol`; this local copy stays
+ * elsewhere lives in `@elizaos/voice`; this local copy stays
  * dependency-free so the mobile bridge bundle does not pull in `@elizaos/core`.
  */
 export function wordErrorRate(reference: string, hypothesis: string): number {

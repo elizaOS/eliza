@@ -60,12 +60,6 @@
 			"types": "./src/*.ts",
 			"import": "./dist/*.js",
 			"default": "./dist/*.js"
-		},
-		"./protocol": {
-			"eliza-source": "./src/protocol.ts",
-			"types": "./src/protocol.ts",
-			"import": "./dist/protocol.js",
-			"default": "./dist/protocol.js"
 		}
 	},
 	"files": [
@@ -121,7 +115,8 @@
 		"ws": "^8.21.3",
 		"yaml": "^2.8.2",
 		"zod": "^4.4.3",
-		"@elizaos/contracts": "workspace:*"
+		"@elizaos/contracts": "workspace:*",
+		"@elizaos/voice": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*"
