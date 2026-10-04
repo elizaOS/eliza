@@ -1426,7 +1426,7 @@ export function printStdoutSummary(report: AggregateReport): void {
   lines.push("| --- | --- | --- | --- |");
   for (const s of report.scenarios) {
     const first =
-      s.failedAssertions[0]?.detail ?? s.error ?? s.skipReason ?? "";
+      s.error ?? s.failedAssertions[0]?.detail ?? s.skipReason ?? "";
     const detail = first
       .replace(/\\/g, "\\\\")
       .replace(/\|/g, "\\|")
