@@ -104,6 +104,17 @@ export const billingSubscriptionCommands = pgTable(
     >(),
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_response_digest: text("provider_response_digest"),
+    organization_upgrade_settlement_evidence: jsonb(
+      "organization_upgrade_settlement_evidence",
+    ).$type<{
+      kind: "historical_target_with_live_compatibility";
+      eventId: string;
+      eventDigest: string;
+      liveDigest: string;
+      livePeriodStart: string;
+      livePeriodEnd: string;
+      observedAt: string;
+    }>(),
     error_code: text("error_code"),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     result_subscription_id: uuid("result_subscription_id"),
@@ -196,6 +207,17 @@ export const billingSubscriptionCommands = pgTable(
     cancellation_dispatch_check: check(
       "billing_subscription_commands_cancellation_dispatch_check",
       sql`${table.cancellation_dispatch_state} IS NULL OR (${table.kind} IN ('cancel','resume') AND ${table.cancellation_dispatch_state} IN ('ready','started'))`,
+    ),
+    historical_settlement_shape: check(
+      "organization_upgrade_settlement_evidence_shape",
+      sql`${table.organization_upgrade_settlement_evidence} IS NULL OR (${table.kind}='upgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform' AND ${table.status}='APPLIED'
+ AND ${table.organization_upgrade_settlement_evidence}->>'kind'='historical_target_with_live_compatibility'
+ AND ${table.organization_upgrade_settlement_evidence}->>'eventId' ~ '^evt_[A-Za-z0-9]+$'
+ AND ${table.organization_upgrade_settlement_evidence}->>'eventDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_upgrade_settlement_evidence}->>'liveDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_upgrade_settlement_evidence}->'livePeriodStart')='string'
+ AND jsonb_typeof(${table.organization_upgrade_settlement_evidence}->'livePeriodEnd')='string'
+ AND jsonb_typeof(${table.organization_upgrade_settlement_evidence}->'observedAt')='string') IS TRUE`,
     ),
     cancellation_result_check: check(
       "billing_subscription_commands_cancellation_result_check",

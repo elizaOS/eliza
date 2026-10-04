@@ -277,6 +277,16 @@ const UNOWNED_SUBSCRIPTION_INCIDENTS: Record<
     reason: string;
   }
 > = {
+  "invoice.created": {
+    kind: "event_processing",
+    severity: "warning",
+    reason: "unowned_upgrade_invoice",
+  },
+  "invoice.paid": {
+    kind: "event_processing",
+    severity: "error",
+    reason: "unowned_upgrade_invoice",
+  },
   "customer.subscription.trial_will_end": {
     kind: "provider_drift",
     severity: "warning",
@@ -550,6 +560,24 @@ async function processSubscriptionEvent(
             `live_status_${live.status}`,
           );
       }
+    }
+    if (
+      (event.type === "invoice.created" || event.type === "invoice.paid") &&
+      event.data.object.billing_reason === "subscription_update"
+    ) {
+      stripeSubscriptionId = invoiceSubscriptionId(event.data.object);
+      const { reconcileOrganizationUpgradeInvoiceEvent } = await import(
+        "@elizaos/cloud-shared/lib/services/organization-upgrade-invoice-event"
+      );
+      const result = await reconcileOrganizationUpgradeInvoiceEvent(
+        delivery.body,
+      );
+      if (result.owned) return "ack";
+      return await acknowledgeUnownedSubscriptionEvent(
+        event,
+        stripeSubscriptionId,
+        "original_upgrade_command_unavailable",
+      );
     }
     if (
       event.type === "invoice.paid" &&

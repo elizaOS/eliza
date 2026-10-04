@@ -204,9 +204,24 @@ source identity, serialize staging and publish provenance only after success.
 Failed staging can leave partial files: verification rejects source/generated
 hash mismatches; this is not an atomic or durable publication API.
 
+`EmbeddedRuntimeLaunch` constructs Android embedded agent/gateway commands and
+private base environments from verified installed libraries and trusted host
+paths. Hosts retain provider/plugin configuration, account storage identity and
+all supervisor/readiness policy. Agent authority is not copied to the gateway.
+Port selection is only a hint; children must bind strictly. The portable native
+host suite checks environment isolation with a real child process.
 `NativeRuntimeSession` composes the existing process supervisor with named process
 bindings, redacted log draining, readiness and once-only response epoch fencing.
 Hosts provide commands, environment, log policy, readiness probes and active-host
 identity. It selects no provider, routes or credentials and never retries requests.
 Its portable contract covers replacement during a request and paired startup
 failure; Android service, real runtime and device qualification remain host tests.
+
+`EmbeddedRuntimeGroup` orders agent readiness, private token/binding publication,
+credential-broker attachment and gateway readiness inside one existing session
+scope. Hosts supply commands, readiness probes, a private publisher and broker
+custody. The publisher receives the standard agent-token, gateway-token and
+credential-binding.json names; hosts retain storage layout and binding schema.
+Endpoints alone do not prove readiness: requests still need session fencing.
+Portable tests use real authenticated loopback child processes and verify broker
+cleanup and cancellation between startup stages.
