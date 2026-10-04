@@ -11,8 +11,8 @@ import {
 	REMOTE_CONTROL_PROTOCOL_VERSION,
 	type RemoteTargetPublicIdentity,
 } from "@elizaos/core/contracts/remote-control";
+import type { PlatformSecureStore } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { resolveCanonicalStateDir } from "../../../src/security/agent-vault-id";
-import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";
 
 const TARGET_VAULT_KIND = "runtime.agent_profiles" as const;

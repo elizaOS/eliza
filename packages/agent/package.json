@@ -264,6 +264,13 @@
       "types": "./dist/services/sqlite-message-interaction-session-store.d.ts",
       "import": "./dist/services/sqlite-message-interaction-session-store.js",
       "default": "./dist/services/sqlite-message-interaction-session-store.js"
+    },
+    "./bin": {
+      "eliza-source": "./src/bin.ts",
+      "types": "./dist/bin.d.ts",
+      "bun": "./src/bin.ts",
+      "import": "./dist/bin.js",
+      "default": "./dist/bin.js"
     }
   },
   "publishConfig": {

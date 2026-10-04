@@ -1,11 +1,20 @@
 {
   "compilerOptions": {
-    "customConditions": ["eliza-source"],
+    "customConditions": [
+      "eliza-source"
+    ],
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "types": ["node", "vitest"],
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "vitest"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -16,7 +25,9 @@
     "declaration": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core/*": ["../core/src/*"]
+      "@elizaos/core/*": [
+        "../core/src/*"
+      ]
     }
   },
   "include": [
@@ -25,6 +36,7 @@
     "src/kms/**/*",
     "src/index.ts",
     "test/*.ts",
+    "src/accounts/**/*",
     "src/providers/**/*"
   ]
 }

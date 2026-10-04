@@ -1,19 +1,19 @@
 /** Exposes shared mobile configuration and rejects runtime modes absent from this app. */
-import { ElizaError } from "../../core/src/errors";
+import { ElizaError } from "@elizaos/core/errors";
 import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig as resolveSharedIosRuntimeConfig,
-} from "../../ui/src/platform/ios-runtime";
+} from "@elizaos/ui/platform/ios-runtime";
 
 export type {
   IosRuntimeConfig,
   IosRuntimeMode,
-} from "../../ui/src/platform/ios-runtime";
+} from "@elizaos/ui/platform/ios-runtime";
 export {
   apiBaseToDeviceBridgeUrl,
   DEFAULT_ELIZA_CLOUD_BASE,
   resolveCloudApiBase,
-} from "../../ui/src/platform/ios-runtime";
+} from "@elizaos/ui/platform/ios-runtime";
 
 export function assertSupportedIosRuntimeConfig(
   config: IosRuntimeConfig,

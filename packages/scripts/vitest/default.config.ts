@@ -15,11 +15,10 @@
  */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.ts";
-import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
-import { repoRoot } from "./repo-root";
-import { buildWorkspaceSourceAliases } from "./source-aliases";
-import { getElizaWorkspaceRoot, type ModuleAlias } from "./workspace-aliases";
+import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger.ts";
+import { repoRoot } from "./repo-root.ts";
+import { buildWorkspaceSourceAliases } from "./source-aliases.ts";
+import { getElizaWorkspaceRoot, type ModuleAlias } from "./workspace-aliases.ts";
 
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
@@ -103,7 +102,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      reporter: [...coverageSummaryReporters],
+      reporter: ["text", "json-summary", "lcov"],
       include: ["src/**/*.ts"],
       exclude: [
         "src/**/*.test.ts",

@@ -15,13 +15,6 @@ import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appDir, "..", "..");
-const repoSetupScript = path.join(
-  repoRoot,
-  "packages",
-  "app",
-  "scripts",
-  "run-repo-setup.ts",
-);
 const pruneCdnAssetsScript = path.join(
   repoRoot,
   "packages",
@@ -140,7 +133,7 @@ function stampBuildInfo() {
 async function main() {
   if (fullSetup) {
     await run(bunExecutable, ["install", "--ignore-scripts"], repoRoot);
-    await run(process.execPath, [repoSetupScript], repoRoot);
+    await run(bunExecutable, ["run", "postinstall"], repoRoot);
   }
 
   stampBuildInfo();
@@ -150,10 +143,6 @@ async function main() {
     [path.join(__dirname, "plugin-build.ts")],
     appDir,
   );
-
-  if (fullSetup) {
-    await run(bunExecutable, ["install", "--ignore-scripts"], appDir);
-  }
 
   await run(
     bunExecutable,

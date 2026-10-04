@@ -18,15 +18,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveAliasedEnvValue } from "@elizaos/core/boot-env";
+import type { SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
+import { ElizaError } from "@elizaos/core/errors";
+import { logger } from "@elizaos/core/logger";
 import {
-  ElizaError,
   getElizaNamespace,
-  logger,
-  resolveAliasedEnvValue,
   resolveStateDir,
   resolveUserPath,
-} from "@elizaos/core";
-import type { SubscriptionCredentialSource } from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/core/utils/state-dir";
 import {
   type AccountCredentialRecord,
   type AccountDeletionPlan,

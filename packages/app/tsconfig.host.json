@@ -46,11 +46,9 @@
       ]
     }
   },
-  "exclude": ["src/cli/**", "src/**/*.stories.ts", "src/**/*.stories.tsx"],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],
   "include": [
     "src/connectors",
-    "src/ui-compat.ts",
-    "src/config",
     "src/security",
     "src/mobile-remote-target.ts",
     "src/entry.ts",
@@ -59,18 +57,13 @@
     "src/utils",
     "src/desktop-shell.ts",
     "src/cli",
-    "src/permissions",
     "src/browser.ts",
     "src/styles",
     "src/boot-profile.ts",
-    "src/diagnostics",
-    "src/registry",
     "src/first-run",
     "src/api",
     "src/index.ts",
-    "src/account-pool.ts",
     "src/entry-cloud-api-key.ts",
-    "src/alias-env-reads.13422.test.ts",
     "src/services",
     "vite-env.d.ts"
   ]

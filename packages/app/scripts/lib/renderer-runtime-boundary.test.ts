@@ -67,6 +67,13 @@ async function bundle(entry: string) {
 }
 
 describe("renderer runtime boundary", () => {
+  it("rejects the app host barrel in a renderer", async () => {
+    await expect(
+      bundle(
+        'import { startEliza } from "@elizaos/app"; console.log(startEliza);',
+      ),
+    ).rejects.toThrow(/Node runtime import @elizaos\/app/);
+  });
   it("rejects retained SQL runtime imports instead of substituting a schema", async () => {
     await expect(
       bundle(
@@ -102,6 +109,11 @@ describe("renderer runtime boundary", () => {
   });
 
   it.each([
+    'export { getLlama } from "node-llama-cpp";',
+    'export { pgTable } from "drizzle-orm/pg-core";',
+    'export { createManager } from "@elizaos/auth/vault";',
+    'export { ensureModel } from "@elizaos/plugin-local-inference/runtime";',
+
     'import "node:fs"; export const ready = true;',
     'export { readFile } from "fs/promises";',
     'export async function load() { return import("@elizaos/agent"); }',

@@ -174,6 +174,7 @@ import {
   createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
 } from "./event-hub.ts";
+import type { ApiStatusComposer } from "./health-routes.ts";
 import { responseReadinessFields } from "./health-routes.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
@@ -1187,6 +1188,7 @@ export interface RuntimeRestartOptions {
   disposeCurrentBeforeBuild?: boolean;
 }
 interface RequestContext {
+  composeStatus?: ApiStatusComposer;
   hostRuntimeMode?: RuntimeModeSnapshot;
   restartRequiresRuntimeDisposal?: boolean;
   onRestart:
@@ -2113,6 +2115,7 @@ async function handleRequestForViewClient(
   }
   if (
     await handleHealthRoutes({
+      composeStatus: ctx?.composeStatus,
       req,
       res,
       method,
@@ -3398,6 +3401,8 @@ function strictPortBindingEnabled(): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 export async function startApiServer(opts?: {
+  /** Compose product status fields before serialization; does not intercept transport. */
+  composeStatus?: ApiStatusComposer;
   port?: number;
   runtime?: AgentRuntime;
   /**
@@ -3681,6 +3686,7 @@ export async function startApiServer(opts?: {
   );
   apiLap("pre-createServer (route imports + middleware setup done)");
   const requestContext: RequestContext = {
+    composeStatus: opts?.composeStatus,
     hostRuntimeMode:
       hostConfig === undefined ? undefined : resolveRuntimeMode(hostConfig),
     onRestart,

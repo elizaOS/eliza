@@ -2,8 +2,6 @@
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
 		"lib": ["ES2024", "DOM", "DOM.Iterable"],
-		"outDir": "./dist",
-		"rootDir": "../../",
 		"sourceMap": false,
 		"inlineSourceMap": false,
 		"types": ["node"],
@@ -13,7 +11,8 @@
 		"paths": {
 			"@elizaos/core/*": ["./src/*"]
 		},
-		"incremental": false
+		"incremental": false,
+		"rootDir": "../../"
 	},
 	"include": ["src/**/*.ts"],
 	"exclude": [

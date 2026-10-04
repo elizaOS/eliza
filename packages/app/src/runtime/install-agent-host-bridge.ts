@@ -19,6 +19,16 @@ import {
   setAgentHostBridge,
 } from "@elizaos/agent/runtime/host-bridge";
 import {
+  applyAccountPoolApiCredentials,
+  createAccountPoolConsumerKey,
+  getDefaultAccountPool,
+  listAccountPoolConsumerKeys,
+  rotateAccountPoolConsumerKey,
+  startAccountPoolKeepAlive,
+  updateAccountPoolConsumerKey,
+} from "@elizaos/auth/accounts";
+import { registerAppRoutePluginLoader } from "@elizaos/core/api/app-route-plugin-registry";
+import {
   getBuildVariant,
   isStoreBuild,
 } from "@elizaos/core/platform/build-variant";
@@ -34,21 +44,8 @@ import {
   captureWalletEnvBootBaseline,
   hydrateWalletKeysFromNodePlatformSecureStore,
 } from "../security/hydrate-wallet-keys-from-platform-store";
-import {
-  applyAccountPoolApiCredentials,
-  getDefaultAccountPool,
-  startAccountPoolKeepAlive,
-} from "../services/account-pool";
-import {
-  createAccountPoolConsumerKey,
-  listAccountPoolConsumerKeys,
-  rotateAccountPoolConsumerKey,
-  updateAccountPoolConsumerKey,
-} from "../services/account-pool-consumer-metering";
 import { runVaultBootstrap } from "../services/vault-bootstrap";
 import { sharedVault } from "../services/vault-mirror";
-
-import { registerAppRoutePluginLoader } from "./app-route-plugin-registry";
 
 let installed = false;
 
@@ -56,7 +53,7 @@ export function installAgentHostBridge(): void {
   registerAppRoutePluginLoader(
     "remote-browser-controller",
     async () =>
-      (await import("../services/remote-browser-controller"))
+      (await import("@elizaos/plugin-browser/remote-controller"))
         .remoteBrowserControllerPlugin,
   );
 

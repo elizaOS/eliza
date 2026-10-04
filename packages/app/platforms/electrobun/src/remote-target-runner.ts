@@ -25,7 +25,7 @@ import {
 	signRemoteCommandResult,
 	signRemoteCommandStartReceipt,
 	verifyRemoteCommandAuthenticity,
-} from "../../../src/security/remote-control-crypto";
+} from "@elizaos/plugin-browser/remote-control/crypto";
 import { logger } from "./logger";
 import type {
 	RemoteTargetStateStore,

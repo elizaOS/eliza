@@ -4,10 +4,50 @@ import type { Plugin } from "vite";
 
 const nodeModules = new Set(builtinModules.flatMap((id) => [id, `node:${id}`]));
 
-function isCoreRuntime(id: string): boolean {
+const hostPackages = new Set([
+  "node-llama-cpp",
+  "fs-extra",
+  "pty-state-capture",
+  "pty-console",
+  "pty-manager",
+  "electron",
+  "undici",
+  "sharp",
+  "puppeteer-core",
+  "@puppeteer/browsers",
+  "@elizaos/plugin-anthropic",
+  "@elizaos/plugin-pdf",
+  "@elizaos/plugin-telegram",
+  "@elizaos/plugin-edge-tts",
+  "@node-rs/argon2",
+  "@node-rs/argon2-wasm32-wasi",
+  "drizzle-orm",
+  "mammoth",
+  "unpdf",
+]);
+const hostEntries = new Set([
+  "@elizaos/auth/vault",
+  "@elizaos/auth/accounts",
+  "@elizaos/plugin-elizacloud",
+  "@elizaos/plugin-agent-orchestrator",
+  "@elizaos/plugin-local-inference",
+  "@elizaos/plugin-local-inference/routes",
+  "@elizaos/plugin-local-inference/runtime",
+  "@elizaos/plugin-local-inference/services",
+  "@elizaos/plugin-local-inference/runtime/embedding-presets",
+]);
+
+function isHostRuntime(id: string): boolean {
+  const packageName = id.startsWith("@")
+    ? id.split("/").slice(0, 2).join("/")
+    : id.split("/")[0];
   return (
+    hostPackages.has(packageName) ||
+    hostEntries.has(id) ||
+    /^@(?:node-llama-cpp\/|img\/sharp|napi-rs\/keyring)/.test(id) ||
     nodeModules.has(id) ||
     id.startsWith("node:") ||
+    id === "@elizaos/app" ||
     id === "@elizaos/core" ||
     id === "@elizaos/core/index" ||
     id === "@elizaos/plugin-sql" ||
@@ -27,7 +67,7 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
       serving = config.command === "serve";
     },
     resolveId(id, importer) {
-      if (!isCoreRuntime(id)) return null;
+      if (!isHostRuntime(id)) return null;
       if (importer) {
         const origins = importOrigins.get(id) ?? new Set<string>();
         origins.add(importer);
@@ -46,7 +86,7 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
       for (const output of Object.values(bundle)) {
         if (output.type !== "chunk") continue;
         const runtime = [...output.imports, ...output.dynamicImports].find(
-          isCoreRuntime,
+          isHostRuntime,
         );
         if (runtime) {
           const importers = [

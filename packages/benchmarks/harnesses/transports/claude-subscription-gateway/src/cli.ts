@@ -456,7 +456,7 @@ async function loadCanonicalAccountPoolBroker(): Promise<CredentialLeaseBroker> 
   const elizaRepo = process.env.ELIZA_REPO ?? monorepoRoot;
   const loaded: unknown = await importMeasuredPackage(
     elizaRepo,
-    "@elizaos/app/account-pool",
+    "@elizaos/auth/accounts",
   );
   const brokerConstructor =
     typeof loaded === "object" && loaded !== null

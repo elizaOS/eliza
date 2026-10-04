@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { PlatformSecureStore } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { afterEach, expect, it, vi } from "vitest";
-import type { PlatformSecureStore } from "../security/platform-secure-store";
 import {
   loadStewardCredentials,
   saveStewardCredentials,
