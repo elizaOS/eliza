@@ -27,7 +27,7 @@ interface ClientConfig {
 }
 
 export interface RuntimePgClient extends IdentityQueryClient {
-  connect(): Promise<void>;
+  connect(): Promise<unknown>;
   end(): Promise<void>;
   off(event: "error", listener: (error: Error) => void): void;
   on(event: "error", listener: (error: Error) => void): void;
@@ -311,7 +311,7 @@ async function clientConfig(databaseUrl: string): Promise<ClientConfig> {
   };
 }
 
-async function createRuntimePgClient(
+export async function createRuntimePgClient(
   databaseUrl: string,
 ): Promise<RuntimePgClient> {
   const { Client } = await import("pg");
