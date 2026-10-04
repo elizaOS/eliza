@@ -30,14 +30,25 @@ test("independent host selects its plan and speech policy without exposing autho
     currency: "usd",
     interval: "month",
   };
+  let checkoutSessionId = "cs_test_checkoutSession1";
+  let authorized = true;
+  const handled = [];
   const routes = createCloudRoutes({
     hostPolicy: {
       ...policy,
       createNativeCloudAuth: () => ({
-        billingAuthority: () => ({
-          token: "billing-session",
-          expiresAt: Date.now() + 10000,
-        }),
+        // Mirrors cloud-enrollment: async, ISO expiry, null once lapsed.
+        billingAuthority: async () =>
+          authorized
+            ? {
+                token: "billing-session",
+                expiresAt: new Date(Date.now() + 10000).toISOString(),
+              }
+            : null,
+        handle: async (operation, input) => {
+          handled.push({ operation, input });
+          return { status: "authorized" };
+        },
       }),
     },
     pendingCredentialStore: { read: async () => null },
@@ -73,6 +84,7 @@ test("independent host selects its plan and speech policy without exposing autho
           data: {
             status: "open",
             ...checkoutQuote,
+            sessionId: checkoutSessionId,
             uiMode: checkoutMode,
             clientSecret: "cs_test_checkout_secret_reviewed",
             publishableKey: "pk_test_cloudcheckout",
@@ -83,6 +95,8 @@ test("independent host selects its plan and speech policy without exposing autho
         return new Response(new Uint8Array([1, 2]), {
           headers: { "Content-Type": "audio/mpeg" },
         });
+      if (url.endsWith("/subscriptions/checkout/confirm"))
+        return Response.json({ success: true, data: { status: "open" } });
       throw Error("Unexpected provider request");
     },
   });
@@ -149,6 +163,7 @@ test("independent host selects its plan and speech policy without exposing autho
     assert.deepEqual(await checkout.json(), {
       status: "open",
       uiMode: "embedded",
+      sessionId: "cs_test_checkoutSession1",
       clientSecret: "cs_test_checkout_secret_reviewed",
       publishableKey: "pk_test_cloudcheckout",
       amountDueCents: 3000,
@@ -168,6 +183,12 @@ test("independent host selects its plan and speech policy without exposing autho
       });
     }
     checkoutMode = "embedded";
+    for (const invalidSession of [undefined, "cs_test_", "pi_test_abc", 7]) {
+      checkoutSessionId = invalidSession;
+      const response = await post("/cloud/account/checkout", checkoutInput);
+      assert.equal(response.status, 502);
+    }
+    checkoutSessionId = "cs_test_checkoutSession1";
     checkoutQuote = { amountDueCents: 0, currency: "usd", interval: "month" };
     const zeroQuote = await post("/cloud/account/checkout", checkoutInput);
     assert.equal(zeroQuote.status, 200);
@@ -191,6 +212,64 @@ test("independent host selects its plan and speech policy without exposing autho
         error: "Invalid payment response",
       });
     }
+    const mfa = await post("/cloud/account/billing/mfa", {
+      sessionId: "billing-attempt",
+      code: "123456",
+    });
+    assert.equal(mfa.status, 200);
+    assert.deepEqual(await mfa.json(), { status: "authorized" });
+    assert.deepEqual(handled.at(-1), {
+      operation: "billing-mfa",
+      input: { sessionId: "billing-attempt", code: "123456" },
+    });
+    assert.equal(
+      (await post("/cloud/account/billing/mfa", { code: "1", extra: 1 }))
+        .status,
+      400,
+    );
+    const beforeConfirm = calls.length;
+    for (const invalid of [
+      {},
+      { sessionId: "cs_test_" },
+      { sessionId: "cs_test_abc_secret_def" },
+      { sessionId: "cs_test_abc", planKey: "annual_team" },
+    ])
+      assert.equal(
+        (await post("/cloud/account/checkout/confirm", invalid)).status,
+        400,
+      );
+    assert.equal(calls.length, beforeConfirm);
+    const confirmed = await post("/cloud/account/checkout/confirm", {
+      sessionId: "cs_test_checkoutSession1",
+    });
+    assert.equal(confirmed.status, 200);
+    assert.deepEqual(await confirmed.json(), { status: "submitted" });
+    assert.match(
+      calls.at(-1).url,
+      /\/api\/v1\/subscriptions\/checkout\/confirm$/,
+    );
+    assert.equal(calls.at(-1).init.method, "POST");
+    assert.deepEqual(JSON.parse(calls.at(-1).init.body), {
+      sessionId: "cs_test_checkoutSession1",
+    });
+    assert.equal(
+      calls.at(-1).init.headers.Authorization,
+      "Bearer billing-session",
+    );
+    authorized = false;
+    const beforeUnauthorized = calls.length;
+    for (const [path, input] of [
+      ["/cloud/account/checkout/confirm", { sessionId: "cs_test_abc" }],
+      ["/cloud/account/checkout", checkoutInput],
+    ]) {
+      const response = await post(path, input);
+      assert.equal(response.status, 428);
+      assert.equal(
+        (await response.json()).code,
+        "billing_verification_required",
+      );
+    }
+    assert.equal(calls.length, beforeUnauthorized);
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
@@ -213,6 +292,83 @@ test("private credential storage serializes writes and clear, and refuses symlin
     await rm(root, { recursive: true, force: true });
   }
 });
+for (const checkoutPath of [
+  "/cloud/account/checkout",
+  "/cloud/account/checkout/confirm",
+]) {
+  for (const disconnectPath of ["/cloud/logout", "/cloud/native/cancel"]) {
+    test(`billing authorization retains its account epoch (${checkoutPath}, ${disconnectPath})`, async () => {
+      let releaseAuthority;
+      let authorityStarted;
+      const started = new Promise((resolve) => {
+        authorityStarted = resolve;
+      });
+      const held = new Promise((resolve) => {
+        releaseAuthority = resolve;
+      });
+      let upstreamCalls = 0;
+      const cancellations = [];
+      const routes = createCloudRoutes({
+        hostPolicy: {
+          ...policy,
+          createNativeCloudAuth: () => ({
+            billingAuthority: async () => {
+              authorityStarted();
+              await held;
+              return {
+                token: "fixture-billing-authority",
+                expiresAt: new Date(Date.now() + 60000).toISOString(),
+              };
+            },
+            cancel: async (options) => {
+              cancellations.push(options);
+              return { status: "cancelled" };
+            },
+          }),
+        },
+        pendingCredentialStore: { read: async () => null },
+        speechVoice: { voiceId: "voice", modelId: "model" },
+        fetchImpl: async () => {
+          upstreamCalls++;
+          return Response.json({ data: { status: "completed" } });
+        },
+      });
+      const server = http.createServer((req, res) =>
+        routes(req, res, new URL(req.url, "http://localhost")),
+      );
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const post = (path, input) =>
+        fetch(base + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+      try {
+        const pending = post(
+          checkoutPath,
+          checkoutPath.endsWith("/confirm")
+            ? { sessionId: "cs_test_fixture" }
+            : { planKey: "annual_team", presentation: "embedded" },
+        );
+        await started;
+        const disconnected = await post(disconnectPath, {});
+        assert.equal(disconnected.status, 200);
+        assert.deepEqual(cancellations, [{ disconnect: true }]);
+        releaseAuthority();
+        const result = await pending;
+        assert.equal(result.status, 409);
+        assert.match((await result.json()).error, /accountSessionChanged/);
+        assert.equal(upstreamCalls, 0);
+      } finally {
+        releaseAuthority();
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      }
+    });
+  }
+}
 
 test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {
   const calls = [];

@@ -8,6 +8,7 @@ import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
+const CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
 function send(res, status, value) {
   res.writeHead(status, {
     "Content-Type": "application/json",
@@ -80,6 +81,8 @@ export function projectCheckout(data, presentation, forget) {
       data.amountDueCents < 0 ||
       data.currency !== "usd" ||
       data.interval !== "month" ||
+      typeof data.sessionId !== "string" ||
+      !CHECKOUT_SESSION_ID.test(data.sessionId) ||
       typeof data.clientSecret !== "string" ||
       !/^cs_(live|test)_[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(
         data.clientSecret,
@@ -91,6 +94,8 @@ export function projectCheckout(data, presentation, forget) {
     return {
       status,
       uiMode: data.uiMode,
+      // Native confirmation reconciles this session; payment is never inferred from the form.
+      sessionId: data.sessionId,
       clientSecret: data.clientSecret,
       publishableKey: data.publishableKey,
       amountDueCents: data.amountDueCents,
@@ -297,6 +302,19 @@ export function createCloudRoutes({
       throw fail(message("invalidCloudResponse"), 502);
     }
   }
+  /** The enrollment host's short-lived billing session; its expiry may be an ISO string or epoch ms. */
+  async function currentBillingAuthority(epoch) {
+    const authority = await nativeAuth?.billingAuthority?.();
+    current(epoch);
+    if (
+      !authority ||
+      typeof authority.token !== "string" ||
+      !authority.token ||
+      !(new Date(authority.expiresAt).getTime() > Date.now())
+    )
+      return null;
+    return authority;
+  }
   async function accountAccess() {
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
@@ -421,7 +439,7 @@ export function createCloudRoutes({
       // Billing uses a short-lived signed-in session held only by the native
       // enrollment host; the inference key is never sent to billing routes.
       const billingMatch = path.match(
-        /^\/cloud\/account\/billing\/(start|verify)$/,
+        /^\/cloud\/account\/billing\/(start|verify|mfa)$/,
       );
       if (method === "POST" && billingMatch) {
         if (!nativeAuth?.billingAuthority)
@@ -450,8 +468,9 @@ export function createCloudRoutes({
           !["embedded", "shared"].includes(input.presentation)
         )
           throw fail(message("chooseAPlanToContinue"));
-        const authority = nativeAuth?.billingAuthority?.();
-        if (!authority || !(authority.expiresAt > Date.now())) {
+        const epoch = generation;
+        const authority = await currentBillingAuthority(epoch);
+        if (!authority) {
           send(res, 428, {
             error: message("confirmItSYouBeforePaying"),
             code: "billing_verification_required",
@@ -472,6 +491,7 @@ export function createCloudRoutes({
             },
             key: authority.token,
             signal,
+            authorityGeneration: epoch,
           }),
         );
         send(
@@ -481,6 +501,36 @@ export function createCloudRoutes({
             checkoutKeys.delete(attemptKey),
           ),
         );
+        return true;
+      }
+      // Entitlement still comes only from Cloud's server-side reconciliation.
+      if (method === "POST" && path === "/cloud/account/checkout/confirm") {
+        const input = await body(req, 4096);
+        if (
+          Object.keys(input).some((key) => key !== "sessionId") ||
+          typeof input.sessionId !== "string" ||
+          !CHECKOUT_SESSION_ID.test(input.sessionId)
+        )
+          throw fail(message("invalidCheckoutSession"));
+        const epoch = generation;
+        const authority = await currentBillingAuthority(epoch);
+        if (!authority) {
+          send(res, 428, {
+            error: message("confirmItSYouBeforePaying"),
+            code: "billing_verification_required",
+          });
+          return true;
+        }
+        await parse(
+          await request("/api/v1/subscriptions/checkout/confirm", {
+            method: "POST",
+            json: { sessionId: input.sessionId },
+            key: authority.token,
+            signal,
+            authorityGeneration: epoch,
+          }),
+        );
+        send(res, 200, { status: "submitted" });
         return true;
       }
       if (method === "GET" && path === "/cloud/status") {
