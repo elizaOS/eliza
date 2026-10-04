@@ -953,37 +953,64 @@ describe("XService trusted account routing", () => {
     async function* events() {
       yield {
         id: "1",
-        sender_id: "current-user",
-        participant_ids: ["current-user", "alice"],
+        dm_conversation_id: "100-200",
+        sender_id: "100",
         text: "outbound",
       };
       yield {
         id: "2",
-        sender_id: "alice",
-        participant_ids: ["current-user", "alice"],
+        dm_conversation_id: "100-200",
+        sender_id: "200",
         text: "inbound",
       };
       yield {
         id: "3",
-        sender_id: "current-user",
-        participant_ids: ["current-user", "bob"],
+        dm_conversation_id: "100-300",
+        sender_id: "100",
         text: "outbound to bob",
       };
+      yield {
+        id: "4",
+        dm_conversation_id: "900",
+        sender_id: "100",
+        participant_ids: ["100", "200", "300"],
+        text: "group outbound",
+      };
+      yield {
+        id: "5",
+        dm_conversation_id: "900",
+        sender_id: "300",
+        participant_ids: ["100", "300", "200"],
+        text: "group inbound",
+      };
+      yield {
+        id: "6",
+        dm_conversation_id: "901",
+        sender_id: "200",
+        text: "missing participants",
+      };
+      yield {
+        id: "7",
+        dm_conversation_id: "200-300",
+        sender_id: "300",
+        participant_ids: ["200", "300"],
+        text: "foreign pair",
+      };
     }
-    const session = dmSession("current-user", {
+    const session = dmSession("100", {
       listDmEvents: vi.fn(async () =>
         Object.assign(events(), {
           includes: {
             users: [
-              { id: "current-user", username: "current" },
-              { id: "alice", username: "alice" },
+              { id: "100", username: "current" },
+              { id: "200", username: "alice" },
             ],
           },
         }),
       ),
     });
     const base = {
-      profile: { id: "current-user", username: "current" },
+      profile: { id: "100", username: "current" },
       twitterClient: {
         withAuthenticatedSession: async <T>(
           operation: (active: AuthenticatedTwitterSession) => Promise<T>,
@@ -1006,9 +1033,15 @@ describe("XService trusted account routing", () => {
       all.find((memory) => memory.content.text === text)?.roomId;
     expect(room("outbound")).toBe(room("inbound"));
     expect(room("outbound to bob")).not.toBe(room("inbound"));
+    expect(all).toHaveLength(7);
+    expect(room("group outbound")).toBe(room("group inbound"));
+    expect(room("group outbound")).not.toBe(room("inbound"));
+    expect(room("group inbound")).not.toBe(room("outbound to bob"));
+    expect(room("missing participants")).not.toBe(room("inbound"));
+    expect(room("foreign pair")).not.toBe(room("inbound"));
 
     const withAlice = await service.fetchConnectorMessages(context, {
-      target: { source: "x", entityId: "alice" } as TargetInfo,
+      target: { source: "x", entityId: "200" } as TargetInfo,
     });
     expect(withAlice.map((memory) => memory.content.text).sort()).toEqual([
       "inbound",
@@ -1018,7 +1051,7 @@ describe("XService trusted account routing", () => {
     const targets = await service.listRecentConnectorTargets(context);
     expect(targets.map((target) => target.label)).toEqual([
       "@alice",
-      "X user bob",
+      "X user 300",
     ]);
   });
 });

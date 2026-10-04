@@ -161,22 +161,25 @@ function explicitConnectorLimit(value: number | undefined): number | undefined {
   return value;
 }
 
-/**
- * The other participant of a 1:1 DM: the sender of an inbound message, and
- * the first non-sender participant of the account's own outbound message.
- */
+/** X identifies a one-to-one conversation by its two numeric user IDs. */
 function dmCounterpartId(message: {
   senderId: string;
-  isInbound?: boolean;
-  participantIds?: string[];
-}): string {
-  if (message.isInbound !== false) {
-    return message.senderId;
+  ownUserId?: string;
+  conversationId?: string;
+}): string | null {
+  const pair = message.conversationId?.match(/^(\d+)-(\d+)$/);
+  if (!pair || !message.ownUserId) {
+    return null;
   }
-  return (
-    message.participantIds?.find((id) => id && id !== message.senderId) ??
-    message.senderId
-  );
+  const participants = new Set(pair.slice(1));
+  if (
+    participants.size !== 2 ||
+    !participants.has(message.ownUserId) ||
+    !participants.has(message.senderId)
+  ) {
+    return null;
+  }
+  return [...participants].find((id) => id !== message.ownUserId) ?? null;
 }
 
 function readContentString(
@@ -1174,10 +1177,7 @@ export class XService extends Service {
     // whose sender is the account itself.
     const matches = messages
       .filter(
-        (message) =>
-          !targetUserId ||
-          message.senderId === targetUserId ||
-          message.participantIds.includes(targetUserId),
+        (message) => !targetUserId || dmCounterpartId(message) === targetUserId,
       )
       .map((message) =>
         this.buildXDirectMessageMemory(
@@ -1396,6 +1396,7 @@ export class XService extends Service {
       id: string;
       conversationId: string;
       senderId: string;
+      ownUserId: string;
       senderUsername: string | null;
       text: string;
       createdAt: string | null;
@@ -1438,6 +1439,7 @@ export class XService extends Service {
         id: string;
         conversationId: string;
         senderId: string;
+        ownUserId: string;
         senderUsername: string | null;
         text: string;
         createdAt: string | null;
@@ -1452,6 +1454,7 @@ export class XService extends Service {
           id: event.id ?? "",
           conversationId: event.dm_conversation_id ?? event.id ?? "",
           senderId: event.sender_id ?? "",
+          ownUserId,
           senderUsername: event.sender_id
             ? (usernameMap.get(event.sender_id) ?? null)
             : null,
@@ -1564,6 +1567,7 @@ export class XService extends Service {
       text: string;
       createdAt: string | null;
       isInbound?: boolean;
+      ownUserId?: string;
       participantIds?: string[];
     },
     target?: TargetInfo,
@@ -1582,7 +1586,12 @@ export class XService extends Service {
     const counterpartId = dmCounterpartId({ ...message, senderId });
     const roomId =
       target?.roomId ??
-      createUniqueUuid(runtime, `x:${normalizedAccountId}:dm:${counterpartId}`);
+      createUniqueUuid(
+        runtime,
+        counterpartId
+          ? `x:${normalizedAccountId}:dm:${counterpartId}`
+          : `x:${normalizedAccountId}:dm-conversation:${message.conversationId ?? message.id}`,
+      );
     const entityId = fromAccount
       ? runtime.agentId
       : createUniqueUuid(runtime, `x:user:${senderId}`);
