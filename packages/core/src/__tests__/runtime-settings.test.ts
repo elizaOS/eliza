@@ -9,6 +9,7 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";
+import type { SecretSwapSession } from "../security/secret-swap";
 import type { Character } from "../types/agent.js";
 import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 
@@ -189,6 +190,57 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-b");
 		runtime.setSetting("OPENROUTER_API_KEY", null, true);
 		expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+	});
+
+	it("keeps secrets written after initialize() in the secret maps", async () => {
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("runtime-secret-after-initialize-test"),
+		);
+		const runtime = new AgentRuntime({
+			character: {
+				name: "runtime-secret-after-initialize-test",
+				bio: ["test"],
+				settings: {},
+				secrets: { BOOT_SERVICE_TOKEN: "boot-service-token-value" },
+			} as Character,
+			adapter,
+			logLevel: "fatal",
+		});
+
+		try {
+			await runtime.initialize({ skipMigrations: true });
+			// initialize() merges both secret maps into one shared object.
+			expect(runtime.character.settings?.secrets).toBe(
+				runtime.character.secrets,
+			);
+
+			runtime.setSetting("BOOT_SERVICE_TOKEN", "rotated-service-token", true);
+			runtime.setSetting("LATER_SERVICE_TOKEN", "later-service-token", true);
+
+			expect(runtime.character.secrets).toMatchObject({
+				BOOT_SERVICE_TOKEN: "rotated-service-token",
+				LATER_SERVICE_TOKEN: "later-service-token",
+			});
+			const swap = (
+				runtime as unknown as {
+					createSecretSwapSession(): SecretSwapSession;
+				}
+			).createSecretSwapSession();
+			const wire = swap.substituteText(
+				"keys rotated-service-token later-service-token",
+			);
+			expect(wire).not.toContain("rotated-service-token");
+			expect(wire).not.toContain("later-service-token");
+
+			runtime.setSetting("LATER_SERVICE_TOKEN", null, true);
+			expect(runtime.getSetting("LATER_SERVICE_TOKEN")).toBeNull();
+			expect(runtime.character.secrets).not.toHaveProperty(
+				"LATER_SERVICE_TOKEN",
+			);
+		} finally {
+			await runtime.stop({ fast: true });
+		}
 	});
 
 	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {

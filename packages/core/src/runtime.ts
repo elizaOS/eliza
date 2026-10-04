@@ -1980,8 +1980,11 @@ export class AgentRuntime implements IAgentRuntime {
 				this.character.secrets[key] = String(value);
 				// Boot composition may have copied this key into the legacy nested
 				// secret map. Remove that lower-priority snapshot so a later revoke
-				// cannot resurrect it after the live value is cleared.
-				if (nestedSecrets) delete nestedSecrets[key];
+				// cannot resurrect it after the live value is cleared. initialize()
+				// can make both maps one object; deleting then erases the new value.
+				if (nestedSecrets && nestedSecrets !== this.character.secrets) {
+					delete nestedSecrets[key];
+				}
 			} else {
 				// null clears — callers use setSetting(key, null) to revoke a
 				// previously bridged credential (cloud disconnect, connector
