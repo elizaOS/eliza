@@ -24,8 +24,18 @@ const policy = {
 };
 test("independent host selects its plan and speech policy without exposing authority", async () => {
   const calls = [];
+  let checkoutMode = "embedded";
   const routes = createCloudRoutes({
-    hostPolicy: policy,
+    hostPolicy: {
+      ...policy,
+      createNativeCloudAuth: () => ({
+        billingAuthority: () => ({
+          token: "billing-session",
+          expiresAt: Date.now() + 10000,
+        }),
+      }),
+    },
+    pendingCredentialStore: { read: async () => null },
     speechVoice: { voiceId: "independentVoice", modelId: "independentModel" },
     initialApiKey: "private-test-credential",
     fetchImpl: async (url, init) => {
@@ -51,6 +61,15 @@ test("independent host selects its plan and speech policy without exposing autho
                 interval: "month",
               },
             ],
+          },
+        });
+      if (url.endsWith("/subscriptions/checkout"))
+        return Response.json({
+          data: {
+            status: "open",
+            uiMode: checkoutMode,
+            clientSecret: "cs_test_checkout_secret_reviewed",
+            publishableKey: "pk_test_cloudcheckout",
           },
         });
       if (url.endsWith("/voice/stt")) return Response.json({ text: "bonjour" });
@@ -118,6 +137,22 @@ test("independent host selects its plan and speech policy without exposing autho
       400,
     );
     assert.equal(calls.length, count);
+    const checkoutInput = { planKey: "annual_team", presentation: "embedded" };
+    const checkout = await post("/cloud/account/checkout", checkoutInput);
+    assert.equal(checkout.status, 200);
+    assert.equal((await checkout.json()).uiMode, "embedded");
+    assert.equal(
+      calls.at(-1).init.headers.Authorization,
+      "Bearer billing-session",
+    );
+    for (const unsupported of [undefined, null, "elements", "unknown"]) {
+      checkoutMode = unsupported;
+      const response = await post("/cloud/account/checkout", checkoutInput);
+      assert.equal(response.status, 502);
+      assert.deepEqual(await response.json(), {
+        error: "Invalid payment response",
+      });
+    }
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
