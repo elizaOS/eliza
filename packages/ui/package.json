@@ -201,7 +201,7 @@
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*",
-    "@elizaos/plugin-local-inference": "workspace:*"
+    "@elizaos/voice": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/haptics": "8.0.2",

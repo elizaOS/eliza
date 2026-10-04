@@ -43,7 +43,7 @@
  * Manifest hashing here intentionally mirrors the producer in
  * `packages/agent/src/services/agent-backup.ts` (canonical sorted-key JSON →
  * sha256). Cloud-shared cannot import that package, so both sides now call the
- * one bounded walk in `@elizaos/core/canonical-json` instead of keeping two
+ * one bounded walk in `@elizaos/contracts` instead of keeping two
  * copies of the recursion in sync; if the producer's hash shapes change, this
  * verifier must still change in lockstep or the fleet will page with
  * hash-mismatch failures.

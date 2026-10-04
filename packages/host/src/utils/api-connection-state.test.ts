@@ -1,15 +1,15 @@
 /** Verifies connection updates share the host config without accessing a DOM window. */
+
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store.js";
 import {
   clearElizaApiBase,
   clearElizaApiToken,
-  getBootConfig,
   getElizaApiBase,
   getElizaApiToken,
-  setBootConfig,
   setElizaApiBase,
   setElizaApiToken,
-} from "@elizaos/host/protocol";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+} from "./eliza-globals.js";
 
 const original = getBootConfig();
 const hostSetting = { enabled: true };

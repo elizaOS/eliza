@@ -11,7 +11,7 @@ explicit data exports. Hosts compose database adapters, model providers and
 
 HTTP lifecycle, process guards, restart, application configuration and boot environment resolution live
 in `@elizaos/host`, with browser-safe configuration in `@elizaos/host/protocol`.
-Portable acoustic processing lives in `@elizaos/plugin-local-inference/protocol`.
+Portable acoustic processing lives in `@elizaos/voice`.
 Cross-domain DTOs and validation live in `@elizaos/contracts`. Core imports none
 of these owners.
 

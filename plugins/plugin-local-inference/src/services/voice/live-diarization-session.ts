@@ -29,6 +29,11 @@ import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
 import { resolvePlatform } from "@elizaos/host/protocol";
 import {
+	EchoReferenceBuffer,
+	platformPlaybackDelaySamples,
+	StreamingEchoDelayCalibrator,
+} from "@elizaos/voice";
+import {
 	type AttributedTurn,
 	type AttributionPipelineLike,
 	AudioFrameConsumer,
@@ -43,9 +48,6 @@ import {
 	type TurnTranscriber,
 	type VadSegmenter,
 } from "./audio-frame-consumer.js";
-import { StreamingEchoDelayCalibrator } from "./delay-calibrator.js";
-import { platformPlaybackDelaySamples } from "./echo-delay.js";
-import { EchoReferenceBuffer } from "./echo-reference-buffer.js";
 import { resolveResidualSuppression } from "./far-end-reference.js";
 import type {
 	ElizaInferenceContextHandle,

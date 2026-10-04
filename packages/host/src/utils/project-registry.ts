@@ -8,7 +8,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core/protocol";
 import { writeJsonFileAtomic } from "./atomic-json-file.js";

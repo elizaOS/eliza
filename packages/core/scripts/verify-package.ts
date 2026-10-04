@@ -78,6 +78,7 @@ try {
 	}
 	pack(core);
 	pack(path.join(repository, "packages/host"));
+	pack(path.join(repository, "packages/voice"));
 	const consumer = path.join(temporary, "consumer");
 	mkdirSync(consumer);
 	writeFileSync(
@@ -101,13 +102,13 @@ try {
 		const pkg: PackageManifest = JSON.parse(readFileSync(canonical, "utf8"));
 		dependencyNames.add(pkg.name);
 		assert.ok(
-			!/^@elizaos\/(?:host$|contracts$|cloud(?:-|$)|registry(?:-|$)|credentials$|vault$|testing$|prompts$|retrieval$|plugin-)/.test(
+			!/^@elizaos\/(?:host$|contracts$|voice$|cloud(?:-|$)|registry(?:-|$)|credentials$|vault$|testing$|prompts$|retrieval$|plugin-)/.test(
 				pkg.name,
 			) &&
 				!/^(?:@ai-sdk\/|@anthropic-ai\/|@openrouter\/|@aws-sdk\/|@google\/(?:genai|generative-ai)|@electric-sql\/|@napi-rs\/keyring$|ai$|openai$|handlebars$|drizzle-orm$|pg$|postgres$|keytar$)/.test(
 					pkg.name,
 				),
-			`Packed kernel pulls optional host dependency ${pkg.name}`,
+			`Packed kernel pulls non-kernel dependency ${pkg.name}`,
 		);
 		const resolver = createRequire(canonical);
 		for (const name of Object.keys({

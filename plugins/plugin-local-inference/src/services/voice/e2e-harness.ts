@@ -5,18 +5,15 @@
  * start servers. Hardware scripts feed it real measurements; unit tests can
  * exercise the orchestration logic without native artifacts.
  *
- * Word-error-rate scoring lives in `@elizaos/core/voice-wer` (the single
- * source of truth shared with the headful self-test, #8785); it is re-exported
- * here so existing `./e2e-harness` importers keep working unchanged.
+ * Shared word-error-rate scoring is imported from @elizaos/voice.
  */
-export { normalizeWerText, wordErrorRate } from "./voice-wer.js";
 
+import { normalizeWerText, wordErrorRate } from "@elizaos/voice";
 import {
 	computeDiarizationErrorRate,
 	type DiarizationSegment,
 } from "./diarization-error-rate";
 import { percentile, round1, round4 } from "./metric-math";
-import { normalizeWerText, wordErrorRate } from "./voice-wer.js";
 export type VoiceE2eHarnessErrorCode =
 	| "missing-artifact"
 	| "missing-measurement"

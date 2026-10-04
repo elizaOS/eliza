@@ -369,7 +369,8 @@
     "viem": "^2.56.9",
     "vite": "^8.3.0",
     "vitest": "^5.0.2",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "@elizaos/voice": "workspace:*"
   },
   "elizaos": {
     "app": {

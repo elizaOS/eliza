@@ -24,17 +24,17 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+	FIRST_SENTENCE_SNIP_VERSION,
+	type FirstSentenceSnipResult,
+	firstSentenceSnip,
+} from "@elizaos/voice";
+import {
 	type FirstLineCache,
 	type FirstLineCacheEntry,
 	type FirstLineCacheKey,
 	getSharedFirstLineCache,
 	type PutInput,
 } from "./first-line-cache";
-import {
-	FIRST_SENTENCE_SNIP_VERSION,
-	type FirstSentenceSnipResult,
-	firstSentenceSnip,
-} from "./first-sentence-snip.js";
 
 // ---------------------------------------------------------------------------
 // Types

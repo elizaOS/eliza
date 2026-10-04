@@ -63,3 +63,12 @@ const text: Promise<string> = runtime.useModel(ModelType.TEXT_SMALL, {
 	prompt: "fixture",
 });
 void text;
+
+import {
+	EchoReferenceBuffer,
+	type EchoReferenceBufferOptions,
+} from "@elizaos/voice";
+
+const voiceOptions: EchoReferenceBufferOptions = { capacitySamples: 32 };
+const voiceReference = new EchoReferenceBuffer(voiceOptions);
+voiceReference.push(new Float32Array([0, 1]));

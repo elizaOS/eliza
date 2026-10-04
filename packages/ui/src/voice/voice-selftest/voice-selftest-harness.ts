@@ -17,7 +17,7 @@ import { measureBufferLevel } from "./audio-buffer";
  * false-greens.
  */
 
-import { wordErrorRate } from "@elizaos/plugin-local-inference/protocol";
+import { wordErrorRate } from "@elizaos/voice";
 import type { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -30,7 +30,7 @@ import {
 import { classifyErrorFallbackReply } from "./error-fallback-reply";
 import { now, sleep } from "./timing";
 
-/** Re-exported from the single source of truth (`@elizaos/core/voice-wer`). */
+/** Re-exported from the single source of truth (`@elizaos/voice`). */
 export { wordErrorRate };
 export type StageStatus = "pass" | "fail" | "skipped";
 export type VoiceSelfTestMode =

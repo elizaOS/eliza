@@ -12,7 +12,7 @@
  *      `local-only`.
  *
  * The `RUNTIME_EXECUTION_MODE` env var family in
- * `@elizaos/core/config/runtime-mode.ts` is a *different* concept (sandbox
+ * `@elizaos/host/protocol` is a *different* concept (sandbox
  * vs. yolo execution policy for shell tools); do not conflate.
  */
 

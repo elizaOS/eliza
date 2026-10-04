@@ -16,7 +16,7 @@ import {
   type CloudFirstLineCacheKey,
   fingerprintCloudVoiceSettings,
 } from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/plugin-local-inference/protocol";
+import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/voice";
 /**
  * Kokoro synthesises 16-bit PCM WAV at 24 kHz. Both fields are part of the
  * cache key, so they must match the bytes the service actually returns — a

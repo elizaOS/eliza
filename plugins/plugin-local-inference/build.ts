@@ -72,7 +72,6 @@ export async function buildLocalInferencePlugin(
 		// (oven-sh/bun#12734).
 		entrypoints: [
 			"./src/index.ts",
-			"./src/protocol.ts",
 			"./src/actions/generate-media.ts",
 			"./src/local-inference-routes.ts",
 			"./src/runtime/index.ts",
