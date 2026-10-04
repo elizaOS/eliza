@@ -671,7 +671,7 @@ export function createNativeCloudAuth({
               409,
             );
           }
-          if (typeof saved.proof?.secret !== "string")
+          if (typeof saved?.proof?.secret !== "string")
             throw fail(
               message("error16", "Saved sign-in needs account recovery."),
               409,
@@ -696,7 +696,7 @@ export function createNativeCloudAuth({
                   409,
                 );
               }
-              if (saved.proof?.secret !== active)
+              if (saved?.proof?.secret !== active)
                 throw fail(
                   message(
                     "error17",
@@ -727,7 +727,7 @@ export function createNativeCloudAuth({
               409,
             );
           }
-          if (typeof saved.proof?.secret !== "string")
+          if (typeof saved?.proof?.secret !== "string")
             throw fail(
               message("error16", "Saved sign-in needs account recovery."),
               409,
@@ -802,7 +802,7 @@ export function createNativeCloudAuth({
               409,
             );
           }
-          if (pending.kind === "revocation")
+          if (pending?.kind === "revocation")
             throw fail(
               message(
                 "error21",
@@ -811,7 +811,7 @@ export function createNativeCloudAuth({
               409,
             );
           if (
-            pending.version !== 1 ||
+            pending?.version !== 1 ||
             !pending.proof ||
             Object.entries(binding).some(([k, v]) => pending.proof[k] !== v)
           )
