@@ -37,6 +37,7 @@ async function readCalendar(useModel?: IAgentRuntime["useModel"]) {
     agentId: "00000000-0000-0000-0000-000000000601",
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
     ...(useModel ? { useModel } : {}),
   } as unknown as IAgentRuntime;
