@@ -135,6 +135,7 @@ const authenticatedAuthStatus = vi.hoisted(
       },
       access: {
         mode: "local",
+        role: "OWNER",
         passwordConfigured: true,
         ownerConfigured: true,
       },

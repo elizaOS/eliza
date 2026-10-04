@@ -358,6 +358,7 @@ const stubAuthSession = {
 
 const stubAuthAccess = {
   mode: "local",
+  role: "OWNER",
   passwordConfigured: false,
   ownerConfigured: true,
 };

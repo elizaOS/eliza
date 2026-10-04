@@ -2313,6 +2313,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         },
         access: {
           mode: "local",
+          role: "OWNER",
           passwordConfigured: false,
           ownerConfigured: true,
         },

@@ -1,3 +1,4 @@
+import type { RoleGateRole } from "@elizaos/core/protocol";
 /**
  * elizaOS Desktop RPC Schema for Electrobun
  *
@@ -1024,6 +1025,7 @@ export interface AuthMeSnapshot {
 	};
 	access?: {
 		mode: string;
+		role: RoleGateRole;
 		passwordConfigured: boolean;
 		ownerConfigured: boolean;
 	};
@@ -1032,6 +1034,7 @@ export interface AuthMeSnapshot {
 		reason: string;
 		access: {
 			mode: string;
+			role: RoleGateRole;
 			passwordConfigured: boolean;
 			ownerConfigured: boolean;
 		};

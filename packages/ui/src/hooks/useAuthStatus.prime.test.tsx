@@ -469,6 +469,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     const unauthorized = {
       reason: "remote_auth_required",
       access: {
+        role: "GUEST",
         mode: "remote",
         passwordConfigured: true,
         ownerConfigured: false,
@@ -661,6 +662,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         jsonResponse(401, {
           reason: "remote_password_not_configured",
           access: {
+            role: "GUEST",
             mode: "remote",
             passwordConfigured: false,
             ownerConfigured: true,
@@ -708,6 +710,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       jsonResponse(401, {
         reason: "remote_auth_required",
         access: {
+          role: "GUEST",
           mode: "remote",
           passwordConfigured: true,
           ownerConfigured: true,
@@ -780,6 +783,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       jsonResponse(401, {
         reason: "remote_password_not_configured",
         access: {
+          role: "GUEST",
           mode: "remote",
           passwordConfigured: true,
           ownerConfigured: true,
@@ -823,6 +827,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         jsonResponse(401, {
           reason: "remote_password_not_configured",
           access: {
+            role: "GUEST",
             mode: "remote",
             passwordConfigured: true,
             ownerConfigured: true,

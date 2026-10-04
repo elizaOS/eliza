@@ -501,8 +501,14 @@ test("lost provider response and duplicate webhook settle exactly once", async (
         response.status() === 200,
       { timeout: 60_000 },
     );
+    const authReady = authenticatedPage.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/auth/me" &&
+        response.status() === 200,
+    );
     await authenticatedPage.goto(stack.urls.frontend, { timeout: 60_000 });
     await runtimeReady;
+    expect((await (await authReady).json()).access.role).toBe("USER");
     await expect(
       authenticatedPage.getByTestId("home-launcher-surface"),
     ).toBeVisible();
