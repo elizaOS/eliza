@@ -4121,7 +4121,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             type ? eq(logTable.type, type) : undefined
           )
         )
-        .orderBy(desc(logTable.createdAt))
+        .orderBy(desc(logTable.createdAt), desc(logTable.id))
         .limit(effectiveLimit)
         .offset(offset ?? 0);
 

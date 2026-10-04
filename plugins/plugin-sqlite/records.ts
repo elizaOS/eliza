@@ -2426,7 +2426,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const aTime = Number.isFinite(new Date(a.createdAt).getTime())
         ? new Date(a.createdAt).getTime()
         : 0;
-      return bTime - aTime;
+      if (bTime !== aTime) return bTime - aTime;
+      // Offset pages are separate queries. A time-only order lets two logs
+      // written in the same millisecond trade places and be skipped or
+      // repeated. UUID order matches PostgreSQL's descending id tie-break.
+      return compareMemoryIds(String(b.id ?? ""), String(a.id ?? ""));
     });
     const offset = params.offset ?? 0;
     if (offset > 0) logs = logs.slice(offset);
