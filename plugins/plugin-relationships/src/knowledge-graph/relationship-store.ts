@@ -292,9 +292,9 @@ export class RelationshipStore {
   /**
    * Records an explicit `(from, to, type)` assertion, such as the owner stating
    * a relationship: the active edge is updated in place with the new evidence
-   * merged in, and created only when none is active. Lookup and write share
-   * one store operation (a transaction on the record store), as in `observe`;
-   * unlike `observe`, it does not count an interaction.
+   * merged in, and created only when none is active. It uses the same
+   * backend-specific operation boundary as `observe`; unlike `observe`, it
+   * does not count an interaction.
    */
   async assertEdge(input: {
     fromEntityId: string;
