@@ -318,3 +318,74 @@ it("removes native inference runtime and its instrumented tests from a cloud sou
     fs.rmSync(fixture, { recursive: true, force: true });
   }
 });
+
+it.each([false, true])(
+  "stages the push plugin only when Firebase is enabled (independent=%s)",
+  (independent) => {
+    const fixture = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-cloud-push-strip-"),
+    );
+    try {
+      const app = path.join(fixture, "packages/app");
+      const cloud = path.join(app, "android");
+      const assets = path.join(cloud, "app/src/main/assets");
+      fs.mkdirSync(assets, { recursive: true });
+      fs.writeFileSync(path.join(app, "package.json"), '{"type":"module"}');
+      fs.writeFileSync(
+        path.join(app, "app.config.ts"),
+        'export default { appId: "ai.elizaos.app", appName: "Fixture" };',
+      );
+      const settings = path.join(cloud, "capacitor.settings.gradle");
+      const build = path.join(cloud, "app/capacitor.build.gradle");
+      const plugins = path.join(assets, "capacitor.plugins.json");
+      fs.writeFileSync(
+        settings,
+        "// generated\ninclude ':capacitor-push-notifications'\nproject(':capacitor-push-notifications').projectDir = new File('../node_modules/@capacitor/push-notifications/android')\ninclude ':capacitor-app'\n",
+      );
+      fs.writeFileSync(
+        build,
+        "dependencies {\n implementation project(':capacitor-push-notifications')\n implementation project(':capacitor-app')\n}\n",
+      );
+      fs.writeFileSync(
+        plugins,
+        JSON.stringify([
+          { pkg: "@capacitor/push-notifications" },
+          { pkg: "@capacitor/app" },
+        ]),
+      );
+      const context = new URL("./mobile/context.ts", import.meta.url).href;
+      const strip = new URL("./mobile/android/strip.ts", import.meta.url).href;
+      execFileSync(
+        "node",
+        [
+          "--input-type=module",
+          "-e",
+          `import {androidDir} from ${JSON.stringify(context)}; import {stripAndroidCloudNativePlugins} from ${JSON.stringify(strip)}; if(androidDir!==${JSON.stringify(cloud)}) throw Error('Unsafe fixture path'); stripAndroidCloudNativePlugins({ELIZA_ANDROID_VPS_SIDECAR:${JSON.stringify(independent ? "1" : "0")}});`,
+        ],
+        {
+          env: {
+            ...process.env,
+            ELIZA_MOBILE_REPO_ROOT: fixture,
+            ELIZA_ANDROID_USE_APP_DIR: "1",
+          },
+        },
+      );
+      for (const file of [settings, build]) {
+        expect(
+          fs
+            .readFileSync(file, "utf8")
+            .includes("capacitor-push-notifications"),
+        ).toBe(!independent);
+        expect(fs.readFileSync(file, "utf8")).toContain("capacitor-app");
+      }
+      expect(
+        JSON.parse(fs.readFileSync(plugins, "utf8")).some(
+          (plugin: { pkg: string }) =>
+            plugin.pkg === "@capacitor/push-notifications",
+        ),
+      ).toBe(!independent);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  },
+);
