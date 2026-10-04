@@ -11,10 +11,10 @@
  */
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { getFreePort } from "@elizaos/testing/fixtures";
 import {
   createConversation,
   postConversationMessage,
@@ -46,22 +46,6 @@ try {
   config({ path: path.join(REPO_ROOT, ".env") });
 } catch {
   /* dotenv optional */
-}
-
-async function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        server.close();
-        reject(new Error("no port"));
-        return;
-      }
-      server.close((e) => (e ? reject(e) : resolve(addr.port)));
-    });
-  });
 }
 
 function isProviderIssueResponse(text: string): boolean {
