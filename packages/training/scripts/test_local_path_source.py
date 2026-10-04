@@ -9,17 +9,15 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 
 import pytest
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
 
-from lib.adapters import REGISTRY  # noqa: E402
-from lib.expected_response import make_expected_response_encoder  # noqa: E402
-from lib.local_path_source import LocalPathSource, expand_env  # noqa: E402
+from eliza_training.lib.adapters import REGISTRY
+from eliza_training.lib.expected_response import make_expected_response_encoder  # noqa: E402
+from eliza_training.lib.local_path_source import LocalPathSource, expand_env  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +129,7 @@ def test_resolve_files_globs_dated_subdirs(tmp_path: Path) -> None:
 def test_stage_local_path_source_symlinks_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import download_datasets
+    from eliza_training import download_datasets
 
     export_root = tmp_path / "export"
     raw_root = tmp_path / "raw"
@@ -162,7 +160,7 @@ def test_stage_local_path_source_symlinks_files(
 def test_stage_local_path_source_empty_export_is_noop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import download_datasets
+    from eliza_training import download_datasets
 
     raw_root = tmp_path / "raw"
     empty_root = tmp_path / "does-not-exist"
@@ -294,8 +292,8 @@ def test_eliza_native_passthrough_carries_task_from_metadata() -> None:
 def test_end_to_end_stage_then_normalize(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import download_datasets
-    import normalize
+    from eliza_training import download_datasets
+    from eliza_training import normalize
 
     export_root = tmp_path / "export"
     raw_root = tmp_path / "raw"

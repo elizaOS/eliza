@@ -36,14 +36,14 @@
  *   MEMPERF_MAX_TOKENS=24                  text/vision generation length for tok/s
  */
 
-import { join } from "node:path";
 import type { InstalledModel } from "@elizaos/contracts";
-import type { Eliza1TierId } from "@elizaos/plugin-native-inference/model-catalog/catalog";
-import type { GenerateArgs } from "../../../../plugins/plugin-local-inference/src/services/backend.ts";
 import type {
   ArbiterCapability,
   ArbiterEvent,
-} from "../../../../plugins/plugin-local-inference/src/services/memory-arbiter.ts";
+  BackendGenerateArgs as GenerateArgs,
+} from "@elizaos/plugin-local-inference/services";
+import type { Eliza1TierId } from "@elizaos/plugin-native-inference/model-catalog";
+import { importMeasuredPackage } from "../../lib/target-package.ts";
 import { loadBudgets, ms, REPO_ROOT, recordResult, rssMb } from "./lib.mjs";
 import {
   METRIC_SCHEMA,
@@ -52,39 +52,23 @@ import {
   THROUGHPUT_UNIT,
 } from "./metric-schema.mjs";
 
-// The measured code is the ELIZA_REPO_DIR checkout's source, imported directly
-// from that tree so its own workspace node_modules resolve its dependencies.
-const services = await import(
-  join(REPO_ROOT, "plugins/plugin-local-inference/src/services/index.ts")
-);
+// Resolve public exports from the checkout being measured.
 const {
   classifyDeviceTier,
   findCatalogModel,
   localInferenceEngine,
   MemoryArbiter,
   probeHardware,
-} = services;
-const { resolveLocalInferenceLoadArgs } = await import(
-  join(REPO_ROOT, "plugins/plugin-local-inference/src/services/active-model.ts")
-);
-const { capacitorPressureSource } = await import(
-  join(
-    REPO_ROOT,
-    "plugins/plugin-local-inference/src/services/memory-pressure.ts",
-  )
-);
-const { resolveRamBudget } = await import(
-  join(REPO_ROOT, "plugins/plugin-local-inference/src/services/ram-budget.ts")
-);
-const { listInstalledModels } = await import(
-  join(REPO_ROOT, "plugins/plugin-local-inference/src/services/registry.ts")
-);
-const { ELIZA_1_TIER_IDS } = await import(
-  join(
-    REPO_ROOT,
-    "plugins/plugin-native-inference/src/model-catalog/catalog.ts",
-  )
-);
+  resolveLocalInferenceLoadArgs,
+  capacitorPressureSource,
+  resolveRamBudget,
+  listInstalledModels,
+} = await importMeasuredPackage<
+  typeof import("@elizaos/plugin-local-inference/services")
+>(REPO_ROOT, "@elizaos/plugin-local-inference/services");
+const { ELIZA_1_TIER_IDS } = await importMeasuredPackage<
+  typeof import("@elizaos/plugin-native-inference/model-catalog")
+>(REPO_ROOT, "@elizaos/plugin-native-inference/model-catalog");
 // metric-schema + lib are plain ESM; import via relative path so this file is
 // self-contained and the schema is literally the one #8800 reads.
 const NOW = new Date().toISOString();

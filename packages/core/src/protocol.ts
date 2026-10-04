@@ -41,6 +41,10 @@ export type {
 	TriggerTaskMetadata,
 	UpdateTriggerRequest,
 } from "./api/agent-api-types.js";
+export {
+	DELTA_STREAM_PROTOCOL,
+	type DeltaStreamProtocol,
+} from "./api/agent-api-types.js";
 export type {
 	CommandsCatalogResponse,
 	SerializedCommand,
@@ -55,7 +59,6 @@ export * from "./capabilities/protocol.js";
 export * from "./capabilities/remote-runner.js";
 export * from "./capabilities/router.js";
 export * from "./capability-catalog.js";
-
 export * from "./capability-selection/retrieval";
 export { default as channelPluginMap } from "./catalog/channel-plugin-map.json" with {
 	type: "json",
@@ -74,7 +77,6 @@ export * from "./character-utils";
 export * from "./chat-upload-limits.js";
 export * from "./cli/parse-duration.js";
 export * from "./connector-account-catalog.js";
-
 export * from "./connectors/connector-config";
 export * from "./connectors/privacy";
 export * from "./connectors.ts";
@@ -100,7 +102,6 @@ export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/world-metadata-cas";
 export * from "./discord-dm-policy.js";
-
 export * from "./embedding-vector-space";
 export * from "./env-utils";
 export * from "./error-classification.js";
@@ -116,7 +117,6 @@ export {
 export * from "./events.js";
 export type { ValidationKeywordLocale } from "./i18n/keyword-matching-core.js";
 export * from "./i18n/language.js";
-
 export * from "./i18n/recurrence-markers.js";
 export * from "./inference-trace.js";
 export * from "./markdown/chunk.js";
@@ -135,9 +135,7 @@ export {
 	markdownToIRWithMeta,
 } from "./markdown/ir.js";
 export * from "./meeting-artifacts.js";
-
 export * from "./meetings.js";
-
 export * from "./memory";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
@@ -164,12 +162,10 @@ export type {
 } from "./messaging/task-events.js";
 export { mergeTaskEvents, validateTaskEvent } from "./messaging/task-events.js";
 export * from "./messaging/task-widgets.js";
-
 export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 export * from "./name-tokens";
 export * from "./network/ssrf.js";
-
 export * from "./platform/aosp-user-agent.js";
 export type { BuildVariant } from "./platform/build-variant.js";
 export { isElizaOS } from "./platform/eliza-os.js";
@@ -221,12 +217,13 @@ export {
 } from "./runtime/limits.ts";
 export * from "./runtime/locale-detection";
 export * from "./runtime/localized-examples-provider";
-
 export * from "./runtime/model-dispatch/modality.ts";
 export * from "./runtime/model-dispatch/model-name.ts";
 export {
 	buildModelInputBudget,
+	DEFAULT_CONTEXT_WINDOW_TOKENS,
 	DEFAULT_INPUT_RESERVE_TOKENS,
+	estimateTokensFromChars,
 	MODEL_WINDOW_RESERVE_FRACTION,
 	withModelInputBudgetProviderOptions,
 } from "./runtime/model-input-budget.ts";
@@ -274,7 +271,6 @@ export * from "./security/basic-email";
 export * from "./security/bind-host.js";
 export * from "./security/entity-recognizer.js";
 export * from "./security/external-content";
-
 export {
 	AUTHORITY_KEYWORDS,
 	containsObfuscatedKeyword,
@@ -289,12 +285,10 @@ export {
 } from "./security/injection-primitives.ts";
 export * from "./security/log-redaction.js";
 export * from "./security/outbound-envelope-guard.js";
-
 export * from "./security/outbound-sanitize.ts";
 export * from "./security/pii-context-pack.js";
 export * from "./security/process-env-policy.js";
 export * from "./security/redact";
-
 export * from "./security/spawn-env-policy.js";
 export {
 	composeToolDiagnosticRedactor,
@@ -360,7 +354,6 @@ export * from "./sessions/provider.js";
 export * from "./sessions/session-key.js";
 export * from "./sessions/types.js";
 export * from "./speaker-name-inference.js";
-
 export * from "./spoken-text.js";
 export * from "./target-sources/registry";
 export * from "./text/model-output.js";
@@ -389,6 +382,7 @@ export type {
 	ContextObject,
 	ContextObjectPromptSegment,
 	ContextObjectTool,
+	ContextProviderEvent,
 } from "./types/context-object.ts";
 export * from "./types/contexts.js";
 export * from "./types/database.js";
@@ -502,7 +496,6 @@ export * from "./utils/assistant-text.js";
 export type { BatchItemOutcome } from "./utils/batch-queue/batch-processor.js";
 export * from "./utils/batch-queue/semaphore.js";
 export * from "./utils/batch-queue/task-drain.js";
-
 export * from "./utils/boolean";
 export * from "./utils/channel-utils";
 export * from "./utils/character-message-examples.js";
@@ -521,7 +514,6 @@ export {
 	withActiveRoutingContexts,
 } from "./utils/context-routing.ts";
 export * from "./utils/deadline.js";
-
 export * from "./utils/deterministic.js";
 export {
 	buildDeterministicSeed,
@@ -565,7 +557,6 @@ export {
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "./utils/model-errors.ts";
 export * from "./utils/model-retry";
-
 export { tokenizeNameOccurrences } from "./utils/name-tokens.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/path-component.js";
@@ -581,7 +572,6 @@ export * from "./utils/serialise.js";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 export * from "./utils/string-boundaries.js";
-
 export { hashString as hashArtworkSeed } from "./utils/string-hash.js";
 export {
 	MAX_TEXT_NORMALIZE_EDGES,
@@ -597,9 +587,7 @@ export * from "./utils/well-formed";
 export * from "./validation/keywords";
 export * from "./validation/secrets";
 export * from "./views/host-external-contract.js";
-
 export * from "./views/shared-nav-targets.js";
-
 export {
 	IMMERSIVE_WALLPAPER_SURFACE,
 	resolveSurfaceBackgroundPolicy,

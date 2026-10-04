@@ -4,10 +4,8 @@
  */
 
 import { logger, promoteSubactionsToActions } from "@elizaos/core";
-import {
-  isAndroidMobile,
-  type HttpPlugin as Plugin,
-} from "@elizaos/host/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { isAndroidMobile } from "@elizaos/host/protocol";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
 import { OcrBridgeService } from "./ocr-bridge";
@@ -155,3 +153,17 @@ export const visionPlugin: Plugin = {
   },
 };
 export default visionPlugin;
+
+export {
+  reconstructAbsoluteCoords,
+  type ScreenTile,
+  type TileScreenshotInput,
+  type TileScreenshotOptions,
+  tileScreenshot,
+} from "./screen-tiler";
+
+export {
+  getOcrWithCoordsService,
+  RapidOcrCoordAdapter,
+  registerOcrWithCoordsService,
+};

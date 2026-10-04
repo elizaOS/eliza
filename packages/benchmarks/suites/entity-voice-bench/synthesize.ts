@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 /**
  * Synthesize the benchmark corpus to WAV with the real in-process Kokoro
  * engine (fused libelizainference FFI — the same path that ships on
@@ -61,7 +62,7 @@ if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.argv.includes("--out")
   ? path.resolve(process.argv[process.argv.indexOf("--out") + 1] ?? "")
-  : path.join(__dirname, "results", "audio");
+  : testOutputPath("entity-voice-bench", "audio");
 mkdirSync(outDir, { recursive: true });
 const manifestPath = path.join(outDir, "manifest.json");
 

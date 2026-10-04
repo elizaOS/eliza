@@ -97,6 +97,7 @@ describe("catalog app windows", () => {
         sandbox: "allow-scripts allow-same-origin",
       }),
     );
+    const addWindowListener = vi.spyOn(window, "addEventListener");
     render(
       <StrictMode>
         <AppWindowRenderer slug="window-catalog-fixture" />
@@ -105,6 +106,14 @@ describe("catalog app windows", () => {
     const iframe = (await screen.findByTitle(
       "Catalog window",
     )) as HTMLIFrameElement;
+    // The iframe can be in the DOM before the viewer's passive effect arms its
+    // handshake listener; dispatching earlier would make every check vacuous.
+    await waitFor(() =>
+      expect(addWindowListener).toHaveBeenCalledWith(
+        "message",
+        expect.any(Function),
+      ),
+    );
     expect(launch).toHaveBeenCalledTimes(1);
     expect(launch).toHaveBeenCalledWith("@elizaos/app-window-catalog-fixture");
     const viewerWindow = iframe.contentWindow;

@@ -199,6 +199,12 @@ export * from "./app-control/coordinator.js";
 export * from "./app-control/types.js";
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
+export { captureAllDisplays, captureDisplay } from "./platform/capture.js";
+export {
+  isHeadless,
+  listDisplays,
+  NoDisplayError,
+} from "./platform/displays.js";
 export {
   listProcesses,
   type ProcessInfo,

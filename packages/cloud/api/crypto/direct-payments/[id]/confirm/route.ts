@@ -14,6 +14,7 @@ import {
   RateLimitPresets,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { directWalletPaymentsService } from "@/lib/services/direct-wallet-payments";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger, redact } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -40,8 +41,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
-    const body = await c.req.json();
-    const validation = confirmSchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const validation = confirmSchema.safeParse(decodedBody.value);
     if (!validation.success) {
       return c.json(
         {

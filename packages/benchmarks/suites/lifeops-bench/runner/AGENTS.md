@@ -1,7 +1,4 @@
-# @elizaos/lifeops-bench
+# LifeOps simulated backend
 
-LifeOpsBench server-side harness: HTTP bench server, LifeOps fake backend, Cerebras
-autowirer, and bench plugin driven by the Python runners in suites/. Runs against an
-elizaOS checkout (ELIZA_REPO_DIR); never published.
-
-Build, test, and setup: [README.md](README.md).
+Keep deterministic world mutations and workload-specific task contracts here.
+Build and test commands: [README.md](README.md).

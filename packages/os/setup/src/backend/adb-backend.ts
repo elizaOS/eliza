@@ -326,6 +326,10 @@ interface RunResult {
   status: number;
 }
 
+export class HostCommandError extends Error {
+  override readonly name = "HostCommandError";
+}
+
 function run(
   cmd: string,
   args: readonly string[],
@@ -337,6 +341,11 @@ function run(
     timeout: timeoutMs,
     env,
   });
+  if (result.error)
+    throw new HostCommandError(
+      `Unable to run ${cmd}: ${result.error.message}`,
+      { cause: result.error },
+    );
   return {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",

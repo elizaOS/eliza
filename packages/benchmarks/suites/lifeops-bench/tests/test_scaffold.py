@@ -182,7 +182,7 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
     import re
 
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import build_tool_manifest
+    from eliza_lifeops_bench.lifeworld.executor import build_tool_manifest
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
     tools = build_tool_manifest(world)
@@ -242,7 +242,7 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
 
 def test_calendar_source_executor_exposes_planning_without_fake_connection() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -298,7 +298,10 @@ def test_calendar_source_executor_exposes_planning_without_fake_connection() -> 
 
 def test_calendar_source_executor_normalizes_granular_list_alias() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action, _normalize_action
+    from eliza_lifeops_bench.lifeworld.executor import (
+        _execute_action,
+        _normalize_action,
+    )
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -316,7 +319,7 @@ def test_calendar_source_executor_normalizes_granular_list_alias() -> None:
 
 def test_executor_accepts_promoted_calendar_alias_without_subaction() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -351,7 +354,7 @@ def test_executor_accepts_promoted_calendar_alias_without_subaction() -> None:
 
 def test_executor_resolves_calendar_update_alias_by_title() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -375,7 +378,7 @@ def test_executor_resolves_calendar_update_alias_by_title() -> None:
 
 def test_executor_resolves_calendar_update_alias_by_title_and_date_hint() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -399,7 +402,7 @@ def test_executor_resolves_calendar_update_alias_by_title_and_date_hint() -> Non
 
 def test_executor_resolves_calendar_update_alias_by_fuzzy_title_and_date_hint() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -423,7 +426,7 @@ def test_executor_resolves_calendar_update_alias_by_fuzzy_title_and_date_hint() 
 
 def test_executor_resolves_calendar_update_when_event_id_is_title() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -447,7 +450,7 @@ def test_executor_resolves_calendar_update_when_event_id_is_title() -> None:
 
 def test_executor_resolves_calendar_update_with_updates_object() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -472,7 +475,7 @@ def test_executor_resolves_calendar_update_with_updates_object() -> None:
 
 def test_executor_calendar_update_persists_non_time_fields() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -499,7 +502,7 @@ def test_executor_calendar_update_persists_non_time_fields() -> None:
 
 def test_executor_calendar_search_returns_matching_events() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -521,7 +524,7 @@ def test_executor_calendar_search_returns_matching_events() -> None:
 
 def test_executor_treats_reply_as_explicit_effectless_terminal() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -537,7 +540,7 @@ def test_executor_treats_reply_as_explicit_effectless_terminal() -> None:
 
 def test_executor_accepts_calendar_delete_alias_with_id() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -564,7 +567,7 @@ def test_executor_accepts_calendar_delete_alias_with_id() -> None:
 
 def test_executor_resolves_calendar_delete_by_title_when_and_calendar() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -586,7 +589,7 @@ def test_executor_resolves_calendar_delete_by_title_when_and_calendar() -> None:
 
 def test_executor_rejects_unbounded_calendar_availability() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -600,7 +603,7 @@ def test_executor_rejects_unbounded_calendar_availability() -> None:
 
 def test_executor_accepts_calendar_action_alias_and_camelcase_duration() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -637,7 +640,7 @@ def test_executor_accepts_calendar_action_alias_and_camelcase_duration() -> None
 
 def test_executor_accepts_message_draft_manage_and_room_aliases() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -686,7 +689,7 @@ def test_executor_accepts_message_draft_manage_and_room_aliases() -> None:
 
 def test_executor_accepts_message_subaction_alias() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -712,7 +715,7 @@ def test_executor_accepts_message_subaction_alias() -> None:
 
 def test_executor_persists_contact_priority_and_relationship_updates() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -757,7 +760,7 @@ def test_executor_persists_contact_priority_and_relationship_updates() -> None:
 
 def test_message_manage_operation_inferred_from_manage_operation() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -783,7 +786,7 @@ def test_message_manage_operation_inferred_from_manage_operation() -> None:
 )
 def test_message_manage_operation_inferred_from_operation_aliases(field: str) -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -806,7 +809,7 @@ def test_message_manage_operation_inferred_from_operation_aliases(field: str) ->
 @pytest.mark.parametrize("action_name", ["ARCHIVE_EMAIL_THREAD", "ARCHIVE_THREAD"])
 def test_archive_thread_alias_matches_message_manage_archive(action_name: str) -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -826,7 +829,7 @@ def test_archive_thread_alias_matches_message_manage_archive(action_name: str) -
 
 def test_calendar_check_availability_accepts_time_min_max() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -848,7 +851,7 @@ def test_calendar_check_availability_accepts_time_min_max() -> None:
 
 def test_executor_accepts_reminder_aliases() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -890,7 +893,7 @@ def test_executor_accepts_reminder_aliases() -> None:
 
 def test_executor_models_scheduled_tasks_as_first_class_state() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -937,7 +940,7 @@ def test_executor_models_scheduled_tasks_as_first_class_state() -> None:
 
 def test_executor_rejects_mutation_of_missing_scheduled_task() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.lifeworld.executor import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
@@ -954,11 +957,11 @@ def test_executor_rejects_mutation_of_missing_scheduled_task() -> None:
 
 def test_corpus_scheduled_task_mutations_target_existing_state() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import (
+    from eliza_lifeops_bench.lifeworld.executor import (
         _execute_action,
         _normalize_action,
-        _scheduled_task_id,
     )
+    from eliza_lifeops_bench.lifeworld.action_tasks import _scheduled_task_id
     from eliza_lifeops_bench.scenarios import CORE_SCENARIOS
 
     direct_mutations = {
@@ -1008,9 +1011,9 @@ def test_corpus_scheduled_task_mutations_target_existing_state() -> None:
                 and action.kwargs.get("operation") == "create"
             )
             if is_create:
-                assert (
-                    _scheduled_task_id(action.kwargs) is None
-                ), f"{scenario.id} seeds a server-owned scheduled-task id"
+                assert _scheduled_task_id(action.kwargs) is None, (
+                    f"{scenario.id} seeds a server-owned scheduled-task id"
+                )
                 receipt = _execute_action(action, world)
                 create_receipt_ids.add(receipt["id"])
                 all_create_receipt_ids.add(receipt["id"])
@@ -1022,12 +1025,12 @@ def test_corpus_scheduled_task_mutations_target_existing_state() -> None:
             )
             if is_mutation:
                 task_id = _scheduled_task_id(action.kwargs)
-                assert (
-                    task_id in world.scheduled_tasks
-                ), f"{scenario.id} mutates missing scheduled task {task_id!r}"
-                assert (
-                    task_id in initial_task_ids or task_id in create_receipt_ids
-                ), f"{scenario.id} mutation id {task_id!r} has no source receipt"
+                assert task_id in world.scheduled_tasks, (
+                    f"{scenario.id} mutates missing scheduled task {task_id!r}"
+                )
+                assert task_id in initial_task_ids or task_id in create_receipt_ids, (
+                    f"{scenario.id} mutation id {task_id!r} has no source receipt"
+                )
                 checked.append((scenario.id, task_id))
             _execute_action(action, world)
 
@@ -1073,11 +1076,9 @@ async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
 
 def test_calendar_thursday_smoke_date_is_explicitly_anchored() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import (
-        _initial_user_content,
-        _parse_calendar_date_hint,
-        build_tool_manifest,
-    )
+    from eliza_lifeops_bench.lifeworld.action_calendar import _parse_calendar_date_hint
+    from eliza_lifeops_bench.lifeworld.executor import build_tool_manifest
+    from eliza_lifeops_bench.runner import _initial_user_content
     from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID
 
     scenario = SCENARIOS_BY_ID["calendar.check_availability_thursday_morning"]
@@ -1130,3 +1131,39 @@ def test_compare_actions_partial_credit() -> None:
     assert compare_actions(wrong_name, gt) == 0.0
     assert compare_actions([], []) == 1.0
     assert compare_actions([Action(name="foo", kwargs={})], []) == 0.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", ["{broken", "[]"])
+async def test_malformed_tool_arguments_fail_with_original_turn_retained(arguments):
+    from eliza_lifeops_bench import LifeOpsBenchRunner, MessageTurn
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID
+
+    scenario = SCENARIOS_BY_ID["smoke_static_calendar_01"]
+    calls = [
+        {
+            "id": "invalid-call",
+            "function": {"name": "CALENDAR_CREATE", "arguments": arguments},
+        }
+    ]
+    runner = LifeOpsBenchRunner(
+        agent_fn=AsyncMock(
+            return_value=MessageTurn(
+                role="assistant", content="original response", tool_calls=calls
+            )
+        ),
+        world_factory=_build_world_factory(),
+        scenarios=[scenario],
+        seeds=1,
+        concurrency=1,
+        static_grading_mode="offline_conformance",
+    )
+    result = await runner.run_all()
+    failed = result.scenarios[0]
+    assert failed.terminated_reason == "error"
+    assert failed.total_score == 0
+    assert failed.turns[0].agent_message == "original response"
+    assert failed.turns[0].raw_tool_calls == calls
+    assert failed.turns[0].agent_actions == []
+    assert failed.turns[0].tool_results == []

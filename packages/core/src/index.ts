@@ -1,103 +1,17 @@
 /** Node runtime public entrypoint; browser consumers use the protocol barrel. */
-export * from "./protocol.js";
-/** Public Node runtime barrel. */
 
 export * from "./access-context";
 export * from "./access-control/provenance-envelope";
-export * from "./actions";
-// The Stage-1 native-tool contract: model-provider plugins that serve
-// RESPONSE_HANDLER structurally (native tool capture) key their detection on
-// this name instead of duplicating the literal.
-export { HANDLE_RESPONSE_TOOL_NAME } from "./actions/to-tool";
-export * from "./capability-selection/account-selection";
-// Connection management (ensureConnection/ensureConnections) - standalone batch helpers
-export * from "./connection";
-export * from "./connectors/account-manager";
-export * from "./connectors/oauth-role";
-export * from "./entities";
-
-// Export capabilities and plugin creation
-
-// Cross-platform messaging triage (MESSAGE, MESSAGE, MESSAGE,
-// MESSAGE, MESSAGE, adapters, SendPolicy, TriageService).
-// Selective re-export — `MessageParticipant` collides with an unrelated type in
-// `types/service-interfaces.ts`; consumers that need the triage-side participant type
-// should import it from the package barrel.
-
-// OAuth provider contract (the canonical provider identifiers the atomic OAuth
-// actions accept). Exported so cloud-shared can enforce core ⊆ cloud-registry.
-
-// Export generated action/provider/evaluator specs from centralized prompts
-export * from "./identity-clusters";
-export * from "./inference-timing";
-export {
-	addLogListener,
-	type ChatInLogParams,
-	type ChatOutLogParams,
-	createLogger,
-	customLevels,
-	elizaLogger,
-	type LogEntry,
-	type Logger,
-	type LoggerBindings,
-	type LogListener,
-	logChatIn,
-	logChatOut,
-	logger,
-	logPrompt,
-	logResponse,
-	type PromptLogMetadata,
-	type ResponseLogMetadata,
-	recentLogs,
-	removeLogListener,
-} from "./logger";
-// Shared media boundary: fetching, attachment decoding, MIME detection, and cache.
-export * from "./media/attachments.js";
-export * from "./media/fetch.js";
-export * from "./media/image-description-cache.js";
-export * from "./media/local-store.js";
-export * from "./media/outbound.js";
-export * from "./messaging/interactions";
-export * from "./messaging/manage-server-authorization";
-// Export network utilities (SSRF protection, secure fetch)
-export {
-	fetchWithSsrfGuard,
-	type GuardedFetchOptions,
-	type GuardedFetchResult,
-	type PinnedLookupFetchLike,
-	type PinnedLookupFetchParams,
-} from "./network/fetch-guard.js";
-export { nodeLookupFn, nodePinnedFetch } from "./network/node-pinned-fetch.js";
-export {
-	resolveFallbackOwnerEntityId,
-	resolveOwnerEntityId,
-} from "./owner-entity";
-export * from "./plugin";
-// Export recent-errors provider (#12263)
-export * from "./providers/recent-errors";
-// Export skill eligibility provider
-// Provisioning (migrations, agent/entity/room, embedding dimension) - node only
-export * from "./provisioning";
-export * from "./roles";
-export * from "./runtime";
-export { actionGateRejection } from "./runtime/action-gate";
-export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
-export * from "./runtime/execute-planned-tool-call";
-
-// The planner's generic failed-tool apology is exported so relay/delivery
-// layers (message service, orchestrator completion relays) can recognize it
-// by identity and drop it as redundant next to an authoritative outcome.
-
 export {
 	hasAdminAccess,
 	hasOwnerAccess,
 	type SecurityDeps,
 } from "./access-control/role-access.ts";
+export * from "./actions";
 export {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
 } from "./actions/task-extraction-context";
-export { HANDLE_RESPONSE_SCHEMA } from "./actions/to-tool.js";
 export {
 	actionToTool,
 	buildPlannerToolsFromActions,
@@ -106,9 +20,13 @@ export {
 	createHandleResponseTool,
 	DISCOVER_ACTIONS_NAME,
 	DISCOVER_TOOLS_NAME,
+	HANDLE_RESPONSE_SCHEMA,
+	HANDLE_RESPONSE_TOOL,
+	HANDLE_RESPONSE_TOOL_NAME,
 	isDiscoveryActionName,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
+export * from "./capability-selection/account-selection";
 export {
 	type AccountAuthKind,
 	type AccountConfig,
@@ -148,6 +66,10 @@ export {
 	resourcesSchema,
 	type SecondarySurface,
 } from "./catalog/index.js";
+// Connection management (ensureConnection/ensureConnections) - standalone batch helpers
+export * from "./connection";
+export * from "./connectors/account-manager";
+export * from "./connectors/oauth-role";
 export {
 	conversationClientUserMemoryId,
 	type DurableConversationChatMarker,
@@ -155,6 +77,7 @@ export {
 	readDurableConversationChatMarker,
 } from "./conversation-chat-marker.js";
 export * from "./database/document-source-segments";
+export * from "./entities";
 export {
 	getValidationKeywordLocaleTerms,
 	getValidationKeywordTerms,
@@ -174,6 +97,8 @@ export {
 	VALIDATION_KEYWORD_LOCALES,
 } from "./i18n/keyword-matching-core.js";
 export { VALIDATION_KEYWORD_DOCS } from "./i18n/keywords.js";
+export * from "./identity-clusters";
+export * from "./inference-timing";
 export {
 	type CreateIntegrationSpanOptions,
 	createIntegrationTelemetrySpan,
@@ -189,9 +114,61 @@ export {
 	type IntegrationSpanSuccessArgs,
 	type IntegrationTelemetrySpan,
 } from "./integration-observability.ts";
+export {
+	addLogListener,
+	type ChatInLogParams,
+	type ChatOutLogParams,
+	createLogger,
+	customLevels,
+	elizaLogger,
+	type LogEntry,
+	type Logger,
+	type LoggerBindings,
+	type LogListener,
+	logChatIn,
+	logChatOut,
+	logger,
+	logPrompt,
+	logResponse,
+	type PromptLogMetadata,
+	type ResponseLogMetadata,
+	recentLogs,
+	removeLogListener,
+} from "./logger";
 export { __loggerTestHooks } from "./logger.js";
+// Shared media boundary: fetching, attachment decoding, MIME detection, and cache.
+export * from "./media/attachments.js";
+export * from "./media/fetch.js";
+export * from "./media/image-description-cache.js";
+export * from "./media/local-store.js";
 export * from "./media/mime.js";
 export * from "./media/mime-sniffer.js";
+export * from "./media/outbound.js";
+export * from "./messaging/interactions";
+export * from "./messaging/manage-server-authorization";
+// Export network utilities (SSRF protection, secure fetch)
+export {
+	fetchWithSsrfGuard,
+	type GuardedFetchOptions,
+	type GuardedFetchResult,
+	type PinnedLookupFetchLike,
+	type PinnedLookupFetchParams,
+} from "./network/fetch-guard.js";
+export {
+	createValidatedLookup,
+	nodeLookupFn,
+	nodePinnedFetch,
+} from "./network/node-pinned-fetch.js";
+export {
+	assertPublicHttpsEndpoint,
+	assertPublicInternetAddress,
+	BLOCKED_PUBLIC_ENDPOINT_DNS_SUFFIXES,
+	isPublicInternetAddress,
+} from "./network/public-endpoint";
+export {
+	resolveFallbackOwnerEntityId,
+	resolveOwnerEntityId,
+} from "./owner-entity";
 export {
 	_resetBuildVariantForTests,
 	BUILD_VARIANTS,
@@ -209,6 +186,15 @@ export {
 	buildStoreVariantBlockedMessage,
 	isLocalCodeExecutionAllowed,
 } from "./platform/sandbox-policy.js";
+export * from "./plugin";
+export * from "./protocol.js";
+// Export recent-errors provider (#12263)
+export * from "./providers/recent-errors";
+// Provisioning (migrations, agent/entity/room, embedding dimension) - node only
+export * from "./provisioning";
+export * from "./roles";
+export * from "./runtime";
+export { actionGateRejection } from "./runtime/action-gate";
 export {
 	actionGateFailure,
 	actionGateNeedsCallerRoles,
@@ -218,6 +204,7 @@ export {
 } from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
+export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export { resolveActionRolePolicyRole } from "./runtime/action-role-policy.ts";
 export { runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
 export {
@@ -237,6 +224,7 @@ export {
 	hashString,
 	stableJsonStringify,
 } from "./runtime/context-hash.ts";
+export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
 export { RUNTIME_DEBUG_LOG_ENABLED } from "./runtime/model-diagnostics.ts";
@@ -452,6 +440,7 @@ export {
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
+	registerScheduledProcessTask,
 	registerTaskSchedulerRuntime,
 	startTaskScheduler,
 	stopTaskScheduler,
@@ -523,7 +512,6 @@ export {
 	normalizeEnvValueOrNull,
 } from "./utils/env.js";
 export * from "./utils/environment";
-export { getEnv } from "./utils/environment";
 export {
 	copy,
 	ensureDir,

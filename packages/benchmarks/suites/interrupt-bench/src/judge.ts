@@ -7,7 +7,7 @@
  * bonus is awarded without a real judge call.
  */
 
-import type { JSONSchema } from "./core-lite.ts";
+import type { JSONSchema } from "@elizaos/core";
 import { callCerebras, isCerebrasConfigured } from "./llm-cerebras.ts";
 import type { SimulatorState } from "./state.ts";
 import type { Scenario } from "./types.ts";

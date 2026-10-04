@@ -7,9 +7,9 @@
 import {
   isDirectAccountProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
+import type { ServiceRouteConfig } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { ServiceRouteConfig } from "@elizaos/host/protocol";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,

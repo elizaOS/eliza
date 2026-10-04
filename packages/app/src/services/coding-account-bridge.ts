@@ -39,25 +39,24 @@ import {
 import os from "node:os";
 import path from "node:path";
 import {
-  type AccountStoragePolicy,
-  createRuntimeAccountStoragePolicy,
-  loadAccount,
-  withAccountStorageMutation,
-} from "@elizaos/auth/auth/account-storage";
-import {
   type AccessTokenOutcome,
-  getAccessToken,
-  saveCredentials,
-} from "@elizaos/auth/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
-import { accountRefreshMutex } from "@elizaos/auth/auth/refresh-mutex";
-import {
+  type AccountStoragePolicy,
+  accountRefreshMutex,
+  createRuntimeAccountStoragePolicy,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
+  getAccessToken,
   isDirectAccountProvider,
   isSubscriptionProvider,
-} from "@elizaos/auth/auth/types";
-import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/contracts";
+  loadAccount,
+  saveCredentials,
+  withAccountStorageMutation,
+} from "@elizaos/auth/auth";
+import { probeDirectApiKey } from "@elizaos/auth/providers";
+import {
+  CODING_AGENT_BACKEND_PROVIDERS,
+  type LinkedAccountProviderId,
+} from "@elizaos/contracts";
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
@@ -66,7 +65,6 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,

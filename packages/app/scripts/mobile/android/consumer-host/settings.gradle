@@ -1,0 +1,7 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+include ':app'
+def profile = new groovy.json.JsonSlurper().parse(file('.eliza-consumer-profile.json'))
+profile.modules.each { module ->
+ include ":${module.name}"
+ project(":${module.name}").projectDir = new File(module.directory)
+}

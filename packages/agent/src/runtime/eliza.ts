@@ -66,6 +66,11 @@ import {
 } from "@elizaos/plugin-assistant";
 import { resolveDevCloudAuthorityEnvValue } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import {
+  createPgliteInitError,
+  getPgliteErrorCode,
+  PGLITE_ERROR_CODES,
+} from "@elizaos/plugin-sql/errors";
+import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.ts";
@@ -210,11 +215,6 @@ import {
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
 } from "./optional-plugins.ts";
-import {
-  createPgliteInitError,
-  getPgliteErrorCode,
-  PGLITE_ERROR_CODES,
-} from "./pglite-error-compat.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
@@ -4622,7 +4622,7 @@ export async function startEliza(
   // warnings from elizaOS core. basic-capabilities is registered first by the
   // runtime, so include it in deduplication so its actions take precedence.
   const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
-    ? [subAgentCredentialsPlugin]
+    ? [{ ...subAgentCredentialsPlugin }]
     : [];
   const assistantPlugins = createAssistantPlugins(character);
   const assistantPlugin = assistantPlugins[0];

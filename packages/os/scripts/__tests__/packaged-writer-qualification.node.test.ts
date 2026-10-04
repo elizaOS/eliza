@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory() as temporary:
                  "--output-dir", str(root / "output"), "--pipeline-bundle", str(root / "pipeline"),
                  "--packaged-helper", str(helper)]
     def guest(args, sources, script, evidence, serial, inputs):
-        assert inputs["packaged-raw-writer"] == helper
+        assert inputs["packaged-raw-writer"] == helper.resolve(strict=True)
         assert "install -Dm755 /inputs/packaged-raw-writer" in script
         assert "bash /root/usb-installer/native/build-raw-writer.sh" not in script
         directory = args.output_dir / "evidence"

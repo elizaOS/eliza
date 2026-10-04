@@ -46,6 +46,18 @@
       "types": "./dist/device-clock-review.d.ts",
       "import": "./dist/device-clock-review.js",
       "default": "./dist/device-clock-review.js"
+    },
+    "./actions/context-signal": {
+      "eliza-source": "./src/actions/context-signal.ts",
+      "types": "./dist/actions/context-signal.d.ts",
+      "import": "./dist/actions/context-signal.js",
+      "default": "./dist/actions/context-signal.js"
+    },
+    "./actions/context-signal-lexicon": {
+      "eliza-source": "./src/actions/context-signal-lexicon.ts",
+      "types": "./dist/actions/context-signal-lexicon.d.ts",
+      "import": "./dist/actions/context-signal-lexicon.js",
+      "default": "./dist/actions/context-signal-lexicon.js"
     }
   },
   "files": [

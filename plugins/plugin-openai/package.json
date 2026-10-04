@@ -17,6 +17,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./direct-media": {
+      "eliza-source": "./direct-media.ts",
+      "types": "./dist/direct-media.d.ts",
+      "import": "./dist/direct-media.js",
+      "default": "./dist/direct-media.js"
     }
   },
   "files": [
@@ -49,7 +55,8 @@
     "ai": "^6.0.30",
     "js-tiktoken": "^1.0.21",
     "gpt-tokenizer": "^4.0.0",
-    "@elizaos/host": "workspace:*"
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

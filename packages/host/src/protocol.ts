@@ -237,6 +237,7 @@ export {
 } from "./contracts/first-run-options.js";
 export * from "./contracts/first-run-routes.js";
 export * from "./contracts/service-routing.js";
+export * from "./media-provider.js";
 export * from "./passive-connectors.js";
 export * from "./restart.js";
 export {

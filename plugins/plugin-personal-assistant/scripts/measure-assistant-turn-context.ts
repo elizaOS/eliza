@@ -12,7 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Action, ContextObject, ToolDefinition } from "@elizaos/core";
-import { estimateTokensFromChars } from "../../../packages/core/src/runtime/model-input-budget.ts";
+import { estimateTokensFromChars } from "@elizaos/core/protocol";
 import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
 import { __renderRoutingHintsBlockForTests } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { messageHandlerTemplate } from "../../plugin-assistant/src/services/message/prompts.ts";

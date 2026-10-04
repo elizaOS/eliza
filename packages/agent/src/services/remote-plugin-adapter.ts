@@ -475,7 +475,7 @@ export function createRemoteCapabilityPlugin(
           ...endpointSelection(endpointId),
           moduleId: module.id,
           eventName: event.eventName,
-          payload: eventPayloadToJsonObject(payload),
+          payload: contextWithoutRuntimeToJsonObject(payload),
         });
       });
       accumulator[event.eventName] = handlers;
@@ -691,7 +691,7 @@ function createRemoteAppBridge(
       ...endpointSelection(endpointId),
       moduleId,
       hook: hook as never,
-      context: appBridgeContextToJsonObject(ctx),
+      context: contextWithoutRuntimeToJsonObject(ctx),
     });
   if (hookSet.has("prepareLaunch")) {
     bridge.prepareLaunch = async (ctx) =>
@@ -2626,17 +2626,9 @@ function toJsonObject(value: unknown): JsonObject | undefined {
   }
   return undefined;
 }
-function eventPayloadToJsonObject(value: unknown): JsonObject | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const { runtime: _runtime, ...serializable } = value as Record<
-    string,
-    unknown
-  >;
-  return toJsonObject(serializable);
-}
-function appBridgeContextToJsonObject(value: unknown): JsonObject | undefined {
+function contextWithoutRuntimeToJsonObject(
+  value: unknown,
+): JsonObject | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }

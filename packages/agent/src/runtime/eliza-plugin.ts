@@ -12,11 +12,13 @@ import {
   type ServiceClass,
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
-
 import {
   ApprovalService,
   GlobalPauseService,
   HandoffService,
+  knowledgeActions,
+  memoryAction,
+  notifyAction,
   PendingPromptsService,
 } from "@elizaos/plugin-assistant";
 import {
@@ -27,10 +29,7 @@ import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { filesAction } from "../actions/files.ts";
-import { knowledgeActions } from "../actions/knowledge.ts";
 import { logsAction } from "../actions/logs.ts";
-import { memoryAction } from "../actions/memories.ts";
-import { notifyAction } from "../actions/notify.ts";
 import { pageDelegateAction } from "../actions/page-action-groups.ts";
 import { pairOwnerAccountAction } from "../actions/pair-owner-account.ts";
 import {

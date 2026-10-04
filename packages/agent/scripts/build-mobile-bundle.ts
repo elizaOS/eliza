@@ -263,7 +263,6 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
-  "@elizaos/app": path.join(stubsDir, "app-runtime.ts"),
   // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync). Bun 1.3.x on
   // arm64-Android does not provide that resolver, so an unstubbed reference
   // bombs the bundle resolve:

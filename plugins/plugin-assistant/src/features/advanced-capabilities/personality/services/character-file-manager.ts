@@ -456,6 +456,9 @@ export class CharacterFileManager extends Service {
           source: "agent",
         });
         if (!persistenceResult.success) {
+          if (persistenceResult.persistence?.config === "committed") {
+            Object.assign(this.runtime.character, currentCharacter);
+          }
           return {
             success: false,
             error:
@@ -606,6 +609,9 @@ export class CharacterFileManager extends Service {
           source: "restore",
         });
         if (!persistenceResult.success) {
+          if (persistenceResult.persistence?.config === "committed") {
+            Object.assign(this.runtime.character, backupContent);
+          }
           return {
             success: false,
             error: persistenceResult.error ?? "Failed to restore character",

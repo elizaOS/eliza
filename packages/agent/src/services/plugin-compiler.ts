@@ -1,12 +1,12 @@
 /**
  * Compiles a project's TypeScript plugin source out of its
  * VirtualFilesystemService into bundled JS written back to the same VFS, so it
- * can be loaded via dynamic import of a real on-disk file. Uses esbuild, falling
- * back to Bun.Transpiler or the TypeScript compiler when esbuild's native binary
- * is unusable, and leaves @elizaos/* peers external so the host runtime supplies
- * them. Path-traversal safety is delegated to the VFS.
+ * can be loaded via dynamic import of a real on-disk file. Uses esbuild and
+ * leaves @elizaos/* peers external so the host runtime supplies them. A failed
+ * build never publishes an entry-only transpilation as a complete bundle. Path-traversal safety is delegated to the VFS.
  */
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import * as esbuild from "esbuild";
 import type { VirtualFilesystemService } from "./virtual-filesystem.ts";
 
@@ -81,7 +81,7 @@ export class PluginCompiler {
     const resolvedOut = outFile ?? defaultOutFile(entry);
     const entrySource = await vfs.readFile(entry);
     const entryDiskPath = vfs.resolveDiskPath(entry);
-    const outDiskPath = vfs.resolveDiskPath(resolvedOut);
+    vfs.resolveDiskPath(resolvedOut);
 
     const loader = inferLoader(entry);
 
@@ -122,17 +122,16 @@ export class PluginCompiler {
       warnings = result.warnings;
       output = primary.contents;
     } catch (error) {
-      if (!isRecoverableEsbuildRuntimeError(error)) {
-        throw error;
-      }
-      output = await transpileWithoutEsbuild(entrySource, loader, format);
+      throw new ElizaError("Failed to compile plugin", {
+        code: "PLUGIN_COMPILATION_FAILED",
+        cause: error,
+        context: { entry, outFile: resolvedOut, format, target },
+      });
     }
 
     const durationMs = Date.now() - start;
 
     await vfs.writeFile(resolvedOut, output);
-
-    void outDiskPath;
 
     return {
       outFile: vfs.resolveVirtualPath(resolvedOut),
@@ -173,99 +172,4 @@ function defaultOutFile(entry: string): string {
     .pop()
     ?.replace(/\.(tsx?|jsx?|mjs|cjs)$/i, "");
   return `dist/${stem}.js`;
-}
-
-function isRecoverableEsbuildRuntimeError(error: unknown): boolean {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "";
-  return [
-    /service (?:was stopped|is no longer running)/i,
-    /installed esbuild for another platform/i,
-  ].some((pattern) => pattern.test(message));
-}
-
-async function transpileWithoutEsbuild(
-  entrySource: string,
-  loader: esbuild.Loader,
-  format: PluginCompilerFormat,
-): Promise<string> {
-  const bunGlobal = globalThis as typeof globalThis & {
-    Bun?: {
-      Transpiler?: new (options: {
-        loader: "js" | "jsx" | "ts" | "tsx";
-        target?: "browser" | "bun" | "node";
-      }) => { transformSync(source: string): string };
-    };
-  };
-
-  const Transpiler = bunGlobal.Bun?.Transpiler;
-  if (!Transpiler) {
-    return transpileWithTypeScript(entrySource, loader, format);
-  }
-
-  const transpiler = new Transpiler({
-    loader: toBunLoader(loader),
-    target: "node",
-  });
-  return transpiler.transformSync(entrySource);
-}
-
-async function transpileWithTypeScript(
-  entrySource: string,
-  loader: esbuild.Loader,
-  format: PluginCompilerFormat,
-): Promise<string> {
-  let ts: typeof import("typescript");
-  try {
-    ts = await import("typescript");
-  } catch (error) {
-    throw new Error(
-      "PluginCompiler.compile: esbuild is unavailable and neither Bun.Transpiler nor TypeScript is available",
-      { cause: error },
-    );
-  }
-
-  const result = ts.transpileModule(entrySource, {
-    compilerOptions: {
-      esModuleInterop: true,
-      jsx: ts.JsxEmit.ReactJSX,
-      module: format === "cjs" ? ts.ModuleKind.CommonJS : ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: `plugin.${toTypeScriptExtension(loader)}`,
-  });
-
-  return result.outputText;
-}
-
-function toBunLoader(loader: esbuild.Loader): "js" | "jsx" | "ts" | "tsx" {
-  switch (loader) {
-    case "tsx":
-      return "tsx";
-    case "jsx":
-      return "jsx";
-    case "js":
-      return "js";
-    default:
-      return "ts";
-  }
-}
-
-function toTypeScriptExtension(
-  loader: esbuild.Loader,
-): "js" | "jsx" | "ts" | "tsx" {
-  switch (loader) {
-    case "jsx":
-      return "jsx";
-    case "js":
-      return "js";
-    case "tsx":
-      return "tsx";
-    default:
-      return "ts";
-  }
 }

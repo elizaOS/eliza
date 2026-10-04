@@ -43,13 +43,14 @@
       "types": "./dist/email-classification/index.d.ts",
       "import": "./dist/email-classification/index.js",
       "default": "./dist/email-classification/index.js"
-    }
+    },
+    "./native-host/*": "./native-host/*.mjs"
   },
   "scripts": {
     "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
     "verify": "bun run lint:default-packs && bun run build:types && bun run test",
     "pretest": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bun run test:bill-host && vitest run --config vitest.config.ts",
     "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
     "test:integration": "vitest run --config vitest.src-integration.config.ts && cd \"$(git rev-parse --show-toplevel)\" && vitest run --config packages/scripts/vitest/integration.config.ts plugins/plugin-personal-assistant/test/life-smoke.integration.test.ts",
     "test:connections:e2e": "bun test/browser-e2e/run-lifeops-connections-e2e.mjs",
@@ -67,7 +68,8 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:bill-host": "node --test native-host/*.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",
@@ -162,6 +164,8 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "native-host/*.mjs",
+    "!native-host/*.test.mjs"
   ]
 }

@@ -8,7 +8,7 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth";
 import {
   type AgentRuntime,
   normalizeCharacterLanguage,

@@ -11,6 +11,7 @@ import {
   type ChatTerminalFailure,
   type ChatToolCallEvent,
   type ChatTurnStatus,
+  type LinkedAccountProviderId,
   parseChatFailureKind,
   parseChatTerminalFailure,
 } from "@elizaos/contracts";
@@ -23,6 +24,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  DELTA_STREAM_PROTOCOL,
   type EffectReceipt,
   ElizaError,
   EventType,
@@ -73,17 +75,14 @@ import {
 } from "@elizaos/core";
 import {
   isLinkedAccountProviderId,
-  type LinkedAccountProviderId,
   type ReadJsonBodyOptions,
   type RouteRequestContext,
   readAliasedEnv,
 } from "@elizaos/host/protocol";
-
 import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
-import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {

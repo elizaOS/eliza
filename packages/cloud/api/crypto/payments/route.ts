@@ -23,6 +23,7 @@ import {
   cryptoPaymentsService,
 } from "@/lib/services/crypto-payments";
 import { isOxaPayConfigured } from "@/lib/services/oxapay";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -49,8 +50,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Crypto payments not available" }, 503);
     }
 
-    const body = await c.req.json();
-    const validation = createPaymentSchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const validation = createPaymentSchema.safeParse(decodedBody.value);
     if (!validation.success) {
       return c.json(
         {

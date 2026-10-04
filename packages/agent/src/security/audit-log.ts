@@ -163,12 +163,6 @@ export function subscribeAuditFeed(
   };
 }
 
-/** @internal Test-only helper to isolate process-wide audit state between specs. */
-export function __resetAuditFeedForTests(): void {
-  processFeedEntries.length = 0;
-  processFeedSubscribers.clear();
-}
-
 type PendingAudit = {
   entry: AuditEntry;
   resolve: () => void;

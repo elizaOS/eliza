@@ -2,6 +2,10 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import {
+  type CloudLiveDedicatedQuoteTerms,
+  projectCloudLiveDedicatedQuoteTerms,
+} from "./cloud-live-continuity-contract";
 
 export const CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS = 35 * 60 * 1_000;
 export const CLOUD_LIVE_NAVIGATION_TIMEOUT_MS = 2 * 60 * 1_000;
@@ -39,6 +43,7 @@ export interface CloudLiveTrajectoryDiagnostic {
 }
 
 export interface CloudLivePreIdentityDiagnostic {
+  dedicatedQuoteTerms?: CloudLiveDedicatedQuoteTerms | null;
   runtimeCloudActionAttemptCount: number;
   runtimeCloudActionSuccessCount: number;
   runtimeCloudActionTimeoutCount: number;
@@ -338,6 +343,9 @@ export function createCloudLiveTrajectoryDiagnostic(
     closedCounters.dedicatedProvisionJobResponseStatus = jobResponseStatus;
     closedCounters.dedicatedProvisionJobResponseCode = jobResponseCode;
     closedCounters.dedicatedProvisionJobStatus = jobStatus;
+    closedCounters.dedicatedQuoteTerms = projectCloudLiveDedicatedQuoteTerms(
+      preIdentity.dedicatedQuoteTerms,
+    );
     diagnostic.preIdentity = closedCounters;
   }
   return diagnostic;
