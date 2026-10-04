@@ -92,7 +92,9 @@ export function openTraceQueue({
         db.prepare(
           "UPDATE trace_queue_state SET dropped=dropped+1 WHERE id=1",
         ).run();
-        throw new NativeHostError("Trace queue full; collection gap recorded");
+        throw new NativeHostError("Trace queue full; collection gap recorded", {
+          code: "TRACE_QUEUE_FULL",
+        });
       }
       db.prepare("INSERT INTO trace_queue(id,document) VALUES(?,?)").run(
         event.eventId,

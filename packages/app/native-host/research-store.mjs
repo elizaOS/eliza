@@ -498,8 +498,8 @@ export function openResearchStore({
             a.receivedAt - b.receivedAt || a.event.sequence - b.event.sequence,
         );
       return {
-        events: matching.slice(0, 1000).map(({ key, ...r }) => r),
-        hasMore: matching.length > 1000,
+        events: matching.map(({ key, ...r }) => r),
+        hasMore: false,
         total: matching.length,
         retention: read("retention"),
         auditRetention: read("audit-retention"),
@@ -580,7 +580,7 @@ export function openResearchStore({
       allow(actor, ["admin"], "audit-read");
       return db
         .prepare(
-          "SELECT sequence,document FROM pilot_audit ORDER BY sequence DESC LIMIT 1000",
+          "SELECT sequence,document FROM pilot_audit ORDER BY sequence DESC",
         )
         .all()
         .map((row) => ({

@@ -95,13 +95,14 @@ export function startResearchCapture({
         onStatus({ state: "withdrawn" });
         return;
       }
+      let upload = { uploaded: 0 };
       const result = await gateway.collectPilotEvidence((binding) => {
         if (
           createHash("sha256").update(binding.owner.actorId).digest("hex") !==
           config.ownerSha256
         )
           throw new NativeHostError("Pilot account binding changed");
-        return createPilotTaskCapture({
+        const capture = createPilotTaskCapture({
           ...binding,
           queue,
           participantId: config.participantId,
@@ -109,12 +110,28 @@ export function startResearchCapture({
           pseudonymKey: Buffer.from(config.pseudonymKey, "base64"),
           captureState: async () => state,
         });
+        return {
+          async collect() {
+            let result, capacityFailure;
+            try {
+              result = await capture.collect();
+            } catch (error) {
+              if (error.code !== "TRACE_QUEUE_FULL") throw error;
+              capacityFailure = error;
+            }
+            if (stopped) return result;
+            if (!binding.isCurrentOwner())
+              throw new NativeHostError("Pilot task owner changed");
+            if (state.status === "active")
+              upload = await queue.flush(transport.upload);
+            // Keep the failed source cursor for the next tick, after draining
+            // already-authorized durable evidence from the full queue.
+            if (capacityFailure) throw capacityFailure;
+            return result;
+          },
+        };
       });
       if (stopped) return;
-      const upload =
-        state.status === "active"
-          ? await queue.flush(transport.upload)
-          : { uploaded: 0 };
       delay = intervalMs;
       onStatus({
         state: state.status,

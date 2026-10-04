@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after, before } from "node:test";
 import { createResearchServer } from "./research-server.mjs";
 import { openResearchStore, validateTraceEvent } from "./research-store.mjs";
 import { createTraceTransport } from "./trace-transport.mjs";
@@ -416,4 +416,161 @@ test("stopping pilot capture aborts an unanswered collector request and releases
   await capture.stop();
   await capture.stop();
   assert.equal(existsSync(queuePath + ".lock"), false);
+});
+
+// Compile the immutable production journal before timed transport tests begin.
+let SqliteInteractiveTaskStore;
+const taskBundleDirectory = mkdtempSync(
+  join(tmpdir(), "research-task-source-"),
+);
+before(async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { resolve } = await import("node:path");
+  const { pathToFileURL } = await import("node:url");
+  const { buildTaskRuntime } = await import(
+    "../scripts/build-consumer-task-runtime.mjs"
+  );
+  const sourceRoot = resolve(import.meta.dirname, "../../..");
+  const bundlePath = join(taskBundleDirectory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath, {
+    sourceRoot,
+    sourceCommit: execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: sourceRoot,
+      encoding: "utf8",
+    }).trim(),
+  });
+  ({ SqliteInteractiveTaskStore } = await import(
+    pathToFileURL(bundlePath).href
+  ));
+});
+after(() => rmSync(taskBundleDirectory, { recursive: true, force: true }));
+
+test("configured capture drains a full queue and resumes complete real task history", {
+  timeout: 10000,
+}, async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { startResearchCapture } = await import("./research-capture-host.mjs");
+  const { store, dir } = setup(t);
+  const db = new DatabaseSync(join(dir, "journal.sqlite"));
+  db.exec("PRAGMA synchronous=FULL");
+  t.after(() => db.close());
+  const tasks = new SqliteInteractiveTaskStore(db);
+  const owner = {
+    agentId: "agent",
+    actorId: "account",
+    connector: { source: "fixture", accountId: "account" },
+  };
+  const task = tasks.create({
+    id: "real-task",
+    owner,
+    goalRef: "observed-goal",
+    now: 100,
+    authorization: {
+      decisionId: "fixture-grant",
+      policyRevision: "fixture-policy",
+      state: "active",
+      decidedAt: new Date(100).toISOString(),
+      revokedAt: null,
+    },
+    allowedCapabilities: ["fill"],
+    allowedOrigins: ["https://example.org"],
+  });
+  tasks.transition(
+    task.id,
+    { owner, expectedRevision: task.revision, now: 101 },
+    { type: "pause" },
+  );
+  const token = randomBytes(32).toString("hex");
+  const server = createPilotServer({
+    store,
+    operators: [
+      {
+        ...device,
+        tokenSha256: createHash("sha256").update(token).digest("hex"),
+      },
+    ],
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  let complete;
+  const completed = new Promise((r) => {
+    complete = r;
+  });
+  const worker = startResearchCapture({
+    gateway: {
+      collectPilotEvidence: (factory) =>
+        factory({ db, tasks, owner, isCurrentOwner: () => true }).collect(),
+    },
+    intervalMs: 10,
+    config: {
+      queuePath: join(dir, "bounded-queue.sqlite"),
+      maxEvents: 1,
+      encryptionKey: randomBytes(32).toString("base64"),
+      pseudonymKey: randomBytes(32).toString("base64"),
+      ownerSha256: createHash("sha256").update(owner.actorId).digest("hex"),
+      participantId: "p1",
+      deviceId: "d1",
+      collectorUrl: `http://127.0.0.1:${server.address().port}`,
+      deviceToken: token,
+    },
+    onStatus: () => {
+      if (store.traces(admin).total === 2) complete();
+    },
+  });
+  t.after(() => worker.stop());
+  t.signal.addEventListener("abort", complete, { once: true });
+  try {
+    await completed;
+    assert.deepEqual(
+      store.traces(admin).events.map((entry) => entry.event.status),
+      ["started", "paused"],
+    );
+  } finally {
+    await worker.stop();
+  }
+});
+
+test("authorized export and audit return complete retained evidence", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "research-complete-export-"));
+  const store = openPilotStore({
+    path: join(dir, "store.sqlite"),
+    key: randomBytes(32),
+    retentionMs: 60000,
+    maxEvents: 1100,
+    now: () => 1000,
+  });
+  t.after(() => {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  store.dataset(admin, {
+    expectedRevision: 0,
+    data: { study: {}, participants: [], tasks: [], coverage: [] },
+  });
+  store.enroll(admin, {
+    participantId: "p1",
+    deviceId: "d1",
+    consentVersion: "approved",
+    authorizedAt: 1,
+  });
+  for (let start = 1; start <= 1001; start += 100)
+    store.ingest(
+      device,
+      Array.from({ length: Math.min(100, 1002 - start) }, (_, i) =>
+        event(start + i),
+      ),
+    );
+  const exported = store.exportTraces(admin, {});
+  assert.equal(exported.total, 1001);
+  assert.equal(exported.events.length, 1001);
+  assert.equal(exported.hasMore, false);
+  assert.equal(
+    new Set(exported.events.map(({ event }) => event.eventId)).size,
+    1001,
+  );
+  for (let i = 0; i < 1001; i++) store.readDataset(admin);
+  assert.ok(store.audit(admin).length > 1000);
 });
