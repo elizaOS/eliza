@@ -68,7 +68,7 @@ _VENDOR_HINT = llama_cpp_vendor_hint()
 def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
     """Locate convert_hf_to_gguf.py.
 
-    Resolution order matches gguf-q4_k_m_apply.py: explicit ``--llama-cpp-dir``,
+    Resolution order matches the GGUF profile runner: explicit ``--llama-cpp-dir``,
     ``$LLAMA_CPP_DIR``, in-repo fork submodule, then PATH.
     """
     return find_llama_convert_script(llama_cpp_dir)
