@@ -34,12 +34,12 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { AccountCredentialProvider } from "@elizaos/auth/auth";
 import {
   createIsolatedAccountStoragePolicy,
   deleteAccount,
   saveAccount,
 } from "@elizaos/auth/auth";
-import type { AccountCredentialProvider } from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Every suite here drives the real on-disk credential store; each storage-lock

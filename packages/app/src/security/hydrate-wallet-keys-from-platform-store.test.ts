@@ -11,10 +11,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  createTestVault,
-  type TestVault,
-} from "@elizaos/auth/testing";
+import { createTestVault, type TestVault } from "@elizaos/auth/testing";
 import type { Vault } from "@elizaos/auth/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetSharedVaultForTesting } from "../services/vault-mirror";

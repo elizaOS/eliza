@@ -39,24 +39,20 @@ import {
 import os from "node:os";
 import path from "node:path";
 import {
-  type AccountStoragePolicy,
-  createRuntimeAccountStoragePolicy,
-  loadAccount,
-  withAccountStorageMutation,
-} from "@elizaos/auth/auth";
-import {
   type AccessTokenOutcome,
-  getAccessToken,
-  saveCredentials,
-} from "@elizaos/auth/auth";
-import { probeDirectApiKey } from "@elizaos/auth/providers";
-import { accountRefreshMutex } from "@elizaos/auth/auth";
-import {
+  type AccountStoragePolicy,
+  accountRefreshMutex,
+  createRuntimeAccountStoragePolicy,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
+  getAccessToken,
   isDirectAccountProvider,
   isSubscriptionProvider,
+  loadAccount,
+  saveCredentials,
+  withAccountStorageMutation,
 } from "@elizaos/auth/auth";
+import { probeDirectApiKey } from "@elizaos/auth/providers";
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,

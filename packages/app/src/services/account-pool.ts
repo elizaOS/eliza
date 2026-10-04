@@ -31,23 +31,19 @@ import {
 } from "node:fs";
 import path from "node:path";
 import {
+  ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   type AccountCredentialRecord,
   type AccountStoragePolicy,
   createRuntimeAccountStoragePolicy,
-  withAccountStorageMutation,
-} from "@elizaos/auth/auth";
-import {
-  getAccessToken as getAccountAccessToken,
-  listProviderAccounts,
-} from "@elizaos/auth/auth";
-import { fetchAnthropicOAuthProfile } from "@elizaos/auth/auth";
-import {
-  ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
+  fetchAnthropicOAuthProfile,
+  getAccessToken as getAccountAccessToken,
   isSubscriptionProvider,
+  listProviderAccounts,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
+  withAccountStorageMutation,
 } from "@elizaos/auth/auth";
 import {
   type AnthropicAccountPoolBridge,

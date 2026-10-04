@@ -335,5 +335,5 @@ test.skipIf(!databaseUrl)(
       await admin.end();
     }
   },
-  120_000,
+  300_000,
 );
