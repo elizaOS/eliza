@@ -30,3 +30,24 @@ cancellation fencing and remote revocation receipts. Hosts own registration,
 copy, encrypted persistence and application UI. The browser-safe root SDK does
 not import this Node entrypoint. Run `bun run --cwd packages/auth test:native-host`
 for synthetic lifecycle tests; these do not establish live provider acceptance.
+
+## Native Cloud service composition
+
+`native-host/cloud-services/cloud-services.mjs` is a Node source entrypoint for
+verified native gateway payloads. It shares private credential persistence,
+account epochs, Cloud login/billing transport, speech framing, account-bound
+Google reads and document-runtime authority/provenance checks. It does not
+provision a remote agent or export credentials to the renderer.
+
+Hosts supply explicit `hostPolicy` functions (projectAccountAccess,
+createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
+planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
+messages, plus speechVoice. These are trusted host settings, never renderer
+input. The host remains responsible for origin admission and authenticating
+requests before this route handler. Native enrollment keeps its own registered
+application identity. Document runtimes are reviewed host-owned artifacts.
+
+These are source-composition APIs, not browser-safe root or published dist
+exports. Run `bun run --cwd packages/auth test:cloud-services` for transport and
+private-file tests with synthetic provider responses. Consumer tests cover
+product voice, privacy, account races and installed payload dependency closure.
