@@ -47,9 +47,11 @@ test("runtime orchestration admits pinned source, stages bytes and rejects mutat
     fs.mkdirSync(skillsDirectory);
     fs.writeFileSync(path.join(skillsDirectory, "policy.md"), "consumer");
     const options = { source, expectedCommit, skillsDirectory };
+    const link = path.join(root, "output-link");
+    fs.symlinkSync(root, link, "dir");
     const { provenance } = buildConsumerAndroidRuntime({
       ...options,
-      output: path.join(root, "good"),
+      output: path.join(link, "good"),
       stageGateway: () => ({ host: "fixture" }),
     });
     assert.equal(provenance.commit, expectedCommit);
@@ -59,7 +61,7 @@ test("runtime orchestration admits pinned source, stages bytes and rejects mutat
       () =>
         buildConsumerAndroidRuntime({
           ...options,
-          output: path.join(root, "good"),
+          output: path.join(link, "good"),
           stageGateway: () => ({}),
         }),
       /EEXIST/,
