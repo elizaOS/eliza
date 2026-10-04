@@ -925,11 +925,12 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	) => {
 		const capture = pluginRegistrationContext.getStore();
 		const modelKey = String(modelType);
-		const modelsBefore = privateState.models.get(modelKey)?.length ?? 0;
+		const modelsBefore = new Set(privateState.models.get(modelKey) ?? []);
 		originalRegisterModel(modelType, handler, provider, priority, metadata);
 		if (!capture) return;
 		const nextModels = privateState.models.get(modelKey) ?? [];
-		for (const registeredModel of nextModels.slice(modelsBefore)) {
+		for (const registeredModel of nextModels) {
+			if (modelsBefore.has(registeredModel)) continue;
 			pushUniqueModel(capture.ownership.models, {
 				modelType: modelKey,
 				handler: registeredModel.handler as RuntimeModelRegistration["handler"],
