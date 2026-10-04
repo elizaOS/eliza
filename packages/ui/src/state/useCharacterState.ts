@@ -8,8 +8,9 @@
  */
 
 import { useCallback, useState } from "react";
-import type { AgentStatus } from "../api";
-import { type CharacterData, client } from "../api";
+import { client } from "../api/client";
+import type { CharacterData } from "../api/client-types-config";
+import type { AgentStatus } from "../api/client-types-core";
 import { prepareDraftForSave } from "../character/character-draft-helpers";
 import { logger } from "../logger.ts";
 import { replaceNameTokens } from "../utils/name-tokens";

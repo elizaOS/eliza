@@ -24,7 +24,6 @@
       "@elizaos/app": ["./packages/app/src/index.ts"],
       "@elizaos/app/*": ["./packages/app/src/*"],
       "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
-      "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/plugin-computeruse/mobile/*": [
         "./plugins/plugin-computeruse/src/mobile/*"
       ],
@@ -37,7 +36,6 @@
       ],
       "@elizaos/auth/auth/*": ["./packages/auth/src/auth/*"],
       "@elizaos/auth/vault/*": ["./packages/auth/src/vault/*"],
-      "@elizaos/cloud-shared/*": ["./packages/cloud/shared/src/*"],
       "@elizaos/plugin-wallet/*": ["./plugins/plugin-wallet/src/*"],
       "@elizaos/capacitor-desktop": [
         "./plugins/plugin-native-desktop/src/index.ts"

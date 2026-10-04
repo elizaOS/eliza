@@ -13,12 +13,12 @@
  * `admin.action` with `result: "denied"`.
  */
 
+import { ForbiddenError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context } from "hono";
 import type { AuditAction } from "@/api-app/services/audit";
-import { ForbiddenError } from "@/lib/api/cloud-worker-errors";
-import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 export interface ActorContext {

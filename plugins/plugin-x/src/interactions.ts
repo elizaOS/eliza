@@ -19,7 +19,7 @@ import {
   type MessagePayload,
   ModelType,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import {
   type ClientBase,
@@ -28,7 +28,7 @@ import {
   type TwitterProfile,
 } from "./base";
 import { SearchMode } from "./client/index";
-import { type Tweet as ClientTweet } from "./client/tweets";
+import type { Tweet as ClientTweet } from "./client/tweets";
 import {
   getRandomInterval,
   getTargetUsers,

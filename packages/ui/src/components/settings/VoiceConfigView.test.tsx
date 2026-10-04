@@ -54,11 +54,9 @@ const swabbleMock = vi.hoisted(() => ({
   stop: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: null, agentProps: {} }),
 }));
 
@@ -81,7 +79,7 @@ vi.mock("./AdvancedToggle.hooks", () => ({
   useAdvancedSettingsEnabled: () => false,
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: <T,>(selector: (state: typeof appState.value) => T): T =>
     selector(appState.value),
 }));

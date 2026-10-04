@@ -14,10 +14,10 @@
  * first load renders a compact route to the wallet's detailed error state.
  */
 
-import type { WalletBalancesResponse } from "@elizaos/core/contracts/wallet-types";
+import type { WalletBalancesResponse } from "@elizaos/contracts";
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import type { WidgetProps } from "../../../widgets/types";

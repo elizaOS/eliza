@@ -8,7 +8,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { upsertProject } from "@elizaos/core";
+import { upsertProject } from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleParentContextRoutes } from "../../src/api/parent-context-routes.ts";
 import type { RouteContext } from "../../src/api/route-utils.ts";

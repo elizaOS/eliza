@@ -4,9 +4,11 @@
  * The external EventKit bridge and host reminder hooks are controlled.
  */
 
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsReminderPlan,
+} from "@elizaos/contracts";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsReminderPlan } from "@elizaos/core/contracts/personal-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,

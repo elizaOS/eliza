@@ -6,7 +6,6 @@ Provides:
   - loaded pyannote-style VAD-based diarizer (using speechbrain SpeakerDiarization or
     segment-based chunker as fallback since pyannote needs HF auth token)
   - fixture audio loader
-  - in-memory VoiceProfileStore equivalent
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from __future__ import annotations
 import json
 import os
 import time
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -30,6 +28,7 @@ TARGET_SR = 16_000
 # ---------------------------------------------------------------------------
 # Audio helpers
 # ---------------------------------------------------------------------------
+
 
 def load_wav_mono16k(path: Path) -> np.ndarray:
     """Load a WAV file and return float32 mono PCM at 16 kHz."""
@@ -69,6 +68,7 @@ def read_manifest() -> dict:
 # Speaker encoder via SpeechBrain ECAPA-TDNN
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SpeakerEncoder:
     """Thin wrapper around SpeechBrain ECAPA-TDNN for 256-dim speaker embeddings."""
@@ -95,9 +95,11 @@ class SpeakerEncoder:
     @classmethod
     def load(cls) -> "SpeakerEncoder":
         import warnings
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             from speechbrain.inference import EncoderClassifier
+
             classifier = EncoderClassifier.from_hparams(
                 source="speechbrain/spkrec-ecapa-voxceleb",
                 savedir="/tmp/spkrec-ecapa",
@@ -114,6 +116,7 @@ class SpeakerEncoder:
 # ---------------------------------------------------------------------------
 # Segment-based diarizer using energy VAD + speaker clustering
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SegmentDiarizer:
@@ -132,11 +135,11 @@ class SegmentDiarizer:
     """
 
     encoder: SpeakerEncoder
-    frame_ms: int = 30       # VAD frame size in ms
-    hop_ms: int = 10         # VAD hop in ms
+    frame_ms: int = 30  # VAD frame size in ms
+    hop_ms: int = 10  # VAD hop in ms
     energy_threshold_db: float = -35.0
-    min_speech_ms: int = 500   # minimum speech segment length
-    merge_gap_ms: int = 300    # merge gaps between speech segments
+    min_speech_ms: int = 500  # minimum speech segment length
+    merge_gap_ms: int = 300  # merge gaps between speech segments
 
     def _energy_vad(self, pcm: np.ndarray) -> list[tuple[int, int]]:
         """Return list of (start_sample, end_sample) speech regions."""
@@ -149,10 +152,10 @@ class SegmentDiarizer:
         is_speech = []
         for i in range(n_frames):
             start = i * hop_samples
-            frame = pcm[start:start + frame_samples]
+            frame = pcm[start : start + frame_samples]
             if len(frame) < frame_samples:
                 frame = np.pad(frame, (0, frame_samples - len(frame)))
-            rms = np.sqrt(np.mean(frame ** 2))
+            rms = np.sqrt(np.mean(frame**2))
             db = 20 * np.log10(max(rms, 1e-10))
             is_speech.append(db > self.energy_threshold_db)
 
@@ -276,17 +279,21 @@ class SegmentDiarizer:
                 metric="cosine",
                 linkage="average",
             )
-            speaker_labels = agg.fit_predict(emb_matrix).tolist() if best_k > 1 else [0] * n
+            speaker_labels = (
+                agg.fit_predict(emb_matrix).tolist() if best_k > 1 else [0] * n
+            )
 
         result = []
         for (s, e), spk_id, emb in zip(valid_segments, speaker_labels, embeddings):
-            result.append({
-                "start_ms": int(s / TARGET_SR * 1000),
-                "end_ms": int(e / TARGET_SR * 1000),
-                "speaker_id": int(spk_id),
-                "embedding": emb,
-                "confidence": 0.85,  # placeholder — real pyannote emits per-frame logits
-            })
+            result.append(
+                {
+                    "start_ms": int(s / TARGET_SR * 1000),
+                    "end_ms": int(e / TARGET_SR * 1000),
+                    "speaker_id": int(spk_id),
+                    "embedding": emb,
+                    "confidence": 0.85,  # placeholder — real pyannote emits per-frame logits
+                }
+            )
         return result
 
 
@@ -294,105 +301,10 @@ class SegmentDiarizer:
 # In-memory VoiceProfileStore (mirrors the TypeScript implementation)
 # ---------------------------------------------------------------------------
 
-@dataclass
-class VoiceProfile:
-    profile_id: str
-    centroid: np.ndarray
-    sample_count: int = 0
-    entity_id: str | None = None
-    imprint_cluster_id: str = ""
-    first_observed_at: float = field(default_factory=time.time)
-    last_observed_at: float = field(default_factory=time.time)
-    embedding_dim: int = 0
-
-    def __post_init__(self):
-        if not self.imprint_cluster_id:
-            self.imprint_cluster_id = str(uuid.uuid4())
-        if not self.embedding_dim:
-            self.embedding_dim = len(self.centroid)
-
-
-class InMemoryVoiceProfileStore:
-    """Pure Python equivalent of plugin-local-inference's VoiceProfileStore."""
-
-    def __init__(self, hot_cache_size: int = 30, match_threshold: float = 0.40):
-        self._profiles: dict[str, VoiceProfile] = {}
-        self._hot_cache: list[str] = []  # LRU ordered profile_ids
-        self.hot_cache_size = hot_cache_size
-        self.match_threshold = match_threshold
-
-    def _sha(self, centroid: np.ndarray) -> str:
-        import hashlib
-        return "vp_" + hashlib.sha256(centroid.tobytes()).hexdigest()[:16]
-
-    def add_or_refine(self, embedding: np.ndarray, entity_id: str | None = None) -> VoiceProfile:
-        """Add a new profile or refine an existing one if close enough."""
-        best_match, best_sim = self.find_best_match(embedding)
-        if best_match and best_sim >= self.match_threshold:
-            # Refine existing profile (online mean)
-            prof = best_match
-            n = prof.sample_count
-            prof.centroid = (prof.centroid * n + embedding) / (n + 1)
-            norm = np.linalg.norm(prof.centroid)
-            if norm > 1e-8:
-                prof.centroid = prof.centroid / norm
-            prof.sample_count += 1
-            prof.last_observed_at = time.time()
-            if entity_id and not prof.entity_id:
-                prof.entity_id = entity_id
-            self._promote_lru(prof.profile_id)
-            return prof
-        else:
-            # Create new profile
-            profile_id = self._sha(embedding)
-            prof = VoiceProfile(
-                profile_id=profile_id,
-                centroid=embedding.copy(),
-                sample_count=1,
-                entity_id=entity_id,
-                embedding_dim=len(embedding),
-            )
-            self._profiles[profile_id] = prof
-            self._promote_lru(profile_id)
-            return prof
-
-    def find_best_match(self, embedding: np.ndarray) -> tuple[VoiceProfile | None, float]:
-        """Return (best_profile, cosine_similarity) or (None, 0.0)."""
-        best_prof = None
-        best_sim = 0.0
-        for prof in self._profiles.values():
-            sim = float(np.dot(embedding, prof.centroid))
-            if sim > best_sim:
-                best_sim = sim
-                best_prof = prof
-        return best_prof, best_sim
-
-    def bind_entity(self, profile_id: str, entity_id: str) -> None:
-        if profile_id in self._profiles:
-            self._profiles[profile_id].entity_id = entity_id
-
-    def _promote_lru(self, profile_id: str) -> None:
-        if profile_id in self._hot_cache:
-            self._hot_cache.remove(profile_id)
-        self._hot_cache.insert(0, profile_id)
-        if len(self._hot_cache) > self.hot_cache_size:
-            self._hot_cache = self._hot_cache[:self.hot_cache_size]
-
-    def is_hot(self, profile_id: str) -> bool:
-        return profile_id in self._hot_cache
-
-    @property
-    def profile_count(self) -> int:
-        return len(self._profiles)
-
-    @property
-    def profiles(self) -> dict[str, VoiceProfile]:
-        return self._profiles
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def encoder() -> SpeakerEncoder:

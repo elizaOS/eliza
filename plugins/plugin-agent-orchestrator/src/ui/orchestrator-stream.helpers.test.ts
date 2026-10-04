@@ -5,8 +5,9 @@
  * replay can still deliver — and asserts the renderer degrades to a labelled
  * notice instead of throwing. Deterministic and offline; no network, no DOM.
  */
-import type { CodingAgentTaskEventRecord } from "@elizaos/ui/api/client-types-cloud";
+
 import { describe, expect, it } from "vitest";
+import type { CodingAgentTaskEventRecord } from "../../../../packages/ui/src/api/client-types-cloud";
 import { buildConversation } from "./orchestrator-stream.helpers";
 
 function noticeEvent(

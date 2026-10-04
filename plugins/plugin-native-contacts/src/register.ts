@@ -6,9 +6,8 @@
  * Contacts in the app shell. Load this module once during app startup to
  * register the page.
  */
+import { isElizaOS, registerAppShellPage } from "@elizaos/ui";
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { isElizaOS } from "@elizaos/ui/platform/init";
 import { CONTACTS_VIEW_CAPABILITIES } from "./view-capabilities";
 
 if (isElizaOS()) {

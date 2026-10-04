@@ -19,12 +19,16 @@ try {
   );
   const shared = [
     "runtime/RuntimeBundleStore",
+    "runtime/PrivateOAuthCallback",
+    "runtime/NativeProcessSupervisor",
+    "runtime/NativeProcessLog",
     "runtime/RuntimeRequestDeadline",
     "runtime/RuntimeInstallationIdentity",
     "updater/UpdateJournal",
     "updater/QualifiedClockAnchor",
     "updater/JobRunRegistry",
     "updater/PreparationFlow",
+    "updater/PreparedRecovery",
   ].map((name) =>
     path.join(
       root,
@@ -42,12 +46,16 @@ try {
   });
   for (const [group, name] of [
     ["runtime.test", "RuntimeBundleStoreTest"],
+    ["runtime.test", "PrivateOAuthCallbackTest"],
+    ["runtime.test", "NativeProcessSupervisorTest"],
+    ["runtime.test", "NativeProcessLogTest"],
     ["runtime.test", "RuntimeRequestDeadlineTest"],
     ["updater", "UpdateJournalTest"],
     ["updater", "ProbationWindowTest"],
     ["updater", "QualifiedClockAnchorTest"],
     ["updater", "JobRunRegistryTest"],
     ["updater", "PreparationFlowTest"],
+    ["updater", "PreparedRecoveryTest"],
   ]) {
     execFileSync(
       bin("java"),

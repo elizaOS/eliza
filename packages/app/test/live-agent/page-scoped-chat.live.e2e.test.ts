@@ -32,7 +32,7 @@ import {
   buildPageScopedRoutingMetadata,
   PAGE_SCOPE_VERSION,
   type PageScope,
-} from "../../../ui/src/components/pages/page-scoped-conversations.js";
+} from "../../../ui/src/components/pages/page-scoped-conversations";
 import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { selectLiveProvider } from "../helpers/live-provider";

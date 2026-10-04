@@ -6,11 +6,11 @@ import path from "node:path";
 import {
   type ActionResult,
   ChannelType,
-  captureHostExecutionBaseline,
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { captureHostExecutionBaseline } from "@elizaos/host";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { projectToolResultForModel } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { terminalAction } from "../src/actions/terminal.ts";

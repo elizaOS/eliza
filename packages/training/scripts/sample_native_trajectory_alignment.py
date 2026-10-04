@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from lib.generation_integrity import IncompleteGenerationError, require_complete_generation
+from eliza_training.lib.generation_integrity import IncompleteGenerationError, require_complete_generation
 
 import yaml
 

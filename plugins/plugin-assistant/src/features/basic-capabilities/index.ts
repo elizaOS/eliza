@@ -75,8 +75,8 @@ import {
   type UUID,
   type WorldPayload,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { v4 } from "uuid";
 import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";

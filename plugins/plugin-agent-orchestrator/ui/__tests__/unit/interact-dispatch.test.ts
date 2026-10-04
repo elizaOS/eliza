@@ -14,7 +14,8 @@ const getCodingAgentTaskThread = vi.fn();
 const stopCodingAgent = vi.fn();
 const getOrchestratorStatus = vi.fn();
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     getCodingAgentStatus: (...a: unknown[]) => getCodingAgentStatus(...a),
     listCodingAgentTaskThreads: (...a: unknown[]) =>

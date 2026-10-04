@@ -21,7 +21,7 @@ vi.mock("../../api/client", () => ({
   client: { onBaseUrlChange: mocks.onBaseUrlChange },
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appState) => unknown) =>
     selector(appState),
 }));

@@ -7,7 +7,6 @@ import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
-import { resolveOwnerTimeZone } from "./owner/fact-store.js";
 import { createLifeOpsReminderAttempt } from "./repository.js";
 import { LifeOpsService } from "./service.js";
 import {
@@ -106,7 +105,16 @@ it.each([
         occurrenceId,
       );
       const body = getRecordedTestNotifications(f.runtime)[0].body;
-      expect(body).toContain("Check the in-app notification");
+      expect(body).toBe("Check the in-app notification");
+      expect(getRecordedTestNotifications(f.runtime)[0].title).toBe("Reminder");
+      expect(attempts[0].deliveryMetadata.message).toBe(body);
+      expect(before?.dueAt).toBe(new Date(due).toISOString());
+      expect(attempts[0].scheduledFor).toBe(new Date(due).toISOString());
+      expect(
+        (await service.listReminders()).find(
+          (item) => item.definition.id === record.definition.id,
+        )?.occurrence?.dueAt,
+      ).toBe(before?.dueAt);
       expect(body).not.toContain("Monday");
       for (const minutes of [30, 54, 55, 90, 121])
         await service.processReminders({
@@ -142,7 +150,7 @@ it.each([
   120000,
 );
 
-it("explicit post-fire snooze crosses the original window and displays its saved deadline without default escalation", async () => {
+it("explicit post-fire snooze crosses the original window and preserves its saved deadline without default escalation", async () => {
   const f = await createLifeOpsTestRuntime();
   const model = vi
     .spyOn(f.runtime, "useModel")
@@ -193,11 +201,8 @@ it("explicit post-fire snooze crosses the original window and displays its saved
       firstReceipt.ownerId,
     );
     if (!original) throw Error("Missing original occurrence");
-    const timezone = await resolveOwnerTimeZone(f.runtime, new Date(due));
     const firstBody = getRecordedTestNotifications(f.runtime)[0].body;
-    expect(firstBody).toBe(
-      `Reminder: Explicit snooze deadline\nDue: ${new Date(due).toLocaleString("en-US", { timeZone: timezone })}`,
-    );
+    expect(firstBody).toBe("Explicit snooze deadline");
     const snoozed = await service.snoozeOccurrence(
       original.id,
       { minutes: 10 },
@@ -225,10 +230,9 @@ it("explicit post-fire snooze crosses the original window and displays its saved
     });
     const notifications = getRecordedTestNotifications(f.runtime);
     expect(notifications).toHaveLength(2);
-    expect(notifications[1].body).toBe(
-      `Reminder: Explicit snooze deadline\nDue: ${new Date(newDue).toLocaleString("en-US", { timeZone: timezone })}`,
-    );
-    expect(notifications[1].body).not.toBe(firstBody);
+    expect(notifications[1].body).toBe("Explicit snooze deadline");
+    expect(notifications[1].body).toBe(firstBody);
+    expect(notifications[1].title).toBe("Reminder");
     const atDeadline = await service.repository.getOccurrence(
       f.runtime.agentId,
       original.id,

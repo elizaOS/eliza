@@ -15,7 +15,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { ApnsProvider } from "../src/services/push/apns-provider.ts";
 import { FcmProvider } from "../src/services/push/fcm-provider.ts";
@@ -293,14 +293,46 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
     expect(
       pair.find((r) => r.message.token === token)?.message.notification,
     ).toEqual({ title: "Cold pair", body: "First saved reminder" });
+    for (const ownerType of [
+      "occurrence",
+      "calendar_event",
+      "unknown",
+      null,
+      { type: "occurrence" },
+    ]) {
+      const start = requests.length;
+      await notifier.notify({
+        title: "Owner type projection",
+        category: "reminder",
+        priority: "high",
+        data: { ownerType },
+      });
+      await expect.poll(() => requests.length).toBe(start + 2);
+      const native = requests
+        .slice(start)
+        .find((r) => r.message.token === nativeToken)?.message;
+      if (ownerType === "occurrence" || ownerType === "calendar_event") {
+        expect(native).toHaveProperty("data.ownerType", ownerType);
+      } else {
+        expect(native).not.toHaveProperty("data.ownerType");
+      }
+    }
     const genericStart = requests.length;
     await notifier.notify({
       title: "Generic stays stock",
       category: "workflow",
+      data: { ownerType: "occurrence" },
     });
     await expect.poll(() => requests.length).toBe(genericStart + 2);
     expect(
       requests.slice(genericStart).every((r) => r.message.notification),
+    ).toBe(true);
+    expect(
+      requests
+        .slice(genericStart)
+        .every(
+          (r) => !("ownerType" in (r.message.data as Record<string, unknown>)),
+        ),
     ).toBe(true);
     // Formerly accepted incompatible fields retain the legacy serializer.
     for (const incompatible of [

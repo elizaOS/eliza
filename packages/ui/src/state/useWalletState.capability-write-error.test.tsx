@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 vi.mock("./persistence", () => mocks.persistence);
 vi.mock("../utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),

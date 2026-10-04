@@ -21,11 +21,8 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import {
-  isLoopbackBindHost,
-  resolveApiBindHost,
-} from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { isLoopbackBindHost } from "@elizaos/core/protocol";
+import { readAliasedEnv, resolveApiBindHost } from "@elizaos/host/protocol";
 import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";

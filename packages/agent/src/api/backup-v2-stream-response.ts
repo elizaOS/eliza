@@ -10,10 +10,10 @@ import {
   AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupCaptureV2Request,
-  logger,
   parseAgentBackupCaptureV2Request,
-  readRequestBody,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { logger } from "@elizaos/core";
+import { readRequestBody } from "@elizaos/host";
 
 import type { ElizaConfig } from "../config/config.ts";
 import {

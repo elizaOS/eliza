@@ -13,7 +13,7 @@ import {
   schedulingPlugin,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import {
   createChannelRegistry,

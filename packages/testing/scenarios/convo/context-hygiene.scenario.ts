@@ -13,13 +13,13 @@ import {
   ModelType,
   type Plugin,
 } from "@elizaos/core";
+import { scenario } from "@elizaos/testing";
 import {
   type DeterministicModelFixture,
-  scenario,
   strictActionRouteFixtures,
   strictTerminalReplyFixture,
-} from "@elizaos/testing";
-import { transientTurnEvaluationSeed } from "../_fixtures/simple-turn-memory";
+  transientTurnEvaluationSeed,
+} from "@elizaos/testing/models";
 import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 
 const INPUT = "Hello!";

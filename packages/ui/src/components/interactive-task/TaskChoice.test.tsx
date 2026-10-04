@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { TaskChoiceWidget } from "@elizaos/core/messaging/task-widgets";
+import type { TaskChoiceWidget } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,

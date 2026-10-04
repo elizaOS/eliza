@@ -12,15 +12,15 @@
  * `(from, to, type)` exists.
  */
 import crypto from "node:crypto";
-import { type IAgentRuntime } from "@elizaos/core";
-import {
-  type Relationship,
-  type RelationshipFilter,
-  type RelationshipSentiment,
-  type RelationshipSource,
-  type RelationshipState,
-  type RelationshipStatus,
-} from "@elizaos/core/knowledge-graph/relationship-types";
+import type {
+  KnowledgeGraphRelationship as Relationship,
+  RelationshipFilter,
+  RelationshipSentiment,
+  LifeOpsGraphRelationshipSource as RelationshipSource,
+  LifeOpsGraphRelationshipState as RelationshipState,
+  LifeOpsGraphRelationshipStatus as RelationshipStatus,
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
@@ -288,6 +288,56 @@ export class RelationshipStore {
       });
     }
     return results;
+  }
+  /**
+   * Records an explicit `(from, to, type)` assertion, such as the owner stating
+   * a relationship: the active edge is updated in place with the new evidence
+   * merged in, and created only when none is active. It uses the same
+   * backend-specific operation boundary as `observe`; unlike `observe`, it
+   * does not count an interaction.
+   */
+  async assertEdge(input: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    evidence: string[];
+    confidence: number;
+    source: RelationshipSource;
+  }): Promise<Relationship> {
+    return this.operation(() => this.assertEdgeOperation(input));
+  }
+
+  private async assertEdgeOperation(input: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    evidence: string[];
+    confidence: number;
+    source: RelationshipSource;
+  }): Promise<Relationship> {
+    const [active] = await this.listOperation({
+      fromEntityId: input.fromEntityId,
+      toEntityId: input.toEntityId,
+      type: input.type,
+    });
+    if (active) {
+      return this.upsertOperation({
+        ...active,
+        evidence: Array.from(new Set([...active.evidence, ...input.evidence])),
+        confidence: Math.max(active.confidence, input.confidence),
+        source: input.source,
+      });
+    }
+    return this.upsertOperation({
+      fromEntityId: input.fromEntityId,
+      toEntityId: input.toEntityId,
+      type: input.type,
+      metadata: {},
+      state: {},
+      evidence: input.evidence,
+      confidence: input.confidence,
+      source: input.source,
+    });
   }
   /**
    * Strengthen-or-create. If an active edge with the same

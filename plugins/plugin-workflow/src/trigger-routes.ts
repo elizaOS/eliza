@@ -17,7 +17,7 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from '@elizaos/core';
-import type { RouteHelpers, RouteRequestContext } from '@elizaos/core/api/route-helpers';
+import type { RouteHelpers, RouteRequestContext } from '@elizaos/host/protocol';
 import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './lib/trigger-ownership';
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {

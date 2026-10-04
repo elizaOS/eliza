@@ -1287,6 +1287,78 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
   );
 });
 
+const LOWER_PAIRING_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+const UPPER_PAIRING_ID = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB" as UUID;
+const PAIRING_AT = new Date("2026-08-20T16:00:00.000Z");
+
+it("pages newest pairing requests by UUID when the higher id is uppercase", async () => {
+  const adapter = await open();
+  await adapter.createPairingRequests([
+    {
+      id: LOWER_PAIRING_ID,
+      channel: "telegram",
+      agentId,
+      senderId: "lower",
+      code: "AAAAAAAA",
+      createdAt: PAIRING_AT,
+      lastSeenAt: PAIRING_AT,
+    },
+    {
+      id: UPPER_PAIRING_ID,
+      channel: "telegram",
+      agentId,
+      senderId: "upper",
+      code: "BBBBBBBB",
+      createdAt: PAIRING_AT,
+      lastSeenAt: PAIRING_AT,
+    },
+  ]);
+
+  const [page] = await adapter.getPairingRequests([
+    {
+      channel: "telegram",
+      agentId,
+      limit: 1,
+      offset: 0,
+      order: "newest",
+    },
+  ]);
+  expect(page.requests.map((request) => request.id)).toEqual([
+    UPPER_PAIRING_ID,
+  ]);
+});
+
+it("pages newest pairing allowlist entries by UUID when the higher id is uppercase", async () => {
+  const adapter = await open();
+  await adapter.createPairingAllowlistEntries([
+    {
+      id: LOWER_PAIRING_ID,
+      channel: "telegram",
+      agentId,
+      senderId: "lower",
+      createdAt: PAIRING_AT,
+    },
+    {
+      id: UPPER_PAIRING_ID,
+      channel: "telegram",
+      agentId,
+      senderId: "upper",
+      createdAt: PAIRING_AT,
+    },
+  ]);
+
+  const [page] = await adapter.getPairingAllowlists([
+    {
+      channel: "telegram",
+      agentId,
+      limit: 1,
+      offset: 0,
+      order: "newest",
+    },
+  ]);
+  expect(page.entries.map((entry) => entry.id)).toEqual([UPPER_PAIRING_ID]);
+});
+
 it("pages relationships oldest-first when the newer edge has the lower id", async () => {
   const adapter = await open();
   const sourceId = id();
@@ -1400,4 +1472,49 @@ it("returns messages from the requested world and treats limit 0 as empty", asyn
     found,
   );
   expect(await adapter.getMemoriesByWorldId({ worldId, limit: 0 })).toEqual([]);
+});
+
+it("keeps entity name lookups inside the requested agent and honors an explicit empty page", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const entities = Array.from({ length: 11 }, (_, index) => ({
+    id: id(),
+    agentId,
+    names: [`Patron ${index}`],
+  }));
+  await adapter.createEntities(entities);
+  const storage = await adapter.getConnection();
+  await storage.set("entities", id(), {
+    id: id(),
+    agentId: otherAgentId,
+    names: ["Patron 0"],
+  });
+
+  const named = await adapter.getEntitiesByNames({
+    names: ["Patron 0"],
+    agentId,
+  });
+  expect(named.map((entity) => entity.id)).toEqual([entities[0]?.id]);
+
+  const all = await adapter.searchEntitiesByName({
+    query: "patron",
+    agentId,
+  });
+  expect(all).toHaveLength(11);
+  expect(all.every((entity) => entity.agentId === agentId)).toBe(true);
+
+  expect(
+    await adapter.searchEntitiesByName({
+      query: "patron",
+      agentId,
+      limit: 0,
+    }),
+  ).toEqual([]);
+  expect(
+    await adapter.searchEntitiesByName({
+      query: "patron",
+      agentId,
+      limit: 1,
+    }),
+  ).toHaveLength(1);
 });

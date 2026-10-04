@@ -5,8 +5,6 @@
     "module": "ESNext",
     "lib": ["ESNext", "DOM"],
     "moduleResolution": "bundler",
-    "rootDir": "../..",
-    "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -24,7 +22,7 @@
     "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,
@@ -33,7 +31,8 @@
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "rootDir": "../.."
   },
   "include": ["**/*.ts"],
   "exclude": [

@@ -1,7 +1,7 @@
 // Exercises OS release pipeline scripts and evidence checks.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -573,6 +573,25 @@ test("legacy checksum updater preserves valid candidate manifest status", async 
 
   const validation = validateManifest(updated);
   assert.equal(validation.ok, true, validation.errors.join("\n"));
+
+  // A later missing artifact must not publish earlier successful hashes.
+  const original = `${JSON.stringify(manifest, null, 2)}\n`;
+  await writeFile(manifestPath, original);
+  await unlink(path.join(artifactRoot, manifest.artifacts.at(-1).filename));
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        "scripts/update-manifest-checksums.ts",
+        "--manifest",
+        manifestPath,
+        "--artifacts-dir",
+        artifactRoot,
+      ],
+      { cwd: repoRoot },
+    ),
+  );
+  assert.equal(await readFile(manifestPath, "utf8"), original);
 });
 
 test("TEE measurement generation hashes required release inputs", async () => {

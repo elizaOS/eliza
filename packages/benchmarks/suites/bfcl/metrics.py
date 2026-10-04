@@ -10,7 +10,7 @@ import logging
 import statistics
 from typing import Optional
 
-from suites.bfcl.types import (
+from benchmarks.bfcl.types import (
     BFCLCategory,
     BFCLMetrics,
     BFCLResult,
@@ -92,11 +92,14 @@ class MetricsCalculator:
 
         skipped_by_reason: dict[str, int] = {}
         for r in skipped_results:
-            skipped_by_reason[r.status.value] = skipped_by_reason.get(r.status.value, 0) + 1
+            skipped_by_reason[r.status.value] = (
+                skipped_by_reason.get(r.status.value, 0) + 1
+            )
         if skipped_results:
             logger.warning(
                 "BFCL: excluded %d tests from scoring (per bucket: %s)",
-                len(skipped_results), skipped_by_reason,
+                len(skipped_results),
+                skipped_by_reason,
             )
 
         if not valid_results:
@@ -113,7 +116,9 @@ class MetricsCalculator:
         # Calculate overall scores (using valid results only)
         ast_accuracy = self._calculate_accuracy(valid_results, "ast_match")
         exec_accuracy = self._calculate_accuracy(valid_results, "exec_success")
-        relevance_accuracy = self._calculate_accuracy(valid_results, "relevance_correct")
+        relevance_accuracy = self._calculate_accuracy(
+            valid_results, "relevance_correct"
+        )
 
         # Calculate weighted overall score
         overall_score = self._calculate_weighted_score(category_metrics)
@@ -177,9 +182,11 @@ class MetricsCalculator:
             ast_acc = self._calculate_accuracy(cat_results, "ast_match")
             exec_acc = self._calculate_accuracy(cat_results, "exec_success")
             rel_acc = self._calculate_accuracy(cat_results, "relevance_correct")
-            avg_latency = statistics.mean(
-                r.latency_ms for r in cat_results if r.latency_ms > 0
-            ) if any(r.latency_ms > 0 for r in cat_results) else 0.0
+            avg_latency = (
+                statistics.mean(r.latency_ms for r in cat_results if r.latency_ms > 0)
+                if any(r.latency_ms > 0 for r in cat_results)
+                else 0.0
+            )
 
             category_metrics[category] = CategoryMetrics(
                 category=category,
@@ -410,27 +417,31 @@ class MetricsCalculator:
                 )
 
         if metrics.skipped_tests:
-            lines.extend([
-                "",
-                "-" * 60,
-                "Skipped (excluded from accuracy denominator):",
-                "-" * 60,
-                f"  Total: {metrics.skipped_tests}",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "-" * 60,
+                    "Skipped (excluded from accuracy denominator):",
+                    "-" * 60,
+                    f"  Total: {metrics.skipped_tests}",
+                ]
+            )
             for reason, n in sorted(metrics.skipped_by_reason.items()):
                 lines.append(f"    - {reason}: {n}")
 
-        lines.extend([
-            "",
-            "-" * 60,
-            "Latency Statistics:",
-            "-" * 60,
-            f"  Average: {metrics.avg_latency_ms:.1f}ms",
-            f"  P50:     {metrics.latency_p50:.1f}ms",
-            f"  P95:     {metrics.latency_p95:.1f}ms",
-            f"  P99:     {metrics.latency_p99:.1f}ms",
-            "",
-            "=" * 60,
-        ])
+        lines.extend(
+            [
+                "",
+                "-" * 60,
+                "Latency Statistics:",
+                "-" * 60,
+                f"  Average: {metrics.avg_latency_ms:.1f}ms",
+                f"  P50:     {metrics.latency_p50:.1f}ms",
+                f"  P95:     {metrics.latency_p95:.1f}ms",
+                f"  P99:     {metrics.latency_p99:.1f}ms",
+                "",
+                "=" * 60,
+            ]
+        )
 
         return "\n".join(lines)

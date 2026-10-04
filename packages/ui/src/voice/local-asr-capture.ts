@@ -9,6 +9,7 @@ import {
   DEFAULT_POST_TTS_COOLDOWN_MS,
   isTtsEchoGateActive as sharedTtsEchoGateActive,
 } from "./tts-playback-activity";
+import { concatPcm } from "./voice-session-pcm";
 
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
@@ -201,17 +202,6 @@ export async function queryMicrophonePermission(): Promise<MicrophonePermissionS
     // permissions probe's null-on-throw contract).
     return "unknown";
   }
-}
-
-function concatPcm(chunks: Float32Array[]): Float32Array {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const out = new Float32Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
 }
 
 function appendBoundedPcmFrame(

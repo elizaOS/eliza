@@ -3,8 +3,8 @@
  * affordances.
  */
 import { useEffect, useRef } from "react";
-import { useAppSelector } from "../../state";
 import { TOAST_TTL_MS } from "../../state/action-notice";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 
 // z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.

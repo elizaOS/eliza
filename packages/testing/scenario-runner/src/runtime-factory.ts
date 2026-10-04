@@ -1,3 +1,9 @@
+import {
+  createMockEffectCapture,
+  createRemoteMockEffectCapture,
+} from "./effect-observation.ts";
+import { createScenarioRuntimeLifecycle } from "./runtime-lifecycle.ts";
+import { parseSyntheticWorldConfiguration } from "./synthetic-world-settings.ts";
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
  * (no SQL mocks) and registers either the first available live LLM provider
@@ -5,7 +11,6 @@
  * provider when deterministic mode is explicitly enabled.
  */
 
-import "./react-runtime-stubs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -19,7 +24,7 @@ import {
   ModelType,
   NotificationService,
 } from "@elizaos/core";
-import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 import {
   createAssistantPlugin,
   documentsPlugin,
@@ -27,14 +32,18 @@ import {
 } from "@elizaos/plugin-assistant";
 import {
   createDeterministicModelPlugin,
-  DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type DeterministicModelDiagnostics,
   type DeterministicModelFixtureRegistry,
+} from "../../src/deterministic-model-plugin.ts";
+import {
   type LiveProviderConfig,
   type LiveProviderName,
-  type ScenarioExecutionProfile,
   selectLiveProvider,
-} from "@elizaos/testing";
+} from "../../src/live-provider.ts";
+import {
+  DEFAULT_SCENARIO_EXECUTION_PROFILE,
+  type ScenarioExecutionProfile,
+} from "../schema/index.ts";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,
@@ -133,6 +142,7 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
 }
 
 export interface RuntimeFactoryResult {
+  captureActionEffects?: import("./interceptor.ts").ActionEffectCapture;
   runtime: AgentRuntime;
   pgliteDir: string;
   skillsDir?: string | null;
@@ -199,68 +209,11 @@ function extractPlugin(mod: unknown, names: readonly string[]): Plugin | null {
   return null;
 }
 
-async function runCleanupStep(
-  label: string,
-  operation: () => Promise<void>,
-  timeoutMs = 5_000,
-  failOnTimeout = false,
-): Promise<void> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timeout = setTimeout(() => resolve("timeout"), timeoutMs);
-  });
-  const result = await Promise.race([
-    operation().then(() => "done" as const),
-    timeoutPromise,
-  ]);
-  if (timeout) {
-    clearTimeout(timeout);
-  }
-  if (result === "timeout") {
-    if (failOnTimeout) {
-      throw new Error(
-        `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
-      );
-    }
-    logger.warn(
-      `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
-    );
-  }
-}
-
 export async function disposeScenarioProviderPlugin(
   plugin: Pick<Plugin, "dispose"> | null,
   runtime: AgentRuntime,
 ): Promise<void> {
   await plugin?.dispose?.(runtime);
-}
-
-async function cleanupPartiallyInitializedSyntheticRuntime(
-  runtime: AgentRuntime,
-  evidencePath: string,
-  events: Array<SyntheticRuntimeEvent>,
-  initializationError: unknown,
-): Promise<never> {
-  const cleanupErrors: unknown[] = [];
-  for (const [label, operation] of [
-    ["partial runtime.stop()", () => runtime.stop({ fast: true })],
-    ["partial runtime.close()", () => runtime.close()],
-  ] as const) {
-    try {
-      await runCleanupStep(label, operation, 5_000, true);
-    } catch (error) {
-      // error-policy:J1 Synthetic initialization retains every cleanup failure.
-      cleanupErrors.push(error);
-    }
-  }
-  writeSyntheticRuntimeEvidence(evidencePath, events, runtime);
-  if (cleanupErrors.length > 0) {
-    throw new AggregateError(
-      [initializationError, ...cleanupErrors],
-      "synthetic runtime initialization and cleanup failed",
-    );
-  }
-  throw initializationError;
 }
 
 function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
@@ -388,8 +341,7 @@ function runtimeServiceSnapshot(
     services: [...runtime.getAllServices()].flatMap(([serviceType, services]) =>
       services.map((service) => ({
         serviceType: String(serviceType),
-        constructorName:
-          service?.constructor?.name?.slice(0, 160) || "unknown-service",
+        constructorName: service?.constructor?.name || "unknown-service",
         hasStop: typeof service?.stop === "function",
       })),
     ),
@@ -405,9 +357,9 @@ export function writeSyntheticRuntimeEvidence(
     {
       events,
       reportedErrors: runtime.getRecentReportedErrors().map((entry) => ({
-        scope: entry.scope.slice(0, 200),
-        code: entry.code.slice(0, 200),
-        message: entry.message.slice(0, 1_000),
+        scope: entry.scope,
+        code: entry.code,
+        message: entry.message,
       })),
     },
     null,
@@ -440,7 +392,7 @@ export type ScenarioExecutionEnvironment =
   | {
       executionProfile: "simulated";
       testMocks: LoadedScenarioTestMocks;
-      mockedEnvironment: MockedScenarioEnvironment;
+      mockedEnvironment: MockedScenarioEnvironment | null;
     }
   | {
       executionProfile: "provider-qualified";
@@ -533,6 +485,7 @@ export function assertProviderQualifiedEnvironment(
 export async function prepareScenarioExecutionEnvironment(
   executionProfile: ScenarioExecutionProfile,
   testMocksLoader: () => Promise<LoadedScenarioTestMocks> = loadTestMocks,
+  externalWorld = false,
 ): Promise<ScenarioExecutionEnvironment> {
   if (executionProfile === "provider-qualified") {
     assertProviderQualifiedEnvironment();
@@ -543,6 +496,8 @@ export async function prepareScenarioExecutionEnvironment(
     };
   }
   const testMocks = await testMocksLoader();
+  if (externalWorld)
+    return { executionProfile, testMocks, mockedEnvironment: null };
   const mockedEnvironment = await testMocks.prepareMockedTestEnvironment({
     seedLifeOpsSimulator: true,
   });
@@ -1001,394 +956,435 @@ export function scenarioPgliteDirOverride(
 export async function createScenarioRuntime(
   options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
-  const requestedSyntheticPolicy = parseSyntheticRuntimePolicy();
-  const executionProfile =
-    options?.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
-  if (executionProfile === "provider-qualified") {
-    assertProviderQualifiedEnvironment();
-    if (options?.useDeterministicModel === true) {
+  const lifecycle = createScenarioRuntimeLifecycle();
+  try {
+    const requestedSyntheticPolicy = parseSyntheticRuntimePolicy();
+    const worldEndpoints = process.env.ELIZA_SCENARIO_WORLD_ENDPOINTS;
+    const worldConfiguration = worldEndpoints
+      ? parseSyntheticWorldConfiguration(worldEndpoints)
+      : undefined;
+    const worldSettings = worldConfiguration?.settings;
+    const executionProfile =
+      options?.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
+    if (executionProfile === "provider-qualified") {
+      assertProviderQualifiedEnvironment();
+      if (options?.useDeterministicModel === true) {
+        throw new Error(
+          "[scenario-runner] provider-qualified execution cannot use the deterministic model provider",
+        );
+      }
+      if ((options?.extraPlugins?.length ?? 0) > 0) {
+        throw new Error(
+          "[scenario-runner] provider-qualified execution accepts only scenario-declared plugin packages; extraPlugins are simulated/test injection",
+        );
+      }
+      assertProviderQualifiedPluginPackages(options?.requiredPlugins ?? []);
+    }
+    const providerConfig = resolveScenarioProviderConfig(options);
+    if (!providerConfig) {
       throw new Error(
-        "[scenario-runner] provider-qualified execution cannot use the deterministic model provider",
+        "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / OPENROUTER_API_KEY, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
       );
     }
-    if ((options?.extraPlugins?.length ?? 0) > 0) {
-      throw new Error(
-        "[scenario-runner] provider-qualified execution accepts only scenario-declared plugin packages; extraPlugins are simulated/test injection",
+    if (providerConfig.name !== DETERMINISTIC_MODEL_PROVIDER_NAME) {
+      assertScenarioLiveProviderPreflight(
+        options?.preferredProvider,
+        providerConfig,
       );
     }
-    assertProviderQualifiedPluginPackages(options?.requiredPlugins ?? []);
-  }
-  const providerConfig = resolveScenarioProviderConfig(options);
-  if (!providerConfig) {
-    throw new Error(
-      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / OPENROUTER_API_KEY, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
+    if (
+      executionProfile === "provider-qualified" &&
+      providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME
+    ) {
+      throw new Error(
+        "[scenario-runner] provider-qualified execution requires a live model provider",
+      );
+    }
+    let selectedProviderPlugin: Plugin | null = null;
+    const preparedEnvironment = await prepareScenarioExecutionEnvironment(
+      executionProfile,
+      loadTestMocks,
+      worldSettings !== undefined,
     );
-  }
-  if (providerConfig.name !== DETERMINISTIC_MODEL_PROVIDER_NAME) {
-    assertScenarioLiveProviderPreflight(
-      options?.preferredProvider,
-      providerConfig,
-    );
-  }
-  if (
-    executionProfile === "provider-qualified" &&
-    providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME
-  ) {
-    throw new Error(
-      "[scenario-runner] provider-qualified execution requires a live model provider",
-    );
-  }
-  let selectedProviderPlugin: Plugin | null = null;
-  const preparedEnvironment =
-    await prepareScenarioExecutionEnvironment(executionProfile);
-  const { testMocks, mockedEnvironment } = preparedEnvironment;
-  for (const [key, value] of Object.entries(providerConfig.env)) {
-    process.env[key] = value;
-  }
-  clearLlmWireMockEnvForLiveProvider(providerConfig.name);
-  if (executionProfile === "provider-qualified") {
-    assertProviderQualifiedEnvironment();
-  }
+    const { testMocks, mockedEnvironment } = preparedEnvironment;
+    if (mockedEnvironment)
+      lifecycle.own("mocked environment", () => mockedEnvironment.cleanup());
+    for (const [key, value] of Object.entries(providerConfig.env)) {
+      process.env[key] = value;
+    }
+    clearLlmWireMockEnvForLiveProvider(providerConfig.name);
+    if (executionProfile === "provider-qualified") {
+      assertProviderQualifiedEnvironment();
+    }
 
-  const explicitPgliteDir = scenarioPgliteDirOverride();
-  const pgliteDir =
-    explicitPgliteDir ??
-    fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-pglite-"));
-  const removePgliteDirOnCleanup =
-    !explicitPgliteDir && !shouldPreserveScenarioTrajectoryDb();
-  if (explicitPgliteDir) {
-    fs.mkdirSync(explicitPgliteDir, { recursive: true });
-  }
-  const prevPgliteDir = process.env.PGLITE_DATA_DIR;
-  const prevWebsiteBlockerHostsFilePath =
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
-  const prevSelfControlHostsFilePath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
-  const prevElizaDisableActivityTracker =
-    process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
-  const prevElizaDisableProactiveAgent =
-    process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
-  const prevElizaDisableLifeOpsScheduler =
-    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-  const prevIMessageBackend = process.env.ELIZA_IMESSAGE_BACKEND;
-  const prevSkillsDir = process.env.SKILLS_DIR;
-  const scenarioSkillsRoot =
-    executionProfile === "simulated" &&
-    (options?.isolateFilesystemState === true || !prevSkillsDir?.trim())
-      ? fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"))
-      : null;
-  let scenarioHostsRoot: string | null = null;
-  process.env.PGLITE_DATA_DIR = pgliteDir;
-  process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
-  process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
-  if (executionProfile === "simulated") {
-    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
-    process.env.ELIZA_IMESSAGE_BACKEND = "none";
-  }
-  if (scenarioSkillsRoot) {
-    process.env.SKILLS_DIR = scenarioSkillsRoot;
-  }
-  if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
-    process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
-  }
-  if (!process.env.EMBEDDING_DIMENSION?.trim()) {
-    process.env.EMBEDDING_DIMENSION = "384";
-  }
-  if (
-    executionProfile === "simulated" &&
-    (options?.isolateFilesystemState === true ||
-      (!prevWebsiteBlockerHostsFilePath?.trim() &&
-        !prevSelfControlHostsFilePath?.trim()))
-  ) {
-    scenarioHostsRoot = fs.mkdtempSync(
-      path.join(os.tmpdir(), "scenario-runner-hosts-"),
+    const explicitPgliteDir = scenarioPgliteDirOverride();
+    const pgliteDir =
+      explicitPgliteDir ??
+      fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-pglite-"));
+    const removePgliteDirOnCleanup =
+      !explicitPgliteDir && !shouldPreserveScenarioTrajectoryDb();
+    if (explicitPgliteDir) {
+      fs.mkdirSync(explicitPgliteDir, { recursive: true });
+    }
+    if (removePgliteDirOnCleanup)
+      lifecycle.own("PGlite directory", () =>
+        fs.rmSync(pgliteDir, { recursive: true, force: true }),
+      );
+    const prevWebsiteBlockerHostsFilePath =
+      process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
+    const prevSelfControlHostsFilePath =
+      process.env.SELFCONTROL_HOSTS_FILE_PATH;
+    const prevSkillsDir = process.env.SKILLS_DIR;
+    const scenarioSkillsRoot =
+      executionProfile === "simulated" &&
+      (options?.isolateFilesystemState === true || !prevSkillsDir?.trim())
+        ? fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"))
+        : null;
+    if (scenarioSkillsRoot)
+      lifecycle.own("skills directory", () =>
+        fs.rmSync(scenarioSkillsRoot, { recursive: true, force: true }),
+      );
+    let scenarioHostsRoot: string | null = null;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
+    process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
+    if (executionProfile === "simulated") {
+      process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+      process.env.ELIZA_IMESSAGE_BACKEND = "none";
+    }
+    if (scenarioSkillsRoot) {
+      process.env.SKILLS_DIR = scenarioSkillsRoot;
+    }
+    if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
+      process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
+    }
+    if (!process.env.EMBEDDING_DIMENSION?.trim()) {
+      process.env.EMBEDDING_DIMENSION = "384";
+    }
+    if (
+      executionProfile === "simulated" &&
+      (options?.isolateFilesystemState === true ||
+        (!prevWebsiteBlockerHostsFilePath?.trim() &&
+          !prevSelfControlHostsFilePath?.trim()))
+    ) {
+      scenarioHostsRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "scenario-runner-hosts-"),
+      );
+      const ownedHostsRoot = scenarioHostsRoot;
+      lifecycle.own("hosts directory", () =>
+        fs.rmSync(ownedHostsRoot, { recursive: true, force: true }),
+      );
+      const scenarioHostsFilePath = path.join(scenarioHostsRoot, "hosts");
+      fs.writeFileSync(
+        scenarioHostsFilePath,
+        ["127.0.0.1 localhost", "::1 localhost", ""].join("\n"),
+        "utf8",
+      );
+      process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = scenarioHostsFilePath;
+      process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
+    }
+
+    const skipEmbeddingPlugin =
+      executionProfile === "simulated" &&
+      (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+    const character = createCharacter(
+      options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
     );
-    const scenarioHostsFilePath = path.join(scenarioHostsRoot, "hosts");
-    fs.writeFileSync(
-      scenarioHostsFilePath,
-      ["127.0.0.1 localhost", "::1 localhost", ""].join("\n"),
-      "utf8",
+    const scenarioRuntimeSettings =
+      executionProfile === "simulated"
+        ? {
+            ...(process.env.SKILLS_DIR
+              ? { SKILLS_DIR: process.env.SKILLS_DIR }
+              : {}),
+            ELIZA_IMESSAGE_BACKEND: "none",
+            ACTION_CALLBACK_VOICE_REWRITE: "false",
+            OUTBOUND_VOICE_REWRITE: "false",
+            ELIZA_CANONICAL_EMBEDDINGS_ENABLED: "false",
+            LIFEOPS_INBOX_PRIORITY_SCORING: "false",
+          }
+        : {};
+    const runtime = new AgentRuntimeCtor({
+      character,
+      plugins: [],
+      logLevel: "warn",
+      enableAutonomy: false,
+      ...(requestedSyntheticPolicy
+        ? {
+            advancedCapabilities: false,
+            enableDocuments: false,
+            enableRelationships: false,
+            enableTrajectories: false,
+            enableTrust: false,
+            enableSecretsManager: false,
+            enablePluginManager: false,
+          }
+        : {}),
+      // The agent-skills service reads SKILLS_DIR via runtime.getSetting(), which
+      // does not consult process.env. Mirror the scenario env into runtime
+      // settings so skills storage lands in the throwaway temp directory.
+      // These settings exist only to keep the legacy simulated harness
+      // deterministic. Provider-qualified runs inherit the production defaults.
+      settings: scenarioRuntimeSettings,
+    });
+    const syntheticPolicy = requestedSyntheticPolicy;
+    const syntheticEvidencePath = syntheticRuntimeEvidencePath();
+    const syntheticRuntimeEvents: Array<SyntheticRuntimeEvent> = [];
+    lifecycle.own("runtime evidence", () => {
+      if (syntheticEvidencePath)
+        writeSyntheticRuntimeEvidence(
+          syntheticEvidencePath,
+          syntheticRuntimeEvents,
+          runtime,
+        );
+    });
+    lifecycle.own("runtime.close()", async () => {
+      await runtime.close();
+      if (syntheticEvidencePath)
+        syntheticRuntimeEvents.push(
+          runtimeServiceSnapshot(runtime, "after-close"),
+        );
+    });
+    lifecycle.own("runtime.stop()", async () => {
+      cancelScenarioOnlyLazyServiceStarts(runtime);
+      if (syntheticEvidencePath)
+        syntheticRuntimeEvents.push(
+          runtimeServiceSnapshot(runtime, "before-stop"),
+        );
+      await runtime.stop();
+      if (syntheticEvidencePath)
+        syntheticRuntimeEvents.push(
+          runtimeServiceSnapshot(runtime, "after-stop"),
+        );
+    });
+    lifecycle.own("provider plugin", () =>
+      disposeScenarioProviderPlugin(selectedProviderPlugin, runtime),
     );
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = scenarioHostsFilePath;
-    process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
-  }
+    installHttpPluginLifecycle(runtime);
+    const registeredPluginPackages = new Set<string>();
 
-  const skipEmbeddingPlugin =
-    executionProfile === "simulated" &&
-    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
-  const character = createCharacter(
-    options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
-  );
-  const scenarioRuntimeSettings =
-    executionProfile === "simulated"
-      ? {
-          ...(process.env.SKILLS_DIR
-            ? { SKILLS_DIR: process.env.SKILLS_DIR }
-            : {}),
-          ELIZA_IMESSAGE_BACKEND: "none",
-          ACTION_CALLBACK_VOICE_REWRITE: "false",
-          OUTBOUND_VOICE_REWRITE: "false",
-          ELIZA_CANONICAL_EMBEDDINGS_ENABLED: "false",
-          LIFEOPS_INBOX_PRIORITY_SCORING: "false",
-        }
-      : {};
-  const runtime = new AgentRuntimeCtor({
-    character,
-    plugins: [],
-    logLevel: "warn",
-    enableAutonomy: false,
-    ...(requestedSyntheticPolicy
-      ? {
-          advancedCapabilities: false,
-          enableDocuments: false,
-          enableRelationships: false,
-          enableTrajectories: false,
-          enableTrust: false,
-          enableSecretsManager: false,
-          enablePluginManager: false,
-        }
-      : {}),
-    // The agent-skills service reads SKILLS_DIR via runtime.getSetting(), which
-    // does not consult process.env. Mirror the scenario env into runtime
-    // settings so skills storage lands in the throwaway temp directory.
-    // These settings exist only to keep the legacy simulated harness
-    // deterministic. Provider-qualified runs inherit the production defaults.
-    settings: scenarioRuntimeSettings,
-  });
-  installHttpPluginLifecycle(runtime);
-  const registeredPluginPackages = new Set<string>();
-
-  const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
-    default: Plugin;
-  };
-  await runtime.registerPlugin(pluginSql);
-  registeredPluginPackages.add("@elizaos/plugin-sql");
-  if (!requestedSyntheticPolicy) {
-    await runtime.registerPlugin(trajectoriesPlugin);
-    registeredPluginPackages.add("@elizaos/plugin-trajectories");
-    await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
-  }
-
-  // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
-  // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
-  // (TaskService, EmbeddingGenerationService). advancedCapabilities also
-  // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
-  // Without this plugin the runtime has no conversational reply action and
-  // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
-  await runtime.registerPlugin({
-    name: "scenario-agent-events",
-    description: "Production assistant event delivery for scenarios",
-    services: [AgentEventService],
-  });
-  await runtime.registerPlugin(createAssistantPlugin());
-  await runtime.registerPlugin(documentsPlugin);
-
-  // Simulated scenarios omit embeddings because their assertions do not score
-  // semantic retrieval. AgentRuntime treats an absent embedding provider as an
-  // explicit disabled capability, avoiding both model downloads and fabricated
-  // vectors. Provider-qualified runs retain the production local provider.
-  if (skipEmbeddingPlugin) {
-    logger.info(
-      "[scenario-runner] Embedding generation is disabled for the simulated profile; " +
-        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference.",
-    );
-  } else {
-    const localEmbedding = (await import(
-      "@elizaos/plugin-local-inference"
-    )) as {
+    const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
       default: Plugin;
     };
-    await runtime.registerPlugin(localEmbedding.default);
-  }
-
-  applyRuntimeSettings(runtime, providerConfig.env);
-  if (skipEmbeddingPlugin) {
-    disableScenarioEmbeddingCapability(runtime);
-  }
-  if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
-    if (!testMocks) {
-      throw new Error(
-        "[scenario-runner] deterministic model provider requested without the simulated test environment",
-      );
+    await runtime.registerPlugin(pluginSql);
+    registeredPluginPackages.add("@elizaos/plugin-sql");
+    if (!requestedSyntheticPolicy) {
+      await runtime.registerPlugin(trajectoriesPlugin);
+      registeredPluginPackages.add("@elizaos/plugin-trajectories");
+      await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
     }
-    // Undeclared scenarios retain the pre-manifest resolver during the staged
-    // corpus migration. Any explicit declaration is strict and fail-closed.
-    let modelFixtureMode: ScenarioModelFixtureMode = "legacy-fallback";
-    const deterministicModelPlugin = createDeterministicModelPlugin({
-      resolve: (call) =>
-        modelFixtureMode === "legacy-fallback"
-          ? resolveScenarioDeterministicModelCall(call)
-          : null,
+
+    // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
+    // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
+    // (TaskService, EmbeddingGenerationService). advancedCapabilities also
+    // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
+    // Without this plugin the runtime has no conversational reply action and
+    // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
+    await runtime.registerPlugin({
+      name: "scenario-agent-events",
+      description: "Production assistant event delivery for scenarios",
+      services: [AgentEventService],
     });
-    await runtime.registerPlugin(deterministicModelPlugin);
-    const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
-      scenarioModelFixtures?: DeterministicModelFixtureRegistry;
-      assertScenarioModelFixturesConsumed?: () => void;
-      getScenarioModelFixtureDiagnostics?: () => DeterministicModelDiagnostics;
-      setScenarioModelFixtureMode?: (mode: ScenarioModelFixtureMode) => void;
-    };
-    runtimeWithScenarioFixtures.scenarioModelFixtures =
-      deterministicModelPlugin.fixtures;
-    runtimeWithScenarioFixtures.assertScenarioModelFixturesConsumed =
-      deterministicModelPlugin.assertFixturesConsumed;
-    runtimeWithScenarioFixtures.getScenarioModelFixtureDiagnostics =
-      deterministicModelPlugin.getFixtureDiagnostics;
-    runtimeWithScenarioFixtures.setScenarioModelFixtureMode = (mode) => {
-      modelFixtureMode = mode;
-    };
-    logger.info(
-      "[scenario-runner] Registered deterministic fixture model provider; no live provider key required.",
-    );
-  } else {
-    const providerModule = (await import(
-      providerConfig.pluginPackage
-    )) as Record<string, unknown>;
-    const providerPlugin = extractPlugin(providerModule, [
-      "default",
-      "elizaPlugin",
-    ]);
-    if (!providerPlugin) {
-      throw new Error(
-        `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
+    await runtime.registerPlugin(createAssistantPlugin());
+    await runtime.registerPlugin(documentsPlugin);
+
+    // Simulated scenarios omit embeddings because their assertions do not score
+    // semantic retrieval. AgentRuntime treats an absent embedding provider as an
+    // explicit disabled capability, avoiding both model downloads and fabricated
+    // vectors. Provider-qualified runs retain the production local provider.
+    if (skipEmbeddingPlugin) {
+      logger.info(
+        "[scenario-runner] Embedding generation is disabled for the simulated profile; " +
+          "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference.",
       );
+    } else {
+      const localEmbedding = (await import(
+        "@elizaos/plugin-local-inference"
+      )) as {
+        default: Plugin;
+      };
+      await runtime.registerPlugin(localEmbedding.default);
     }
-    selectedProviderPlugin = providerPlugin;
-    await runtime.registerPlugin(providerPlugin);
-  }
 
-  if (executionProfile === "simulated" && !requestedSyntheticPolicy) {
-    const schedulingModule = (await import(
-      "@elizaos/plugin-scheduling"
-    )) as Record<string, unknown>;
-    const schedulingPlugin = extractPlugin(schedulingModule, [
-      "default",
-      "schedulingPlugin",
-    ]);
-    if (!schedulingPlugin) {
-      throw new Error(
-        "[scenario-runner] @elizaos/plugin-scheduling did not export a Plugin",
-      );
+    // Seeds and providers read runtime settings, not the process environment.
+    // Keep compatibility mocks scoped to the runtime that owns their cleanup.
+    if (mockedEnvironment)
+      applyRuntimeSettings(runtime, mockedEnvironment.envVars);
+    applyRuntimeSettings(runtime, providerConfig.env);
+    if (worldSettings) applyRuntimeSettings(runtime, worldSettings);
+    if (skipEmbeddingPlugin) {
+      disableScenarioEmbeddingCapability(runtime);
     }
-    await runtime.registerPlugin(schedulingPlugin);
-    registeredPluginPackages.add("@elizaos/plugin-scheduling");
-
-    const lifeOpsModule = (await import(
-      "@elizaos/plugin-personal-assistant/plugin"
-    )) as Record<string, unknown>;
-    const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
-      "default",
-      "personalAssistantPlugin",
-    ]);
-    if (!lifeOpsPlugin) {
-      throw new Error(
-        "[scenario-runner] @elizaos/plugin-personal-assistant did not export a Plugin",
-      );
-    }
-    await runtime.registerPlugin(lifeOpsPlugin);
-    registeredPluginPackages.add("@elizaos/plugin-personal-assistant/plugin");
-
-    // Dashboard routes remain a compatibility-harness capability. Qualified
-    // runs receive only packages declared by the scenario, preventing an
-    // ambient route bundle from making a missing production dependency pass.
-    const routesModule = (await import(
-      "@elizaos/plugin-personal-assistant"
-    )) as Record<string, unknown>;
-    const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
-      "personalAssistantRoutesPlugin",
-    ]);
-    if (!lifeOpsRoutesPlugin) {
-      throw new Error(
-        "[scenario-runner] @elizaos/plugin-personal-assistant did not export personalAssistantRoutesPlugin",
-      );
-    }
-    await runtime.registerPlugin(lifeOpsRoutesPlugin);
-    registeredPluginPackages.add("@elizaos/plugin-personal-assistant");
-
-    for (const extra of options?.extraPlugins ?? []) {
-      await runtime.registerPlugin(extra);
-    }
-  }
-
-  // Anything already on the runtime at this point is baseline capability that
-  // exists no matter which scenarios are batched; only the delta below belongs
-  // to a scenario's own `requires.plugins` declaration.
-  const baselineActionNames = new Set(
-    runtime.actions.map((action) => action.name),
-  );
-  const requiredPluginPackages = await registerScenarioRequiredPlugins(
-    runtime,
-    options?.requiredPlugins ?? [],
-    executionProfile,
-  );
-  const scenarioDeclaredActionNames = runtime.actions
-    .map((action) => action.name)
-    .filter((name) => !baselineActionNames.has(name));
-  for (const packageName of requiredPluginPackages) {
-    registeredPluginPackages.add(packageName);
-  }
-
-  const syntheticPolicy = requestedSyntheticPolicy;
-  const syntheticEvidencePath = syntheticRuntimeEvidencePath();
-  if (Boolean(syntheticPolicy) !== Boolean(syntheticEvidencePath)) {
-    throw new Error(
-      "synthetic runtime policy and evidence path must be configured together",
-    );
-  }
-  const syntheticRuntimeEvents: Array<SyntheticRuntimeEvent> = [];
-  if (syntheticPolicy && syntheticEvidencePath) {
-    const assertAllowed = (
-      resourceKind: SyntheticRuntimeAdmissionEvent["resourceKind"],
-      resourceName: string,
-    ): void => {
-      const authority =
-        resourceKind === "plugin"
-          ? syntheticPolicy.allowedPluginNames
-          : syntheticPolicy.allowedServiceTypes;
-      if (authority.has(resourceName)) return;
-      syntheticRuntimeEvents.push({
-        phase: "admission",
-        resourceKind,
-        resourceName: resourceName.slice(0, 200),
-        outcome: "denied-undeclared-registration",
+    if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
+      if (!testMocks) {
+        throw new Error(
+          "[scenario-runner] deterministic model provider requested without the simulated test environment",
+        );
+      }
+      // Undeclared scenarios retain the pre-manifest resolver during the staged
+      // corpus migration. Any explicit declaration is strict and fail-closed.
+      let modelFixtureMode: ScenarioModelFixtureMode = "legacy-fallback";
+      const deterministicModelPlugin = createDeterministicModelPlugin({
+        resolve: (call) =>
+          modelFixtureMode === "legacy-fallback"
+            ? resolveScenarioDeterministicModelCall(call)
+            : null,
       });
-      writeSyntheticRuntimeEvidence(
-        syntheticEvidencePath,
-        syntheticRuntimeEvents,
-        runtime,
+      await runtime.registerPlugin(deterministicModelPlugin);
+      const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
+        scenarioModelFixtures?: DeterministicModelFixtureRegistry;
+        assertScenarioModelFixturesConsumed?: () => void;
+        getScenarioModelFixtureDiagnostics?: () => DeterministicModelDiagnostics;
+        setScenarioModelFixtureMode?: (mode: ScenarioModelFixtureMode) => void;
+      };
+      runtimeWithScenarioFixtures.scenarioModelFixtures =
+        deterministicModelPlugin.fixtures;
+      runtimeWithScenarioFixtures.assertScenarioModelFixturesConsumed =
+        deterministicModelPlugin.assertFixturesConsumed;
+      runtimeWithScenarioFixtures.getScenarioModelFixtureDiagnostics =
+        deterministicModelPlugin.getFixtureDiagnostics;
+      runtimeWithScenarioFixtures.setScenarioModelFixtureMode = (mode) => {
+        modelFixtureMode = mode;
+      };
+      logger.info(
+        "[scenario-runner] Registered deterministic fixture model provider; no live provider key required.",
       );
+    } else {
+      const providerModule = (await import(
+        providerConfig.pluginPackage
+      )) as Record<string, unknown>;
+      const providerPlugin = extractPlugin(providerModule, [
+        "default",
+        "elizaPlugin",
+      ]);
+      if (!providerPlugin) {
+        throw new Error(
+          `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
+        );
+      }
+      selectedProviderPlugin = providerPlugin;
+      await runtime.registerPlugin(providerPlugin);
+    }
+
+    if (executionProfile === "simulated" && !requestedSyntheticPolicy) {
+      const schedulingModule = (await import(
+        "@elizaos/plugin-scheduling"
+      )) as Record<string, unknown>;
+      const schedulingPlugin = extractPlugin(schedulingModule, [
+        "default",
+        "schedulingPlugin",
+      ]);
+      if (!schedulingPlugin) {
+        throw new Error(
+          "[scenario-runner] @elizaos/plugin-scheduling did not export a Plugin",
+        );
+      }
+      await runtime.registerPlugin(schedulingPlugin);
+      registeredPluginPackages.add("@elizaos/plugin-scheduling");
+
+      const lifeOpsModule = (await import(
+        "@elizaos/plugin-personal-assistant/plugin"
+      )) as Record<string, unknown>;
+      const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
+        "default",
+        "personalAssistantPlugin",
+      ]);
+      if (!lifeOpsPlugin) {
+        throw new Error(
+          "[scenario-runner] @elizaos/plugin-personal-assistant did not export a Plugin",
+        );
+      }
+      await runtime.registerPlugin(lifeOpsPlugin);
+      registeredPluginPackages.add("@elizaos/plugin-personal-assistant/plugin");
+
+      // Dashboard routes remain a compatibility-harness capability. Qualified
+      // runs receive only packages declared by the scenario, preventing an
+      // ambient route bundle from making a missing production dependency pass.
+      const routesModule = (await import(
+        "@elizaos/plugin-personal-assistant"
+      )) as Record<string, unknown>;
+      const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
+        "personalAssistantRoutesPlugin",
+      ]);
+      if (!lifeOpsRoutesPlugin) {
+        throw new Error(
+          "[scenario-runner] @elizaos/plugin-personal-assistant did not export personalAssistantRoutesPlugin",
+        );
+      }
+      await runtime.registerPlugin(lifeOpsRoutesPlugin);
+      registeredPluginPackages.add("@elizaos/plugin-personal-assistant");
+
+      for (const extra of options?.extraPlugins ?? []) {
+        await runtime.registerPlugin(extra);
+      }
+    }
+
+    // Anything already on the runtime at this point is baseline capability that
+    // exists no matter which scenarios are batched; only the delta below belongs
+    // to a scenario's own `requires.plugins` declaration.
+    const baselineActionNames = new Set(
+      runtime.actions.map((action) => action.name),
+    );
+    const requiredPluginPackages = await registerScenarioRequiredPlugins(
+      runtime,
+      options?.requiredPlugins ?? [],
+      executionProfile,
+    );
+    const scenarioDeclaredActionNames = runtime.actions
+      .map((action) => action.name)
+      .filter((name) => !baselineActionNames.has(name));
+    for (const packageName of requiredPluginPackages) {
+      registeredPluginPackages.add(packageName);
+    }
+
+    if (Boolean(syntheticPolicy) !== Boolean(syntheticEvidencePath)) {
       throw new Error(
-        `synthetic runtime denied undeclared ${resourceKind}: ${resourceName}`,
+        "synthetic runtime policy and evidence path must be configured together",
       );
-    };
-    try {
+    }
+    if (syntheticPolicy && syntheticEvidencePath) {
+      const assertAllowed = (
+        resourceKind: SyntheticRuntimeAdmissionEvent["resourceKind"],
+        resourceName: string,
+      ): void => {
+        const authority =
+          resourceKind === "plugin"
+            ? syntheticPolicy.allowedPluginNames
+            : syntheticPolicy.allowedServiceTypes;
+        if (authority.has(resourceName)) return;
+        syntheticRuntimeEvents.push({
+          phase: "admission",
+          resourceKind,
+          resourceName,
+          outcome: "denied-undeclared-registration",
+        });
+        writeSyntheticRuntimeEvidence(
+          syntheticEvidencePath,
+          syntheticRuntimeEvents,
+          runtime,
+        );
+        throw new Error(
+          `synthetic runtime denied undeclared ${resourceKind}: ${resourceName}`,
+        );
+      };
       for (const plugin of runtime.plugins) {
         assertAllowed("plugin", plugin.name);
       }
       for (const serviceType of runtime.getRegisteredServiceTypes()) {
         assertAllowed("service", String(serviceType));
       }
-    } catch (error) {
-      await cleanupPartiallyInitializedSyntheticRuntime(
-        runtime,
-        syntheticEvidencePath,
-        syntheticRuntimeEvents,
-        error,
-      );
+      const registerPlugin = runtime.registerPlugin.bind(runtime);
+      runtime.registerPlugin = async (plugin: Plugin): Promise<void> => {
+        assertAllowed("plugin", plugin.name);
+        await registerPlugin(plugin);
+      };
+      const registerService = runtime.registerService.bind(runtime);
+      runtime.registerService = async (
+        serviceDef: Parameters<AgentRuntime["registerService"]>[0],
+      ): Promise<void> => {
+        assertAllowed("service", String(serviceDef.serviceType));
+        await registerService(serviceDef);
+      };
     }
-    const registerPlugin = runtime.registerPlugin.bind(runtime);
-    runtime.registerPlugin = async (plugin: Plugin): Promise<void> => {
-      assertAllowed("plugin", plugin.name);
-      await registerPlugin(plugin);
-    };
-    const registerService = runtime.registerService.bind(runtime);
-    runtime.registerService = async (
-      serviceDef: Parameters<AgentRuntime["registerService"]>[0],
-    ): Promise<void> => {
-      assertAllowed("service", String(serviceDef.serviceType));
-      await registerService(serviceDef);
-    };
-  }
-
-  try {
     await runtime.initialize();
     if (!skipEmbeddingPlugin) {
       const { ensureLocalInferenceHandler } = await import(
@@ -1434,292 +1430,143 @@ export async function createScenarioRuntime(
         if (timeout) clearTimeout(timeout);
       }
     }
-  } catch (error) {
+    const cleanupRuntimeFixtures =
+      mockedEnvironment && testMocks && !syntheticPolicy
+        ? await mockedEnvironment.applyRuntimeFixtures?.(runtime)
+        : undefined;
+    if (cleanupRuntimeFixtures)
+      lifecycle.own("runtime fixtures", cleanupRuntimeFixtures);
+    if (executionProfile === "simulated" && testMocks) {
+      if (!syntheticPolicy && !worldSettings) {
+        await testMocks.seedGoogleConnectorGrant(runtime);
+        await testMocks.seedXConnectorGrant(runtime);
+        await testMocks.seedBenchmarkLifeOpsFixtures(runtime);
+        await testMocks.seedLifeOpsSimulatorRuntime(runtime);
+      }
+
+      // The shared simulated runtime treats onboarding as complete so action
+      // routing is independent of scenario discovery order.
+      await runtime.setCache("eliza:lifeops:first-run:v1", {
+        status: "complete",
+        partialAnswers: {},
+        completionCount: 1,
+        completedAt: "1970-01-01T00:00:00.000Z",
+      });
+
+      // UPDATE_ENTITY is excluded only from the compatibility harness because
+      // its broad description crowds out the domain actions those deterministic
+      // fixtures target. Qualified runs retain production action selection.
+      const bannedActions = new Set(["UPDATE_ENTITY"]);
+      const runtimeActions = runtime.actions;
+      for (let i = runtimeActions.length - 1; i >= 0; i -= 1) {
+        if (bannedActions.has(runtimeActions[i].name)) {
+          runtimeActions.splice(i, 1);
+        }
+      }
+    } else {
+      assertProviderQualifiedEnvironment();
+      const missingRequiredPlugins = (options?.requiredPlugins ?? []).filter(
+        (packageName) => !pluginPackageIsRegistered(runtime, packageName),
+      );
+      if (missingRequiredPlugins.length > 0) {
+        throw new Error(
+          `[scenario-runner] provider-qualified runtime is missing declared plugin(s) after initialization: ${missingRequiredPlugins.join(", ")}`,
+        );
+      }
+    }
+
     if (syntheticPolicy && syntheticEvidencePath) {
-      await cleanupPartiallyInitializedSyntheticRuntime(
-        runtime,
-        syntheticEvidencePath,
-        syntheticRuntimeEvents,
-        error,
+      const undeclaredPlugins = runtime.plugins
+        .map((plugin) => plugin.name)
+        .filter((name) => !syntheticPolicy.allowedPluginNames.has(name));
+      const undeclaredServices = [...runtime.getAllServices().keys()]
+        .map(String)
+        .filter((name) => !syntheticPolicy.allowedServiceTypes.has(name));
+      if (undeclaredPlugins.length > 0 || undeclaredServices.length > 0) {
+        throw new Error(
+          `synthetic runtime escaped admission policy: plugins=${undeclaredPlugins.join(",")}; services=${undeclaredServices.join(",")}`,
+        );
+      }
+      syntheticRuntimeEvents.push(
+        runtimeServiceSnapshot(runtime, "initialized"),
+      );
+      const instrumented = new WeakSet<object>();
+      for (const [serviceType, services] of runtime.getAllServices()) {
+        for (const service of services) {
+          if (
+            !service ||
+            typeof service !== "object" ||
+            instrumented.has(service) ||
+            typeof service.stop !== "function"
+          ) {
+            continue;
+          }
+          instrumented.add(service);
+          const stop = service.stop.bind(service);
+          const constructorName =
+            service.constructor?.name?.slice(0, 160) || "unknown-service";
+          service.stop = async (): Promise<void> => {
+            syntheticRuntimeEvents.push({
+              phase: "service-stop-begin",
+              serviceType: String(serviceType),
+              constructorName,
+            });
+            try {
+              await stop();
+              syntheticRuntimeEvents.push({
+                phase: "service-stop-complete",
+                serviceType: String(serviceType),
+                constructorName,
+              });
+            } catch (error) {
+              syntheticRuntimeEvents.push({
+                phase: "service-stop-error",
+                serviceType: String(serviceType),
+                constructorName,
+              });
+              throw error;
+            }
+          };
+        }
+      }
+    }
+
+    const cleanup = () => lifecycle.close();
+
+    return {
+      runtime,
+      captureActionEffects: mockedEnvironment
+        ? createMockEffectCapture(mockedEnvironment.mocks)
+        : worldConfiguration
+          ? createRemoteMockEffectCapture(worldConfiguration.endpoints)
+          : undefined,
+      pgliteDir,
+      skillsDir: scenarioSkillsRoot ?? prevSkillsDir ?? null,
+      hostsFilePath:
+        scenarioHostsRoot !== null
+          ? path.join(scenarioHostsRoot, "hosts")
+          : (prevWebsiteBlockerHostsFilePath ??
+            prevSelfControlHostsFilePath ??
+            null),
+      executionProfile,
+      registeredPluginPackages: [...registeredPluginPackages].sort(),
+      scenarioDeclaredActionNames: [
+        ...new Set(scenarioDeclaredActionNames),
+      ].sort(),
+      providerName: providerConfig.name,
+      providerConfig,
+      cleanup,
+    };
+  } catch (error) {
+    // error-policy:J6 Startup failures close every resource already acquired.
+    try {
+      await lifecycle.close();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "Scenario initialization and cleanup failed",
       );
     }
     throw error;
   }
-  const cleanupRuntimeFixtures =
-    mockedEnvironment && testMocks && !syntheticPolicy
-      ? await mockedEnvironment.applyRuntimeFixtures?.(runtime)
-      : undefined;
-  if (executionProfile === "simulated" && testMocks) {
-    if (!syntheticPolicy) {
-      await testMocks.seedGoogleConnectorGrant(runtime);
-      await testMocks.seedXConnectorGrant(runtime);
-      await testMocks.seedBenchmarkLifeOpsFixtures(runtime);
-      await testMocks.seedLifeOpsSimulatorRuntime(runtime);
-    }
-
-    // The shared simulated runtime treats onboarding as complete so action
-    // routing is independent of scenario discovery order.
-    await runtime.setCache("eliza:lifeops:first-run:v1", {
-      status: "complete",
-      partialAnswers: {},
-      completionCount: 1,
-      completedAt: "1970-01-01T00:00:00.000Z",
-    });
-
-    // UPDATE_ENTITY is excluded only from the compatibility harness because
-    // its broad description crowds out the domain actions those deterministic
-    // fixtures target. Qualified runs retain production action selection.
-    const bannedActions = new Set(["UPDATE_ENTITY"]);
-    const runtimeActions = runtime.actions;
-    for (let i = runtimeActions.length - 1; i >= 0; i -= 1) {
-      if (bannedActions.has(runtimeActions[i].name)) {
-        runtimeActions.splice(i, 1);
-      }
-    }
-  } else {
-    assertProviderQualifiedEnvironment();
-    const missingRequiredPlugins = (options?.requiredPlugins ?? []).filter(
-      (packageName) => !pluginPackageIsRegistered(runtime, packageName),
-    );
-    if (missingRequiredPlugins.length > 0) {
-      throw new Error(
-        `[scenario-runner] provider-qualified runtime is missing declared plugin(s) after initialization: ${missingRequiredPlugins.join(", ")}`,
-      );
-    }
-  }
-
-  if (syntheticPolicy && syntheticEvidencePath) {
-    const undeclaredPlugins = runtime.plugins
-      .map((plugin) => plugin.name)
-      .filter((name) => !syntheticPolicy.allowedPluginNames.has(name));
-    const undeclaredServices = [...runtime.getAllServices().keys()]
-      .map(String)
-      .filter((name) => !syntheticPolicy.allowedServiceTypes.has(name));
-    if (undeclaredPlugins.length > 0 || undeclaredServices.length > 0) {
-      throw new Error(
-        `synthetic runtime escaped admission policy: plugins=${undeclaredPlugins.join(",")}; services=${undeclaredServices.join(",")}`,
-      );
-    }
-    syntheticRuntimeEvents.push(runtimeServiceSnapshot(runtime, "initialized"));
-    const instrumented = new WeakSet<object>();
-    for (const [serviceType, services] of runtime.getAllServices()) {
-      for (const service of services) {
-        if (
-          !service ||
-          typeof service !== "object" ||
-          instrumented.has(service) ||
-          typeof service.stop !== "function"
-        ) {
-          continue;
-        }
-        instrumented.add(service);
-        const stop = service.stop.bind(service);
-        const constructorName =
-          service.constructor?.name?.slice(0, 160) || "unknown-service";
-        service.stop = async (): Promise<void> => {
-          syntheticRuntimeEvents.push({
-            phase: "service-stop-begin",
-            serviceType: String(serviceType),
-            constructorName,
-          });
-          try {
-            await stop();
-            syntheticRuntimeEvents.push({
-              phase: "service-stop-complete",
-              serviceType: String(serviceType),
-              constructorName,
-            });
-          } catch (error) {
-            syntheticRuntimeEvents.push({
-              phase: "service-stop-error",
-              serviceType: String(serviceType),
-              constructorName,
-            });
-            throw error;
-          }
-        };
-      }
-    }
-  }
-
-  const cleanup = async (): Promise<void> => {
-    const cleanupErrors: unknown[] = [];
-    const cleanupBoundary = async (
-      label: string,
-      operation: () => Promise<void>,
-    ): Promise<void> => {
-      try {
-        await runCleanupStep(label, operation, 5_000, Boolean(syntheticPolicy));
-      } catch (error) {
-        // error-policy:J1 Synthetic cleanup retains failure while later owners still run.
-        if (syntheticPolicy) {
-          cleanupErrors.push(error);
-          return;
-        }
-        throw error;
-      }
-    };
-    await cleanupBoundary("runtime fixtures", async () => {
-      try {
-        await cleanupRuntimeFixtures?.();
-      } catch (err) {
-        if (syntheticPolicy) throw err;
-        logger.debug(`[scenario-runner] runtime fixture cleanup error: ${err}`);
-      }
-    });
-    cancelScenarioOnlyLazyServiceStarts(runtime);
-    await cleanupBoundary("provider plugin dispose", async () => {
-      try {
-        await disposeScenarioProviderPlugin(selectedProviderPlugin, runtime);
-      } catch (err) {
-        if (syntheticPolicy) throw err;
-        // error-policy:J6 provider teardown must not prevent remaining runtime cleanup.
-        logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
-      }
-    });
-    if (syntheticEvidencePath) {
-      syntheticRuntimeEvents.push(
-        runtimeServiceSnapshot(runtime, "before-stop"),
-      );
-    }
-    await cleanupBoundary("runtime.stop()", async () => {
-      try {
-        await runtime.stop();
-      } catch (err) {
-        if (syntheticPolicy) throw err;
-        logger.debug(`[scenario-runner] runtime.stop() error: ${err}`);
-      }
-    });
-    if (syntheticEvidencePath) {
-      syntheticRuntimeEvents.push(
-        runtimeServiceSnapshot(runtime, "after-stop"),
-      );
-    }
-    await cleanupBoundary("runtime.close()", async () => {
-      try {
-        await runtime.close();
-      } catch (err) {
-        if (syntheticPolicy) throw err;
-        logger.debug(`[scenario-runner] runtime.close() error: ${err}`);
-      }
-    });
-    if (syntheticEvidencePath) {
-      syntheticRuntimeEvents.push(
-        runtimeServiceSnapshot(runtime, "after-close"),
-      );
-      writeSyntheticRuntimeEvidence(
-        syntheticEvidencePath,
-        syntheticRuntimeEvents,
-        runtime,
-      );
-    }
-    if (prevPgliteDir !== undefined) {
-      process.env.PGLITE_DATA_DIR = prevPgliteDir;
-    } else {
-      delete process.env.PGLITE_DATA_DIR;
-    }
-    if (prevWebsiteBlockerHostsFilePath !== undefined) {
-      process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH =
-        prevWebsiteBlockerHostsFilePath;
-    } else {
-      delete process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
-    }
-    if (prevSelfControlHostsFilePath !== undefined) {
-      process.env.SELFCONTROL_HOSTS_FILE_PATH = prevSelfControlHostsFilePath;
-    } else {
-      delete process.env.SELFCONTROL_HOSTS_FILE_PATH;
-    }
-    if (prevElizaDisableActivityTracker !== undefined) {
-      process.env.ELIZA_DISABLE_ACTIVITY_TRACKER =
-        prevElizaDisableActivityTracker;
-    } else {
-      delete process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
-    }
-    if (prevElizaDisableProactiveAgent !== undefined) {
-      process.env.ELIZA_DISABLE_PROACTIVE_AGENT =
-        prevElizaDisableProactiveAgent;
-    } else {
-      delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
-    }
-    if (prevElizaDisableLifeOpsScheduler !== undefined) {
-      process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER =
-        prevElizaDisableLifeOpsScheduler;
-    } else {
-      delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-    }
-    if (prevIMessageBackend !== undefined) {
-      process.env.ELIZA_IMESSAGE_BACKEND = prevIMessageBackend;
-    } else {
-      delete process.env.ELIZA_IMESSAGE_BACKEND;
-    }
-    if (prevSkillsDir !== undefined) {
-      process.env.SKILLS_DIR = prevSkillsDir;
-    } else {
-      delete process.env.SKILLS_DIR;
-    }
-    await cleanupBoundary("mocked environment", async () => {
-      if (!mockedEnvironment) {
-        return;
-      }
-      try {
-        await mockedEnvironment.cleanup();
-      } catch (err) {
-        if (syntheticPolicy) throw err;
-        logger.debug(
-          `[scenario-runner] mocked environment cleanup error: ${err}`,
-        );
-      }
-    });
-    if (removePgliteDirOnCleanup) {
-      try {
-        fs.rmSync(pgliteDir, { recursive: true, force: true });
-      } catch (err) {
-        logger.debug(`[scenario-runner] PGLite cleanup error: ${err}`);
-      }
-    } else {
-      logger.info(
-        `[scenario-runner] preserved scenario PGLite trajectory DB at ${pgliteDir}`,
-      );
-    }
-    if (scenarioHostsRoot) {
-      try {
-        fs.rmSync(scenarioHostsRoot, { recursive: true, force: true });
-      } catch (err) {
-        logger.debug(`[scenario-runner] hosts cleanup error: ${err}`);
-      }
-    }
-    if (scenarioSkillsRoot) {
-      try {
-        fs.rmSync(scenarioSkillsRoot, { recursive: true, force: true });
-      } catch (err) {
-        logger.debug(`[scenario-runner] skills cleanup error: ${err}`);
-      }
-    }
-    if (cleanupErrors.length > 0) {
-      throw new AggregateError(
-        cleanupErrors,
-        "synthetic runtime cleanup failed",
-      );
-    }
-  };
-
-  return {
-    runtime,
-    pgliteDir,
-    skillsDir: scenarioSkillsRoot ?? prevSkillsDir ?? null,
-    hostsFilePath:
-      scenarioHostsRoot !== null
-        ? path.join(scenarioHostsRoot, "hosts")
-        : (prevWebsiteBlockerHostsFilePath ??
-          prevSelfControlHostsFilePath ??
-          null),
-    executionProfile,
-    registeredPluginPackages: [...registeredPluginPackages].sort(),
-    scenarioDeclaredActionNames: [
-      ...new Set(scenarioDeclaredActionNames),
-    ].sort(),
-    providerName: providerConfig.name,
-    providerConfig,
-    cleanup,
-  };
 }

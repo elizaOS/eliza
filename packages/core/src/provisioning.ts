@@ -45,6 +45,7 @@ function hasAgentProvisioningRuntime(
 export async function runPluginMigrations(
 	runtime: IAgentRuntime,
 ): Promise<void> {
+	const logger = runtime.logger;
 	const adapter = runtime.adapter;
 	if (!adapter) {
 		logger.warn(

@@ -436,7 +436,7 @@ def _get_python_runner_umbrella_actions() -> list[str]:
     Filters out fine-grained dotted keys (`CALENDAR.create`, `MAIL.send`, …)
     that only appear in the inline conformance corpus.
     """
-    from eliza_lifeops_bench.runner import _ACTION_HANDLERS  # type: ignore[attr-defined]
+    from eliza_lifeops_bench.lifeworld.executor import _ACTION_HANDLERS
 
     return sorted(k for k in _ACTION_HANDLERS if "." not in k)
 
@@ -691,7 +691,7 @@ def test_scorer_and_runner_discriminators_agree_for_key_umbrellas() -> None:
     value must get credit from the scorer when it matches the runner's
     discriminator.
     """
-    from eliza_lifeops_bench.runner import _DISCRIMINATORS  # type: ignore[attr-defined]
+    from eliza_lifeops_bench.lifeworld.executor import _DISCRIMINATORS
     from eliza_lifeops_bench.scorer import _UMBRELLA_SUBACTIONS  # type: ignore[attr-defined]
 
     # Umbrellas where agreement is required (T8 domains)
@@ -751,48 +751,48 @@ def test_calendar_subaction_field_names_agree() -> None:
     Theme T8 §8.5: the manifest property was 'action', the runner uses 'subaction'.
     Both sides must agree on 'subaction' now.
     """
-    from eliza_lifeops_bench.runner import _DISCRIMINATORS  # type: ignore[attr-defined]
+    from eliza_lifeops_bench.lifeworld.executor import _DISCRIMINATORS
     from eliza_lifeops_bench.scorer import _UMBRELLA_SUBACTIONS  # type: ignore[attr-defined]
 
     runner_field, _ = _DISCRIMINATORS["CALENDAR"]
     scorer_field, _ = _UMBRELLA_SUBACTIONS["CALENDAR"]
-    assert (
-        runner_field == "subaction"
-    ), f"runner _DISCRIMINATORS['CALENDAR'] uses field {runner_field!r}, expected 'subaction'"
-    assert (
-        scorer_field == "subaction"
-    ), f"scorer _UMBRELLA_SUBACTIONS['CALENDAR'] uses field {scorer_field!r}, expected 'subaction'"
+    assert runner_field == "subaction", (
+        f"runner _DISCRIMINATORS['CALENDAR'] uses field {runner_field!r}, expected 'subaction'"
+    )
+    assert scorer_field == "subaction", (
+        f"scorer _UMBRELLA_SUBACTIONS['CALENDAR'] uses field {scorer_field!r}, expected 'subaction'"
+    )
 
 
 def test_message_operation_field_name_agrees() -> None:
     """MESSAGE umbrella must use 'operation' (not 'subaction') in both scorer and runner."""
-    from eliza_lifeops_bench.runner import _DISCRIMINATORS  # type: ignore[attr-defined]
+    from eliza_lifeops_bench.lifeworld.executor import _DISCRIMINATORS
     from eliza_lifeops_bench.scorer import _UMBRELLA_SUBACTIONS  # type: ignore[attr-defined]
 
     runner_field, _ = _DISCRIMINATORS["MESSAGE"]
     scorer_field, _ = _UMBRELLA_SUBACTIONS["MESSAGE"]
-    assert (
-        runner_field == "operation"
-    ), f"runner _DISCRIMINATORS['MESSAGE'] uses field {runner_field!r}, expected 'operation'"
-    assert (
-        scorer_field == "operation"
-    ), f"scorer _UMBRELLA_SUBACTIONS['MESSAGE'] uses field {scorer_field!r}, expected 'operation'"
+    assert runner_field == "operation", (
+        f"runner _DISCRIMINATORS['MESSAGE'] uses field {runner_field!r}, expected 'operation'"
+    )
+    assert scorer_field == "operation", (
+        f"scorer _UMBRELLA_SUBACTIONS['MESSAGE'] uses field {scorer_field!r}, expected 'operation'"
+    )
 
 
 def test_ts_backend_handles_calendar_umbrella() -> None:
     """TS backend must have a `CALENDAR` case (P0-5 fix)."""
     ts_cases = set(_extract_ts_switch_cases())
-    assert (
-        "CALENDAR" in ts_cases
-    ), "TS fake backend is missing the CALENDAR umbrella case — P0-5 regression"
+    assert "CALENDAR" in ts_cases, (
+        "TS fake backend is missing the CALENDAR umbrella case — P0-5 regression"
+    )
 
 
 def test_ts_backend_handles_message_umbrella() -> None:
     """TS backend must have a `MESSAGE` case (P0-4 fix)."""
     ts_cases = set(_extract_ts_switch_cases())
-    assert (
-        "MESSAGE" in ts_cases
-    ), "TS fake backend is missing the MESSAGE umbrella case — P0-4 regression"
+    assert "MESSAGE" in ts_cases, (
+        "TS fake backend is missing the MESSAGE umbrella case — P0-4 regression"
+    )
 
 
 def test_ts_backend_handles_entity_umbrella() -> None:

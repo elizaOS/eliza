@@ -8,16 +8,13 @@ is exercised here in miniature. Skips cleanly when torch/onnx aren't installed.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.wakeword import train_eliza1_wakeword_head as tw  # noqa: E402
+from eliza_training.wakeword import train_eliza1_wakeword_head as tw  # noqa: E402
 
 torch = pytest.importorskip("torch")
 

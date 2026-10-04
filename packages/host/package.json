@@ -1,0 +1,56 @@
+{
+  "name": "@elizaos/host",
+  "version": "2.0.3-beta.7",
+  "description": "Shared application host configuration and explicit HTTP plugin lifecycle.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "eliza-source": "./src/protocol.ts",
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js",
+      "default": "./dist/protocol.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/host",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node ../scripts/run-vitest.ts run",
+    "lint:check": "bunx @biomejs/biome check src *.ts",
+    "lint": "bunx @biomejs/biome check --write src *.ts",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.6.5",
+    "@elizaos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "buildOnInstall": {},
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

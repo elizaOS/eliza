@@ -54,7 +54,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 // Eager section import — LoginPage also lazy-loads this module; importing it
 // here keeps Suspense resolution deterministic under the test runner.

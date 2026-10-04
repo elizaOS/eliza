@@ -3,13 +3,16 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../api";
+import { client } from "../api/client";
 import { savePersistedActiveServer } from "./persistence";
 
 const bridgeState = vi.hoisted(() => ({ electrobun: false }));
 
-vi.mock("../bridge", () => ({
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
   invokeDesktopBridgeRequestWithTimeout: vi.fn(),
+}));
+vi.mock("../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => bridgeState.electrobun,
 }));
 

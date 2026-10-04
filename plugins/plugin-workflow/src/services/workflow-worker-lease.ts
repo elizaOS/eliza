@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import * as fs from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import * as path from 'node:path';
-import { resolveAliasedEnvValue } from '@elizaos/core/config/boot-config-store';
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from '@elizaos/host/protocol';
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 
 function syncDirectory(value: string) {
@@ -91,8 +91,15 @@ export function resolveWorkerSocketRoot(
 function root(input: WorkerLeaseInput) {
   const canonical = fs.realpathSync(input.rootDir),
     parent = fs.lstatSync(canonical);
-  if (parent.uid !== process.getuid?.() || (parent.mode & 0o022) !== 0)
+  if (!parent.isDirectory() || parent.uid !== process.getuid?.())
     throw Error('Untrusted workflow state root');
+  if ((parent.mode & 0o022) !== 0) {
+    // Our own root, created under a group-writable umask (002 on
+    // user-private-group Linux desktops): drop group/other write instead of
+    // failing every run. The lease directories below are still checked as
+    // owner-only, so nothing another user placed there is trusted.
+    fs.chmodSync(canonical, parent.mode & 0o7755);
+  }
   const base = path.join(canonical, '.worker-owners');
   try {
     fs.mkdirSync(base, { mode: 0o700 });

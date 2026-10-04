@@ -19,6 +19,44 @@ import {
   registerEscalationChannel,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
+import type {
+  AcknowledgeLifeOpsReminderRequest,
+  CaptureLifeOpsActivitySignalRequest,
+  CaptureLifeOpsManualOverrideRequest,
+  CaptureLifeOpsPhoneConsentRequest,
+  LifeOpsActivitySignal,
+  LifeOpsCalendarEvent,
+  LifeOpsChannelPolicy,
+  LifeOpsCircadianState,
+  LifeOpsManualOverrideResult,
+  LifeOpsOccurrence,
+  LifeOpsOccurrenceView,
+  LifeOpsOwnership,
+  LifeOpsReminderAttempt,
+  LifeOpsReminderAttemptOutcome,
+  LifeOpsReminderChannel,
+  LifeOpsReminderInspection,
+  LifeOpsReminderIntensity,
+  LifeOpsReminderPlan,
+  LifeOpsReminderPreference,
+  LifeOpsReminderProcessingResult,
+  LifeOpsReminderStep,
+  LifeOpsReminderUrgency,
+  LifeOpsScheduleMealLabel,
+  LifeOpsSubjectType,
+  LifeOpsTaskDefinition,
+  LifeOpsWorkflowDefinition,
+  LifeOpsWorkflowRun,
+  SetLifeOpsReminderPreferenceRequest,
+  SnoozeLifeOpsOccurrenceRequest,
+  UpsertLifeOpsChannelPolicyRequest,
+} from "@elizaos/contracts";
+import {
+  LIFEOPS_CHANNEL_TYPES,
+  LIFEOPS_CIRCADIAN_STATES,
+  LIFEOPS_MANUAL_OVERRIDE_KINDS,
+  LIFEOPS_UNCLEAR_REASONS,
+} from "@elizaos/contracts";
 import {
   createReminderPresentation,
   ElizaError,
@@ -35,7 +73,6 @@ import {
   ServiceType,
   unwrapUserMessageText,
 } from "@elizaos/core";
-import type { LifeOpsScheduleMealLabel } from "@elizaos/core/contracts/personal-assistant";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -61,43 +98,6 @@ import {
 import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
 import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../../activity-profile/types.js";
-import type {
-  AcknowledgeLifeOpsReminderRequest,
-  CaptureLifeOpsActivitySignalRequest,
-  CaptureLifeOpsManualOverrideRequest,
-  CaptureLifeOpsPhoneConsentRequest,
-  LifeOpsActivitySignal,
-  LifeOpsCalendarEvent,
-  LifeOpsChannelPolicy,
-  LifeOpsCircadianState,
-  LifeOpsManualOverrideResult,
-  LifeOpsOccurrence,
-  LifeOpsOccurrenceView,
-  LifeOpsOwnership,
-  LifeOpsReminderAttempt,
-  LifeOpsReminderAttemptOutcome,
-  LifeOpsReminderChannel,
-  LifeOpsReminderInspection,
-  LifeOpsReminderIntensity,
-  LifeOpsReminderPlan,
-  LifeOpsReminderPreference,
-  LifeOpsReminderProcessingResult,
-  LifeOpsReminderStep,
-  LifeOpsReminderUrgency,
-  LifeOpsSubjectType,
-  LifeOpsTaskDefinition,
-  LifeOpsWorkflowDefinition,
-  LifeOpsWorkflowRun,
-  SetLifeOpsReminderPreferenceRequest,
-  SnoozeLifeOpsOccurrenceRequest,
-  UpsertLifeOpsChannelPolicyRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_CHANNEL_TYPES,
-  LIFEOPS_CIRCADIAN_STATES,
-  LIFEOPS_MANUAL_OVERRIDE_KINDS,
-  LIFEOPS_UNCLEAR_REASONS,
-} from "../../contracts/index.js";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,
@@ -721,28 +721,12 @@ export function readLadderRungTitle(
 }
 
 export function buildReminderBody(args: {
-  timezone?: string;
   title: string;
-  scheduledFor: string;
-  dueAt: string | null;
-  channel: LifeOpsReminderStep["channel"];
-  lifecycle: ReminderAttemptLifecycle;
-  nearbyReminderTitles?: string[];
   derivedTarget?: Record<string, unknown> | null;
 }): string {
-  const focus = readLadderRungTitle(args.derivedTarget) ?? args.title;
-  const parts: string[] = [];
-  if (args.lifecycle === "escalation") {
-    parts.push(`Follow-up reminder: ${focus}`);
-  } else {
-    parts.push(`Reminder: ${focus}`);
-  }
-  if (args.dueAt) {
-    parts.push(
-      `Due: ${args.timezone ? new Date(args.dueAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.dueAt).toLocaleString()}`,
-    );
-  }
-  return parts.join("\n");
+  // Timing and delivery identity remain on the saved occurrence and receipts.
+  // The alert itself is the owner's message, including the current ladder rung.
+  return readLadderRungTitle(args.derivedTarget) ?? args.title;
 }
 
 // Stretch cadence + walk-out / weekend / late-evening rules live as
@@ -1208,8 +1192,8 @@ export class RemindersDomain {
               body: args.text,
               category: "reminder",
               // Tier calendar reminders by lead time (#10697): "starting soon" → high,
-              // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
-              // normal). dueAt is the event start for a calendar_event.
+              // "tomorrow / further" → low, subsequent-today → normal. Occurrence
+              // alerts use high. dueAt is the event start for a calendar_event.
               priority: resolveReminderNotificationPriority({
                 ownerType: args.ownerType,
                 dueAt: args.dueAt,
@@ -1676,13 +1660,7 @@ export class RemindersDomain {
     const reminderFocusTitle = rungTitle ?? args.title;
     const fallback = buildReminderBody({
       title: args.title,
-      scheduledFor: args.scheduledFor,
-      dueAt: args.dueAt,
-      channel: args.channel,
-      lifecycle: args.lifecycle,
-      nearbyReminderTitles: args.nearbyReminderTitles,
       derivedTarget: args.derivedTarget,
-      timezone: args.timezone,
     });
     if (typeof this.ctx.runtime.useModel !== "function") {
       return fallback;
@@ -4643,9 +4621,8 @@ export class RemindersDomain {
         args.bodyOverride === undefined;
       reminderBody = exactReminder
         ? buildReminderBody({
-            ...args,
-            dueAt: args.snoozedUntil ?? args.dueAt,
-            lifecycle,
+            title: args.title,
+            derivedTarget: args.derivedTarget,
           })
         : (args.bodyOverride ??
           (await this.renderReminderBody({

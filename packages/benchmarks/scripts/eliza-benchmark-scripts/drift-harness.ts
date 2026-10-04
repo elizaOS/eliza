@@ -10,7 +10,7 @@
 import {
   compactors,
   findSafeCompactionBoundary,
-} from "@elizaos/agent/runtime/conversation-compactor";
+} from "./conversation-compactor.ts";
 import {
   approxCountTokens,
   type CompactionArtifact,
@@ -18,7 +18,7 @@ import {
   type CompactorModelCall,
   type CompactorTranscript,
   countTranscriptTokens,
-} from "@elizaos/agent/runtime/conversation-compactor.types";
+} from "./conversation-compactor.types.ts";
 
 const KNOWN_STRATEGIES = [
   "none",

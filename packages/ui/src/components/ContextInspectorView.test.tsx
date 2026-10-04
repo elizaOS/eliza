@@ -22,16 +22,16 @@ const mocks = vi.hoisted(() => ({
   activeConversationId: "00000000-0000-4000-8000-000000000101" as string | null,
 }));
 
-vi.mock("../api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../api")>();
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
   return {
     ...actual,
     client: { getContextInspector: mocks.getContextInspector },
   };
 });
 
-vi.mock("../state", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../state")>();
+vi.mock("../state/app-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../state/app-store")>();
   return {
     ...actual,
     useAppSelector: (

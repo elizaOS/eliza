@@ -1,25 +1,26 @@
 /** Completes X OAuth callbacks and projects only verified identities as connected. */
-import { Hono } from "hono";
-import { cache } from "@/lib/cache/client";
+
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import {
   getDefaultPlatformRedirectOrigins,
   LOOPBACK_REDIRECT_ORIGINS,
   resolveOAuthSuccessRedirectUrl,
-} from "@/lib/security/redirect-validation";
-import { linkVerifiedXOwnerIdentity } from "@/lib/services/eliza-app/x-personal-identity";
-import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { linkVerifiedXOwnerIdentity } from "@elizaos/cloud-shared/lib/services/eliza-app/x-personal-identity";
+import { invalidateOAuthState } from "@elizaos/cloud-shared/lib/services/oauth/invalidation";
 import {
   clearOAuthSuccessParams,
   isOAuthSuccessLandingPath,
   mintOAuthSuccessProof,
-} from "@/lib/services/oauth/success-proof";
+} from "@elizaos/cloud-shared/lib/services/oauth/success-proof";
 import {
   normalizeXProviderIdentity,
   X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
-} from "@/lib/services/oauth/x-identity";
-import { twitterAutomationService } from "@/lib/services/twitter-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth/x-identity";
+import { twitterAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

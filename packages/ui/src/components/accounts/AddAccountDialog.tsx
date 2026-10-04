@@ -8,11 +8,11 @@
 import {
   codingProviderSubscriptionAuthMode,
   isCodingSubscriptionProvider,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
+} from "@elizaos/contracts";
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import {
   type FormEvent,
   useCallback,
@@ -20,12 +20,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { useAppSelector } from "../../state/app-store";
-import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
 import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import {
+  navigatePreOpenedWindow,
+  preOpenWindow,
+} from "../../utils/openExternalUrl";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

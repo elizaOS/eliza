@@ -18,14 +18,14 @@ import type {
   CatalogModel,
   InstalledModel,
   RuntimeClass,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 
 /**
  * Which desktop text runtime a model is served by. The local stack is Eliza-1
  * only, so this is a single constant (`"fused-eliza1"`); the generic-GGUF
  * runtime class was removed with the multi-model machinery (#8808).
  */
-export type { RuntimeClass } from "@elizaos/core/contracts/local-inference";
+export type { RuntimeClass } from "@elizaos/contracts";
 
 /** Every catalog entry in the Eliza-1-only stack is served by the fused runtime. */
 export function classifyCatalogModelRuntimeClass(

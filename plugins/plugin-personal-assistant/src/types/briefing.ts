@@ -1,7 +1,7 @@
 import type {
   LifeOpsOccurrenceState,
   LifeOpsOverviewSummary,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 
 /**
  * `LifeOpsBriefing` domain type.
@@ -29,6 +29,12 @@ export interface LifeOpsBriefingCalendarItem {
   readonly location?: string;
 }
 
+/** Inbox selection distinguishes setup absence from checked empty/partial results. */
+export interface LifeOpsBriefingInboxCollection {
+  readonly items: readonly LifeOpsBriefingInboxItem[];
+  readonly coverage: "complete" | "not_connected" | "partial" | "unavailable";
+}
+
 export interface LifeOpsBriefingInboxItem {
   readonly id: string;
   readonly channel: string;
@@ -48,6 +54,8 @@ export interface LifeOpsBriefingLifeItem {
   readonly kind: "todo" | "reminder" | "habit" | "goal";
   readonly title: string;
   readonly dueAt: string | null;
+  /** Actual completion instant, when a dated completion has been established. */
+  readonly completedAt?: string | null;
   /** Canonical occurrence lifecycle; absent for unattested reminder projections. */
   readonly state?: LifeOpsOccurrenceState;
 }
@@ -132,9 +140,12 @@ export interface LifeOpsBriefing {
   readonly sections: LifeOpsBriefingSections;
   /** Counts copied from the requested owner's canonical LifeOps overview snapshot. */
   readonly lifeSummary?: LifeOpsOverviewSummary;
-  /** Requested collectors that failed; empty sections without a marker are healthy. */
+  /** Requested coverage gaps; omitted sections were not selected, while unmarked empty sections are healthy. */
   readonly sourceErrors?: Partial<
-    Record<keyof LifeOpsBriefingSections, "unavailable">
+    Record<
+      keyof LifeOpsBriefingSections,
+      "unavailable" | "partial" | "not_connected"
+    >
   >;
   readonly editorial: LifeOpsBriefingEditorialContract;
   /** Free-form narrative composed by the LLM compose pass. */

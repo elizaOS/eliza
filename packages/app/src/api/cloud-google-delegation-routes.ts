@@ -1,7 +1,8 @@
 /** Authenticated enrollment only: neither static API keys nor local bypass establish a Cloud user. */
 import type http from "node:http";
-import { type IAgentRuntime, readRequestBodyBuffer } from "@elizaos/core";
-import { getCloudRuntimeRequestIdentity } from "@elizaos/core/contracts/cloud-runtime-request";
+import { getCloudRuntimeRequestIdentity } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/host";
 import type { CloudGoogleDelegationService } from "@elizaos/plugin-elizacloud/services/cloud-google-delegation";
 import { authStoreForRuntime } from "../services/auth-store";
 import { resolveAuthorizedRouteRole } from "./auth";

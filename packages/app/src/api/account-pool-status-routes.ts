@@ -7,11 +7,11 @@
  * server-side.
  */
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import {
   getPublicAccountPoolStatus,
   type PublicPoolStatus,
-} from "../services/account-pool-status.js";
+} from "@elizaos/auth/accounts";
+import { logger } from "@elizaos/core";
 import { sendJson, sendJsonError } from "./response.js";
 
 const STATUS_PATH = "/api/pool/status";

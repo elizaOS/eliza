@@ -12,7 +12,6 @@ Storage layout: int8 codes + fp16 per-block norms (+ 1-bit QJL signs).
 from __future__ import annotations
 
 import math
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,9 +23,7 @@ from scipy.stats import norm
 # Import the canonical xorshift32 helper (sibling of the polarquant/ package).
 _HERE = Path(__file__).resolve().parent
 _QUANT_DIR = _HERE.parent
-if str(_QUANT_DIR) not in sys.path:
-    sys.path.insert(0, str(_QUANT_DIR))
-from polar_xorshift32 import polar_xorshift32_signs  # noqa: E402
+from eliza_training.quantization.polar_xorshift32 import polar_xorshift32_signs  # noqa: E402
 
 # Pre-computed Lloyd-Max centroids for N(0,1). Keyed by bits; entries stay
 # None until first use (computed on demand by ``_ensure_centroids``).

@@ -7,19 +7,19 @@
  *
  * @vitest-environment jsdom
  */
+
+import type { ChatToolCallEvent, ChatTurnStatus } from "@elizaos/contracts";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StreamGenerationError } from "../api/client-base";
 import type {
   ChatActionResultSummary,
-  ChatToolCallEvent,
-  ChatTurnStatus,
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../api";
-import { StreamGenerationError } from "../api/client-base";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import { createNavigateViewHandler } from "../app-navigate-view";
 import {
   markPendingCapabilityReady,
@@ -35,12 +35,12 @@ import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
 import { readChatDraft, writeChatDraft } from "./ChatComposerContext.hooks";
-import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
   __resetPersonalFallbackRouteForTests,
   getPersonalFallbackView,
 } from "./personal-fallback-route";
+import type { LoadConversationMessagesResult } from "./types";
 import {
   buildSendFailureNotice,
   createConversationForFirstSend,
@@ -100,9 +100,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({
-  client: mocks.client,
-}));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 // Stub Capacitor so the REAL `../api/client-cloud` (imported by useChatSend)
 // loads cleanly under jsdom. We deliberately do NOT mock client-cloud: these

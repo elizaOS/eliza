@@ -25,7 +25,7 @@
 
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { ActionNoticeFn } from "./action-notice";
-import type { AppContextValue } from "./internal";
+import type { AppContextValue } from "./types";
 
 type Listener = () => void;
 

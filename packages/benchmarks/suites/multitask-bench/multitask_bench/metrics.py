@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections import defaultdict
 from statistics import mean
 
-from orchestrator_lifecycle.events import extract_lifecycle_events
+from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
 
 from .types import LaneResult, TaskRun
 
@@ -149,9 +149,7 @@ def compute_lane_metrics(lane: LaneResult) -> dict[str, object]:
     total = len(tasks)
     completed = [task for task in tasks if is_completed(task)]
 
-    waves_with_completion = {
-        task.wave_index for task in tasks if is_completed(task)
-    }
+    waves_with_completion = {task.wave_index for task in tasks if is_completed(task)}
     starved = [
         task
         for task in tasks
@@ -174,13 +172,9 @@ def compute_lane_metrics(lane: LaneResult) -> dict[str, object]:
 
     task_walls_s = [task.task_wall_s for task in tasks]
     throughput = (
-        len(completed) / (lane.wall_clock_s / 60.0)
-        if lane.wall_clock_s > 0
-        else 0.0
+        len(completed) / (lane.wall_clock_s / 60.0) if lane.wall_clock_s > 0 else 0.0
     )
-    per_completed_cost = (
-        cost_total / len(completed) if completed else 0.0
-    )
+    per_completed_cost = cost_total / len(completed) if completed else 0.0
 
     return {
         "n": lane.n,
@@ -238,9 +232,7 @@ def compute_interference(
         None,
     )
     if baseline is None:
-        raise ValueError(
-            "interference requires the N=1 baseline lane; none present"
-        )
+        raise ValueError("interference requires the N=1 baseline lane; none present")
     baseline_by_key = _score_by_key(baseline)
 
     deltas: dict[str, float] = {}
@@ -255,9 +247,7 @@ def compute_interference(
                 f"lane N={n} shares no (scenario, seed) pairs with the "
                 "N=1 baseline; interference is undefined"
             )
-        delta = mean(
-            lane_by_key[key] - baseline_by_key[key] for key in shared_keys
-        )
+        delta = mean(lane_by_key[key] - baseline_by_key[key] for key in shared_keys)
         deltas[f"n{n}_minus_n1"] = delta
     return deltas
 

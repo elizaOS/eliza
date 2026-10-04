@@ -12,13 +12,13 @@ import { ElizaError } from "@elizaos/core";
 // stranded by the process-wide registry replacement; restore in afterAll.
 const aiActual = require("ai") as Record<string, unknown>;
 
-import * as languageModelActual from "@/lib/providers/language-model";
-import * as aiBillingActual from "@/lib/services/ai-billing";
-import * as aiBillingRecordsActual from "@/lib/services/ai-billing-records";
-import * as teamCredentialPoolActual from "@/lib/services/team-credential-pool";
+import * as languageModelActual from "@elizaos/cloud-shared/lib/providers/language-model";
+import * as aiBillingActual from "@elizaos/cloud-shared/lib/services/ai-billing";
+import * as aiBillingRecordsActual from "@elizaos/cloud-shared/lib/services/ai-billing-records";
+import * as teamCredentialPoolActual from "@elizaos/cloud-shared/lib/services/team-credential-pool";
 // The REAL settler — explicitly NOT mocked; reservation math is under test.
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import * as loggerActual from "@/lib/utils/logger";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import * as loggerActual from "@elizaos/cloud-shared/lib/utils/logger";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -50,7 +50,7 @@ mock.module("ai", () => ({
   streamText,
 }));
 
-mock.module("@/lib/providers/language-model", () => ({
+mock.module("@elizaos/cloud-shared/lib/providers/language-model", () => ({
   ...languageModelActual,
   getLanguageModel: () => ({}) as never,
 }));
@@ -91,14 +91,14 @@ const billUsage = mock(async (_context: unknown, usage: unknown) => {
 const recordUsageAnalytics = mock(
   async (): Promise<{ id: string } | null> => ({ id: "usage-1" }),
 );
-mock.module("@/lib/services/ai-billing", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
   recordUsageAnalytics,
 }));
 
 const aiBillingRecord = mock(async () => ({ id: "billing-record-1" }));
-mock.module("@/lib/services/ai-billing-records", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/ai-billing-records", () => ({
   ...aiBillingRecordsActual,
   aiBillingRecordsService: {
     ...aiBillingRecordsActual.aiBillingRecordsService,
@@ -108,7 +108,7 @@ mock.module("@/lib/services/ai-billing-records", () => ({
 
 const poolRecordUse = mock(async () => {});
 const poolRecordProviderFailure = mock(async () => {});
-mock.module("@/lib/services/team-credential-pool", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/team-credential-pool", () => ({
   ...teamCredentialPoolActual,
   getTeamPoolRegistry: () => ({
     recordUse: poolRecordUse,
@@ -117,7 +117,7 @@ mock.module("@/lib/services/team-credential-pool", () => ({
 }));
 
 const errorCalls: Array<{ message: string; context: unknown }> = [];
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
@@ -157,17 +157,23 @@ for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
-  mock.module("@/lib/providers/language-model", () => languageModelActual);
-  mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module(
-    "@/lib/services/ai-billing-records",
+    "@elizaos/cloud-shared/lib/providers/language-model",
+    () => languageModelActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/ai-billing",
+    () => aiBillingActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/ai-billing-records",
     () => aiBillingRecordsActual,
   );
   mock.module(
-    "@/lib/services/team-credential-pool",
+    "@elizaos/cloud-shared/lib/services/team-credential-pool",
     () => teamCredentialPoolActual,
   );
-  mock.module("@/lib/utils/logger", () => loggerActual);
+  mock.module("@elizaos/cloud-shared/lib/utils/logger", () => loggerActual);
   globalThis.fetch = realFetch;
   for (const key of ENV_KEYS) {
     if (savedEnv[key] === undefined) delete process.env[key];

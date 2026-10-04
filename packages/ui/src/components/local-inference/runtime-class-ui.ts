@@ -8,15 +8,13 @@
  * the reduced-optimization generic GGUF path, and which picks can't run on the
  * current platform at all.
  */
+
+import type { CatalogModel, InstalledModel } from "@elizaos/contracts";
 import {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,
   type RuntimeClass,
 } from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
-import type {
-  CatalogModel,
-  InstalledModel,
-} from "../../api/client-local-inference";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 
 export type { RuntimeClass };

@@ -521,7 +521,11 @@ async function collectCloudRenderStateIssues(page: Page): Promise<string[]> {
     name: "Something went wrong",
     exact: true,
   });
-  return (await errorHeading.isVisible())
+  const failedAlert = page.getByRole("alert").filter({
+    hasText: /could not load|failed to (?:load|fetch)|unable to load/i,
+  });
+  return (await errorHeading.isVisible()) ||
+    (await failedAlert.first().isVisible())
     ? ["Dashboard rendered its error state"]
     : [];
 }
@@ -758,39 +762,70 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
     ).toEqual([]);
   });
 
-  test("rendered API failure is a broken audit finding", async ({ page }) => {
-    await seedStewardToken(page);
-    await installCloudApiStubs(page);
-    await page.route("**/api/v1/api-keys", (route) =>
-      route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Controlled API key failure" }),
-      }),
-    );
-    await page.goto("/cloud/api-keys", { waitUntil: "domcontentloaded" });
-    await expect(
-      page.getByRole("heading", { name: "Something went wrong", exact: true }),
-    ).toBeVisible();
-    const readableChars = await page.locator("body").innerText();
-    expect(readableChars.length).toBeGreaterThan(10);
-    expect(
-      computeCloudVerdict({
-        slug: "controlled-api-failure",
-        viewport: "desktop",
-        path: "/cloud/api-keys",
-        route: "cloud/api-keys",
-        consoleErrors: [],
-        renderStateIssues: await collectCloudRenderStateIssues(page),
-        blueColors: [],
-        hoverViolations: [],
-        hoverFailures: [],
-        readableChars: readableChars.length,
-        quality: null,
-        qualityIssues: [],
-      }),
-    ).toBe("broken");
-  });
+  for (const failure of [
+    {
+      name: "API keys",
+      api: "/api/v1/api-keys",
+      page: "/cloud/api-keys",
+      message: "Something went wrong",
+    },
+    {
+      name: "earnings",
+      api: "/api/v1/earnings/statement",
+      page: "/cloud/monetization",
+      message: "Could not load your earnings statement. Try again.",
+    },
+  ]) {
+    test(`${failure.name} rendered API failure is a broken audit finding`, async ({
+      page,
+    }) => {
+      await seedStewardToken(page);
+      await installCloudApiStubs(page);
+      await page.route(`**${failure.api}`, (route) =>
+        route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Controlled API key failure" }),
+        }),
+      );
+      await page.goto(failure.page, { waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByText(failure.message, { exact: true }),
+      ).toBeVisible();
+      if (failure.name === "earnings") {
+        const errorDir = path.join(outputDir, "errors");
+        await mkdir(errorDir, { recursive: true });
+        for (const viewport of VIEWPORTS) {
+          await page.setViewportSize({
+            width: viewport.width,
+            height: viewport.height,
+          });
+          await page.screenshot({
+            path: path.join(errorDir, `earnings-${viewport.name}.png`),
+            fullPage: true,
+          });
+        }
+      }
+      const readableChars = await page.locator("body").innerText();
+      expect(readableChars.length).toBeGreaterThan(10);
+      expect(
+        computeCloudVerdict({
+          slug: "controlled-api-failure",
+          viewport: "desktop",
+          path: failure.page,
+          route: failure.page,
+          consoleErrors: [],
+          renderStateIssues: await collectCloudRenderStateIssues(page),
+          blueColors: [],
+          hoverViolations: [],
+          hoverFailures: [],
+          readableChars: readableChars.length,
+          quality: null,
+          qualityIssues: [],
+        }),
+      ).toBe("broken");
+    });
+  }
 
   for (const auditCase of CLOUD_AUDIT_CASES) {
     for (const vp of VIEWPORTS) {
@@ -882,6 +917,17 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // Reuse the shared bounded startup contract so a cold "Booting up..."
         // splash cannot satisfy the readable-character gate and pass green.
         await openAppPath(page, auditCase.path);
+        if (auditCase.slug === "cloud-monetization") {
+          await expect(
+            page.getByTestId("creator-earnings-statement"),
+          ).toBeVisible();
+          await expect(
+            page.getByText("Frozen balance", { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("$12.50", { exact: true }).first(),
+          ).toBeVisible();
+        }
         if (
           auditCase.slug === "cloud-app-subscription" ||
           auditCase.slug === "cloud-product-subscription"

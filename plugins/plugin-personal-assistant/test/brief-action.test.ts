@@ -17,15 +17,18 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 }));
 
 import { PGlite } from "@electric-sql/pglite";
+import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
-import { getDefaultTriageService } from "@elizaos/plugin-assistant";
+import { getConnectorAccountManager, ModelType } from "@elizaos/core";
+import {
+  __resetDefaultTriageServiceForTests,
+  getDefaultTriageService,
+} from "@elizaos/plugin-assistant";
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -701,6 +704,18 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         vi.useFakeTimers({ toFake: ["Date"] });
         vi.setSystemTime(new Date(instant));
         const db = await PGlite.create();
+        getDefaultTriageService().register({
+          source: "slack",
+          isAvailable: () => true,
+          capabilities: () => ({
+            list: true,
+            search: false,
+            manage: {},
+            send: { reply: false, new: false, schedule: false },
+            worlds: "single",
+            channels: "none",
+          }),
+        } as never);
         const triage = vi
           .spyOn(getDefaultTriageService(), "triage")
           .mockResolvedValue([]);
@@ -790,6 +805,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             },
           ]);
           expect(triage).toHaveBeenCalledWith(runtime, {
+            sources: ["slack"],
             sinceMs: Date.parse(expectedStart),
           });
           const briefing = result.data?.briefing as {
@@ -876,7 +892,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             expect(briefing.narrative).toBe("Life source unavailable.");
           } else {
             expect(prompts).toEqual([]);
-            expect(result.text).toContain("sources are unavailable");
+            expect(result.text).toContain(
+              "requested information could not be checked",
+            );
           }
         } finally {
           await db.close();
@@ -1263,6 +1281,561 @@ describe("BRIEF umbrella action — Daily Operations", () => {
     });
   });
 
+  describe("configured inbox selection — real account registry", () => {
+    it.each([
+      "default-disconnected",
+      "explicit-disconnected",
+      "pending",
+      "connected",
+      "failed",
+      "partial",
+      "multiple",
+      "agent-only",
+      "empty",
+      "partial-empty",
+      "reauth",
+      "service-missing",
+      "calendar-only",
+      "other-adapter",
+      "other-partial",
+    ])(
+      "handles %s without treating setup absence as a failed inbox",
+      async (mode) => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-02-05T16:00:00.000Z"));
+        __resetDefaultTriageServiceForTests();
+        const fixture = await createLifeOpsTestRuntime();
+        const { createGoogleConnectorAccountProvider } = await import(
+          "../../plugin-google-workspace/src/connector-account-provider.ts"
+        );
+        const { GoogleGmailAdapter } = await import(
+          "../../plugin-google-workspace/src/lifeops-message-adapter.ts"
+        );
+        const manager = getConnectorAccountManager(fixture.runtime);
+        manager.registerProvider(
+          createGoogleConnectorAccountProvider(fixture.runtime),
+        );
+        const calls: string[] = [];
+        const accountIds: string[] = [];
+        const failingIds = new Set<string>();
+        const fetchMessages = vi.fn(
+          async ({ accountId }: { accountId: string }) => {
+            calls.push(accountId);
+            if (failingIds.has(accountId))
+              throw new Error("Configured Gmail fetch failed");
+            if (mode === "empty" || mode === "partial-empty") return [];
+            return [
+              {
+                externalId: "same-mail-id",
+                threadId: "thread",
+                subject: `Mail from ${accountId}`,
+                from: "Sender",
+                fromEmail: "sender@example.test",
+                replyTo: null,
+                to: ["owner@example.test"],
+                cc: [],
+                snippet: "A real registered mailbox item",
+                receivedAt: "2026-02-05T12:00:00.000Z",
+                isUnread: true,
+                isImportant: false,
+                likelyReplyNeeded: true,
+                labels: ["INBOX"],
+                metadata: {},
+              },
+            ];
+          },
+        );
+        const google = {
+          listGmailTriageMessages: fetchMessages,
+          searchGmailMessages: vi.fn(async () => []),
+          getGmailMessageDetail: vi.fn(async () => null),
+          getGmailMessageRevision: vi.fn(async () => "v1"),
+          sendGmailReply: vi.fn(),
+          sendGmailMessage: vi.fn(),
+          modifyGmailMessages: vi.fn(),
+          createGmailFilterForSender: vi.fn(),
+        };
+        const originalGetService = fixture.runtime.getService.bind(
+          fixture.runtime,
+        );
+        vi.spyOn(fixture.runtime, "getService").mockImplementation((name) =>
+          name === "google"
+            ? mode === "service-missing"
+              ? null
+              : (google as never)
+            : originalGetService(name),
+        );
+        const diagnostic = vi
+          .spyOn(fixture.runtime, "reportError")
+          .mockImplementation(() => {});
+        const model = vi
+          .spyOn(fixture.runtime, "useModel")
+          .mockImplementation(async () => {
+            throw new Error("JSON brief must not call models");
+          });
+        try {
+          const accounts = ["partial", "partial-empty"].includes(mode)
+            ? ["good-mail", "failed-mail"]
+            : mode === "multiple"
+              ? ["good-mail", "other-mail"]
+              : ["failed", "reauth", "other-partial"].includes(mode)
+                ? ["failed-mail"]
+                : [
+                      "connected",
+                      "pending",
+                      "agent-only",
+                      "empty",
+                      "service-missing",
+                      "calendar-only",
+                    ].includes(mode)
+                  ? ["good-mail"]
+                  : [];
+          for (const id of accounts) {
+            const account = await manager.upsertAccount("google", {
+              id,
+              provider: "google",
+              role: mode === "agent-only" ? "AGENT" : "OWNER",
+              purpose: ["messaging"],
+              accessGate: "owner",
+              status:
+                mode === "pending"
+                  ? "pending"
+                  : mode === "reauth"
+                    ? "error"
+                    : "connected",
+              metadata: {
+                grantedCapabilities: [
+                  mode === "calendar-only" ? "calendar.read" : "gmail.read",
+                ],
+              },
+            });
+            accountIds.push(account.id);
+            if (id === "failed-mail") failingIds.add(account.id);
+          }
+          const registryBefore = await manager.listAccounts("google");
+          getDefaultTriageService().register(new GoogleGmailAdapter());
+          const otherRead = vi.fn(async () => [
+            {
+              id: "slack-item",
+              source: "slack",
+              externalId: "slack-item",
+              from: { identifier: "source-user", displayName: "Slack sender" },
+              to: [],
+              subject: "Other inbox item",
+              snippet: "Another configured adapter remains included",
+              receivedAtMs: Date.now(),
+              hasAttachments: false,
+              isRead: false,
+            },
+          ]);
+          if (mode === "other-adapter" || mode === "other-partial")
+            getDefaultTriageService().register({
+              source: "slack",
+              isAvailable: () => true,
+              capabilities: () => ({
+                list: true,
+                search: false,
+                manage: {},
+                send: { reply: false, new: false, schedule: false },
+                worlds: "single",
+                channels: "none",
+              }),
+              listMessages: otherRead,
+            } as never);
+
+          setBriefComposers({
+            loadCalendar: async () => [],
+            loadLife: async () => [],
+            loadCompletedToday: async () => [],
+            loadCommitments: async () => [],
+          });
+          const result = await callBrief(fixture.runtime, makeMessage(), {
+            action: "compose_morning",
+            format: "json",
+            ...(mode === "explicit-disconnected"
+              ? { include: { inbox: true } }
+              : {}),
+          });
+          const briefing = result.data?.briefing as LifeOpsBriefing;
+          expect(result.success).toBe(true);
+          if (
+            [
+              "default-disconnected",
+              "pending",
+              "agent-only",
+              "calendar-only",
+            ].includes(mode)
+          ) {
+            expect(briefing.sections).not.toHaveProperty("inbox");
+            expect(briefing.sourceErrors).toBeUndefined();
+            expect(calls).toEqual([]);
+            expect(diagnostic).not.toHaveBeenCalled();
+          } else if (mode === "explicit-disconnected") {
+            expect(briefing.sections.inbox).toEqual([]);
+            expect(briefing.sourceErrors).toEqual({ inbox: "not_connected" });
+            expect(result.text).toContain("Your inbox isn't connected");
+            expect(result.text).toContain(
+              "Connect an email or message account",
+            );
+            expect(calls).toEqual([]);
+            expect(diagnostic).not.toHaveBeenCalled();
+          } else if (mode === "service-missing") {
+            expect(briefing.sourceErrors?.inbox).toBe("unavailable");
+            expect(calls).toEqual([]);
+            expect(diagnostic).toHaveBeenCalledWith(
+              "Brief.loadInbox",
+              expect.objectContaining({
+                code: "BRIEF_CONFIGURED_INBOX_UNAVAILABLE",
+              }),
+              expect.objectContaining({
+                source: "inbox",
+                messageSource: "gmail",
+              }),
+            );
+          } else {
+            expect(calls.sort()).toEqual(accountIds.sort());
+            expect(calls).not.toContain("default");
+            expect(briefing.sections.inbox).toHaveLength(
+              ["failed", "reauth", "empty", "partial-empty"].includes(mode)
+                ? 0
+                : mode === "multiple"
+                  ? 2
+                  : 1,
+            );
+            if (
+              [
+                "partial",
+                "partial-empty",
+                "failed",
+                "reauth",
+                "other-partial",
+              ].includes(mode)
+            ) {
+              expect(briefing.sourceErrors?.inbox).toBe(
+                ["partial", "partial-empty", "other-partial"].includes(mode)
+                  ? "partial"
+                  : "unavailable",
+              );
+              expect(diagnostic).toHaveBeenCalledWith(
+                "Brief.loadInbox",
+                expect.objectContaining({
+                  message: "Configured Gmail fetch failed",
+                }),
+                expect.objectContaining({
+                  source: "inbox",
+                  messageSource: "gmail",
+                  accountId: [...failingIds][0],
+                }),
+              );
+            } else expect(briefing.sourceErrors).toBeUndefined();
+            if (mode === "multiple")
+              expect(
+                new Set(briefing.sections.inbox?.map((item) => item.id)).size,
+              ).toBe(2);
+          }
+          if (mode === "other-adapter" || mode === "other-partial") {
+            expect(otherRead).toHaveBeenCalledOnce();
+            expect(
+              briefing.sections.inbox?.some((item) => item.id === "slack-item"),
+            ).toBe(true);
+          }
+          expect(model).not.toHaveBeenCalled();
+          expect(await manager.listAccounts("google")).toEqual(registryBefore);
+        } finally {
+          vi.restoreAllMocks();
+          await fixture.cleanup();
+          __resetDefaultTriageServiceForTests();
+        }
+      },
+      120000,
+    );
+  });
+
+  describe("canonical briefing categories — real PGlite", () => {
+    it("classifies mixed open and archived completed items without changing source records", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-02-05T16:00:00.000Z"));
+      const fixture = await createLifeOpsTestRuntime();
+      const { LifeOpsService } = await import("../src/lifeops/service.js");
+      const apple = await import("../src/lifeops/apple-reminders.js");
+      const native = vi
+        .spyOn(apple, "createNativeAppleReminderLikeItem")
+        .mockResolvedValue({
+          ok: false,
+          reason: "unsupported",
+          message: "test boundary",
+        } as never);
+      const model = vi
+        .spyOn(fixture.runtime, "useModel")
+        .mockImplementation(async () => {
+          throw new Error("JSON brief must not call a model");
+        });
+      try {
+        const service = new LifeOpsService(fixture.runtime);
+        await resolveOwnerFactStore(fixture.runtime).update(
+          { timezone: "Asia/Tokyo" },
+          { source: "first_run", recordedAt: new Date().toISOString() },
+        );
+        const dueAt = "2026-02-05T16:30:00.000Z";
+        const kinds = [
+          {
+            name: "reminder",
+            kind: "habit" as const,
+            ownerSurface: "OWNER_REMINDERS",
+            expected: "reminder",
+          },
+          {
+            name: "habit",
+            kind: "habit" as const,
+            ownerSurface: "OWNER_ROUTINES",
+            expected: "habit",
+          },
+          {
+            name: "routine",
+            kind: "routine" as const,
+            ownerSurface: "OWNER_ROUTINES",
+            expected: "habit",
+          },
+          {
+            name: "todo",
+            kind: "habit" as const,
+            ownerSurface: "OWNER_TODOS",
+            expected: "todo",
+          },
+        ];
+        const expectedOpen = new Map<string, string>();
+        const expectedCompleted = new Map<string, string>();
+        for (const item of kinds)
+          for (const completed of [false, true]) {
+            const record = await service.createDefinition({
+              title: `${completed ? "Completed" : "Open"} ${item.name}`,
+              kind: item.kind,
+              timezone: "Asia/Tokyo",
+              cadence: { kind: "once", dueAt, visibilityLeadMinutes: 0 },
+              metadata: {
+                ownerSurface: item.ownerSurface,
+                nativeProjection: "in_app_only",
+              },
+              reminderPlan: null,
+            });
+            const [occurrence] =
+              await service.repository.listOccurrencesForDefinition(
+                fixture.runtime.agentId,
+                record.definition.id,
+              );
+            if (!occurrence) throw new Error("Missing stored occurrence");
+            if (completed) {
+              await service.completeOccurrence(occurrence.id, {});
+              await service.updateDefinition(record.definition.id, {
+                status: "archived",
+              });
+              expectedCompleted.set(occurrence.id, item.expected);
+            } else expectedOpen.set(occurrence.id, item.expected);
+          }
+        const peer = new LifeOpsService(fixture.runtime, {
+          ownerEntityId: crypto.randomUUID() as UUID,
+        });
+        const sibling = await peer.createDefinition({
+          title: "Sibling private reminder",
+          kind: "habit",
+          timezone: "Asia/Tokyo",
+          cadence: { kind: "once", dueAt },
+          metadata: {
+            ownerSurface: "OWNER_REMINDERS",
+            nativeProjection: "in_app_only",
+          },
+          reminderPlan: null,
+        });
+        await expect(
+          service.getDefinition(sibling.definition.id),
+        ).rejects.toThrow("not found");
+        const overview = await service.getOverview();
+        const before = await service.listDefinitions();
+        const beforeOccurrences =
+          await service.repository.listOccurrencesForDefinitions(
+            fixture.runtime.agentId,
+            before.map((record) => record.definition.id),
+          );
+        const batches = vi.spyOn(LifeOpsService.prototype, "listDefinitions");
+        setBriefComposers({
+          loadCalendar: async () => [],
+          loadInbox: async () => [],
+          loadCommitments: async () => [],
+        });
+        const result = await callBrief(fixture.runtime, makeMessage(), {
+          action: "DAILY_DIGEST",
+          format: "json",
+        });
+        const briefing = result.data?.briefing as LifeOpsBriefing;
+        expect(result.success).toBe(true);
+        expect(briefing.sourceErrors).toBeUndefined();
+        expect(batches).toHaveBeenCalledTimes(2);
+        batches.mockRestore();
+        expect(briefing.lifeSummary).toEqual(overview.summary);
+        expect(
+          new Map(briefing.sections.life?.map((item) => [item.id, item.kind])),
+        ).toEqual(expectedOpen);
+        expect(
+          new Map(
+            briefing.sections.completedToday?.map((item) => [
+              item.id,
+              item.kind,
+            ]),
+          ),
+        ).toEqual(expectedCompleted);
+        expect(
+          briefing.sections.completedToday?.every(
+            (item) => item.completedAt === "2026-02-05T16:00:00.000Z",
+          ),
+        ).toBe(true);
+        const completionPrompt = buildNarrativePrompt({
+          kind: "evening",
+          period: "today",
+          sections: briefing.sections,
+          timeZone: "Asia/Tokyo",
+          asOf: "2026-02-05T16:00:00.000Z",
+        });
+        const completionPayload = JSON.parse(
+          completionPrompt.split("Data:\n")[1],
+        );
+        expect(
+          completionPayload.sections.completedToday[0].timeContext.completedAt
+            .localTime,
+        ).toBe("Feb 6, 2026, 1:00 AM GMT+9");
+        expect(
+          completionPayload.sections.completedToday[0].timeContext.completedAt
+            .localDate,
+        ).toBe("2026-02-06");
+
+        for (const item of [
+          ...(briefing.sections.life ?? []),
+          ...(briefing.sections.completedToday ?? []),
+        ])
+          expect(item.dueAt).toBe(dueAt);
+        expect(JSON.stringify(briefing)).not.toContain(
+          sibling.definition.title,
+        );
+        expect(await service.listDefinitions()).toEqual(before);
+        expect(
+          await service.repository.listOccurrencesForDefinitions(
+            fixture.runtime.agentId,
+            before.map((record) => record.definition.id),
+          ),
+        ).toEqual(beforeOccurrences);
+        expect(native).not.toHaveBeenCalled();
+        expect(model).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        await fixture.cleanup();
+      }
+    }, 120000);
+
+    it.each(["missing", "sibling", "completed-missing"])(
+      "reports unavailable classification for %s references without guessing or disclosing siblings",
+      async (reference) => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-02-05T16:00:00.000Z"));
+        const fixture = await createLifeOpsTestRuntime();
+        const { LifeOpsService } = await import("../src/lifeops/service.js");
+        const model = vi
+          .spyOn(fixture.runtime, "useModel")
+          .mockImplementation(async () => {
+            throw new Error("JSON brief must not call a model");
+          });
+        try {
+          const service = new LifeOpsService(fixture.runtime);
+          const own = await service.createDefinition({
+            title: "Own legitimate habit",
+            kind: "habit",
+            timezone: "Asia/Tokyo",
+            cadence: { kind: "once", dueAt: "2026-02-05T16:30:00.000Z" },
+            metadata: { ownerSurface: "OWNER_ROUTINES" },
+            reminderPlan: null,
+          });
+          const peer = new LifeOpsService(fixture.runtime, {
+            ownerEntityId: crypto.randomUUID() as UUID,
+          });
+          const sibling = await peer.createDefinition({
+            title: "Sibling private title",
+            kind: "habit",
+            timezone: "Asia/Tokyo",
+            cadence: { kind: "once", dueAt: "2026-02-05T16:30:00.000Z" },
+            metadata: {
+              ownerSurface: "OWNER_REMINDERS",
+              nativeProjection: "in_app_only",
+            },
+            reminderPlan: null,
+          });
+          const overview = await service.getOverview();
+          const source = overview.occurrences.find(
+            (occurrence) => occurrence.definitionId === own.definition.id,
+          );
+          if (!source) throw new Error("Missing own occurrence");
+          const fake = {
+            ...source,
+            definitionId:
+              reference === "sibling"
+                ? sibling.definition.id
+                : "missing-definition",
+            title: sibling.definition.title,
+          };
+          if (reference === "completed-missing")
+            vi.spyOn(
+              LifeOpsService.prototype,
+              "listOwnerOccurrencesCompletedToday",
+            ).mockResolvedValueOnce([{ ...fake, state: "completed" }]);
+          else
+            vi.spyOn(
+              LifeOpsService.prototype,
+              "getOverview",
+            ).mockResolvedValueOnce({
+              ...overview,
+              occurrences: [fake],
+              reminders: [],
+            });
+          const diagnostic = vi
+            .spyOn(fixture.runtime, "reportError")
+            .mockImplementation(() => {});
+          setBriefComposers({
+            loadCalendar: async () => [],
+            loadInbox: async () => [],
+            loadCommitments: async () => [],
+          });
+          const result = await callBrief(fixture.runtime, makeMessage(), {
+            action:
+              reference === "completed-missing"
+                ? "compose_evening"
+                : "compose_morning",
+            format: "json",
+          });
+          const briefing = result.data?.briefing as LifeOpsBriefing;
+          const failedSource =
+            reference === "completed-missing" ? "completedToday" : "life";
+          expect(result.success).toBe(true);
+          expect(briefing.sourceErrors).toMatchObject({
+            [failedSource]: "unavailable",
+          });
+          expect(briefing.sections[failedSource]).toEqual([]);
+          expect(JSON.stringify(briefing)).not.toContain(
+            sibling.definition.title,
+          );
+          expect(diagnostic).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+              code: "BRIEF_DEFINITION_CLASSIFICATION_UNAVAILABLE",
+            }),
+            expect.objectContaining({ source: failedSource }),
+          );
+          expect(model).not.toHaveBeenCalled();
+        } finally {
+          vi.restoreAllMocks();
+          await fixture.cleanup();
+        }
+      },
+      120000,
+    );
+  });
+
   describe("compose_evening — completed-today wins (#16935)", () => {
     it("aggregates completedToday and feeds it to the narrative prompt", async () => {
       const useModel = vi.fn(async () => "evening narrative");
@@ -1359,6 +1932,76 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("narrative compose pass", () => {
+    it.each(["narrative", "json"] as const)(
+      "licenses %s output without changing source facts or reply text",
+      async (format) => {
+        const narrative =
+          "I'll focus on the open reminder. Screen break is due at 7 pm.";
+        const useModel = vi.fn(async () => narrative);
+        setBriefComposers({
+          loadCalendar: async () => [],
+          loadLife: async () => ({
+            items: [
+              {
+                id: "screen-break",
+                kind: "reminder",
+                title: "Screen break",
+                state: "visible",
+                dueAt: "2026-10-03T19:00:00.000Z",
+              },
+            ],
+            summary: {
+              activeOccurrenceCount: 1,
+              overdueOccurrenceCount: 1,
+              snoozedOccurrenceCount: 0,
+              activeReminderCount: 1,
+              activeGoalCount: 0,
+            },
+          }),
+          loadCompletedToday: async () => [],
+          loadCommitments: async () => [],
+        });
+        const result = await callBrief(
+          makeRuntime({ useModel }),
+          makeMessage(),
+          {
+            action: "compose_evening",
+            format,
+            include: {
+              calendar: true,
+              inbox: false,
+              life: true,
+              commitments: true,
+            },
+          },
+        );
+        expect(result.success).toBe(true);
+        expect(result.userFacingText).toBe(result.text);
+        expect(result.turnComplete).toBe(true);
+        expect(result.data?.briefing).toMatchObject({
+          sections: {
+            calendar: [],
+            completedToday: [],
+            life: [
+              { title: "Screen break", dueAt: "2026-10-03T19:00:00.000Z" },
+            ],
+          },
+          lifeSummary: { activeReminderCount: 1, activeGoalCount: 0 },
+        });
+        if (format === "narrative") {
+          expect(result.userFacingText).toBe(narrative);
+          expect(result.verifiedUserFacing).toBeUndefined();
+          expect(useModel).toHaveBeenCalledTimes(1);
+        } else {
+          expect(result.verifiedUserFacing).toBe(true);
+          expect(result.userFacingText).toBe(
+            "Composed your evening briefing for today.",
+          );
+          expect(useModel).not.toHaveBeenCalled();
+        }
+      },
+    );
+
     it("retains healthy persisted items when the canonical owner-zone read fails before narrative generation", async () => {
       const db = await PGlite.create();
       const reportError = vi.fn();

@@ -493,6 +493,16 @@ function compareStoredMemoriesNewestFirst(
   return compareMemoryIds(bId, aId);
 }
 
+/** Oldest pages use ascending UUID order; newest pages reverse it. */
+function comparePairingRowIds(
+  leftId: string,
+  rightId: string,
+  direction: number,
+): number {
+  const order = compareMemoryIds(leftId, rightId);
+  return direction === 1 ? order : -order;
+}
+
 /** Matches SQL `ORDER BY createdAt, id` so relationship pages stay disjoint. */
 function compareRelationshipsForList(
   left: StoredRelationship,
@@ -712,6 +722,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (params.names.length === 0) return [];
     const set = new Set(params.names);
     return this.storage.getWhere<Entity>(COLLECTIONS.ENTITIES, (e) => {
+      if (e.agentId !== params.agentId) return false;
       const names = (e as Entity & { names?: string[] }).names ?? [];
       return names.some((name) => set.has(name));
     });
@@ -726,11 +737,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const matches = await this.storage.getWhere<Entity>(
       COLLECTIONS.ENTITIES,
       (e) => {
+        if (e.agentId !== params.agentId) return false;
         const names = (e as Entity & { names?: string[] }).names ?? [];
         return names.some((name) => name.toLowerCase().includes(q));
       },
     );
-    return params.limit ? matches.slice(0, params.limit) : matches;
+    // An omitted limit is the complete match set. An explicit limit, including
+    // 0, is a page — `limit ?` treated 0 as "no page" and returned every row.
+    if (params.limit === undefined) return matches;
+    return matches.slice(0, Math.max(0, params.limit));
   }
 
   async queryEntities(params: {
@@ -3503,9 +3518,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           : 0;
         const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return aId === bId ? 0 : aId < bId ? -direction : direction;
+        return comparePairingRowIds(String(a.id), String(b.id), direction);
       });
       if (!isPaged) {
         result.push({ channel, agentId, requests });
@@ -3556,9 +3569,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           : 0;
         const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return aId === bId ? 0 : aId < bId ? -direction : direction;
+        return comparePairingRowIds(String(a.id), String(b.id), direction);
       });
       if (!isPaged) {
         result.push({ channel, agentId, entries });

@@ -923,7 +923,7 @@ async function writeContactSheet(dir, results) {
  * story. The network legs are what the reduced inline capture used to drop; now
  * they land in output/ so the doc-claimed log-capture.mjs is actually wired.
  */
-async function writeFrontendLogs(dir, results) {
+export async function writeFrontendLogs(dir, results) {
   const netCount = (r) =>
     (r.logCapture?.summary?.failedResponses ?? 0) +
     (r.logCapture?.summary?.requestFailures ?? 0);

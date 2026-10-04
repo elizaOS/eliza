@@ -5,8 +5,6 @@
  * Off-platform generic-GGUF picks are flagged not-runnable.
  */
 
-import { CheckCircle2 } from "lucide-react";
-import { useMemo } from "react";
 import type {
   ActiveModelState,
   CatalogModel,
@@ -14,9 +12,11 @@ import type {
   HardwareProbe,
   InstalledModel,
   ModelBucket,
-} from "../../api/client-local-inference";
+} from "@elizaos/contracts";
+import { catalogDownloadSizeGb } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
+import { CheckCircle2 } from "lucide-react";
+import { useMemo } from "react";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { catalogDownloadSizeGb } from "../../services/local-inference/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";

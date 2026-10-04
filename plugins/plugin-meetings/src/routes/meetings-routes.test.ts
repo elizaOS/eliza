@@ -4,8 +4,8 @@
  * scripted adapter, no browser.
  */
 
-import { type AccessContext, type UUID } from "@elizaos/core";
-import { type RouteHandlerContext } from "@elizaos/core/api/http-plugin";
+import type { AccessContext, UUID } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { describe, expect, it } from "vitest";
 import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingService } from "../service.js";

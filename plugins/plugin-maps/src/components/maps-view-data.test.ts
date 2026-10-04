@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchWithCsrf = vi.hoisted(() => vi.fn());
 
-vi.mock("@elizaos/ui/api/csrf-client", () => ({ fetchWithCsrf }));
+vi.mock("@elizaos/ui", () => ({
+  fetchWithCsrf,
+}));
 
 import { mapsViewTransport } from "./maps-view-data.js";
 

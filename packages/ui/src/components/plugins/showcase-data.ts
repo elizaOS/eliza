@@ -1,6 +1,6 @@
 /** Synthetic showcase plugin that demonstrates all 23 field renderers. */
 
-import type { PluginInfo } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 
 export const SHOWCASE_PLUGIN: PluginInfo = {
   id: "__ui-showcase__",

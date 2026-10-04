@@ -8,12 +8,12 @@
  * existing resume paths, which closes the clock.
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { agentFundingRetentionService } from "@elizaos/cloud-shared/lib/services/agent-funding-retention";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { agentFundingRetentionService } from "@/lib/services/agent-funding-retention";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

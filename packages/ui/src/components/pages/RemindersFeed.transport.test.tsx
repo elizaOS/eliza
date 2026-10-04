@@ -10,7 +10,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ReminderEditor, RemindersFeed } from "./RemindersFeed";
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
-vi.mock("../../api", async () => {
+vi.mock("../../api/client", async () => {
   const { ElizaClient } = await import("../../api/client-base");
   const client = new ElizaClient("eliza-remote://session/reminder-relay");
   client.setRequestTransport({ request: mocks.request });

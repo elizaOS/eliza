@@ -1,6 +1,6 @@
-"""Unit tests for scripts.lib.backends.vast.VastBackend.
+"""Unit tests for eliza_training.lib.backends.vast.VastBackend.
 
-Mocks ``subprocess.run`` and the ``scripts.lib.vast`` low-level shim so
+Mocks ``subprocess.run`` and the ``eliza_training.lib.vast`` low-level shim so
 the adapter contract can be verified without touching the real
 ``vastai`` binary or vast.ai's API. CPU-only.
 """
@@ -15,8 +15,8 @@ from unittest import mock
 
 import pytest
 
-from scripts.lib import vast as _vast_cli
-from scripts.lib.backends.base import (
+from eliza_training.lib import vast as _vast_cli
+from eliza_training.lib.backends.base import (
     BACKEND_REGISTRY,
     BackendError,
     InstanceHandle,
@@ -25,7 +25,7 @@ from scripts.lib.backends.base import (
     OfferConstraints,
     ProvisionError,
 )
-from scripts.lib.backends.vast import VastBackend
+from eliza_training.lib.backends.vast import VastBackend
 
 
 # ---------------------------------------------------------------------------

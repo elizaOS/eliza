@@ -2,7 +2,7 @@
  * Resumes a pending cloud handoff after a reload/redirect by rehydrating the
  * cloud auth token and shared-agent base.
  */
-import { client } from "../../api";
+import { client } from "../../api/client";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,

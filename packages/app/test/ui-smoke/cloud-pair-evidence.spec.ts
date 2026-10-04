@@ -60,22 +60,10 @@ function evidenceModulesBundle(): Promise<string> {
     const stubElizaCore: EsbuildPlugin = {
       name: "stub-eliza-core",
       setup(b) {
-        b.onResolve(
-          {
-            filter:
-              /^@elizaos\/core\/(contracts\/(first-run-options|cloud-pair)|utils\/eliza-globals|type-guards)$/,
-          },
-          (args) => ({
-            path: join(
-              REPO_ROOT,
-              "packages",
-              "core",
-              "src",
-              `${args.path.slice("@elizaos/core/".length)}.ts`,
-            ),
-          }),
-        );
-        b.onResolve({ filter: /^@elizaos\/core(\/.*)?$/ }, (args) => ({
+        b.onResolve({ filter: /^@elizaos\/core\/protocol$/ }, () => ({
+          path: join(REPO_ROOT, "packages", "core", "src", "protocol.ts"),
+        }));
+        b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
           path: args.path,
           namespace: "eliza-core-stub",
         }));

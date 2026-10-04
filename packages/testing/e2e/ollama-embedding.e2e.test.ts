@@ -4,7 +4,8 @@ import { createOllamaModelHandlers } from "../src/ollama-provider";
 
 const enabled = process.env.OLLAMA_EMBEDDING_LIVE === "1";
 describe.skipIf(!enabled)("real Ollama embedding input preservation", () => {
-  const embed = createOllamaModelHandlers()[ModelType.TEXT_EMBEDDING]!;
+  const embed = createOllamaModelHandlers()[ModelType.TEXT_EMBEDDING];
+  if (!embed) throw new Error("Ollama embedding handler is missing");
   const runtime = {} as IAgentRuntime;
 
   it("returns finite, nonzero, input-dependent vectors", async () => {

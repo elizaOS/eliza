@@ -5,12 +5,12 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   createMessageMemory,
   type Memory,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
@@ -22,7 +22,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";
-import { type ApprovalQueue } from "../approval-queue.types.js";
+import type { ApprovalQueue } from "../approval-queue.types.js";
 import {
   authenticatedHouseholdInboundIdentity,
   parseHouseholdInboundApprovalCommand,

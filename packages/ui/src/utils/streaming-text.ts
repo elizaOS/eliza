@@ -4,18 +4,6 @@
  */
 
 /**
- * Wire protocol a chat client advertises in the stream POST body to opt into
- * delta framing (deltas + geometric snapshots instead of a full-text snapshot
- * per token). The server only switches framing when this exact literal is
- * present, so old servers ignore the unknown field and old clients keep the
- * legacy per-token `fullText`. Single source of truth for both the agent SSE
- * writer (`@elizaos/agent` chat-routes) and the UI stream client.
- */
-export const DELTA_STREAM_PROTOCOL = "delta-v2" as const;
-
-export type DeltaStreamProtocol = typeof DELTA_STREAM_PROTOCOL;
-
-/**
  * Remove an NFC-space overlap while preserving raw input beyond the sequence
  * that contains the cut. Canonical ordering can make an exact raw boundary
  * impossible, so only that ambiguous prefix is normalized.

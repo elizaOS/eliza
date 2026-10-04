@@ -1,17 +1,17 @@
 /** Recovery-capability boundary for building and downloading the portable export. */
 
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkElizaMutatingRequestOrigin } from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AccountDeletionExportError,
   getAccountDeletionExport,
-} from "@/lib/services/account-deletion-export";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/account-deletion-export";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 app.use(

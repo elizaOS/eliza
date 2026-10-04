@@ -12,17 +12,17 @@ const forwardMcpUpstreamRequest = mock(async () =>
   Response.json({ forwarded: true }),
 );
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireCurrentBillingManagerSession,
   requireUserOrApiKeyWithOrg,
   requireAdmin,
 }));
 
-mock.module("@/lib/mcp/mcp-upstream-forward", () => ({
+mock.module("@elizaos/cloud-shared/lib/mcp/mcp-upstream-forward", () => ({
   forwardMcpUpstreamRequest,
 }));
 
-mock.module("@/lib/mcp/platform-cloud-tools", () => ({
+mock.module("@elizaos/cloud-shared/lib/mcp/platform-cloud-tools", () => ({
   callPlatformCloudMcpTool: mock(),
   listPlatformCloudMcpTools: () => [
     {
@@ -44,7 +44,7 @@ mock.module("@/lib/mcp/platform-cloud-tools", () => ({
   ],
 }));
 
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { error: mock() },
 }));
 

@@ -5,7 +5,7 @@
  * the pending reasons and offers "Restart now" (via `triggerRestart`) or "Later".
  */
 import { useCallback, useState } from "react";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";
 
 // z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.

@@ -8,6 +8,7 @@
  * render the matching unavailable-message when access is missing.
  */
 
+import type { LifeOpsGoogleConnectorStatus } from "@elizaos/contracts";
 import {
   type Action,
   hasRoleAccess,
@@ -15,7 +16,6 @@ import {
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   type Provider,
 } from "@elizaos/core";
-import type { LifeOpsGoogleConnectorStatus } from "../contracts/index.js";
 import type { LifeOpsService } from "./service.js";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");

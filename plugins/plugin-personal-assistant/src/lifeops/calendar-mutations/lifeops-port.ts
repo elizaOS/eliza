@@ -3,16 +3,17 @@
  * service. Read-only source and event-version checks happen before the ledger
  * claims an external side effect; CRUD remains owned by CalendarService.
  */
+
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  ListLifeOpsCalendarsRequest,
+} from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventRequest,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarRecurrenceScope,
-  type LifeOpsCalendarSummary,
-  type ListLifeOpsCalendarsRequest,
-} from "@elizaos/core/contracts/calendar";
 import {
   APPLE_CALENDAR_GRANT_ID,
   APPLE_CALENDAR_PROVIDER,

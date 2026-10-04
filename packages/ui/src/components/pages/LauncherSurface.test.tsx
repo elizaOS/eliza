@@ -5,6 +5,8 @@
 // curation: which surfaces show (curated apps yes; shell/sub-view/removed no),
 // collapsing duplicate wallet registrations to one tile, gating native-OS tiles
 // on the AOSP fork and developer tools on Developer Mode, and route navigation.
+
+import type { AppLaunchResult } from "@elizaos/core/protocol";
 import {
   cleanup,
   fireEvent,
@@ -14,7 +16,6 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppLaunchResult } from "../../api";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { __setAppValueForTests } from "../../state/app-store";
@@ -38,7 +39,7 @@ vi.mock("../../hooks/useViewCatalog", () => ({
 vi.mock("../../cloud/lib/use-session-auth", () => ({
   useSessionAuth: useSessionAuthMock,
 }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: { getBaseUrl: () => "http://localhost:31337" },
 }));
 vi.mock("../../api/app-shell-capabilities", () => ({

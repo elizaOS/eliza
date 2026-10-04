@@ -27,7 +27,7 @@ export interface ListNotificationsOptions {
 /** Remote-push transport a device token belongs to (matches the server enum). */
 export type PushTokenPlatform = "ios" | "android";
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listNotifications(
       opts?: ListNotificationsOptions,

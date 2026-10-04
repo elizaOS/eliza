@@ -14,7 +14,7 @@ import type {
   DispatchSensitiveRequest as SensitiveRequest,
   SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 export interface CloudLinkAdapterDeps {

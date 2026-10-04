@@ -2,15 +2,17 @@
 
 import { join } from "node:path";
 import {
+  parseRemoteBrowserCommandPayload,
+  REMOTE_AGENT_RESPONSE_LIMIT_BYTES,
+} from "@elizaos/contracts";
+import {
   ElizaError,
   type IAgentRuntime,
   resolveStateDir,
   Service,
 } from "@elizaos/core";
-import type { HttpPlugin, Route } from "@elizaos/core/api/http-plugin";
-import { resolveAliasedEnvValue } from "@elizaos/core/config/boot-config-store";
-import { REMOTE_AGENT_RESPONSE_LIMIT_BYTES } from "@elizaos/core/contracts/remote-agent-request";
-import { parseRemoteBrowserCommandPayload } from "@elizaos/core/contracts/remote-control";
+import type { HttpPlugin, Route } from "@elizaos/host/protocol";
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
 import { LoopbackRemoteTargetExecutor } from "../platforms/electrobun/src/remote-target-executor";
 import { RemoteTargetDesktopService } from "../platforms/electrobun/src/remote-target-rpc";

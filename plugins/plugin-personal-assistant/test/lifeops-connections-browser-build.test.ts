@@ -15,7 +15,7 @@ const viewEntry = path.join(
   pluginRoot,
   "src/components/lifeops-connections/lifeops-connections-view-bundle.ts",
 );
-const uiBrowserFacade = path.join(repositoryRoot, "packages/ui/src/browser.ts");
+const uiBrowserFacade = path.join(repositoryRoot, "packages/ui/src/index.ts");
 function isBareImport(id: string): boolean {
   return !id.startsWith(".") && !path.isAbsolute(id) && !id.startsWith("\0");
 }

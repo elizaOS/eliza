@@ -261,12 +261,16 @@ async function assertCloudReadback(): Promise<string | undefined> {
     return `expected one durable notification dispatch, saw ${cloudEffects.notificationPayloads.length}`;
   }
   const notification = cloudEffects.notificationPayloads[0];
+  const timing = notification?.data as
+    | { scheduledFor?: unknown; dueAt?: unknown }
+    | undefined;
   if (
     notification?.category !== "reminder" ||
     notification?.source !== "lifeops" ||
     notification?.title !== "Reminder" ||
-    notification?.body !==
-      `Reminder: ${reminderArgs.title}\nDue: ${new Date(dueAt).toLocaleString("en-US", { timeZone: "UTC" })}` ||
+    notification?.body !== reminderArgs.title ||
+    timing?.scheduledFor !== dueAt ||
+    timing?.dueAt !== dueAt ||
     typeof notification?.groupKey !== "string" ||
     !notification.groupKey.startsWith("reminder:")
   ) {

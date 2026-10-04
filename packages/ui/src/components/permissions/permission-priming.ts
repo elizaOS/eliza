@@ -3,7 +3,7 @@
  * persisted shown-state for the onboarding soft-ask flow.
  */
 
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import type { PermissionId } from "@elizaos/core/protocol";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import { shellLocalStorage } from "../../surface-realm-channel";

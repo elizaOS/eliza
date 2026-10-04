@@ -41,6 +41,7 @@ const config: StorybookConfig = {
   stories: ["../src/**/*.stories.@(ts|tsx)"],
   staticDirs: [
     { from: resolve(here, "fixtures"), to: "/" },
+    { from: resolve(packageRoot, "assets"), to: "/brand" },
     {
       from: resolve(monorepoRoot, "packages/app/public/brand/logos"),
       to: "/brand/logos",
@@ -67,13 +68,8 @@ const config: StorybookConfig = {
     // unstyled/invisible.
     cfg.plugins ??= [];
     cfg.plugins.push(tailwindcss(), rejectRuntimeInRendererPlugin());
-    // Native plugin dists use lazy platform loaders - `import("./web")` - with
-    // extensionless relative specifiers, and some dists ship without a given
-    // platform chunk. Rolldown's production build (unlike the dev server) does
-    // not apply `.js` extension resolution there and dies on the unresolved
-    // import. Resolve such imports to the real `.js` sibling when present, else
-    // an empty module, so the static catalog build never breaks on a
-    // platform-fallback the browser catalog never actually invokes.
+    // Resolve extensionless native dist siblings, but leave missing modules to
+    // the bundler: a catalog must not hide a broken production import.
     cfg.plugins.push({
       name: "eliza-ui-native-plugin-dist-platform-fallback",
       enforce: "pre" as const,
@@ -84,12 +80,6 @@ const config: StorybookConfig = {
         for (const ext of [".js", ".mjs", ".cjs"]) {
           const candidate = resolve(baseDir, `${source}${ext}`);
           if (existsSync(candidate)) return candidate;
-        }
-        return "\0eliza-empty-native-platform-fallback";
-      },
-      load(id: string) {
-        if (id === "\0eliza-empty-native-platform-fallback") {
-          return "export default {};";
         }
         return null;
       },

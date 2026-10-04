@@ -20,17 +20,21 @@
 
 import fs from "node:fs";
 import type { Plugin, RuntimeSettings } from "@elizaos/core";
-import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { AgentRuntime, createCharacter, ElizaError } from "@elizaos/core";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
 } from "./pglite-storage.ts";
 
 export interface TestRuntimeOptions {
+  /** Host-owned lifecycle and transport setup before plugin registration. */
+  configureRuntime?: (runtime: AgentRuntime) => void | Promise<void>;
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
   /** Runtime settings available before plugin registration and service startup. */
   settings?: RuntimeSettings;
+  /** Explicit autonomous execution; disabled by default in fixtures. */
+  enableAutonomy?: boolean;
   /** Additional plugins to register (plugin-sql is always included). */
   plugins?: Plugin[];
   /** Embedding width shared by the database vector schema and model provider. */
@@ -82,7 +86,7 @@ async function flushPendingTrajectoryWrites(
     await flushTrajectoryWrites(runtime);
   }
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (;;) {
     const pending = runtime
       .getServicesByType("trajectories")
       .flatMap((service) => {
@@ -94,7 +98,12 @@ async function flushPendingTrajectoryWrites(
     if (pending.length === 0) {
       return;
     }
-    await Promise.allSettled(pending);
+    const outcomes = await Promise.allSettled(pending);
+    const failures = outcomes
+      .filter((outcome) => outcome.status === "rejected")
+      .map((outcome) => outcome.reason);
+    if (failures.length)
+      throw new AggregateError(failures, "Trajectory writes failed");
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
@@ -111,97 +120,115 @@ async function flushPendingTrajectoryWrites(
 export async function createTestRuntime(
   options?: TestRuntimeOptions,
 ): Promise<TestRuntimeResult> {
+  if (
+    options?.embeddingDimensions !== undefined &&
+    (!Number.isSafeInteger(options.embeddingDimensions) ||
+      options.embeddingDimensions <= 0)
+  ) {
+    throw new ElizaError("embeddingDimensions must be a positive integer", {
+      code: "TEST_RUNTIME_INVALID_DIMENSIONS",
+    });
+  }
   const pgliteDir =
     options?.pgliteDir ?? createTestPgliteDataDir("eliza-test-pglite-");
   const removePgliteDirOnCleanup =
     options?.removePgliteDirOnCleanup ??
     (options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
-
-  const prevPgliteDir = process.env.PGLITE_DATA_DIR;
-  const prevEmbeddingDimension = process.env.EMBEDDING_DIMENSION;
-  const prevLocalEmbeddingDimensions = process.env.LOCAL_EMBEDDING_DIMENSIONS;
-  process.env.PGLITE_DATA_DIR = pgliteDir;
-  if (options?.embeddingDimensions !== undefined) {
-    if (
-      !Number.isSafeInteger(options.embeddingDimensions) ||
-      options.embeddingDimensions <= 0
-    ) {
-      throw new Error("embeddingDimensions must be a positive integer");
-    }
-    const value = String(options.embeddingDimensions);
-    process.env.EMBEDDING_DIMENSION = value;
-    process.env.LOCAL_EMBEDDING_DIMENSIONS = value;
-  }
-
-  const character = createCharacter({
-    name: options?.characterName ?? "TestAgent",
-  });
-
-  const runtime = new AgentRuntime({
-    character,
-    plugins: [],
-    settings: options?.settings,
-    logLevel: "warn",
-  });
-
-  const pluginSqlModule = (await import(
-    ["@elizaos", "plugin-sql"].join("/")
-  )) as RuntimePluginModule;
-  const pluginSql = pluginSqlModule.default ?? pluginSqlModule.elizaPlugin;
-  if (!pluginSql) {
-    throw new Error("plugin-sql did not export a plugin");
-  }
-  await runtime.registerPlugin(pluginSql);
-  for (const plugin of options?.plugins ?? []) {
-    await runtime.registerPlugin(plugin);
-  }
-  await runtime.initialize();
-
-  const cleanup = async () => {
-    const failures: unknown[] = [];
-    for (const drain of [
-      () =>
-        flushPendingTrajectoryWrites(runtime, options?.flushTrajectoryWrites),
-      () => runtime.stop(),
-      () =>
-        flushPendingTrajectoryWrites(runtime, options?.flushTrajectoryWrites),
-      () => runtime.close(),
-    ]) {
-      try {
-        await drain();
-      } catch (error) {
-        // error-policy:J6 Finish all teardown steps before reporting their failures.
-        failures.push(error);
+  let runtime: AgentRuntime | undefined;
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = (): Promise<void> => {
+    cleanupPromise ??= (async () => {
+      const failures: unknown[] = [];
+      if (runtime) {
+        const owned = runtime;
+        for (const drain of [
+          () =>
+            flushPendingTrajectoryWrites(owned, options?.flushTrajectoryWrites),
+          () => owned.stop(),
+          () =>
+            flushPendingTrajectoryWrites(owned, options?.flushTrajectoryWrites),
+          () => owned.close(),
+        ]) {
+          try {
+            await drain();
+          } catch (error) {
+            // error-policy:J6 Finish teardown before reporting every failure.
+            failures.push(error);
+          }
+        }
       }
-    }
-    // Restore previous env
-    if (prevPgliteDir !== undefined) {
-      process.env.PGLITE_DATA_DIR = prevPgliteDir;
-    } else {
-      delete process.env.PGLITE_DATA_DIR;
-    }
-    if (prevEmbeddingDimension !== undefined) {
-      process.env.EMBEDDING_DIMENSION = prevEmbeddingDimension;
-    } else {
-      delete process.env.EMBEDDING_DIMENSION;
-    }
-    if (prevLocalEmbeddingDimensions !== undefined) {
-      process.env.LOCAL_EMBEDDING_DIMENSIONS = prevLocalEmbeddingDimensions;
-    } else {
-      delete process.env.LOCAL_EMBEDDING_DIMENSIONS;
-    }
-    if (removePgliteDirOnCleanup) {
-      try {
-        fs.rmSync(pgliteDir, { recursive: true, force: true });
-      } catch (error) {
-        // error-policy:J6 Surface directory cleanup failure after restoring the environment.
-        failures.push(error);
+      if (removePgliteDirOnCleanup && !isInMemoryPgliteDataDir(pgliteDir)) {
+        try {
+          fs.rmSync(pgliteDir, { recursive: true, force: true });
+        } catch (error) {
+          // error-policy:J6 Directory removal failure is part of teardown evidence.
+          failures.push(error);
+        }
       }
-    }
-    if (failures.length === 1) throw failures[0];
-    if (failures.length > 1)
-      throw new AggregateError(failures, "Test runtime teardown failed");
+      if (failures.length)
+        throw new AggregateError(failures, "Test runtime teardown failed");
+    })();
+    return cleanupPromise;
   };
-
-  return { runtime, pgliteDir, cleanup };
+  try {
+    runtime = new AgentRuntime({
+      character: createCharacter({
+        name: options?.characterName ?? "TestAgent",
+      }),
+      plugins: [],
+      settings: options?.settings,
+      enableAutonomy: options?.enableAutonomy ?? false,
+      logLevel: "warn",
+    });
+    for (const [key, value] of Object.entries({
+      ...options?.settings?.values,
+      ...options?.settings,
+    })) {
+      if (typeof value === "string" || typeof value === "boolean") {
+        runtime.setSetting(
+          key,
+          value,
+          /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
+        );
+      }
+    }
+    // Pin storage on this runtime; never redirect other fixtures through process.env.
+    runtime.setSetting("PGLITE_DATA_DIR", pgliteDir);
+    runtime.setSetting("POSTGRES_URL", "");
+    if (options?.embeddingDimensions !== undefined) {
+      const dimension = String(options.embeddingDimensions);
+      for (const key of [
+        "EMBEDDING_DIMENSION",
+        "EMBEDDING_DIMENSIONS",
+        "LOCAL_EMBEDDING_DIMENSIONS",
+      ]) {
+        runtime.setSetting(key, dimension);
+      }
+    }
+    await options?.configureRuntime?.(runtime);
+    const pluginSqlModule = (await import(
+      ["@elizaos", "plugin-sql"].join("/")
+    )) as RuntimePluginModule;
+    const pluginSql = pluginSqlModule.default ?? pluginSqlModule.elizaPlugin;
+    if (!pluginSql)
+      throw new ElizaError("plugin-sql did not export a plugin", {
+        code: "TEST_RUNTIME_PLUGIN_INVALID",
+      });
+    await runtime.registerPlugin(pluginSql);
+    for (const plugin of options?.plugins ?? [])
+      await runtime.registerPlugin(plugin);
+    await runtime.initialize();
+    return { runtime, pgliteDir, cleanup };
+  } catch (error) {
+    // error-policy:J6 Roll back partial initialization without hiding its original failure.
+    try {
+      await cleanup();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "Test runtime initialization and rollback failed",
+      );
+    }
+    throw error;
+  }
 }

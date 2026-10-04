@@ -16,16 +16,8 @@ import {
 	type PiiEntityRecognizerService,
 	type UUID,
 } from "@elizaos/core";
-import type {
-	Route,
-	RouteHandlerContext,
-	RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
 import {
 	type MeetingArtifact,
-	validateMeetingArtifact,
-} from "@elizaos/core/meeting-artifacts";
-import {
 	TRANSCRIPT_SHARING_STATES,
 	type Transcript,
 	type TranscriptCaptureSharingState,
@@ -34,7 +26,13 @@ import {
 	type TranscriptSource,
 	transcriptDurationMs,
 	transcriptSpeakerCount,
-} from "@elizaos/core/transcripts";
+	validateMeetingArtifact,
+} from "@elizaos/core/protocol";
+import type {
+	Route,
+	RouteHandlerContext,
+	RouteHandlerResult,
+} from "@elizaos/host/protocol";
 import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import {
 	TranscriptService,

@@ -14,8 +14,8 @@
  * The host now INJECTS these capabilities via {@link setAgentHostBridge} before
  * booting the runtime (see app's boot funnel). When no host installs a
  * bridge — the on-device mobile bundle and any standalone-agent boot — the
- * built-in {@link defaultAgentHostBridge} supplies the exact no-op behavior the
- * mobile `app-runtime.ts` stub used to provide. Agent therefore never
+ * built-in {@link defaultAgentHostBridge} exposes absent host capabilities.
+ * Vault writes reject until a durable host vault is installed. Agent therefore never
  * imports `@elizaos/app`, static or dynamic.
  */
 
@@ -27,10 +27,11 @@ import type { Vault } from "@elizaos/auth/vault";
 import {
   type AccountPoolBrokerSnapshot,
   type AgentRuntime,
+  ElizaError,
   emptyAccountPoolBrokerSnapshot,
   type RoleGateRole,
-  type resolveServiceRoutingInConfig,
 } from "@elizaos/core";
+import type { resolveServiceRoutingInConfig } from "@elizaos/host/protocol";
 
 export type AccountPoolCredentialsOptions = {
   activeBackend?: string | undefined;
@@ -107,9 +108,8 @@ export interface AccountPoolConsumerKeyAdmin {
 }
 
 /**
- * Host capabilities the agent runtime consumes at boot / request time. Every
- * member has a no-op default so a hostless (mobile / standalone) boot degrades
- * gracefully instead of throwing.
+ * Host capabilities the agent runtime consumes at boot / request time. Defaults support hostless boot; unavailable durable
+ * writes reject explicitly instead of reporting a successful no-op.
  */
 export interface AgentHostBridge {
   /**
@@ -197,10 +197,18 @@ export interface AgentHostBridge {
   ): Promise<boolean>;
 }
 
-const noopVault: Vault = {
-  set: () => Promise.resolve(),
-  setIfAbsent: () => Promise.resolve(false),
-  setReference: () => Promise.resolve(),
+function rejectUnavailableVaultWrite(): Promise<never> {
+  return Promise.reject(
+    new ElizaError("Host vault is not installed", {
+      code: "AGENT_HOST_VAULT_UNAVAILABLE",
+    }),
+  );
+}
+
+const unavailableVault: Vault = {
+  set: rejectUnavailableVaultWrite,
+  setIfAbsent: rejectUnavailableVaultWrite,
+  setReference: rejectUnavailableVaultWrite,
   get: () => Promise.resolve(""),
   reveal: () => Promise.resolve(""),
   has: () => Promise.resolve(false),
@@ -217,14 +225,14 @@ function defaultBuildVariant(): "store" | "direct" {
 }
 
 /**
- * No-op host bridge — the exact behavior the mobile `app-runtime.ts`
- * stub used to expose. Used whenever a host has not installed a real bridge.
+ * Default host capabilities when no embedding host installed a bridge.
+ * Empty vault reads describe absence; attempted writes cannot report success.
  */
 export const defaultAgentHostBridge: AgentHostBridge = {
   captureWalletEnvBootBaseline: () => undefined,
   hydrateWalletKeysFromNodePlatformSecureStore: () => undefined,
   runVaultBootstrap: () => Promise.resolve({ migrated: 0, failed: [] }),
-  sharedVault: () => noopVault,
+  sharedVault: () => unavailableVault,
   getDefaultAccountPool: () => null,
   getAccountPoolBrokerSnapshot: emptyAccountPoolBrokerSnapshot,
   applyAccountPoolApiCredentials: () => undefined,
@@ -273,7 +281,7 @@ export function getAgentHostBridge(): AgentHostBridge {
  * service) must treat it as absent rather than silently losing data.
  */
 export function hasDurableHostVault(): boolean {
-  return getAgentHostBridge().sharedVault() !== noopVault;
+  return getAgentHostBridge().sharedVault() !== unavailableVault;
 }
 
 /** Test-only: drop any installed bridge so the default is used again. */

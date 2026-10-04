@@ -17,7 +17,7 @@
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   loadOsIntentAutoStartConsent,
@@ -27,7 +27,7 @@ import {
 } from "../state/persistence";
 import { readContinuousMode, readVadAutoStop } from "./voice-settings-payload";
 
-export type { VoiceSettingsApplyPayload } from "@elizaos/core/events";
+export type { VoiceSettingsApplyPayload } from "@elizaos/core/protocol";
 export { VOICE_SETTINGS_APPLY_EVENT };
 export function useVoiceSettingsApplyChannel(): void {
   useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {

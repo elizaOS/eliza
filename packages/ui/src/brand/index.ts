@@ -15,10 +15,7 @@
  * Canonical external URLs for every Eliza surface. Import from here instead
  * of hardcoding strings so a domain change is a one-line edit.
  */
-export {
-  EXTERNAL_URLS,
-  type ExternalUrlKey,
-} from "@elizaos/core/config/public-endpoints";
+export { EXTERNAL_URLS, type ExternalUrlKey } from "@elizaos/host/protocol";
 
 export const BRAND_COLORS = {
   blue: "#0B35F1",

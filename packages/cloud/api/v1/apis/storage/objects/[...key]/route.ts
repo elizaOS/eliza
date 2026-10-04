@@ -22,28 +22,28 @@
  * recover the exact immutable provider generation before any provider access.
  */
 
-import { type Context, Hono } from "hono";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   StoragePutConflictError,
   StorageQuotaExceededError,
-} from "@/db/repositories";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { storageOperationPriceUsd } from "@/lib/constants/pricing";
-import { InsufficientCreditsError } from "@/lib/services/credits";
+} from "@elizaos/cloud-shared/db/repositories";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import {
   calculateStoragePutPrice,
   executeNativeStorageDelete,
   executeNativeStoragePut,
   NativeStoragePutError,
   resolveNativeStorageObject,
-} from "@/lib/services/storage/native-storage-put";
+} from "@elizaos/cloud-shared/lib/services/storage/native-storage-put";
 import {
   executeNativeStorageGetOrHead,
   NativeStorageReadError,
-} from "@/lib/services/storage/native-storage-read";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/storage/native-storage-read";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   cancelBestEffort,
   parseTrustworthyDecimalInteger,

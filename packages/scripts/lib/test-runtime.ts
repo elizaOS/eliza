@@ -132,14 +132,18 @@ export function buildTestRuntimeEnv(
   const pathPrefix = uniqueExistingDirs([
     path.join(repoRoot, "node_modules", ".bin"),
     codexNode && externalNode ? path.dirname(externalNode) : "",
-    path.join(homeDir, ".bun", "bin"),
     codexNode ? "/opt/homebrew/bin" : "",
     codexNode ? "/usr/local/bin" : "",
   ]);
 
   return {
     ...baseEnv,
-    PATH: [...pathPrefix, ...splitPath(baseEnv.PATH)].join(path.delimiter),
+    // A caller-selected pinned toolchain must beat the optional home Bun fallback.
+    PATH: [
+      ...pathPrefix,
+      ...splitPath(baseEnv.PATH),
+      ...uniqueExistingDirs([path.join(homeDir, ".bun", "bin")]),
+    ].join(path.delimiter),
     NODE_OPTIONS: nodeOptionsWithHeapLimit(baseEnv.NODE_OPTIONS),
     ...(codexNode && externalNode ? { ELIZA_TEST_NODE: externalNode } : {}),
   };

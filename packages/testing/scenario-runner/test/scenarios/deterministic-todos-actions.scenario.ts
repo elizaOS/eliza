@@ -8,11 +8,11 @@ import type {
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-  scenario,
-} from "@elizaos/testing";
+} from "@elizaos/testing/models";
 import todosPlugin, {
   currentTodosProvider,
   TodosService,

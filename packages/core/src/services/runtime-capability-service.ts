@@ -1,3 +1,4 @@
+import { UnavailableCapabilityRouter } from "../capabilities/router.js";
 /**
  * Canonical runtime service for filesystem, terminal, git, model, and plugin capabilities.
  * An ordered strategy table selects each dispatcher; an explicit fallback handles uncovered capabilities.
@@ -13,8 +14,7 @@ import {
 	type LocalModelCapability,
 	type RemotePluginCapability,
 	type TerminalCapability,
-	UnavailableCapabilityRouter,
-} from "../capabilities/index.js";
+} from "../capabilities/protocol.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
 

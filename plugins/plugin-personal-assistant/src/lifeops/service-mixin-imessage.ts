@@ -3,7 +3,7 @@
  * `withIMessage` mixin that composes the iMessage domain's read/send/status
  * methods onto the LifeOpsService base.
  */
-import { type LifeOpsIMessageConnectorStatus } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsIMessageConnectorStatus } from "@elizaos/contracts";
 import type {
   IMessageChat,
   IMessageRecord,

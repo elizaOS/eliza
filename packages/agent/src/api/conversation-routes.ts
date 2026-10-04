@@ -17,9 +17,19 @@
  */
 
 import crypto from "node:crypto";
-import fs from "node:fs";
 import type http from "node:http";
-import path from "node:path";
+import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  isChatFailureKind,
+  PatchConversationRequestSchema,
+  PostConversationCleanupEmptyRequestSchema,
+  PostConversationRequestSchema,
+  PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
 import {
   type ActionResult,
   type AgentRuntime,
@@ -27,8 +37,6 @@ import {
   authorizeOwnerExclusiveDisclosure,
   bindIncomingMessagePersistence,
   ChannelType,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
   type Content,
   composeToolDiagnosticRedactor,
   conversationClientUserMemoryId,
@@ -40,9 +48,6 @@ import {
   getInferenceTimer,
   hasAtLeastRole,
   InferenceTurnTimer,
-  isChatFailureKind,
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -52,13 +57,6 @@ import {
   normalizeActionFailureProvenance,
   normalizeActionReplyFailure,
   normalizeEffectReceipts,
-  PatchConversationRequestSchema,
-  PostConversationCleanupEmptyRequestSchema,
-  PostConversationRequestSchema,
-  PostConversationTruncateRequestSchema,
-  PostSeedMessagesRequestSchema,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
   parsePositiveInteger,
   parseSharedTodoCutoverSnapshot,
   projectCompleteToolValueForModel,
@@ -68,7 +66,6 @@ import {
   RoomHandlerQueueClosedError,
   RoomHandlerQueueGlobalSaturatedError,
   RoomHandlerQueueSaturatedError,
-  type RouteRequestContext,
   readDurableConversationChatMarker,
   readSystemNotice,
   recordOwnerGrant,
@@ -85,6 +82,11 @@ import {
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  type RouteRequestContext,
+} from "@elizaos/host/protocol";
+import {
   DeviceActionError,
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,
@@ -100,7 +102,6 @@ import {
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
 import type { ElizaConfig } from "../config/config.ts";
-import { resolveStateDir } from "../config/paths.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
@@ -186,6 +187,8 @@ import {
   buildUserMessages,
   decodePathComponent,
   getErrorMessage,
+  MAX_DELETED_CONVERSATION_IDS,
+  persistDeletedConversationIdsToState,
   resolveAppUserName,
 } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
@@ -263,55 +266,6 @@ function chunkVisibleTextForSse(text: string): string[] {
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
 // ---------------------------------------------------------------------------
-const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
-const MAX_DELETED_CONVERSATION_IDS = 5000;
-interface DeletedConversationsStateFile {
-  version: 1;
-  updatedAt: string;
-  ids: string[];
-}
-function _readDeletedConversationIdsFromState(): Set<string> {
-  const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
-  if (!fs.existsSync(filePath)) return new Set();
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<DeletedConversationsStateFile>;
-    const ids = Array.isArray(parsed.ids) ? parsed.ids : [];
-    return new Set(
-      ids
-        .map((id) => (typeof id === "string" ? id.trim() : ""))
-        .filter((id) => id.length > 0),
-    );
-  } catch (error) {
-    // error-policy:J2 an existing but unreadable tombstone file cannot be
-    // treated as an empty deletion history or deleted chats may reappear.
-    throw new ElizaError("Failed to read deleted conversation tombstones", {
-      code: "DELETED_CONVERSATION_STATE_READ_FAILED",
-      cause: error,
-      context: { filePath },
-    });
-  }
-}
-function persistDeletedConversationIdsToState(ids: Set<string>): void {
-  const dir = resolveStateDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  const normalized = Array.from(ids)
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0)
-    .slice(-MAX_DELETED_CONVERSATION_IDS);
-  const payload: DeletedConversationsStateFile = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    ids: normalized,
-  };
-  fs.writeFileSync(
-    path.join(dir, DELETED_CONVERSATIONS_FILENAME),
-    JSON.stringify(payload, null, 2),
-    { encoding: "utf-8", mode: 0o600 },
-  );
-}
 // ---------------------------------------------------------------------------
 // State interface required by conversation routes
 // ---------------------------------------------------------------------------
@@ -1325,13 +1279,16 @@ function markConversationDeleted(
   const normalizedId = conversationId.trim();
   if (!normalizedId) return;
   if (state.deletedConversationIds.has(normalizedId)) return;
-  state.deletedConversationIds.add(normalizedId);
-  while (state.deletedConversationIds.size > MAX_DELETED_CONVERSATION_IDS) {
-    const oldest = state.deletedConversationIds.values().next().value;
+  const nextIds = new Set(state.deletedConversationIds);
+  nextIds.add(normalizedId);
+  while (nextIds.size > MAX_DELETED_CONVERSATION_IDS) {
+    const oldest = nextIds.values().next().value;
     if (!oldest) break;
-    state.deletedConversationIds.delete(oldest);
+    nextIds.delete(oldest);
   }
-  persistDeletedConversationIdsToState(state.deletedConversationIds);
+  persistDeletedConversationIdsToState(nextIds);
+  state.deletedConversationIds.clear();
+  for (const id of nextIds) state.deletedConversationIds.add(id);
 }
 async function deleteConversationRoomData(
   runtime: AgentRuntime,

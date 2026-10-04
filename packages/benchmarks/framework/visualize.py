@@ -8,15 +8,21 @@ Usage:
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
-RESULTS_DIR = Path(__file__).parent / "results"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from benchmarks.lib import test_output_path
+
+RESULTS_DIR = Path(
+    os.environ.get("BENCHMARK_OUTPUT_ROOT") or test_output_path("benchmark-framework")
+)
 
 
-def load_latest_result(runtime: str) -> dict | None:
+def load_latest_result(runtime: str, results_dir: Path = RESULTS_DIR) -> dict | None:
     """Load the latest result file for a given runtime."""
-    files = sorted(RESULTS_DIR.glob(f"{runtime}-*.json"))
+    files = sorted(results_dir.glob(f"{runtime}-*.json"))
     if not files:
         return None
     with open(files[-1]) as f:
@@ -84,8 +90,11 @@ def print_throughput_chart(results: dict) -> None:
 
     scenarios = results.get("scenarios", {})
     # Exclude DB scenarios from throughput (they have inflated numbers)
-    msg_scenarios = {k: v for k, v in scenarios.items()
-                     if not k.startswith("db-") and not k.startswith("startup")}
+    msg_scenarios = {
+        k: v
+        for k, v in scenarios.items()
+        if not k.startswith("db-") and not k.startswith("startup")
+    }
     if not msg_scenarios:
         print("  No message scenario data available.")
         return
@@ -128,7 +137,9 @@ def print_db_throughput(results: dict) -> None:
             tp = s["throughput"]["messages_per_second"]
             avg_per_op = s["latency"]["avg_ms"]
             op = "WRITE" if "write" in sid else "READ"
-            print(f"  {op}: {format_throughput(tp)} ops/s  (avg batch: {format_ms(avg_per_op)})")
+            print(
+                f"  {op}: {format_throughput(tp)} ops/s  (avg batch: {format_ms(avg_per_op)})"
+            )
 
 
 def print_latency_distribution(results: dict) -> None:
@@ -205,11 +216,15 @@ def print_summary_table(results: dict) -> None:
 
     sys_info = results.get("system", {})
     print(f"  System: {sys_info.get('os', 'unknown')} {sys_info.get('arch', '')}")
-    print(f"  CPUs: {sys_info.get('cpus', '?')} | RAM: {sys_info.get('memory_gb', '?')}GB")
+    print(
+        f"  CPUs: {sys_info.get('cpus', '?')} | RAM: {sys_info.get('memory_gb', '?')}GB"
+    )
     print(f"  Runtime: {sys_info.get('runtime_version', 'unknown')}")
     print()
 
-    print(f"  {'Scenario':<28} {'Avg':>8} {'P95':>8} {'Throughput':>12} {'Peak RSS':>10}")
+    print(
+        f"  {'Scenario':<28} {'Avg':>8} {'P95':>8} {'Throughput':>12} {'Peak RSS':>10}"
+    )
     print(f"  {'─' * 28} {'─' * 8} {'─' * 8} {'─' * 12} {'─' * 10}")
 
     for sid, s in results.get("scenarios", {}).items():
@@ -224,15 +239,19 @@ def main() -> None:
     results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else RESULTS_DIR
 
     # Load TypeScript results (primary)
-    ts_result = load_latest_result("typescript")
+    ts_result = load_latest_result("typescript", results_dir)
     if ts_result is None:
         print("No TypeScript results found. Run the benchmark first.")
         sys.exit(1)
 
     print()
-    print("╔══════════════════════════════════════════════════════════════════════════╗")
+    print(
+        "╔══════════════════════════════════════════════════════════════════════════╗"
+    )
     print("║           Eliza Framework Benchmark — Visualization                     ║")
-    print("╚══════════════════════════════════════════════════════════════════════════╝")
+    print(
+        "╚══════════════════════════════════════════════════════════════════════════╝"
+    )
 
     print_summary_table(ts_result)
     print_latency_chart(ts_result)
@@ -243,8 +262,8 @@ def main() -> None:
     print_provider_scaling(ts_result)
 
     # Check for Python/Rust results
-    py_result = load_latest_result("python")
-    rs_result = load_latest_result("rust")
+    py_result = load_latest_result("python", results_dir)
+    rs_result = load_latest_result("rust", results_dir)
 
     if py_result or rs_result:
         print_header("CROSS-RUNTIME COMPARISON")
@@ -255,16 +274,22 @@ def main() -> None:
             runtimes["Rust"] = rs_result
 
         # Compare single-message if available
-        print(f"\n  {'Runtime':<14} {'Avg Latency':>12} {'P95':>10} {'Throughput':>12} {'Peak RSS':>10}")
+        print(
+            f"\n  {'Runtime':<14} {'Avg Latency':>12} {'P95':>10} {'Throughput':>12} {'Peak RSS':>10}"
+        )
         print(f"  {'─' * 14} {'─' * 12} {'─' * 10} {'─' * 12} {'─' * 10}")
         for name, r in runtimes.items():
             if "single-message" in r.get("scenarios", {}):
                 s = r["scenarios"]["single-message"]
-                print(f"  {name:<14} {format_ms(s['latency']['avg_ms']):>12} {format_ms(s['latency']['p95_ms']):>10} {format_throughput(s['throughput']['messages_per_second']) + '/s':>12} {s['resources']['memory_rss_peak_mb']:.0f}MB")
+                print(
+                    f"  {name:<14} {format_ms(s['latency']['avg_ms']):>12} {format_ms(s['latency']['p95_ms']):>10} {format_throughput(s['throughput']['messages_per_second']) + '/s':>12} {s['resources']['memory_rss_peak_mb']:.0f}MB"
+                )
     else:
         print_header("NOTE")
         print("  Only TypeScript results available.")
-        print("  Run Python and Rust benchmarks to enable cross-runtime comparison.")
+        print(
+            "  Historical Python/Rust archives can be compared by passing their directory."
+        )
 
     print()
 

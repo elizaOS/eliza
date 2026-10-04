@@ -4,8 +4,8 @@
  * during the conversational turn.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,

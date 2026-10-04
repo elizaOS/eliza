@@ -8,13 +8,15 @@
 
 import { AlertCircle, Power } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { waitForCloudAgentRunning } from "../../api/client-cloud";
 import { useBranding } from "../../config/branding";
-import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
-import { startFreshFirstRunReload } from "../../platform";
-import type { StartupErrorState } from "../../state";
-import { type useApp, useAppSelector } from "../../state";
+import type { BugReportDraft } from "../../hooks/useBugReport.hooks";
+import { useOptionalBugReport } from "../../hooks/useBugReport.hooks";
+import { startFreshFirstRunReload } from "../../platform/first-run-reset";
+import { useAppSelector } from "../../state/app-store";
+import type { StartupErrorState } from "../../state/types";
+import type { useApp } from "../../state/useApp";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";

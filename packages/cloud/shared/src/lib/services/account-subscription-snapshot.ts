@@ -1,16 +1,17 @@
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+
 /** Projects a coherent organization-only subscription read without provider identifiers, guessed charges or app-subscriber policy. */
 
-import { ElizaError } from "@elizaos/core";
-import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
-import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
 import type {
   Observed,
   OrganizationSubscriptionSnapshot,
   SubscriptionCancellationBlockerCode,
   SubscriptionCancellationControlSnapshot,
   SubscriptionCancellationNoticeSnapshot,
-} from "../../types/account-billing-snapshot";
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
+import { ElizaError } from "@elizaos/core";
+import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
+import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
 
 /** The reader's session authority; absent means the caller proved no interactive manager session. */
 export interface SubscriptionCancellationReaderAuthority {

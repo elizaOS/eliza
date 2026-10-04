@@ -13,7 +13,7 @@
 import { Info } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DashboardLoadingState } from "../../../cloud-ui/components/dashboard/route-placeholders";
-import { Alert } from "../../../components/ui/alert";
+import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Card } from "../../../components/ui/card";
 import { api } from "../../lib/api-client";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -76,12 +76,12 @@ export function CreatorEarningsStatementView({
     >
       <Alert>
         <Info />
-        <p>
+        <AlertDescription>
           {t("cloud.earningsStatement.retiredNotice", {
             defaultValue:
               "Creator earnings and payouts have been retired. Balances earned before retirement are frozen and will be settled by our team. Affiliate earnings since then are still paid out through Stripe Connect.",
           })}
-        </p>
+        </AlertDescription>
       </Alert>
 
       <Card className="p-4">
@@ -230,11 +230,11 @@ export function CreatorEarningsStatement() {
   if (failed) {
     return (
       <Alert variant="dashboardError">
-        <p>
+        <AlertDescription>
           {t("cloud.earningsStatement.loadFailed", {
             defaultValue: "Could not load your earnings statement. Try again.",
           })}
-        </p>
+        </AlertDescription>
       </Alert>
     );
   }

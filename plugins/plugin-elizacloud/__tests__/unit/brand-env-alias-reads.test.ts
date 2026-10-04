@@ -10,9 +10,12 @@
  * ELIZA->ELIZA self-mirror would prove nothing.
  */
 
-import { getBootConfig, setBootConfig } from "@elizaos/core/config/boot-config-store";
-import { buildBrandEnvAliases } from "@elizaos/core/config/brand-env-aliases";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import {
+  buildBrandEnvAliases,
+  getBootConfig,
+  readAliasedEnv,
+  setBootConfig,
+} from "@elizaos/host/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isCloudProvisionedContainer } from "../../src/routes/cloud-provisioning";
 

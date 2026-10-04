@@ -1,7 +1,7 @@
 /** Automatic cold recovery retains the observed generation at durable admission. */
 import { expect, spyOn, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
-import { provisioningJobService } from "./provisioning-jobs";
+import { provisioningJobService } from "./provisioning-job-queue";
 
 test("automatic wake uses the wake job and rejects a changed lifecycle before reuse or insertion", async () => {
   const sentinel = new Error("admission inspected");

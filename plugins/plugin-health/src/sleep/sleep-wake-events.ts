@@ -3,7 +3,7 @@
  * tick from the owner's merged schedule state — sleep/wake status, regularity,
  * and bedtime-target timing — the sleep/wake `LifeOpsEventKind` events.
  */
-import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import { parseIsoMs } from "@elizaos/contracts";
 import type {
   LifeOpsCircadianState,
   LifeOpsEventKind,
