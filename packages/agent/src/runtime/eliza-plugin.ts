@@ -88,6 +88,7 @@ import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
+import { retainedPendantSchema } from "./retained-pendant-schema.ts";
 import {
   viewNavigationEvaluator,
   viewNavigationField,
@@ -117,7 +118,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     name: "eliza",
     databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
-    schema: knowledgeGraphSchema,
+    // Retired feature data remains part of the schema until an explicit retention migration.
+    schema: { ...retainedPendantSchema, ...knowledgeGraphSchema },
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,
