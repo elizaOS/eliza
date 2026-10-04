@@ -83,7 +83,7 @@ public class ElizaReminderMessagingServiceTest {
         assertNotEquals(delivered[0].getTag(), delivered[1].getTag());
         for (StatusBarNotification row : delivered) {
             assertEquals(0, row.getId());
-            assertEquals("eliza_notifications", row.getNotification().getChannelId());
+            assertEquals("eliza_updates", row.getNotification().getChannelId());
             Intent tap = shadowOf(row.getNotification().contentIntent).getSavedIntent();
             assertEquals(context.getPackageName(), tap.getComponent().getPackageName());
             assertNull(tap.getData());
@@ -172,8 +172,15 @@ public class ElizaReminderMessagingServiceTest {
         assertEquals(5, manager.getNotificationChannel("eliza_alerts").getImportance());
         assertFalse(manager.getNotificationChannel("eliza_alerts").canBypassDnd());
     }
-    @Test public void normalTimedReminderUsesExistingHeadsUpTierWithoutBypassingDnd() {
-        receiver().onMessageReceived(message(data(A), "normal-alert"));
+    @Test public void normalCalendarReminderKeepsDefaultTier() {
+        receiver().onMessageReceived(message(data(A), "normal-calendar"));
+        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel("eliza_updates").getImportance());
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Test public void highOccurrenceReminderUsesExistingHeadsUpTierWithoutBypassingDnd() {
+        Map<String, String> high = data(A); high.put("priority", "high");
+        receiver().onMessageReceived(message(high, "high-alert"));
         NotificationChannel channel = manager.getNotificationChannel("eliza_notifications");
         assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.getImportance());
         assertFalse(channel.canBypassDnd());
@@ -202,7 +209,8 @@ public class ElizaReminderMessagingServiceTest {
     }
     @Test public void existingBlockedAlertChannelIsNotOverridden() {
         manager.createNotificationChannel(new NotificationChannel("eliza_notifications", "Blocked", NotificationManager.IMPORTANCE_NONE));
-        receiver().onMessageReceived(message(data(A), "blocked-alert"));
+        Map<String, String> high = data(A); high.put("priority", "high");
+        receiver().onMessageReceived(message(high, "blocked-alert"));
         assertEquals(0, manager.getActiveNotifications().length);
         assertFalse(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
     }
@@ -211,6 +219,13 @@ public class ElizaReminderMessagingServiceTest {
         receiver().onMessageReceived(message(data(A), "muted"));
         assertEquals(0, manager.getActiveNotifications().length);
         assertFalse(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
+    }
+    @Test public void existingQuietHighTierIsPreservedForOccurrenceAlerts() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_notifications", "Quiet", NotificationManager.IMPORTANCE_LOW));
+        Map<String, String> high = data(A); high.put("priority", "high");
+        receiver().onMessageReceived(message(high, "quiet-high"));
+        assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel("eliza_notifications").getImportance());
     }
     @Test public void malformedRequiredFieldsNeverProject() {
         for (String field : new String[]{"notificationId", "title", "body", "priority", "category"}) {
