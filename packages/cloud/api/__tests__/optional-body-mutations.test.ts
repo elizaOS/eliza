@@ -451,17 +451,23 @@ const mutationCases: MutationCase[] = [
     expectedStatus: 200,
     ledger: calls.claimAffiliate,
   },
-  {
-    label: "paid tunnel auth-key mint",
-    route: mounted(tunnelAuthKeyRoute, "/v1/apis/tunnels/tailscale/auth-key"),
-    path: "/v1/apis/tunnels/tailscale/auth-key",
-    expectedStatus: 200,
-    ledger: calls.tunnelKey,
-    env: {
-      HEADSCALE_API_URL: "https://headscale.test",
-      HEADSCALE_API_KEY: "headscale-test-key",
-    },
+];
+
+const tunnelCase: MutationCase = {
+  label: "paid tunnel auth-key mint",
+  route: mounted(tunnelAuthKeyRoute, "/v1/apis/tunnels/tailscale/auth-key"),
+  path: "/v1/apis/tunnels/tailscale/auth-key",
+  expectedStatus: 200,
+  ledger: calls.tunnelKey,
+  env: {
+    HEADSCALE_API_URL: "https://headscale.test",
+    HEADSCALE_API_KEY: "headscale-test-key",
   },
+};
+
+// Routes whose malformed-body fallback used to debit credits or post publicly.
+const effectRouteCases: MutationCase[] = [
+  tunnelCase,
   {
     label: "public Discord announcement",
     route: mounted(discordPostRoute, "/v1/apps/:id/discord-automation/post"),
@@ -477,6 +483,7 @@ const mutationCases: MutationCase[] = [
     ledger: calls.telegramPost,
   },
 ];
+mutationCases.push(...effectRouteCases);
 
 async function post(testCase: MutationCase, body?: string): Promise<Response> {
   return testCase.route.request(
@@ -550,15 +557,14 @@ test("whitespace-only and explicit empty-object bodies retain the optional-body 
 });
 
 test("paid tunnel auth-key mint does not debit credits for a malformed body", async () => {
-  const tunnel = mutationCases[11];
-  const response = await post(tunnel, '{"expirySeconds":');
+  const response = await post(tunnelCase, '{"expirySeconds":');
 
   expect(response.status).toBe(400);
   expect(calls.tunnelDebit).toHaveLength(0);
   expect(calls.tunnelKey).toHaveLength(0);
 });
 
-test.each(mutationCases.slice(11))(
+test.each(effectRouteCases)(
   "$label preserves request stream failures as server errors before mutation",
   async (testCase) => {
     const body = new ReadableStream<Uint8Array>({
