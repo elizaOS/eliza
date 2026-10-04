@@ -118,23 +118,26 @@ public final class RuntimeBundleStoreTest {
 
     // One process, two threads, one root: the JVM-wide FileChannel lock must
     // make the second preparer wait, not fail with OverlappingFileLockException.
-    Path shared = Files.createDirectory(suite.resolve("threads")); libraries(shared);
-    java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1), resume = new java.util.concurrent.CountDownLatch(1);
-    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
-    try {
-      java.util.concurrent.Future<Path> first = pool.submit(() -> RuntimeBundleStore.prepare(shared.resolve("versions"), manifest(next), source(next), shared.resolve("native"), SYNC, name -> {
-        if (!name.equals("staging-created")) return;
-        inside.countDown();
-        try { resume.await(); } catch (InterruptedException interrupted) { throw new InterruptedIOException(); }
-      }));
-      check(inside.await(10, java.util.concurrent.TimeUnit.SECONDS), "First preparer must hold the root");
-      java.util.concurrent.Future<Path> second = pool.submit(() -> prepare(shared, next));
-      Thread.sleep(200); // the second preparer reaches the lock while the first holds it
-      resume.countDown();
-      Path a = first.get(30, java.util.concurrent.TimeUnit.SECONDS), b = second.get(30, java.util.concurrent.TimeUnit.SECONDS);
-      check(a.equals(b), "Concurrent preparers in one process must share one complete bundle");
-      check(Files.readString(b.resolve("agent-bundle.js")).startsWith("new"), "Shared bundle must be complete");
-    } finally { resume.countDown(); pool.shutdownNow(); }
+    for (boolean aliased : new boolean[]{false, true}) {
+      Path shared = Files.createDirectory(suite.resolve(aliased ? "threads-aliased" : "threads")); libraries(shared);
+      Path secondRoot = aliased ? Files.createSymbolicLink(suite.resolve("thread-link"), shared) : shared;
+      java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1), resume = new java.util.concurrent.CountDownLatch(1);
+      java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+      try {
+        java.util.concurrent.Future<Path> first = pool.submit(() -> RuntimeBundleStore.prepare(shared.resolve("versions"), manifest(next), source(next), shared.resolve("native"), SYNC, name -> {
+          if (!name.equals("staging-created")) return;
+          inside.countDown();
+          try { resume.await(); } catch (InterruptedException interrupted) { throw new InterruptedIOException(); }
+        }));
+        check(inside.await(10, java.util.concurrent.TimeUnit.SECONDS), "First preparer must hold the root");
+        java.util.concurrent.Future<Path> second = pool.submit(() -> prepare(secondRoot, next));
+        Thread.sleep(200); // the second preparer reaches the lock while the first holds it
+        resume.countDown();
+        Path a = first.get(30, java.util.concurrent.TimeUnit.SECONDS), b = second.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        check(a.equals(b), "Concurrent preparers in one process must share one complete bundle");
+        check(Files.readString(b.resolve("agent-bundle.js")).startsWith("new"), "Shared bundle must be complete");
+      } finally { resume.countDown(); pool.shutdownNow(); }
+    }
     System.out.println("RuntimeBundleStore: " + assertions + " assertions passed, including 6 real process-death boundaries");
   }
 }

@@ -50,6 +50,8 @@ public class RuntimeBundleStore {
     String identity = digest(manifest);
     root = root.toAbsolutePath().normalize();
     privateDirectory(root);
+    // Validate the leaf without following links before collapsing parent aliases.
+    root = root.toRealPath();
     // A FileChannel lock belongs to the whole JVM: a second thread preparing
     // the same root would get OverlappingFileLockException instead of waiting.
     synchronized (ROOT_LOCKS.computeIfAbsent(root, key -> new Object())) {
