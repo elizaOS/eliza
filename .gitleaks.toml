@@ -373,15 +373,3 @@ regexTarget = "line"
 regexes = [
   '''^\s*process\.env\.STRIPE_SECRET_KEY\s*=\s*"sk_test_renewalreview";\s*$''',
 ]
-
-# Upgrade review uses a mocked Stripe client and never makes live provider requests.
-[[allowlists]]
-description = "Upgrade review controlled-provider fixture sentinel"
-condition = "AND"
-paths = [
-  '''(^|/)packages/cloud/shared/src/lib/services/organization\-upgrade\-preview\.pglite\.test\.ts$''',
-]
-regexTarget = "line"
-regexes = [
-  '''^\s*process\.env\.STRIPE_SECRET_KEY\s*=\s*"sk_test_upgradepreview";\s*$''',
-]
