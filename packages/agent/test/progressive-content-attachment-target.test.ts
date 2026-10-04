@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { runProgressiveContentTargetConformance } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { createProgressiveAttachmentTargetFactory } from "./progressive-content-attachment-target.ts";
+import { createProgressiveAttachmentTargetFactory } from "./support/progressive-content-attachment-target.ts";
 
 const roots: string[] = [];
 const priorStateDir = process.env.ELIZA_STATE_DIR;

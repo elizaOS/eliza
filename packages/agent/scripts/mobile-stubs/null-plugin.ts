@@ -14,16 +14,19 @@
 //      A bare `module.exports = {}` would leave those bindings as
 //      `undefined` and crash the call.
 //
-// Solution: a Proxy-backed module where every property access returns a
-// no-op function or another stub Proxy. This satisfies both shapes:
-// `findRuntimePluginExport` still returns null (the proxy has no
-// plugin-shaped fields), but any direct function call short-circuits to
-// `undefined`.
-"use strict";
+// Absent optional routes explicitly decline dispatch. Any other callable export
+// fails loudly, so an accidentally invoked desktop capability cannot report success.
 
-const NOOP_FN = function noopStub() {
-  return undefined;
+const UNAVAILABLE_FN = function unavailableMobileCapability() {
+  throw Object.assign(
+    new Error("This capability is unavailable in the mobile runtime"),
+    {
+      name: "MobileCapabilityUnavailableError",
+      code: "MOBILE_CAPABILITY_UNAVAILABLE",
+    },
+  );
 };
+const DECLINE_ROUTE = () => false;
 
 // Use a plain object as the proxy target. Bun's `__toESM` calls
 // `Object.getOwnPropertyNames(mod)` on the result of `require()` to
@@ -44,9 +47,9 @@ function makeStubProxy() {
   // the destructure produced `undefined`, and runtime crashed with
   // `applyWhatsAppQrOverride3 is not a function`.
   //
-  // Fix: pre-populate the target with no-op functions for every name the
+  // Fix: pre-populate the target with explicit unavailable functions for every name the
   // agent's transitive imports destructure off these stubs. The trap then
-  // only handles dynamic access (still NOOP_FN), keeping
+  // only handles dynamic access (still UNAVAILABLE_FN), keeping
   // findRuntimePluginExport's plugin-shape probe inert.
   const PRE_POPULATED_NAMES = [
     // plugin-whatsapp surface used by agent api/server.ts +
@@ -78,8 +81,10 @@ function makeStubProxy() {
   ];
   const target = {};
   for (const name of PRE_POPULATED_NAMES) {
-    target[name] = NOOP_FN;
+    target[name] = name.startsWith("handle") ? DECLINE_ROUTE : UNAVAILABLE_FN;
   }
+  // Inventory enrichment is optional when WhatsApp itself is absent.
+  target.applyWhatsAppQrOverride = () => undefined;
   return new Proxy(target, {
     get(t, prop) {
       if (Object.hasOwn(t, prop)) return t[prop];
@@ -103,7 +108,7 @@ function makeStubProxy() {
       ) {
         return undefined;
       }
-      return NOOP_FN;
+      return UNAVAILABLE_FN;
     },
     has() {
       return true;

@@ -17,7 +17,7 @@ import {
   mediaFileNameFromUrl,
   persistMediaStream,
   readStoredMediaByteRange,
-} from "../api/media-store.ts";
+} from "../../src/api/media-store.ts";
 
 const SOURCE_PAGE_BYTES = 64 * 1024;
 

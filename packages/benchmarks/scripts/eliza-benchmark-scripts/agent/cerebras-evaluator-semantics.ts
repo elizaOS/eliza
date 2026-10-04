@@ -11,6 +11,7 @@ import { mkdir, open, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { shutdownRuntime } from "@elizaos/agent";
 import {
   type AgentRuntime,
   ChannelType,
@@ -19,19 +20,18 @@ import {
   MemoryType,
   ModelType,
   type State,
+  stableJsonStringify,
   type UUID,
 } from "@elizaos/core";
+import { RelationshipsService } from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing";
 import { z } from "zod";
-import { reflectionItems } from "../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
+import { reflectionItems } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 import {
   getTaskCompletionCacheKey,
   type TaskCompletionAssessment,
-} from "../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/task-completion.ts";
-import { EvaluatorService } from "../../../plugins/plugin-assistant/src/services/evaluator.ts";
-import { RelationshipsService } from "../../../plugins/plugin-assistant/src/services/relationships.ts";
-import { stableJsonStringify } from "../../core/src/runtime/context-hash.ts";
-import { shutdownRuntime } from "../src/runtime/eliza.ts";
+} from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/task-completion.ts";
+import { EvaluatorService } from "../../../../../plugins/plugin-assistant/src/services/evaluator.ts";
 import {
   measuredProviderFetch,
   type ProviderWireEvidence,
@@ -649,7 +649,7 @@ async function main() {
     )
       throw new Error("Resume uses only --resume=REPORT --output=NEW_PATH");
     const sourceRevision = sourceRevisionEvidence(
-      fileURLToPath(new URL("../../..", import.meta.url)),
+      fileURLToPath(new URL("../../../../..", import.meta.url)),
     );
     const handle = await open(output, "wx", 0o600);
     try {
@@ -678,9 +678,9 @@ async function main() {
   if (!replayPath && finish !== "original")
     throw new Error("Finish controls are loopback replay only");
   const sourceRevision = sourceRevisionEvidence(
-    fileURLToPath(new URL("../../..", import.meta.url)),
+    fileURLToPath(new URL("../../../../..", import.meta.url)),
     [
-      "packages/agent/scripts",
+      "packages/benchmarks/scripts/eliza-benchmark-scripts/agent",
       "packages/agent/src",
       "packages/core/src",
       "plugins/plugin-assistant/src/prompts",
@@ -810,9 +810,7 @@ async function main() {
       return response;
     }) as typeof fetch;
     stage = "runtime-bootstrap";
-    const { default: openai } = await import(
-      "../../../plugins/plugin-openai/index.ts"
-    );
+    const { default: openai } = await import("@elizaos/plugin-openai");
     const modelsDir = process.env.MODELS_DIR;
     const embeddingModel = process.env.LOCAL_EMBEDDING_MODEL;
     if (
@@ -823,10 +821,10 @@ async function main() {
       throw new Error("Installed native384 embedding configuration required");
     process.env.OPENAI_EMBEDDING_DIMENSIONS = "384";
     const { resolveFusedEmbeddingBundleRoot } = await import(
-      "../../../plugins/plugin-local-inference/src/runtime/fused-embedding-bundle.ts"
+      "../../../../../plugins/plugin-local-inference/src/runtime/fused-embedding-bundle.ts"
     );
     const { resolveFusedLibraryPath } = await import(
-      "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts"
+      "../../../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts"
     );
     const bundle = resolveFusedEmbeddingBundleRoot({
       modelsDir,
