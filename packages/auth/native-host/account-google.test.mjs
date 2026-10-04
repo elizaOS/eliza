@@ -221,3 +221,45 @@ test("reset during exchange cannot report a late result as a completed link", as
   await assert.rejects(pending, { code: "account_outcome_unknown" });
   await assert.rejects(finish(f, attempt), { status: 410 });
 });
+
+test("native callback return needs private state but no renderer session identifier", async () => {
+  const f = fixture();
+  assert.deepEqual(await f.host.handle("account-google-status"), {
+    status: "idle",
+  });
+  await start(f);
+  assert.equal(
+    (await f.host.handle("account-google-status")).status,
+    "pending",
+  );
+  await assert.rejects(
+    f.host.handle("account-google-return", {
+      callbackUrl: callback(f, "wrong"),
+    }),
+    { status: 400 },
+  );
+  assert.deepEqual(
+    await f.host.handle("account-google-return", { callbackUrl: callback(f) }),
+    { status: "linked" },
+  );
+  assert.deepEqual(await f.host.handle("account-google-status"), {
+    status: "linked",
+  });
+  f.changeAccount();
+  assert.deepEqual(await f.host.handle("account-google-status"), {
+    status: "idle",
+  });
+});
+
+test("unknown exchange status is observable without replay or private material", async () => {
+  const f = fixture(),
+    attempt = await start(f);
+  f.complete(() => {
+    throw Error("lost");
+  });
+  await assert.rejects(finish(f, attempt), { code: "account_outcome_unknown" });
+  assert.deepEqual(await f.host.handle("account-google-status"), {
+    status: "unknown",
+  });
+  assert.equal(f.calls.length, 2);
+});

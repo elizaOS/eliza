@@ -215,6 +215,14 @@ test("independent host selects its plan and speech policy without exposing autho
     const factorRoutes = {
       "/cloud/account/methods": ["account-methods", {}],
       "/cloud/account/methods/google/start": ["account-google-start", {}],
+      "/cloud/account/methods/google/status": ["account-google-status", {}],
+      "/cloud/account/methods/google/return": [
+        "account-google-return",
+        {
+          callbackUrl:
+            "https://product.example/link?state=synthetic&code=synthetic",
+        },
+      ],
       "/cloud/account/methods/google/cancel": ["account-google-cancel", {}],
       "/cloud/account/methods/google/complete": [
         "account-google-complete",
@@ -480,6 +488,8 @@ test("a service-only host composes CLI login and provider-default voice without 
     "/cloud/account/billing/start",
     "/cloud/account/methods",
     "/cloud/account/methods/google/start",
+    "/cloud/account/methods/google/return",
+    "/cloud/account/methods/google/status",
     "/cloud/account/methods/google/complete",
     "/cloud/account/methods/google/cancel",
     "/cloud/account/security/start",

@@ -92,7 +92,11 @@ be allowlisted by Auth and registered with the provider; this API does not suppl
 native callback delivery. Hosts that implement and qualify callback delivery may
 configure `accountLinkRedirectUri` on `createNativeCloudAuth`. The private adapter
 then supports `account-google-start` (no fields), `account-google-complete`
-(`sessionId`, `callbackUrl`) and `account-google-cancel` (no fields). It validates
+(`sessionId`, `callbackUrl`) and `account-google-cancel` (no fields).
+Native callback transports can use `account-google-return` (`callbackUrl` only);
+the private attempt still enforces exact state and callback binding.
+`account-google-status` returns only idle/pending/expired/linked/cancelled/failed/unknown
+and pending expiry, scoped to the current account. It validates
 the Google destination, sign-in scopes, state, callback and account-bound expiry,
 keeps the verifier in memory, and consumes the attempt before exchange. Unknown
 outcomes require inventory observation. No link UI should be offered without a

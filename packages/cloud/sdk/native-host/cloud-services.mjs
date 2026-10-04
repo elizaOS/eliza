@@ -552,6 +552,8 @@ export function createCloudRoutes({
       const accountMethods = {
         "/cloud/account/methods": "account-methods",
         "/cloud/account/methods/google/start": "account-google-start",
+        "/cloud/account/methods/google/return": "account-google-return",
+        "/cloud/account/methods/google/status": "account-google-status",
         "/cloud/account/methods/google/complete": "account-google-complete",
         "/cloud/account/methods/google/cancel": "account-google-cancel",
         "/cloud/account/methods/unlink": "account-unlink",

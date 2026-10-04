@@ -75,6 +75,7 @@ export function createNativeAccountMethods({
   now = Date.now,
   accountLinkRedirectUri,
 }) {
+  let oauthOutcome = null;
   let oauthAttempt = null,
     oauthEpoch = 0;
   let review = null,
@@ -84,6 +85,7 @@ export function createNativeAccountMethods({
     resendAt = 0;
   const reset = () => {
     oauthAttempt = null;
+    oauthOutcome = null;
     oauthEpoch++;
     review = null;
     attempt = null;
@@ -130,10 +132,30 @@ export function createNativeAccountMethods({
       const current = await authority();
       const send = (path, input, method) =>
         call(path, input, current, method, ticket);
+      if (operation === "account-google-status") {
+        fields(input, []);
+        if (oauthAttempt?.token === current.token) {
+          if (oauthAttempt.expiresAt <= now()) {
+            oauthAttempt = null;
+            return { status: "expired" };
+          }
+          return {
+            status: "pending",
+            expiresAt: new Date(oauthAttempt.expiresAt).toISOString(),
+          };
+        }
+        return {
+          status:
+            oauthOutcome?.token === current.token
+              ? oauthOutcome.status
+              : "idle",
+        };
+      }
       if (operation === "account-google-cancel") {
         fields(input, []);
         oauthAttempt = null;
         oauthEpoch++;
+        oauthOutcome = { token: current.token, status: "cancelled" };
         return { status: "cancelled" };
       }
       if (operation === "account-google-start") {
@@ -153,6 +175,7 @@ export function createNativeAccountMethods({
           throw fail("Google sign-in linking is not configured", 503);
         const generation = ++oauthEpoch;
         oauthAttempt = null;
+        oauthOutcome = null;
         const verifier = randomBytes(32).toString("base64url");
         const challenge = createHash("sha256")
           .update(verifier)
@@ -235,13 +258,22 @@ export function createNativeAccountMethods({
           expiresAt: new Date(expiresAt).toISOString(),
         };
       }
-      if (operation === "account-google-complete") {
-        fields(input, ["sessionId", "callbackUrl"]);
+      if (
+        operation === "account-google-complete" ||
+        operation === "account-google-return"
+      ) {
+        fields(
+          input,
+          operation === "account-google-return"
+            ? ["callbackUrl"]
+            : ["sessionId", "callbackUrl"],
+        );
         requireMfa(current);
         const pending = oauthAttempt;
         if (
           !pending ||
-          pending.id !== input.sessionId ||
+          (operation === "account-google-complete" &&
+            pending.id !== input.sessionId) ||
           pending.token !== current.token ||
           pending.expiresAt <= now()
         ) {
@@ -269,6 +301,7 @@ export function createNativeAccountMethods({
           if (params.getAll("error").length !== 1 || params.has("code"))
             throw fail("Google linking return could not be verified", 400);
           oauthAttempt = null;
+          oauthOutcome = { token: current.token, status: "cancelled" };
           return { status: "cancelled" };
         }
         const code = params.get("code");
@@ -298,8 +331,16 @@ export function createNativeAccountMethods({
             !string(response.data.account.providerAccountId)
           )
             throw fail("Google linking was not confirmed", 502);
+          oauthOutcome = { token: current.token, status: "linked" };
           return { status: "linked" };
         } catch (error) {
+          if (pending.generation === oauthEpoch)
+            oauthOutcome = {
+              token: current.token,
+              status: [400, 401, 403, 409, 429].includes(error.status)
+                ? "failed"
+                : "unknown",
+            };
           if (![400, 401, 403, 409, 429].includes(error.status))
             throw fail(
               "Check your sign-in methods before trying again",
