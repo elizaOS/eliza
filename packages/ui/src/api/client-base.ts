@@ -1,4 +1,5 @@
 import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
+import { DELTA_STREAM_PROTOCOL } from "@elizaos/core/api/agent-api-types";
 /**
  * ElizaClient class — core infrastructure only.
  *
@@ -60,10 +61,7 @@ import {
   directCloudSharedAgentIdFromBase,
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
-import {
-  DELTA_STREAM_PROTOCOL,
-  mergeStreamingText,
-} from "../utils/streaming-text.js";
+import { mergeStreamingText } from "../utils/streaming-text.js";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
 import { lastActivityHeadersForUrl } from "./auth/user-activity";
 import { ApiError, isCloudAgentGoneError } from "./client-types";

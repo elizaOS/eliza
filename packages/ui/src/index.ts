@@ -1291,7 +1291,6 @@ export { formatByteSize } from "./utils/format.js";
 export { isSafeNavigationUrl } from "./utils/navigation-url.js";
 export { openExternalUrl } from "./utils/openExternalUrl.js";
 export { reportRendererDiagnostic } from "./utils/renderer-diagnostics.js";
-export { DELTA_STREAM_PROTOCOL } from "./utils/streaming-text.js";
 export { isTransientOptionalFetchFailure } from "./utils/transient-fetch.js";
 export { recoverMissedCurrentView } from "./view-action-handoff.js";
 export { generateViewHeroSvgFor } from "./view-hero-art.js";
