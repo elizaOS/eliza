@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { StewardSidecar } from "./steward-sidecar";
+
 let home: string;
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "steward-state-upgrade-"));

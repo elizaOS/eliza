@@ -6,15 +6,18 @@ import {
   hydrateWalletKeysFromNodePlatformSecureStore,
 } from "./hydrate-wallet-keys-from-platform-store";
 import { deleteWalletSecrets } from "./wallet-secrets";
+
 const legacy = vi.hoisted(() => ({ values: new Map<string, string>() }));
 vi.mock("./platform-secure-store-node", () => ({
   isWalletOsStoreReadEnabled: () => true,
   createNodePlatformSecureStore: () => ({
     isAvailable: async () => true,
-    get: async (_vault: string, kind: string) =>
-      legacy.values.has(kind)
-        ? { ok: true, value: legacy.values.get(kind)! }
-        : { ok: false, reason: "not_found" },
+    get: async (_vault: string, kind: string) => {
+      const value = legacy.values.get(kind);
+      return value === undefined
+        ? { ok: false, reason: "not_found" }
+        : { ok: true, value };
+    },
     delete: async (_vault: string, kind: string) => ({
       ok: true,
       deleted: legacy.values.delete(kind),

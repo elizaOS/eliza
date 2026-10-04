@@ -82,13 +82,13 @@ it("recovers an existing plaintext installation into the secure store before rem
     backend: "none",
     isAvailable: async () => true,
     get: async (v, k) => {
-      const value = secrets.get(v + ":" + k);
+      const value = secrets.get(`${v}:${k}`);
       return value === undefined
         ? { ok: false, reason: "not_found" }
         : { ok: true, value };
     },
     set: async (v, k, value) => {
-      secrets.set(v + ":" + k, value);
+      secrets.set(`${v}:${k}`, value);
       return { ok: true };
     },
     delete: async () => ({ ok: true, deleted: false }),
