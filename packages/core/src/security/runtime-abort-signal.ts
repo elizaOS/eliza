@@ -31,8 +31,9 @@ export function isRuntimeAbortSignal(value: object): boolean {
 		return false;
 	if (Object.getPrototypeOf(value) !== signalPrototype) return false;
 	for (const key of Reflect.ownKeys(value)) {
-		const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-		if (typeof key === "string" || !("value" in descriptor)) return false;
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (!descriptor || typeof key === "string" || !("value" in descriptor))
+			return false;
 	}
 	try {
 		return typeof abortedGetter.call(value) === "boolean";

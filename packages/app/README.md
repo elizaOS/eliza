@@ -3,6 +3,10 @@
 Eliza application host, renderer, and native platform tooling for web, desktop, iOS, and
 Android.
 
+`@elizaos/app` is the Node host API. Use `@elizaos/app/browser` or
+`@elizaos/app/desktop-shell` for renderer composition. Import shared contracts,
+UI and authentication from their owning packages; the host barrel does not relay them.
+
 Start the app and API with `bun run dev` from the repository root. Native targets
 require their platform SDKs; available build/install commands are in package.json.
 Concurrent worktrees should use `bun run --cwd packages/app dev:shared`. UI changes
@@ -34,6 +38,28 @@ for native builds and physical-device tests.
 Web subscription settings select a registered product with `VITE_ELIZA_APPLICATION_SLOT`;
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
+
+## Disposable hosted Android fixtures
+
+`scripts/mobile/android/hosted-fixture` supplies display/network admission and
+bounded diagnostics for fresh GitHub-hosted AOSP fixtures. Mutating setup requires
+`emulator-5554`, AVD `test` and a single user 0. Display setup additionally
+requires an unsecured observed keyguard; network setup rejects preinstalled
+third-party apps. Boot-device admission
+is specific to the captured API 35 x86_64 topology. Hosts inject ADB execution and
+retain orchestration/output ownership. Never use these helpers to provision a
+physical phone or relax their admission checks to fit an arbitrary emulator.
+Run `node --test scripts/mobile/android/hosted-fixture/*.test.mjs` for the captured
+state and refusal tests; these tests do not establish live emulator qualification.
+
+The `hosted-fixture/webview-provider.mjs` factory adds the pinned Chromium provider
+replacement flow. Hosts must supply nonempty system-package exclusions, the SDK
+environment, an absolute evidence directory and the explicit
+`api35-default-x86_64` fixture acknowledgement. The library never discovers a host
+SDK or executes on import. It authenticates the stock backup, archive, candidate
+APK, signer, live overlay and restarted framework before reporting provisioning;
+runtime feature qualification remains separate. The bundled extractor validates
+archive membership even under Python optimization.
 
 ## Android native plugin verification
 
@@ -186,7 +212,11 @@ qualification, not installed service, HOME-role, AOSP or device acceptance.
 Shared local speech sources and reproducible runtime/model tooling are documented
 in [local speech](scripts/local-speech/README.md). The source-export resolver in
 `scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
-for independent Bun hosts; consumers retain their source pin, credentials and policy.
+for independent Bun hosts; consumers retain their source pin, credentials and policy. `scripts/lib/immutable-workspace-source.mjs`
+authenticates prepared workspace files against an exact commit, including ignored
+files and Git stat-cache bypasses. Hosts declare their generated metadata/output
+paths; declared Turbo outputs and dependency directories are allowed, while
+tracked source bytes remain immutable. Git submodules require separate admission.
 
 Consumer hosts can use `native-host/task-runtime-gateway.mjs` for authenticated
 SQLite task lifecycles and explicit domain-route extensions. Document/canvas

@@ -9,13 +9,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
+import type { ConversationMetadata } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   CHAT_UPLOAD_MIME_TYPES,
   type ChannelType,
   type Content,
   ContentType,
-  type ConversationMetadata,
   createMessageMemory,
   decodeUrlPathComponent,
   ElizaError,
@@ -26,16 +26,18 @@ import {
   MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
+  toWellFormedUnicode,
+  type UUID,
+  validateUuid,
+} from "@elizaos/core";
+import { sendJsonError } from "@elizaos/host";
+import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-  sendJsonError,
-  toWellFormedUnicode,
-  type UUID,
-  validateUuid,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {

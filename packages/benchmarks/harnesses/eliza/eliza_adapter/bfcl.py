@@ -2,7 +2,7 @@
 
 Routes BFCL function-calling LLM queries through the elizaOS TypeScript
 benchmark bridge. Mirrors the duck-typed interface that
-``benchmarks.bfcl.runner.BFCLRunner`` expects from ``BFCLAgent``:
+``benchmarks.suites.bfcl.runner.BFCLRunner`` expects from ``BFCLAgent``:
 
     async def initialize() -> None
     async def setup_test_case(test_case) -> None  # optional
@@ -17,11 +17,10 @@ handles its own logging server-side.
 
 from __future__ import annotations
 
-from benchmarks.bfcl import (
+from benchmarks.suites.bfcl import (
     call_from_record as _call_from_record,
     coerce_arguments as _coerce_arguments,
     iter_call_records as _iter_call_records,
-    provider_safe_tool_name as _provider_safe_tool_name,
     provider_safe_tools as _provider_safe_tools,
     restore_original_call_names as _restore_original_call_names,
 )
@@ -32,14 +31,13 @@ import os
 import re
 import time
 from copy import deepcopy
-from hashlib import sha1
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from eliza_adapter.client import ElizaClient
 
 if TYPE_CHECKING:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         ArgumentValue,
         BFCLTestCase,
         FunctionCall,
@@ -195,20 +193,20 @@ def get_default_registry() -> ElizaBFCLFunctionRegistry:
 
 
 def _bfcl_types():
-    """Lazy import of benchmarks.bfcl.types — avoids needing benchmarks/ on sys.path at module load."""
-    from benchmarks.bfcl.types import ArgumentValue, BFCLTestCase, FunctionCall
+    """Lazy import of benchmarks.suites.bfcl.types — avoids needing benchmarks/ on sys.path at module load."""
+    from benchmarks.suites.bfcl.types import ArgumentValue, BFCLTestCase, FunctionCall
 
     return ArgumentValue, BFCLTestCase, FunctionCall
 
 
 def _bfcl_parser():
-    from benchmarks.bfcl.parser import FunctionCallParser
+    from benchmarks.suites.bfcl.parser import FunctionCallParser
 
     return FunctionCallParser
 
 
 def _bfcl_tools_formatter():
-    from benchmarks.bfcl.plugin import generate_openai_tools_format
+    from benchmarks.suites.bfcl.plugin import generate_openai_tools_format
 
     return generate_openai_tools_format
 
@@ -369,7 +367,7 @@ def _is_live_category(category: object) -> bool:
 class ElizaBFCLAgent:
     """BFCL agent wrapper that delegates LLM calls to the eliza TS bridge.
 
-    Drop-in replacement for ``benchmarks.bfcl.agent.BFCLAgent`` for the
+    Drop-in replacement for ``benchmarks.suites.bfcl.agent.BFCLAgent`` for the
     BFCLRunner — same ``query()`` shape but the LLM call goes through
     ``ElizaClient.send_message()`` instead of binding a model plugin into a
     Python AgentRuntime.

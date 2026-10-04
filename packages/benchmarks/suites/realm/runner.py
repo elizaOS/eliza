@@ -18,10 +18,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.disruption import apply_disruption, first_disruption
-from benchmarks.realm.evaluator import MetricsCalculator, REALMEvaluator
-from benchmarks.realm.types import (
+from benchmarks.suites.realm.dataset import REALMDataset
+from benchmarks.suites.realm.disruption import apply_disruption, first_disruption
+from benchmarks.suites.realm.evaluator import MetricsCalculator, REALMEvaluator
+from benchmarks.suites.realm.types import (
     LEADERBOARD_NOTE,
     LEADERBOARD_SCORES,
     PROBLEMS_WITH_DISRUPTIONS,
@@ -499,7 +499,7 @@ class _MockREALMAgent:
         trajectory = PlanningTrajectory(task_id=task.id, start_time_ms=t0 * 1000)
 
         # Build a problem-specific oracle solution.
-        from benchmarks.realm import solvers
+        from benchmarks.suites.realm import solvers
 
         sol: dict[str, Any] = {}
         if task.problem == RealmProblem.P11:

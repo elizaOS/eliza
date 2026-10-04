@@ -14,6 +14,23 @@ import {
   isPageScopedConversationMetadata,
 } from "@elizaos/agent";
 import type {
+  CreateLifeOpsDefinitionRequest,
+  CreateLifeOpsGoalRequest,
+  LifeOpsCadence,
+  LifeOpsDailySlot,
+  LifeOpsDefinitionRecord,
+  LifeOpsDomain,
+  LifeOpsGoalRecord,
+  LifeOpsWindowPolicy,
+  UpdateLifeOpsDefinitionRequest,
+  UpdateLifeOpsGoalRequest,
+} from "@elizaos/contracts";
+import {
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
+import type {
   ActionResult,
   AgentContext,
   EffectReceipt,
@@ -26,32 +43,17 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
-  CALENDAR_TIME_ZONE_INVALID,
-  CalendarTimeZoneError,
   ElizaError,
   extractUserText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveActionArgs,
-  resolveCalendarTimeZone,
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
-import { findInteractionRegions } from "@elizaos/core/messaging/interactions/parse";
+import { findInteractionRegions } from "@elizaos/core/protocol";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
-import type {
-  CreateLifeOpsDefinitionRequest,
-  CreateLifeOpsGoalRequest,
-  LifeOpsCadence,
-  LifeOpsDailySlot,
-  LifeOpsDefinitionRecord,
-  LifeOpsDomain,
-  LifeOpsGoalRecord,
-  LifeOpsWindowPolicy,
-  UpdateLifeOpsDefinitionRequest,
-  UpdateLifeOpsGoalRequest,
-} from "../contracts/index.js";
 import {
   calendarReadUnavailableMessage,
   getGoogleCapabilityStatus,
@@ -1651,7 +1653,9 @@ function summarizeCadence(cadence: LifeOpsCadence, timeZone?: string): string {
       if (Number.isNaN(dueAt.getTime()) || !zone) {
         return "once";
       }
-      return `once on ${dueAt.toLocaleString(undefined, {
+      // English prose whose am/pm clock tokens resolveDuplicateByTimeHint
+      // reads back, so it must not follow a 24-hour host locale.
+      return `once on ${dueAt.toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -5105,7 +5109,12 @@ async function runLifeOperationHandlerInner(
       const timedRequestKind = llmRequestKind;
       // A one-shot reminder fires at its requested time, not the generic
       // task visibility window. Preserve explicitly configured lead time.
-      if (timedRequestKind === "reminder" && cadence?.kind === "once") {
+      if (
+        cadence?.kind === "once" &&
+        (timedRequestKind === "reminder" ||
+          timedRequestKind === "alarm" ||
+          ownerSurfaceActionName === "OWNER_REMINDERS")
+      ) {
         cadence = {
           ...cadence,
           visibilityLeadMinutes: cadence.visibilityLeadMinutes ?? 0,

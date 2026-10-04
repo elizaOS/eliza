@@ -8,6 +8,12 @@ export {
   LoginApiError,
   LoginClient,
 } from "./client.ts";
+export {
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
+  LAST_ACTIVITY_HEADER_NAME,
+  SESSION_COOKIE_NAME,
+} from "./session-constants.js";
 export type * from "./types.ts";
 export {
   CHAINS,

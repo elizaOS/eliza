@@ -15,7 +15,7 @@ import {
   parseVoiceUiContext,
   REALTIME_VOICE_CLIENT_TRANSPORT,
   type VoiceUiContext,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/;

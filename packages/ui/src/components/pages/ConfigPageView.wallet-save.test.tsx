@@ -11,12 +11,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ConfigPageView } from "./ConfigPageView";
 
 const state = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (
     select: (value: Record<string, unknown>) => unknown,
   ) => select(state.value),
 }));
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: undefined, agentProps: {} }),
 }));
 vi.mock("../views/ShellViewAgentSurface", () => ({

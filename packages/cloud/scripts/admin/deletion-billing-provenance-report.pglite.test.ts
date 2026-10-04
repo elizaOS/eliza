@@ -12,8 +12,10 @@ import {
   resetObjectStorageClientForTests,
 } from "../../shared/src/lib/storage/s3-compatible-client";
 import {
+  DeletionBillingProvenanceReportError,
   deletionBillingGuardQueries,
   readDeletionBillingProvenance,
+  readGuardedFailedDeleteJobFacts,
 } from "./deletion-billing-provenance-report";
 
 let db: PGlite | undefined;
@@ -359,4 +361,24 @@ test("classifies complete offloaded failed jobs over real S3 HTTP and refuses mi
     }
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("classifies a real failed-job query refusal without exporting its private cause", async () => {
+  db = new PGlite();
+  await seedAuthorityFixture(db);
+  // This real schema deliberately lacks the canonical job timestamp columns.
+  // The boundary must distinguish a query refusal from missing blob authority.
+  const error = await readGuardedFailedDeleteJobFacts(db, migration).catch(
+    (cause: unknown) => cause,
+  );
+  expect(error).toMatchObject({ code: "failed_job_query_failed" });
+  if (!(error instanceof DeletionBillingProvenanceReportError)) throw error;
+  expect(error.cause).toMatchObject({ code: "42703" });
+  if (!(error.cause instanceof Error)) throw error.cause;
+  expect(error.cause.message).toContain("created_at");
+  expect(JSON.stringify(error)).not.toContain("created_at");
+  expect(JSON.stringify(error)).not.toContain(org);
+  expect(
+    (await db.query("SELECT count(*)::integer AS count FROM jobs")).rows,
+  ).toEqual([{ count: 1 }]);
 });

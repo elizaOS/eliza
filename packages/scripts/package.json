@@ -11,6 +11,20 @@
     "@elizaos/plugin-native-inference": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/testing": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/ui": "workspace:*",
+    "@elizaos/voice": "workspace:*"
+  },
+  "exports": {
+    ".": "./lib/index.ts"
+  },
+  "devDependencies": {
+    "elizaos-benchmarks": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/voice": "workspace:*"
+  },
+  "scripts": {
+    "test:real-llm:attachment": "node provider-smokes/real-llm-attachment-smoke.ts",
+    "test:real-service:audio": "node provider-smokes/real-service-audio-roundtrip.ts",
+    "test:real-service:voice": "node provider-smokes/real-service-voice-e2e.ts"
   }
 }

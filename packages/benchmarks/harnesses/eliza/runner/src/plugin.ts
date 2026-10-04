@@ -8,16 +8,17 @@
  *
  * @module benchmark/plugin
  */
+import { AsyncLocalStorage } from "node:async_hooks";
+import { type Action, ElizaError, logger, type Plugin } from "@elizaos/core";
 import {
-  type Action,
-  type ActionParameter,
-  logger,
-  type Plugin,
-} from "@elizaos/core";
-
-// ---------------------------------------------------------------------------
-// Benchmark context (module-level shared state, set per-request by the server)
-// ---------------------------------------------------------------------------
+  LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES,
+  LIFEOPS_BENCHMARK_TOOL_PARAMETERS,
+  lifeOpsBenchmarkToolDescription,
+} from "@elizaos/lifeops-bench";
+import {
+  LOCA_BENCHMARK_TOOL_ACTION_NAMES,
+  locaBenchmarkToolParametersFor,
+} from "@elizaos/plugin-benchmarks";
 
 export interface BenchmarkContext {
   benchmark: string;
@@ -34,35 +35,30 @@ export interface BenchmarkContext {
   [key: string]: unknown;
 }
 
-let _currentContext: BenchmarkContext | null = null;
-
-export function setBenchmarkContext(ctx: BenchmarkContext | null): void {
-  _currentContext = ctx;
+interface BenchmarkTurn {
+  context: BenchmarkContext;
+  actions: CapturedAction[];
 }
+
+const benchmarkTurn = new AsyncLocalStorage<BenchmarkTurn>();
 
 export function getBenchmarkContext(): BenchmarkContext | null {
-  return _currentContext;
+  return benchmarkTurn.getStore()?.context ?? null;
 }
 
-/**
- * Keep benchmark provider context installed only for the native turn that
- * consumes it. Rejections must clear the module-level slot before another
- * request can observe stale task data.
- */
 export async function runWithBenchmarkContext<T>(
-  ctx: BenchmarkContext,
+  context: BenchmarkContext,
   fn: () => Promise<T> | T,
-): Promise<T> {
-  setBenchmarkContext(ctx);
-  try {
-    return await fn();
-  } finally {
-    setBenchmarkContext(null);
-  }
+): Promise<{ result: T; capturedActions: CapturedAction[] }> {
+  const turn: BenchmarkTurn = { context, actions: [] };
+  return benchmarkTurn.run(turn, async () => ({
+    result: await fn(),
+    capturedActions: [...turn.actions],
+  }));
 }
 
 function currentBenchmarkName(): string {
-  return (_currentContext?.benchmark ?? "").trim().toLowerCase();
+  return (getBenchmarkContext()?.benchmark ?? "").trim().toLowerCase();
 }
 
 function isBenchmarkActionDisabledForCurrentContext(): boolean {
@@ -87,25 +83,14 @@ export interface CapturedAction {
   value?: string;
 }
 
-let _capturedAction: CapturedAction | null = null;
-let _capturedActions: CapturedAction[] = [];
-
-export function getCapturedAction(): CapturedAction | null {
-  return _capturedAction;
-}
-
-export function getCapturedActions(): CapturedAction[] {
-  return [..._capturedActions];
-}
-
-export function clearCapturedAction(): void {
-  _capturedAction = null;
-  _capturedActions = [];
-}
-
 function recordCapturedAction(action: CapturedAction): CapturedAction {
-  _capturedAction = action;
-  _capturedActions.push(action);
+  const turn = benchmarkTurn.getStore();
+  if (!turn) {
+    throw new ElizaError("Benchmark action requires an active turn", {
+      code: "BENCHMARK_TURN_REQUIRED",
+    });
+  }
+  turn.actions.push(action);
   return action;
 }
 
@@ -129,462 +114,6 @@ function isVendingBenchmarkContext(): boolean {
 
 function isLocaBenchmarkContext(): boolean {
   return new Set(["loca-bench", "loca_bench"]).has(currentBenchmarkName());
-}
-
-const LOCA_BENCHMARK_TOOL_ACTION_NAMES = [
-  "claim_done",
-  "filesystem_create_directory",
-  "filesystem_directory_tree",
-  "filesystem_edit_file",
-  "filesystem_get_file_info",
-  "filesystem_list_allowed_directories",
-  "filesystem_list_directory",
-  "filesystem_list_directory_with_sizes",
-  "filesystem_move_file",
-  "filesystem_read_file",
-  "filesystem_read_media_file",
-  "filesystem_read_multiple_files",
-  "filesystem_read_text_file",
-  "filesystem_search_files",
-  "filesystem_write_file",
-  "memory_add_observations",
-  "memory_create_entities",
-  "memory_create_relations",
-  "memory_delete_entities",
-  "memory_delete_observations",
-  "memory_delete_relations",
-  "memory_open_nodes",
-  "memory_read_graph",
-  "memory_search_nodes",
-  "python_execute",
-  "canvas_canvas_add_quiz_question",
-  "canvas_canvas_create_account_report",
-  "canvas_canvas_create_assignment",
-  "canvas_canvas_create_conversation",
-  "canvas_canvas_create_course",
-  "canvas_canvas_create_module",
-  "canvas_canvas_create_module_item",
-  "canvas_canvas_create_quiz",
-  "canvas_canvas_create_rubric",
-  "canvas_canvas_create_user",
-  "canvas_canvas_delete_quiz",
-  "canvas_canvas_delete_quiz_question",
-  "canvas_canvas_enroll_user",
-  "canvas_canvas_get_account",
-  "canvas_canvas_get_account_reports",
-  "canvas_canvas_get_assignment",
-  "canvas_canvas_get_conversation",
-  "canvas_canvas_get_course",
-  "canvas_canvas_get_course_grades",
-  "canvas_canvas_get_current_user",
-  "canvas_canvas_get_dashboard",
-  "canvas_canvas_get_dashboard_cards",
-  "canvas_canvas_get_discussion_topic",
-  "canvas_canvas_get_file",
-  "canvas_canvas_get_module",
-  "canvas_canvas_get_module_item",
-  "canvas_canvas_get_page",
-  "canvas_canvas_get_quiz",
-  "canvas_canvas_get_quiz_questions",
-  "canvas_canvas_get_rubric",
-  "canvas_canvas_get_submission",
-  "canvas_canvas_get_syllabus",
-  "canvas_canvas_get_upcoming_assignments",
-  "canvas_canvas_get_user_grades",
-  "canvas_canvas_get_user_profile",
-  "canvas_canvas_health_check",
-  "canvas_canvas_list_account_courses",
-  "canvas_canvas_list_account_users",
-  "canvas_canvas_list_announcements",
-  "canvas_canvas_list_assignments",
-  "canvas_canvas_list_calendar_events",
-  "canvas_canvas_list_conversations",
-  "canvas_canvas_list_courses",
-  "canvas_canvas_list_discussion_topics",
-  "canvas_canvas_list_files",
-  "canvas_canvas_list_folders",
-  "canvas_canvas_list_module_items",
-  "canvas_canvas_list_modules",
-  "canvas_canvas_list_notifications",
-  "canvas_canvas_list_pages",
-  "canvas_canvas_list_quizzes",
-  "canvas_canvas_list_rubrics",
-  "canvas_canvas_list_sub_accounts",
-  "canvas_canvas_list_users",
-  "canvas_canvas_login",
-  "canvas_canvas_logout",
-  "canvas_canvas_mark_module_item_complete",
-  "canvas_canvas_post_to_discussion",
-  "canvas_canvas_publish_quiz",
-  "canvas_canvas_start_quiz_attempt",
-  "canvas_canvas_submit_assignment",
-  "canvas_canvas_submit_grade",
-  "canvas_canvas_update_assignment",
-  "canvas_canvas_update_course",
-  "canvas_canvas_update_quiz",
-  "canvas_canvas_update_quiz_question",
-  "canvas_canvas_update_user_profile",
-  "canvas_get_assignment",
-  "canvas_get_course",
-  "canvas_get_dashboard",
-  "canvas_get_dashboard_cards",
-  "canvas_get_file",
-  "canvas_get_page",
-  "canvas_get_quiz",
-  "canvas_get_submission",
-  "canvas_get_syllabus",
-  "canvas_get_user_grades",
-  "canvas_get_user_profile",
-  "canvas_health_check",
-  "canvas_list_announcements",
-  "canvas_list_assignments",
-  "canvas_list_calendar_events",
-  "canvas_list_courses",
-  "canvas_list_discussion_topics",
-  "canvas_list_files",
-  "canvas_list_folders",
-  "canvas_list_module_items",
-  "canvas_list_modules",
-  "canvas_list_notifications",
-  "canvas_list_pages",
-  "canvas_list_quizzes",
-] as const;
-
-const stringListSchema = {
-  type: "array" as const,
-  items: { type: "string" as const },
-};
-
-const objectListSchema = {
-  type: "array" as const,
-  items: { type: "object" as const, additionalProperties: true },
-};
-
-const LOCA_BENCHMARK_TOOL_PARAMETERS: ActionParameter[] = [
-  {
-    name: "path",
-    description: "Filesystem path inside the LOCA task workspace.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "paths",
-    description: "Filesystem paths inside the LOCA task workspace.",
-    required: false,
-    schema: stringListSchema,
-  },
-  {
-    name: "pattern",
-    description: "Glob or search pattern for filesystem search tools.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "excludePatterns",
-    description: "Glob patterns to exclude from filesystem searches.",
-    required: false,
-    schema: stringListSchema,
-  },
-  {
-    name: "content",
-    description: "Text content to write to a file.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "head",
-    description: "Read only the first N lines of a text file.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "tail",
-    description: "Read only the last N lines of a text file.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "sortBy",
-    description: "Directory listing sort key.",
-    required: false,
-    schema: { type: "string", enum: ["name", "size"] },
-  },
-  {
-    name: "source",
-    description: "Source filesystem path for move or copy style operations.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "destination",
-    description:
-      "Destination filesystem path for move or copy style operations.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "query",
-    description: "Search query for memory or SaaS tools.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "names",
-    description: "Memory entity names to open.",
-    required: false,
-    schema: stringListSchema,
-  },
-  {
-    name: "observations",
-    description: "Memory observations payload.",
-    required: false,
-    schema: objectListSchema,
-  },
-  {
-    name: "entities",
-    description: "Memory entity creation payload.",
-    required: false,
-    schema: objectListSchema,
-  },
-  {
-    name: "relations",
-    description: "Memory relation payload.",
-    required: false,
-    schema: objectListSchema,
-  },
-  {
-    name: "deletions",
-    description: "Memory observation deletion payload.",
-    required: false,
-    schema: objectListSchema,
-  },
-  {
-    name: "entityNames",
-    description: "Memory entity names to delete.",
-    required: false,
-    schema: stringListSchema,
-  },
-  {
-    name: "edits",
-    description: "Structured file edit payload.",
-    required: false,
-    schema: objectListSchema,
-  },
-  {
-    name: "dryRun",
-    description: "Whether to preview a filesystem edit without applying it.",
-    required: false,
-    schema: { type: "boolean" },
-  },
-  {
-    name: "course_id",
-    description: "Canvas course id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "assignment_id",
-    description: "Canvas assignment id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "file_id",
-    description: "Canvas file id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "folder_id",
-    description: "Canvas folder id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "module_id",
-    description: "Canvas module id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "item_id",
-    description: "Canvas module item id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "page_url",
-    description: "Canvas page URL slug.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "quiz_id",
-    description: "Canvas quiz id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "user_id",
-    description: "Canvas user id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "account_id",
-    description: "Canvas account id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "conversation_id",
-    description: "Canvas conversation id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "topic_id",
-    description: "Canvas discussion topic id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "rubric_id",
-    description: "Canvas rubric id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "question_id",
-    description: "Canvas quiz question id.",
-    required: false,
-    schema: { type: "number" },
-  },
-  {
-    name: "submission_type",
-    description: "Canvas assignment submission type.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "grade",
-    description: "Canvas grade value.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "type",
-    description: "Canvas module item, quiz question, or content type.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "name",
-    description: "Canvas object name or generic resource name.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "title",
-    description: "Canvas object title.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "message",
-    description: "Canvas discussion or notification message.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "body",
-    description: "Canvas body text or HTML payload.",
-    required: false,
-    schema: { type: "string" },
-  },
-];
-
-function pickLocaParameters(names: string[]): ActionParameter[] {
-  const wanted = new Set(names);
-  return LOCA_BENCHMARK_TOOL_PARAMETERS.filter((parameter) =>
-    wanted.has(parameter.name),
-  );
-}
-
-const LOCA_FILESYSTEM_TOOL_PARAMETERS = pickLocaParameters([
-  "path",
-  "paths",
-  "pattern",
-  "excludePatterns",
-  "content",
-  "head",
-  "tail",
-  "sortBy",
-  "source",
-  "destination",
-  "edits",
-  "dryRun",
-]);
-
-const LOCA_MEMORY_TOOL_PARAMETERS = pickLocaParameters([
-  "query",
-  "names",
-  "observations",
-  "entities",
-  "relations",
-  "deletions",
-  "entityNames",
-]);
-
-const LOCA_CANVAS_TOOL_PARAMETERS = pickLocaParameters([
-  "course_id",
-  "assignment_id",
-  "file_id",
-  "folder_id",
-  "module_id",
-  "item_id",
-  "page_url",
-  "quiz_id",
-  "user_id",
-  "account_id",
-  "conversation_id",
-  "topic_id",
-  "rubric_id",
-  "question_id",
-  "submission_type",
-  "grade",
-  "type",
-  "name",
-  "title",
-  "message",
-  "body",
-]);
-
-const LOCA_PYTHON_TOOL_PARAMETERS: ActionParameter[] = [
-  {
-    name: "code",
-    description: "Python code to execute in the LOCA task environment.",
-    required: false,
-    schema: { type: "string" },
-  },
-];
-
-const LOCA_CLAIM_DONE_PARAMETERS: ActionParameter[] = [
-  {
-    name: "answer",
-    description: "Final answer or completion summary for the LOCA task.",
-    required: false,
-    schema: { type: "string" },
-  },
-];
-
-function locaBenchmarkToolParametersFor(name: string): ActionParameter[] {
-  if (name.startsWith("filesystem_")) return LOCA_FILESYSTEM_TOOL_PARAMETERS;
-  if (name.startsWith("memory_")) return LOCA_MEMORY_TOOL_PARAMETERS;
-  if (name.startsWith("canvas_")) return LOCA_CANVAS_TOOL_PARAMETERS;
-  if (name === "python_execute") return LOCA_PYTHON_TOOL_PARAMETERS;
-  if (name === "claim_done") return LOCA_CLAIM_DONE_PARAMETERS;
-  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -641,10 +170,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function compactJson(value: unknown, maxLength = 500): string {
-  const raw =
-    typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  return raw.length > maxLength ? `${raw.slice(0, maxLength)}...` : raw;
+function contextJson(value: unknown): string {
+  return typeof value === "string"
+    ? value
+    : (JSON.stringify(value, null, 2) ?? "null");
 }
 
 function formatToolLine(t: Record<string, unknown>): string {
@@ -652,93 +181,7 @@ function formatToolLine(t: Record<string, unknown>): string {
   const name = t.name ?? fn?.name ?? "unknown";
   const desc = t.description ?? fn?.description ?? "";
   const params = t.parameters ?? fn?.parameters ?? {};
-  return `- **${String(name)}**: ${String(desc)}\n  Parameters: ${compactJson(params, 1200)}`;
-}
-
-function formatLocaToolLine(t: Record<string, unknown>): string {
-  const fn = isPlainRecord(t.function) ? t.function : undefined;
-  const name = String(t.name ?? fn?.name ?? "unknown");
-  const desc = String(t.description ?? fn?.description ?? "")
-    .replace(/\s+/g, " ")
-    .slice(0, 180);
-  const params = isPlainRecord(t.parameters)
-    ? t.parameters
-    : isPlainRecord(fn?.parameters)
-      ? fn.parameters
-      : {};
-  const properties = isPlainRecord(params.properties)
-    ? Object.keys(params.properties)
-    : [];
-  const required = Array.isArray(params.required)
-    ? params.required.map(String)
-    : [];
-  const requiredText =
-    required.length > 0 ? ` required: ${required.join(", ")}` : "";
-  const paramText =
-    properties.length > 0
-      ? ` params: ${properties.slice(0, 16).join(", ")}${properties.length > 16 ? ", ..." : ""};${requiredText}`
-      : " params: none";
-  return `- **${name}**: ${desc}${desc ? " " : ""}${paramText}`;
-}
-
-function renderLifeOpsContext(value: unknown): string | null {
-  if (!isPlainRecord(value)) return null;
-
-  const sections: string[] = [];
-  const nowIso = typeof value.nowIso === "string" ? value.nowIso : "";
-  const today = typeof value.today === "string" ? value.today : "";
-  const seed = typeof value.seed === "number" ? value.seed : undefined;
-
-  sections.push(
-    [
-      `\n## LifeOps Clock`,
-      `- Current benchmark time: ${nowIso || "unknown"}`,
-      `- Today: ${today || (nowIso ? nowIso.slice(0, 10) : "unknown")}`,
-      seed !== undefined ? `- World seed: ${seed}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  );
-
-  const events = Array.isArray(value.calendarEvents)
-    ? value.calendarEvents
-    : [];
-  if (events.length > 0) {
-    const lines = events.slice(0, 80).map((event) => {
-      const record = isPlainRecord(event) ? event : {};
-      const id = String(record.id ?? "?");
-      const calendarId = String(record.calendarId ?? record.calendar_id ?? "?");
-      const title = String(record.title ?? "");
-      const start = String(record.start ?? "");
-      const end = String(record.end ?? "");
-      const status = String(record.status ?? "");
-      return `- ${id} | ${calendarId} | ${title} | ${start} -> ${end} | ${status}`;
-    });
-    sections.push(`\n## Calendar Events\n${lines.join("\n")}`);
-  }
-
-  const previousResults = Array.isArray(value.previousToolResults)
-    ? value.previousToolResults
-    : [];
-  if (previousResults.length > 0) {
-    const lines = previousResults.slice(-12).map((entry, index) => {
-      const record = isPlainRecord(entry) ? entry : {};
-      const tool = String(record.tool ?? "unknown");
-      const ok = record.ok === true ? "true" : "false";
-      const error =
-        typeof record.error === "string" && record.error
-          ? ` error=${record.error}`
-          : "";
-      return [
-        `- ${index + 1}. ${tool} ok=${ok}${error}`,
-        `  arguments: ${compactJson(record.arguments, 350)}`,
-        `  result: ${compactJson(record.result, 500)}`,
-      ].join("\n");
-    });
-    sections.push(`\n## Previous LifeOps Tool Results\n${lines.join("\n")}`);
-  }
-
-  return sections.join("\n");
+  return `- **${String(name)}**: ${String(desc)}\n  Parameters: ${contextJson(params)}`;
 }
 
 function formatContextAsText(ctx: BenchmarkContext): string {
@@ -807,7 +250,10 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   }
 
   if (isLifeOpsBenchmark) {
-    const lifeopsContext = renderLifeOpsContext(ctx.lifeops);
+    const lifeopsContext =
+      ctx.lifeops === undefined
+        ? null
+        : `\n## LifeOps State\n${contextJson(ctx.lifeops)}`;
     if (lifeopsContext) sections.push(lifeopsContext);
   }
 
@@ -842,9 +288,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     sections.push(
       `For experience retrieval turns, use REPLY with a concise answer that recalls the relevant learning.`,
     );
-  } else if (isLocaBenchmark && ctx.tools && ctx.tools.length > 0) {
-    const toolLines = ctx.tools.map(formatLocaToolLine);
-    sections.push(`\n## Available Tools\n${toolLines.join("\n")}`);
   } else if (ctx.tools && ctx.tools.length > 0) {
     const toolLines = ctx.tools.map(formatToolLine);
     sections.push(`\n## Available Tools\n${toolLines.join("\n")}`);
@@ -852,27 +295,11 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 
   // Mind2Web: HTML + elements
   if (ctx.html) {
-    const preview =
-      ctx.html.length > 3000 ? `${ctx.html.slice(0, 3000)}\n...` : ctx.html;
-    sections.push(`\n## Page HTML\n\`\`\`html\n${preview}\n\`\`\``);
+    sections.push(`\n## Page HTML\n\`\`\`html\n${ctx.html}\n\`\`\``);
   }
 
   if (ctx.elements && ctx.elements.length > 0) {
-    const elemLines = ctx.elements.slice(0, 15).map((el) => {
-      const id = el.backend_node_id ?? el.id ?? "?";
-      const tag = el.tag ?? "?";
-      const attrs =
-        el.attributes && typeof el.attributes === "object"
-          ? Object.entries(el.attributes as Record<string, unknown>)
-              .slice(0, 5)
-              .map(([k, v]) => `${k}="${String(v)}"`)
-              .join(" ")
-          : "";
-      const text =
-        typeof el.text_content === "string" ? el.text_content.slice(0, 50) : "";
-      return `[${id}] <${tag} ${attrs}> ${text}`;
-    });
-    sections.push(`\n## Available Elements\n${elemLines.join("\n")}`);
+    sections.push(`\n## Available Elements\n${contextJson(ctx.elements)}`);
   }
 
   // Context-bench: passages
@@ -1104,189 +531,6 @@ export function lifecycleBenchmarkProviderPayloadIsNeutral(): boolean {
 // Plugin factory
 // ---------------------------------------------------------------------------
 
-const LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES = [
-  "CALENDAR",
-  "CALENDAR_CREATE_EVENT",
-  "CALENDAR_UPDATE_EVENT",
-  "CALENDAR_DELETE_EVENT",
-  "CALENDAR_SEARCH_EVENTS",
-  "CALENDAR_CHECK_AVAILABILITY",
-  "CALENDAR_PROPOSE_TIMES",
-  "CALENDAR_NEXT_EVENT",
-  "CALENDAR_UPDATE_PREFERENCES",
-  "MESSAGE",
-  "MESSAGE_SEND",
-  "MESSAGE_DRAFT_REPLY",
-  "MESSAGE_MANAGE",
-  "MESSAGE_TRIAGE",
-  "MESSAGE_SEARCH_INBOX",
-  "MESSAGE_LIST_CHANNELS",
-  "MESSAGE_READ_CHANNEL",
-  "MESSAGE_READ_WITH_CONTACT",
-  "ARCHIVE_EMAIL_THREAD",
-  "ARCHIVE_THREAD",
-] as const;
-
-const LIFEOPS_BENCHMARK_TOOL_PARAMETERS: ActionParameter[] = [
-  {
-    name: "subaction",
-    description: "Calendar/Entity subaction, such as check_availability.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "operation",
-    description: "Message/Money operation, such as manage or search_inbox.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "action",
-    description: "Alias for subaction or operation.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "source",
-    description: "LifeOps source, for example gmail, slack, imessage.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "manageOperation",
-    description: "Message manage operation, such as archive or mark_read.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "threadId",
-    description: "Email/chat thread id.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "thread_id",
-    description: "Email/chat thread id alias.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "messageId",
-    description: "Email/chat message id.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "message_id",
-    description: "Email/chat message id alias.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "eventId",
-    description: "Calendar event id.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "calendarId",
-    description: "Calendar id.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "title",
-    description: "Calendar event title or message title.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "query",
-    description: "Search query.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "folder",
-    description: "Mail folder, such as inbox.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "startAt",
-    description: "ISO-8601 calendar availability start time.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "endAt",
-    description: "ISO-8601 calendar availability end time.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "start",
-    description: "ISO-8601 calendar start time alias.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "end",
-    description: "ISO-8601 calendar end time alias.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "body",
-    description: "Email/message body.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "text",
-    description: "Chat/message text.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "details",
-    description:
-      "Nested LifeOps action details. Prefer top-level fields when the tool manifest asks for them.",
-    required: false,
-    schema: {
-      type: "object",
-      additionalProperties: true,
-    },
-  },
-  {
-    name: "intent",
-    description: "Short natural-language intent for the LifeOps action.",
-    required: false,
-    schema: { type: "string" },
-  },
-];
-
-function lifeOpsBenchmarkToolDescription(name: string): string {
-  if (name === "ARCHIVE_EMAIL_THREAD" || name === "ARCHIVE_THREAD") {
-    return "LifeOpsBench email archive alias. Use for Gmail/email thread archive requests with threadId.";
-  }
-  if (name.startsWith("MESSAGE")) {
-    return (
-      "LifeOpsBench MESSAGE tool for email, inbox, Gmail, chat, and thread " +
-      "requests. Use for archive, mark_read, triage, search_inbox, " +
-      "draft_reply, send, list_channels, read_channel, and read_with_contact."
-    );
-  }
-  if (name.startsWith("CALENDAR")) {
-    return (
-      "LifeOpsBench CALENDAR tool for calendar events and availability. Use " +
-      "for create_event, update_event, delete_event, search_events, " +
-      "check_availability, propose_times, next_event, and update_preferences."
-    );
-  }
-  return "LifeOpsBench compatibility action. Captures a planner-emitted LifeOps tool call for the benchmark fake backend.";
-}
-
 function extractActionParameters(options: unknown): Record<string, unknown> {
   let params: Record<string, unknown> = {};
   if (options && typeof options === "object") {
@@ -1350,17 +594,6 @@ function captureBenchmarkAction(
     elementId:
       typeof params.element_id === "string" ? params.element_id : undefined,
     value: typeof params.value === "string" ? params.value : undefined,
-  };
-}
-
-function captureLifeOpsBenchmarkToolAction(
-  name: string,
-  params: Record<string, unknown>,
-): CapturedAction {
-  return {
-    params,
-    toolName: name,
-    arguments: params,
   };
 }
 
@@ -1580,7 +813,7 @@ export function createBenchmarkPlugin(): Plugin {
             );
             logger.debug(`[${name}] params:`, JSON.stringify(params));
             const capturedAction = recordCapturedAction(
-              captureLifeOpsBenchmarkToolAction(name, params),
+              captureNamedBenchmarkToolAction(name, params),
             );
             return {
               text: `Benchmark LifeOps action captured: ${name}`,

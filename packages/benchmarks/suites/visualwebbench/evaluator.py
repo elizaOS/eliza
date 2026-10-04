@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from typing import Sequence
 
-from benchmarks.visualwebbench.types import (
+from benchmarks.suites.visualwebbench.types import (
     VisualWebBenchPrediction,
     VisualWebBenchResult,
     VisualWebBenchTask,

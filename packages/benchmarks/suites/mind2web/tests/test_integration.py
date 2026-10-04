@@ -13,8 +13,9 @@ Tests:
 
 from __future__ import annotations
 
-import asyncio
 import logging
+
+import pytest
 import sys
 from pathlib import Path
 
@@ -26,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def test_types() -> bool:
+def test_types() -> None:
     """Test type definitions."""
     from mind2web.types import (
         Mind2WebAction,
@@ -83,10 +84,10 @@ def test_types() -> bool:
     assert result.step_accuracy == 0.85
 
     logger.info("✓ Types test passed")
-    return True
 
 
-async def test_dataset() -> bool:
+@pytest.mark.asyncio
+async def test_dataset() -> None:
     """Test dataset loading."""
     from mind2web.dataset import Mind2WebDataset
     from mind2web.types import Mind2WebSplit
@@ -121,10 +122,10 @@ async def test_dataset() -> bool:
     assert len(shopping_tasks) == 1
 
     logger.info("✓ Dataset test passed")
-    return True
 
 
-async def test_evaluator() -> bool:
+@pytest.mark.asyncio
+async def test_evaluator() -> None:
     """Test evaluator metrics."""
     from mind2web.evaluator import Mind2WebEvaluator
     from mind2web.types import (
@@ -195,7 +196,6 @@ async def test_evaluator() -> bool:
     assert metrics["overall_task_success_rate"] == 0.5  # 1/2 tasks successful
 
     logger.info("✓ Evaluator test passed")
-    return True
 
 
 def test_evaluator_rejects_empty_type_value() -> None:
@@ -281,7 +281,8 @@ def test_parse_action_rejects_unknown_operation() -> None:
     assert parse_mind2web_action('{"operation":"FOO","element_id":"node_search"}') is None
 
 
-async def test_context_and_provider() -> bool:
+@pytest.mark.asyncio
+async def test_context_and_provider() -> None:
     """Test Mind2Web context and provider functionality."""
     from mind2web.dataset import Mind2WebDataset
     from mind2web.eliza_agent import (
@@ -326,10 +327,10 @@ async def test_context_and_provider() -> bool:
         assert "Available Elements" in result.text, "Full provider should include elements"
 
     logger.info("✓ Context and provider test passed")
-    return True
 
 
-async def test_action_handler() -> bool:
+@pytest.mark.asyncio
+async def test_action_handler() -> None:
     """Test Mind2Web action handler."""
     from mind2web.dataset import Mind2WebDataset
     from mind2web.eliza_agent import (
@@ -375,10 +376,10 @@ async def test_action_handler() -> bool:
     assert len(ctx.executed_actions) == 0
 
     logger.info("✓ Action handler test passed")
-    return True
 
 
-async def test_mock_agent() -> bool:
+@pytest.mark.asyncio
+async def test_mock_agent() -> None:
     """Test mock agent processing."""
     from mind2web.dataset import Mind2WebDataset
     from mind2web.eliza_agent import MockMind2WebAgent
@@ -409,16 +410,16 @@ async def test_mock_agent() -> bool:
     await agent.close()
 
     logger.info("✓ Mock agent test passed")
-    return True
 
 
-async def test_full_benchmark_run() -> bool:
+@pytest.mark.asyncio
+async def test_full_benchmark_run(tmp_path: Path) -> None:
     """Test full benchmark run in mock mode."""
     from mind2web.runner import Mind2WebRunner
     from mind2web.types import Mind2WebConfig, Mind2WebSplit
 
     config = Mind2WebConfig(
-        output_dir="/tmp/mind2web_test",
+        output_dir=str(tmp_path),
         split=Mind2WebSplit.TEST_TASK,
         max_tasks=2,
         num_trials=1,
@@ -445,16 +446,16 @@ async def test_full_benchmark_run() -> bool:
     assert report.summary.get("ranker_mode") == "oracle"
 
     logger.info("✓ Full benchmark run test passed")
-    return True
 
 
-async def test_expanded_benchmark_run() -> bool:
+@pytest.mark.asyncio
+async def test_expanded_benchmark_run(tmp_path: Path) -> None:
     """Test expanded sample scenarios in mock mode."""
     from mind2web.runner import Mind2WebRunner
     from mind2web.types import Mind2WebConfig, Mind2WebSplit
 
     config = Mind2WebConfig(
-        output_dir="/tmp/mind2web_expanded_test",
+        output_dir=str(tmp_path),
         split=Mind2WebSplit.TEST_TASK,
         max_tasks=1,
         num_trials=1,
@@ -472,10 +473,10 @@ async def test_expanded_benchmark_run() -> bool:
     assert sum("--edge-" in r.task_id for r in report.results) == 10
 
     logger.info("✓ Expanded benchmark run test passed")
-    return True
 
 
-async def test_cli_integration() -> bool:
+@pytest.mark.asyncio
+async def test_cli_integration() -> None:
     """Test CLI creates valid config."""
     # Simulate args
     import sys
@@ -498,58 +499,3 @@ async def test_cli_integration() -> bool:
         sys.argv = original_argv
 
     logger.info("✓ CLI integration test passed")
-    return True
-
-
-async def run_all_tests() -> bool:
-    """Run all tests and report results."""
-    print("=" * 60)
-    print("Mind2Web Benchmark Integration Tests")
-    print("=" * 60)
-
-    tests = [
-        ("Types", test_types),
-        ("Dataset", test_dataset),
-        ("Evaluator", test_evaluator),
-        ("Context & Provider", test_context_and_provider),
-        ("Action Handler", test_action_handler),
-        ("Mock Agent", test_mock_agent),
-        ("Full Benchmark Run", test_full_benchmark_run),
-        ("Expanded Benchmark Run", test_expanded_benchmark_run),
-        ("CLI Integration", test_cli_integration),
-    ]
-
-    passed = 0
-    failed = 0
-
-    for name, test_func in tests:
-        try:
-            if asyncio.iscoroutinefunction(test_func):
-                result = await test_func()
-            else:
-                result = test_func()
-
-            if result:
-                passed += 1
-            else:
-                failed += 1
-                logger.error(f"✗ {name} test failed (returned False)")
-        except Exception as e:
-            failed += 1
-            logger.error(f"✗ {name} test failed with error: {e}")
-            import traceback
-            traceback.print_exc()
-
-    print()
-    print("=" * 60)
-    print(f"Results: {passed}/{len(tests)} tests passed")
-    if failed > 0:
-        print(f"         {failed} tests FAILED")
-    print("=" * 60)
-
-    return failed == 0
-
-
-if __name__ == "__main__":
-    success = asyncio.run(run_all_tests())
-    sys.exit(0 if success else 1)

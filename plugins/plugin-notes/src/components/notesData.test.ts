@@ -5,23 +5,28 @@
  * @vitest-environment jsdom
  */
 
-import { ApiError } from "@elizaos/ui/api/client-types-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../../../packages/ui/src/api/client-types-core";
 
 const transport = vi.hoisted(() => ({
   clientFetch: vi.fn(),
   fetchWithCsrf: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/ui/api")>();
-  return {
-    ...actual,
-    client: { fetch: transport.clientFetch },
-  };
-});
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  ...(await (async (
+    importOriginal: <T = Record<string, unknown>>() => Promise<T>,
+  ) => {
+    const actual = await importOriginal<typeof import("@elizaos/ui")>();
+    return {
+      ...actual,
+      client: { fetch: transport.clientFetch },
+    };
+  })(importOriginal)),
+}));
 
-vi.mock("@elizaos/ui/api/csrf-client", () => ({
+vi.mock("../../../../packages/ui/src/api/csrf-client", () => ({
   fetchWithCsrf: transport.fetchWithCsrf,
 }));
 

@@ -3,7 +3,7 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union
 
-from benchmarks.bfcl.executable_runtime.func_source_code.long_context import (
+from benchmarks.suites.bfcl.executable_runtime.func_source_code.long_context import (
     BOOKING_RECORD_EXTENSION,
     CREDIT_CARD_EXTENSION,
 )

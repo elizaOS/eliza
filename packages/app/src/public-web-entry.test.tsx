@@ -10,10 +10,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const handoff = vi.hoisted(() => ({ fullAppLoads: 0 }));
 
-vi.mock("@elizaos/ui/cloud/register-public", () => ({
+vi.mock("./renderer/cloud-registration", () => ({
   registerPublicCloudSurfaces: vi.fn(),
 }));
-vi.mock("@elizaos/ui/cloud/shell/CloudRouterShell", () => ({
+vi.mock("../../ui/src/cloud/shell/CloudRouterShell", () => ({
   CloudRouterShell: ({ appElement }: { appElement: React.ReactNode }) =>
     appElement,
 }));

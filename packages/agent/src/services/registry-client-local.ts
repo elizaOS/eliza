@@ -19,7 +19,6 @@ import {
   readJsonFile,
 } from "@elizaos/core";
 
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
   mergeAppMeta,
@@ -461,12 +460,6 @@ async function discoverLocalWorkspaceApps(): Promise<
     addDiscoveredRoot(path.join(workspaceRoot, "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "plugins"), true);
-    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-      // Opt-in for older external workspaces that still keep app plugins
-      // under apps/app-*. The current repo discovers plugins/app-* by default.
-      addDiscoveredRoot(path.join(workspaceRoot, "apps"), false);
-      addDiscoveredRoot(path.join(workspaceRoot, "eliza", "apps"), false);
-    }
 
     const workspaceEntries = await readDirectoryEntries(
       workspaceRoot,
@@ -482,10 +475,6 @@ async function discoverLocalWorkspaceApps(): Promise<
       addDiscoveredRoot(path.join(repoRoot, "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "plugins"), true);
-      if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-        addDiscoveredRoot(path.join(repoRoot, "apps"), false);
-        addDiscoveredRoot(path.join(repoRoot, "eliza", "apps"), false);
-      }
     }
 
     for (const [root, includeTypescriptChild] of discoveredRoots) {

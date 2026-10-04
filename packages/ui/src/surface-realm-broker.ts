@@ -47,12 +47,9 @@
  * `App.surface-mutation-fuzz.test.tsx`.
  */
 
+import { THEME_CSS_VAR_MAP, THEME_FONT_CSS_VARS } from "@elizaos/contracts";
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
-import {
-  THEME_CSS_VAR_MAP,
-  THEME_FONT_CSS_VARS,
-} from "@elizaos/core/contracts/theme";
-import { surfaceGrants } from "@elizaos/core/views/surface-manifest";
+import { surfaceGrants } from "@elizaos/core/protocol";
 import { logger } from "./logger.ts";
 import { isPrivilegedShellActive } from "./surface-realm-channel";
 

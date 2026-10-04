@@ -6,7 +6,7 @@
  * upload UI and its tests.
  */
 
-import type { DocumentScope } from "@elizaos/ui/api";
+import type { DocumentScope } from "@elizaos/ui";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576;
 export const BULK_UPLOAD_TARGET_BYTES = 24 * 1_048_576;

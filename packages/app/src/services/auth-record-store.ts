@@ -15,7 +15,7 @@ import type {
   AuthSessionRow,
   CreateIdentityInput,
   CreateSessionInput,
-} from "./auth-store";
+} from "./auth-repository";
 
 const namespaces = {
   identities: "plugin_app_auth_identities_v1",

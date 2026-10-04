@@ -16,11 +16,11 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
-import { client } from "../../api";
 import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import { getAppHeroThemeKey } from "../../app-hero-art.js";
 import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url.js";
 import type { AppIdentitySource } from "./app-identity";

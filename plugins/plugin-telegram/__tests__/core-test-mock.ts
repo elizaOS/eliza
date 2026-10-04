@@ -19,7 +19,7 @@ vi.mock("@elizaos/core", async () => {
   // The LifeOps passive-connectors gate is pure env/settings inspection; the
   // standalone-mode tests exercise its real truth table, so delegate.
   const { lifeOpsPassiveConnectorsEnabled } = await import(
-    "../../../packages/core/src/lifeops-passive-connectors"
+    "../../../packages/host/src/passive-connectors"
   );
   const { ElizaError } = await import("../../../packages/core/src/errors");
 
@@ -40,6 +40,10 @@ vi.mock("@elizaos/core", async () => {
     await import("../../../packages/core/src/media/outbound");
   const { getLocalServerUrl } = await import(
     "../../../packages/core/src/utils/node"
+  );
+
+  const { createSensitiveRequestDispatchRegistry } = await import(
+    "../../../packages/core/src/sensitive-requests/dispatch-registry.ts"
   );
 
   const logger = {
@@ -132,6 +136,7 @@ vi.mock("@elizaos/core", async () => {
 
   return {
     ...interactions,
+    createSensitiveRequestDispatchRegistry,
     ChannelType,
     CommandRegistryService,
     DEFAULT_CONNECTOR_ACCOUNT_ID: "default",

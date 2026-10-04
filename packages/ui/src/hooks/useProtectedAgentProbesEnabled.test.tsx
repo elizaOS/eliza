@@ -29,7 +29,7 @@ vi.mock("../config/boot-config-react.hooks", () => ({
 vi.mock("../hooks/useAvailableViews", () => ({
   useAvailableViews: (): { views: never[] } => ({ views: [] }),
 }));
-vi.mock("../state", () => ({
+vi.mock("../state/app-store", () => ({
   useAppSelectorShallow: <T,>(
     selector: (state: {
       setTab: (tab: string) => void;

@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import { AGENT_TRANSFER_MIN_PASSWORD_LENGTH } from "./internal";
 
 export function useExportImportState() {

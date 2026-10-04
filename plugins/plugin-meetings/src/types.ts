@@ -13,18 +13,18 @@
  * Public (cross-package) shapes live in @elizaos/core (meetings.ts,
  * transcripts.ts) — keep this file plugin-internal.
  */
-import { type IAgentRuntime, type UUID } from "@elizaos/core";
-import {
-  type MeetingAutoLeaveConfig,
-  type MeetingBillingState,
-  type MeetingEndReason,
-  type MeetingJoinRequest,
-  type MeetingParticipant,
-  type MeetingPlatform,
-  type MeetingSessionStatus,
-} from "@elizaos/core/meetings";
-import { type SpeakerNameEvidence } from "@elizaos/core/speaker-name-inference";
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type {
+  MeetingAutoLeaveConfig,
+  MeetingBillingState,
+  MeetingEndReason,
+  MeetingJoinRequest,
+  MeetingParticipant,
+  MeetingPlatform,
+  MeetingSessionStatus,
+  SpeakerNameEvidence,
+  TranscriptSegment,
+} from "@elizaos/core/protocol";
 /** Audio produced by every platform adapter: mono Float32 PCM at 16 kHz. */
 export const MEETING_AUDIO_SAMPLE_RATE = 16000;
 /**

@@ -5,7 +5,7 @@
  * and MeetingService are stubbed.
  */
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
-import { type MeetingSession } from "@elizaos/core/meetings";
+import type { MeetingSession } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
 import type { MeetingService } from "../service.js";
 import {

@@ -19,7 +19,7 @@
  * it identity-memoizes and otherwise full-parses.
  */
 
-import { stripAssistantStageDirections } from "@elizaos/core/utils/assistant-text";
+import { stripAssistantStageDirections } from "@elizaos/core/protocol";
 import {
   collectSegmentRegions,
   interleaveSegments,

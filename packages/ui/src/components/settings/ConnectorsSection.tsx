@@ -22,7 +22,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { PluginInfo } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 import {
   clearPendingFocusConnector,
   FOCUS_CONNECTOR_EVENT,
@@ -30,7 +30,7 @@ import {
   readPendingFocusConnector,
 } from "../../events";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   ConnectorChannelModeSwitch,
   connectorChannelModeCopy,

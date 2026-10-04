@@ -54,7 +54,7 @@ def test_action_calling_registry_uses_shared_case_scorer() -> None:
 
 @lru_cache(maxsize=1)
 def _action_calling_full_report_template() -> dict[str, object]:
-    action_cli = importlib.import_module("benchmarks.action-calling.cli")
+    action_cli = importlib.import_module("benchmarks.suites.action-calling.cli")
     if not Path(action_cli.DEFAULT_TEST).is_file():
         # The hermes-fc-v1 planner-record dataset ships from the training
         # pipeline (ELIZA_TRAINING_ROOT), not this repo checkout.
@@ -760,3 +760,35 @@ def test_provider_matrix_without_orchestration_receipts_is_not_publishable() -> 
                 },
             }
         )
+
+
+@pytest.mark.parametrize("count", [-1, 0.5, True, float("inf")])
+@pytest.mark.parametrize("benchmark", ["bfcl", "mmlu", "humaneval", "gsm8k", "mt_bench"])
+def test_registry_rejects_invalid_sample_counts(benchmark: str, count) -> None:
+    scores = importlib.import_module("benchmarks.registry.scores")
+    names = {"bfcl": "_score_from_bfcl_json"}
+    scorer = getattr(scores, names.get(benchmark, f"_score_from_{benchmark}_json"))
+    metrics = (
+        {"overall_score": 0.5, "total_tests": count}
+        if benchmark == "bfcl"
+        else {"score": 0.5, "n": count}
+    )
+    with pytest.raises(ValueError):
+        scorer({"metrics": metrics})
+
+
+@pytest.mark.parametrize("score", [-0.01, 1.01, 8])
+def test_primary_ratio_scores_obey_their_declared_unit(score: float) -> None:
+    from benchmarks.bench_cli_types import ScoreExtraction
+
+    with pytest.raises(ValueError, match="ratio score"):
+        ScoreExtraction(score=score, unit="ratio", higher_is_better=True, metrics={})
+    assert ScoreExtraction(
+        score=score, unit="usd_avg_net_worth", higher_is_better=True, metrics={}
+    ).score == score
+
+
+def test_zero_score_is_valid_with_real_samples() -> None:
+    from benchmarks.registry.scores import _score_from_mmlu_json
+
+    assert _score_from_mmlu_json({"metrics": {"score": 0, "n": 2}}).score == 0

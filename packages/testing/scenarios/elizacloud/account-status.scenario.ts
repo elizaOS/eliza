@@ -15,12 +15,14 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  type DeterministicModelFixture,
   describeCalls,
   scenario,
-  strictActionRouteFixtures,
   successfulActionData,
 } from "@elizaos/testing";
+import {
+  type DeterministicModelFixture,
+  strictActionRouteFixtures,
+} from "@elizaos/testing/models";
 import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";

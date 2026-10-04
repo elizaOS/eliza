@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 import "./AppWindowRenderer.routes";
 
+import type {
+  AppLaunchResult,
+  AppViewerConfig,
+  RegistryAppInfo,
+} from "@elizaos/core/protocol";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  type AppLaunchResult,
-  type AppViewerConfig,
-  client,
-  type RegistryAppInfo,
-} from "../../api";
+import { client } from "../../api/client";
 import { AppWindowRenderer } from "./AppWindowRenderer";
 
 const fixture = vi.hoisted(() => ({

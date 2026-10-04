@@ -16,14 +16,14 @@ import type {
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_REMINDER_INTENSITIES,
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   DEFAULT_MORNING_WINDOW,
   DEFAULT_NIGHT_WINDOW,

@@ -12,13 +12,6 @@ import type {
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEFAULT_INPUT_RESERVE_TOKENS = 10_000;
-/** @deprecated Use {@link DEFAULT_INPUT_RESERVE_TOKENS}. */
-export const DEFAULT_COMPACTION_RESERVE_TOKENS = DEFAULT_INPUT_RESERVE_TOKENS;
-/** @deprecated Content projection is retired; retained for source compatibility. */
-export const DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS = 16_000;
-/** @deprecated Content projection is retired; retained for source compatibility. */
-export const DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS = 64_000;
-
 /** Optional reserve fraction for caller-owned planning policy. */
 export const MODEL_WINDOW_RESERVE_FRACTION = 0.2;
 
@@ -27,36 +20,7 @@ export interface ModelInputBudget {
 	contextWindowTokens: number;
 	reserveTokens: number;
 	dispatchThresholdTokens: number;
-	/** @deprecated Estimates are diagnostic only and never authorize rejection. */
-	shouldReject: false;
-	/** @deprecated Alias of dispatchThresholdTokens for source compatibility. */
-	compactionThresholdTokens: number;
-	/** @deprecated Always false; automatic compaction is retired. */
-	shouldCompact: false;
 	estimationMode: "heuristic" | "utf8-upper-bound";
-	/** @deprecated Always null; model-name catalog inference is removed. */
-	resolvedModelKey: string | null;
-}
-
-/** @deprecated Content projection is retired. */
-export interface ContentProjectionBudget {
-	perResultTokens: number;
-	aggregateTokens: number;
-}
-
-/**
- * @deprecated Content projection is retired. Complete input must reach the
- * final runtime boundary, which either dispatches it unchanged or rejects it.
- */
-export function buildContentProjectionBudget(_args: {
-	budget: ModelInputBudget;
-	resultCount: number;
-	perResultCeilingTokens?: number;
-	aggregateCeilingTokens?: number;
-}): never {
-	throw new ElizaError("Automatic content projection is retired", {
-		code: "CONTENT_PROJECTION_RETIRED",
-	});
 }
 
 function serializedText(value: unknown): string {
@@ -207,14 +171,7 @@ export function buildModelInputBudget(args: {
 		contextWindowTokens,
 		reserveTokens,
 		dispatchThresholdTokens,
-		// Token estimates are not provider tokenization. Rejecting from them can
-		// discard valid complete requests, so only the provider's authoritative
-		// boundary may fail this call.
-		shouldReject: false,
-		compactionThresholdTokens: dispatchThresholdTokens,
-		shouldCompact: false,
 		estimationMode,
-		resolvedModelKey: null,
 	};
 }
 

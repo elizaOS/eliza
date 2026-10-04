@@ -9,11 +9,8 @@
  * section. Also reusable in modal form (`inModal`).
  */
 
-import {
-  isPermissionId,
-  type PermissionId,
-} from "@elizaos/core/contracts/permissions";
-import { isViewVisible } from "@elizaos/core/views/view-kind";
+import type { PermissionId } from "@elizaos/core/protocol";
+import { isPermissionId, isViewVisible } from "@elizaos/core/protocol";
 import {
   Suspense,
   useCallback,
@@ -22,17 +19,17 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { reportUserViewSwitch } from "../../chat/view-navigation-report";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { ContentLayout } from "../../layouts/content-layout";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { cn } from "../../lib/utils";
 import { getWindowNavigationPath } from "../../navigation";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
-import { useAppSelector, useAppSelectorShallow } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state/app-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PagePanel } from "../composites/page-panel";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
@@ -44,6 +41,7 @@ import {
   settingsSectionMatchesExperience,
 } from "../settings/settings-experience";
 import { buildSettingsNavigationGroups } from "../settings/settings-navigation-model";
+import type { SettingsRoute } from "../settings/settings-route";
 import {
   resolveSettingsRuntimeCapabilities,
   type SettingsRuntimeCapabilities,
@@ -51,9 +49,11 @@ import {
 } from "../settings/settings-runtime-capabilities";
 import {
   getSettingsSectionRegistryVersion,
+  type SettingsSectionDef,
   settingsSectionIsAvailable,
   subscribeSettingsSections,
 } from "../settings/settings-section-registry";
+
 import {
   backFromConnectorDetail,
   type GroupedSettingsSections,
@@ -65,8 +65,6 @@ import {
   replaceConnectorDetailHash,
   replaceSettingsHash,
   replaceSettingsHashRoute,
-  type SettingsRoute,
-  type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";

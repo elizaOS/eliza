@@ -11,7 +11,7 @@ import {
   AGENT_BACKUP_RESTORE_V3_SERVING_LIMITS,
   AgentBackupRestoreV3ControllerRequestSchema,
   canonicalizeAgentBackupRestoreV3ServingValue,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
 import { runAgentBackupRestoreV3ServingController } from "./agent-backup-restore-v3-serving-controller";
 import {
   parseServingEntrypointArguments,

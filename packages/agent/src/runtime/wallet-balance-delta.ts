@@ -1,5 +1,7 @@
 /** Host configuration and credential adapter for the wallet-owned watcher. */
-import type { AgentRuntime, WalletBalancesResponse } from "@elizaos/core";
+
+import type { WalletBalancesResponse } from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   registerWalletBalanceDeltaProducer as registerProducer,
   type WalletBalanceSampleSource,

@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {

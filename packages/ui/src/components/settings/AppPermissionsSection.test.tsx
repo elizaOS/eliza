@@ -1,7 +1,7 @@
 /** Exercises App Permissions loading, failure recovery, empty, and populated states against the API client boundary. */
 // @vitest-environment jsdom
 
-import type { AppPermissionsView } from "@elizaos/core/contracts/app-permissions";
+import type { AppPermissionsView } from "@elizaos/contracts";
 import {
   act,
   cleanup,
@@ -25,7 +25,7 @@ const clientMock = vi.hoisted(() => ({
   unsubscribeBase: vi.fn(),
 }));
 const baseListeners = vi.hoisted(() => new Set<(baseUrl: string) => void>());
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appState) => unknown) =>
     selector(appState),
 }));

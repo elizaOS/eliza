@@ -3,10 +3,8 @@
  * console.
  */
 
-import {
-  DashboardLoadingState,
-  EnsurePageHeaderProvider,
-} from "@elizaos/ui/cloud-ui";
+import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
+import { EnsurePageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { MyAgentsClient } from "./components/my-agents";

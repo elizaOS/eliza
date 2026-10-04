@@ -10,6 +10,7 @@
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
 import { HeadscaleClient } from "@elizaos/cloud-shared/lib/services/headscale-client";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -43,8 +44,13 @@ app.post("/", async (c) => {
     const { user } = await requirePaidRouteStanding(c, {
       route: "tunnels.tailscale.auth-key",
     });
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsed = authKeyRequestSchema.safeParse(rawBody);
+    // An omitted body uses the defaults; a malformed one must not debit
+    // credits and mint a key with default settings.
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = authKeyRequestSchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

@@ -11,10 +11,12 @@
  * change; keep the two in lockstep. An unresolved role fails closed to the
  * least-privileged `USER` tier.
  */
+
 import type { RoleName } from "../roles";
 import type { AccessContext } from "../types/access-context.js";
 import type { MemoryScope } from "../types/memory.js";
 import type { UUID } from "../types/primitives.js";
+import { isMemoryScope } from "./memory-scope.js";
 
 interface AccessScopedRecord {
 	agentId?: UUID;
@@ -26,21 +28,6 @@ interface AccessScopedRecord {
 		scopedToEntityId?: unknown;
 		addedBy?: unknown;
 	};
-}
-
-function isMemoryScope(value: unknown): value is MemoryScope {
-	switch (value) {
-		case "shared":
-		case "private":
-		case "room":
-		case "global":
-		case "owner-private":
-		case "user-private":
-		case "agent-private":
-			return true;
-		default:
-			return false;
-	}
 }
 
 /**

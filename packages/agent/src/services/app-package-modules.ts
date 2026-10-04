@@ -16,19 +16,20 @@ import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
   type AppLaunchSessionContext,
-  type AppPackageRouteContext,
   type AppRunSessionContext,
   type AppSessionState,
   type AppViewerAuthMessage,
   ElizaError,
   hasAppInterface,
-  isMobilePlatform,
-  type HttpPlugin as Plugin,
   packageNameToAppRouteSlug,
   readJsonFile,
   resolveStateDir,
 } from "@elizaos/core";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
+import {
+  type AppPackageRouteContext,
+  isMobilePlatform,
+  type HttpPlugin as Plugin,
+} from "@elizaos/host/protocol";
 import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
 import { uniquePaths } from "../utils/paths.ts";
 import { getPluginInfo } from "./registry-client.ts";
@@ -137,10 +138,6 @@ async function resolveWorkspacePackageDirs(
       path.join(workspaceRoot, "plugins", dirName),
       path.join(workspaceRoot, "packages", dirName),
     );
-    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-      // Opt-in for older external workspaces that place apps under apps/.
-      candidateDirs.push(path.join(workspaceRoot, "apps", dirName));
-    }
     let rootEntries: fs.Dirent[] = [];
     try {
       rootEntries = await fs.promises.readdir(workspaceRoot, {
@@ -157,11 +154,6 @@ async function resolveWorkspacePackageDirs(
         path.join(workspaceRoot, entry.name, "plugins", dirName),
         path.join(workspaceRoot, entry.name, "packages", dirName),
       );
-      if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-        candidateDirs.push(
-          path.join(workspaceRoot, entry.name, "apps", dirName),
-        );
-      }
     }
   }
   const matches: string[] = [];

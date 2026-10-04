@@ -63,14 +63,14 @@ import {
   useState,
 } from "react";
 import { dispatchChatOpen, dispatchChatPrefill } from "../../events";
+import type { MomentumSample } from "../../gestures/momentum";
 import {
   getMomentumReleaseVelocity,
   getVelocityAwareSettleDuration,
   MOMENTUM_RELEASE_WINDOW_MS,
-  type MomentumSample,
   shouldCommitMomentumDetent,
-  useRafCoalescer,
-} from "../../gestures";
+} from "../../gestures/momentum";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,

@@ -5,8 +5,8 @@
  * render with consistent chrome without re-implementing base styling.
  */
 
+import type { AppRunSummary } from "@elizaos/core/protocol";
 import type React from "react";
-import type { AppRunSummary } from "../../../api";
 
 export type SurfaceTone = "neutral" | "accent" | "success" | "warn" | "danger";
 

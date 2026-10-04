@@ -1,10 +1,9 @@
 /** Owner-bound remote browser composition for the dedicated CLI host. */
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
-  ElizaError,
   type HttpPlugin,
-  type IAgentRuntime,
   registerHttpPluginRoutes,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 import { resetHonoMountCache } from "../api/hono-mount.ts";
 
 /** Provisioning supplies owner identity; it never grants a browser profile. */

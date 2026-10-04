@@ -1,6 +1,6 @@
 /** Profile settings preserve runtime authority and only admit the connected profile. */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteHandlerContext } from "@elizaos/core/api/http-plugin";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { expect, it } from "vitest";
 import { nativeDeviceBrowserProfileRoutes } from "./native-device";
 

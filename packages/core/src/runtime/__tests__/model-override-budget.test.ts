@@ -45,8 +45,6 @@ describe("per-call model budget identity", () => {
 		).toMatchObject({
 			contextWindowTokens: DEFAULT_CONTEXT_WINDOW_TOKENS,
 			reserveTokens: DEFAULT_INPUT_RESERVE_TOKENS,
-			shouldReject: false,
-			shouldCompact: false,
 		});
 		expect(params).toEqual(before);
 	});

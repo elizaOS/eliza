@@ -16,21 +16,19 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import type { FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
-import { prepareFirstRunConnectors } from "@elizaos/agent/first-run-config";
 import { ElizaError, logger } from "@elizaos/core";
-import { readRequestBody } from "@elizaos/core/api/http-helpers";
-import {
-  getDirectAccountProviderForFirstRunProvider,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunCredentialInputs,
-  normalizeFirstRunProviderId,
-} from "@elizaos/core/contracts/first-run-options";
+import { readRequestBody } from "@elizaos/host";
 import {
   type DeploymentTargetRuntime,
+  getDirectAccountProviderForFirstRunProvider,
+  migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
+  normalizeFirstRunCredentialInputs,
+  normalizeFirstRunProviderId,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-} from "@elizaos/core/contracts/service-routing";
+  prepareFirstRunConnectors,
+} from "@elizaos/host/protocol";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import {
   resolveDevCloudAuthorityEnvValue,

@@ -3,7 +3,10 @@
  * concurrently, duplicate in-flight work coalesces, failures stay observable,
  * and turn cancellation reaches provider-owned boundaries.
  */
-import { initializeTestRuntime, SQLiteDatabaseAdapter } from "@elizaos/testing";
+import {
+	initializeTestRuntime,
+	SQLiteDatabaseAdapter,
+} from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";

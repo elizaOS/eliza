@@ -12,7 +12,7 @@ import {
   satisfiesRoleGate,
   setTurnActionConstraint,
 } from "@elizaos/core";
-import { readViewInteractionClientId } from "@elizaos/core/views/view-interact-protocol";
+import { readViewInteractionClientId } from "@elizaos/core/protocol";
 import { listViews } from "../api/views-registry.ts";
 
 type Navigation = {

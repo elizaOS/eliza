@@ -10,9 +10,10 @@
  * Refresh-compatible.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { createContext, useContext } from "react";
 import { appNameInterpolationVars, DEFAULT_BRANDING } from "../config/branding";
-import { createTranslator, type UiLanguage } from "../i18n";
+import { createTranslator } from "../i18n";
 
 // ── Types ──────────────────────────────────────────────────────────────
 

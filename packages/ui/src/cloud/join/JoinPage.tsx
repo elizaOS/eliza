@@ -21,7 +21,7 @@ import {
 import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type {
   DedicatedAdoptionConfirmationQuote,
   DedicatedAdoptionConfirmationRequester,

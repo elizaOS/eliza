@@ -30,8 +30,8 @@ import {
   ElizaError,
   emptyAccountPoolBrokerSnapshot,
   type RoleGateRole,
-  type resolveServiceRoutingInConfig,
 } from "@elizaos/core";
+import type { resolveServiceRoutingInConfig } from "@elizaos/host/protocol";
 
 export type AccountPoolCredentialsOptions = {
   activeBackend?: string | undefined;

@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "playwright-core": "^1.56.0"
   },
   "peerDependencies": {

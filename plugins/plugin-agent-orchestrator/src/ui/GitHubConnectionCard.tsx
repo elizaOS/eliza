@@ -1,8 +1,6 @@
 // Renders GitHub auth state for coding-agent framework settings.
+import { Button, client, openExternalUrl, SettingsControls } from "@elizaos/ui";
 
-import { Button, SettingsControls } from "@elizaos/ui";
-import { client } from "@elizaos/ui/api";
-import { openExternalUrl } from "@elizaos/ui/utils/openExternalUrl";
 import {
   CheckCircle2,
   ExternalLink,

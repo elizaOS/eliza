@@ -8,8 +8,8 @@
  * claims about the world state.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   createHouseholdCoordinationService,
   createParentingSubjectLocationAttribute,

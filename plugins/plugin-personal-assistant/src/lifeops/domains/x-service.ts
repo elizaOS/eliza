@@ -13,8 +13,8 @@ import type {
   LifeOpsXConnectorStatus,
   LifeOpsXDm,
   LifeOpsXPostResponse,
-} from "../../contracts/index.js";
-import { LIFEOPS_X_CAPABILITIES } from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { LIFEOPS_X_CAPABILITIES } from "@elizaos/contracts";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsConnectorGrant } from "../repository.js";
 import {
@@ -286,6 +286,14 @@ export class XDomain {
       executionTarget: "local",
       sourceOfTruth: "local_storage",
       configured: runtimeStatus.status === "handled",
+      ...(runtimeStatus.status === "unavailable" && runtimeStatus.error
+        ? {
+            probeError:
+              runtimeStatus.error instanceof Error
+                ? runtimeStatus.error.message
+                : String(runtimeStatus.error),
+          }
+        : {}),
       connected: runtimeConnected,
       reason: normalizeXReason(
         runtimeStatus.status === "handled"

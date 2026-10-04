@@ -1,7 +1,7 @@
 /** Storybook fixtures for ready, partial-unavailable, and mobile Family Operations states. */
 
-import { withMockApp } from "@elizaos/ui/storybook/mock-providers.helpers";
 import type { Meta, StoryObj } from "@storybook/react";
+import { withMockApp } from "../../../../../packages/ui/src/storybook/mock-providers.helpers";
 import { FamilyOperationsView } from "./FamilyOperationsView.js";
 import type { FamilyOperationsAdapter } from "./types.js";
 

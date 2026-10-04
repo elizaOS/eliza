@@ -12,9 +12,3 @@ for discoverability):
   tiers across TextVQA, DocVQA, ChartQA, ScreenSpot, and OSWorld. See
   ``suites/vision-language/README.md`` for layout and run commands.
 """
-
-# Suites live under suites/; extend the package search path so historical
-# `benchmarks.<suite>` imports resolve to suites/<suite>.
-from pathlib import Path as _Path
-
-__path__.append(str(_Path(__file__).resolve().parent / "suites"))

@@ -1,4 +1,4 @@
-import { asRecord } from "@elizaos/core/type-guards";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import z from "zod";
 
 const UnknownRecord = z.record(z.string(), z.unknown());

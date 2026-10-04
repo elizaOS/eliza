@@ -28,7 +28,9 @@
  *    path calls one without the others, so the coupling-guarantee comments
  *    in `useChatLifecycle.ts` (token-clear ↔ markFirstRunReset) hold.
  */
-import type { AgentStatus, FirstRunOptions } from "../api/client";
+
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import type { AgentStatus } from "../api/client-types-core";
 
 /**
  * Ports for `completeResetLocalStateAfterServerWipe` (all side effects explicit).

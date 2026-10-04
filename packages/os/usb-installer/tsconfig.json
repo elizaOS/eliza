@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -18,7 +17,8 @@
     "noEmit": true,
     "types": ["bun", "node", "react"],
     "paths": {},
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "customConditions": []
   },
   "include": [
     "src",

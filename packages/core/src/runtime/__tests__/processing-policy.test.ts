@@ -4,7 +4,7 @@
  * action-effect admission at the shared settlement boundary. Also covers the
  * unified action gate on mode hooks. Real AgentRuntime, spy handlers only.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRuntime } from "../../runtime";
 import {

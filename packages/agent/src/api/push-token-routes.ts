@@ -14,15 +14,13 @@
  *     token: string }. Returns `{ ok: true, deliveryEnabled: boolean }`.
  *
  *   DELETE /api/notifications/push-tokens
- *     Unregister a device token from `{ token }`. The legacy token path remains
- *     accepted for installed clients, but new clients keep identifiers out of
- *     request URLs and access logs.
+ *     Unregister a device token from `{ token }`.
  *
  *   GET    /api/notifications/push-tokens
  *     Diagnostics: `{ count, platforms: { ios, android } }`.
  */
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 import {
   NOTIFICATION_PUSH_SERVICE_TYPE,
   NotificationPushService,
@@ -131,27 +129,12 @@ export async function handlePushTokenRoute(
     }
     return unregisterOrError(registry, token, res, helpers);
   }
-  // ── Legacy DELETE /api/notifications/push-tokens/:token ───────────
-  const tokenMatch = pathname.match(
-    /^\/api\/notifications\/push-tokens\/([^/]+)$/,
-  );
-  if (method === "DELETE" && tokenMatch) {
-    let token: string;
-    try {
-      token = decodeURIComponent(tokenMatch[1]);
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-      helpers.error(res, "invalid push token", 400);
-      return true;
-    }
-    return unregisterOrError(registry, token, res, helpers);
-  }
   helpers.error(res, "push-token route not found", 404);
   return true;
 }
 /**
  * Run `registry.unregister`, applying the same byte-bound validation as the
- * register path across BOTH DELETE shapes. A typed validation failure maps to
+ * register path. A typed validation failure maps to
  * 400; a durable-write failure rethrows to the server's 500 boundary.
  */
 async function unregisterOrError(

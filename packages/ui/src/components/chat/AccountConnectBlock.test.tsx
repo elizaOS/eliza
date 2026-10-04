@@ -41,9 +41,10 @@ vi.mock("../../utils/event-source", () => ({
   openEventSource: () => null,
 }));
 
-vi.mock("../../utils", async () => {
-  const actual =
-    await vi.importActual<typeof import("../../utils")>("../../utils");
+vi.mock("../../utils/openExternalUrl", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../utils/openExternalUrl")
+  >("../../utils/openExternalUrl");
   return {
     ...actual,
     preOpenWindow: () => null,

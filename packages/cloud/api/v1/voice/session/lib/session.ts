@@ -60,7 +60,7 @@ import type {
   VoiceSessionDownlink,
   VoiceSessionLike,
 } from "@elizaos/cloud-shared/lib/voice-session/ws-handler";
-import type { VoiceUiContext } from "@elizaos/core/voice";
+import type { VoiceUiContext } from "@elizaos/host/protocol";
 import {
   CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
   type CartesiaInkRealtimeEvent,

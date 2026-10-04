@@ -10,8 +10,7 @@
     "./control-plane": "./src/control-plane/index.ts",
     "./steward": "./src/steward/index.ts",
     "./provider-contract": "./src/provider-contract/index.ts",
-    "./stripe": "./src/stripe/index.ts",
-    "./synthetic-environment": "./src/synthetic-environment/index.ts"
+    "./stripe": "./src/stripe/index.ts"
   },
   "bin": {
     "hetzner-mock": "./bin/hetzner-mock.ts",
@@ -30,7 +29,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "hono": "4.13.8",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",

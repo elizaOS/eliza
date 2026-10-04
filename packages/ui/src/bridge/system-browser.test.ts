@@ -13,7 +13,9 @@ vi.mock("./electrobun-rpc", () => ({
 vi.mock("./electrobun-runtime", () => ({
   isElectrobunRuntime: () => boundary.desktop,
 }));
-vi.mock("../utils", () => ({ openExternalUrl: boundary.external }));
+vi.mock("../utils/openExternalUrl", () => ({
+  openExternalUrl: boundary.external,
+}));
 
 import { openBrowserWebsite } from "./system-browser";
 

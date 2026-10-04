@@ -70,15 +70,15 @@ const cloudPairTokenMock = vi.hoisted(() => ({
   clearStalePairCredentialsForAgent: vi.fn(),
 }));
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: typeof appMock.value) => unknown) =>
     sel(appMock.value),
 }));
 
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: clientMock,
   ElizaClient: vi.fn(function MockElizaClient() {
     return targetClientMock;

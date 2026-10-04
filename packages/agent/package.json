@@ -80,13 +80,6 @@
       "default": "./dist/services/interactive-task-store.js"
     },
     "./package.json": "./package.json",
-    "./api": {
-      "eliza-source": "./src/api/index.ts",
-      "types": "./src/api/index.ts",
-      "bun": "./src/api/index.ts",
-      "import": "./dist/api/index.js",
-      "default": "./dist/api/index.js"
-    },
     "./api/*": {
       "eliza-source": "./src/api/*.ts",
       "types": "./src/api/*.ts",
@@ -175,26 +168,6 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
-    },
-    "./services/agent-backup-v2-capture": {
-      "eliza-source": "./src/services/agent-backup.ts",
-      "types": "./src/services/agent-backup.ts",
-      "bun": "./src/services/agent-backup.ts",
-      "import": "./dist/services/agent-backup.js",
-      "default": "./dist/services/agent-backup.js"
-    },
-    "./api/wallet-env-sync": {
-      "eliza-source": "./src/api/wallet-keygen.ts",
-      "types": "./src/api/wallet-keygen.ts",
-      "bun": "./src/api/wallet-keygen.ts",
-      "import": "./dist/api/wallet-keygen.js",
-      "default": "./dist/api/wallet-keygen.js"
-    },
-    "./first-run-config": {
-      "eliza-source": "./src/first-run-config.ts",
-      "types": "./dist/first-run-config.d.ts",
-      "import": "./dist/first-run-config.js",
-      "default": "./dist/first-run-config.js"
     },
     "./host-use-cases": {
       "eliza-source": "./src/host-use-cases.ts",
@@ -324,9 +297,10 @@
     "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-embeddings": "workspace:*",
-    "@elizaos/ui": "workspace:*",
     "react": "^19.0.0",
-    "@elizaos/capacitor-system": "workspace:*"
+    "@elizaos/capacitor-system": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",

@@ -9,6 +9,7 @@
  * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -32,7 +33,6 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   ApprovalNotFoundError as RuntimeApprovalNotFoundError,
   ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,

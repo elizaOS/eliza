@@ -36,7 +36,7 @@ import {
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import {
   applyCacheExperiment,
   type CacheExperimentMode,

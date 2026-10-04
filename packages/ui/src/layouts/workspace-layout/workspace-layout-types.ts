@@ -3,7 +3,7 @@
  */
 import type * as React from "react";
 
-import type { SidebarProps } from "../../components/composites/sidebar";
+import type { SidebarProps } from "../../components/composites/sidebar/sidebar-types";
 
 export type WorkspaceLayoutHeaderPlacement = "inside" | "outside";
 

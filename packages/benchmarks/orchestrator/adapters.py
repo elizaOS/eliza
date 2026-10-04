@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import os
 import json
-import re
 import shlex
 import shutil
 import subprocess
@@ -18,10 +17,6 @@ from benchmarks.registry import WORKLOADS, get_benchmark_registry
 from .scoring import RegistryScoreExtractor
 from benchmarks.bench_cli_types import ModelSpec
 from .types import AdapterDiscovery, BenchmarkAdapter, ExecutionContext, ScoreSummary
-
-
-def _sanitize(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-").lower() or "run"
 
 
 def _provider_model_name(provider: str, model: str) -> str:
@@ -148,10 +143,6 @@ VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON = (
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    return _base_agent_compatibility_for(benchmark_id)
-
-
-def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "terminal_bench":
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id in {"swe_bench", "swe_bench_orchestrated"}:
@@ -178,41 +169,6 @@ def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "vision_language":
         return _vision_language_compatible_harnesses()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
-
-
-_GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
-
-
-def _surfpool_start_help(binary: str) -> str:
-    try:
-        completed = subprocess.run(
-            [binary, "start", "--help"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-    return f"{completed.stdout}\n{completed.stderr}"
-
-
-def _has_gauntlet_real_surfpool_backend() -> bool:
-    """Return true only when Surfpool can run Gauntlet's real mainnet-backed path."""
-    global _GAUNTLET_REAL_SURFPOOL_AVAILABLE
-    if _GAUNTLET_REAL_SURFPOOL_AVAILABLE is not None:
-        return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
-    binary = shutil.which("surfpool")
-    if not binary:
-        _GAUNTLET_REAL_SURFPOOL_AVAILABLE = False
-        return False
-    help_text = _surfpool_start_help(binary)
-    has_remote_datasource = "--rpc-url" in help_text or "--network" in help_text
-    has_noninteractive_mode = "--no-tui" in help_text
-    _GAUNTLET_REAL_SURFPOOL_AVAILABLE = (
-        has_remote_datasource and has_noninteractive_mode
-    )
-    return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
 
 
 _HERMES_SANDBOX_BACKEND_AVAILABLE: bool | None = None
@@ -2135,24 +2091,6 @@ def _score_from_framework(path: Path) -> ScoreSummary:
             "primary_score_note": "Measured Eliza runtime throughput, not agent correctness or cross-framework parity.",
         },
     )
-
-
-def _python_can_import(python_executable: str, module: str) -> bool:
-    try:
-        completed = subprocess.run(
-            [
-                python_executable,
-                "-c",
-                f"import importlib; importlib.import_module({module!r})",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return completed.returncode == 0
 
 
 def _command_interrupt_bench(

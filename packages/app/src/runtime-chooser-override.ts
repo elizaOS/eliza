@@ -4,7 +4,7 @@
  * global, so a user-controlled URL cannot flip local runtime selection in the
  * normal web app.
  */
-import { shellLocalStorage } from "@elizaos/ui/bridge";
+import { shellLocalStorage } from "@elizaos/ui";
 
 const RUNTIME_CHOOSER_OVERRIDE_PARAM = "enableRuntimeChooser";
 const RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY = "eliza:enable-runtime-chooser";

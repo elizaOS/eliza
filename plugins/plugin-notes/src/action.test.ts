@@ -14,16 +14,14 @@ import {
   buildPlannerToolsFromActions,
   executePlannedToolCall,
   type IAgentRuntime,
+  type JsonSchema,
   type Memory,
   promoteSubactionsToActions,
   satisfiesRoleGate,
   type UUID,
+  validateSchema,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  type JsonSchema,
-  validateSchema,
-} from "../../../packages/core/src/actions/validate-tool-args.ts";
 import {
   __renderRoutingHintsBlockForTests,
   actionResultToPlannerToolResult,

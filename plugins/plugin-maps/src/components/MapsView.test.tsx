@@ -28,6 +28,13 @@ import type {
 import { MapsView } from "./MapsView.js";
 import type { MapsViewTransport } from "./maps-view-data.js";
 
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  ...(await import("../../test/shims/ui-state.js")),
+  ...(await import("../../test/shims/ui-events.js")),
+  ...(await import("../../test/shims/ui-agent-surface.js")),
+}));
+
 function place(
   id: string,
   name: string,

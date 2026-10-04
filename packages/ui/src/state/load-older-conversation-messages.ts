@@ -8,7 +8,7 @@
  * the retained-oldest cursor alone can never move past them.
  */
 
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 import { filterRenderableConversationMessages } from "./conversation-message-filter";
 
 const CURSOR_MESSAGE_ID =

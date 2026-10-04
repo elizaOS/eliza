@@ -15,7 +15,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import sharp from "sharp";
 import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";
@@ -24,7 +24,7 @@ import {
   SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
-import { type VisionService } from "./service";
+import type { VisionService } from "./service";
 import { hasReadyInputForMode, VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10000;

@@ -16,10 +16,13 @@
 import type { MessageExampleGroup } from "@elizaos/core";
 import { type ReactNode, useCallback, useEffect, useRef } from "react";
 import { client } from "../../api/client";
-import type { CharacterData } from "../../api/client-types";
+import type { CharacterData } from "../../api/client-types-config";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
-import { useAppSelectorShallow } from "../../state";
+import {
+  FramedPage,
+  FramedPageBody,
+} from "../../layouts/framed-page/framed-page";
+import { useAppSelectorShallow } from "../../state/app-store";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";

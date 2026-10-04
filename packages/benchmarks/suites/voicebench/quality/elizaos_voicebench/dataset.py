@@ -79,19 +79,6 @@ def load_samples(
     return samples
 
 
-def _load_base_samples(
-    suite: SuiteId,
-    *,
-    limit: int | None,
-    mock: bool = False,
-) -> list[Sample]:
-    if mock:
-        return _load_fixture(suite, limit=limit)
-    if os.environ.get("VOICEBENCH_SYNTHESIZE_AUDIO", "").strip() in {"1", "true", "yes"}:
-        return _load_synthesized(suite, limit=limit)
-    return _load_huggingface(suite, limit=limit)
-
-
 def _apply_edge_variant(sample: Sample, variant: dict[str, str]) -> Sample:
     metadata = dict(sample.metadata)
     metadata.update(

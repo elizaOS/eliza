@@ -320,6 +320,13 @@
       "types": "./dist/contracts/crypto.d.ts",
       "import": "./dist/contracts/crypto.js",
       "default": "./dist/contracts/crypto.js"
+    },
+    "./accounts": {
+      "browser": null,
+      "eliza-source": "./src/accounts/index.ts",
+      "types": "./dist/accounts/index.d.ts",
+      "import": "./dist/accounts/index.js",
+      "default": "./dist/accounts/index.js"
     }
   },
   "scripts": {
@@ -368,7 +375,9 @@
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",
     "@simplewebauthn/server": "^13",
-    "resend": "^6.9.4"
+    "resend": "^6.9.4",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

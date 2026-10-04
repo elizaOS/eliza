@@ -43,7 +43,7 @@ import {
 	type TranscriptSummary,
 	transcriptCapturePrivacyState,
 	transcriptPreview,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 /** The `type` column partition transcripts live in (sibling to "messages"). */
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.type` marker — NOT "document"/"fragment", so no CHECK fires. */

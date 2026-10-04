@@ -5,30 +5,29 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/types/message-source";
+import type { ChatTurnStatus } from "@elizaos/contracts";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
+import { client } from "../api/client";
 import type {
-  ChatTurnStatus,
-  CodingAgentSession,
   Conversation,
-  FirstRunOptions,
-} from "../api";
-import {
-  type AgentStatus,
-  type ConversationMessage,
-  client,
-  type ImageAttachment,
-} from "../api";
+  ConversationMessage,
+  ImageAttachment,
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
+import type { AgentStatus } from "../api/client-types-core";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { isIOS, isNative } from "../platform/init";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
-import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import {
+  type ChatReplyTarget,
   clearChatDraft,
   readChatDraft,
   writeChatDraft,
 } from "./ChatComposerContext.hooks";
+
 import {
   isConversationRecord,
   isReservedLegacyChatTitle,
@@ -36,19 +35,23 @@ import {
 } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import { appendGreetingOnce } from "./greeting-dedupe";
-import type { AppState, LifecycleAction } from "./internal";
 import {
   filterRenderableConversationMessages,
-  type LoadConversationMessagesResult,
   loadActiveConversationId,
-  type StreamingTextModification,
   shouldKeepConversationMessage,
 } from "./internal";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
-import { deriveAgentReady } from "./types";
+import {
+  type AppState,
+  deriveAgentReady,
+  type LifecycleAction,
+  type LoadConversationMessagesResult,
+} from "./types";
+
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
 import type { ConversationMessageStateMutation } from "./useDataLoaders";
+import type { StreamingTextModification } from "./useStreamingText";
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],

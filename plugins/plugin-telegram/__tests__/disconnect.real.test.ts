@@ -8,13 +8,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  AgentRuntime,
-  createCharacter,
-  type RouteRequest,
-  type RouteResponse,
-  type UUID,
-} from "@elizaos/core";
+import { AgentRuntime, createCharacter, type UUID } from "@elizaos/core";
+import type { RouteRequest, RouteResponse } from "@elizaos/host/protocol";
 import { expect, it } from "vitest";
 import { ConnectorSetupService } from "../../../packages/agent/src/services/connector-setup-service.ts";
 

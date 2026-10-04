@@ -102,6 +102,8 @@ describe.skipIf(!postgresUrl)("canonical billing deletion decisions with Postgre
       "0428_billing_identity_anchors",
       "0429_billing_identity_backfill",
       "0430_billing_identity_references",
+      "0511_organization_plan_change_quotes",
+      "0512_organization_upgrade_dispatch",
       "0431_app_billing_deletion_dispositions",
       "0432_app_billing_deletion_disposition_guards",
       "0439_app_billing_completed_checkout",

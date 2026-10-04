@@ -4,8 +4,8 @@
  * match. These checks prove identity binding, not provider reachability or delivery.
  */
 
+import { normalizeEntityConnectorAccountId } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { normalizeEntityConnectorAccountId } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { z } from "zod";
 import {

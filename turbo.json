@@ -74,6 +74,9 @@
     },
     "@elizaos/ui#build": {
       "dependsOn": [
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build",
         "@elizaos/core#build",
         "@elizaos/cloud-sdk#build",
         "@elizaos/capacitor-secure-store#build"
@@ -152,6 +155,25 @@
         "@elizaos/plugin-knowledge#build",
         "@elizaos/app#build:dist",
         "@elizaos/plugin-pdf#build"
+      ]
+    },
+    "@elizaos/os-usb-installer#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build"
+      ]
+    },
+    "@elizaos/os#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "^build",
+        "@elizaos/ui#build",
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build"
       ]
     },
     "@elizaos/benchmark-eliza-host#typecheck": {
@@ -389,7 +411,7 @@
       ]
     },
     "@elizaos/plugin-anthropic#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-assistant#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]
@@ -414,7 +436,11 @@
       "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-native-settings#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/capacitor-system#build",
+        "@elizaos/ui#build"
+      ]
     },
     "@elizaos/plugin-native-wifi#typecheck": {
       "dependsOn": [
@@ -441,6 +467,7 @@
     "@elizaos/plugin-wallet#typecheck": {
       "dependsOn": [
         "typecheck:deps",
+        "@elizaos/host#build",
         "@elizaos/ui#build",
         "@elizaos/cloud-routing#build"
       ]
@@ -489,9 +516,6 @@
     },
     "@elizaos/native-activity-tracker#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
-    },
-    "@elizaos/os#typecheck": {
-      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-benchmarks#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -546,7 +570,11 @@
       ]
     },
     "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/plugin-assistant#build",
+        "@elizaos/voice#build"
+      ]
     },
     "@elizaos/plugin-meetings#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]

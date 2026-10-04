@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from benchmarks.bfcl.dataset import BFCLDataset
-from benchmarks.bfcl.types import BFCLCategory, BFCLConfig
+from benchmarks.suites.bfcl.dataset import BFCLDataset
+from benchmarks.suites.bfcl.types import BFCLCategory, BFCLConfig
 
 
 def _write_ndjson(path: Path, rows: list[dict[str, object]]) -> None:

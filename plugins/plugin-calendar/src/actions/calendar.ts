@@ -14,7 +14,7 @@ import {
   recentConversationTexts,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { createCalendarActionRunner } from "./calendar-handler.js";
 import type { CalendarActionDeps, CalendarModelCallArgs } from "./deps.js";
 

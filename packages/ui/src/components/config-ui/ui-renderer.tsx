@@ -18,7 +18,8 @@ import type {
   UiElement,
   UiRenderContext,
   UiSpec,
-} from "@elizaos/core/config/ui-spec";
+} from "@elizaos/host/protocol";
+import { getByPath, setByPath } from "@elizaos/host/protocol";
 import { X } from "lucide-react";
 import type React from "react";
 import {
@@ -28,9 +29,10 @@ import {
   useMemo,
   useState,
 } from "react";
-import { getByPath, setByPath } from "../../config/config-catalog";
-import { useAppSelector } from "../../state";
-import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
+
+import { useAppSelector } from "../../state/app-store";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { Badge } from "../ui/badge";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";

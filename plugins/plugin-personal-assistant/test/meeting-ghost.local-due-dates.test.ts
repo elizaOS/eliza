@@ -6,7 +6,7 @@
  * drives the pure analyzer, with the process zone switched to prove the
  * fallback when the transcript carries no zone.
  */
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   analyzeMeetingGhostTranscript,

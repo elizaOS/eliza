@@ -9,7 +9,7 @@
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentBackupRestoreV3FsIdentity } from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+import type { AgentBackupRestoreV3FsIdentity } from "@elizaos/contracts/node";
 import { servingError } from "./agent-backup-restore-v3-serving-wire";
 
 function currentUid(): number {

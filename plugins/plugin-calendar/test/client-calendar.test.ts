@@ -12,7 +12,10 @@ const { FakeElizaClient } = vi.hoisted(() => {
   return { FakeElizaClient };
 });
 
-vi.mock("@elizaos/ui/api", () => ({ ElizaClient: FakeElizaClient }));
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  ElizaClient: FakeElizaClient,
+}));
 
 import { installCalendarClient } from "../src/api/client-calendar.js";
 

@@ -20,16 +20,18 @@ import {
   type AgentBackupRestoreV3CandidateReceipt,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import type {
+  AgentBackupRestoreV3BootGrant,
+  AgentBackupRestoreV3CommittedGeneration,
+  AgentBackupRestoreV3ContainerRoots,
+  AgentBackupRestoreV3RootIdentities,
+} from "@elizaos/contracts/node";
 import {
-  type AgentBackupRestoreV3BootGrant,
-  type AgentBackupRestoreV3CommittedGeneration,
-  type AgentBackupRestoreV3ContainerRoots,
   AgentBackupRestoreV3ControllerResponseSchema,
-  type AgentBackupRestoreV3RootIdentities,
   agentBackupRestoreV3TokenSha256,
   canonicalizeAgentBackupRestoreV3ServingValue,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
 import { afterEach, expect, it } from "vitest";
 import { openAgentBackupRestoreV3CandidateFs } from "./agent-backup-restore-v3-candidate-fs";
 import { stageAgentBackupRestoreV3CandidateRecord } from "./agent-backup-restore-v3-candidate-records";

@@ -16,7 +16,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import type { TrustProfile } from "../types/trust.ts";
 
