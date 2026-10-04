@@ -532,17 +532,8 @@ const otelApiEntry = (() => {
   } catch {
     /* not resolvable from this scope */
   }
-  // 3. core's nested node_modules.
-  try {
-    candidateRoots.push(
-      path.join(
-        path.dirname(_require.resolve("@elizaos/core/package.json")),
-        "node_modules",
-      ),
-    );
-  } catch {
-    /* core not resolvable */
-  }
+  // 3. The workspace core's nested node_modules. Its manifest is private.
+  candidateRoots.push(path.join(elizaRoot, "packages/core/node_modules"));
   // 4. bun content-addressable store — ai package's nested node_modules.
   try {
     const bunDir = path.join(elizaRoot, "node_modules/.bun");
