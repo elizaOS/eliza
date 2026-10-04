@@ -9,19 +9,22 @@
  * authorization or billing outcome. Protected by CRON_SECRET.
  */
 
-import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { sharedRuntimeHistoryRepository } from "@/db/repositories/shared-runtime-history";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { sharedRuntimeHistoryRepository } from "@elizaos/cloud-shared/db/repositories/shared-runtime-history";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   prewarmPersonalSharedRoom,
   prewarmSharedAgentTurnCaches,
-} from "@/lib/services/shared-runtime/prewarm-shared-agent";
-import { prewarmSharedElizaRuntime } from "@/lib/services/shared-runtime/shared-eliza-runtime";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
+import { prewarmSharedElizaRuntime } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-eliza-runtime";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

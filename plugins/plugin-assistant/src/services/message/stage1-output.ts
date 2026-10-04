@@ -716,6 +716,22 @@ export function messageHandlerFromFieldResult(
     requiresTool: shouldPlan,
   };
   if (
+    fieldRun !== undefined &&
+    Array.isArray(result.calendarReadBindings) &&
+    result.calendarReadBindings === fieldRun.parsed.calendarReadBindings &&
+    fieldRun.traces.some(
+      (trace) =>
+        trace.fieldName === "calendarReadBindings" &&
+        trace.active &&
+        trace.parsed &&
+        trace.handled &&
+        trace.parseOutcome === "ok" &&
+        !trace.errorMessage,
+    )
+  ) {
+    plan.calendarReadBindings = result.calendarReadBindings;
+  }
+  if (
     !terminalNonAppliedReply &&
     !preferCompleteDirectReply &&
     !preferInlineCodeSnippetDirectReply &&

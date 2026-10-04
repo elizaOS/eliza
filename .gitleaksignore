@@ -638,3 +638,6 @@ df90e84500df616bd4c170f364a3a7f1dfed13b8:packages/core/src/__tests__/swap-user-r
 
 # Synthetic wrong-key-kind checkout fixture; current source constructs this invalid test value.
 5f2752a4cf26901bb35d38b58e5b8d4aa77d1e6c:packages/cloud/shared/src/lib/services/subscription-checkout-recovery.pglite.test.ts:stripe-access-token:655
+
+# Synthetic token in the moved benchmark redaction regression; current fixture assembles it.
+9081c5542f90843d1d97a7aaaccdeae440b0e3f2:packages/benchmarks/orchestrator/tests/test_code_agent_matrix.py:generic-api-key:1640

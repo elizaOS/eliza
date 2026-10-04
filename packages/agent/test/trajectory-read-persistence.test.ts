@@ -9,6 +9,7 @@ import {
 } from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { runtimeTrajectoriesEnabled } from "../src/runtime/native-runtime-features.ts";
 import {
   createBaseTrajectory,
   ensureStep,
@@ -40,6 +41,7 @@ beforeAll(async () => {
   const registered =
     fixture.runtime.getService<TrajectoriesService>("trajectories");
   if (!registered) throw new Error("Trajectory service did not start");
+  expect(runtimeTrajectoriesEnabled(fixture.runtime)).toBe(true);
   bridge = registered;
   await installDatabaseTrajectoryLogger(fixture.runtime);
   direct = new DatabaseTrajectoryLogger(fixture.runtime);

@@ -6,12 +6,13 @@
  * Pure DB reconciliation — does not touch SSH, even though
  * `dockerNodeManager` is the same module that owns SSH-using methods.
  */
+
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { dockerNodeManager } from "@elizaos/cloud-shared/lib/services/docker-node-manager";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { dockerNodeManager } from "@/lib/services/docker-node-manager";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

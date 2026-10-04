@@ -10,3 +10,13 @@ The existing method/result contract is retained: requestAccess, list, open, insp
 Journal operations share a process-lifetime lock and persistence quarantine per canonical preference file, across adapter instances. Conflicting URI prefixes for the same journal fail closed. Different journals remain independent. Multi-process use of the same journal is unsupported (Android SharedPreferences is not a multi-process store); register and execute the bridge in one process.
 
 Qualification status: extracted candidate. Building this library alone does not establish provider, permission, process-restart or upgrade acceptance. Require the external-consumer and product migration flows before release.
+
+Read-only hosts may compile `ai.eliza.plugins.calendar.read.CalendarReadAccess`
+without registering the writable bridge or requesting WRITE_CALENDAR. The host
+checks READ_CALENDAR and its source-consent policy before reading. Calendar and
+instance reads return the complete requested range; unavailable provider cursors
+reject rather than masquerading as empty data. The existing bridge list method
+uses this same reader and no longer truncates at 2,000 instances.
+`reviewNewEvent` only constructs an ACTION_INSERT editor intent; it neither
+dispatches the intent nor writes an event. The host handles launch failures and
+reports dispatch separately from a saved-event outcome.

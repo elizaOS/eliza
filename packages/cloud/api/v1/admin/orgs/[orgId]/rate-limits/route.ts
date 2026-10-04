@@ -1,8 +1,11 @@
 // Handles admin cloud API v1 admin orgs orgid rate limits route traffic with privileged auth expectations.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin endpoint for per-organization rate limit overrides.
@@ -15,15 +18,15 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * There are no tenant-scoped admin roles in the current system.
  */
 
-import { z } from "zod";
-import { orgRateLimitOverridesRepository } from "@/db/repositories/org-rate-limit-overrides";
-import { organizationsRepository } from "@/db/repositories/organizations";
-import { requireAdminWithResponse } from "@/lib/auth/admin";
+import { orgRateLimitOverridesRepository } from "@elizaos/cloud-shared/db/repositories/org-rate-limit-overrides";
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
+import { requireAdminWithResponse } from "@elizaos/cloud-shared/lib/auth/admin";
 import {
   getOrgTier,
   invalidateOrgTierCache,
-} from "@/lib/services/org-rate-limits";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { z } from "zod";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -1,5 +1,6 @@
 /** Reserves Dedicated runtime funds under lifecycle authority before provider work, and binds them to one exact container. */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
@@ -15,7 +16,6 @@ import {
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { billingFundingReservations } from "../../db/schemas/billing-funding-reservations";
 import { organizations } from "../../db/schemas/organizations";
-import { AGENT_PRICING } from "../constants/agent-pricing";
 import {
   AGENT_COMPUTE_FUNDING_WINDOW_MS,
   AGENT_COMPUTE_STOP_MARGIN_MS,

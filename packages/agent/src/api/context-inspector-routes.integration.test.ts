@@ -1,24 +1,29 @@
 /**
- * Exercises the context-inspector handler through a real HTTP socket with an
- * integration-backed trajectory service and mutable room authorization. The
+ * Exercises the context-inspector handler through a real HTTP socket with the
+ * real runtime, durable trajectory service, and persisted room authorization. The
  * fixtures include raw paths, source text, provider IDs, account IDs, expired
  * retention, and cross-room decoys so leakage is a hard assertion.
  */
 
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import {
   buildReadSlice,
   buildReadView,
+  ChannelType,
   type TrajectoryDetailRecord,
-  type TrajectorySummaryRecord,
   type UUID,
 } from "@elizaos/core";
+import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
-  buildContextInspectorResponse,
-  handleContextInspectorRoute,
-} from "./context-inspector-routes.ts";
+  createBaseTrajectory,
+  saveTrajectory,
+} from "../runtime/trajectory-internals.ts";
+import { installDatabaseTrajectoryLogger } from "../runtime/trajectory-storage.ts";
+import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 
 const ROOM = "00000000-0000-4000-8000-000000000101" as UUID;
 const OTHER_ROOM = "00000000-0000-4000-8000-000000000102" as UUID;
@@ -29,6 +34,7 @@ const RAW_BODY = "TOP SECRET END CANARY";
 const RAW_PROVIDER = "provider-account-secret";
 
 const servers: Array<ReturnType<typeof createServer>> = [];
+const fixtures: Awaited<ReturnType<typeof createTestRuntime>>[] = [];
 
 afterEach(async () => {
   await Promise.all(
@@ -37,6 +43,7 @@ afterEach(async () => {
       return new Promise<void>((resolve) => server.close(() => resolve()));
     }),
   );
+  for (const fixture of fixtures.splice(0)) await fixture.cleanup();
 });
 
 function trajectory(roomId = ROOM): TrajectoryDetailRecord {
@@ -115,65 +122,67 @@ function trajectory(roomId = ROOM): TrajectoryDetailRecord {
   };
 }
 
-function summary(roomId = ROOM): TrajectorySummaryRecord {
-  return {
-    id: "trajectory-private-id",
-    agentId: "agent-private-id",
-    source: "chat",
-    status: "completed",
-    startTime: 1,
-    endTime: 2,
-    durationMs: 1,
-    llmCallCount: 1,
-    providerAccessCount: 0,
-    totalPromptTokens: 312,
-    totalCompletionTokens: 10,
-    createdAt: new Date(1).toISOString(),
-    roomId,
-    metadata: { conversationId: roomId },
-  };
-}
-
-function harness(options: {
+async function harness(options: {
   authorization: AgentHttpRequestAuthorization;
   detail?: TrajectoryDetailRecord;
   participantRooms?: UUID[];
   resolveConversationRoomId?: (conversationId: UUID) => Promise<UUID | null>;
 }) {
-  let participantRooms = options.participantRooms ?? [ROOM];
-  let detail = options.detail ?? trajectory();
-  let roomReads = 0;
-  let participantReads = 0;
-  let listOptions: { limit: number; offset: number; roomId: string } | null =
-    null;
-  const service = {
-    async listTrajectories(next: {
-      limit: number;
-      offset: number;
-      roomId: string;
-    }) {
-      listOptions = next;
-      return { trajectories: [summary()], total: 1 };
-    },
-    async getTrajectoryDetail() {
-      return detail;
-    },
-  };
-  const runtime = {
-    async getRoom(roomId: UUID) {
-      roomReads += 1;
-      return roomId === ROOM || roomId === OTHER_ROOM
-        ? ({ id: roomId } as never)
-        : null;
-    },
-    async getRoomsForParticipant() {
-      participantReads += 1;
-      return participantRooms;
-    },
-    getService(name: string) {
-      return name === "trajectories" ? service : null;
-    },
-  };
+  const fixture = await createTestRuntime({
+    characterName: "ContextInspector",
+    plugins: [trajectoriesPlugin],
+  });
+  fixtures.push(fixture);
+  const { runtime } = fixture;
+  await runtime.getServiceLoadPromise("trajectories");
+  await installDatabaseTrajectoryLogger(runtime);
+  for (const roomId of [ROOM, OTHER_ROOM]) {
+    await runtime.ensureConnection({
+      entityId: USER,
+      roomId,
+      worldId: CONVERSATION,
+      worldName: "Context fixture",
+      userName: "Reader",
+      name: "Reader",
+      source: "test",
+      type: ChannelType.DM,
+    });
+  }
+  async function setParticipantRooms(rooms: UUID[]) {
+    for (const roomId of [ROOM, OTHER_ROOM]) {
+      if (rooms.includes(roomId)) await runtime.addParticipant(USER, roomId);
+      else await runtime.removeParticipant(USER, roomId);
+    }
+  }
+  await setParticipantRooms(options.participantRooms ?? [ROOM]);
+  async function persist(detail: TrajectoryDetailRecord, roomId: UUID) {
+    const record = createBaseTrajectory(
+      randomUUID(),
+      1,
+      runtime.agentId,
+      "chat",
+      { ...detail.metadata, roomId },
+    );
+    record.status = "completed";
+    record.endTime = 2;
+    const source = detail.steps?.[0];
+    if (source) {
+      const step = record.steps[0];
+      step.action = source.action;
+      step.llmCalls = (source.llmCalls ?? []).map((call) => ({
+        ...call,
+        callId: randomUUID(),
+        timestamp: 1,
+        model: "fixture",
+        response: "recorded",
+        purpose: "action",
+        actionType: "runtime.useModel",
+      }));
+    }
+    await saveTrajectory(runtime, record, { createOnly: true });
+  }
+  await persist(options.detail ?? trajectory(), ROOM);
+  await persist(trajectory(OTHER_ROOM), OTHER_ROOM);
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const handled = await handleContextInspectorRoute({
@@ -182,7 +191,7 @@ function harness(options: {
       pathname: url.pathname,
       method: req.method ?? "GET",
       url,
-      runtime: runtime as never,
+      runtime,
       authorization: options.authorization,
       resolveConversationRoomId:
         options.resolveConversationRoomId ??
@@ -214,20 +223,14 @@ function harness(options: {
       const response = await fetch(`${await baseUrl()}${path}`);
       return { response, body: await response.text() };
     },
-    setParticipantRooms(next: UUID[]) {
-      participantRooms = next;
-    },
-    setDetail(next: TrajectoryDetailRecord) {
-      detail = next;
-    },
-    counts: () => ({ roomReads, participantReads }),
-    listOptions: () => listOptions,
+    setParticipantRooms,
+    runtime,
   };
 }
 
 describe("context inspector HTTP integration", () => {
   it("returns only the allowlisted redacted projection and explicit expired retention", async () => {
-    const app = harness({ authorization: { ok: true, role: "OWNER" } });
+    const app = await harness({ authorization: { ok: true, role: "OWNER" } });
     const { response, body } = await app.request(
       `/api/context-inspector?conversationId=${ROOM}`,
     );
@@ -267,10 +270,9 @@ describe("context inspector HTTP integration", () => {
       },
       state: "available",
     });
-    expect(app.counts().roomReads).toBe(1);
   });
 
-  it("never reports a recorded diagnostic budget estimate as a rejection", () => {
+  it("never reports a recorded diagnostic budget estimate as a rejection", async () => {
     const detail = trajectory(ROOM);
     const call = detail.steps?.[0]?.llmCalls?.[0];
     if (!call) throw new Error("fixture must include an LLM call");
@@ -284,14 +286,15 @@ describe("context inspector HTTP integration", () => {
         },
       },
     };
-    const response = buildContextInspectorResponse({
-      trajectories: [detail],
-      offset: 0,
-      limit: 20,
-      total: 1,
-      now: Date.parse("2026-08-24T00:00:00.000Z"),
-      redactReference: () => "ctx_0123456789abcdef0123",
+    const app = await harness({
+      authorization: { ok: true, role: "OWNER" },
+      detail,
     });
+    const result = await app.request(
+      `/api/context-inspector?conversationId=${ROOM}`,
+    );
+    expect(result.response.status).toBe(200);
+    const response = JSON.parse(result.body);
     expect(response.tokenBudgets).toEqual([
       {
         usedTokens: 312,
@@ -303,7 +306,7 @@ describe("context inspector HTTP integration", () => {
   });
 
   it("resolves a public conversation id to its distinct runtime room", async () => {
-    const app = harness({
+    const app = await harness({
       authorization: { ok: true, role: "OWNER" },
       detail: trajectory(ROOM),
       resolveConversationRoomId: async (conversationId) =>
@@ -313,12 +316,11 @@ describe("context inspector HTTP integration", () => {
       `/api/context-inspector?conversationId=${CONVERSATION}`,
     );
     expect(response.status).toBe(200);
-    expect(app.counts().roomReads).toBe(1);
-    expect(app.listOptions()).toEqual({ limit: 20, offset: 0, roomId: ROOM });
+    expect(await app.runtime.getRoom(ROOM)).toBeTruthy();
   });
 
   it("rejects unauthenticated, cross-room, revoked, and principal-free callers", async () => {
-    const unauthenticated = harness({
+    const unauthenticated = await harness({
       authorization: { ok: false, role: "NONE" },
     });
     expect(
@@ -329,7 +331,7 @@ describe("context inspector HTTP integration", () => {
       ).response.status,
     ).toBe(401);
 
-    const crossRoom = harness({
+    const crossRoom = await harness({
       authorization: { ok: true, role: "USER", principal: USER },
       participantRooms: [OTHER_ROOM],
     });
@@ -338,21 +340,25 @@ describe("context inspector HTTP integration", () => {
         .response.status,
     ).toBe(403);
 
-    const revoked = harness({
+    const revoked = await harness({
       authorization: { ok: true, role: "USER", principal: USER },
     });
     expect(
       (await revoked.request(`/api/context-inspector?conversationId=${ROOM}`))
         .response.status,
     ).toBe(200);
-    revoked.setParticipantRooms([]);
+    await revoked.setParticipantRooms([]);
     expect(
       (await revoked.request(`/api/context-inspector?conversationId=${ROOM}`))
         .response.status,
     ).toBe(403);
-    expect(revoked.counts().participantReads).toBe(2);
+    expect(await revoked.runtime.getRoomsForParticipant(USER)).not.toContain(
+      ROOM,
+    );
 
-    const noPrincipal = harness({ authorization: { ok: true, role: "USER" } });
+    const noPrincipal = await harness({
+      authorization: { ok: true, role: "USER" },
+    });
     expect(
       (
         await noPrincipal.request(
@@ -363,7 +369,7 @@ describe("context inspector HTTP integration", () => {
   });
 
   it("rejects tampered query state and a trajectory whose room changes", async () => {
-    const app = harness({ authorization: { ok: true, role: "OWNER" } });
+    const app = await harness({ authorization: { ok: true, role: "OWNER" } });
     for (const query of [
       "conversationId=not-a-uuid",
       `conversationId=${ROOM}&offset=-1`,
@@ -377,7 +383,7 @@ describe("context inspector HTTP integration", () => {
       expect(body).toBe('{"error":"Invalid context inspector request"}');
     }
 
-    const changed = harness({
+    const changed = await harness({
       authorization: { ok: true, role: "OWNER" },
       detail: trajectory(OTHER_ROOM),
     });

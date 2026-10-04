@@ -457,6 +457,87 @@ describe("EvaluatorService", () => {
     },
   );
 
+  it("shares the post-turn delivered-result view without repeating its composition input", async () => {
+    const runtime = makeRuntime();
+    const message = makeMessage();
+    message.agentId = runtime.agentId;
+    message.createdAt = 1791067158733;
+    const receipt = {
+      receiptId: "lifeops-create",
+      operation: "lifeops.definition.create",
+      resource: { kind: "lifeops.definition", id: "water" },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: "2026-10-03T22:39:23.109Z",
+      outcome: "applied" as const,
+      commit: {
+        kind: "durable" as const,
+        id: "committed-water",
+        committedAt: "2026-10-03T22:39:23.109Z",
+      },
+    };
+    const actionResults = [
+      {
+        success: true,
+        effectReceipts: [receipt],
+        data: {
+          actionName: "OWNER_REMINDERS_CREATE",
+          destinationId: "owner",
+          replyGrounding: JSON.stringify({
+            domain: "lifeops",
+            scenario: "saved_definition",
+            instructions: ["REPLY_ONLY_SENTINEL"],
+            characterVoice: "VOICE_ONLY_SENTINEL",
+            context: { dueAt: "2026-10-03T22:41:23.033Z" },
+          }),
+        },
+      },
+    ];
+    const original = structuredClone(actionResults);
+    const response = {
+      id: "00000000-0000-4000-8000-000000000004",
+      agentId: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: message.roomId,
+      content: {
+        text: "Saved water.",
+        inReplyTo: message.id,
+        agentVoiced: true,
+        actions: ["REPLY"],
+        effectReceiptIds: [receipt.receiptId],
+      },
+    } as Memory;
+    response.createdAt = message.createdAt + 1;
+    vi.spyOn(runtime, "getMemories").mockResolvedValue([message, response]);
+    runtime.stateCache.set(`${message.id}_action_results`, {
+      values: {},
+      data: { actionResults },
+      text: "",
+    });
+    runtime.registerEvaluator({ ...successEvaluator, processors: [] });
+    let prompt = "";
+    runtime.useModel = vi.fn(async (_modelType, params) => {
+      prompt = String(params.messages?.[0]?.content ?? "");
+      return { success: { completed: true, reason: "Saved." } };
+    }) as AgentRuntime["useModel"];
+    const result = await new EvaluatorService(runtime).run(
+      message,
+      {
+        values: {},
+        data: { actionResults },
+        text: "COMPLETE_PROVIDER_SENTINEL",
+      },
+      { phase: "post_turn", didRespond: true, responses: [response] },
+    );
+    expect(result.errors).toEqual([]);
+    expect(prompt).toContain('Action results: see "Action results"');
+    expect(prompt).toContain("lifeops-create");
+    expect(prompt).toContain("2026-10-03T22:41:23.033Z");
+    expect(prompt).not.toContain("REPLY_ONLY_SENTINEL");
+    expect(prompt).not.toContain("VOICE_ONLY_SENTINEL");
+    expect(actionResults).toEqual(original);
+  });
+
   it("keeps the complete success action results when called without shared context", () => {
     const runtime = makeRuntime();
     const actionResults: ActionResult[] = [

@@ -17,7 +17,7 @@
     "build:plugin": "bun run --cwd plugin-benchmarks build",
     "test:plugin": "bun run --cwd plugin-benchmarks test",
     "typecheck:plugin": "bun run --cwd plugin-benchmarks typecheck",
-    "test:py": "pytest tests/ -v",
+    "test:py": "pytest tests orchestrator/tests harnesses --import-mode=importlib -q",
     "lifeops-bench:manifest": "bun --conditions=eliza-source --conditions=development scripts/lifeops-bench/export-action-manifest.ts",
     "test:content-context": "node ../scripts/run-vitest.ts run --config suites/content-context/vitest.config.ts",
     "typecheck:content-context": "tsc --noEmit -p suites/content-context/tsconfig.json",

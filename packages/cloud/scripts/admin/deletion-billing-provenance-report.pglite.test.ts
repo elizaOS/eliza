@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import {
@@ -72,4 +73,96 @@ test("refuses a changed guard contract before executing SQL", () => {
   expect(() => deletionBillingGuardQueries("SELECT 1;")).toThrow(
     "migration_guard_contract_changed",
   );
+});
+
+const fixtureKey = "owned-staging-fixture-test-credential";
+const fixtureUser = "00000000-0000-4000-8000-000000000004";
+const otherOrg = "00000000-0000-4000-8000-000000000005";
+
+test("classifies the exact guarded agent without exposing IDs or inventing missing authority", async () => {
+  db = new PGlite();
+  await db.exec(`
+    CREATE TABLE containers(id uuid, organization_id uuid, lifecycle_revision int, status text);
+    CREATE TABLE compute_billing_rate_segments(id int, organization_id uuid, workload_kind text, workload_id uuid, lifecycle_revision int, billing_state text, rate_per_hour numeric, effective_at timestamptz);
+    CREATE TABLE container_compute_stop_intents(organization_id uuid, container_id uuid, lifecycle_revision int, provider_confirmed_at timestamptz);
+    CREATE TABLE agent_sandboxes(id uuid, organization_id uuid, user_id uuid, node_id text, container_name text, deletion_attempt_id uuid, status text, billing_status text, pool_status text, execution_tier text, deleted_at timestamptz, deletion_previous_billing_status text, deletion_previous_status text, last_backup_at timestamptz);
+    CREATE TABLE agent_compute_funding(organization_id uuid, agent_id uuid, settled_at timestamptz, provider_stopped_at timestamptz, provider_stop_receipt jsonb, settled_through timestamptz);
+    CREATE TABLE api_keys(key_hash text, organization_id uuid, user_id uuid, is_active bool, deleted_at timestamptz, expires_at timestamptz);
+    CREATE TABLE users(id uuid, organization_id uuid, is_active bool, deleted_at timestamptz);
+    CREATE TABLE jobs(organization_id uuid, agent_id text, type text, status text);
+    CREATE TABLE agent_compute_stop_intents(organization_id uuid, agent_id uuid, status text, provider_confirmed_at timestamptz);
+    INSERT INTO users VALUES('${fixtureUser}', '${org}', true, NULL);
+    INSERT INTO api_keys VALUES('${createHash("sha256").update(fixtureKey).digest("hex")}', '${org}', '${fixtureUser}', true, NULL, NULL);
+    INSERT INTO agent_sandboxes VALUES('${agent}', '${otherOrg}', '${fixtureUser}', 'private-node', 'private-container', '${container}', 'deletion_failed', 'suspended', NULL, 'dedicated-always', NULL, NULL, NULL, NULL);
+    INSERT INTO jobs VALUES('${otherOrg}', '${agent}', 'agent_delete', 'failed');
+  `);
+  const report = await readDeletionBillingProvenance(db, migration, {
+    fixtureApiKey: fixtureKey,
+  });
+  expect(report.unresolvedAgentProvenanceCount).toBe(1);
+  expect(report.agentAuthorityFacts).toMatchObject({
+    targetCount: 1,
+    credentialOrganizationMatchCount: 0,
+    credentialUserMatchCount: 0,
+    missingPreviousStatusCount: 1,
+    missingPreviousBillingStatusCount: 1,
+    hasDeletionAttemptCount: 1,
+    hasActiveDeleteJobCount: 0,
+    hasCompletedDeleteJobCount: 0,
+    hasFailedDeleteJobCount: 1,
+    hasFundingCount: 0,
+    hasProviderStoppedFundingReceiptCount: 0,
+    hasProviderConfirmedStopIntentCount: 0,
+    hasDockerLocatorCount: 1,
+  });
+  const closed = JSON.stringify(report);
+  for (const forbidden of [
+    agent,
+    org,
+    otherOrg,
+    fixtureUser,
+    fixtureKey,
+    "private-node",
+    "private-container",
+  ])
+    expect(closed).not.toContain(forbidden);
+  await db.exec(`
+    UPDATE agent_sandboxes SET organization_id = '${org}';
+    UPDATE jobs SET organization_id = '${org}';
+    INSERT INTO agent_compute_funding VALUES('${org}', '${agent}', NULL, NOW(), '{"fixture":true}', NULL);
+    INSERT INTO agent_compute_stop_intents VALUES('${org}', '${agent}', 'provider_confirmed', NOW());
+  `);
+  const matched = await readDeletionBillingProvenance(db, migration, {
+    fixtureApiKey: fixtureKey,
+  });
+  expect(matched.agentAuthorityFacts).toMatchObject({
+    credentialOrganizationMatchCount: 1,
+    credentialUserMatchCount: 1,
+    hasFundingCount: 1,
+    hasProviderStoppedFundingReceiptCount: 1,
+    hasProviderConfirmedStopIntentCount: 1,
+  });
+  // Presence is not complete settled/fenced authority; the actual guard remains unresolved.
+  expect(matched.unresolvedAgentProvenanceCount).toBe(1);
+  expect(
+    (
+      await db.query(
+        "SELECT status, billing_status, deletion_previous_status FROM agent_sandboxes",
+      )
+    ).rows,
+  ).toEqual([
+    {
+      status: "deletion_failed",
+      billing_status: "suspended",
+      deletion_previous_status: null,
+    },
+  ]);
+  await db.exec("UPDATE api_keys SET is_active = false");
+  await expect(
+    readDeletionBillingProvenance(db, migration, { fixtureApiKey: fixtureKey }),
+  ).rejects.toThrow("fixture_identity_unavailable");
+  // A failed identity read also rolls back and leaves the client usable.
+  expect(
+    (await db.query("SELECT count(*)::integer AS count FROM jobs")).rows,
+  ).toEqual([{ count: 1 }]);
 });

@@ -8,16 +8,16 @@
  * object is confirmed deleted and the record transitions to `deleted`.
  */
 
-import { Hono } from "hono";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   ApiError,
   failureResponse,
   NotFoundError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { deleteBlob, isValidBlobUrl } from "@/lib/blob";
-import { generationsService } from "@/lib/services/generations";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deleteBlob, isValidBlobUrl } from "@elizaos/cloud-shared/lib/blob";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

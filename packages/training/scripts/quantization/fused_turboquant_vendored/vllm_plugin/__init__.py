@@ -12,6 +12,6 @@ Configuration (environment variables):
     TURBOQUANT_COMPRESS_V=1     Compress values (1=yes, 0=K-only)
 """
 
-from quantization.fused_turboquant_vendored.vllm_plugin.plugin import register_backend
+from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.plugin import register_backend
 
 __all__ = ["register_backend"]

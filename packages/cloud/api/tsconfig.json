@@ -12,14 +12,7 @@
     "paths": {
       "@/api-app/*": ["./src/*"],
       "@/api-queue/*": ["./src/queue/*"],
-      "@/lib/*": ["../shared/src/lib/*"],
-      "@/db/*": ["../shared/src/db/*"],
-      "@/types/*": ["../shared/src/types/*"],
-      "@/billing/*": ["../shared/src/billing/*"],
       "@/api/*": ["./*"],
-      "@elizaos/cloud-shared/db/*": ["../shared/src/db/*"],
-      "@elizaos/cloud-shared/lib/*": ["../shared/src/lib/*"],
-      "@elizaos/cloud-shared/types/*": ["../shared/src/types/*"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-elizacloud": [
@@ -28,7 +21,6 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../plugins/plugin-elizacloud/src/*"
       ],
-      "@/*": ["../shared/*"],
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
       ],

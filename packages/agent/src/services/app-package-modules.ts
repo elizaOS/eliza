@@ -28,9 +28,9 @@ import {
   readJsonFile,
   resolveStateDir,
 } from "@elizaos/core";
-
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+import { uniquePaths } from "../utils/paths.ts";
 import { getPluginInfo } from "./registry-client.ts";
 
 export type {
@@ -84,18 +84,6 @@ export function hasRuntimeAppRouteModule(appIdentifier: string): boolean {
 }
 export function unregisterRuntimeAppRouteModule(appIdentifier: string): void {
   runtimeAppRouteModules.delete(runtimeAppRouteKey(appIdentifier));
-}
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const candidate of paths) {
-    const resolved = path.resolve(candidate);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      ordered.push(resolved);
-    }
-  }
-  return ordered;
 }
 
 function packageNameToDirName(packageName: string): string {

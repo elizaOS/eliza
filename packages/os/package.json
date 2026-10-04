@@ -8,11 +8,6 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "workspaces": [
-    "linux/installer",
-    "setup",
-    "usb-installer"
-  ],
   "elizaos": {
     "scripts": {
       "testLanes": [
@@ -23,12 +18,12 @@
   "scripts": {
     "build": "bun run --cwd setup build && bun run --cwd usb-installer build && bun run build:browser",
     "typecheck": "tsc --noEmit -p linux/installer/tsconfig.json && tsc --noEmit -p setup/tsconfig.json && tsc --noEmit -p setup/tsconfig.main.json && tsc --noEmit -p usb-installer/tsconfig.json && bun run typecheck:browser",
-    "lint": "bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check && bun run lint:browser",
+    "lint": "bun run lint:check",
     "format": "bunx @biomejs/biome format --write linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
     "test": "bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test && bun run test:browser",
     "test:release": "node --test scripts/__tests__/*.node.test.ts && bun test --timeout 60000 scripts/__tests__/*.bun.test.ts",
     "verify:layout": "node scripts/verify-os-repository-layout.ts",
-    "verify": "bun run verify:layout && bun run verify:installer-native && bun run typecheck && bun run lint && bun run test && bun run test:release",
+    "verify": "bun run verify:installer-native && bun run verify:portable && bun run test:release && bun run test:ota-publisher",
     "verify:installer-native": "bun run --cwd linux/installer test:native:compile",
     "verify:linux": "bash scripts/linux/mkosi-lint.sh && python3 scripts/linux/test_disposable_disk_vm.py && python3 scripts/linux/test_mkosi_qualification.py && python3 scripts/linux/test_verify_desktop_artifact.py && python3 scripts/linux/test_stage_browser_artifact.py && python3 scripts/linux/test_assemble_browser_payload.py && python3 scripts/linux/test_mkosi_reproducibility.py && python3 scripts/linux/test_riscv64_agent_staging.py",
     "verify:riscv64": "bash scripts/verify-riscv64-buildpaths.sh",
@@ -44,7 +39,9 @@
     "test:ota-trust": "cd native/ota-trust && go test -race ./... && go vet ./...",
     "test:browser:protection": "node --test browser/protection/*.test.mjs",
     "test:browser:protection:network": "node browser/protection/test-network.mjs",
-    "test:ota-publisher": "node --test native/ota-publisher/test/*.test.mjs"
+    "test:ota-publisher": "node --test native/ota-publisher/test/*.test.mjs",
+    "lint:check": "bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check && bun run lint:browser",
+    "verify:portable": "bun run verify:layout && bun run typecheck && bun run lint:check && bun run test"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",
@@ -67,5 +64,8 @@
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "rollup": "npm:@rollup/wasm-node@4.60.3"
+  },
+  "exports": {
+    "./contracts": "./contracts/index.ts"
   }
 }

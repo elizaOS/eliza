@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 /**
  * Entity-recognition-from-voice benchmark runner (#10726 pillar 4).
  *
@@ -489,7 +490,7 @@ async function parentMain(): Promise<void> {
   // Fail fast on missing prerequisites before spawning children.
   loadTranscripts();
 
-  const resultsDir = path.join(__dirname, "results");
+  const resultsDir = testOutputPath("entity-voice-bench");
   mkdirSync(resultsDir, { recursive: true });
 
   const sessions: SessionResult[] = [];

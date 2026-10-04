@@ -16,22 +16,27 @@ process.env.OXAPAY_MERCHANT_API_KEY = "local-test-placeholder";
 
 const organizationId = randomUUID();
 const caller = { id: randomUUID(), organization_id: organizationId };
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserWithOrg: async () => caller,
   requireUserOrApiKeyWithOrg: async () => caller,
 }));
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
-    next(),
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  RateLimitPresets: { STRICT: {}, STANDARD: {} },
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+      next(),
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    RateLimitPresets: { STRICT: {}, STANDARD: {} },
+  }),
+);
 
 const { default: route } = await import("../crypto/payments/route");
 const { CryptoPaymentError, cryptoPaymentsService } = await import(
-  "@/lib/services/crypto-payments"
+  "@elizaos/cloud-shared/lib/services/crypto-payments"
 );
-const { oxaPayService } = await import("@/lib/services/oxapay");
+const { oxaPayService } = await import(
+  "@elizaos/cloud-shared/lib/services/oxapay"
+);
 const createInvoice = spyOn(oxaPayService, "createInvoice").mockImplementation(
   async () => {
     throw new Error("A rejected amount must never create an OxaPay invoice");

@@ -180,6 +180,32 @@ describe("GoogleGmailAdapter", () => {
     ).rejects.toMatchObject({ code: "GMAIL_READ_PROVIDER_FAILED" });
   });
 
+  it("keeps identical provider message IDs separate by runtime and account", async () => {
+    const first = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async ({ accountId }) => [
+        gmailMessage({ subject: accountId }),
+      ]),
+    });
+    const second = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async ({ accountId }) => [
+        gmailMessage({ subject: accountId }),
+      ]),
+    });
+    second.agentId = "00000000-0000-0000-0000-000000000002";
+    const adapter = new GoogleGmailAdapter();
+    const [one] = await adapter.listMessages(first, { worldIds: ["account-one"] });
+    const [two] = await adapter.listMessages(first, { worldIds: ["account-two"] });
+    const [peer] = await adapter.listMessages(second, { worldIds: ["account-one"] });
+    expect(new Set([one.id, two.id, peer.id]).size).toBe(3);
+    expect((await adapter.getMessage(first, one.id))?.subject).toBe("account-one");
+    expect((await adapter.getMessage(first, two.id))?.subject).toBe("account-two");
+    expect(await adapter.getMessage(first, peer.id)).toBeNull();
+    await expect(adapter.getMessage(first, "gmail:msg_1")).rejects.toMatchObject({
+      code: "GMAIL_MESSAGE_ACCOUNT_AMBIGUOUS",
+    });
+    expect((await adapter.getMessage(second, "gmail:msg_1"))?.id).toBe(peer.id);
+  });
+
   it("maps triage messages from the Google service into message refs", async () => {
     const listGmailTriageMessages = vi.fn(async () => [gmailMessage()]);
     const runtime = runtimeWithGoogleService({ listGmailTriageMessages });
@@ -195,7 +221,7 @@ describe("GoogleGmailAdapter", () => {
     });
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
-      id: "gmail:msg_1",
+      id: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
       source: "gmail",
       externalId: "msg_1",
       threadId: "thread_1",

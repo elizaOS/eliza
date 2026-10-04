@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import {
   type BenchmarkResult,
   computeLatencyStats,
@@ -107,7 +108,8 @@ async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHARED_DIR = resolve(__dirname, "../../shared");
-const RESULTS_DIR = resolve(__dirname, "../../results");
+const RESULTS_DIR =
+  process.env.BENCHMARK_OUTPUT_ROOT || testOutputPath("benchmark-framework");
 
 // ─── Load shared configuration ──────────────────────────────────────────────
 

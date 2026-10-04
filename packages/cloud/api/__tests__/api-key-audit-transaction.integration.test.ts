@@ -24,23 +24,30 @@ const APP_ID = "00000000-0000-4000-8000-0000000000d1";
 const PGLITE_TIMEOUT_MS = 60_000;
 
 const revocationActual = await import(
-  "@/lib/services/inference-credential-revocation"
+  "@elizaos/cloud-shared/lib/services/inference-credential-revocation"
 );
-mock.module("@/lib/services/inference-credential-revocation", () => ({
-  ...revocationActual,
-  revokeInferenceApiKey: async () => {},
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/inference-credential-revocation",
+  () => ({
+    ...revocationActual,
+    revokeInferenceApiKey: async () => {},
+  }),
+);
 
-let dbWrite: typeof import("@/db/helpers").dbWrite;
-let closeDatabaseConnectionsForTests: typeof import("@/db/client").closeDatabaseConnectionsForTests;
-let apiKeysService: typeof import("@/lib/services/api-keys").apiKeysService;
+let dbWrite: typeof import("@elizaos/cloud-shared/db/helpers").dbWrite;
+let closeDatabaseConnectionsForTests: typeof import("@elizaos/cloud-shared/db/client").closeDatabaseConnectionsForTests;
+let apiKeysService: typeof import("@elizaos/cloud-shared/lib/services/api-keys").apiKeysService;
 let createTransactionalAudit: typeof import("../src/services/audit-transactional").createTransactionalAudit;
 let auditEventsSink: typeof import("../src/services/audit-events").auditEventsSink;
 
 beforeAll(async () => {
-  ({ dbWrite } = await import("@/db/helpers"));
-  ({ closeDatabaseConnectionsForTests } = await import("@/db/client"));
-  ({ apiKeysService } = await import("@/lib/services/api-keys"));
+  ({ dbWrite } = await import("@elizaos/cloud-shared/db/helpers"));
+  ({ closeDatabaseConnectionsForTests } = await import(
+    "@elizaos/cloud-shared/db/client"
+  ));
+  ({ apiKeysService } = await import(
+    "@elizaos/cloud-shared/lib/services/api-keys"
+  ));
   ({ createTransactionalAudit } = await import(
     "../src/services/audit-transactional"
   ));
@@ -154,10 +161,12 @@ describe("transactional API-key audit", () => {
       expect(retry?.revokedNow).toBe(false);
       expect(
         await apiKeysService.revokePresentedStandardCredential(
-          "eliza_" + "0".repeat(64),
+          `eliza_${"0".repeat(64)}`,
         ),
       ).toBeNull();
-      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      const { apiKeysRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/api-keys"
+      );
       const row = await apiKeysRepository.findByIdConsistent(apiKey.id);
       expect(row?.is_active).toBe(false);
       expect(row?.key_ciphertext).toBeNull();
@@ -178,7 +187,9 @@ describe("transactional API-key audit", () => {
           throw new Error("audit unavailable");
         }),
       ).rejects.toThrow("audit unavailable");
-      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      const { apiKeysRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/api-keys"
+      );
       expect(
         (await apiKeysRepository.findByIdConsistent(apiKey.id))?.is_active,
       ).toBe(true);
@@ -190,7 +201,9 @@ describe("transactional API-key audit", () => {
     "two rotations that read the same key consume it only once",
     async () => {
       const { apiKey: original } = await createKey(createTransactionalAudit());
-      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      const { apiKeysRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/api-keys"
+      );
       const read = apiKeysRepository.findByIdConsistent.bind(apiKeysRepository);
       let release!: () => void;
       const bothRead = new Promise<void>((resolve) => {
@@ -252,7 +265,9 @@ describe("transactional API-key audit", () => {
     "an inactive key cannot be rotated using an earlier active read",
     async () => {
       const { apiKey: original } = await createKey(createTransactionalAudit());
-      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      const { apiKeysRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/api-keys"
+      );
       const read = apiKeysRepository.findByIdConsistent.bind(apiKeysRepository);
       spyOn(apiKeysRepository, "findByIdConsistent").mockImplementation(
         async (id) => {

@@ -75,9 +75,110 @@ describe("buildCheckinSummaryPrompt", () => {
     });
     const original = structuredClone(report);
     expect(renderMorningCheckinReport(report)).toContain(
-      "18 of 19 records have recorded misses",
+      "18 of 19 tracked items have missed check-ins.",
     );
     expect(report).toEqual(original);
+  });
+
+  it("keeps the morning readable while disclosing unavailable sources once", () => {
+    const section = (
+      key: CheckinReport["briefingSections"][number]["key"],
+      title: string,
+      error: string | null,
+    ) => ({
+      key,
+      title,
+      summary: `No recent ${title} items.`,
+      items: [],
+      error,
+    });
+    const report = baseReport({
+      generatedAt: "2026-10-04T01:00:00.000Z",
+      timezone: "America/Los_Angeles",
+      briefingSections: [
+        section("inbox", "Inbox", null),
+        section("github", "GitHub", null),
+        section("gmail", "Gmail", "Google Gmail is not connected."),
+        section(
+          "x_dms",
+          "X DMs",
+          "X runtime service fetchConnectorMessages is not registered",
+        ),
+        section(
+          "x_timeline",
+          "X timeline",
+          "X runtime service fetchFeedForAccount is not registered",
+        ),
+        section("x_mentions", "X mentions", "Request failed"),
+      ],
+    });
+    const original = structuredClone(report);
+    const text = renderMorningCheckinReport(report);
+    expect(text).toContain(
+      "No Calendar events or overdue tasks are listed for today.",
+    );
+    expect(text).toContain(
+      "Gmail isn't connected. X (DMs, timeline, mentions) couldn't be checked.",
+    );
+    expect(text.match(/X /g)).toHaveLength(1);
+    expect(text).not.toContain("No recent Inbox");
+    expect(text).not.toContain("No recent GitHub");
+    expect(text).not.toContain("couldn't check");
+    expect(text).not.toContain("tracking states");
+    expect(text).toMatch(/As of Oct 3, 2026, 6:00 PM PDT.$/);
+    expect(report).toEqual(original);
+
+    const setupReport = baseReport({
+      briefingSections: [
+        section(
+          "x_dms",
+          "X DMs",
+          "[x_read_dms] X runtime service fetchConnectorMessages is not registered.",
+        ),
+        section(
+          "x_timeline",
+          "X timeline",
+          "[x_read_feed_home_timeline] X runtime service fetchFeedForAccount is not registered.",
+        ),
+        section(
+          "x_mentions",
+          "X mentions",
+          "[x_read_feed_mentions] X runtime service fetchFeedForAccount is not registered.",
+        ),
+      ],
+    });
+    expect(renderMorningCheckinReport(setupReport)).toContain(
+      "X isn't available in this setup.",
+    );
+    expect(
+      renderMorningCheckinReport(
+        baseReport({
+          briefingSections: setupReport.briefingSections.slice(0, 1),
+        }),
+      ),
+    ).toContain("X (DMs) couldn't be checked.");
+    expect(
+      renderMorningCheckinReport(
+        baseReport({
+          collectorErrors: {
+            ...report.collectorErrors,
+            todaysMeetings: "Request failed",
+          },
+        }),
+      ),
+    ).not.toContain("Your calendar is clear");
+
+    const failedGmail = baseReport({
+      briefingSections: [
+        section("gmail", "Gmail", "Request failed: not connected to upstream"),
+      ],
+    });
+    expect(renderMorningCheckinReport(failedGmail)).toContain(
+      "Gmail unavailable",
+    );
+    expect(renderMorningCheckinReport(failedGmail)).not.toContain(
+      "Gmail isn't connected",
+    );
   });
 
   it("distinguishes unavailable sections from healthy empty sections without dropping source fields", () => {

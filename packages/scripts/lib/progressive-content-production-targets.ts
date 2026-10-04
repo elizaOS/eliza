@@ -72,7 +72,7 @@ export async function createProgressiveContentBenchmarkFactory(input) {
   }
   if (input.family === "attachment") {
     const module = await import(
-      "../../agent/src/testing/progressive-content-attachment-target.ts"
+      "../../agent/test/support/progressive-content-attachment-target.ts"
     );
     return module.createProgressiveAttachmentTargetFactory();
   }
@@ -100,7 +100,7 @@ export async function createProgressiveContentProductionFactories(input) {
         "../../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts"
       ),
       import(
-        "../../agent/src/testing/progressive-content-attachment-target.ts"
+        "../../agent/test/support/progressive-content-attachment-target.ts"
       ),
       import(
         "../../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts"

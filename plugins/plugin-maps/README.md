@@ -11,3 +11,10 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-maps build  # build
 bun run --cwd plugins/plugin-maps test   # tests
 ```
+
+The `./client` entry exposes host-configured device controllers and contracts.
+Use `./client/map-plane` for the optional MapLibre renderer and supply its worker,
+fonts, colors, regional transport and protocol. Native location uses the host
+bridge supplied to `./client/native-location`; no plugin registry or provider
+authority is chosen by the client library. Callers cancel regional requests and
+retire location ownership; the library does not impose elapsed-time deadlines.

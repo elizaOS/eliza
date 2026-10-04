@@ -8,7 +8,7 @@ import path from "node:path";
 import {
   createRuntimeAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   _resetAccountsRoutesPoolCache,

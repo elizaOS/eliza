@@ -359,6 +359,53 @@ describe("managed incremental evaluators", () => {
     expect(prompt).toContain("### second\nEvaluate the selected evidence.");
   });
 
+  it("shares a subset's identical contract without changing other checkpoint scopes", async () => {
+    const { runtime, service, addMessage } = harness();
+    const evaluator: Evaluator = {
+      name: "current",
+      description: "Current checkpoint",
+      incremental: true,
+      schema: { type: "object", properties: {} },
+      shouldRun: async () => true,
+      prompt: () => "Evaluate the selected evidence.",
+      processors: [],
+    };
+    runtime.registerEvaluator(evaluator);
+    runtime.registerEvaluator({ ...evaluator, name: "sibling" });
+    runtime.useModel = vi.fn(async () => ({
+      current: {},
+      sibling: {},
+      backfill: {},
+    })) as AgentRuntime["useModel"];
+    const old = await addMessage("OLDER_GROUP_EVIDENCE", 1);
+    await service.run(old, undefined, { phase: "post_turn" });
+    runtime.registerEvaluator({ ...evaluator, name: "backfill" });
+    const current = await addMessage("NEWER_GROUP_EVIDENCE", 2);
+    const result = await service.run(current, undefined, {
+      phase: "post_turn",
+    });
+    expect(result.errors).toEqual([]);
+    const prompt = vi.mocked(runtime.useModel).mock.calls[1]?.[1]?.messages?.[0]
+      ?.content;
+    if (typeof prompt !== "string")
+      throw new Error("Expected evaluator prompt");
+    expect(prompt).toContain(
+      'Evaluators ["current","sibling"] below: Incremental evidence contract: process only the exact source IDs in evidence-set-1 defined above. Removed source IDs: []. Edited source IDs: [].',
+    );
+    expect(prompt).toContain(
+      "### backfill\nIncremental evidence contract: process all evidence records above.",
+    );
+    expect(prompt).toContain("### current\nEvaluate the selected evidence.");
+    expect(prompt).toContain("### sibling\nEvaluate the selected evidence.");
+    expect(prompt.match(/Incremental evidence contract:/g)).toHaveLength(2);
+    expect(
+      JSON.parse(prompt.match(/evidence-set-1: (\[[\s\S]*?\])/)?.[1] ?? "null"),
+    ).toEqual([current.id]);
+    expect(prompt.match(/OLDER_GROUP_EVIDENCE/g)).toHaveLength(1);
+    // The current message remains both the trigger and transcript evidence.
+    expect(prompt.match(/NEWER_GROUP_EVIDENCE/g)).toHaveLength(2);
+  });
+
   it("excludes replay-only evidence from a fresh extractor's prompt without changing the durable replay", async () => {
     const { runtime, roomId, service, addMessage } = harness();
     let fail = true;
