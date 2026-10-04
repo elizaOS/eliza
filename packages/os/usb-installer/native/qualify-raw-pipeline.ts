@@ -65,6 +65,7 @@ const image: ElizaOsImage = {
   sizeBytes: compressed.length,
   minUsbSizeBytes: expanded.length,
   manifestVersion: 1,
+  expires: new Date(Date.now() + 3_600_000).toISOString(),
   schemaVersion: 1,
   product: "elizaOS",
   sequence: 1,

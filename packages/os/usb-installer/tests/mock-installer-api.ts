@@ -22,12 +22,23 @@ export const mockImage = {
   architecture: "x86_64",
   buildId: "playwright",
   publishedAt: "2026-05-19T00:00:00.000Z",
-  url: "https://download.elizaos.ai/elizaos-live.iso",
+  url: "https://download.elizaos.ai/elizaos.raw.zst",
   checksumSha256:
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   sizeBytes: 4 * 1024 ** 3,
   minUsbSizeBytes: 8 * 1024 ** 3,
   manifestVersion: 1,
+  schemaVersion: 1,
+  product: "elizaOS",
+  sequence: 1,
+  expires: "2099-01-01T00:00:00Z",
+  format: "raw.zst",
+  signatureUrl: "https://download.elizaos.ai/elizaos.raw.zst.sig",
+  sha256Compressed: "0123456789abcdef".repeat(4),
+  sha256Expanded: "abcdef0123456789".repeat(4),
+  compressedSize: 4 * 1024 ** 3,
+  expandedSize: 6 * 1024 ** 3,
+  minDeviceBytes: 8 * 1024 ** 3,
 };
 
 export interface MockInstallerApiCalls {

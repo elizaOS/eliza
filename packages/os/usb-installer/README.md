@@ -33,5 +33,5 @@ sector run. These tests cover raw writes and readback, not OS boot or installati
 
 Public imports use the browser entrypoint, `/contracts` for portable types, `/node`
 for host execution, and `/trust` for image verification and durable sequence floors.
-Linux supports the canonical `raw.zst` writer. macOS and Windows retain their legacy
-adapters but do not advertise canonical raw writing until those adapters are qualified.
+Linux supports the signed `raw.zst` writer. macOS and Windows provide drive
+discovery and previews; writing requires a qualified platform adapter.
