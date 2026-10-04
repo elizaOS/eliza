@@ -1661,7 +1661,6 @@ export class RemindersDomain {
     const fallback = buildReminderBody({
       title: args.title,
       derivedTarget: args.derivedTarget,
-      timezone: args.timezone,
     });
     if (typeof this.ctx.runtime.useModel !== "function") {
       return fallback;
