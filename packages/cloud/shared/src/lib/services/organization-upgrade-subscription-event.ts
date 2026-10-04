@@ -144,7 +144,7 @@ export async function reconcileOrganizationUpgradeSubscriptionEvent(
   const outcome = await reconcileOriginalOrganizationUpgrade(original);
   if (outcome.status === "applied")
     await recordOrganizationUpgradeRecoveryOutcome({ ...original, issueCode: null });
-  else if (outcome.reason === "requires_reconciliation")
+  else if (outcome.status === "pending" && outcome.reason === "requires_reconciliation")
     await recordOrganizationUpgradeRecoveryOutcome({
       ...original,
       issueCode: "UPGRADE_INVOICE_REQUIRES_RECONCILIATION",

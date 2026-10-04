@@ -10,6 +10,7 @@ export async function reconcileOrganizationUpgradesBeforeRenewal(input: {
   const unsettled = await listUnsettledOrganizationUpgrades(input);
   for (const original of unsettled) {
     const outcome = await reconcileOriginalOrganizationUpgrade(original);
-    if (outcome.status !== "applied") renewalUnavailable("original_upgrade_unsettled");
+    if (outcome.status !== "applied" && outcome.status !== "failed")
+      renewalUnavailable("original_upgrade_unsettled");
   }
 }

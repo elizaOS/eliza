@@ -1,6 +1,6 @@
 /** Uses the existing financial incident journal under organization/command locks. */
 import { createHash } from "node:crypto";
-import { and, eq, exists, isNull, sql } from "drizzle-orm";
+import { and, eq, exists, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import { organizations } from "../schemas/organizations";
@@ -44,10 +44,16 @@ export async function recordOrganizationUpgradeRecoveryOutcome(input: {
       command.merchant_key !== "platform" ||
       command.organization_upgrade_dispatch_state !== "started" ||
       !command.subscription_id ||
-      !["OUTCOME_UNKNOWN", "APPLIED"].includes(command.status)
+      (!["OUTCOME_UNKNOWN", "APPLIED"].includes(command.status) &&
+        !(command.status === "FAILED" && command.organization_upgrade_failure_evidence !== null))
     )
       reject("original_upgrade_unavailable");
     const now = await readPostLockDatabaseNow(tx);
+    if (command.status === "FAILED")
+      return {
+        recorded: false,
+        resolved: await resolveVoidedUpgradeIncidentsInTransaction(tx, input),
+      };
     if (command.status === "APPLIED") {
       return {
         recorded: false,
@@ -110,12 +116,29 @@ export async function resolveAppliedUpgradeIncidentsInTransaction(
     commandId: string;
   },
 ) {
+  return resolveUpgradeIncidents(tx, input, "APPLIED");
+}
+
+export async function resolveVoidedUpgradeIncidentsInTransaction(
+  tx: DbTransaction,
+  input: { organizationId: string; commandId: string },
+) {
+  return resolveUpgradeIncidents(tx, input, "FAILED");
+}
+async function resolveUpgradeIncidents(
+  tx: DbTransaction,
+  input: { organizationId: string; commandId: string },
+  status: "APPLIED" | "FAILED",
+) {
   const now = await readPostLockDatabaseNow(tx);
   const resolved = await tx
     .update(incidents)
     .set({
       status: "resolved",
-      resolution: "Original upgrade result applied",
+      resolution:
+        status === "APPLIED"
+          ? "Original upgrade result applied"
+          : "Original upgrade invoice void; no upgrade applied",
       resolved_at: now,
       resolved_by_user_id: null,
       next_retry_at: null,
@@ -141,7 +164,10 @@ export async function resolveAppliedUpgradeIncidentsInTransaction(
                 eq(commands.merchant_key, "platform"),
                 eq(commands.kind, "upgrade"),
                 eq(commands.organization_upgrade_dispatch_state, "started"),
-                eq(commands.status, "APPLIED"),
+                eq(commands.status, status),
+                status === "FAILED"
+                  ? isNotNull(commands.organization_upgrade_failure_evidence)
+                  : undefined,
               ),
             ),
         ),

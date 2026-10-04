@@ -18,6 +18,7 @@ let renewal: ReturnType<typeof renewalPaidObjects> | null = null;
 let objects: ReturnType<typeof upgradePaidObjects>;
 let dispatched = false;
 let originalKey = "";
+let voidIntent: unknown = null;
 let historicalTargetEvent: unknown = null;
 let afterTargetSearch = async () => {};
 
@@ -178,7 +179,12 @@ mock.module("../stripe", () => ({
           : objects.rawInvoice;
       },
     },
-    paymentIntents: { retrieve: async () => renewal?.paymentIntent },
+    paymentIntents: {
+      retrieve: async (id: string) =>
+        id === objects.rawInvoice.payment_intent && voidIntent
+          ? voidIntent
+          : renewal?.paymentIntent,
+    },
     charges: { retrieve: async () => renewal?.charge },
     prices: {
       retrieve: async (id: string) => ({
@@ -211,6 +217,7 @@ let dispatch: typeof import("./organization-upgrade-dispatch").dispatchOrganizat
 async function seed(period?: { start: Date; end: Date }) {
   fixtureData = await seedCancellationTestAccount((q, v) => db.query(q, v), period);
   historicalTargetEvent = null;
+  voidIntent = null;
   renewal = null;
   afterTargetSearch = async () => {};
   dispatched = false;
@@ -354,6 +361,327 @@ async function state(commandId: string) {
         ).rows[0].lease_token,
       ).toBeNull();
     });
+    async function voidOriginal(period?: { start: Date; end: Date }) {
+      const f = await seed(period);
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      Object.assign(objects.rawInvoice, {
+        status: "void",
+        paid: false,
+        amount_paid: 0,
+        amount_remaining: 3500,
+        status_transitions: {
+          finalized_at: objects.rawInvoice.created,
+          paid_at: null,
+          voided_at: objects.rawInvoice.created,
+          marked_uncollectible_at: null,
+        },
+      });
+      objects.rawSubscription = {
+        ...structuredClone(fixtureData.provider),
+        collection_method: "charge_automatically",
+      };
+      voidIntent = {
+        id: objects.rawInvoice.payment_intent,
+        object: "payment_intent",
+        invoice: objects.rawInvoice.id,
+        customer: fixtureData.source.stripe_customer_id,
+        livemode: false,
+        currency: "usd",
+        status: "canceled",
+        amount_received: 0,
+        amount_capturable: 0,
+        canceled_at: objects.rawInvoice.created,
+        on_behalf_of: null,
+        transfer_data: null,
+        application_fee_amount: null,
+      };
+      return f;
+    }
+    async function financialState() {
+      const org = fixtureData.input.organizationId;
+      const result: unknown[] = [];
+      for (const table of [
+        "billing_subscriptions",
+        "billing_subscription_revisions",
+        "organization_entitlements",
+        "subscription_allowance_periods",
+        "subscription_allowance_transactions",
+      ])
+        result.push(
+          (
+            await db.query(
+              `SELECT to_jsonb(t) AS value FROM ${table} t WHERE organization_id=$1 ORDER BY to_jsonb(t)::text`,
+              [org],
+            )
+          ).rows,
+        );
+      return result;
+    }
+    test("original void closes incident, preserves money and authority, replays immutably, and releases renewal hold", async () => {
+      const f = await voidOriginal();
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      await record({ ...f.identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" });
+      const before = await financialState();
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      expect((await recover(f.identity)).status).toBe("failed");
+      expect(await financialState()).toEqual(before);
+      expect((await state(f.identity.commandId)).status).toBe("FAILED");
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.identity.commandId,
+          ])
+        ).rows,
+      ).toEqual([{ status: "resolved" }]);
+      expect((await recover(f.identity)).status).toBe("failed");
+      const { reconcileOrganizationUpgradesBeforeRenewal: beforeRenewal } = await import(
+        "./organization-upgrade-renewal-ordering"
+      );
+      await beforeRenewal({
+        organizationId: f.identity.organizationId,
+        subscriptionId: fixtureData.source.id,
+      });
+      expect(await financialState()).toEqual(before);
+      for (const change of [
+        "organization_upgrade_failure_evidence=NULL",
+        "status='OUTCOME_UNKNOWN',completed_at=NULL,error_code=NULL,provider_response_digest=NULL,organization_upgrade_failure_evidence=NULL",
+        "organization_upgrade_failure_evidence=jsonb_set(organization_upgrade_failure_evidence,'{invoiceId}','\"in_other\"')",
+      ])
+        await expect(
+          db.query(`UPDATE billing_subscription_commands SET ${change} WHERE id=$1`, [
+            f.identity.commandId,
+          ]),
+        ).rejects.toThrow();
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    for (const [label, corruptVoid] of [
+      [
+        "payment still processing",
+        () => {
+          Object.assign(voidIntent as object, { status: "processing" });
+        },
+      ],
+      [
+        "payment received",
+        () => {
+          Object.assign(voidIntent as object, { amount_received: 1 });
+        },
+      ],
+      [
+        "foreign intent",
+        () => {
+          Object.assign(voidIntent as object, { customer: "cus_other" });
+        },
+      ],
+      [
+        "source price changed",
+        () => {
+          objects.rawSubscription.items.data[0]!.price.id = "price_pro";
+        },
+      ],
+      [
+        "pending update",
+        () => {
+          Object.assign(objects.rawSubscription, { pending_update: {} });
+        },
+      ],
+      [
+        "scheduled cancellation",
+        () => {
+          objects.rawSubscription.cancel_at_period_end = true;
+        },
+      ],
+      [
+        "creation changed",
+        () => {
+          objects.rawInvoice.created--;
+        },
+      ],
+    ] as const)
+      test(`void refuses ${label}`, async () => {
+        const f = await voidOriginal();
+        // Retain the original attribution before corrupting the fresh provider response.
+        const { reconcileOrganizationUpgradeInvoiceEvent } = await import(
+          "./organization-upgrade-invoice-event"
+        );
+        await reconcileOrganizationUpgradeInvoiceEvent(invoiceDelivery("invoice.created"));
+        corruptVoid();
+        const before = await financialState();
+        const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+          "./organization-upgrade-recovery"
+        );
+        await expect(recover(f.identity)).rejects.toThrow();
+        expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+        expect(await financialState()).toEqual(before);
+        expect(mutation).toHaveBeenCalledTimes(1);
+      });
+
+    test("void without a PaymentIntent requires no unattributed charge", async () => {
+      const f = await voidOriginal();
+      Object.assign(objects.rawInvoice, { payment_intent: null, charge: null });
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      expect((await recover(f.identity)).status).toBe("failed");
+      expect(
+        (
+          await db.query(
+            "SELECT organization_upgrade_failure_evidence->'paymentIntentId' AS intent FROM billing_subscription_commands WHERE id=$1",
+            [f.identity.commandId],
+          )
+        ).rows,
+      ).toEqual([{ intent: null }]);
+      const g = await voidOriginal();
+      Object.assign(objects.rawInvoice, { payment_intent: null });
+      await expect(recover(g.identity)).rejects.toMatchObject({
+        context: { reason: "unattributed_payment_evidence" },
+      });
+    });
+
+    test("void proof and incident resolution roll back together", async () => {
+      const f = await voidOriginal();
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      await record({ ...f.identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" });
+      await db.query(
+        "CREATE FUNCTION reject_void_incident_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='resolved' THEN RAISE EXCEPTION 'fixture incident resolution failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_void_incident_fixture BEFORE UPDATE ON billing_subscription_incidents FOR EACH ROW EXECUTE FUNCTION reject_void_incident_fixture();",
+      );
+      const before = await financialState();
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      try {
+        await expect(recover(f.identity)).rejects.toThrow();
+        expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+        expect(
+          (
+            await db.query(
+              "SELECT organization_upgrade_failure_evidence AS proof FROM billing_subscription_commands WHERE id=$1",
+              [f.identity.commandId],
+            )
+          ).rows,
+        ).toEqual([{ proof: null }]);
+        expect(await financialState()).toEqual(before);
+      } finally {
+        await db.query(
+          "DROP TRIGGER reject_void_incident_fixture ON billing_subscription_incidents; DROP FUNCTION reject_void_incident_fixture()",
+        );
+      }
+      expect((await recover(f.identity)).status).toBe("failed");
+    });
+    test("void result requires live original lease and cannot override applied target evidence", async () => {
+      const f = await voidOriginal();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      const { finalizeVoidedOrganizationUpgrade: finalize } = await import(
+        "../../db/repositories/organization-upgrade-void-finalization"
+      );
+      await expect(
+        finalize({
+          ...f.identity,
+          leaseToken: f.claim.command.lease_token!,
+          executionGeneration: f.claim.command.execution_generation,
+          rawInvoice: objects.rawInvoice,
+          rawSubscription: objects.rawSubscription,
+          rawPaymentIntent: voidIntent,
+        }),
+      ).rejects.toMatchObject({ context: { reason: "original_lease_unavailable" } });
+      const before = await financialState();
+      const oldSubscription = objects.rawSubscription;
+      objects.rawSubscription = structuredClone(oldSubscription);
+      Object.assign(objects.rawSubscription.items.data[0]!.price, {
+        id: f.quote.provider_binding!.targetPriceId,
+        product: f.quote.provider_binding!.targetProductId,
+        unit_amount: f.quote.review.targetBaseAmountCents,
+      });
+      const { recordOrganizationUpgradeHistoricalTarget: retain } = await import(
+        "../../db/repositories/organization-upgrade-historical-targets"
+      );
+      await retain({ ...f.identity, raw: historicalEvent() });
+      objects.rawSubscription = oldSubscription;
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      await expect(recover(f.identity)).rejects.toMatchObject({
+        context: { reason: "missing_origin_or_conflicting_target" },
+      });
+      expect(await financialState()).toEqual(before);
+      await expect(
+        db.query(
+          "UPDATE billing_subscription_commands SET status='FAILED',error_code='ORIGINAL_UPGRADE_INVOICE_VOID',completed_at=clock_timestamp() WHERE id=$1",
+          [f.identity.commandId],
+        ),
+      ).rejects.toThrow();
+    });
+    test("renewal resolves the void original and grants only the unchanged plan's next period", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await voidOriginal({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      renewal = renewalPaidObjects(fixtureData.source, objects.rawSubscription, {
+        start: second + 5,
+        end: second + 86405,
+      });
+      objects.rawSubscription = renewal.subscription;
+      const { reconcileStripePaidRenewal: renew } = await import("./stripe-paid-renewal");
+      const event = {
+        id: `evt_voidrenewal${f.identity.subscriptionId.replaceAll("-", "")}`,
+        object: "event",
+        type: "invoice.paid",
+        api_version: "2024-11-20.acacia",
+        created: second + 5,
+        livemode: false,
+        data: { object: renewal.invoice },
+      };
+      const message = {
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      } as Parameters<typeof renew>[0];
+      await renew(message);
+      expect((await state(f.identity.commandId)).status).toBe("FAILED");
+      expect(
+        (
+          await db.query(
+            "SELECT plan_key,lifecycle_revision FROM billing_subscriptions WHERE id=$1",
+            [f.identity.subscriptionId],
+          )
+        ).rows,
+      ).toEqual([{ plan_key: "plus_monthly", lifecycle_revision: "2" }]);
+      const balances = async () =>
+        (
+          await db.query(
+            "SELECT available_amount, expires_at<=clock_timestamp() AS expired FROM subscription_allowance_periods WHERE organization_id=$1 ORDER BY period_start",
+            [f.identity.organizationId],
+          )
+        ).rows;
+      expect(await balances()).toEqual([
+        { available_amount: "25.000000", expired: true },
+        { available_amount: "25.000000", expired: false },
+      ]);
+      await renew(message);
+      expect(await balances()).toEqual([
+        { available_amount: "25.000000", expired: true },
+        { available_amount: "25.000000", expired: false },
+      ]);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    }, 15000);
+
     test("live original lease cannot be stolen by recovery", async () => {
       const f = await seed();
       writeFailure = true;
@@ -1411,6 +1739,7 @@ async function state(commandId: string) {
         ).rows[0].n,
       ).toBe(1);
       historicalTargetEvent = null;
+      voidIntent = null;
       afterTargetSearch = async () => {
         throw new Error("Retained target must prevent a repeated search");
       };
@@ -1458,6 +1787,7 @@ async function state(commandId: string) {
       ).toBe("0.000000");
       expect(mutation).toHaveBeenCalledTimes(1);
       historicalTargetEvent = null;
+      voidIntent = null;
       expect((await recover(f.identity)).status).toBe("applied");
     }, 10000);
   },
