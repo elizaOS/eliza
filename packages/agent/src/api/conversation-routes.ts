@@ -169,6 +169,7 @@ import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
+import { restoreConversationFromDb } from "./conversation-restore.ts";
 import {
   compareConversationsByRecency,
   compareMemoriesByCreatedAt,
@@ -2557,7 +2558,9 @@ async function getConversationWithRestore(
   const existing = state.conversations.get(convId);
   if (existing) return existing;
   await waitForConversationRestore(state);
-  return state.conversations.get(convId);
+  const restored = state.conversations.get(convId);
+  if (restored || !state.runtime) return restored;
+  return restoreConversationFromDb(state.runtime, state, convId);
 }
 /** Default recent-window size for GET /messages (the newest N turns). */
 const CONVERSATION_MESSAGE_WINDOW = 200;
