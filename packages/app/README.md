@@ -52,6 +52,15 @@ physical phone or relax their admission checks to fit an arbitrary emulator.
 Run `node --test scripts/mobile/android/hosted-fixture/*.test.mjs` for the captured
 state and refusal tests; these tests do not establish live emulator qualification.
 
+The `hosted-fixture/webview-provider.mjs` factory adds the pinned Chromium provider
+replacement flow. Hosts must supply nonempty system-package exclusions, the SDK
+environment, an absolute evidence directory and the explicit
+`api35-default-x86_64` fixture acknowledgement. The library never discovers a host
+SDK or executes on import. It authenticates the stock backup, archive, candidate
+APK, signer, live overlay and restarted framework before reporting provisioning;
+runtime feature qualification remains separate. The bundled extractor validates
+archive membership even under Python optimization.
+
 ## Android native plugin verification
 
 With the Android SDK, Java 21, workspace dependencies, and a running emulator:
