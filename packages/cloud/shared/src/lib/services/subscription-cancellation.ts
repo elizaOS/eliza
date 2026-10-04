@@ -196,7 +196,13 @@ export async function recoverOrganizationSubscriptionCancellations(limit: number
         command.kind === "resume" ? "resume" : "cancel",
       );
       if (!claim) {
-        result.pending++;
+        // A stale PREPARED command is superseded instead of claimed.
+        const current = await readCancellation(
+          { ...identity, commandId: command.id },
+          command.kind === "resume" ? "resume" : "cancel",
+        );
+        if (current.status === "SUPERSEDED") result.failed++;
+        else result.pending++;
         continue;
       }
       const dto = await executeClaim(identity, claim, null);
