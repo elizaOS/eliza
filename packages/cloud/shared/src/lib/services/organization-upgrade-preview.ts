@@ -211,6 +211,11 @@ export async function createOrganizationUpgradeQuote(
     reject("upgrade_target_required");
   const stripe = requireStripe(),
     environment = getCloudAwareEnv();
+  const providerBinding = resolveOrganizationUpgradeProviderBinding(
+    source,
+    target.key,
+    environment,
+  );
   await getVerifiedSubscriptionPlans({
     env: environment,
     provider: adaptStripeSubscriptionCatalogProvider(stripe),
@@ -234,11 +239,6 @@ export async function createOrganizationUpgradeQuote(
     environment,
     target.key,
     source.catalog_version,
-  );
-  const providerBinding = resolveOrganizationUpgradeProviderBinding(
-    source,
-    target.key,
-    environment,
   );
   const items = [{ id: source.stripe_subscription_item_id, price: binding.priceId, quantity: 1 }];
   const dueNow = await stripe.invoices.createPreview(
