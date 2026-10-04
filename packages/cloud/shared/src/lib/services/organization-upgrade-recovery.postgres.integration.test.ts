@@ -872,6 +872,208 @@ async function state(commandId: string) {
       ).toBe(0);
     });
 
+    test("subscription target delivery retains evidence, recovers payment and replays without hiding later updates", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      const { reconcileOrganizationUpgradeInvoiceEvent: invoiceRoute } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      const { reconcileOrganizationUpgradeSubscriptionEvent: route } = await import(
+        "./organization-upgrade-subscription-event"
+      );
+      const event = historicalEvent();
+      const message = {
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      } as Parameters<typeof route>[0];
+      await expect(route(message, objects.rawSubscription)).rejects.toMatchObject({
+        context: { reason: "original_invoice_receipt_pending" },
+      });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      await invoiceRoute(invoiceDelivery("invoice.created"));
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      await record({ ...f.identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" });
+
+      expect(await route(message, objects.rawSubscription)).toEqual({ owned: true });
+      expect((await state(f.identity.commandId)).status).toBe("APPLIED");
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.identity.commandId,
+          ])
+        ).rows,
+      ).toEqual([{ status: "resolved" }]);
+
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect(await route(message, objects.rawSubscription)).toEqual({ owned: true });
+      const update = { ...event, id: `${event.id}update`, type: "customer.subscription.updated" };
+      // A later ordinary edit is not original target evidence and must reach the current lifecycle owner.
+      update.data = {
+        object: {
+          ...event.data.object,
+          current_period_end: event.data.object.current_period_end + 1,
+        },
+      };
+
+      expect(
+        await route(
+          { ...message, eventId: update.id, event: update, eventType: update.type } as Parameters<
+            typeof route
+          >[0],
+          objects.rawSubscription,
+        ),
+      ).toEqual({ owned: false });
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    test("subscription event identity and target mismatches cannot retain evidence or publish", async () => {
+      const f = await seed();
+      const { reconcileOrganizationUpgradeSubscriptionEvent: beforeDispatch } = await import(
+        "./organization-upgrade-subscription-event"
+      );
+      const unrelated = { ...historicalEvent(), api_version: null };
+      expect(
+        await beforeDispatch(
+          {
+            kind: "stripe.event",
+            eventId: unrelated.id,
+            eventType: unrelated.type,
+            event: unrelated,
+            receivedAt: Date.now(),
+          } as Parameters<typeof beforeDispatch>[0],
+          objects.rawSubscription,
+        ),
+      ).toEqual({ owned: false });
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      const { reconcileOrganizationUpgradeInvoiceEvent: invoiceRoute } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      const { reconcileOrganizationUpgradeSubscriptionEvent: route } = await import(
+        "./organization-upgrade-subscription-event"
+      );
+      await invoiceRoute(invoiceDelivery("invoice.created"));
+      const original = historicalEvent();
+      for (const event of [
+        { ...original, api_version: "2025-03-31.basil" },
+        { ...original, api_version: null },
+        { ...original, account: "acct_other" },
+        { ...original, data: { object: { ...original.data.object, latest_invoice: "in_other" } } },
+        {
+          ...original,
+          data: {
+            object: {
+              ...original.data.object,
+              current_period_end: original.data.object.current_period_end + 1,
+            },
+          },
+        },
+      ]) {
+        const message = {
+          kind: "stripe.event",
+          eventId: event.id,
+          eventType: event.type,
+          event,
+          receivedAt: Date.now(),
+        } as Parameters<typeof route>[0];
+        await expect(route(message, objects.rawSubscription)).rejects.toThrow();
+      }
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+
+    test("pending and old-price subscription updates remain owned without invented target evidence", async () => {
+      const f = await seed();
+      pending = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      const { reconcileOrganizationUpgradeInvoiceEvent: invoiceRoute } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      const { reconcileOrganizationUpgradeSubscriptionEvent: route } = await import(
+        "./organization-upgrade-subscription-event"
+      );
+      await invoiceRoute(invoiceDelivery("invoice.created"));
+      const original = historicalEvent();
+      const old = structuredClone(original.data.object);
+      old.items.data[0]!.price.id = "price_plus";
+      for (const object of [
+        { ...original.data.object, pending_update: { expires_at: original.created + 60 } },
+        old,
+      ]) {
+        const event = { ...original, type: "customer.subscription.updated", data: { object } };
+        const message = {
+          kind: "stripe.event",
+          eventId: event.id,
+          eventType: event.type,
+          event,
+          receivedAt: Date.now(),
+        } as Parameters<typeof route>[0];
+        expect(await route(message, objects.rawSubscription)).toEqual({ owned: true });
+      }
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+
+    test("historical target capture cannot override live cancellation or unpaid invoice", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      const { reconcileOrganizationUpgradeInvoiceEvent: invoiceRoute } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      const { reconcileOrganizationUpgradeSubscriptionEvent: route } = await import(
+        "./organization-upgrade-subscription-event"
+      );
+      await invoiceRoute(invoiceDelivery("invoice.created"));
+      const event = historicalEvent();
+      const message = {
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      } as Parameters<typeof route>[0];
+      expect(
+        await route(message, { ...objects.rawSubscription, cancel_at_period_end: true }),
+      ).toEqual({ owned: false });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      pending = true;
+      expect(await route(message, objects.rawSubscription)).toEqual({ owned: true });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
     test("renewal delivery first settles the lost original upgrade then grants the new period once", async () => {
       const second = Math.floor(Date.now() / 1000);
       const f = await seed({
