@@ -18,7 +18,7 @@ export interface BuildTarget {
   label: string;
   /** Entrypoint(s) relative to the package root. */
   entry: string | string[];
-  /** Explicit source root when shared chunks change Bun's inferred root. */
+  /** Explicit source root for stable entry paths when code splitting is enabled. */
   root?: string;
   /** Output subdirectory under `dist/` (e.g. "node", "browser", "cjs"). */
   outSubdir: string;
