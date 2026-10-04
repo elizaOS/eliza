@@ -214,6 +214,24 @@ test("independent host selects its plan and speech policy without exposing autho
     }
     const factorRoutes = {
       "/cloud/account/methods": ["account-methods", {}],
+      "/cloud/account/methods/google/start": ["account-google-start", {}],
+      "/cloud/account/methods/google/status": ["account-google-status", {}],
+      "/cloud/account/methods/google/return": [
+        "account-google-return",
+        {
+          callbackUrl:
+            "https://product.example/link?state=synthetic&code=synthetic",
+        },
+      ],
+      "/cloud/account/methods/google/cancel": ["account-google-cancel", {}],
+      "/cloud/account/methods/google/complete": [
+        "account-google-complete",
+        {
+          sessionId: "google-attempt",
+          callbackUrl:
+            "https://product.example/link?state=synthetic&code=synthetic",
+        },
+      ],
       "/cloud/account/methods/unlink": [
         "account-unlink",
         { reviewId: "review", methodId: "method" },
@@ -247,6 +265,9 @@ test("independent host selects its plan and speech policy without exposing autho
     for (const [route, [operation, input]] of Object.entries(factorRoutes)) {
       assert.equal((await post(route, input)).status, 200);
       assert.deepEqual(handled.at(-1), { operation, input });
+      const before = handled.length;
+      assert.equal((await fetch(base + route)).status, 404);
+      assert.equal(handled.length, before);
     }
     const mfa = await post("/cloud/account/billing/mfa", {
       sessionId: "billing-attempt",
@@ -466,6 +487,11 @@ test("a service-only host composes CLI login and provider-default voice without 
     "/cloud/account/checkout",
     "/cloud/account/billing/start",
     "/cloud/account/methods",
+    "/cloud/account/methods/google/start",
+    "/cloud/account/methods/google/return",
+    "/cloud/account/methods/google/status",
+    "/cloud/account/methods/google/complete",
+    "/cloud/account/methods/google/cancel",
     "/cloud/account/security/start",
   ])
     assert.equal((await post(route, {})).status, 404);
