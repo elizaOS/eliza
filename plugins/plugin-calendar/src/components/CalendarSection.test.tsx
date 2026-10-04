@@ -316,6 +316,28 @@ describe("CalendarSection", () => {
     expect(screen.getByText(/June 2026/)).toBeTruthy();
   });
 
+  it("keeps the week grid when one feed event has an unparseable end", () => {
+    calendarState.current = makeResult({
+      events: [
+        evt({
+          id: "no-end",
+          title: "Imported hold",
+          startAt: new Date(2026, 5, 15, 8, 0, 0).toISOString(),
+          endAt: "",
+        }),
+        evt({
+          id: "e1",
+          title: "Design sync",
+          startAt: new Date(2026, 5, 15, 9, 0, 0).toISOString(),
+          endAt: new Date(2026, 5, 15, 10, 0, 0).toISOString(),
+        }),
+      ],
+    });
+    render(<CalendarSection {...noopProps} />);
+    expect(screen.getByText("Design sync")).toBeTruthy();
+    expect(screen.getByText(/June 2026/)).toBeTruthy();
+  });
+
   it("lays out each week column against its own day when an event runs overnight", () => {
     // 22:00 on 15 June to 01:00 on 16 June, then a 09:00 meeting on 16 June.
     calendarState.current = makeResult({
