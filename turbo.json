@@ -389,9 +389,6 @@
       "dependsOn": ["^typecheck:deps"],
       "outputs": []
     },
-    "@elizaos/os-usb-installer#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
-    },
     "@elizaos/agent-server#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-sql#build"]
     },
@@ -722,9 +719,6 @@
         "XDG_RUNTIME_DIR",
         "XDG_CONFIG_HOME"
       ]
-    },
-    "@elizaos/os-usb-installer#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     }
   }
 }
