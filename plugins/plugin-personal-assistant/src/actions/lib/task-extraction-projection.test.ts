@@ -88,6 +88,21 @@ async function run(mode: string, outputs: string[]) {
       },
     ],
   };
+  if (mode === "provider-deferred" || mode === "provider-loaded") {
+    original.metadata = {
+      ...original.metadata,
+      providerDiscoveryEnabled: true,
+      loadedContextProviders: mode === "provider-loaded" ? ["lifeops"] : [],
+    };
+    original.events.push({
+      id: "provider:lifeops",
+      type: "provider",
+      name: "lifeops",
+      discoveryText:
+        "Owner timezone America/Los_Angeles; account work; in-app only; no native permission. Full provider source is available on restoration.",
+      text: `Owner timezone America/Los_Angeles; account work; in-app only; no native permission. ${"PROVIDER_FULL_ONLY live health and counts ".repeat(40)}`,
+    });
+  }
   const sourceSetId = completionContextSources(original).sourceSetId;
   const selection =
     mode === "null"
@@ -188,6 +203,46 @@ describe("task extractor reviewed action handoff", () => {
     expect(r.systems).toEqual([r.expectedSystem]);
     expect(r.prompts[0]).not.toContain("TRUSTED_SYSTEM_PREFIX");
     expect(r.prompts[0]).toContain("STYLE_DIRECTION_RETAINED");
+  });
+  it("uses the planner's deferred provider view without dropping scope, clock, destination or receipts", async () => {
+    const r = await run("provider-deferred", [create]);
+    expect(r.prompts).toHaveLength(1);
+    expect(r.prompts[0]).toContain(
+      "Owner timezone America/Los_Angeles; account work; in-app only; no native permission",
+    );
+    expect(r.prompts[0]).toContain("Standing constraint: no native grants");
+    expect(r.prompts[0]).toContain("Current saved effect receipt: record-7");
+    expect(r.prompts[0]).not.toContain("PROVIDER_FULL_ONLY");
+    expect(r.runtime.getMemories).not.toHaveBeenCalled();
+    expect(r.effects).toBe(1);
+  });
+  it("keeps a loaded provider complete for extraction", async () => {
+    const r = await run("provider-loaded", [create]);
+    expect(r.prompts[0]).toContain("PROVIDER_FULL_ONLY");
+    expect(r.effects).toBe(1);
+  });
+  it("restores exact deferred provider originals once before any effect", async () => {
+    const r = await run("provider-deferred", [
+      '{"restoreContext":true}',
+      create,
+    ]);
+    expect(r.prompts).toHaveLength(2);
+    expect(r.prompts[0]).not.toContain("PROVIDER_FULL_ONLY");
+    expect(r.prompts[1]).toContain("PROVIDER_FULL_ONLY");
+    expect(r.prompts[1]).toContain("Standing constraint: no native grants");
+    expect(r.prompts[1]).toContain("Current saved effect receipt: record-7");
+    expect(r.runtime.getMemories).toHaveBeenCalledOnce();
+    expect(r.effects).toBe(1);
+  });
+  it("never effects a second unresolved provider restoration", async () => {
+    const r = await run("provider-deferred", [
+      '{"restoreContext":true}',
+      '{"restoreContext":true}',
+    ]);
+    expect(r.prompts).toHaveLength(2);
+    expect(r.prompts[1]).toContain("PROVIDER_FULL_ONLY");
+    expect(r.effects).toBe(0);
+    expect(r.result.success).toBe(false);
   });
   it.each(["null", "full", "stale", "incomplete", "wrong-request"])(
     "falls back to complete legacy input for %s",

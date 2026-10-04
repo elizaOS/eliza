@@ -192,7 +192,7 @@ function summarizeActiveGoals(
  * replies claiming an empty day while completions sat in the store (#16935).
  */
 function summarizeCompletedToday(
-  occurrences: Array<{ title: string; updatedAt: string }>,
+  occurrences: Array<{ title: string }>,
 ): string[] {
   if (occurrences.length === 0) {
     return [];
@@ -329,7 +329,7 @@ function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
-    "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. Morning/night self-review briefings run as scheduled tasks rather than as a planner-visible action. Available in private owner conversations, including Discord.",
+    "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. On-demand morning/daily briefs and tracked-work recaps use BRIEF (compose_morning, compose_evening, compose_weekly). Automatic morning/night briefings run through existing scheduled tasks. Available in private owner conversations, including Discord.",
   descriptionCompressed:
     "Owner operations overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,

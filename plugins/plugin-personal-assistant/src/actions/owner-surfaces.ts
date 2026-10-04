@@ -18,9 +18,9 @@ import type {
 } from "@elizaos/core";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
+import { enqueueSignatureRequest } from "./document.js";
 import { createOwnerHealthAction, runHealthHandler } from "./health.js";
 import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
 import { TASK_CREATE_PLAN_PARAMETER } from "./lib/task-create-plan-parameter.js";
@@ -48,7 +48,10 @@ const OWNER_LIFE_ACTIONS = [
   "review",
 ] as const;
 
-type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number] | "reopen";
+type OwnerLifeAction =
+  | (typeof OWNER_LIFE_ACTIONS)[number]
+  | "reopen"
+  | "cancel";
 const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
 function readParam(options: unknown, key: string): unknown {
   if (!options || typeof options !== "object") return undefined;
@@ -144,7 +147,7 @@ function makeOwnerLifeAction(args: {
       {
         name: "action",
         description: `Owner item op: ${allowedActions.join("|")}.`,
-        required: false,
+        required: true,
         schema: { type: "string" as const, enum: [...allowedActions] },
       },
       {
@@ -184,8 +187,7 @@ function makeOwnerLifeAction(args: {
       },
       {
         name: "target",
-        description:
-          "Existing item id/title for update/delete/complete/skip/snooze or a single-item review. For review of all items, omit target or use an empty string; do not send the literal string null.",
+        description: `Supply the existing item ID or exact title for update/${allowedActions.includes("cancel") ? "cancel/" : ""}delete/complete/skip/snooze or a single-item review. Copy the title named in the current request; do not omit it for snooze or guess an unnamed item. For create or review of all items, omit target or use an empty string; do not send the literal string null.`,
         required: false,
         aliases: ["query", "item", "task", "reminder", "id", "which"],
         schema: { type: "string" as const },
@@ -249,14 +251,28 @@ function makeOwnerLifeAction(args: {
           turnComplete: true,
         };
       }
-      const merged = {
-        ...params,
-        // Pinned, not defaulted: a planner-supplied kind must not flip the
-        // umbrella onto the other backing store (see the kind parameter note).
-        kind: args.defaultKind,
-        ...(action ? { action, subaction: action } : {}),
-        ownerSurface: args.name,
-      };
+      const target =
+        readStringParam(options, "target")?.trim() ||
+        readStringParam(options, "title")?.trim();
+      const merged: ActionParameters =
+        args.name === "OWNER_REMINDERS" && action === "cancel"
+          ? {
+              action: "cancel",
+              subaction: "update",
+              kind: "definition",
+              ownerSurface: args.name,
+              ...(target ? { target } : {}),
+              // Cancellation only archives. Other changes require their own operation.
+              details: { status: "archived" },
+            }
+          : {
+              ...params,
+              // Pinned, not defaulted: a planner-supplied kind must not flip the
+              // umbrella onto the other backing store (see the kind parameter note).
+              kind: args.defaultKind,
+              ...(action ? { action, subaction: action } : {}),
+              ownerSurface: args.name,
+            };
       return runLifeOperationHandler(
         runtime,
         message,
@@ -276,6 +292,7 @@ export const ownerRemindersAction: Action = {
       "REMINDERS",
       "SET_REMINDER",
       "UPDATE_REMINDER",
+      "CANCEL_REMINDER",
       "MODIFY_REMINDER",
       "SEARCH_REMINDERS",
       "REMIND_ME",
@@ -285,9 +302,10 @@ export const ownerRemindersAction: Action = {
       "RECURRING_REMINDER",
     ],
     description:
-      'Owner reminders: create/update/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders.',
+      'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it.',
     descriptionCompressed:
-      "owner reminders/deadlines: action=create|update|delete|complete|skip|snooze|review",
+      "owner reminders/deadlines: action=create|update|cancel|delete|complete|skip|snooze|review; cancel archives, delete removes",
+    actions: [...OWNER_LIFE_ACTIONS, "cancel"],
     defaultKind: "definition",
   }),
   name: "OWNER_REMINDERS",
@@ -297,6 +315,7 @@ export const ownerRemindersAction: Action = {
     "REMINDERS",
     "SET_REMINDER",
     "UPDATE_REMINDER",
+    "CANCEL_REMINDER",
     "MODIFY_REMINDER",
     "SEARCH_REMINDERS",
     "REMIND_ME",
@@ -306,9 +325,9 @@ export const ownerRemindersAction: Action = {
     "RECURRING_REMINDER",
   ],
   description:
-    'Owner reminders: create/update/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders.',
+    'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it.',
   descriptionCompressed:
-    "owner reminders/deadlines: action=create|update|delete|complete|skip|snooze|review",
+    "owner reminders/deadlines: action=create|update|cancel|delete|complete|skip|snooze|review; cancel archives, delete removes",
 };
 
 export const ownerAlarmsAction: Action = {
@@ -547,7 +566,7 @@ export const ownerRoutinesAction: Action = {
       name: "action",
       description:
         "Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
-      required: false,
+      required: true,
       schema: { type: "string" as const, enum: [...OWNER_ROUTINE_ACTIONS] },
     },
     ...(
@@ -657,43 +676,31 @@ async function enqueueDocumentSignatureApproval(args: {
     readStringParam(args.options, "documentName") ??
     readStringParam(args.options, "document_name") ??
     (/nda/i.test(text) ? "NDA" : "Document for signature");
-  const documentId =
-    readStringParam(args.options, "documentId") ??
-    readStringParam(args.options, "document_id") ??
-    `signature-${String(args.message.id ?? Date.now())}`;
   const signatureUrl =
     readStringParam(args.options, "signatureUrl") ??
     readStringParam(args.options, "signature_url") ??
     firstUrl(text) ??
-    "pending-signature-url";
+    undefined;
   const deadline =
     readStringParam(args.options, "deadline") ?? defaultSignatureDeadline(text);
-  const subjectUserId =
-    typeof args.message.entityId === "string"
-      ? args.message.entityId
-      : String(args.runtime.agentId);
-
-  const queue = createApprovalQueue(args.runtime, {
-    agentId: args.runtime.agentId,
-  });
-  const request = await queue.enqueue({
-    requestedBy: "PERSONAL_ASSISTANT",
-    subjectUserId,
-    action: "sign_document",
-    payload: {
-      action: "sign_document",
-      documentId,
-      documentName,
-      signatureUrl,
+  // The OWNER_DOCUMENTS signature path creates the DocumentRequest that
+  // RESOLVE_REQUEST dispatches on approval; an approval row without it could
+  // only fail with DOCUMENT_REQUEST_NOT_FOUND once the owner approved. This
+  // surface does not resolve the counterparty, so the request names none.
+  const { documentRequest, approvalRequestId } = await enqueueSignatureRequest(
+    args.runtime,
+    args.message,
+    {
+      documentTitle: documentName,
       deadline,
+      signatureUrl,
+      requestedBy: "PERSONAL_ASSISTANT",
+      reason:
+        typeof params.reason === "string" && params.reason.trim().length > 0
+          ? params.reason.trim()
+          : `Initiate signing flow for ${documentName}`,
     },
-    channel: "internal",
-    reason:
-      typeof params.reason === "string" && params.reason.trim().length > 0
-        ? params.reason.trim()
-        : `Initiate signing flow for ${documentName}`,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
+  );
 
   const responseText = `Queued the ${documentName} signing flow for approval before anything is sent.`;
   await args.callback?.({
@@ -707,7 +714,8 @@ async function enqueueDocumentSignatureApproval(args: {
     data: {
       actionName: "PERSONAL_ASSISTANT",
       action: "sign_document",
-      approvalRequestId: request.id,
+      approvalRequestId,
+      documentRequestId: documentRequest.id,
     },
   };
 }

@@ -55,6 +55,7 @@ import {
 } from "./autonomy";
 import { normalizeConversationList } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
+import { compareConversationMessages } from "./conversation-message-order";
 import {
   applyStreamingTextModification,
   filterRenderableConversationMessages,
@@ -368,6 +369,9 @@ function mergeMessagesChronologically(
     message: ConversationMessage;
     serverIndex: number | null;
   }> = serverMessages.map((message, serverIndex) => ({ message, serverIndex }));
+  // Overlay rows are client-local and not yet in the store, so the store's
+  // same-millisecond UUID tiebreak does not apply: a request and its reply are
+  // often stamped in the same millisecond, and the stable sort keeps send order.
   const orderedOverlay = [...localOverlay].sort(
     (left, right) => left.timestamp - right.timestamp,
   );
@@ -1192,9 +1196,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           .map((row) => [row.id, row]),
       );
       for (const row of changed) rows.set(row.id, row);
-      const orderedRows = [...rows.values()].sort(
-        (a, b) => a.timestamp - b.timestamp,
-      );
+      const orderedRows = [...rows.values()].sort(compareConversationMessages);
       setConversationMessages(
         mergeMessagesChronologically(
           orderedRows.filter((row) => row.assistantEphemeral !== true),
@@ -1759,7 +1761,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // user navigated away before it landed. Best-effort — a failure leaves the
   // current thread untouched and the caller simply doesn't scroll.
   const loadConversationMessagesAround = useCallback(
-    async (convId: string, messageId: string): Promise<boolean> => {
+    async (
+      convId: string,
+      messageId: string,
+      options?: {
+        onMessages: (messages: readonly ConversationMessage[]) => void;
+      },
+    ): Promise<boolean> => {
       if (
         activeConversationIdRef.current !== convId ||
         visibleConversationMessagesOwnerRef.current !== convId
@@ -1792,6 +1800,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (!isCurrentConversationMessageFence(fence)) return false;
         captureVisibleConversationMessageOverlay(convId);
         const serverMessages = filterRenderableConversationMessages(messages);
+        options?.onMessages(serverMessages);
         const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
           conversationMessageOverlayRef.current.get(convId),

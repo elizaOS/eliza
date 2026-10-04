@@ -105,18 +105,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CredentialManagerPlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
+        // BridgeActivity appends these after discovery, before the first JS export.
+        initialPlugins.add(SafePushNotificationsPlugin.class);
         super.onCreate(savedInstanceState);
-
-        // Replace the auto-registered community PushNotifications plugin with
-        // the Firebase-guarded subclass. Must run AFTER super.onCreate: the
-        // bridge exists, auto-registration has happened, and
-        // Bridge.registerPlugin is a plain map.put — last one wins. Without
-        // this, any build lacking google-services.json hard-crashes the
-        // process the moment the renderer calls PushNotifications.register()
-        // with notification permission already granted.
-        if (getBridge() != null) {
-            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
-        }
 
         updateScreenWakePolicy();
 

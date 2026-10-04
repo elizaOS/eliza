@@ -52,10 +52,8 @@ import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.eliza1_manifest import (  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import (  # noqa: E402
     Eliza1ManifestError,
     merge_kernel_manifest_fragments,
 )

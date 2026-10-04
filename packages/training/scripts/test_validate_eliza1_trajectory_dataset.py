@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
 
-from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+from eliza_training.prepare_eliza1_trajectory_dataset import (  # noqa: E402
     DEFAULT_BASE_MODEL,
     TARGET_CHAT_TEMPLATE,
     TARGET_MODEL_FAMILY,
     main as prepare_main,
 )
-from validate_eliza1_trajectory_dataset import main as validate_main  # noqa: E402
+from eliza_training.validate_eliza1_trajectory_dataset import main as validate_main  # noqa: E402
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:

@@ -135,6 +135,8 @@ import {
   type OpenApiSpec,
   type OrganizationSubscriptionCancellationRequest,
   type OrganizationSubscriptionCancellationResponse,
+  type OrganizationSubscriptionRenewalReviewResponse,
+  type OrganizationSubscriptionReviewedUndoRequest,
   type PairingTokenResponse,
   type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
@@ -586,6 +588,32 @@ export class ElizaCloudClient {
     input: OrganizationSubscriptionCancellationRequest,
   ): Promise<OrganizationSubscriptionCancellationResponse> {
     return this.v1.requestData("POST", "/subscriptions/cancel/undo", {
+      json: input,
+    });
+  }
+
+  /** Reads a short-lived next-renewal estimate for the current manager's scheduled cancellation. */
+  readOrganizationSubscriptionRenewalReview(
+    input: Pick<
+      OrganizationSubscriptionCancellationRequest,
+      "subscriptionId" | "expectedSubscriptionRevision"
+    >,
+  ): Promise<OrganizationSubscriptionRenewalReviewResponse> {
+    const query = new URLSearchParams({
+      subscriptionId: input.subscriptionId,
+      expectedSubscriptionRevision: String(input.expectedSubscriptionRevision),
+    });
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/cancel/undo/review?${query}`,
+    );
+  }
+
+  /** Confirms the exact reviewed terms; replay reads the recorded outcome without redispatch. */
+  submitReviewedOrganizationSubscriptionCancellationUndo(
+    input: OrganizationSubscriptionReviewedUndoRequest,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/cancel/undo/confirm", {
       json: input,
     });
   }

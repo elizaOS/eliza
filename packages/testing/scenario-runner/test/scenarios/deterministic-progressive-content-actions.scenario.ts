@@ -31,7 +31,7 @@ import { createProgressiveFileTargetFactory } from "../../../../../plugins/plugi
 import { createProgressiveToolOutputTargetFactory } from "../../../../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts";
 import { GoogleGmailAdapter } from "../../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
 import { createProgressiveSqlTargetFactories } from "../../../../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts";
-import { createProgressiveAttachmentTargetFactory } from "../../../../agent/src/testing/progressive-content-attachment-target.ts";
+import { createProgressiveAttachmentTargetFactory } from "../../../../agent/test/support/progressive-content-attachment-target.ts";
 
 const SCENARIO_ID = "deterministic-progressive-content-actions";
 let fixtureRoot = "";

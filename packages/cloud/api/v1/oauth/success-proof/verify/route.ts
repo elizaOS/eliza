@@ -8,10 +8,10 @@
  * Anonymous or mismatched visitors cannot claim Connected from a forwarded URL.
  */
 
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { consumeOAuthSuccessProof } from "@elizaos/cloud-shared/lib/services/oauth/success-proof";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { consumeOAuthSuccessProof } from "@/lib/services/oauth/success-proof";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

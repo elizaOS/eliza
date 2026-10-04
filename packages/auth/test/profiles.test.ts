@@ -2,38 +2,28 @@
  * Tests per-key profile and routing resolution against encrypted temp vaults.
  */
 
-import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { generateMasterKey } from "../src/vault/crypto.js";
+import { createTestVault, type TestVault } from "../src/testing/index";
 import { profileStorageKey, setEntryMeta } from "../src/vault/inventory.js";
 import { createManager } from "../src/vault/manager.js";
-import { inMemoryMasterKey } from "../src/vault/master-key.js";
 import {
   readRoutingConfig,
   resolveActiveValue,
   writeRoutingConfig,
 } from "../src/vault/profiles.js";
-import { createVault, type Vault } from "../src/vault/vault.js";
+import type { Vault } from "../src/vault/vault.js";
 
 const KEY = "OPENROUTER_API_KEY";
 
-let workDir: string;
+let fixture: TestVault;
 let vault: Vault;
 
 beforeEach(async () => {
-  workDir = await fs.mkdtemp(join(tmpdir(), "eliza-profiles-"));
-  vault = createVault({
-    workDir,
-    masterKey: inMemoryMasterKey(generateMasterKey()),
-  });
+  fixture = await createTestVault();
+  vault = fixture.vault;
 });
 afterEach(async () => {
-  if ("close" in vault && typeof vault.close === "function") {
-    await vault.close();
-  }
-  await fs.rm(workDir, { recursive: true, force: true });
+  await fixture?.dispose();
 });
 
 describe("profiles — resolveActiveValue", () => {

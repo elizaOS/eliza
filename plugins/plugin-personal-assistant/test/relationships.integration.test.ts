@@ -112,6 +112,37 @@ describe("relationships handler — real PGLite", () => {
     expect(await service.getDaysSinceContact(relationship.id)).toBe(0);
   });
 
+  it("updates the existing edge when ENTITY set_relationship restates it", async () => {
+    const toEntityId = `ent_${crypto.randomUUID()}`;
+    const restate = (evidence: string) =>
+      handler()(
+        runtime,
+        makeMessage(runtime, "Pat is my manager") as never,
+        undefined,
+        {
+          parameters: {
+            subaction: "set_relationship",
+            toEntityId,
+            relationshipType: "manages",
+            evidence,
+          },
+        } as never,
+        async () => {},
+      );
+
+    const first = await restate("first chat");
+    const second = await restate("second chat");
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    const relationships = await new LifeOpsRepository(
+      runtime,
+    ).relationshipStore(runtime.agentId);
+    const edges = await relationships.list({ toEntityId, type: "manages" });
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
+  });
+
   it("keeps supported ENTITY writes receipt-backed", async () => {
     const result = await handler()(
       runtime,

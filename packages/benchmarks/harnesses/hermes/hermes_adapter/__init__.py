@@ -1,118 +1,61 @@
-"""Benchmark adapter for the hermes-agent (NousResearch) tool-calling agent.
+"""Public harness API; workload dependencies load only when requested."""
 
-Mirrors the public surface of :mod:`eliza_adapter` so the tri-agent
-benchmarking harness can swap between elizaOS, OpenClaw, and hermes-agent
-without per-benchmark plumbing.
-"""
+from importlib import import_module
 
-from hermes_adapter.client import HermesClient, MessageResponse
-from hermes_adapter.server_manager import HermesAgentManager
+_EXPORTS = {
+    "HermesClient": ("hermes_adapter.client", "HermesClient"),
+    "MessageResponse": ("hermes_adapter.client", "MessageResponse"),
+    "HermesAgentManager": ("hermes_adapter.server_manager", "HermesAgentManager"),
+    "build_bfcl_agent_fn": ("hermes_adapter.bfcl", "build_bfcl_agent_fn"),
+    "build_clawbench_agent_fn": (
+        "hermes_adapter.clawbench",
+        "build_clawbench_agent_fn",
+    ),
+    "build_swe_bench_agent_fn": (
+        "hermes_adapter.swe_bench",
+        "build_swe_bench_agent_fn",
+    ),
+    "HermesTauAgent": ("hermes_adapter.tau_bench", "HermesTauAgent"),
+    "build_tau_bench_agent_fn": (
+        "hermes_adapter.tau_bench",
+        "build_tau_bench_agent_fn",
+    ),
+    "HermesTerminalAgent": ("hermes_adapter.terminal_bench", "HermesTerminalAgent"),
+    "build_terminal_bench_agent_fn": (
+        "hermes_adapter.terminal_bench",
+        "build_terminal_bench_agent_fn",
+    ),
+    "ENV_MODULES": ("hermes_adapter.env_runner", "ENV_MODULES"),
+    "HermesEnvResult": ("hermes_adapter.env_runner", "HermesEnvResult"),
+    "build_evaluate_command": ("hermes_adapter.env_runner", "build_evaluate_command"),
+    "parse_hermes_env_result": ("hermes_adapter.env_runner", "parse_hermes_env_result"),
+    "run_hermes_env": ("hermes_adapter.env_runner", "run_hermes_env"),
+    "build_lifeops_bench_agent_fn": (
+        "hermes_adapter.lifeops_bench",
+        "build_lifeops_bench_agent_fn",
+    ),
+    "build_action_calling_agent_fn": (
+        "hermes_adapter.action_calling",
+        "build_action_calling_agent_fn",
+    ),
+    "build_agentbench_agent_fn": (
+        "hermes_adapter.agentbench",
+        "build_agentbench_agent_fn",
+    ),
+    "build_mind2web_agent_fn": ("hermes_adapter.mind2web", "build_mind2web_agent_fn"),
+    "build_mint_agent_fn": ("hermes_adapter.mint", "build_mint_agent_fn"),
+}
+__all__ = list(_EXPORTS)
 
-__all__ = [
-    "HermesClient",
-    "MessageResponse",
-    "HermesAgentManager",
-]
 
-# Optional per-benchmark factories — each one may depend on a sibling
-# benchmark package (e.g. ``elizaos_tau_bench``) that isn't always on
-# sys.path. Importing them defensively keeps ``hermes_adapter.<bench>``
-# submodules importable even when an unrelated sibling can't be loaded.
-try:
-    from hermes_adapter.bfcl import build_bfcl_agent_fn  # noqa: F401, E402
+def __getattr__(name: str):
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module, symbol = _EXPORTS[name]
+    value = getattr(import_module(module), symbol)
+    globals()[name] = value
+    return value
 
-    __all__.append("build_bfcl_agent_fn")
-except Exception:  # noqa: BLE001
-    pass
 
-try:
-    from hermes_adapter.clawbench import build_clawbench_agent_fn  # noqa: F401, E402
-
-    __all__.append("build_clawbench_agent_fn")
-except Exception:  # noqa: BLE001
-    pass
-
-try:
-    from hermes_adapter.swe_bench import build_swe_bench_agent_fn  # noqa: F401, E402
-
-    __all__.append("build_swe_bench_agent_fn")
-except Exception:  # noqa: BLE001
-    pass
-
-try:
-    from hermes_adapter.tau_bench import (  # noqa: F401, E402
-        HermesTauAgent,
-        build_tau_bench_agent_fn,
-    )
-
-    __all__.extend(["HermesTauAgent", "build_tau_bench_agent_fn"])
-except Exception:  # noqa: BLE001
-    pass
-
-try:
-    from hermes_adapter.terminal_bench import (  # noqa: F401, E402
-        HermesTerminalAgent,
-        build_terminal_bench_agent_fn,
-    )
-
-    __all__.extend(["HermesTerminalAgent", "build_terminal_bench_agent_fn"])
-except Exception:  # noqa: BLE001
-    pass
-
-try:
-    from hermes_adapter.env_runner import (  # noqa: F401, E402
-        ENV_MODULES,
-        HermesEnvResult,
-        build_evaluate_command,
-        parse_hermes_env_result,
-        run_hermes_env,
-    )
-
-    __all__.extend(
-        [
-            "ENV_MODULES",
-            "HermesEnvResult",
-            "build_evaluate_command",
-            "parse_hermes_env_result",
-            "run_hermes_env",
-        ]
-    )
-except Exception:  # noqa: BLE001
-    pass
-
-# LifeOpsBench bridge — only useful when eliza_lifeops_bench.types is present
-# (lazy import inside the builder), so the import here is best-effort.
-try:
-    from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn  # noqa: F401, E402
-
-    __all__.append("build_lifeops_bench_agent_fn")
-except Exception:  # noqa: BLE001 — keep the package importable if a stub is missing
-    pass
-
-try:
-    from hermes_adapter.action_calling import build_action_calling_agent_fn  # noqa: F401, E402
-
-    __all__.append("build_action_calling_agent_fn")
-except Exception:  # noqa: BLE001
-    pass
-
-try:
-    from hermes_adapter.agentbench import build_agentbench_agent_fn  # noqa: F401, E402
-
-    __all__.append("build_agentbench_agent_fn")
-except Exception:  # noqa: BLE001
-    pass
-
-try:
-    from hermes_adapter.mind2web import build_mind2web_agent_fn  # noqa: F401, E402
-
-    __all__.append("build_mind2web_agent_fn")
-except Exception:  # noqa: BLE001
-    pass
-
-try:
-    from hermes_adapter.mint import build_mint_agent_fn  # noqa: F401, E402
-
-    __all__.append("build_mint_agent_fn")
-except Exception:  # noqa: BLE001
-    pass
+def __dir__():
+    return sorted(set(globals()) | set(__all__))

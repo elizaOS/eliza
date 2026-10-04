@@ -179,6 +179,152 @@ describe("planner-owned LifeOps replies", () => {
     expect(roundTrip.modelReplyRequired).toBe(true);
   });
 
+  it("retires only delivered LifeOps composition while preserving compound results", async () => {
+    const h = harness({
+      context: {
+        title: "Drink water",
+        destinationId: "owner-device",
+        accountId: "owner-account",
+        permissionId: "permission-source",
+        sourceMessageId: message.id,
+      },
+    });
+    const result = await h.run("planner");
+    const original = structuredClone(result);
+    const response = {
+      id: "00000000-0000-4000-8000-000000000004",
+      agentId: h.runtime.agentId,
+      entityId: h.runtime.agentId,
+      roomId: message.roomId,
+      content: {
+        text: "Saved Drink water.",
+        inReplyTo: message.id,
+        agentVoiced: true,
+        actions: ["REPLY"],
+        effectReceiptIds: [receipt.receiptId],
+      },
+    } as Memory;
+    const pending = {
+      ...result,
+      effectReceipts: [{ ...receipt, receiptId: "save-2" }],
+    };
+    const navigation = {
+      success: true,
+      data: { actionName: "VIEWS_SHOW", destinationId: "calendar" },
+    };
+    const wire = renderActionResultsForModel([result, pending, navigation], {
+      postTurn: {
+        agentId: h.runtime.agentId,
+        message: { ...message, agentId: h.runtime.agentId },
+        responses: [response],
+      },
+    }).text;
+    const rendered = JSON.parse(
+      wire.split("\n").find((line) => line.startsWith("{")) ?? "",
+    );
+    const {
+      instructions: _instructions,
+      characterVoice: _voice,
+      ...facts
+    } = JSON.parse(String(h.grounding()));
+    expect(JSON.parse(rendered.data.replyGrounding)).toEqual(facts);
+    expect(facts.context).toEqual(h.context);
+    expect(rendered.effectReceipts).toEqual(
+      JSON.parse(
+        renderActionResultsForModel([result])
+          .text.split("\n")
+          .find((line) => line.startsWith("{")) ?? "",
+      ).effectReceipts,
+    );
+    expect(wire).toContain("save-2");
+    expect(wire).toContain("characterVoice");
+    expect(wire).toContain("calendar");
+    expect(result).toEqual(original);
+    expect(renderActionResultsForModel([result]).text).toContain(
+      "characterVoice",
+    );
+  });
+
+  it.each([
+    "request",
+    "room",
+    "agent",
+    "speaker",
+    "interrupted",
+    "receipt",
+    "empty",
+    "not-reply",
+    "not-voiced",
+    "failed",
+    "reply-failure",
+    "missing-response-id",
+    "missing-request-id",
+    "missing-request-agent",
+    "unknown-grounding",
+  ])(
+    "keeps full grounding for invalid delivered-reply evidence: %s",
+    async (invalid) => {
+      const h = harness({ success: invalid !== "failed" });
+      const result = await h.run("planner");
+      const response = {
+        id: "00000000-0000-4000-8000-000000000004",
+        agentId: h.runtime.agentId,
+        entityId: h.runtime.agentId,
+        roomId: message.roomId,
+        content: {
+          text: "Saved.",
+          inReplyTo: message.id,
+          agentVoiced: true,
+          actions: ["REPLY"],
+          effectReceiptIds: [receipt.receiptId],
+        },
+      } as Memory;
+      if (invalid === "reply-failure")
+        result.replyFailure = {
+          kind: "reply_generation_error",
+          code: "REPLY_FAILED",
+          message: "Reply unavailable",
+          transient: false,
+        };
+      if (invalid === "missing-response-id") response.id = undefined;
+      if (invalid === "request") response.content.inReplyTo = "other-request";
+      if (invalid === "room")
+        response.roomId = "other-room" as Memory["roomId"];
+      if (invalid === "agent")
+        response.agentId = "other-agent" as Memory["agentId"];
+      if (invalid === "speaker")
+        response.entityId = "other-speaker" as Memory["entityId"];
+      if (invalid === "interrupted") response.content.interrupted = true;
+      if (invalid === "receipt")
+        response.content.effectReceiptIds = ["other-receipt"];
+      if (invalid === "empty") response.content.text = "";
+      if (invalid === "not-reply") response.content.actions = ["UPDATE"];
+      if (invalid === "not-voiced") response.content.agentVoiced = false;
+      if (invalid === "unknown-grounding") {
+        result.data = { ...result.data, replyGrounding: "not JSON" };
+        result.promptData = {
+          ...result.promptData,
+          replyGrounding: "not JSON",
+        };
+      }
+      const currentMessage: Memory = { ...message, agentId: h.runtime.agentId };
+      if (invalid === "missing-request-id") currentMessage.id = undefined;
+      if (invalid === "missing-request-agent")
+        currentMessage.agentId = undefined;
+      const original = structuredClone(result);
+      expect(
+        renderActionResultsForModel([result], {
+          postTurn: {
+            agentId: h.runtime.agentId,
+            message: currentMessage,
+            responses: [response],
+          },
+        }).text,
+      ).toBe(renderActionResultsForModel([result]).text);
+      expect(result).toEqual(original);
+    },
+  );
+
   it("keeps direct callers and other domains on the original complete-history renderer", async () => {
     for (const [domain, owner] of [
       ["lifeops", undefined],

@@ -1,122 +1,63 @@
-"""
-BFCL Benchmark - Berkeley Function-Calling Leaderboard
+"""Berkeley Function-Calling Leaderboard public API."""
 
-This benchmark evaluates LLMs' function-calling (tool use) capabilities
-across multiple dimensions including AST correctness, execution success,
-and relevance detection.
-
-Based on the BFCL benchmark from UC Berkeley's Sky Computing Lab.
-
-Key Features:
-- Multi-language support: Python, Java, JavaScript, SQL, REST API
-- Multiple evaluation types: AST, Execution, Relevance Detection
-- Parallel and sequential function calling
-- Leaderboard-compatible scoring
-
-Usage:
-    from suites.bfcl import BFCLRunner, BFCLConfig
-
-    config = BFCLConfig()
-    runner = BFCLRunner(config)
-    results = await runner.run()
-
-    print(f"Overall Score: {results.metrics.overall_score:.2%}")
-
-CLI Usage:
-    python -m suites.bfcl --help
-    python -m suites.bfcl run --sample 50
-    python -m suites.bfcl run --full
-
-Resources:
-- Leaderboard: https://gorilla.cs.berkeley.edu/leaderboard
-- GitHub: https://github.com/ShishirPatil/gorilla
-- Dataset: https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard
-"""
-
-from suites.bfcl.types import (
-    ArgumentValue,
-    BFCLCategory,
-    BFCLConfig,
-    BFCLLanguage,
-    BFCLMetrics,
-    BFCLResult,
-    BFCLTestCase,
-    BFCLBenchmarkResults,
-    BaselineScore,
-    CategoryMetrics,
-    EvaluationType,
-    FunctionCall,
-    FunctionDefinition,
-    FunctionParameter,
-    ResultDetails,
-    LEADERBOARD_SCORES,
-)
-from suites.bfcl.dataset import BFCLDataset
-from suites.bfcl.parser import FunctionCallParser
-from suites.bfcl.plugin import (
-    BFCLPluginFactory,
-    FunctionCallCapture,
-    create_function_action,
-    generate_function_schema,
-    generate_openai_tools_format,
-    get_call_capture,
-)
-from suites.bfcl.agent import BFCLAgent, MockBFCLAgent
-from suites.bfcl.evaluators import (
-    ASTEvaluator,
-    ExecutionEvaluator,
-    RelevanceEvaluator,
-)
-from suites.bfcl.runner import BFCLRunner, run_bfcl_benchmark
-from suites.bfcl.metrics import MetricsCalculator
-from suites.bfcl.reporting import BFCLReporter, print_results
+from importlib import import_module
 
 __version__ = "1.0.0"
+_EXPORTS = {
+    "ArgumentValue": ("benchmarks.bfcl.types", "ArgumentValue"),
+    "BFCLCategory": ("benchmarks.bfcl.types", "BFCLCategory"),
+    "BFCLConfig": ("benchmarks.bfcl.types", "BFCLConfig"),
+    "BFCLLanguage": ("benchmarks.bfcl.types", "BFCLLanguage"),
+    "BFCLMetrics": ("benchmarks.bfcl.types", "BFCLMetrics"),
+    "BFCLResult": ("benchmarks.bfcl.types", "BFCLResult"),
+    "BFCLTestCase": ("benchmarks.bfcl.types", "BFCLTestCase"),
+    "BFCLBenchmarkResults": ("benchmarks.bfcl.types", "BFCLBenchmarkResults"),
+    "BaselineScore": ("benchmarks.bfcl.types", "BaselineScore"),
+    "CategoryMetrics": ("benchmarks.bfcl.types", "CategoryMetrics"),
+    "EvaluationType": ("benchmarks.bfcl.types", "EvaluationType"),
+    "FunctionCall": ("benchmarks.bfcl.types", "FunctionCall"),
+    "FunctionDefinition": ("benchmarks.bfcl.types", "FunctionDefinition"),
+    "FunctionParameter": ("benchmarks.bfcl.types", "FunctionParameter"),
+    "ResultDetails": ("benchmarks.bfcl.types", "ResultDetails"),
+    "LEADERBOARD_SCORES": ("benchmarks.bfcl.types", "LEADERBOARD_SCORES"),
+    "BFCLDataset": ("benchmarks.bfcl.dataset", "BFCLDataset"),
+    "FunctionCallParser": ("benchmarks.bfcl.parser", "FunctionCallParser"),
+    "BFCLPluginFactory": ("benchmarks.bfcl.plugin", "BFCLPluginFactory"),
+    "FunctionCallCapture": ("benchmarks.bfcl.plugin", "FunctionCallCapture"),
+    "create_function_action": ("benchmarks.bfcl.plugin", "create_function_action"),
+    "generate_function_schema": ("benchmarks.bfcl.plugin", "generate_function_schema"),
+    "generate_openai_tools_format": (
+        "benchmarks.bfcl.plugin",
+        "generate_openai_tools_format",
+    ),
+    "get_call_capture": ("benchmarks.bfcl.plugin", "get_call_capture"),
+    "BFCLAgent": ("benchmarks.bfcl.agent", "BFCLAgent"),
+    "MockBFCLAgent": ("benchmarks.bfcl.agent", "MockBFCLAgent"),
+    "ASTEvaluator": ("benchmarks.bfcl.evaluators", "ASTEvaluator"),
+    "ExecutionEvaluator": ("benchmarks.bfcl.evaluators", "ExecutionEvaluator"),
+    "RelevanceEvaluator": ("benchmarks.bfcl.evaluators", "RelevanceEvaluator"),
+    "BFCLRunner": ("benchmarks.bfcl.runner", "BFCLRunner"),
+    "run_bfcl_benchmark": ("benchmarks.bfcl.runner", "run_bfcl_benchmark"),
+    "MetricsCalculator": ("benchmarks.bfcl.metrics", "MetricsCalculator"),
+    "BFCLReporter": ("benchmarks.bfcl.reporting", "BFCLReporter"),
+    "print_results": ("benchmarks.bfcl.reporting", "print_results"),
+    "provider_safe_tools": ("benchmarks.bfcl.protocol", "provider_safe_tools"),
+    "coerce_arguments": ("benchmarks.bfcl.protocol", "coerce_arguments"),
+    "call_from_record": ("benchmarks.bfcl.protocol", "call_from_record"),
+    "iter_call_records": ("benchmarks.bfcl.protocol", "iter_call_records"),
+    "provider_safe_tool_name": ("benchmarks.bfcl.protocol", "provider_safe_tool_name"),
+    "restore_original_call_names": (
+        "benchmarks.bfcl.protocol",
+        "restore_original_call_names",
+    ),
+}
+__all__ = ["__version__", *_EXPORTS]
 
-__all__ = [
-    # Version
-    "__version__",
-    # Types
-    "ArgumentValue",
-    "BFCLCategory",
-    "BFCLConfig",
-    "BFCLLanguage",
-    "BFCLMetrics",
-    "BFCLResult",
-    "BFCLTestCase",
-    "BFCLBenchmarkResults",
-    "BaselineScore",
-    "CategoryMetrics",
-    "EvaluationType",
-    "FunctionCall",
-    "FunctionDefinition",
-    "FunctionParameter",
-    "ResultDetails",
-    "LEADERBOARD_SCORES",
-    # Dataset
-    "BFCLDataset",
-    # Parser
-    "FunctionCallParser",
-    # Plugin
-    "BFCLPluginFactory",
-    "FunctionCallCapture",
-    "create_function_action",
-    "generate_function_schema",
-    "generate_openai_tools_format",
-    "get_call_capture",
-    # Agent
-    "BFCLAgent",
-    "MockBFCLAgent",
-    # Evaluators
-    "ASTEvaluator",
-    "ExecutionEvaluator",
-    "RelevanceEvaluator",
-    # Runner
-    "BFCLRunner",
-    "run_bfcl_benchmark",
-    # Metrics
-    "MetricsCalculator",
-    # Reporting
-    "BFCLReporter",
-    "print_results",
-]
+
+def __getattr__(name):
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module, symbol = _EXPORTS[name]
+    value = getattr(import_module(module), symbol)
+    globals()[name] = value
+    return value

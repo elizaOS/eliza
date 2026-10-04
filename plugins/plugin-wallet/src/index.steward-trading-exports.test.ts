@@ -7,8 +7,11 @@
 import { type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/core", async () => {
-  return await import("./__tests__/core-vitest-mock.js");
+vi.mock("@elizaos/core", async (importOriginal) => {
+  return {
+    ...(await importOriginal<typeof import("@elizaos/core")>()),
+    ...(await import("./__tests__/core-vitest-mock.js")),
+  };
 });
 // Keep package-barrel evaluation hermetic: these unrelated registration and
 // backend-selection modules depend on the built @elizaos/core package, which

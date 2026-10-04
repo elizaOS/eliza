@@ -90,6 +90,17 @@ it("uses only the registered service and checks its baseline before a model requ
   await service.refresh();
   await run();
   expect(requests[3]).not.toContain("ACTIVE_REVIEWED_INSTRUCTION");
+  // Both baseline and persisted custom prompts must preserve the actual
+  // operation contract instead of suggesting a generic trigger substitution.
+  for (const request of requests) {
+    expect(request).toContain(
+      "An equivalent must support every requested constraint, including delivery destination",
+    );
+    expect(request).toContain(
+      "scheduling an agent action does not prove a notification was scheduled",
+    );
+    expect(request).not.toContain("TRIGGER_CREATE for OWNER_REMINDERS");
+  }
   await service.setPrompt("action_planner", {
     ...artifact,
     baseline: `${plannerTemplate}\nchanged`,

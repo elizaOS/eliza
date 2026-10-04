@@ -28,12 +28,8 @@ _HERE = Path(__file__).resolve().parent
 # so we need `scripts/` on the path. Put it FIRST so `quantization.*` resolves
 # correctly before _HERE (which lets `_common` work).
 _SCRIPTS = _HERE.parent
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
-from _common import (  # noqa: E402
+from eliza_training.quantization._common import (  # noqa: E402
     add_quantization_cli_args,
     get_text_config,
     kernel_manifest_fragment,
@@ -122,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             _KNOWN_GOOD_ARCH_SUBSTRINGS,
         )
 
-    from quantization.fused_turboquant_vendored.hf import (
+    from eliza_training.quantization.fused_turboquant_vendored.hf import (
         check_model_compatibility,
         patch_model,
         unpatch_model,

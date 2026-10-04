@@ -493,7 +493,42 @@ function compareStoredMemoriesNewestFirst(
   return compareMemoryIds(bId, aId);
 }
 
+/** Oldest pages use ascending UUID order; newest pages reverse it. */
+function comparePairingRowIds(
+  leftId: string,
+  rightId: string,
+  direction: number,
+): number {
+  const order = compareMemoryIds(leftId, rightId);
+  return direction === 1 ? order : -order;
+}
+
+/** Matches SQL `ORDER BY createdAt, id` so relationship pages stay disjoint. */
+function compareRelationshipsForList(
+  left: StoredRelationship,
+  right: StoredRelationship,
+): number {
+  const leftTime = Date.parse(left.createdAt ?? "");
+  const rightTime = Date.parse(right.createdAt ?? "");
+  const delta =
+    (Number.isFinite(leftTime) ? leftTime : 0) -
+    (Number.isFinite(rightTime) ? rightTime : 0);
+  if (delta !== 0) return delta;
+  return compareMemoryIds(left.id, right.id);
+}
+
 const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
+
+function storedTaskCreatedAt(task: Task): number {
+  if (typeof task.createdAt === "number" && Number.isFinite(task.createdAt)) {
+    return task.createdAt;
+  }
+  if (typeof task.createdAt === "bigint") {
+    const asNumber = Number(task.createdAt);
+    if (Number.isSafeInteger(asNumber)) return asNumber;
+  }
+  return Date.now();
+}
 
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   readonly messageContentSegmentCapability = 1 as const;
@@ -1438,9 +1473,27 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         if (params.worldId && m.worldId !== params.worldId) return false;
         if (params.tableName && storedMemoryTableName(m) !== params.tableName)
           return false;
-        if (params.start && m.createdAt && m.createdAt < params.start)
-          return false;
-        if (params.end && m.createdAt && m.createdAt > params.end) return false;
+        // 0 is a real timestamp. Truthiness checks dropped epoch rows and
+        // ignored an exclusive upper bound of 0 (`end: before - 1` when
+        // `before` is 1), so those queries returned the unfiltered set.
+        if (typeof params.start === "number" && Number.isFinite(params.start)) {
+          if (
+            typeof m.createdAt !== "number" ||
+            !Number.isFinite(m.createdAt) ||
+            m.createdAt < params.start
+          ) {
+            return false;
+          }
+        }
+        if (typeof params.end === "number" && Number.isFinite(params.end)) {
+          if (
+            typeof m.createdAt !== "number" ||
+            !Number.isFinite(m.createdAt) ||
+            m.createdAt > params.end
+          ) {
+            return false;
+          }
+        }
         if (params.unique && !m.unique) return false;
         if (params.metadata) {
           const md = (m.metadata ?? {}) as Record<string, unknown>;
@@ -1971,7 +2024,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return this.withMemoryMutationLock(async () => {
-      const threshold = params.match_threshold ?? 0.5;
+      const requestedThreshold = params.match_threshold;
+      // SQL treats an absent or zero threshold as "no similarity floor"
+      // (memory-search-threshold-postfilter). Defaulting the omission to 0.5
+      // dropped eligible local matches the Postgres path returns.
+      const threshold =
+        typeof requestedThreshold === "number" &&
+        Number.isFinite(requestedThreshold) &&
+        requestedThreshold !== 0
+          ? requestedThreshold
+          : Number.NEGATIVE_INFINITY;
       // An absent count/limit means the caller asked for the COMPLETE eligible
       // result, not a default page: silently capping it would drop eligible
       // matches without any signal to the caller.
@@ -2041,6 +2103,22 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         offset + limit,
         threshold,
         new Set(memoriesById.keys()),
+        (leftId, rightId) => {
+          const left = memoriesById.get(leftId as UUID);
+          const right = memoriesById.get(rightId as UUID);
+          const leftAt =
+            typeof left?.createdAt === "number" &&
+            Number.isFinite(left.createdAt)
+              ? left.createdAt
+              : 0;
+          const rightAt =
+            typeof right?.createdAt === "number" &&
+            Number.isFinite(right.createdAt)
+              ? right.createdAt
+              : 0;
+          if (leftAt !== rightAt) return rightAt - leftAt;
+          return compareMemoryIds(rightId, leftId);
+        },
       );
 
       const memories = results.slice(offset).flatMap((result) => {
@@ -2306,7 +2384,38 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     return this.withMemoryMutationLock(async () => {
-      for (const id of memoryIds) {
+      if (memoryIds.length === 0) return;
+      // Retention and a full wipe delete document rows through this method.
+      // deleteDocumentWithSnapshot already removes chunks; this path did not,
+      // so a pruned document stayed searchable through its fragments.
+      const roots = new Set(memoryIds);
+      const fragments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) => {
+          if (!memory.id || roots.has(memory.id as UUID)) return false;
+          const metadata = memory.metadata as
+            | Record<string, unknown>
+            | undefined;
+          const documentId = metadata?.documentId;
+          if (
+            typeof documentId !== "string" ||
+            !roots.has(documentId as UUID)
+          ) {
+            return false;
+          }
+          return (
+            metadata?.type === MemoryType.FRAGMENT ||
+            storedMemoryTableName(memory) === "document_fragments"
+          );
+        },
+      );
+      const ids = [
+        ...memoryIds,
+        ...fragments.flatMap((memory) =>
+          memory.id ? [memory.id as UUID] : [],
+        ),
+      ];
+      for (const id of ids) {
         await this.storage.delete(COLLECTIONS.MEMORIES, id);
         await this.vectorIndex.remove(id);
       }
@@ -2360,21 +2469,43 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getMemoriesByWorldId(params: {
+    worldId?: UUID;
     worldIds?: UUID[];
     limit?: number;
+    count?: number;
     tableName?: string;
   }): Promise<Memory[]> {
-    const worldSet = params.worldIds ? new Set(params.worldIds) : null;
+    // Runtime passes `worldId`. The adapter interface also passes `worldIds`.
+    // Reading only `worldIds` made a runtime call match every memory. SQL
+    // resolves the world through its rooms and defaults the table to messages.
+    const requestedIds = (
+      params.worldIds && params.worldIds.length > 0
+        ? params.worldIds
+        : params.worldId
+          ? [params.worldId]
+          : []
+    ).filter((id): id is UUID => typeof id === "string" && id.length > 0);
+    if (requestedIds.length === 0) return [];
+    const worldSet = new Set(requestedIds);
+    const rooms = await this.storage.getWhere<Room>(
+      COLLECTIONS.ROOMS,
+      (room) => (room.worldId ? worldSet.has(room.worldId as UUID) : false),
+    );
+    const roomSet = new Set(
+      rooms.flatMap((room) => (room.id ? [room.id as UUID] : [])),
+    );
+    if (roomSet.size === 0) return [];
+    const tableName = params.tableName || "messages";
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) =>
-        (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
-        (params.tableName
-          ? storedMemoryTableName(m) === params.tableName
-          : true),
+      (memory) =>
+        roomSet.has(memory.roomId as UUID) &&
+        storedMemoryTableName(memory) === tableName,
     );
     memories.sort(compareStoredMemoriesNewestFirst);
-    const sliced = params.limit ? memories.slice(0, params.limit) : memories;
+    const limit = params.limit ?? params.count;
+    const sliced =
+      limit === undefined ? memories : memories.slice(0, Math.max(0, limit));
     return sliced.map(toMemory);
   }
 
@@ -2400,7 +2531,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const aTime = Number.isFinite(new Date(a.createdAt).getTime())
         ? new Date(a.createdAt).getTime()
         : 0;
-      return bTime - aTime;
+      if (bTime !== aTime) return bTime - aTime;
+      // Offset pages are separate queries. A time-only order lets two logs
+      // written in the same millisecond trade places and be skipped or
+      // repeated. UUID order matches PostgreSQL's descending id tie-break.
+      return compareMemoryIds(String(b.id ?? ""), String(a.id ?? ""));
     });
     const offset = params.offset ?? 0;
     if (offset > 0) logs = logs.slice(offset);
@@ -2998,6 +3133,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         return true;
       },
     );
+    stored.sort(compareRelationshipsForList);
 
     const offset = params.offset ?? 0;
     if (offset > 0) stored = stored.slice(offset);
@@ -3263,7 +3399,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const ids: UUID[] = [];
     for (const task of tasks) {
       const id = (task.id ?? randomUUID()) as UUID;
-      await this.storage.set(COLLECTIONS.TASKS, id, { ...task, id });
+      await this.storage.set(COLLECTIONS.TASKS, id, {
+        ...task,
+        id,
+        createdAt: storedTaskCreatedAt(task),
+      });
       ids.push(id);
     }
     return ids;
@@ -3378,9 +3518,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           : 0;
         const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return aId === bId ? 0 : aId < bId ? -direction : direction;
+        return comparePairingRowIds(String(a.id), String(b.id), direction);
       });
       if (!isPaged) {
         result.push({ channel, agentId, requests });
@@ -3431,9 +3569,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           : 0;
         const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return aId === bId ? 0 : aId < bId ? -direction : direction;
+        return comparePairingRowIds(String(a.id), String(b.id), direction);
       });
       if (!isPaged) {
         result.push({ channel, agentId, entries });
