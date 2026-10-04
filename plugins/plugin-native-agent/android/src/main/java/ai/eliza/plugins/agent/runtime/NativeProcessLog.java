@@ -74,7 +74,13 @@ public final class NativeProcessLog {
     }
     StringBuilder safe = new StringBuilder();
     int active = 0; boolean redacting = false;
-    for (int i = 0; i < line.length(); i++) {
+    // Emit only the visible source prefix. Every secret covering a visible
+    // index ends inside the retained window, so it was matched above; a later
+    // copy cut at the window edge is never matched and must not surface just
+    // because redaction shortened the line.
+    int visible = Math.min(line.length(), maximumLineChars);
+    if (line.length() > visible) discarded = true;
+    for (int i = 0; i < visible; i++) {
       active += edges[i];
       if (active == 0) { safe.append(line.charAt(i)); redacting = false; }
       else if (!redacting) { safe.append(REDACTED); redacting = true; }
