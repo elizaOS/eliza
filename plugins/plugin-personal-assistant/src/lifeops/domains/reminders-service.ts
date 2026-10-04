@@ -1192,8 +1192,8 @@ export class RemindersDomain {
               body: args.text,
               category: "reminder",
               // Tier calendar reminders by lead time (#10697): "starting soon" → high,
-              // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
-              // normal). dueAt is the event start for a calendar_event.
+              // "tomorrow / further" → low, subsequent-today → normal. Occurrence
+              // alerts use high. dueAt is the event start for a calendar_event.
               priority: resolveReminderNotificationPriority({
                 ownerType: args.ownerType,
                 dueAt: args.dueAt,
