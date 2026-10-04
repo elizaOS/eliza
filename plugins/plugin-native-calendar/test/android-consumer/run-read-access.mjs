@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { acquireDeviceLease } from "../../../../packages/app/scripts/lib/device-lease.ts";
 import { runIsolatedAndroidTest } from "../../../../packages/app/scripts/lib/isolated-android-test.mjs";
 import { testOutputPath } from "../../../../packages/scripts/lib/test-output.ts";
+import { removeFixtureUser } from "./fixture-user.mjs";
 
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
@@ -169,8 +170,9 @@ try {
       }
       if (user)
         try {
-          receipt.userRemoval = run("shell", "pm", "remove-user", String(user));
-          assert.match(receipt.userRemoval, /Success/);
+          receipt.userRemoval = await removeFixtureUser(run, user, {
+            timeoutMs: commandTimeoutMs,
+          });
         } catch (error) {
           cleanupErrors.push(error);
         }

@@ -1,0 +1,39 @@
+/**
+ * Removes a harness-owned Android user. The fixture user is created
+ * `--ephemeral`, and Android removes an ephemeral user by itself once it
+ * leaves the foreground, so an immediate `pm remove-user` can lose that race
+ * with `Error: couldn't remove user id N` while removal is already under way.
+ * Removal is complete when the user is gone from `pm list users`; it fails
+ * only if the user is still present when the deadline passes.
+ */
+export async function removeFixtureUser(
+  run,
+  user,
+  {
+    timeoutMs,
+    pollMs = 500,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  },
+) {
+  let attempt;
+  try {
+    attempt = run("shell", "pm", "remove-user", String(user));
+  } catch (error) {
+    // error-policy:J4 a lost race with the system's own removal is decided
+    // by the user list below, not by this command's exit status.
+    attempt =
+      [error.stdout, error.stderr]
+        .map((output) => String(output ?? "").trim())
+        .filter(Boolean)
+        .join("\n") || error.message;
+  }
+  if (/Success/.test(attempt)) return attempt;
+  const listed = new RegExp(`\\{${user}:`);
+  for (const deadline = Date.now() + timeoutMs; ; ) {
+    if (!listed.test(run("shell", "pm", "list", "users")))
+      return `User ${user} was removed by the system after leaving the foreground (${attempt})`;
+    if (Date.now() >= deadline)
+      throw new Error(`Fixture user ${user} is still present: ${attempt}`);
+    await sleep(pollMs);
+  }
+}
