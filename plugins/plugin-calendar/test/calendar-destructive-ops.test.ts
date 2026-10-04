@@ -144,6 +144,7 @@ function fakeRuntime(service: StubService): IAgentRuntime {
       error: () => undefined,
       debug: () => undefined,
     },
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }

@@ -20,8 +20,11 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/host/protocol";
+import {
+  readConfigEnvSync,
+  resolveConfigEnvPath,
+} from "@elizaos/plugin-elizacloud/lib/config-env";
 import JSON5 from "json5";
-import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
 import { writeFileAtomically } from "../utils/atomic-file.ts";

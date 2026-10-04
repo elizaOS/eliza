@@ -1,111 +1,5 @@
-/**
- * Public barrel for `@elizaos/agent` — the surface that sibling
- * `@elizaos/plugin-*` packages and the app shell import. Re-exports the HTTP API,
- * runtime boot and plugin resolution, long-lived services (including the TEE
- * stack), config and character schemas, auth, security, triggers, providers, and
- * diagnostics. Cloud route handlers are lazy wrappers that dynamically import
- * `@elizaos/plugin-elizacloud`. Many re-exports are deliberately named rather
- * than `export *` to dodge duplicate-symbol (TS2308) collisions and to keep
- * heavy plugins lazy-loaded — read the inline notes before widening any of them.
- */
+/** Public agent host, runtime, transport, and service APIs. */
 
-export * from "@elizaos/auth/auth";
-export type {
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ReleaseChannel,
-} from "@elizaos/contracts";
-export type { RolesConfig } from "@elizaos/core";
-export {
-  type AppUiExtensionConfig,
-  type AwarenessContributor,
-  type AwarenessInvalidationEvent,
-  AwarenessRegistry,
-  type CreateIntegrationSpanOptions,
-  collectKeywordTermMatches,
-  createIntegrationTelemetrySpan,
-  DEFAULT_CACHE_TTL_MS,
-  defaultIntegrationSeverityPolicy,
-  hasRoleAccess,
-  type IntegrationBoundary,
-  type IntegrationLogger,
-  type IntegrationObservabilityEvent,
-  type IntegrationOutcome,
-  type IntegrationSeverity,
-  type IntegrationSeverityPolicy,
-  type IntegrationSpanFailureArgs,
-  type IntegrationSpanMeta,
-  type IntegrationSpanSuccessArgs,
-  type IntegrationTelemetrySpan,
-  type IPermissionsRegistry,
-  type ParseClampedIntegerOptions,
-  type ParseClampedNumberOptions,
-  type ParsePositiveNumberOptions,
-  type Prober,
-  parseClampedFloat,
-  parseClampedInteger,
-  parsePositiveFloat,
-  parsePositiveInteger,
-  type RegistryAppInfo,
-  resolveFallbackOwnerEntityId,
-  resolveOwnerEntityId,
-  SELF_STATUS_SCHEMA_VERSION,
-  SUMMARY_CHAR_LIMIT,
-  SUMMARY_TOTAL_CHAR_LIMIT,
-  textIncludesKeywordTerm,
-} from "@elizaos/core";
-export {
-  DEFAULT_MAX_BODY_BYTES,
-  readJsonBody,
-  readRequestBody,
-  readRequestBodyBuffer,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/host";
-export type { ElizaConfig } from "@elizaos/host/protocol";
-export {
-  CONNECTOR_PLUGINS,
-  isCloudExecutionMode,
-  type LocalExecutionMode,
-  RESTART_EXIT_CODE,
-  type RestartHandler,
-  type RuntimeExecutionMode,
-  type RuntimeExecutionModeSource,
-  requestRestart,
-  resolveLocalExecutionMode,
-  resolveRuntimeExecutionMode,
-  setRestartHandler,
-  shouldUseSandboxExecution,
-} from "@elizaos/host/protocol";
-export {
-  ambiguousMemoryUserFacingText,
-  type ContextSignalKey,
-  type ContextSignalStrength,
-  getContextSignalTerms,
-  hasContextSignal,
-  hasContextSignalSync,
-  hasContextSignalSyncForKey,
-  hasSelectedActionContext,
-  hasSelectedContextOrSignalSync,
-  inferMemorySubaction,
-  MAX_MEMORY_ACTION_RESULT_CHARS,
-  MAX_MEMORY_PAGE_ITEMS,
-  memoryAction,
-  memoryUserFacingLine,
-  messageText,
-  type ResolvedContextSignalSpec,
-  resolveContextSignalSpec,
-} from "@elizaos/plugin-assistant";
-export {
-  normalizeCloudSiteUrl,
-  resolveCloudApiBaseUrl,
-} from "@elizaos/plugin-elizacloud/cloud-config/base-url";
-export {
-  normalizeJsonRpcUrl,
-  probeJsonRpcEndpoint,
-  TxService,
-} from "@elizaos/plugin-wallet/transactions";
 export {
   connectAccountAction,
   messageWantsAccountConnect,
@@ -143,6 +37,16 @@ export {
   TRIGGER_OPS,
   triggerAction,
 } from "./actions/trigger.ts";
+export * from "./api/accounts-routes.ts";
+export * from "./api/agent-admin-routes.ts";
+export * from "./api/agent-lifecycle-routes.ts";
+export * from "./api/agent-model.ts";
+export * from "./api/agent-transfer-routes.ts";
+export * from "./api/approval-routes.ts";
+export * from "./api/auth-routes.ts";
+export * from "./api/backup-v2-stream-response.ts";
+export * from "./api/bug-report-routes.ts";
+export * from "./api/character-routes.ts";
 export {
   type CloudConfigLike,
   handleCloudBillingRoute,
@@ -150,12 +54,28 @@ export {
   handleCloudRoute,
   validateCloudBaseUrl,
 } from "./api/cloud-routes.ts";
-export * from "./api/config-env.ts";
+export * from "./api/compat-utils.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
+export * from "./api/connector-health.ts";
+export * from "./api/context-inspector-routes.ts";
 export * from "./api/conversation-metadata.ts";
-export type { captureEarlyLogs } from "./api/early-logs.ts";
-export * from "./api/index.ts";
+export * from "./api/conversation-restore.ts";
+export * from "./api/database.ts";
+export * from "./api/diagnostics-routes.ts";
+export {
+  type DispatchRouteArgs,
+  dispatchRoute,
+} from "./api/dispatch-route.ts";
+export * from "./api/early-logs.ts";
+export { dispatchApiRoute } from "./api/in-process-api.ts";
+export * from "./api/memory-bounds.ts";
+export * from "./api/memory-routes.ts";
+export * from "./api/model-catalog.ts";
+export * from "./api/model-config-routes.ts";
+export * from "./api/models-routes.ts";
 export { setOwnerContact } from "./api/owner-contact-helpers.ts";
+export * from "./api/parse-action-block.ts";
+export * from "./api/permissions-routes.ts";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -166,17 +86,13 @@ export {
   readBundledPluginPackageMetadata,
 } from "./api/plugin-discovery-helpers.ts";
 export * from "./api/plugin-runtime-apply.ts";
-export type { PluginParamInfo } from "./api/plugin-validation.ts";
-export {
-  applyCanonicalFirstRunConfig,
-  applyFirstRunCredentialPersistence,
-  clearPersistedFirstRunConfig,
-} from "./api/provider-switch-config.ts";
-export { RegistryService } from "./api/registry-service.ts";
-// Runtime-mode contract (mode resolution, route-visibility gate, remote-mode
-// forwarder). `api/server.ts` enforces it in its own dispatch; the app
-// compat pipeline calls the same pre-dispatch hook so every host shares one
-// gate.
+export * from "./api/plugin-validation.ts";
+export * from "./api/project-routes.ts";
+export * from "./api/provider-switch-config.ts";
+export * from "./api/rate-limiter.ts";
+export * from "./api/registry-routes.ts";
+export * from "./api/registry-service.ts";
+export * from "./api/runtime-management-routes.ts";
 export {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
@@ -194,13 +110,17 @@ export {
   type RuntimeRouteModeRule,
 } from "./api/runtime-mode/route-mode-guard.ts";
 export * from "./api/runtime-mode/runtime-mode.ts";
+export {
+  matchPluginRoutePath,
+  tryHandleRuntimePluginRoute,
+} from "./api/runtime-plugin-routes.ts";
 export { startApiServer } from "./api/server.ts";
-// Remaining host-state helpers are exported directly from their owner.
 export {
   cloneWithoutBlockedObjectKeys,
   type DeletedConversationsStateFile,
   decodePathComponent,
   getAgentEventSvc,
+  hasPersistedFirstRunState,
   initializeOGCodeInState,
   persistConversationRoomTitle,
   persistDeletedConversationIdsToState,
@@ -209,10 +129,7 @@ export {
   requireCoreManager,
   requirePluginManager,
 } from "./api/server-helpers.ts";
-// Loopback-trust + token helpers. These come from the canonical
-// `./api/server-helpers-auth.js` (the same module the live server uses), not a
-// divergent copy. `isLoopbackBindHost` lives in `@elizaos/core`; the
-// Mutation rejection types are exported from their owning helper module.
+
 export {
   ensureApiTokenForBindHost,
   extractAuthToken,
@@ -257,9 +174,15 @@ export type {
   TradePermissionMode,
 } from "./api/server-types.ts";
 export { injectApiBaseIntoHtml } from "./api/static-file-server.ts";
-export { getWalletAddresses, initStewardWalletCache } from "./api/wallet.ts";
+export * from "./api/subscription-routes.ts";
+export * from "./api/terminal-run-limits.ts";
+export * from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
+export * from "./api/wallet-evm-balance.ts";
+export * from "./api/wallet-rpc.ts";
 export * from "./api/workbench-helpers.ts";
+export * from "./api/workbench-vfs-routes.ts";
+export * from "./api/zip-utils.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
 export * from "./config/character-schema.ts";
 export * from "./config/config.ts";
@@ -268,7 +191,6 @@ export * from "./config/includes.ts";
 export * from "./config/model-metadata.ts";
 export * from "./config/owner-contacts.ts";
 export * from "./config/paths.ts";
-// Export host-owned plugin metadata helpers for transport consumers.
 export {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
@@ -303,6 +225,7 @@ export {
   resolveBootPlan,
   resolveBootPolicy,
 } from "./runtime/boot-pipeline.ts";
+export { buildCharacterFromConfig } from "./runtime/build-character-config.ts";
 export * from "./runtime/core-plugins.ts";
 export {
   type DevTrajectoryRecoveryPreparation,
@@ -318,7 +241,6 @@ export { extractPlugin } from "./runtime/load-plugin-from-vfs.ts";
 export {
   LOGS_RETENTION_PREFIX,
   LOGS_RETENTION_SERVICE,
-  type LogsRetentionAdapter,
   LogsRetentionService,
   type LogsSweepResult,
   resolveLogsRetentionService,
@@ -338,10 +260,14 @@ export {
   MEMORY_RETENTION_SERVICE,
   MemoryRetentionService,
   RETENTION_PARTITIONS,
-  type RetentionAdapter,
   resolveMemoryRetentionService,
   type SweepResult,
 } from "./runtime/memory-retention-service.ts";
+export {
+  resolvePreferredProviderId,
+  resolvePreferredProviderPluginName,
+  resolvePrimaryModel,
+} from "./runtime/model-resolution.ts";
 export {
   type ClassifyContext,
   classifyOperation,
@@ -403,6 +329,7 @@ export type {
   StartOperationRequest,
 } from "./runtime/operations/types.ts";
 export * from "./runtime/operations/vault-bridge.ts";
+export { deduplicatePluginActions } from "./runtime/plugin-action-dedupe.ts";
 export * from "./runtime/plugin-collector.ts";
 export * from "./runtime/plugin-lifecycle.ts";
 export {
@@ -424,6 +351,10 @@ export {
 } from "./runtime/retention-task.ts";
 export { default as rolesPlugin } from "./runtime/roles/src/index.ts";
 export { rolesProvider } from "./runtime/roles/src/provider.ts";
+export {
+  hydrateConfigEnvForBoot,
+  isEnvKeyAllowedForForwarding,
+} from "./runtime/runtime-settings.ts";
 export {
   type BoundedWalkOptions,
   type BoundedWalkRejection,
@@ -784,9 +715,6 @@ export {
   type UpdateNextAction,
   type UpdateResult,
 } from "./services/self-updater.ts";
-// Re-export the shell-execution router by name to keep a stable surface for
-// callers that consume the chokepoint directly without unpacking the wider
-// services barrel.
 export {
   resolveShellExecutionMode,
   runShell,

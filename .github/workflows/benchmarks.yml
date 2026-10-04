@@ -42,6 +42,9 @@ jobs:
       - run: python -m pytest packages/benchmarks/tests packages/benchmarks/orchestrator/tests --import-mode=importlib -q
       - run: python -m pytest --import-mode=importlib packages/benchmarks/harnesses -q
       - run: python -m benchmarks.orchestrator inventory --format markdown
+      - run: bun run --cwd packages/benchmarks test:infrastructure
+      - run: bun run --cwd packages/benchmarks/framework/typescript test
+      - run: bun run --cwd packages/benchmarks/plugin-benchmarks build
       - run: bun run --cwd packages/benchmarks/plugin-benchmarks test
 
   live-framework:

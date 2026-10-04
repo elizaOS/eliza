@@ -34,7 +34,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Optional
 
-from benchmarks.bfcl.executable_runtime import (
+from benchmarks.suites.bfcl.executable_runtime import (
     CLASS_FILE_PATH_MAPPING,
     NETWORK_REQUIRED_CLASSES,
     ExecutableRuntime,
@@ -45,7 +45,7 @@ from benchmarks.bfcl.executable_runtime import (
     RuntimeNetworkRequired,
     agentic_checker,
 )
-from benchmarks.bfcl.types import (
+from benchmarks.suites.bfcl.types import (
     ArgumentValue,
     BFCLCategory,
     FunctionCall,

@@ -169,6 +169,7 @@ function runtime(
       error: vi.fn(),
     },
     reportError,
+    getSetting: () => undefined,
     getService: (serviceType: string) =>
       serviceType === "calendar"
         ? {

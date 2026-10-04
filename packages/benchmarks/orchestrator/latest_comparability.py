@@ -31,7 +31,6 @@ class ComparabilityFinding:
 class ComparabilityReport:
     latest_dir: str
     checked_benchmarks: int
-    tolerance: float
     findings: tuple[ComparabilityFinding, ...]
 
     @property
@@ -43,7 +42,6 @@ class ComparabilityReport:
             {
                 "latest_dir": self.latest_dir,
                 "checked_benchmarks": self.checked_benchmarks,
-                "tolerance": self.tolerance,
                 "ok": self.ok,
                 "findings": [asdict(finding) for finding in self.findings],
             },
@@ -56,7 +54,6 @@ class ComparabilityReport:
 def validate_latest_comparability(
     workspace_root: Path,
     *,
-    tolerance: float = 0.08,
     latest_dir: Path | None = None,
     include_benchmarks: set[str] | None = None,
     exclude_benchmarks: set[str] | None = None,
@@ -64,8 +61,7 @@ def validate_latest_comparability(
     """Validate that required rows represent the same benchmark inputs/config.
 
     Outcome scores are deliberately not compared: different agents are
-    expected to earn different scores. ``tolerance`` remains in the public API
-    so existing automation can upgrade without changing its command line.
+    expected to earn different scores.
     """
 
     target_dir = latest_dir or result_store_root(workspace_root) / "latest"
@@ -234,7 +230,6 @@ def validate_latest_comparability(
     return ComparabilityReport(
         latest_dir=str(target_dir),
         checked_benchmarks=len(benchmark_ids),
-        tolerance=tolerance,
         findings=tuple(findings),
     )
 

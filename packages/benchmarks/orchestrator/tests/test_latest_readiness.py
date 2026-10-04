@@ -130,7 +130,6 @@ def test_latest_readiness_includes_publishability_and_comparability_findings(
 
     report = validate_latest_readiness(
         tmp_path,
-        tolerance=0.08,
         check_runtime_gates=False,
     )
 
@@ -178,7 +177,6 @@ def test_latest_readiness_cli_accepts_latest_dir_and_skip_runtime_gates(
 
     code = cli._cmd_validate_latest_readiness(
         argparse.Namespace(
-            tolerance=0.08,
             latest_dir=str(latest),
             skip_runtime_gates=True,
             include_benchmarks=None,

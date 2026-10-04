@@ -56,6 +56,7 @@ function runtime(service: Record<string, unknown>): IAgentRuntime {
       debug: vi.fn(),
     },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }

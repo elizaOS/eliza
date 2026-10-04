@@ -105,6 +105,8 @@ export function createNativeCloudAuth({
     attempt = null,
     billingAttempt = null,
     billing = null,
+    // A clear invalidates pending billing work without cancelling enrollment activation.
+    billingScope = {},
     busy = false,
     cancelling = false,
     epoch = 0,
@@ -209,7 +211,17 @@ export function createNativeCloudAuth({
       scopes: ["cloud:user"],
     };
   }
+  const checkBilling = (scope, ticket) => {
+    check(ticket);
+    if (scope !== billingScope)
+      throw fail(
+        "Account verification was cleared. Start again.",
+        409,
+        "billing_session_changed",
+      );
+  };
   const clearBilling = () => {
+    billingScope = {};
     accountMethods?.reset();
     billing = null;
     billingAttempt = null;
@@ -250,7 +262,8 @@ export function createNativeCloudAuth({
       phone: typeof value.phone_number === "string" ? value.phone_number : null,
     };
   }
-  async function confirmBilling(value, ticket) {
+  async function confirmBilling(value, ticket, scope) {
+    checkBilling(scope, ticket);
     if (value.mfaRequired === true) {
       if (
         !value.mfa ||
@@ -286,7 +299,7 @@ export function createNativeCloudAuth({
     const expected = billingAttempt;
     const verified = await account(value.token, ticket);
     const active = await readActive();
-    check(ticket);
+    checkBilling(scope, ticket);
     if (!active || fingerprint(active) !== expected.credential) {
       clearBilling();
       throw fail(
@@ -328,7 +341,7 @@ export function createNativeCloudAuth({
     };
   }
   /** Re-verifies the connected person for billing without touching the stored credential. */
-  async function billingOperation(operation, input, ticket) {
+  async function billingOperation(operation, input, ticket, scope) {
     if (operation === "billing-status") {
       const authority = await currentBilling();
       return authority
@@ -343,7 +356,7 @@ export function createNativeCloudAuth({
         throw fail("Choose a supported verification purpose.");
       const purpose = input.purpose ?? "billing";
       const active = await readActive();
-      check(ticket);
+      checkBilling(scope, ticket);
       if (!active)
         throw fail(
           message("error35", "Connect an account before managing billing."),
@@ -364,6 +377,7 @@ export function createNativeCloudAuth({
       )
         throw fail(message("error25", "Choose email or phone sign-in."));
       const owner = await account(active, ticket);
+      checkBilling(scope, ticket);
       const method =
         input.method ??
         (input.phone !== undefined
@@ -411,6 +425,7 @@ export function createNativeCloudAuth({
           ticket,
         ),
         data = value.data ?? value;
+      checkBilling(scope, ticket);
       if (!validTime(data.expiresAt))
         throw fail(
           message("error29", "Account service returned no code expiry."),
@@ -468,6 +483,7 @@ export function createNativeCloudAuth({
           ticket,
         ),
         ticket,
+        scope,
       );
     if (
       operation === "billing-mfa" &&
@@ -482,6 +498,7 @@ export function createNativeCloudAuth({
           ticket,
         ),
         ticket,
+        scope,
       );
     throw fail(
       message("error31", "This verification method requires account recovery."),
@@ -546,7 +563,7 @@ export function createNativeCloudAuth({
     request: (path, input, token, method, ticket) =>
       call(auth, path, input, token, ticket, method),
   });
-  async function finish(ticket, pending, session) {
+  async function finish(ticket, pending, session, scope) {
     if (!validTime(pending.acknowledgeBy))
       throw fail(message("error9", "Sign-in expired. Start again."), 410);
     const result = await call(
@@ -572,10 +589,11 @@ export function createNativeCloudAuth({
     check(ticket);
     attempt = null;
     // The session that just minted this credential is also current billing authority.
-    if (session) retainBilling(session, pending.proof.secret);
+    if (session && scope === billingScope)
+      retainBilling(session, pending.proof.secret);
     return { status: "authenticated", connected: true };
   }
-  async function exchange(value, ticket) {
+  async function exchange(value, ticket, scope) {
     if (value.mfaRequired === true) {
       if (
         !value.mfa ||
@@ -675,7 +693,7 @@ export function createNativeCloudAuth({
     await pendingStore.write(JSON.stringify(pending));
     check(ticket);
     // Durable encrypted receipt precedes activation; an interrupted acknowledgement can be retried.
-    return finish(ticket, pending, value.token);
+    return finish(ticket, pending, value.token, scope);
   }
   return {
     /**
@@ -827,12 +845,13 @@ export function createNativeCloudAuth({
       settled = new Promise((resolve) => {
         settle = resolve;
       });
-      const ticket = epoch;
+      const ticket = epoch,
+        scope = billingScope;
       try {
         if (typeof operation === "string" && operation.startsWith("account-"))
           return await accountMethods.handle(operation, input, ticket);
         if (BILLING_OPERATIONS.includes(operation))
-          return await billingOperation(operation, input, ticket);
+          return await billingOperation(operation, input, ticket, scope);
         if (operation === "config") return await config(ticket);
         if (operation === "resume") {
           const raw = await pendingStore.read();
@@ -982,6 +1001,7 @@ export function createNativeCloudAuth({
               ticket,
             ),
             ticket,
+            scope,
           );
         if (operation === "mfa" && ["totp", "sms"].includes(attempt.mfa?.type))
           return await exchange(
@@ -993,6 +1013,7 @@ export function createNativeCloudAuth({
               ticket,
             ),
             ticket,
+            scope,
           );
         throw fail(
           message(

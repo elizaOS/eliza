@@ -187,6 +187,15 @@ Malformed responses are errors rather than absent credentials. Never give this
 client or token to a renderer. Portable tests use real loopback HTTP with
 synthetic storage; Android broker/device integration remains separate.
 
+`NativePreparation` composes discovery, staged byte verification and journal
+admission through host-supplied trust, installed-package and qualified-time
+ports. `PreparedAuthorizationStore` retains authority material under the journal
+lock; `AndroidQualifiedClock` binds authenticated samples to Android boot identity
+and elapsed realtime. No clock authority, enrollment or installation policy is
+enabled by these adapters. `NativePreparationInstrumentedTest` exercises Android
+lock/cancellation/path rejection and persisted clock bounds; it does not establish
+live signed-release discovery, installation or recovery acceptance.
+
 `native-host/gateway-artifact` stages and verifies the shared Android gateway
 layout, including task-runtime outputs, reviewed upstream modules and mobile DNS
 bundling. Hosts supply trusted source/output directories, product/upstream file

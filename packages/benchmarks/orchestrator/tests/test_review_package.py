@@ -56,7 +56,7 @@ def _patch_reports(
         "validate_latest_readiness",
         lambda *_args, **_kwargs: (
             readiness
-            or ReadinessReport(latest_dir="latest", tolerance=0.08, findings=())
+            or ReadinessReport(latest_dir="latest", findings=())
         ),
     )
     monkeypatch.setattr(
@@ -121,7 +121,6 @@ def test_review_package_blocks_on_readiness_artifacts_inventory_and_note(
     _write_json(latest / "index.json", {})
     readiness = ReadinessReport(
         latest_dir=str(latest),
-        tolerance=0.08,
         findings=(
             ReadinessFinding(
                 scope="bfcl::hermes",
@@ -188,7 +187,6 @@ def test_review_package_cli_writes_blocked_package(
             out_dir=str(tmp_path / "out"),
             reviewed_by="reviewer",
             reviewer_note="reviewed",
-            tolerance=0.08,
             skip_runtime_gates=True,
             include_benchmarks=None,
             exclude_benchmarks=None,

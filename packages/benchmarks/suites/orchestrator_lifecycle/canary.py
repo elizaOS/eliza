@@ -2261,24 +2261,6 @@ def validate_gateway_stages(
     return summary
 
 
-def _validate_gateway_audit(
-    plan: CanaryPlan,
-    audit_path: Path,
-) -> tuple[dict[str, object], dict[str, object]]:
-    records = _load_gateway_records(audit_path, require_durable=True)
-    stage_summary = validate_gateway_stages(
-        records,
-        workspace_root=plan.workspace_root,
-        public_prompt=plan.prompt,
-    )
-    lane_summaries: dict[str, object] = {}
-    for harness in HARNESSES:
-        summary = summarize_subscription_gateway_audit(audit_path, harness=harness)
-        _validate_gateway_lane_summary(plan, harness, summary)
-        lane_summaries[harness] = summary
-    return lane_summaries, stage_summary
-
-
 def _validate_gateway_lane_summary(
     plan: CanaryPlan,
     harness: str,
@@ -2614,7 +2596,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "live_execution": False,
                     "next_command": (
                         "PYTHONPATH=packages /opt/miniconda3/bin/python -m "
-                        "benchmarks.orchestrator_lifecycle.canary --model "
+                        "benchmarks.suites.orchestrator_lifecycle.canary --model "
                         f"{plan.model} --live"
                     ),
                 },

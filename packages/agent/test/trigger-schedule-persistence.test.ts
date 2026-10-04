@@ -425,3 +425,38 @@ it.each(onceUpdates)(
     }
   },
 );
+
+it("upgrades persisted workbench schedules without losing timing or duplicating triggers", async () => {
+  const { runRuntimeStartupMaintenance } = await import(
+    "../src/runtime/runtime-maintenance.ts"
+  );
+  const { WORKBENCH_TASK_TAG } = await import(
+    "../src/api/workbench-helpers.ts"
+  );
+  const taskId = await fixture.runtime.createTask({
+    name: "Retained morning reminder",
+    description: "Read the retained morning note",
+    agentId: fixture.runtime.agentId,
+    entityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+    tags: [WORKBENCH_TASK_TAG, "schedule:0 9 * * *"],
+    metadata: {},
+  });
+  try {
+    await runRuntimeStartupMaintenance(fixture.runtime);
+    const saved = await fixture.runtime.getTask(taskId);
+    if (!saved) throw new Error("Retained task disappeared");
+    expect(saved.name).toBe(TRIGGER_TASK_NAME);
+    expect(saved.tags).toEqual(expect.arrayContaining([...TRIGGER_TASK_TAGS]));
+    expect(readTriggerConfig(saved)).toMatchObject({
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      instructions: "Read the retained morning note",
+    });
+    await runRuntimeStartupMaintenance(fixture.runtime);
+    const reread = await fixture.runtime.getTask(taskId);
+    if (!reread) throw new Error("Migrated task disappeared");
+    expect(readTriggerConfig(reread)).toEqual(readTriggerConfig(saved));
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});

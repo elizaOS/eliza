@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.visualwebbench.agent import OracleVisualWebBenchAgent
-from benchmarks.visualwebbench.dataset import VisualWebBenchDataset
-from benchmarks.visualwebbench.evaluator import VisualWebBenchEvaluator
-from benchmarks.visualwebbench.runner import VisualWebBenchRunner
-from benchmarks.visualwebbench.types import (
+from benchmarks.suites.visualwebbench.agent import OracleVisualWebBenchAgent
+from benchmarks.suites.visualwebbench.dataset import VisualWebBenchDataset
+from benchmarks.suites.visualwebbench.evaluator import VisualWebBenchEvaluator
+from benchmarks.suites.visualwebbench.runner import VisualWebBenchRunner
+from benchmarks.suites.visualwebbench.types import (
     VISUALWEBBENCH_TASK_TYPES,
     VisualWebBenchConfig,
     VisualWebBenchPrediction,

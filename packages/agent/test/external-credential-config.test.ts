@@ -53,11 +53,9 @@ it("leaves unselected credentials unchanged and rejects malformed policy before 
   expect(fs.readFileSync(file, "utf8")).toBe(before);
 });
 
-it("preserves saved and explicit connector options when legacy credentials are persisted", async () => {
+it("preserves saved and explicit connector options when connector credentials are persisted", async () => {
   const file = destination();
-  const { prepareFirstRunConnectors } = await import(
-    "../src/first-run-config.ts"
-  );
+  const { prepareFirstRunConnectors } = await import("@elizaos/host/protocol");
   const { loadElizaConfig } = await import("../src/config/config.ts");
   const prepared = prepareFirstRunConnectors(
     {
@@ -68,10 +66,11 @@ it("preserves saved and explicit connector options when legacy credentials are p
       },
     },
     {
-      connectors: { telegram: { groupPolicy: "allowlist" } },
-      telegramToken: "new-telegram",
-      discordToken: "new-discord",
-      whatsappSessionPath: "/new/session",
+      connectors: {
+        telegram: { groupPolicy: "allowlist", botToken: "new-telegram" },
+        discord: { token: "new-discord" },
+        whatsapp: { sessionPath: "/new/session" },
+      },
     },
   );
   if (!prepared.ok) throw new Error(prepared.error);

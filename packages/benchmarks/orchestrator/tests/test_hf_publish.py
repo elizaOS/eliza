@@ -127,7 +127,8 @@ def _build_workspace(tmp_path: Path, *, gates_pass: bool = True) -> tuple[Path, 
     _git(repo_root, "add", "-A")
     _git(repo_root, "commit", "-q", "-m", "seed")
 
-    workspace_root = repo_root / "packages"
+    workspace_root = repo_root / "packages" / "benchmarks"
+    workspace_root.mkdir(parents=True)
     output_root = result_store_root(workspace_root)
     _init_repo(output_root)
     (output_root / ".gitignore").write_text(

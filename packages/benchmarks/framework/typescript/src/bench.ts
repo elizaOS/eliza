@@ -9,7 +9,7 @@
  * This is useful for end-to-end testing but results will include network
  * latency and are NOT suitable for framework overhead measurement.
  */
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -384,39 +384,44 @@ async function createBenchmarkRuntime(
     logLevel: "fatal",
   });
 
-  await runtime.initialize();
+  try {
+    await runtime.initialize();
 
-  // Set up world, room, entities, participants
-  await runtime.createWorld({
-    id: WORLD_ID,
-    name: "BenchmarkWorld",
-    agentId: AGENT_ID,
-    messageServerId: "benchmark",
-  });
-
-  await runtime.createRoom({
-    id: ROOM_ID,
-    name: "BenchmarkRoom",
-    agentId: AGENT_ID,
-    source: "benchmark",
-    type: ChannelTypes.GROUP,
-    worldId: WORLD_ID,
-  } as Parameters<typeof runtime.createRoom>[0]);
-
-  await runtime.createEntities([
-    {
-      id: AGENT_ID,
-      names: ["BenchmarkAgent"],
+    // Set up world, room, entities, participants
+    await runtime.createWorld({
+      id: WORLD_ID,
+      name: "BenchmarkWorld",
       agentId: AGENT_ID,
-    } as Parameters<typeof runtime.createEntities>[0][number],
-    {
-      id: USER_ENTITY_ID,
-      names: ["BenchmarkUser"],
-      agentId: AGENT_ID,
-    } as Parameters<typeof runtime.createEntities>[0][number],
-  ]);
+      messageServerId: "benchmark",
+    });
 
-  await runtime.createRoomParticipants([USER_ENTITY_ID, AGENT_ID], ROOM_ID);
+    await runtime.createRoom({
+      id: ROOM_ID,
+      name: "BenchmarkRoom",
+      agentId: AGENT_ID,
+      source: "benchmark",
+      type: ChannelTypes.GROUP,
+      worldId: WORLD_ID,
+    } as Parameters<typeof runtime.createRoom>[0]);
+
+    await runtime.createEntities([
+      {
+        id: AGENT_ID,
+        names: ["BenchmarkAgent"],
+        agentId: AGENT_ID,
+      } as Parameters<typeof runtime.createEntities>[0][number],
+      {
+        id: USER_ENTITY_ID,
+        names: ["BenchmarkUser"],
+        agentId: AGENT_ID,
+      } as Parameters<typeof runtime.createEntities>[0][number],
+    ]);
+
+    await runtime.createRoomParticipants([USER_ENTITY_ID, AGENT_ID], ROOM_ID);
+  } catch (error) {
+    await runtime.stop();
+    throw error;
+  }
 
   return runtime;
 }
@@ -427,7 +432,6 @@ async function prePopulateHistory(
   runtime: AgentRuntime,
   count: number,
 ): Promise<void> {
-  const _adapter = runtime.adapter;
   const baseTime = Date.now() - count * 1000; // Space out by 1 second each
 
   for (let i = 0; i < count; i++) {
@@ -464,26 +468,6 @@ function createMessage(text: string, index: number): Memory {
 
 // ─── Pipeline instrumentation via method wrapping ───────────────────────────
 
-interface LegacyEvaluateRuntime {
-  evaluate: (...args: unknown[]) => unknown | Promise<unknown>;
-}
-
-type LegacyEvaluate = LegacyEvaluateRuntime["evaluate"];
-
-function getLegacyEvaluate(runtime: AgentRuntime): LegacyEvaluate | null {
-  const evaluate = Reflect.get(runtime, "evaluate");
-  if (typeof evaluate !== "function") return null;
-
-  return (...args: unknown[]) => Reflect.apply(evaluate, runtime, args);
-}
-
-function setLegacyEvaluate(
-  runtime: AgentRuntime,
-  evaluate: LegacyEvaluate,
-): void {
-  Reflect.set(runtime, "evaluate", evaluate);
-}
-
 /**
  * Wrap key runtime methods with timing instrumentation.
  * This gives us real per-stage pipeline breakdown instead of just total time.
@@ -499,31 +483,23 @@ function instrumentRuntime(
     ...args: Parameters<typeof runtime.composeState>
   ) => {
     const start = performance.now();
-    const result = await origComposeState(...args);
-    pipelineTimer.record("compose_state", performance.now() - start);
-    return result;
+    try {
+      return await origComposeState(...args);
+    } finally {
+      pipelineTimer.recordInterval("compose_state", start, performance.now());
+    }
   }) as typeof runtime.composeState;
 
   // Wrap useModel
   const origUseModel = runtime.useModel.bind(runtime);
   runtime.useModel = (async (...args: Parameters<typeof runtime.useModel>) => {
     const start = performance.now();
-    const result = await origUseModel(...args);
-    pipelineTimer.record("model_call", performance.now() - start);
-    return result;
+    try {
+      return await origUseModel(...args);
+    } finally {
+      pipelineTimer.recordInterval("model_call", start, performance.now());
+    }
   }) as typeof runtime.useModel;
-
-  // Wrap evaluate because the previous Evaluator plugin component was removed; older
-  // runtimes still expose runtime.evaluate, newer ones do not — skip if absent).
-  const origEvaluate = getLegacyEvaluate(runtime);
-  if (origEvaluate) {
-    setLegacyEvaluate(runtime, async (...args: unknown[]) => {
-      const start = performance.now();
-      const result = await origEvaluate(...args);
-      pipelineTimer.record("evaluator", performance.now() - start);
-      return result;
-    });
-  }
 
   // Wrap runtime.createMemory. The current database adapter is batch-first;
   // runtime.createMemory is the supported single-message write path.
@@ -532,9 +508,11 @@ function instrumentRuntime(
     ...args: Parameters<typeof runtime.createMemory>
   ) => {
     const start = performance.now();
-    const result = await origCreateMemory(...args);
-    pipelineTimer.record("memory_create", performance.now() - start);
-    return result;
+    try {
+      return await origCreateMemory(...args);
+    } finally {
+      pipelineTimer.recordInterval("memory_create", start, performance.now());
+    }
   }) as typeof runtime.createMemory;
 
   const adapter = runtime.adapter;
@@ -544,9 +522,11 @@ function instrumentRuntime(
       ...args: Parameters<typeof adapter.getMemories>
     ) => {
       const start = performance.now();
-      const result = await origGet(...args);
-      pipelineTimer.record("memory_get", performance.now() - start);
-      return result;
+      try {
+        return await origGet(...args);
+      } finally {
+        pipelineTimer.recordInterval("memory_get", start, performance.now());
+      }
     }) as typeof adapter.getMemories;
   }
 }
@@ -556,14 +536,13 @@ function instrumentRuntime(
 async function processMessage(
   runtime: AgentRuntime,
   message: Memory,
-  _pipelineTimer: PipelineTimer,
 ): Promise<void> {
   const messageService = runtime.messageService;
   if (!messageService || !("handleMessage" in messageService)) {
     throw new Error("Message service not found on runtime");
   }
 
-  await messageService.handleMessage(
+  const result = await messageService.handleMessage(
     runtime,
     message,
     async (_content: Content) => {
@@ -571,6 +550,15 @@ async function processMessage(
       return [];
     },
   );
+  if (
+    result.outcome.status === "failed" ||
+    result.outcome.status === "cancelled"
+  ) {
+    throw new ElizaError("Benchmark native turn failed", {
+      code: "BENCHMARK_TURN_FAILED",
+      context: { outcome: result.outcome },
+    });
+  }
 }
 
 // ─── Scenario runners ───────────────────────────────────────────────────────
@@ -582,44 +570,50 @@ async function runStartupBenchmark(
 ): Promise<ScenarioResult> {
   const timings: number[] = [];
   const memMonitor = new MemoryMonitor();
-  memMonitor.start();
+  try {
+    memMonitor.start();
 
-  for (let i = 0; i < config.iterations; i++) {
-    const timer = new Timer();
-    timer.start();
-    const rt = await createBenchmarkRuntime(character, [], config, llmPlugins);
-    const elapsed = timer.stop();
-    timings.push(elapsed);
+    for (let i = 0; i < config.iterations; i++) {
+      const timer = new Timer();
+      timer.start();
+      const rt = await createBenchmarkRuntime(
+        character,
+        [],
+        config,
+        llmPlugins,
+      );
+      const elapsed = timer.stop();
+      timings.push(elapsed);
 
-    // Releases benchmark runtime resources
-    if (rt.adapter && "close" in rt.adapter) {
-      await (rt.adapter as { close: () => Promise<void> }).close();
+      await rt.stop();
     }
-  }
 
-  const resources = memMonitor.stop();
-  return {
-    iterations: config.iterations,
-    warmup: 0,
-    latency: computeLatencyStats(timings),
-    throughput: computeThroughputStats(
-      config.iterations,
-      timings.reduce((a, b) => a + b, 0),
-    ),
-    pipeline: {
-      compose_state_avg_ms: 0,
-      provider_execution_avg_ms: 0,
-      should_respond_avg_ms: 0,
-      model_call_avg_ms: 0,
-      action_dispatch_avg_ms: 0,
-      evaluator_avg_ms: 0,
-      memory_create_avg_ms: 0,
-      memory_get_avg_ms: 0,
-      model_time_total_ms: 0,
-      framework_time_total_ms: 0,
-    },
-    resources,
-  };
+    const resources = memMonitor.stop();
+    return {
+      iterations: config.iterations,
+      warmup: 0,
+      latency: computeLatencyStats(timings),
+      throughput: computeThroughputStats(
+        config.iterations,
+        timings.reduce((a, b) => a + b, 0),
+      ),
+      pipeline: {
+        compose_state_avg_ms: 0,
+        provider_execution_avg_ms: null,
+        should_respond_avg_ms: null,
+        model_call_avg_ms: 0,
+        action_dispatch_avg_ms: null,
+        evaluator_avg_ms: null,
+        memory_create_avg_ms: 0,
+        memory_get_avg_ms: 0,
+        model_time_total_ms: 0,
+        framework_time_total_ms: 0,
+      },
+      resources,
+    };
+  } finally {
+    memMonitor.stop();
+  }
 }
 
 async function runDbBenchmark(
@@ -629,91 +623,95 @@ async function runDbBenchmark(
 ): Promise<ScenarioResult> {
   const timings: number[] = [];
   const memMonitor = new MemoryMonitor();
-  const count = config.dbCount ?? 10000;
+  try {
+    const count = config.dbCount ?? 10000;
 
-  for (let i = 0; i < config.iterations; i++) {
-    const runtime = await createBenchmarkRuntime(
-      character,
-      [],
-      config,
-      llmPlugins,
-    );
-    const adapter = runtime.adapter;
+    for (let i = 0; i < config.iterations; i++) {
+      const runtime = await createBenchmarkRuntime(
+        character,
+        [],
+        config,
+        llmPlugins,
+      );
+      try {
+        const adapter = runtime.adapter;
 
-    if (config.dbOperation === "write") {
-      memMonitor.start();
-      const timer = new Timer();
-      timer.start();
+        if (config.dbOperation === "write") {
+          memMonitor.start();
+          const timer = new Timer();
+          timer.start();
 
-      for (let j = 0; j < count; j++) {
-        const memory: Memory = {
-          id: `00000000-0000-0000-3000-${String(j).padStart(12, "0")}` as UUID,
-          agentId: AGENT_ID,
-          entityId: USER_ENTITY_ID,
-          roomId: ROOM_ID,
-          content: {
-            text: `Write benchmark message ${j}`,
-            source: "benchmark",
-          },
-          createdAt: Date.now(),
-        };
-        await runtime.createMemory(memory, "messages");
+          for (let j = 0; j < count; j++) {
+            const memory: Memory = {
+              id: `00000000-0000-0000-3000-${String(j).padStart(12, "0")}` as UUID,
+              agentId: AGENT_ID,
+              entityId: USER_ENTITY_ID,
+              roomId: ROOM_ID,
+              content: {
+                text: `Write benchmark message ${j}`,
+                source: "benchmark",
+              },
+              createdAt: Date.now(),
+            };
+            await runtime.createMemory(memory, "messages");
+          }
+
+          timings.push(timer.stop());
+        } else {
+          // Pre-populate for read test
+          await prePopulateHistory(runtime, count);
+
+          memMonitor.start();
+          const timer = new Timer();
+          timer.start();
+
+          for (let j = 0; j < count; j++) {
+            await adapter.getMemories({
+              tableName: "messages",
+              roomId: ROOM_ID,
+              count: 1,
+              offset: j,
+            });
+          }
+
+          timings.push(timer.stop());
+        }
+      } finally {
+        await runtime.stop();
       }
-
-      timings.push(timer.stop());
-    } else {
-      // Pre-populate for read test
-      await prePopulateHistory(runtime, count);
-
-      memMonitor.start();
-      const timer = new Timer();
-      timer.start();
-
-      for (let j = 0; j < count; j++) {
-        await adapter.getMemories({
-          tableName: "messages",
-          roomId: ROOM_ID,
-          count: 1,
-          offset: j,
-        });
-      }
-
-      timings.push(timer.stop());
     }
 
-    if (adapter && "close" in adapter) {
-      await (adapter as { close: () => Promise<void> }).close();
-    }
+    const resources = memMonitor.stop();
+    const totalTime = timings.reduce((a, b) => a + b, 0);
+
+    return {
+      iterations: config.iterations,
+      warmup: config.warmup,
+      latency: computeLatencyStats(timings),
+      throughput: computeThroughputStats(count * config.iterations, totalTime),
+      pipeline: {
+        compose_state_avg_ms: 0,
+        provider_execution_avg_ms: null,
+        should_respond_avg_ms: null,
+        model_call_avg_ms: 0,
+        action_dispatch_avg_ms: null,
+        evaluator_avg_ms: null,
+        memory_create_avg_ms:
+          config.dbOperation === "write"
+            ? totalTime / (count * config.iterations)
+            : 0,
+        memory_get_avg_ms:
+          config.dbOperation === "read"
+            ? totalTime / (count * config.iterations)
+            : 0,
+        model_time_total_ms: 0,
+        framework_time_total_ms: 0,
+      },
+      resources,
+    };
+  } finally {
+    memMonitor.stop();
   }
-
-  const resources = memMonitor.stop();
-  const totalTime = timings.reduce((a, b) => a + b, 0);
-
-  return {
-    iterations: config.iterations,
-    warmup: config.warmup,
-    latency: computeLatencyStats(timings),
-    throughput: computeThroughputStats(count * config.iterations, totalTime),
-    pipeline: {
-      compose_state_avg_ms: 0,
-      provider_execution_avg_ms: 0,
-      should_respond_avg_ms: 0,
-      model_call_avg_ms: 0,
-      action_dispatch_avg_ms: 0,
-      evaluator_avg_ms: 0,
-      memory_create_avg_ms:
-        config.dbOperation === "write"
-          ? totalTime / (count * config.iterations)
-          : 0,
-      memory_get_avg_ms:
-        config.dbOperation === "read"
-          ? totalTime / (count * config.iterations)
-          : 0,
-      model_time_total_ms: 0,
-      framework_time_total_ms: 0,
-    },
-    resources,
-  };
 }
 
 async function runMessageBenchmark(
@@ -725,89 +723,101 @@ async function runMessageBenchmark(
   const allTimings: number[] = [];
   const pipelineTimer = new PipelineTimer();
   const memMonitor = new MemoryMonitor();
-
-  // Warm-up
-  for (let w = 0; w < config.warmup; w++) {
-    const runtime = await createBenchmarkRuntime(
-      character,
-      [],
-      config,
-      llmPlugins,
-    );
-    instrumentRuntime(runtime, new PipelineTimer()); // warmup instrumentation discarded
-    if (config.prePopulateHistory) {
-      await prePopulateHistory(runtime, config.prePopulateHistory);
-    }
-    for (let m = 0; m < messages.length; m++) {
-      const msg = createMessage(messages[m].content, m);
-      await processMessage(runtime, msg, pipelineTimer);
-    }
-    if (runtime.adapter && "close" in runtime.adapter) {
-      await (runtime.adapter as { close: () => Promise<void> }).close();
-    }
-  }
-
-  // Force GC if available
-  if (typeof globalThis.gc === "function") {
-    globalThis.gc();
-  }
-
-  memMonitor.start();
-
-  for (let i = 0; i < config.iterations; i++) {
-    const runtime = await createBenchmarkRuntime(
-      character,
-      [],
-      config,
-      llmPlugins,
-    );
-    instrumentRuntime(runtime, pipelineTimer); // real instrumentation recorded
-    if (config.prePopulateHistory) {
-      await prePopulateHistory(runtime, config.prePopulateHistory);
-    }
-
-    const iterTimer = new Timer();
-    iterTimer.start();
-
-    if (config.concurrent && messages.length > 1) {
-      // Run all messages concurrently
-      await Promise.all(
-        messages.map((msg, m) => {
-          const mem = createMessage(msg.content, m);
-          return processMessage(runtime, mem, pipelineTimer);
-        }),
+  try {
+    // Warm-up
+    for (let w = 0; w < config.warmup; w++) {
+      const runtime = await createBenchmarkRuntime(
+        character,
+        [],
+        config,
+        llmPlugins,
       );
-    } else {
-      // Run messages sequentially
-      for (let m = 0; m < messages.length; m++) {
-        const msg = createMessage(messages[m].content, m + i * messages.length);
-        await processMessage(runtime, msg, pipelineTimer);
+      try {
+        if (config.prePopulateHistory) {
+          await prePopulateHistory(runtime, config.prePopulateHistory);
+        }
+        for (let m = 0; m < messages.length; m++) {
+          const msg = createMessage(messages[m].content, m);
+          await processMessage(runtime, msg);
+        }
+      } finally {
+        await runtime.stop();
       }
     }
 
-    allTimings.push(iterTimer.stop());
-
-    if (runtime.adapter && "close" in runtime.adapter) {
-      await (runtime.adapter as { close: () => Promise<void> }).close();
+    // Force GC if available
+    if (typeof globalThis.gc === "function") {
+      globalThis.gc();
     }
+
+    memMonitor.start();
+
+    for (let i = 0; i < config.iterations; i++) {
+      const runtime = await createBenchmarkRuntime(
+        character,
+        [],
+        config,
+        llmPlugins,
+      );
+      try {
+        if (config.prePopulateHistory) {
+          await prePopulateHistory(runtime, config.prePopulateHistory);
+        }
+
+        instrumentRuntime(runtime, pipelineTimer);
+        const iterTimer = new Timer();
+        iterTimer.start();
+
+        if (config.concurrent && messages.length > 1) {
+          // Run all messages concurrently
+          const turns = await Promise.allSettled(
+            messages.map((msg, m) => {
+              const mem = createMessage(msg.content, m);
+              return processMessage(runtime, mem);
+            }),
+          );
+          const failures = turns.filter((turn) => turn.status === "rejected");
+          if (failures.length)
+            throw new AggregateError(
+              failures.map((turn) => turn.reason),
+              "Concurrent benchmark turns failed",
+            );
+        } else {
+          // Run messages sequentially
+          for (let m = 0; m < messages.length; m++) {
+            const msg = createMessage(
+              messages[m].content,
+              m + i * messages.length,
+            );
+            await processMessage(runtime, msg);
+          }
+        }
+
+        allTimings.push(iterTimer.stop());
+      } finally {
+        await runtime.stop();
+      }
+    }
+
+    const resources = memMonitor.stop();
+    const totalTime = allTimings.reduce((a, b) => a + b, 0);
+    const totalMessages = messages.length * config.iterations;
+
+    const pipeline = pipelineTimer.getBreakdown();
+    // Compute framework time as wall-clock total minus model time
+    pipeline.framework_time_total_ms = totalTime - pipeline.model_time_total_ms;
+
+    return {
+      iterations: config.iterations,
+      warmup: config.warmup,
+      latency: computeLatencyStats(allTimings),
+      throughput: computeThroughputStats(totalMessages, totalTime),
+      pipeline,
+      resources,
+    };
+  } finally {
+    memMonitor.stop();
   }
-
-  const resources = memMonitor.stop();
-  const totalTime = allTimings.reduce((a, b) => a + b, 0);
-  const totalMessages = messages.length * config.iterations;
-
-  const pipeline = pipelineTimer.getBreakdown();
-  // Compute framework time as wall-clock total minus model time
-  pipeline.framework_time_total_ms = totalTime - pipeline.model_time_total_ms;
-
-  return {
-    iterations: config.iterations,
-    warmup: config.warmup,
-    latency: computeLatencyStats(allTimings),
-    throughput: computeThroughputStats(totalMessages, totalTime),
-    pipeline,
-    resources,
-  };
 }
 
 // ─── Run-count overrides ────────────────────────────────────────────────────
@@ -816,16 +826,20 @@ async function runMessageBenchmark(
 function parsePositiveIntFlag(args: string[], flag: string): number | null {
   const raw = args.find((a) => a.startsWith(flag))?.slice(flag.length);
   if (raw === undefined) return null;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const n = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n <= 0)
+    throw new Error(`Invalid ${flag}${raw}`);
+  return n;
 }
 
 /** Parse `--flag=N` as a non-negative integer, or null when absent/invalid. */
 function parseNonNegativeIntFlag(args: string[], flag: string): number | null {
   const raw = args.find((a) => a.startsWith(flag))?.slice(flag.length);
   if (raw === undefined) return null;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 0 ? n : null;
+  const n = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < 0)
+    throw new Error(`Invalid ${flag}${raw}`);
+  return n;
 }
 
 /**
@@ -850,6 +864,21 @@ function applyRunCountOverrides(
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  for (const arg of args) {
+    if (
+      ![
+        "--all",
+        "--real-llm",
+        "--count-scenarios",
+        "--validate-scenarios",
+      ].includes(arg) &&
+      !["--scenarios=", "--output=", "--iterations=", "--warmup="].some(
+        (prefix) => arg.startsWith(prefix),
+      )
+    ) {
+      throw new Error(`Unknown benchmark argument: ${arg}`);
+    }
+  }
   if (args.includes("--count-scenarios")) {
     console.log(JSON.stringify(countScenarios(), null, 2));
     return;
@@ -864,7 +893,9 @@ async function main(): Promise<void> {
   const scenarioFilter = args.find((a) => a.startsWith("--scenarios="));
   const runAll = args.includes("--all");
   const useRealLlm = args.includes("--real-llm");
-  const outputPath = args.find((a) => a.startsWith("--output="))?.split("=")[1];
+  const outputPath = args
+    .find((a) => a.startsWith("--output="))
+    ?.slice("--output=".length);
 
   // --iterations=N / --warmup=N clamp each scenario's iteration + warmup count.
   // The default perf configs run 50 iterations × 5 warmups — sensible for mock
@@ -885,6 +916,11 @@ async function main(): Promise<void> {
 
   if (scenarioFilter) {
     const ids = scenarioFilter.split("=")[1].split(",");
+    const unknown = ids.filter(
+      (id) => !allScenarios.some((scenario) => scenario.id === id),
+    );
+    if (unknown.length)
+      throw new Error(`Unknown benchmark scenarios: ${unknown.join(", ")}`);
     selectedScenarios = allScenarios.filter((s) => ids.includes(s.id));
   } else if (runAll) {
     selectedScenarios = allScenarios;
@@ -985,6 +1021,7 @@ async function main(): Promise<void> {
   // Write results
   const outPath =
     outputPath ?? resolve(RESULTS_DIR, `typescript-${Date.now()}.json`);
+  mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(results, null, 2));
   console.log(`\nResults written to: ${outPath}`);
 }

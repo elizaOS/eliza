@@ -24,7 +24,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Iterator, Optional
 
-from benchmarks.bfcl.types import (
+from benchmarks.suites.bfcl.types import (
     ArgumentValue,
     BFCLCategory,
     BFCLConfig,

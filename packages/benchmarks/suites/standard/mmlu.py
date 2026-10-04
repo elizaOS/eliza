@@ -7,7 +7,7 @@ registry's score extractor doesn't care which mode produced it.
 
 CLI:
 
-    python -m benchmarks.standard.mmlu \\
+    python -m benchmarks.suites.standard.mmlu \\
         --model-endpoint http://localhost:8000/v1 \\
         --model gpt-4o-mini \\
         --output /tmp/mmlu
@@ -34,7 +34,7 @@ from ._base import (
 from ._cli import RunnerFactory, cli_dispatch
 from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
 
-log = logging.getLogger("benchmarks.standard.mmlu")
+log = logging.getLogger("benchmarks.suites.standard.mmlu")
 
 BENCHMARK_ID = "mmlu"
 DATASET_NAME = "cais/mmlu"
@@ -297,7 +297,7 @@ class MMLURunner:
 
 
 class _MMLUFactory(RunnerFactory):
-    prog = "benchmarks.standard.mmlu"
+    prog = "benchmarks.suites.standard.mmlu"
     description = "MMLU 4-way multiple-choice benchmark (cais/mmlu) over an OpenAI-compatible endpoint."
 
     def augment_parser(self, parser: argparse.ArgumentParser) -> None:

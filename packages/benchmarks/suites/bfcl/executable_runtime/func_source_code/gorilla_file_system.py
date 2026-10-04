@@ -2,7 +2,7 @@ import datetime
 from copy import deepcopy
 from typing import Dict, List, Optional, Union
 
-from benchmarks.bfcl.executable_runtime.func_source_code.long_context import (
+from benchmarks.suites.bfcl.executable_runtime.func_source_code.long_context import (
     FILE_CONTENT_EXTENSION,
     FILES_TAIL_USED,
     POPULATE_FILE_EXTENSION,
