@@ -416,6 +416,7 @@ describe("Android Play manifest policy", () => {
         "@capacitor-community/sqlite",
         "@capacitor/background-runner",
         "@elizaos/capacitor-bun-runtime",
+        "@elizaos/capacitor-calendar",
         "@elizaos/capacitor-mobile-signals",
         "@elizaos/capacitor-talkmode",
         "llama-cpp-capacitor",

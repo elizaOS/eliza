@@ -77,6 +77,7 @@ export {
   SCHEDULE_PLAN_INSTRUCTIONS,
 } from "./lifeops/optimized-prompt-instructions.js";
 export { LifeOpsRepository } from "./lifeops/repository.js";
+export { processDueScheduledTasks } from "./lifeops/scheduled-task/scheduler.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 export * from "./platform/index.js";
 export type {

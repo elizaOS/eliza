@@ -5,14 +5,14 @@
  * message counts. The token is the lookup key; no other auth is required.
  */
 
-import { Hono } from "hono";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest(

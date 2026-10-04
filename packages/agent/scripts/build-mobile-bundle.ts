@@ -263,7 +263,6 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
-  "@elizaos/app": path.join(stubsDir, "app-runtime.ts"),
   // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync). Bun 1.3.x on
   // arm64-Android does not provide that resolver, so an unstubbed reference
   // bombs the bundle resolve:
@@ -454,12 +453,13 @@ const optionalPluginStubs = {
   // being linked into packages/agent/node_modules.
   "@elizaos/plugin-imessage": path.join(stubsDir, "null-plugin.ts"),
   "@elizaos/plugin-x402": path.join(stubsDir, "null-plugin.ts"),
-  // Workflow/automation routes are desktop/cloud surface area. Mobile's
-  // runtime plugin filter does not load workflow, and latest workflow source
-  // keeps large generated node catalogs in dist rather than src/data. Stub the
-  // package so a local-source mobile bundle does not depend on those desktop
-  // catalogs or pull the full workflow graph into the phone agent.
-  "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.ts"),
+  // Android ships a separate verified Bun worker/compiler resource directory.
+  // iOS has not qualified that process contract and retains its exclusion.
+  ...(TARGET === "android"
+    ? {}
+    : {
+        "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.ts"),
+      }),
   // NOTE: @elizaos/plugin-native-filesystem is intentionally NOT stubbed. It
   // is a declared MOBILE_CORE_PLUGINS member — the mobile-safe FILE
   // target=device bridge (duck-typed window.Capacitor on iOS/Android,
@@ -1837,7 +1837,10 @@ const manifest = {
       ...ELIZAOS_ANDROID_CORE_PLUGINS,
       ...ELIZAOS_ANDROID_TERMINAL_PLUGINS,
     ],
-    optional: [...MOBILE_MODEL_PROVIDER_PLUGINS],
+    optional: [
+      ...MOBILE_MODEL_PROVIDER_PLUGINS,
+      ...(TARGET === "android" ? ["@elizaos/plugin-workflow"] : []),
+    ],
   },
   externalsAsStubs: Object.keys(stubAliases),
   unsupportedAndroidRuntimeStubs: [

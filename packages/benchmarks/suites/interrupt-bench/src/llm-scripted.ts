@@ -12,7 +12,7 @@
  * is where real model behavior gets measured.
  */
 
-import type { ResponseHandlerResult } from "./core-lite.ts";
+import type { ResponseHandlerResult } from "@elizaos/core";
 import { getBaseScenarioId } from "./scenarios.ts";
 import type { SimulatorState } from "./state.ts";
 import type { Scenario, ScenarioScriptStep } from "./types.ts";

@@ -1,12 +1,7 @@
-/**
- * DTOs mirrored from the Cloud API schema (`CurrentUserDto`, `AgentDetailDto`,
- * the `ApiSuccessEnvelope`/`ApiErrorEnvelope` wrappers, etc.). These must stay in
- * exact sync with the actual API responses — do not add computed or client-only
- * fields here.
- */
+/** Canonical public Cloud transport contracts. Backend-only records stay in cloud-shared. */
 
 export type IsoDateString = string;
-type DateLike = Date | IsoDateString;
+export type DateLike = Date | IsoDateString;
 
 export interface ApiSuccessEnvelope<TData> {
   success: true;
@@ -30,6 +25,36 @@ export interface OrganizationSubscriptionCancellationRequest {
 
 export type OrganizationSubscriptionCancellationResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionCancellationDto>;
+
+/** A next-invoice estimate, not a price lock or authorization token. */
+export interface OrganizationSubscriptionRenewalReviewDto {
+  kind: "renewal_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  interval: "month";
+  intervalCount: 1;
+  baseAmountCents: number;
+  renewalAt: string;
+  nextPeriodEnd: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  startingBalanceCents: number;
+  amountDueCents: number;
+  observedAt: string;
+  expiresAt: string;
+  termsDigest: string;
+}
+export type OrganizationSubscriptionRenewalReviewResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionRenewalReviewDto>;
+export interface OrganizationSubscriptionReviewedUndoRequest
+  extends OrganizationSubscriptionCancellationRequest {
+  expectedRenewalTermsDigest: string;
+}
 
 export interface CurrentUserOrganizationDto {
   id: string;
@@ -151,16 +176,48 @@ export interface SubscriptionCheckoutRequest {
   planKey: SubscriptionPlanKey;
   /** Client-minted UUID; reuse it only to retry the same purchase intent. */
   idempotencyKey: string;
+  /**
+   * `hosted` (default): redirect this browser to Stripe Checkout.
+   * `embedded`: mount Stripe Embedded Checkout in the app (card only, never redirects).
+   * `shared`: a hosted link for someone else to pay without signing in.
+   * Switching plan or presentation closes the organization's previous unpaid checkout.
+   */
+  presentation?: "hosted" | "embedded" | "shared";
 }
 
 /**
- * `open`: redirect to `checkoutUrl` (https://checkout.stripe.com only).
+ * `open`: redirect to `checkoutUrl` (https://checkout.stripe.com only), or for
+ * `presentation: "embedded"` mount `clientSecret` with `publishableKey`.
  * `completed`: the payment is captured and its subscription is still live.
  * `expired`: the checkout expired or was replaced; mint a new idempotency key.
  * `stale_intent`: the key already bought a subscription that has ended; mint a new key.
+ * Retrying the same key reports `completed` once the server has verified payment.
  */
 export type SubscriptionCheckoutResult =
   | { status: "open"; commandId: string; checkoutUrl: string }
+  | {
+      status: "open";
+      presentation: "embedded";
+      commandId: string;
+      checkoutUrl: null;
+      /** Pass to `confirmSubscriptionCheckout` after the form completes. */
+      sessionId: string;
+      /** Stripe.js initializer: `embedded` = `createEmbeddedCheckoutPage`/`initEmbeddedCheckout`. */
+      uiMode: "embedded";
+      clientSecret: string;
+      publishableKey: string;
+      amountDueCents: number;
+      currency: "usd";
+      interval: "month";
+      expiresAt: string;
+    }
+  | {
+      status: "open";
+      presentation: "shared";
+      commandId: string;
+      checkoutUrl: string;
+      expiresAt: string;
+    }
   | {
       status: "completed" | "expired" | "stale_intent";
       commandId: string;
@@ -242,7 +299,7 @@ export interface NormalizedAgentListItemDto
   activeJob: AgentActiveJobDto | null;
 }
 
-interface AgentAdminDetailsDto {
+export interface AgentAdminDetailsDto {
   nodeId: string | null;
   containerName: string | null;
   internalBridgeUrl: string | null;

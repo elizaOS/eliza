@@ -57,8 +57,29 @@ export function createAssistantPlugin(): Plugin {
 export const assistantPlugin = createAssistantPlugin();
 export default assistantPlugin;
 
+export {
+  type ContactActionDependencies,
+  createContactActions,
+} from "./actions/contact.ts";
+export * from "./actions/context-signal.ts";
+export * from "./actions/context-signal-lexicon.ts";
 export * from "./actions/extract-params.ts";
 export * from "./actions/grounded-action-reply.ts";
+export {
+  attachToChatAction,
+  knowledgeActions,
+  searchKnowledgeAction,
+  sendMediaToAction,
+} from "./actions/knowledge.ts";
+export {
+  ambiguousMemoryUserFacingText,
+  inferMemorySubaction,
+  MAX_MEMORY_ACTION_RESULT_CHARS,
+  MAX_MEMORY_PAGE_ITEMS,
+  memoryAction,
+  memoryUserFacingLine,
+} from "./actions/memories.ts";
+export { notifyAction } from "./actions/notify.ts";
 export * from "./entities.js";
 export { generateMediaAction } from "./features/advanced-capabilities/actions/generateMedia.ts";
 export {
@@ -177,7 +198,10 @@ export {
 export * from "./runtime/sub-planner.ts";
 export * from "./runtime/trajectory-recorder";
 export * from "./services/approval/index.ts";
-export { DeviceActionError } from "./services/device-actions/contract.ts";
+export {
+  DEVICE_VIEWS,
+  DeviceActionError,
+} from "./services/device-actions/contract.ts";
 export {
   DeviceActionService,
   type DeviceCredential,

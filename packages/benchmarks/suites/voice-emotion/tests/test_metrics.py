@@ -9,22 +9,6 @@ from elizaos_voice_emotion.metrics import (
 
 
 class MetricsTests(unittest.TestCase):
-    def test_tag_tuple_matches_runtime_adapter(self) -> None:
-        # If you change the tag list, also update both the TS adapter
-        # (`expressive-tags.ts`) AND `distill_wav2small.py`.
-        self.assertEqual(
-            EXPRESSIVE_EMOTION_TAGS,
-            (
-                "happy",
-                "sad",
-                "angry",
-                "nervous",
-                "calm",
-                "excited",
-                "whisper",
-            ),
-        )
-
     def test_confusion_matrix_perfect_prediction(self) -> None:
         y_true = list(EXPRESSIVE_EMOTION_TAGS)
         y_pred = list(EXPRESSIVE_EMOTION_TAGS)

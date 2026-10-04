@@ -306,7 +306,7 @@ describe.skipIf(!postgresUrl)(
         { subject: identity.actorUserId, idempotencyKey: randomUUID() },
       );
       const { appSubscriptionAuthorityRepository } = await import(
-        "@/db/repositories/app-subscription-authority"
+        "@elizaos/cloud-shared/db/repositories/app-subscription-authority"
       );
       const state = await db.query(
         "SELECT lifecycle_revision FROM billing_subscriptions WHERE billing_scope_id=$1",
@@ -439,15 +439,17 @@ describe.skipIf(!postgresUrl)(
     test("settled allowance usage paginates without exposing pending, canceled or another app's funding", async () => {
       const item = await trial();
       const other = await trial();
-      const { writeTransaction } = await import("@/db/helpers");
+      const { writeTransaction } = await import(
+        "@elizaos/cloud-shared/db/helpers"
+      );
       const { subscriptionAllowanceRepository: allowance } = await import(
-        "@/db/repositories/subscription-allowance"
+        "@elizaos/cloud-shared/db/repositories/subscription-allowance"
       );
       const { microsToMoney } = await import(
-        "@/db/repositories/subscription-funding-reservations"
+        "@elizaos/cloud-shared/db/repositories/subscription-funding-reservations"
       );
       const { lockAppBillingScope } = await import(
-        "@/db/repositories/app-subscription-authority"
+        "@elizaos/cloud-shared/db/repositories/app-subscription-authority"
       );
       const zero = microsToMoney(0n);
       async function operation(

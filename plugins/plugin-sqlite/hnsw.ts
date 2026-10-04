@@ -341,6 +341,7 @@ export class EphemeralHNSW implements IVectorStorage {
     k: number,
     threshold = 0.5,
     eligibleIds?: ReadonlySet<string>,
+    worseTie?: (leftId: string, rightId: string) => number,
   ): Promise<VectorSearchResult[]> {
     const resultLimit = Math.max(0, Math.trunc(k));
     if (this.nodes.size === 0 || resultLimit === 0) return [];
@@ -353,7 +354,8 @@ export class EphemeralHNSW implements IVectorStorage {
 
     const best: VectorSearchResult[] = [];
     const compare = (a: VectorSearchResult, b: VectorSearchResult): number =>
-      a.distance - b.distance || a.id.localeCompare(b.id);
+      a.distance - b.distance ||
+      (worseTie ? worseTie(a.id, b.id) : a.id.localeCompare(b.id));
     const swap = (left: number, right: number): void => {
       const value = best[left];
       const replacement = best[right];

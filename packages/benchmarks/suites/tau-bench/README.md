@@ -4,6 +4,8 @@ Vendored implementation of Sierra's [tau-bench](https://github.com/sierra-resear
 
 ## Development
 
+Install the shared Python support package from the repository root with `python -m pip install ./packages/benchmarks` before installing this suite.
+
 Use a Python environment matching `pyproject.toml` and install the required dependencies.
 
 No compilation or wheel build is required to run this suite from source.

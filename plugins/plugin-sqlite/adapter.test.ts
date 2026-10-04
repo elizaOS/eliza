@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ChannelType,
+  compareMemoryIds,
   type Memory,
   MemoryType,
   ROLE_WRITE_AUDIT_LOG_TYPE,
@@ -15,7 +16,7 @@ import {
   type UUID,
   WORLD_METADATA_REVISION_KEY,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SQLiteDatabaseAdapter } from "./adapter";
 import { SQLiteStorage } from "./storage";
 
@@ -51,6 +52,196 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("keeps the newer memory when two vectors are equally close", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const olderId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const newerId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
+    const older = {
+      ...memory("older"),
+      id: olderId,
+      createdAt: 1_700_000_000_000,
+      embedding: [1, 0, 0],
+    };
+    const newer = {
+      ...memory("newer"),
+      id: newerId,
+      createdAt: 1_700_000_000_005,
+      embedding: [1, 0, 0],
+    };
+    await adapter.createMemories([
+      { memory: older, tableName: "messages" },
+      { memory: newer, tableName: "messages" },
+    ]);
+    const hits = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+      count: 1,
+      match_threshold: 0.5,
+    });
+    expect(hits.map((row) => row.id)).toEqual([newerId]);
+  });
+
+  it("keeps a createdAt of 0 inside an inclusive start/end window", async () => {
+    const adapter = await open();
+    const epoch = {
+      ...memory("epoch-message"),
+      createdAt: 0,
+      embedding: undefined,
+    };
+    const later = {
+      ...memory("later-message"),
+      createdAt: 10,
+      embedding: undefined,
+    };
+    await adapter.createMemories([
+      { memory: epoch, tableName: "messages" },
+      { memory: later, tableName: "messages" },
+    ]);
+
+    const epochOnly = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      start: 0,
+      end: 0,
+    });
+    expect(epochOnly.map((row) => row.content.text)).toEqual(["epoch-message"]);
+
+    const throughLater = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      start: 1,
+      end: 10,
+    });
+    expect(throughLater.map((row) => row.content.text)).toEqual([
+      "later-message",
+    ]);
+  });
+
+  it("deletes document fragments when the document is deleted", async () => {
+    const adapter = await open();
+    const documentId = id();
+    const fragmentId = id();
+    const unrelatedId = id();
+    const base = {
+      agentId,
+      entityId,
+      roomId,
+      embedding: undefined,
+      createdAt: 1_700_000_000_000,
+    };
+    await adapter.createMemories([
+      {
+        memory: {
+          ...base,
+          id: documentId,
+          content: { text: "source document" },
+        },
+        tableName: "documents",
+      },
+      {
+        memory: {
+          ...base,
+          id: fragmentId,
+          content: { text: "chunk that should disappear" },
+          metadata: { type: MemoryType.FRAGMENT, documentId, position: 0 },
+        },
+        tableName: "document_fragments",
+      },
+      {
+        memory: {
+          ...base,
+          id: unrelatedId,
+          content: { text: "keep this chunk" },
+          metadata: {
+            type: MemoryType.FRAGMENT,
+            documentId: id(),
+            position: 0,
+          },
+        },
+        tableName: "document_fragments",
+      },
+    ]);
+
+    await adapter.deleteMemories([documentId]);
+
+    expect(await adapter.getMemoriesByIds([documentId, fragmentId])).toEqual(
+      [],
+    );
+    const remaining = await adapter.getMemories({
+      roomId,
+      tableName: "document_fragments",
+    });
+    expect(remaining.map((row) => row.id)).toEqual([unrelatedId]);
+  });
+
+  it("pages tasks by creation time when the later id sorts first", async () => {
+    const adapter = await open();
+    const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
+    const lateId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValueOnce(1_700_000_000_000);
+    now.mockReturnValueOnce(1_700_000_000_005);
+    try {
+      await adapter.createTasks([
+        { id: earlyId, name: "early", agentId, tags: ["queue"], metadata: {} },
+      ]);
+      await adapter.createTasks([
+        { id: lateId, name: "late", agentId, tags: ["queue"], metadata: {} },
+      ]);
+    } finally {
+      now.mockRestore();
+    }
+    const page = await adapter.getTasks({ agentIds: [agentId], limit: 1 });
+    expect(page.map((task) => task.id)).toEqual([earlyId]);
+    expect(page[0]?.createdAt).toBe(1_700_000_000_000);
+  });
+
+  it("returns every eligible vector when match_threshold is omitted or zero", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const close = {
+      ...memory("close"),
+      embedding: [1, 0, 0],
+    };
+    const distant = {
+      ...memory("distant"),
+      embedding: [0, 1, 0],
+    };
+    await adapter.createMemories([
+      { memory: close, tableName: "messages" },
+      { memory: distant, tableName: "messages" },
+    ]);
+
+    const omitted = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+    });
+    expect(omitted.map((row) => row.id).sort()).toEqual(
+      [close.id, distant.id].sort(),
+    );
+
+    const zero = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+      match_threshold: 0,
+    });
+    expect(zero.map((row) => row.id).sort()).toEqual(
+      [close.id, distant.id].sort(),
+    );
+
+    const strict = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+      match_threshold: 0.99,
+    });
+    expect(strict.map((row) => row.id)).toEqual([close.id]);
+  });
+
   it("preserves complete sources and the selected embedding space across restarts", async () => {
     const adapter = await open();
     const record = memory(
@@ -676,6 +867,39 @@ describe("durable SQLite agent adapter", () => {
     ).toBe(false);
   });
 
+  it("pages same-millisecond logs in UUID order without repeating a row", async () => {
+    const adapter = await open();
+    const storage = await adapter.getConnection();
+    const createdAt = new Date("2026-08-20T16:00:00.000Z");
+    const lowerId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+    const upperId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID;
+    // Storage lists records by ascending id. A time-only sort keeps that
+    // order, so the lower id would occupy the first page.
+    for (const logId of [lowerId, upperId]) {
+      await storage.set("logs", logId, {
+        id: logId,
+        entityId,
+        roomId,
+        type: "export-page",
+        body: { logId },
+        createdAt,
+      });
+    }
+    const first = await adapter.getLogs({
+      type: "export-page",
+      limit: 1,
+      offset: 0,
+    });
+    const second = await adapter.getLogs({
+      type: "export-page",
+      limit: 1,
+      offset: 1,
+    });
+    expect(first.map((log) => log.id)).toEqual([upperId]);
+    expect(second.map((log) => log.id)).toEqual([lowerId]);
+    expect(compareMemoryIds(upperId, lowerId)).toBeGreaterThan(0);
+  });
+
   it("persists audit payloads and retention deletions without leaking between per-agent files", async () => {
     const adapter = await open();
     const other = await open("other.sqlite", id());
@@ -1133,4 +1357,119 @@ it("pages newest pairing allowlist entries by UUID when the higher id is upperca
     },
   ]);
   expect(page.entries.map((entry) => entry.id)).toEqual([UPPER_PAIRING_ID]);
+});
+
+it("pages relationships oldest-first when the newer edge has the lower id", async () => {
+  const adapter = await open();
+  const sourceId = id();
+  const targetId = id();
+  const olderId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID;
+  const newerId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+  await adapter.createAgents([{ id: agentId, name: "Graph owner" }]);
+  await adapter.createEntities([
+    { id: sourceId, agentId, names: ["Source"] },
+    { id: targetId, agentId, names: ["Target"] },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("relationships", olderId, {
+    id: olderId,
+    sourceEntityId: sourceId,
+    targetEntityId: targetId,
+    agentId,
+    tags: ["knows"],
+    metadata: {},
+    createdAt: "2026-08-20T16:00:00.000Z",
+  });
+  await storage.set("relationships", newerId, {
+    id: newerId,
+    sourceEntityId: sourceId,
+    targetEntityId: targetId,
+    agentId,
+    tags: ["knows"],
+    metadata: {},
+    createdAt: "2026-08-20T23:00:00.000Z",
+  });
+
+  const first = await adapter.getRelationships({
+    entityIds: [sourceId],
+    limit: 1,
+    offset: 0,
+  });
+  const second = await adapter.getRelationships({
+    entityIds: [sourceId],
+    limit: 1,
+    offset: 1,
+  });
+  expect(first.map((relationship) => relationship.id)).toEqual([olderId]);
+  expect(second.map((relationship) => relationship.id)).toEqual([newerId]);
+});
+
+it("returns messages from the requested world and treats limit 0 as empty", async () => {
+  const adapter = await open();
+  const worldId = id();
+  const otherWorldId = id();
+  const worldRoomId = id();
+  const otherRoomId = id();
+  const homeId = id();
+  await adapter.createAgents([{ id: agentId, name: "World owner" }]);
+  await adapter.createEntities([{ id: entityId, agentId, names: ["Owner"] }]);
+  await adapter.createWorlds([
+    { id: worldId, name: "Home", agentId },
+    { id: otherWorldId, name: "Other", agentId },
+  ]);
+  await adapter.createRooms([
+    {
+      id: worldRoomId,
+      agentId,
+      worldId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+    {
+      id: otherRoomId,
+      agentId,
+      worldId: otherWorldId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+  ]);
+  await adapter.createMemories([
+    {
+      tableName: "messages",
+      memory: {
+        id: homeId,
+        agentId,
+        entityId,
+        roomId: worldRoomId,
+        content: { text: "home" },
+      },
+    },
+    {
+      tableName: "messages",
+      memory: {
+        id: id(),
+        agentId,
+        entityId,
+        roomId: otherRoomId,
+        content: { text: "away" },
+      },
+    },
+    {
+      tableName: "documents",
+      memory: {
+        id: id(),
+        agentId,
+        entityId,
+        roomId: worldRoomId,
+        content: { text: "doc" },
+      },
+    },
+  ]);
+
+  const found = await adapter.getMemoriesByWorldId({ worldId });
+  expect(found.map((memory) => memory.id)).toEqual([homeId]);
+  expect(await adapter.getMemoriesByWorldId({ worldIds: [worldId] })).toEqual(
+    found,
+  );
+  expect(await adapter.getMemoriesByWorldId({ worldId, limit: 0 })).toEqual([]);
 });

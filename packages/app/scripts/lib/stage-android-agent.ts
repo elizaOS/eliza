@@ -313,9 +313,9 @@ STARTUP_TRACE_ID=\${ELIZA_STARTUP_TRACE_ID:-}
 RUNTIME_LD_LIBRARY_PATH=\${LD_LIBRARY_PATH:-\${RUNTIME_DIR}}
 
 cd "$AGENT_ROOT" || exit 1
-pkill -f "\${BUN_PATH}" 2>/dev/null
-pkill -f "\${AGENT_BUNDLE_PATH}" 2>/dev/null
-sleep 1
+# Native IpcStartupRecovery authenticates resident absence and live worker
+# ownership before this launcher. Never signal processes by shared Bun path: a
+# surviving workflow deliberately uses the same packaged runtime.
 
 # The APK ships its dependency graph. Missing optional packages must fail
 # locally instead of triggering Bun auto-install and network retry delays.

@@ -3,13 +3,19 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
+import {
+  type Memory,
+  resolveOwnerEntityIdOrDefault,
+  type State,
+} from "@elizaos/core";
 import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { workflowRoutePlugin } from "../../../plugins/plugin-workflow/src/plugin-routes.ts";
 import { registerTokenRoleResolver } from "../src/api/boundary-role-resolver.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { createOngoingTasksProvider } from "../src/providers/tasks.ts";
+import { readTriggerConfig } from "../src/triggers/runtime.ts";
 
 let canonicalOwner: string;
 const foreignOwner = "00000000-0000-4000-8000-000000000022";
@@ -186,4 +192,96 @@ it("rejects stale presented credentials instead of promoting loopback access", a
       expect(response.status).toBe(403);
     }
   }
+});
+
+it("renders persisted owner work and admitted automations without promoting maintenance queues into tasks", async () => {
+  const prefix = `provider-${randomUUID()}`;
+  const taskIds = [];
+  for (const task of [
+    { name: `${prefix}-active`, tags: ["workbench-task"] },
+    {
+      name: `${prefix}-completed`,
+      tags: ["workbench-task"],
+      metadata: { isCompleted: true },
+    },
+    { name: `${prefix}-custom`, tags: ["workbench-task", "custom-worker"] },
+    { name: `${prefix}-untagged-custom`, tags: ["queue", "repeat"] },
+    { name: `${prefix}-todo`, tags: ["workbench-todo", "todo"] },
+    ...["POST_TURN_MEMORY", "EMBEDDING_DRAIN", "PII_SCRUB_DRAIN"].map(
+      (name) => ({ name, tags: ["queue", "repeat"] }),
+    ),
+  ]) {
+    taskIds.push(
+      await fixture.runtime.createTask({
+        ...task,
+        entityId: canonicalOwner as never,
+      }),
+    );
+  }
+  const triggerIds = [];
+  for (const enabled of [true, false]) {
+    const response = await request("canonical", "/api/triggers", "POST", {
+      kind: "prompt",
+      displayName: `${prefix}-${enabled ? "enabled" : "paused"}`,
+      instructions: `${prefix}-${enabled}: do not run this future QA automation`,
+      triggerType: "cron",
+      cronExpression: "0 12 28 9 *",
+      enabled,
+    });
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { trigger: { taskId: string } };
+    triggerIds.push(body.trigger.taskId);
+  }
+  const trigger = await fixture.runtime.getTask(triggerIds[0] as never);
+  if (!trigger) throw new Error("Missing persisted HTTP trigger");
+  const triggerConfig = readTriggerConfig(trigger);
+  if (!triggerConfig)
+    throw new Error("Missing persisted trigger configuration");
+  taskIds.push(
+    await fixture.runtime.createTask({
+      name: `${prefix}-metadata-only-trigger`,
+      tags: ["trigger"],
+      metadata: {
+        ...trigger.metadata,
+        trigger: {
+          ...triggerConfig,
+          displayName: `${prefix}-metadata-only-trigger`,
+        },
+      },
+    }),
+  );
+  const allIds = [...taskIds, ...triggerIds];
+  const before = await Promise.all(
+    allIds.map((id) => fixture.runtime.getTask(id as never)),
+  );
+  const provider = createOngoingTasksProvider();
+  const get = () => provider.get(fixture.runtime, {} as Memory, {} as State);
+  const result = await get();
+  expect(result.text).toContain(`${prefix}-active`);
+  expect(result.text).toContain(`[completed] ${prefix}-completed`);
+  expect(result.text).toContain(`${prefix}-custom`);
+  expect(result.text).toContain(`${prefix}-enabled`);
+  for (const excluded of [
+    "POST_TURN_MEMORY",
+    "EMBEDDING_DRAIN",
+    "PII_SCRUB_DRAIN",
+    `${prefix}-untagged-custom`,
+    `${prefix}-todo`,
+    `${prefix}-paused`,
+    `${prefix}-metadata-only-trigger`,
+  ])
+    expect(result.text).not.toContain(excluded);
+  const previous = process.env.ELIZA_TRIGGERS_ENABLED;
+  try {
+    process.env.ELIZA_TRIGGERS_ENABLED = "false";
+    const disabled = await get();
+    expect(disabled.text).toContain(`${prefix}-active`);
+    expect(disabled.text).not.toContain(`${prefix}-enabled`);
+  } finally {
+    if (previous === undefined) delete process.env.ELIZA_TRIGGERS_ENABLED;
+    else process.env.ELIZA_TRIGGERS_ENABLED = previous;
+  }
+  expect(
+    await Promise.all(allIds.map((id) => fixture.runtime.getTask(id as never))),
+  ).toEqual(before);
 });

@@ -1303,3 +1303,29 @@ describe("rapid conversation switching must never delete a real conversation", (
     });
   });
 });
+
+it.each([404, 403, 500])(
+  "propagates only authoritative selection rejection from the production loader (%s)",
+  async (status) => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    mocks.client.getConversationMessages.mockImplementation(
+      async (id: string) => {
+        if (id === "foreign-conversation")
+          throw Object.assign(Error("read failed"), { status });
+        return { messages: realHistory(id) };
+      },
+    );
+    const rejected = vi.fn();
+    await act(async () => {
+      await result.current.callbacks.handleSelectConversation(
+        "foreign-conversation",
+        { onRejected: rejected },
+      );
+    });
+    expect(rejected).toHaveBeenCalledTimes(
+      status === 404 || status === 403 ? 1 : 0,
+    );
+    expect(h.deletedConversationIds()).toEqual([]);
+  },
+);

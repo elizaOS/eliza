@@ -7,7 +7,7 @@
 import {
   isDirectAccountProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,

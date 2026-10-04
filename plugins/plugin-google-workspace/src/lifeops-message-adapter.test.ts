@@ -81,7 +81,7 @@ function gmailMessage(overrides: Record<string, unknown> = {}) {
       historyId: "history-1",
       hasAttachments: false,
       messageIdHeader: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      referencesHeader: "<root@example.com>",
       bodyText: "Can we meet tomorrow?",
     },
     ...overrides,
@@ -260,7 +260,8 @@ describe("GoogleGmailAdapter", () => {
       subject: "Planning call",
       bodyText: "Tomorrow works.",
       inReplyTo: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      references: "<root@example.com> <msg_1@example.com>",
+      threadId: "thread_1",
     });
     expect(sent.externalId).toBe("sent_1");
     expect(runtime.emitEvent).toHaveBeenCalledWith(
@@ -272,6 +273,36 @@ describe("GoogleGmailAdapter", () => {
         domainEventId: "gmail_reply:acct_google_1:sent_1",
       })
     );
+  });
+
+  it("refuses a reply draft when the listed Gmail message has no thread id", async () => {
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async () => [gmailMessage({ threadId: "" })]),
+    });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    await expect(
+      adapter.createDraft(runtime, { inReplyToId: "gmail:msg_1", body: "Tomorrow works." })
+    ).rejects.toMatchObject({ code: "GMAIL_REPLY_THREAD_REQUIRED" });
+  });
+
+  it("refuses a reply draft when the listed Gmail message has no Message-ID header", async () => {
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async () => [
+        gmailMessage({
+          metadata: {
+            historyId: "history-1",
+            hasAttachments: false,
+            referencesHeader: "<root@example.com>",
+          },
+        }),
+      ]),
+    });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    await expect(
+      adapter.createDraft(runtime, { inReplyToId: "gmail:msg_1", body: "Tomorrow works." })
+    ).rejects.toMatchObject({ code: "GMAIL_REPLY_MESSAGE_ID_REQUIRED" });
   });
 
   it("keeps the approved reply envelope and body across caller mutation and inbox refresh", async () => {
@@ -304,7 +335,8 @@ describe("GoogleGmailAdapter", () => {
       subject: "Planning call",
       bodyText: "Approved body.",
       inReplyTo: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      references: "<root@example.com> <msg_1@example.com>",
+      threadId: "thread_1",
     });
   });
 
@@ -323,6 +355,8 @@ describe("GoogleGmailAdapter", () => {
             { name: "From", value: "Sender <sender@example.com>" },
             { name: "Reply-To", value: '"Support, West" <support@example.com>' },
             { name: "To", value: "owner@example.com" },
+            { name: "Message-Id", value: "<msg_1@example.com>" },
+            { name: "References", value: "<root@example.com>" },
           ],
         },
       },
@@ -352,7 +386,12 @@ describe("GoogleGmailAdapter", () => {
     await adapter.sendDraft(runtime, draft.draftId);
 
     expect(sendGmailReply).toHaveBeenCalledWith(
-      expect.objectContaining({ to: ["support@example.com"] })
+      expect.objectContaining({
+        to: ["support@example.com"],
+        threadId: "thread_1",
+        inReplyTo: "<msg_1@example.com>",
+        references: "<root@example.com> <msg_1@example.com>",
+      })
     );
   });
 

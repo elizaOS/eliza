@@ -42,9 +42,18 @@ export function walkTests(dir, excluded) {
     if (excluded.has(entry)) continue;
     const full = path.join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...walkTests(full, excluded));
-    else if (/\.(test|spec)\.tsx?$/.test(entry)) out.push(full);
+    else if (/\.(test|spec)\.(tsx?|mjs)$/.test(entry)) out.push(full);
   }
   return out.sort();
+}
+
+export function discoverSdkUnitTests(root) {
+  const files = walkTests(root, EXCLUDED_DIRS).filter(
+    (file) => !file.includes(".e2e."),
+  );
+  if (files.length === 0)
+    throw new Error(`No keyless SDK tests found under ${root}`);
+  return files;
 }
 
 // Batch size bounds per-process memory. Windows uses a smaller process lifetime
@@ -885,6 +894,7 @@ export function computeTestRoots(root) {
     cloudApiRoot: path.join(root, "packages", "cloud", "api"),
     cloudServicesRoot: path.join(root, "packages", "cloud", "services"),
     cloudMocksRoot: path.join(root, "packages", "cloud", "test-mocks"),
+    cloudSdkSrc: path.join(root, "packages", "cloud", "sdk", "src"),
   };
 }
 
@@ -1120,8 +1130,13 @@ async function main() {
 
   const env = buildTestEnv(process.env);
   const testRoots = computeTestRoots(repoRoot);
-  const { cloudSharedSrc, cloudApiRoot, cloudServicesRoot, cloudMocksRoot } =
-    testRoots;
+  const {
+    cloudSharedSrc,
+    cloudApiRoot,
+    cloudServicesRoot,
+    cloudMocksRoot,
+    cloudSdkSrc,
+  } = testRoots;
 
   const missing = findMissingRoots(testRoots, existsSync);
   if (missing.length > 0) {
@@ -1177,6 +1192,7 @@ async function main() {
     ...cloudApiUnitTests,
     ...cloudServicesTests,
     ...cloudMocksTests,
+    ...discoverSdkUnitTests(cloudSdkSrc),
   ];
   if (allTestFiles.length === 0) {
     console.error(

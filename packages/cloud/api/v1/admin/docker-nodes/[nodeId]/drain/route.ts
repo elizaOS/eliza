@@ -1,29 +1,29 @@
-// Handles admin cloud API v1 admin docker nodes nodeid drain route traffic with privileged auth expectations.
-import { Hono } from "hono";
+/** Handles the privileged Docker-node drain endpoint for the admin cloud API. */
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin: drain a Docker node.
  *
  * Disables the node so no new containers schedule to it. If the node is
- * already empty AND `?deprovision=true` is set, the underlying autoscaler-
- * provisioned Hetzner Cloud server is also deleted. Manually registered
- * auctioned/static boxes do not carry an `hcloudServerId`; those are left
- * disabled and must be removed explicitly if the operator wants to unregister
- * them.
+ * already empty AND the JSON body sets `deprovision` to true, the underlying
+ * autoscaler-provisioned Hetzner Cloud server is also deleted. Manually
+ * registered auctioned/static boxes do not carry an `hcloudServerId`; those
+ * are left disabled and must be removed explicitly if the operator wants to
+ * unregister them.
  *
  * Stateful containers (volume_path != null) on the node block the
  * deprovision step until the operator migrates or deletes them. The
  * route returns 200 with `{ remaining: N }` in that case.
  */
 
+import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { HetznerCloudError } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
+import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { requireAdmin } from "@/lib/auth";
-import { HetznerCloudError } from "@/lib/services/containers/hetzner-cloud-api";
-import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
-import { logger } from "@/lib/utils/logger";
 
 const drainSchema = z.object({
   deprovision: z.boolean().optional().default(false),
@@ -51,9 +51,17 @@ async function __hono_POST(
 
   let body: unknown = {};
   try {
-    body = await request.json().catch(() => ({}));
+    const rawBody = await request.text();
+    if (rawBody.trim().length > 0) {
+      body = JSON.parse(rawBody);
+    }
   } catch {
-    body = {};
+    // error-policy:J3 A malformed or unreadable body must not become the
+    // bodyless disable operation on this destructive administrative route.
+    return Response.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 },
+    );
   }
 
   const parsed = drainSchema.safeParse(body);

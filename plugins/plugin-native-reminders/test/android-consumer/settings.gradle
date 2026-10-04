@@ -1,0 +1,5 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+def repositoryRoot = new File(settingsDir, '../../../..').canonicalFile
+include ':reminders', ':capacitor-android'
+project(':reminders').projectDir = new File(settingsDir, '../../android')
+project(':capacitor-android').projectDir = new File(providers.gradleProperty('capacitorAndroidDir').getOrElse(new File(repositoryRoot, 'packages/app/node_modules/@capacitor/android/capacitor').path))

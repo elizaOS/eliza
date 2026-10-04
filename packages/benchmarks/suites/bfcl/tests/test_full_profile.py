@@ -6,17 +6,17 @@ from pathlib import Path
 
 import pytest
 
-import suites.bfcl.dataset as dataset_module
-from bench_cli_types import ModelSpec
-from suites.bfcl.dataset import BFCLDataset
-from suites.bfcl.types import (
+import benchmarks.bfcl.dataset as dataset_module
+from benchmarks.bench_cli_types import ModelSpec
+from benchmarks.bfcl.dataset import BFCLDataset
+from benchmarks.bfcl.types import (
     BFCLCategory,
     BFCLConfig,
     BFCLTestCase,
     BFCL_V3_DATASET_REVISION,
     BFCL_V3_SCORING_CASE_COUNT,
 )
-from registry import get_benchmark_registry
+from benchmarks.registry import get_benchmark_registry
 
 
 def _case(case_id: str) -> BFCLTestCase:

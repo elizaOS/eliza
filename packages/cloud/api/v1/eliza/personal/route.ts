@@ -9,19 +9,19 @@
  * Dedicated agent id before that id is handed back.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   personalDirectChatRefusalResponse,
   resolvePersonalDirectChatRoute,
-} from "@/lib/services/personal-direct-chat-route";
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
 import {
   personalDedicatedClientApiBase,
   personalSharedAgent,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

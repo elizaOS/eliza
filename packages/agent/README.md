@@ -44,6 +44,20 @@ never repeat the effect. Revision/epoch and account checks fence late results;
 resolved results require a durable evidence reference. Reconciliation does not
 resume the task. This method is deliberately absent from renderer HTTP routes.
 
+## Optional phone workflows
+
+Lean-chat hosts may set `ELIZA_LEAN_CHAT_WORKFLOWS=1` to retain the workflow
+plugin while keeping the lean profile's desktop actuator exclusions. Android
+hosts may independently set `ELIZA_MOBILE_WORKFLOWS=1`; the default remains
+workflow-free, and iOS remains excluded. An explicit `workflow.enabled: false`
+or disabled `plugins.entries.workflow` overrides either opt-in.
+
+Android bundles include the optional workflow plugin, but execution still
+requires the separately verified workflow worker/compiler resource directory
+and the process-host configuration. Enabling the plugin does not establish
+worker readiness or authorize device effects. Use the existing reviewed
+workflow and device-action permission/receipt boundaries.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -131,3 +145,31 @@ Each explicit uncertain-operation readback commits a recovery epoch before bindi
 the actuator. An ambiguous result or lost reply therefore cannot strand the next
 readback on a native epoch that was already consumed. The original operation stays
 unknown until evidence resolves it, and recovery never resumes or repeats effects.
+
+Mobile hosts may set `ELIZA_MOBILE_DNS_SERVERS` to one through eight comma-separated
+IP literals from their trusted native network configuration. Missing configuration
+retains the public resolver defaults; malformed addresses reject before installing
+DNS overrides. This startup snapshot does not implement Private DNS, VPN-bound
+resolution or automatic network-change refresh.
+
+## Native host composition
+
+`native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
+hosts shipping a separately verified gateway payload. Supply an explicit
+`hostPolicy`: origins, resetPaths, conversationTitle, abortReason, validateTitle,
+prepareMessage, isPaidAction, formatTaskContext, and optional messages. The policy
+owns product language and view metadata; the gateway owns authenticated loopback
+transport, bounded JSON, conversation ownership, request cancellation, account
+fencing and authenticated task presentation. Only trusted host code provides this
+policy; never accept it from renderer input.
+
+`native-host/account-state.mjs` preserves private credential-derived namespaces
+and configuration migration. `native-host/runtime-supervisor.mjs` serializes
+identity transitions and stops only the child returned by the host launcher.
+These are source entrypoints for explicit payload composition, not additional
+browser SDK or published dist exports. Production consumers must preserve their
+own registration, origin policy, encrypted storage and lifecycle adapters.
+
+The native-host end-to-end test uses real local HTTP, disk restart and child
+processes. Run `node --test packages/agent/native-host/gateway.e2e.test.mjs` from
+the repository root; it is also included by the package's Vitest suite.

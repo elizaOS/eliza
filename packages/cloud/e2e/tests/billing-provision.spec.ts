@@ -229,9 +229,7 @@ test.describe("billing — provision lifecycle", () => {
     const { jobsRepository } = await import(
       "@elizaos/cloud-shared/db/repositories/jobs"
     );
-    const { JOB_TYPES } = await import(
-      "@elizaos/cloud-shared/lib/services/provisioning-job-types"
-    );
+    const { JOB_TYPES } = await import("@elizaos/cloud-shared/agent-contracts");
     const provisionJobs = await jobsRepository.findByDataField({
       type: JOB_TYPES.AGENT_PROVISION,
       organizationId: seededUser.organizationId,

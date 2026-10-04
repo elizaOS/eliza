@@ -2963,6 +2963,44 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
     expect(remaining.some((m) => m.id === "a1")).toBe(false);
   });
 
+  it("resends an older failed turn at the end without deleting the later conversation", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("recovered reply", "recovered reply");
+        return { text: "recovered reply", completed: true };
+      },
+    );
+    const deps = makeActiveConversationDeps();
+    seedFailedTurn(deps);
+    deps.conversationMessagesRef.current.push(
+      { id: "u2", role: "user", text: "second question", timestamp: 3 },
+      {
+        id: "a2",
+        role: "assistant",
+        text: "a good answer to the second question",
+        timestamp: 4,
+      },
+    );
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry("a1");
+    });
+
+    expect(mocks.client.truncateConversationMessages).not.toHaveBeenCalled();
+    expect(deps.removeConversationMessageStateMessages).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0][1]).toBe(
+      "hello",
+    );
+    const remainingIds = deps.conversationMessagesRef.current.map((m) => m.id);
+    expect(remainingIds.slice(0, 4)).toEqual(["u1", "a1", "u2", "a2"]);
+  });
+
   it.each([false, true])(
     "retries only the selected optimistic turn without duplicate rows (clientRenderId=%s)",
     async (hasRenderId) => {
@@ -4041,6 +4079,21 @@ describe("useChatSend — sendActionMessage cold-open defers the create like the
       text: "ok",
       completed: true,
     } as never);
+  });
+
+  it("retains reminder source metadata through the action send transport", async () => {
+    const deps = makeActiveConversationDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    const metadata = {
+      replyToMessageId: "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9",
+      reminderChoiceId: "reminder-source",
+    };
+    await act(async () => {
+      await result.current.sendActionMessage("done", { metadata });
+    });
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.[6],
+    ).toMatchObject(metadata);
   });
 
   it("skips the redundant client.createConversation round trip on a shared-agent base", async () => {

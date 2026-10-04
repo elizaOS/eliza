@@ -1,12 +1,13 @@
 // Handles internal cloud API internal auth route traffic with service-to-service auth.
-import type { Context } from "hono";
-import { jsonError } from "@/lib/api/cloud-worker-errors";
+
+import { jsonError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   extractBearerToken,
   verifyInternalRequestToken,
-} from "@/lib/auth/jwt-internal";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/auth/jwt-internal";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context } from "hono";
 
 export interface InternalServiceAuth {
   podName: string;

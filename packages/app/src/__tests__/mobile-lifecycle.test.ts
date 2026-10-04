@@ -41,6 +41,7 @@ vi.mock("@elizaos/ui/events", () => ({
   dispatchBackIntent: vi.fn(() => false),
 }));
 
+import { buildAssistantLaunchHashRoute } from "../deep-link-routing";
 import { createMobileLifecycle } from "../mobile-lifecycle";
 
 function openWarmUrl(url: string): void {
@@ -158,6 +159,41 @@ describe("mobile lifecycle deep links", () => {
     await flush();
     expect(handleDeepLink).toHaveBeenCalledTimes(2);
     expect(handleDeepLink).toHaveBeenNthCalledWith(2, launch);
+  });
+
+  it("retains a cold notification chat launch before the renderer owner mounts", async () => {
+    const url =
+      "elizaos://chat?notificationId=11111111-1111-4111-8111-111111111111";
+    const buffer = createAndroidDeepLinkBuffer(url);
+    const handleDeepLink = vi.fn(async (value: string) => {
+      const parsed = new URL(value);
+      window.location.hash =
+        buildAssistantLaunchHashRoute(parsed.host, parsed.searchParams, {
+          generateLaunchId: () => "cold-reminder-chat",
+          now: () => 1,
+        }) ?? "";
+      return true;
+    });
+    const lifecycle = createMobileLifecycle({
+      isNative: true,
+      isAndroid: true,
+      isIOS: false,
+      logPrefix: "[cold-notification-test]",
+      handleDeepLink,
+      androidDeepLinkBuffer: buffer,
+    });
+    lifecycle.initializeDeepLinks();
+    await flush();
+    expect(handleDeepLink).not.toHaveBeenCalled();
+    expect(buffer.acknowledgePendingUrl).not.toHaveBeenCalled();
+    lifecycle.initializeAppLifecycle();
+    await flush();
+    expect(window.location.hash).toContain(
+      "assistant.launchId=cold-reminder-chat",
+    );
+    expect(window.location.hash).toContain("source=assistant-entry");
+    expect(window.location.hash).toContain("action=chat");
+    expect(buffer.acknowledgePendingUrl).toHaveBeenCalledWith({ url });
   });
 
   it("preserves warm actions and their order before the shell is ready", async () => {

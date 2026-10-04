@@ -21,7 +21,6 @@ import {
 import { fetchReleaseImages } from "./release-manifest";
 import type {
   ElizaOsImage,
-  InstallerStep,
   InstallerStepId,
   RemovableDrive,
   UsbInstallerBackend,
@@ -29,20 +28,10 @@ import type {
   WritePlan,
   WriteRequest,
 } from "./types";
-import {
-  assertDriveMatchesExpected,
-  assertWritePlanAllowed,
-} from "./write-safety";
+import { createPlatformWritePlan } from "./write-plan";
+import { assertWritePlanAllowed } from "./write-safety";
 
 const execFileAsync = promisify(execFile);
-
-const STEP_LABELS: Record<InstallerStepId, string> = {
-  "resolve-image": "Resolve image",
-  checksum: "Validate checksum",
-  write: "Write image",
-  verify: "Finalize media",
-  complete: "Complete",
-};
 
 const DEFAULT_RAW_WRITER = path.resolve(
   import.meta.dirname,
@@ -346,15 +335,6 @@ function removableDriveFromLsblkDevice(
   const hardwareIdentity = device.wwn?.trim() || device.serial?.trim();
   if (hardwareIdentity) entry.stableId = `linux:${hardwareIdentity}`;
   return entry;
-}
-
-function pendingSteps(): InstallerStep[] {
-  return (Object.keys(STEP_LABELS) as InstallerStepId[]).map((id) => ({
-    id,
-    label: STEP_LABELS[id],
-    status: "pending",
-    detail: "Waiting to start.",
-  }));
 }
 
 // Parse dd stderr progress lines: "1234567890 bytes (1.2 GB, 1.1 GiB) copied, ..."
@@ -822,54 +802,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
   }
 
   async createWritePlan(request: WriteRequest): Promise<WritePlan> {
-    const [drives, images] = await Promise.all([
-      this.listRemovableDrives(),
-      this.listImages(),
-    ]);
-
-    const drive = drives.find((d) => d.id === request.driveId);
-    if (!drive) throw new Error(`Unknown drive id: ${request.driveId}`);
-    assertDriveMatchesExpected(request, drive);
-
-    const image = images.find((img) => img.id === request.imageId);
-    if (!image) throw new Error(`Unknown image id: ${request.imageId}`);
-
-    if (!request.acknowledgeDataLoss) {
-      throw new Error(
-        "Data-loss acknowledgement is required before preparing media.",
-      );
-    }
-
-    const blockedReason =
-      drive.safety !== "safe-removable"
-        ? "the target is not marked safe-removable."
-        : drive.sizeBytes < image.minUsbSizeBytes
-          ? `the target is ${Math.round(drive.sizeBytes / 1024 ** 3)} GiB but ${Math.round(image.minUsbSizeBytes / 1024 ** 3)} GiB is required.`
-          : null;
-
-    const steps: InstallerStep[] = blockedReason
-      ? (Object.keys(STEP_LABELS) as InstallerStepId[]).map((id) => ({
-          id,
-          label: STEP_LABELS[id],
-          status: "blocked",
-          detail: `Blocked: ${blockedReason}`,
-        }))
-      : request.dryRun
-        ? (Object.keys(STEP_LABELS) as InstallerStepId[]).map((id) => ({
-            id,
-            label: STEP_LABELS[id],
-            status: "complete",
-            detail: "Dry-run complete; no bytes were written.",
-          }))
-        : pendingSteps();
-
-    return {
-      request,
-      drive,
-      image,
-      steps,
-      privilegedWriteImplemented: true,
-    };
+    return createPlatformWritePlan(this, request);
   }
 
   async executeWritePlan(

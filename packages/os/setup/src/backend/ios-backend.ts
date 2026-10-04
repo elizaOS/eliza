@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -67,24 +67,28 @@ async function runCommand(
   args: string[],
   env?: Record<string, string>,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  try {
-    const proc = Bun.spawn([cmd, ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: env ? { ...process.env, ...env } : process.env,
-    });
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    const exitCode = await proc.exited;
-    return { stdout, stderr, exitCode };
-  } catch {
-    return { stdout: "", stderr: "", exitCode: 1 };
+  const proc = Bun.spawn([cmd, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: env ? { ...process.env, ...env } : process.env,
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { stdout, stderr, exitCode };
+}
+
+export class IosInstallError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IosInstallError";
   }
 }
 
 export class SideloaderIosBackend implements IosBackend {
+  constructor(private readonly command: typeof runCommand = runCommand) {}
   private authState: IosAuthState = { status: "idle" };
 
   /** Reset auth between install attempts so stale state doesn't leak across runs. */
@@ -93,8 +97,10 @@ export class SideloaderIosBackend implements IosBackend {
   }
 
   async listDevices(): Promise<IosDevice[]> {
-    const { stdout, exitCode } = await runCommand("idevice_id", ["-l"]);
-    if (exitCode !== 0 || !stdout.trim()) return [];
+    const { stdout, exitCode } = await this.command("idevice_id", ["-l"]);
+    if (exitCode !== 0)
+      throw new IosInstallError("Unable to list connected iOS devices.");
+    if (!stdout.trim()) return [];
 
     const udids = stdout
       .split("\n")
@@ -103,13 +109,11 @@ export class SideloaderIosBackend implements IosBackend {
 
     const devices: IosDevice[] = [];
     for (const udid of udids) {
-      const info = await runCommand("ideviceinfo", ["-u", udid]);
-      if (info.exitCode !== 0) continue;
+      const info = await this.command("ideviceinfo", ["-u", udid]);
+      if (info.exitCode !== 0)
+        throw new IosInstallError(`Unable to inspect iOS device ${udid}.`);
 
       const kv = parseKeyValueOutput(info.stdout);
-      const connectionType: IosDevice["connectionType"] = udid.includes("-")
-        ? "wifi"
-        : "usb";
 
       devices.push({
         udid,
@@ -117,7 +121,7 @@ export class SideloaderIosBackend implements IosBackend {
         model: kv.ProductType ?? "Unknown",
         osVersion: kv.ProductVersion ?? "Unknown",
         architecture: mapArchitecture(kv.CPUArchitecture ?? ""),
-        connectionType,
+        connectionType: "usb", // idevice_id -l enumerates USB devices; network requires -n.
       });
     }
 
@@ -136,8 +140,12 @@ export class SideloaderIosBackend implements IosBackend {
   }
 
   async createInstallPlan(request: IosInstallRequest): Promise<IosInstallPlan> {
-    // Fresh install attempt — clear any stale auth state from a previous run.
-    this.resetAuth();
+    if (
+      this.authState.status !== "authenticated" ||
+      this.authState.appleId !== request.appleId
+    ) {
+      throw new IosAuthNotReadyError();
+    }
 
     const devices = await this.listDevices();
     const device = devices.find((d) => d.udid === request.deviceUdid);
@@ -147,6 +155,29 @@ export class SideloaderIosBackend implements IosBackend {
     const app = apps.find((a) => a.id === request.appId);
     if (!app) throw new Error(`App not found: ${request.appId}`);
 
+    if (app.minOsVersion) {
+      const version = device.osVersion.split(".").map(Number);
+      const minimum = app.minOsVersion.split(".").map(Number);
+      let comparison = 0;
+      for (
+        let index = 0;
+        index < Math.max(version.length, minimum.length);
+        index++
+      ) {
+        const actual = version[index] ?? 0;
+        const required = minimum[index] ?? 0;
+        if (!Number.isSafeInteger(actual) || !Number.isSafeInteger(required))
+          throw new IosInstallError("Unable to determine iOS compatibility.");
+        if (actual !== required) {
+          comparison = actual - required;
+          break;
+        }
+      }
+      if (comparison < 0)
+        throw new IosInstallError(
+          `This app requires iOS ${app.minOsVersion} or later.`,
+        );
+    }
     const regionNotice = await this.getRegionNotice();
 
     return {
@@ -177,7 +208,7 @@ export class SideloaderIosBackend implements IosBackend {
   async authenticate(appleId: string, password: string): Promise<IosAuthState> {
     this.authState = { status: "authenticating", appleId };
 
-    const { stdout, stderr, exitCode } = await runCommand(
+    const { stdout, stderr, exitCode } = await this.command(
       "sideloader",
       ["auth", "login", "--apple-id", appleId],
       // Pass password via env var — never logged or shown
@@ -209,7 +240,9 @@ export class SideloaderIosBackend implements IosBackend {
   }
 
   async submit2fa(code: string): Promise<IosAuthState> {
-    const { stdout, stderr, exitCode } = await runCommand("sideloader", [
+    if (this.authState.status !== "awaiting-2fa")
+      throw new IosAuthNotReadyError();
+    const { stdout, stderr, exitCode } = await this.command("sideloader", [
       "auth",
       "2fa",
       "--code",
@@ -219,9 +252,8 @@ export class SideloaderIosBackend implements IosBackend {
     const combined = (stdout + stderr).toLowerCase();
 
     if (
-      exitCode === 0 ||
-      combined.includes("success") ||
-      combined.includes("authenticated")
+      exitCode === 0 &&
+      (combined.includes("success") || combined.includes("authenticated"))
     ) {
       this.authState = { ...this.authState, status: "authenticated" };
       return this.authState;
@@ -249,17 +281,25 @@ export class SideloaderIosBackend implements IosBackend {
     try {
       // Step: detect-device
       onProgress("detect-device", "running");
-      const { stdout: deviceList, exitCode: detectExit } = await runCommand(
+      const { stdout: deviceList, exitCode: detectExit } = await this.command(
         "idevice_id",
         ["-l"],
       );
-      if (detectExit !== 0 || !deviceList.includes(udid)) {
+      if (
+        detectExit !== 0 ||
+        !deviceList
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .includes(udid)
+      ) {
         onProgress(
           "detect-device",
           "failed",
           "Device not found. Ensure it is connected and trusted.",
         );
-        return;
+        throw new IosInstallError(
+          "The selected device is no longer connected.",
+        );
       }
       onProgress("detect-device", "complete");
 
@@ -290,11 +330,18 @@ export class SideloaderIosBackend implements IosBackend {
           "failed",
           `Download failed: HTTP ${ipaResponse.status}`,
         );
-        return;
+        throw new IosInstallError(
+          `IPA download failed: HTTP ${ipaResponse.status}`,
+        );
       }
 
       const ipaBuffer = await ipaResponse.arrayBuffer();
-      await Bun.write(ipaPath, ipaBuffer);
+      if (!ipaBuffer.byteLength)
+        throw new IosInstallError("Downloaded IPA is empty.");
+      await writeFile(ipaPath, new Uint8Array(ipaBuffer), {
+        flag: "wx",
+        mode: 0o600,
+      });
 
       // Verify the file was actually written with the expected byte count.
       const writtenStat = await stat(ipaPath).catch(() => null);
@@ -312,7 +359,7 @@ export class SideloaderIosBackend implements IosBackend {
       // Step: sign-ipa
       onProgress("sign-ipa", "running", "Signing with Apple ID certificate…");
       const signedPath = join(tmpDir, "app-signed.ipa");
-      const signResult = await runCommand("sideloader", [
+      const signResult = await this.command("sideloader", [
         "sign",
         "--ipa",
         ipaPath,
@@ -325,13 +372,16 @@ export class SideloaderIosBackend implements IosBackend {
           "failed",
           signResult.stderr.trim() || "Signing failed",
         );
-        return;
+        throw new IosInstallError("IPA signing failed.");
       }
+      const signedStat = await stat(signedPath);
+      if (!signedStat.isFile() || signedStat.size === 0)
+        throw new IosInstallError("Signing did not produce a nonempty IPA.");
       onProgress("sign-ipa", "complete");
 
       // Step: install-ipa
       onProgress("install-ipa", "running", "Installing on device…");
-      const installResult = await runCommand("sideloader", [
+      const installResult = await this.command("sideloader", [
         "install",
         "--ipa",
         signedPath,
@@ -344,7 +394,7 @@ export class SideloaderIosBackend implements IosBackend {
           "failed",
           installResult.stderr.trim() || "Install failed",
         );
-        return;
+        throw new IosInstallError("Device installation failed.");
       }
       onProgress("install-ipa", "complete");
 
@@ -355,11 +405,8 @@ export class SideloaderIosBackend implements IosBackend {
       onProgress("install-ipa", "failed", String(err));
       throw err;
     } finally {
-      if (tmpDir) {
-        await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-      }
-      // Auth is per-attempt — never carry it into the next install.
       this.resetAuth();
+      if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
     }
   }
 }
