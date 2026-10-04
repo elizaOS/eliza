@@ -741,7 +741,6 @@ declare module "./client-base.js" {
     }>;
     getWorkbenchOverview(): Promise<
       WorkbenchOverview & {
-        tasksAvailable?: boolean;
         triggersAvailable?: boolean;
         todosAvailable?: boolean;
       }

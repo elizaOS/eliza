@@ -88,7 +88,6 @@ import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
-import { retainedPendantSchema } from "./retained-pendant-schema.ts";
 import {
   viewNavigationEvaluator,
   viewNavigationField,
@@ -118,12 +117,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     name: "eliza",
     databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
-    // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
-    // migrates the runtime data model whenever the agent runs.
-    schema: {
-      ...retainedPendantSchema,
-      ...knowledgeGraphSchema,
-    },
+    schema: knowledgeGraphSchema,
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,

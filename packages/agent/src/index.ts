@@ -785,25 +785,4 @@ export type {
   AutonomousConfigLike,
   CloudProxyConfigLike,
 } from "./types/config-like.ts";
-export type {
-  Trajectory,
-  TrajectoryActionAttempt,
-  TrajectoryCacheStats,
-  TrajectoryExportFormat,
-  TrajectoryExportOptions,
-  TrajectoryExportResult,
-  TrajectoryFlattenedLlmCall,
-  TrajectoryJsonShape,
-  TrajectoryListItem,
-  TrajectoryListOptions,
-  TrajectoryListResult,
-  TrajectoryLlmCall,
-  TrajectoryProviderAccess,
-  TrajectorySkillInvocation,
-  TrajectoryStatus,
-  TrajectoryStep,
-  TrajectoryStepId,
-  TrajectoryStepKind,
-  TrajectoryUsageTotals,
-} from "./types/trajectory.ts";
 export * from "./version-resolver.ts";
