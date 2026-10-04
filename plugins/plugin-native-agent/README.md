@@ -178,3 +178,11 @@ supply trusted installed files and a private alias directory, serialize refreshe
 and own bundle verification and launch policy. Links are reconstructible state;
 this does not load native code or authorize a library. Portable and Android tests
 use synthetic files to verify install-path changes and optional-library cleanup.
+
+`native-host/local-credential-client` supplies the private JavaScript client for
+`LocalCredentialBroker`. Hosts supply the loopback port, private bearer token,
+deadline and optional error copy. It implements read/write/clear without
+redirects or retries; a lost write acknowledgement is not proof the write failed.
+Malformed responses are errors rather than absent credentials. Never give this
+client or token to a renderer. Portable tests use real loopback HTTP with
+synthetic storage; Android broker/device integration remains separate.
