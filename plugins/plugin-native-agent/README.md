@@ -171,3 +171,10 @@ bounds. The host supplies a real private parent, serialized writes and directory
 sync. A sync failure after rename means publication happened but durability is
 unknown. Portable tests cover concurrent readers and rejected inputs; Android
 instrumentation qualifies the real directory-sync adapter.
+
+`InstalledRuntimeLibraries` refreshes runtime soname aliases against the current
+APK install directory and configures the optional installed canvas library. Hosts
+supply trusted installed files and a private alias directory, serialize refreshes
+and own bundle verification and launch policy. Links are reconstructible state;
+this does not load native code or authorize a library. Portable and Android tests
+use synthetic files to verify install-path changes and optional-library cleanup.
