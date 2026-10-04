@@ -18,6 +18,11 @@ const binding = {
 const opaque = () => randomBytes(32).toString("base64url");
 const challenge = (value) =>
   createHash("sha256").update(value).digest("base64url");
+// The staging session exchange takes a 64-char lowercase hex verifier and its
+// hex SHA-256 challenge, unlike the RFC 7636 base64url pair the native grant uses.
+const sessionOpaque = () => randomBytes(32).toString("hex");
+const sessionChallenge = (value) =>
+  createHash("sha256").update(value).digest("hex");
 const requireValue = (condition) => {
   if (!condition) throw new Error("Native staging acceptance failed");
 };
@@ -135,10 +140,10 @@ async function main() {
         typeof sourceAccount.value.organization?.id === "string",
     );
     step = "session-pkce";
-    const sessionVerifier = opaque();
+    const sessionVerifier = sessionOpaque();
     const mint = await request(
       "/api/auth/staging-session-exchange/mint",
-      { codeChallenge: challenge(sessionVerifier) },
+      { codeChallenge: sessionChallenge(sessionVerifier) },
       key,
     );
     requireValue(
@@ -159,7 +164,8 @@ async function main() {
       "/api/auth/staging-session-exchange/exchange",
       { code: mint.value.code, codeVerifier: sessionVerifier },
     );
-    requireValue(replay.status === 400);
+    // The first exchange burned the code, so a replay is an unknown code.
+    requireValue(replay.status === 401 && replay.value.code === "invalid_code");
     checks.singleUseSessionPkce = true;
     step = "native-grant";
     const state = opaque();

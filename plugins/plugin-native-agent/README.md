@@ -164,3 +164,10 @@ file/line limits, single-line secrets and thread/error policy. Newly created fil
 are mode 0600; symlink/non-file destinations are refused. It does not store model
 context or durable events. The portable suite exercises a 32 MiB line under a
 12 MiB heap; `NativeProcessLogInstrumentedTest` covers Android file semantics.
+
+`RuntimePrivateFiles` publishes host-selected files with mode 0600 and atomic
+replacement, and reads optional single-line UTF-8 inputs with host-selected byte
+bounds. The host supplies a real private parent, serialized writes and directory
+sync. A sync failure after rename means publication happened but durability is
+unknown. Portable tests cover concurrent readers and rejected inputs; Android
+instrumentation qualifies the real directory-sync adapter.
