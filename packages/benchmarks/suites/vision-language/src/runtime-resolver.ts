@@ -20,6 +20,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveAliasedEnvValue } from "@elizaos/core";
+import { importMeasuredPackage } from "../../../lib/target-package.ts";
 import {
   actionListPrompt,
   parseActionList,
@@ -70,31 +71,19 @@ async function tryLoadPluginVision(
 ): Promise<VisionRuntime | null> {
   const modelPath = resolveModelPath(tier);
   if (!modelPath) return null;
-  const candidates = ["@elizaos/plugin-local-inference/services"];
-  // With ELIZA_REPO_DIR set, prefer the checkout's source over the installed
-  // package so the measured code is the checked-out tree.
   const elizaRepo = (process.env.ELIZA_REPO_DIR ?? "").trim();
-  if (elizaRepo) {
-    candidates.unshift(
-      new URL(
-        `file://${elizaRepo}/plugins/plugin-local-inference/src/services/index.ts`,
-      ).href,
+  const mod = elizaRepo
+    ? await importMeasuredPackage<AppCoreVisionLike>(
+        elizaRepo,
+        "@elizaos/plugin-local-inference/services",
+      )
+    : ((await import(
+        "@elizaos/plugin-local-inference/services"
+      )) as AppCoreVisionLike);
+  if (typeof mod.createImageDescriptionRuntime !== "function") {
+    throw new Error(
+      "Selected local-inference package does not expose createImageDescriptionRuntime",
     );
-  }
-  let mod: AppCoreVisionLike | null = null;
-  for (const spec of candidates) {
-    try {
-      const candidate = (await import(spec)) as AppCoreVisionLike;
-      if (typeof candidate.createImageDescriptionRuntime === "function") {
-        mod = candidate;
-        break;
-      }
-    } catch {
-      // try next
-    }
-  }
-  if (!mod || typeof mod.createImageDescriptionRuntime !== "function") {
-    return null;
   }
   const impl = await mod.createImageDescriptionRuntime({ tier, modelPath });
   return wrapVisionImpl(tier, impl);

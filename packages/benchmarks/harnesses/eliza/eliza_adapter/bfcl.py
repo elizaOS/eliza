@@ -17,6 +17,15 @@ handles its own logging server-side.
 
 from __future__ import annotations
 
+from benchmarks.bfcl import (
+    call_from_record as _call_from_record,
+    coerce_arguments as _coerce_arguments,
+    iter_call_records as _iter_call_records,
+    provider_safe_tool_name as _provider_safe_tool_name,
+    provider_safe_tools as _provider_safe_tools,
+    restore_original_call_names as _restore_original_call_names,
+)
+
 import json
 import logging
 import os
@@ -204,57 +213,6 @@ def _bfcl_tools_formatter():
     return generate_openai_tools_format
 
 
-def _coerce_arguments(raw: object) -> dict[str, "ArgumentValue"]:
-    """Coerce arbitrary JSON-shaped arguments into the BFCL ArgumentValue type."""
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-    if not isinstance(raw, dict):
-        return {}
-
-    def _norm(value: object) -> "ArgumentValue":
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return value
-        if isinstance(value, list):
-            return [_norm(v) for v in value]
-        if isinstance(value, dict):
-            return {str(k): _norm(v) for k, v in value.items()}
-        return str(value)
-
-    return {str(k): _norm(v) for k, v in raw.items()}
-
-
-def _iter_call_records(raw: object) -> list[dict[str, object]]:
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except json.JSONDecodeError:
-            return []
-    if isinstance(raw, list):
-        return [item for item in raw if isinstance(item, dict)]
-    if isinstance(raw, dict):
-        calls = raw.get("calls") or raw.get("tool_calls")
-        if calls is not None:
-            return _iter_call_records(calls)
-        return [raw]
-    return []
-
-
-def _call_from_record(entry: dict[str, object]) -> "FunctionCall | None":
-    _, _, FunctionCall = _bfcl_types()
-    record: dict[str, object] = entry
-    function = entry.get("function")
-    if isinstance(function, dict):
-        record = function
-    name_raw = record.get("name") or record.get("tool_name") or record.get("function_name")
-    if not isinstance(name_raw, str) or not name_raw:
-        return None
-    args_raw = record.get("arguments", record.get("parameters", record.get("args", {})))
-    return FunctionCall(name=name_raw, arguments=_coerce_arguments(args_raw))
-
-
 def _extract_calls_from_response(
     text: str,
     params: dict[str, object],
@@ -360,7 +318,9 @@ def _unwrap_benchmark_action_calls(calls: list["FunctionCall"]) -> list["Functio
         if call.name != "BENCHMARK_ACTION":
             normalized.append(call)
             continue
-        wrapped = call.arguments.get("calls") if isinstance(call.arguments, dict) else None
+        wrapped = (
+            call.arguments.get("calls") if isinstance(call.arguments, dict) else None
+        )
         if not isinstance(wrapped, list):
             normalized.append(call)
             continue
@@ -401,65 +361,6 @@ def _normalize_registry_calls(
     return normalized
 
 
-def _provider_safe_tool_name(name: str, used: set[str]) -> str:
-    if _SAFE_TOOL_NAME_RE.match(name) and name not in used:
-        used.add(name)
-        return name
-
-    candidate = re.sub(r"[^A-Za-z0-9_-]", "_", name).strip("_")
-    if not candidate:
-        candidate = "bfcl_tool"
-    if not re.match(r"^[A-Za-z0-9_]", candidate):
-        candidate = f"bfcl_{candidate}"
-    if len(candidate) > 64:
-        digest = sha1(name.encode("utf-8")).hexdigest()[:8]
-        candidate = f"{candidate[:55]}_{digest}"
-
-    base = candidate
-    index = 2
-    while candidate in used:
-        suffix = f"_{index}"
-        candidate = f"{base[:64 - len(suffix)]}{suffix}"
-        index += 1
-    used.add(candidate)
-    return candidate
-
-
-def _provider_safe_tools(tools: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    used: set[str] = set()
-    name_map: dict[str, str] = {}
-    patched = deepcopy(tools)
-    for tool in patched:
-        function = tool.get("function")
-        if not isinstance(function, dict):
-            continue
-        original = function.get("name")
-        if not isinstance(original, str) or not original:
-            continue
-        safe = _provider_safe_tool_name(original, used)
-        name_map[safe] = original
-        if safe == original:
-            continue
-        function["name"] = safe
-        description = str(function.get("description") or "")
-        hint = f"Original BFCL function name: {original}."
-        function["description"] = f"{description} {hint}".strip()
-    return patched, name_map
-
-
-def _restore_original_call_names(
-    calls: list["FunctionCall"],
-    name_map: dict[str, str],
-) -> list["FunctionCall"]:
-    if not name_map:
-        return calls
-    _, _, FunctionCall = _bfcl_types()
-    return [
-        FunctionCall(name=name_map.get(call.name, call.name), arguments=call.arguments)
-        for call in calls
-    ]
-
-
 def _is_live_category(category: object) -> bool:
     value = getattr(category, "value", category)
     return isinstance(value, str) and value.startswith("live_")
@@ -492,7 +393,9 @@ class ElizaBFCLAgent:
         """Ensure the eliza benchmark server is reachable."""
         if self._initialized:
             return
-        if getattr(self._client, "_delegate", None) is None and not os.environ.get("ELIZA_BENCH_URL"):
+        if getattr(self._client, "_delegate", None) is None and not os.environ.get(
+            "ELIZA_BENCH_URL"
+        ):
             from eliza_adapter.server_manager import ElizaServerManager
 
             self._manager = ElizaServerManager()
@@ -541,7 +444,7 @@ class ElizaBFCLAgent:
             "Available functions:\n"
             f"{tools_json}\n\n"
             "Respond by calling BENCHMARK_ACTION with an `arguments` parameter "
-            "containing {\"calls\":[{\"name\":...,\"arguments\":{...}}]}, "
+            'containing {"calls":[{"name":...,"arguments":{...}}]}, '
             "or use REPLY with no calls if no function is relevant. "
             "If responding directly, include the calls in <calls>...</calls> tags."
         )
