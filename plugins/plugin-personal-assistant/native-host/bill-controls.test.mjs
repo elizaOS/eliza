@@ -57,6 +57,7 @@ test("workflow selects only the configured existing-method target after review",
   };
   let elements = [{ selector: "observation:frame:7", label: "Other control" }],
     executions = 0;
+  let selectedStatus = "succeeded";
   const runtime = {
     owner: {},
     get: () => task,
@@ -64,7 +65,12 @@ test("workflow selects only the configured existing-method target after review",
       executions++;
       assert.equal(proposal.targetRef, "observation:frame:7");
       assert.equal(proposal.capability, "browser.click");
-      return { operations: [{ status: "succeeded" }] };
+      return {
+        operations: [
+          { proposal, status: selectedStatus },
+          { proposal: { id: "unrelated" }, status: "succeeded" },
+        ],
+      };
     },
   };
   const workflow = new BillWorkflow({
@@ -93,4 +99,9 @@ test("workflow selects only the configured existing-method target after review",
   assert.equal(executions, 0);
   await workflow.chooseExistingMethod("review");
   assert.equal(executions, 1);
+  selectedStatus = "failed";
+  assert.equal(
+    (await workflow.chooseExistingMethod("review")).kind,
+    "unknown-outcome",
+  );
 });

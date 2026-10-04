@@ -351,7 +351,11 @@ export class BillWorkflow {
       authorizationId: task.authorization.decisionId,
       expiresAt: Date.now() + 10000,
     });
-    if (result.operations.at(-1)?.status !== "succeeded")
+    if (
+      result.operations.find(
+        (operation) => operation.proposal.id === operationId,
+      )?.status !== "succeeded"
+    )
       return {
         kind: "unknown-outcome",
         message:

@@ -10,6 +10,8 @@ test("source links bind Gmail origin, explicit account and exact thread", () => 
   assert.equal(gmailSourceLink(link, "thread1", "other@example.org"), null);
   for (const bad of [
     link.replace("https:", "http:"),
+    link.replace("mail.google.com", "MAIL.google.com"),
+    link.replace("mail.google.com", "mail.google.com:443"),
     link.replace("mail.google.com", "mail.google.com.evil.example"),
     link.replace("mail.google.com", "person@mail.google.com"),
     link.replace("/person%40example.org/", "/0/"),
