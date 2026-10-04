@@ -73,7 +73,7 @@ export function findWorkspaceSourceEntry(
     const manifest = JSON.parse(
       readFileSync(path.join(packageDir, "package.json"), "utf8"),
     );
-    let exported: ReturnType<typeof resolveExports>;
+    let exported: ReturnType<typeof resolveExports> = [];
     try {
       exported = resolveExports(
         manifest,
