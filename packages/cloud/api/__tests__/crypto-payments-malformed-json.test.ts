@@ -5,8 +5,8 @@
  * (or an engine parse diagnostic) and never reaches a money-mutating service.
  */
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
-import { Hono } from "hono";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const USER = {
   id: "user-1",
@@ -47,46 +47,52 @@ class CryptoPaymentError extends Error {
   }
 }
 
-mock.module("@elizaos/cloud-shared/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => USER,
   requireUserWithOrg: async () => USER,
 }));
-mock.module("@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  RateLimitPresets: { STANDARD: {}, STRICT: {} },
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
-    next(),
-}));
-mock.module("@elizaos/cloud-shared/lib/services/direct-wallet-payments", () => ({
-  directWalletPaymentsService: {
-    createPayment: async (...input: unknown[]) => {
-      calls.directCreate.push(input);
-      return {
-        payment: { id: DIRECT_PAYMENT.id, status: "pending" },
-        paymentInstructions: { network: "base" },
-      };
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    RateLimitPresets: { STANDARD: {}, STRICT: {} },
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+      next(),
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/direct-wallet-payments",
+  () => ({
+    directWalletPaymentsService: {
+      createPayment: async (...input: unknown[]) => {
+        calls.directCreate.push(input);
+        return {
+          payment: { id: DIRECT_PAYMENT.id, status: "pending" },
+          paymentInstructions: { network: "base" },
+        };
+      },
+      confirmPayment: async (...input: unknown[]) => {
+        calls.directConfirm.push(input);
+        return {
+          alreadyConfirmed: false,
+          payment: { id: DIRECT_PAYMENT.id, credits_to_add: 1000 },
+        };
+      },
+      attachTransaction: async (...input: unknown[]) => {
+        calls.directAttach.push(input);
+        return {
+          alreadyAttached: false,
+          payment: {
+            id: DIRECT_PAYMENT.id,
+            status: "pending",
+            transaction_hash:
+              "0x1111111111111111111111111111111111111111111111111111111111111111",
+          },
+        };
+      },
     },
-    confirmPayment: async (...input: unknown[]) => {
-      calls.directConfirm.push(input);
-      return {
-        alreadyConfirmed: false,
-        payment: { id: DIRECT_PAYMENT.id, credits_to_add: 1000 },
-      };
-    },
-    attachTransaction: async (...input: unknown[]) => {
-      calls.directAttach.push(input);
-      return {
-        alreadyAttached: false,
-        payment: {
-          id: DIRECT_PAYMENT.id,
-          status: "pending",
-          transaction_hash:
-            "0x1111111111111111111111111111111111111111111111111111111111111111",
-        },
-      };
-    },
-  },
-}));
+  }),
+);
 mock.module("@elizaos/cloud-shared/db/repositories/crypto-payments", () => ({
   cryptoPaymentsRepository: {
     findById: async (id: string) =>

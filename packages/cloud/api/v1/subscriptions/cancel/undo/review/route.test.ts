@@ -1,7 +1,10 @@
 /** The renewal preview has the same manager boundary as mutation, but accepts no provider IDs or mutation body. */
 import { beforeEach, expect, mock, test } from "bun:test";
+import {
+  ApiError,
+  ForbiddenError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import type { MiddlewareHandler } from "hono";
-import { ApiError, ForbiddenError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 
 const identity = {
   id: "5948f89f-3c52-40d5-ab3e-ce2d02e67c44",
@@ -13,19 +16,25 @@ const read = mock(async (_input: unknown, verify: () => Promise<void>) => {
   await verify();
   return { kind: "renewal_estimate" };
 });
-mock.module("@elizaos/cloud-shared/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireCurrentBillingManagerSession: auth,
 }));
-mock.module("@elizaos/cloud-shared/lib/services/subscription-renewal-review", () => ({
-  readOrganizationSubscriptionRenewalReview: read,
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/subscription-renewal-review",
+  () => ({
+    readOrganizationSubscriptionRenewalReview: read,
+  }),
+);
 const pass: MiddlewareHandler = async (_c, next) => {
   await next();
 };
-mock.module("@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  moneyRateLimit: () => pass,
-  RateLimitPresets: { STANDARD: {} },
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    moneyRateLimit: () => pass,
+    RateLimitPresets: { STANDARD: {} },
+  }),
+);
 const route = (await import("./route")).default;
 const path = `/?subscriptionId=${subscriptionId}&expectedSubscriptionRevision=2`;
 beforeEach(() => {

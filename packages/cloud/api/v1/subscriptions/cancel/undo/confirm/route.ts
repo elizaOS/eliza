@@ -1,8 +1,7 @@
 /** Confirms reviewed renewal terms under durable manager intent and a fresh dispatch fence. */
-import { Hono } from "hono";
-import { z } from "zod";
+
+import { requireCurrentBillingManagerSession } from "@elizaos/cloud-shared/auth";
 import { ForbiddenError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { requireCurrentBillingManagerSession } from "@elizaos/cloud-shared/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
@@ -10,6 +9,8 @@ import {
 import { submitReviewedOrganizationSubscriptionCancellationUndo } from "@elizaos/cloud-shared/lib/services/subscription-cancellation";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { cancellationFailure } from "../../_boundary";
 
 const requestSchema = z
