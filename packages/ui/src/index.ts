@@ -96,6 +96,13 @@ export {
   getDefaultRemoteControlCloudConnection,
 } from "./api/remote-control-cloud-default.js";
 export {
+  TaskLifecycle,
+  type TaskLifecycleMessages,
+  type TaskLifecycleRequest,
+  type TaskLifecycleState,
+  type TaskView,
+} from "./api/task-lifecycle.js";
+export {
   type AgentRequestTransport,
   awaitBridgeRequest,
   bodyToString,
@@ -1337,6 +1344,17 @@ export {
   playCaptureSendCue,
   playCaptureStartCue,
 } from "./voice/capture-cues.js";
+export {
+  audioBlobBase64,
+  type CumulativeCaptureOptions,
+  observeMicrophonePause,
+  type SpeechPauseOptions,
+  startCumulativeMicrophoneCapture,
+} from "./voice/microphone-capture.js";
+export {
+  encodeMonoPcm16Wav,
+  encodeMonoPcm16WavChunks,
+} from "./voice/pcm-wave.js";
 export { splitSpeechSegments } from "./voice/speech-segments.js";
 export { useVoiceConfig } from "./voice/useVoiceConfig.js";
 export {
