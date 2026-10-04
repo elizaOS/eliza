@@ -138,8 +138,6 @@
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
-    "@json-render/core": "0.20.0",
-    "@json-render/react": "0.19.0",
     "@metamask/connect-evm": "2.1.1",
     "@paulmillr/qr": "0.2.1",
     "@pixiv/three-vrm": "^3.4.5",
