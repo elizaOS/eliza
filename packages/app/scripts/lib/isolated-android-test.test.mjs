@@ -28,6 +28,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n');
 if(args.includes('ro.kernel.qemu'))console.log('1');
 if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
 if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enforcing');
+if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(state.home);
 if(args[0]==='install'){const id=args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages.push(id);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);}
@@ -105,6 +106,11 @@ for (const mode of ["existing", "permissive", "wrong-apk", "wrong-target"])
   test(`${mode} is rejected before mutation`, async (t) => {
     const f = fixture(t, mode);
     await assert.rejects(runIsolatedAndroidTest(f.options));
+    assert.equal(
+      fs.existsSync(f.options.directory),
+      false,
+      "Preflight must reject before admitting the run",
+    );
     assert.ok(
       !f.commands().some((c) => ["install", "uninstall"].includes(c[0])),
     );
@@ -149,4 +155,30 @@ test("runner arguments cannot replace the requested test selection", async (t) =
     }),
   );
   assert.equal(f.commands().length, 0);
+});
+
+test("an installation appearing after admission is never deleted as owned data", async (t) => {
+  const f = fixture(t, "appeared");
+  await assert.rejects(
+    runIsolatedAndroidTest(f.options),
+    /appeared after preflight/,
+  );
+  assert.ok(!f.commands().some((c) => ["install", "uninstall"].includes(c[0])));
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, [
+    "org.example.consumer",
+  ]);
+});
+
+test("artifact changes between variants are rejected before the next installation", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: () =>
+        fs.writeFileSync(f.options.variants[0].apk, "changed"),
+    }),
+    /APK changed after preflight/,
+  );
+  assert.equal(f.commands().filter((c) => c[0] === "install").length, 2);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
 });
