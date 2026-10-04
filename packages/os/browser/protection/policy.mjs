@@ -86,3 +86,125 @@ export async function installThreatRules(api, domains, extensionId, options) {
   await api.updateDynamicRules({ removeRuleIds, addRules });
   return addRules.length;
 }
+
+// Shared feed decoding for the extension worker and a private application host.
+// Only reviewed public feed endpoints are requested; visited URLs are never sent.
+export const PHISHING_FEED =
+  "https://phish.co.za/latest/phishing-domains-ACTIVE.txt";
+export const THREAT_FEED =
+  "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/tif.mini-onlydomains.txt";
+export const REPUTATION_FEEDS = [
+  {
+    id: "phishing",
+    mirror: true,
+    url: PHISHING_FEED,
+    source: "Phishing.Database",
+    license: "MIT",
+    licenseUrl:
+      "https://github.com/Phishing-Database/Phishing.Database/blob/master/LICENSE",
+    threats: ["SOCIAL_ENGINEERING"],
+  },
+  {
+    id: "threats",
+    url: THREAT_FEED,
+    source: "HaGeZi TIF Mini",
+    license: "GPL-3.0",
+    licenseUrl: "https://github.com/hagezi/dns-blocklists/blob/main/LICENSE",
+    threats: ["MALWARE_OR_SCAM"],
+  },
+];
+export const validFeedTime = (time, now = Date.now()) =>
+  Number.isFinite(time) && time <= now + 300000 && now - time < 48 * 3600000;
+export function parseThreatDomains(text, minimum = 1000) {
+  const domains = new Set();
+  let invalid = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const host = line.trim().toLowerCase();
+    if (!host || host.startsWith("#")) continue;
+    if (
+      host.length <= 253 &&
+      host.includes(".") &&
+      host
+        .split(".")
+        .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+    )
+      domains.add(host);
+    else invalid++;
+  }
+  if (domains.size < minimum || invalid > domains.size / 100)
+    throw Error("Invalid threat feed");
+  return domains;
+}
+export async function readFeedBody(response, maximum = 24 * 1024 * 1024) {
+  if (!response.ok) throw Error("Feed unavailable");
+  const reader = response.body.getReader(),
+    decoder = new TextDecoder();
+  let size = 0,
+    text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > maximum) throw Error("Feed too large");
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    await reader.cancel();
+  }
+}
+export async function downloadThreatFeed(
+  feed,
+  {
+    fetchImpl = fetch,
+    now = Date.now,
+    minEntries = 1000,
+    userAgent = undefined,
+  } = {},
+) {
+  let body, publishedAt;
+  try {
+    const response = await fetchImpl(feed.url, {
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+    });
+    body = await readFeedBody(response);
+    publishedAt = Date.parse(
+      feed.id === "threats"
+        ? body.match(/^# Last modified: (.+)$/m)?.[1]
+        : response.headers.get("last-modified"),
+    );
+    if (!validFeedTime(publishedAt, now())) throw Error("Expired feed");
+    parseThreatDomains(body, minEntries);
+  } catch (error) {
+    if (!feed.mirror) throw error;
+    const response = await fetchImpl(
+      "https://api.github.com/repos/Phishing-Database/Phishing.Database/commits?path=phishing-domains-ACTIVE.txt&per_page=1",
+      {
+        signal: AbortSignal.timeout(5000),
+        redirect: "error",
+        ...(userAgent
+          ? {
+              headers: {
+                "User-Agent": userAgent,
+                Accept: "application/vnd.github+json",
+              },
+            }
+          : {}),
+      },
+    );
+    const commits = JSON.parse(await readFeedBody(response, 128 * 1024));
+    const sha = commits?.[0]?.sha;
+    publishedAt = Date.parse(commits?.[0]?.commit?.committer?.date);
+    if (!/^[a-f0-9]{40}$/.test(sha) || !validFeedTime(publishedAt, now()))
+      throw Error("Invalid feed provenance");
+    body = await readFeedBody(
+      await fetchImpl(
+        `https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/${sha}/phishing-domains-ACTIVE.txt`,
+        { signal: AbortSignal.timeout(15000), redirect: "error" },
+      ),
+    );
+  }
+  return { body, publishedAt, downloadedAt: now() };
+}
