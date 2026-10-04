@@ -8,12 +8,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const COPY = {
   paid: {
-    title: "Payment received",
-    body: "Thank you. Eliza will update on the tablet shortly. You can close this page.",
+    title: "Check your subscription in Eliza",
+    body: "You can close this page. Eliza shows your subscription after payment is verified.",
   },
   canceled: {
-    title: "Payment not completed",
-    body: "No payment was taken. You can close this page.",
+    title: "Checkout closed",
+    body: "Return to Eliza to check your subscription or try again. You can close this page.",
   },
 } as const;
 

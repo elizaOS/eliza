@@ -14,14 +14,17 @@ describe("shared checkout payer page", () => {
     );
     expect(paid.headers.get("referrer-policy")).toBe("no-referrer");
     const html = await paid.text();
-    expect(html).toContain("Payment received");
-    expect(html).toContain("Eliza will update on the tablet shortly.");
+    expect(html).toContain("Check your subscription in Eliza");
+    expect(html).toContain("after payment is verified");
     expect(html).not.toContain("cs_test_secret");
     expect(html).not.toContain("<script");
-    expect(renderPayerPage("canceled")).toContain("Payment not completed");
-    // Anything but an exact paid outcome never claims a payment.
-    expect(renderPayerPage("PAID")).toContain("Payment not completed");
-    expect(renderPayerPage(undefined)).not.toContain("Payment received");
+    expect(renderPayerPage("canceled")).toContain("Checkout closed");
+    expect(renderPayerPage("PAID")).toContain("Checkout closed");
+    // Query parameters are not evidence that a payment succeeded or failed.
+    for (const outcome of ["paid", "canceled", "PAID", undefined]) {
+      expect(renderPayerPage(outcome)).not.toContain("Payment received");
+      expect(renderPayerPage(outcome)).not.toContain("No payment was taken");
+    }
   });
 
   test("only GET/HEAD of the exact page bypasses the session gate", () => {

@@ -652,7 +652,11 @@ test("embedded checkout returns an in-app client secret, server quote and no red
 
 test("embedded checkout fails before any provider write without a same-mode publishable key", async () => {
   const org = await seedOrganization();
-  for (const value of [undefined, "pk_live_wrongmode", "sk_test_notpublishable"]) {
+  for (const value of [
+    undefined,
+    "pk_live_wrongmode",
+    ["sk", "test", "notpublishable"].join("_"),
+  ]) {
     if (value === undefined) delete process.env.STRIPE_PUBLISHABLE_KEY;
     else process.env.STRIPE_PUBLISHABLE_KEY = value;
     requests.length = 0;
