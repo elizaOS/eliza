@@ -44,6 +44,7 @@ test("engine failure records unavailable and websites/embedded pages cannot requ
     alarms: { create: () => {}, onAlarm: event },
     webNavigation: { onCommitted: event },
     tabs: { onRemoved: event },
+    tabs: { onRemoved: event },
   };
   try {
     await import("./background.mjs?engine-failure");
@@ -118,6 +119,7 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
     },
     alarms: { create: async () => {}, onAlarm: event },
     webNavigation: { onCommitted: event },
+    tabs: { onRemoved: event },
     tabs: {
       onRemoved: event,
       update: async () => {
@@ -179,6 +181,7 @@ test("an exception alarm from a previous consumer worker still revokes the allow
       },
     },
     webNavigation: { onCommitted: event },
+    tabs: { onRemoved: event },
   };
   try {
     await import("./background.mjs?legacy-alarm");
