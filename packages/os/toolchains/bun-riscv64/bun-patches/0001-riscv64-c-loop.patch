@@ -14,7 +14,7 @@ index 46e0597..d1c5759 100644
   *   bun scripts/build.ts --target tinycc                # build one dep
   *   bun scripts/build.ts --configure-only               # emit ninja, don't run
 diff --git a/scripts/build/bun.ts b/scripts/build/bun.ts
-index fc1a748..68cebe7 100644
+index fc1a748..d004f44 100644
 --- a/scripts/build/bun.ts
 +++ b/scripts/build/bun.ts
 @@ -829,6 +829,8 @@ function emitSmokeTest(n: Ninja, cfg: Config, exe: string, exeName: string, stri
@@ -284,7 +284,7 @@ index 5e4fa5c..0dd7db4 100644
    for (const clangFlag of computeCpuTargetFlags(cfg)) {
      const parsed = /^(?:\/clang:)?-m(cpu|tune|arch)=(.+)$/.exec(clangFlag);
 diff --git a/scripts/build/source.ts b/scripts/build/source.ts
-index e57282b..1e4bd35 100644
+index e57282b..8f51cdf 100644
 --- a/scripts/build/source.ts
 +++ b/scripts/build/source.ts
 @@ -920,11 +920,11 @@ export function resolveDep(
@@ -1189,6 +1189,19 @@ index fea6184..4a1a446 100644
          INHERIT_HOOK_METHOD(deriveShadowRealmGlobalObject),
          INHERIT_HOOK_METHOD(codeForEval),
          INHERIT_HOOK_METHOD(canCompileStrings),
+diff --git a/src/runtime/cli/upgrade_command.rs b/src/runtime/cli/upgrade_command.rs
+index 8ceab6b..b3a8efa 100644
+--- a/src/runtime/cli/upgrade_command.rs
++++ b/src/runtime/cli/upgrade_command.rs
+@@ -100,6 +100,8 @@ impl Version {
+ 
+     pub(crate) const ARCH_LABEL: &'static str = if cfg!(target_arch = "aarch64") {
+         "aarch64"
++    } else if cfg!(target_arch = "riscv64") {
++        "riscv64"
+     } else {
+         "x64"
+     };
 diff --git a/src/runtime/server/server_body.rs b/src/runtime/server/server_body.rs
 index b134871..2feecb2 100644
 --- a/src/runtime/server/server_body.rs
@@ -1201,6 +1214,19 @@ index b134871..2feecb2 100644
              Architecture::Wasm => b"wasm",
          }
      }
+diff --git a/src/runtime/webview/ChromeProcess.rs b/src/runtime/webview/ChromeProcess.rs
+index 3e8967d..c34e799 100644
+--- a/src/runtime/webview/ChromeProcess.rs
++++ b/src/runtime/webview/ChromeProcess.rs
+@@ -429,6 +429,8 @@ fn find_playwright_shell() -> Option<ZBox> {
+     let subdir_cft_owned: Vec<u8> = {
+         let arch: &str = if cfg!(target_arch = "aarch64") {
+             "arm64"
++        } else if cfg!(target_arch = "riscv64") {
++            "riscv64"
+         } else {
+             "x64"
+         };
 diff --git a/src/tcc_sys/tcc.rs b/src/tcc_sys/tcc.rs
 index 0a95ffe..8e28cd0 100644
 --- a/src/tcc_sys/tcc.rs
