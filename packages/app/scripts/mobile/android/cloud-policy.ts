@@ -563,6 +563,9 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
   ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
+  // CalendarProvider requires a registered host subclass; the thin Cloud host
+  // has none and must not inherit its calendar permissions through auto-linking.
+  ["@elizaos/capacitor-calendar", "elizaos-capacitor-calendar"],
   ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/plugin-native-contacts", "elizaos-plugin-native-contacts"],
   ["@elizaos/capacitor-gateway", "elizaos-capacitor-gateway"],
@@ -704,7 +707,6 @@ export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
   "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
   "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
   "receiver:androidx.profileinstaller.ProfileInstallReceiver",
-  "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
   `service:${APP.appId}.ElizaReminderMessagingService`,
   "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
   "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
