@@ -1,6 +1,6 @@
+import { NativeCloudServiceError } from "./errors.mjs";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 /** Host-owned artifact, built from reviewed source. Never accepts a renderer path. */
@@ -8,15 +8,12 @@ export async function loadDocumentRuntime(
   file,
   { sourceCommit, canvasVersion },
 ) {
-  canvasVersion ??= createRequire(import.meta.url)(
-    "@napi-rs/canvas/package.json",
-  ).version;
   if (
     !path.isAbsolute(file) ||
     !/^[a-f0-9]{40}$/.test(sourceCommit) ||
-    typeof canvasVersion !== "string"
+    (typeof canvasVersion !== "string" || !canvasVersion.trim())
   )
-    throw new Error("Invalid document runtime configuration");
+    throw new NativeCloudServiceError("Invalid document runtime configuration");
   const provenance = JSON.parse(await fs.readFile(`${file}.json`, "utf8"));
   const bytes = await fs.readFile(file);
   if (
@@ -25,7 +22,7 @@ export async function loadDocumentRuntime(
     provenance.canvasVersion !== canvasVersion ||
     provenance.bundleSha256 !== createHash("sha256").update(bytes).digest("hex")
   )
-    throw new Error("Document runtime provenance mismatch");
+    throw new NativeCloudServiceError("Document runtime provenance mismatch");
   const runtime = await import(pathToFileURL(file).href);
   if (
     [
@@ -36,6 +33,6 @@ export async function loadDocumentRuntime(
       "getAppId",
     ].some((key) => typeof runtime[key] !== "function")
   )
-    throw new Error("Incomplete document runtime");
+    throw new NativeCloudServiceError("Incomplete document runtime");
   return runtime;
 }

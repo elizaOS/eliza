@@ -1,6 +1,7 @@
+import { NativeCloudServiceError } from "./errors.mjs";
 import { createHash } from "node:crypto";
 
-const unavailable = () => new Error("Managed Google task reads unavailable");
+const unavailable = () => new NativeCloudServiceError("Managed Google task reads unavailable");
 const id = (value) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value);
 /** Host-only adapter: request owns credentials, account lifetime and bounded JSON transport. */

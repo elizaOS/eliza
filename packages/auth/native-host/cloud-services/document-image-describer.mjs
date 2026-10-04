@@ -1,3 +1,4 @@
+import { NativeCloudServiceError } from "./errors.mjs";
 /** Account-bound runtime facade over Eliza's existing Cloud vision implementation. */
 export function createDocumentImageDescriber({
   documentRuntime,
@@ -13,7 +14,7 @@ export function createDocumentImageDescriber({
     typeof readAuthority !== "function" ||
     typeof assertOwner !== "function"
   )
-    throw new Error("Document vision configuration unavailable");
+    throw new NativeCloudServiceError("Document vision configuration unavailable");
   return async (params) => {
     const check = async () => {
       params.signal?.throwIfAborted();
@@ -56,13 +57,13 @@ export function createDocumentImageDescriber({
       authority.apiKey !== apiKey ||
       authority.apiBaseUrl !== apiBaseUrl
     )
-      throw new Error("Document vision authority mismatch");
+      throw new NativeCloudServiceError("Document vision authority mismatch");
     // Ambient app attribution must not redirect this account-owned inference call.
     if (
       documentRuntime.getNativeApplicationSlot(runtime) ||
       documentRuntime.getAppId(runtime)
     )
-      throw new Error(
+      throw new NativeCloudServiceError(
         "Document vision attribution requires explicit configuration",
       );
     const result = await documentRuntime.handleImageDescription(

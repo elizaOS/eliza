@@ -1,3 +1,4 @@
+import { NativeCloudServiceError } from "./errors.mjs";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdir, open, rename, unlink } from "node:fs/promises";
@@ -6,7 +7,7 @@ import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 
 const fail = (message, status = 400) =>
-  Object.assign(new Error(message), { status });
+  new NativeCloudServiceError(message, { status });
 function send(res, status, value) {
   res.writeHead(status, {
     "Content-Type": "application/json",

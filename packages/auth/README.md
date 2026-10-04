@@ -39,8 +39,8 @@ account epochs, Cloud login/billing transport, speech framing, account-bound
 Google reads and document-runtime authority/provenance checks. It does not
 provision a remote agent or expose account API credentials to the renderer.
 The checkout projection intentionally returns only provider-scoped payment UI
-fields. The document loader needs a host-supplied canvasVersion or a
-host-resolvable @napi-rs/canvas installation.
+fields. The document loader requires the host to supply the reviewed source commit and
+canvasVersion explicitly; artifact provenance must match both.
 
 Hosts supply explicit `hostPolicy` functions (projectAccountAccess,
 createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
