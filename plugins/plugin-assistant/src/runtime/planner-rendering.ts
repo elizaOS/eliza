@@ -10,10 +10,8 @@ import type {
   ChatMessage,
   ChatMessageContentPart,
   JsonValue,
-  Memory,
   PlannerStep,
   PlannerToolResult,
-  UUID,
 } from "@elizaos/core";
 import {
   composeToolDiagnosticRedactor,
@@ -67,13 +65,6 @@ export function renderActionResultsForModel(
   options: {
     header?: string;
     redactText?: ToolDiagnosticTextRedactor;
-    /** A delivered reply may retire its composition-only input for post-turn
-     * evaluation. Default/foreground rendering keeps the complete contract. */
-    postTurn?: {
-      agentId: UUID;
-      message: Memory;
-      responses: readonly Memory[];
-    };
   } = {},
 ): RenderedActionResultsForModel {
   if (results.length === 0) {
@@ -99,76 +90,6 @@ export function renderActionResultsForModel(
       hasRecoverableContentLocator(safeResult.data)
     ) {
       pagesIncluded++;
-    }
-    // Only an exact, current-request delivered reply can retire composition
-    // input. An unrelated reply or a partial compound result proves nothing
-    // about a still-deferred action. Keep all receipt/source/outcome fields.
-    const evidence = options.postTurn;
-    const receipts = safeResult.effectReceipts;
-    const delivered = evidence?.responses.some(
-      (response) =>
-        typeof evidence.message.id === "string" &&
-        evidence.message.id.length > 0 &&
-        evidence.message.agentId === evidence.agentId &&
-        typeof evidence.message.roomId === "string" &&
-        evidence.message.roomId.length > 0 &&
-        typeof response.id === "string" &&
-        response.id.length > 0 &&
-        response.agentId === evidence.agentId &&
-        response.entityId === evidence.agentId &&
-        response.roomId === evidence.message.roomId &&
-        response.content.inReplyTo === evidence.message.id &&
-        response.content.agentVoiced === true &&
-        response.content.interrupted !== true &&
-        typeof response.content.text === "string" &&
-        response.content.text.trim().length > 0 &&
-        Array.isArray(response.content.actions) &&
-        response.content.actions.includes("REPLY") &&
-        Array.isArray(receipts) &&
-        receipts.length > 0 &&
-        receipts.every(
-          (receipt) =>
-            typeof receipt.receiptId === "string" &&
-            receipt.receiptId.length > 0 &&
-            receipt.outcome === "applied" &&
-            receipt.commit?.kind === "durable" &&
-            Array.isArray(response.content.effectReceiptIds) &&
-            response.content.effectReceiptIds.includes(receipt.receiptId),
-        ),
-    );
-    if (
-      delivered &&
-      safeResult.success === true &&
-      safeResult.replyFailure === undefined
-    ) {
-      // replyGrounding is the LifeOps producer's deferred reply contract, not
-      // a generic diagnostic field. Parse only that declared shape; unknown
-      // contracts remain complete. Do not mutate data or promptData in storage.
-      for (const key of ["data", "promptData"] as const) {
-        const data = safeResult[key];
-        if (!data || typeof data.replyGrounding !== "string") continue;
-        try {
-          const grounding = JSON.parse(data.replyGrounding);
-          if (
-            grounding?.domain !== "lifeops" ||
-            typeof grounding.scenario !== "string" ||
-            !Array.isArray(grounding.instructions) ||
-            !grounding.instructions.every(
-              (instruction: unknown) => typeof instruction === "string",
-            ) ||
-            typeof grounding.characterVoice !== "string"
-          )
-            continue;
-          const {
-            instructions: _instructions,
-            characterVoice: _voice,
-            ...facts
-          } = grounding;
-          safeResult[key] = { ...data, replyGrounding: JSON.stringify(facts) };
-        } catch {
-          // Unknown/non-JSON grounding stays intact; it cannot authorize omission.
-        }
-      }
     }
     const body = toolMessageContent(safeResult);
     const status = result.success === false ? "failed" : "succeeded";
