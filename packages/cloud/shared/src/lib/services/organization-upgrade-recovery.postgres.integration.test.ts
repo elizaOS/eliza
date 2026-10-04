@@ -694,5 +694,149 @@ async function state(commandId: string) {
       expect((await state(first.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
       expect((await state(second.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
     });
+
+    function historicalEvent() {
+      return {
+        id: `evt_target${fixtureData.input.subscriptionId.replaceAll("-", "")}`,
+        object: "event",
+        type: "customer.subscription.pending_update_applied",
+        api_version: "2024-11-20.acacia",
+        created: objects.rawInvoice.created,
+        livemode: false,
+        data: { object: { ...objects.rawSubscription, latest_invoice: objects.rawInvoice.id } },
+      };
+    }
+    test("historical target receipt is immutable, idempotent and performs no financial publication", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      const { recordOrganizationUpgradeHistoricalTarget: record } = await import(
+        "../../db/repositories/organization-upgrade-historical-targets"
+      );
+      const input = { ...f.identity, raw: historicalEvent() };
+      expect((await record(input)).created).toBe(true);
+      expect((await record(input)).created).toBe(false);
+      expect(
+        (await record({ ...input, raw: { ...input.raw, id: `${input.raw.id}second` } })).created,
+      ).toBe(false);
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM subscription_allowance_transactions WHERE organization_id=$1",
+            [f.identity.organizationId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      await expect(
+        db.query(
+          "UPDATE organization_upgrade_historical_targets SET invoice_id='in_other' WHERE command_id=$1",
+          [f.identity.commandId],
+        ),
+      ).rejects.toThrow();
+      await expect(
+        db.query("DELETE FROM organization_upgrade_historical_targets WHERE command_id=$1", [
+          f.identity.commandId,
+        ]),
+      ).rejects.toThrow();
+      await expect(
+        record({
+          ...input,
+          raw: {
+            ...input.raw,
+            data: { object: { ...input.raw.data.object, metadata: { changed: "payload" } } },
+          },
+        }),
+      ).rejects.toThrow();
+    });
+    test("historical target persistence rejects missing origin, foreign tenant and conflicting invoice", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { recordOrganizationUpgradeHistoricalTarget: record } = await import(
+        "../../db/repositories/organization-upgrade-historical-targets"
+      );
+      const input = { ...f.identity, raw: historicalEvent() };
+      await expect(record(input)).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      await expect(record({ ...input, organizationId: randomUUID() })).rejects.toThrow();
+      await expect(
+        record({
+          ...input,
+          raw: {
+            ...input.raw,
+            data: { object: { ...input.raw.data.object, latest_invoice: "in_other" } },
+          },
+        }),
+      ).rejects.toThrow();
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    test("late target evidence validates against original revision after the command applies", async () => {
+      const f = await seed();
+      await dispatch(f.identity, f.claim, async () => {});
+      expect((await state(f.identity.commandId)).status).toBe("APPLIED");
+      const { recordOrganizationUpgradeHistoricalTarget: record } = await import(
+        "../../db/repositories/organization-upgrade-historical-targets"
+      );
+      const receipt = await record({ ...f.identity, raw: historicalEvent() });
+      expect(receipt.created).toBe(true);
+      expect(receipt.receipt.raw_subscription.latest_invoice).toBe(objects.rawInvoice.id);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+
+    test("database receipt guard rejects incomplete identity and an altered reviewed period", async () => {
+      const f = await seed();
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      const { reconcileOrganizationUpgradeInvoiceEvent: route } = await import(
+        "./organization-upgrade-invoice-event"
+      );
+      await route(invoiceDelivery("invoice.created"));
+      const event = historicalEvent();
+      for (const raw of [
+        { ...event.data.object, customer: null },
+        { ...event.data.object, current_period_end: event.data.object.current_period_end + 1 },
+        { ...event.data.object, pending_update: { expires_at: event.created + 60 } },
+      ]) {
+        await expect(
+          db.query(
+            `INSERT INTO organization_upgrade_historical_targets(command_id,organization_id,provider_event_id,event_type,api_version,livemode,invoice_id,event_created_at,observed_at,evidence_digest,raw_subscription) VALUES($1,$2,$3,$4,$5,false,$6,to_timestamp($7),clock_timestamp(),$8,$9::jsonb)`,
+            [
+              f.identity.commandId,
+              f.identity.organizationId,
+              event.id,
+              event.type,
+              event.api_version,
+              objects.rawInvoice.id,
+              event.created,
+              "a".repeat(64),
+              JSON.stringify(raw),
+            ],
+          ),
+        ).rejects.toThrow();
+      }
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM organization_upgrade_historical_targets WHERE command_id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
   },
 );
