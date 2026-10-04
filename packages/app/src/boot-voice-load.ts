@@ -1,4 +1,5 @@
-import { cachedDynamicImport, loadVoice } from "@elizaos/ui";
+import { loadVoice } from "@elizaos/ui";
+import { cachedDynamicImport } from "./app-module-cache";
 /**
  * Single-flight loader for the lazy `@elizaos/ui/voice` chunk on the boot
  * path. main() kicks the download off before the storage-bridge hydration
@@ -13,7 +14,6 @@ import { cachedDynamicImport, loadVoice } from "@elizaos/ui";
  */
 
 export type VoiceModule = Awaited<ReturnType<typeof loadVoice>>;
-
 
 export function startVoiceModuleLoad(
   importer: () => Promise<VoiceModule> = loadVoice,
