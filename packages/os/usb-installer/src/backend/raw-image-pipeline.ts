@@ -13,7 +13,7 @@ import {
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { createZstdDecompress } from "node:zlib";
-import { artifactSignaturePayload } from "../../../contracts/image-signature";
+import { artifactSignaturePayload } from "@elizaos/os/contracts";
 import {
   assertEd25519Signature,
   loadPinnedEd25519PublicKey,

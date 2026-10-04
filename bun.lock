@@ -1161,6 +1161,7 @@
       "name": "@elizaos/os-usb-installer",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/os": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
         "vite": "^8.0.0",

@@ -56,7 +56,7 @@ jobs:
       - name: Install native compilation prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev zstd e2fsprogs binutils python3-cryptography
+          sudo apt-get install -y --no-install-recommends gcc g++ libc6-dev libssl-dev default-jdk-headless zstd e2fsprogs binutils python3-cryptography
       - run: bun run verify
       - name: Validate Android compatibility wrappers
         run: android/installer/tests/run-tests.sh
