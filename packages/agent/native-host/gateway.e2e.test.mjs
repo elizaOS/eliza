@@ -18,6 +18,7 @@ import { prepareRuntimeAccountState } from "./account-state.mjs";
 import { createLocalAgentGateway } from "./gateway.mjs";
 import {
   preparePrivateRuntimeFiles,
+  preparePrivateRuntimeProfile,
   readPrivateRuntimeEnvironment,
   runtimeEnvironment,
   startPrivateRuntimeProcess,
@@ -125,6 +126,28 @@ test("host token format is selected only on creation and survives default reopen
   assert.equal((await preparePrivateRuntimeFiles(options)).token, first.token);
   assert.equal(generated, 1);
   assert.equal((await stat(options.tokenPath)).mode & 0o777, 0o600);
+});
+
+test("persistent profile preserves runtime-written configuration and its exact bytes", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-runtime-profile-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath: join(root, "config.json"),
+    initialConfig: { provider: "default" },
+  };
+  const first = await preparePrivateRuntimeProfile(options);
+  assert.deepEqual(first.config, options.initialConfig);
+  const updated = ' { "provider": "runtime selection", "setting": true }\n';
+  await writeFile(options.configPath, updated);
+  const restored = await preparePrivateRuntimeProfile({
+    ...options,
+    initialConfig: { provider: "discarded" },
+  });
+  assert.equal(restored.token, first.token);
+  assert.deepEqual(restored.config, JSON.parse(updated));
+  assert.equal(await readFile(options.configPath, "utf8"), updated);
+  assert.equal((await stat(options.configPath)).mode & 0o777, 0o600);
 });
 
 test("private launch rejects malformed settings, links and empty authority without spawning", async (t) => {
