@@ -24,9 +24,9 @@ import * as path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { loadCloudLocalEnv } from "@elizaos/cloud-services-common/node";
 import { isAgentBridgePath } from "../../../shared/src/lib/agent-api-routing.ts";
 import { isFirstPartyOrigin } from "../../../shared/src/lib/cors/first-party-origin.ts";
-import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
 type FindAgentSandboxRoutingById =
@@ -694,7 +694,7 @@ export async function startAgentRouter(
 }
 
 async function main(): Promise<void> {
-  loadLocalEnv(import.meta.url);
+  loadCloudLocalEnv(fileURLToPath(new URL("../../../", import.meta.url)));
   const started = await startAgentRouter();
   server = started.server;
 }

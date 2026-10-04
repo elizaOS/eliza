@@ -21,7 +21,6 @@
       ],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
       "@elizaos/auth/vault/*": ["../auth/src/vault/*"],
-      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/plugin-native-inference/*": [
         "../../plugins/plugin-native-inference/src/*"

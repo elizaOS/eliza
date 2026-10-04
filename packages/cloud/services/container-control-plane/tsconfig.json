@@ -7,11 +7,6 @@
     "declarationMap": false,
     "types": ["node", "bun-types"],
     "paths": {
-      "@/lib/*": ["../../shared/src/lib/*"],
-      "@/db/*": ["../../shared/src/db/*"],
-      "@/types/*": ["../../shared/src/types/*"],
-      "@elizaos/cloud-shared/*": ["../../shared/src/*"],
-      "@/*": ["../../../*"],
       "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
       "@elizaos/core/protocol": ["../../../../packages/core/src/protocol"]
     }

@@ -3,8 +3,9 @@
  * It renders fixed copy only: no session id, account, plan or payment state is read or shown,
  * and the outcome parameter is never payment authority (the webhook/confirm path is).
  */
+
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const COPY = {
   paid: {

@@ -78,6 +78,82 @@ describe("BRIEF narrative — OptimizedPromptService routing", () => {
     expect(prompt).toContain("are unavailable, not empty");
   });
 
+  it.each([false, true])(
+    "keeps human briefing rules and complete canonical facts with optimized=%s",
+    (optimized) => {
+      const sections = {
+        calendar: [],
+        inbox: [],
+        life: [
+          {
+            id: "open-reminder",
+            kind: "reminder" as const,
+            title: "Stretch",
+            state: "visible" as const,
+            dueAt: "2026-02-05T16:30:00.000Z",
+          },
+        ],
+        completedToday: [
+          {
+            id: "completed-reminder",
+            kind: "reminder" as const,
+            title: "Read the chapter",
+            state: "completed" as const,
+            dueAt: "2026-02-04T16:00:00.000Z",
+          },
+        ],
+      };
+      const original = structuredClone(sections);
+      const prompt = buildNarrativePrompt({
+        kind: "evening",
+        period: "today",
+        sections,
+        asOf: "2026-02-05T16:35:00.000Z",
+        timeZone: "Asia/Tokyo",
+        sourceErrors: { inbox: "unavailable" },
+        lifeSummary: {
+          activeOccurrenceCount: 1,
+          overdueOccurrenceCount: 1,
+          snoozedOccurrenceCount: 0,
+          activeReminderCount: 1,
+          activeGoalCount: 0,
+        },
+        ...(optimized
+          ? {
+              runtime: runtimeWithOptimizedPrompt({
+                morning_brief: "OPTIMIZED: rank the current risk first.",
+              }),
+            }
+          : {}),
+      });
+      // These semantic guardrails survive optimized artifact replacement; no
+      // second compose call or mutation of the stored briefing is involved.
+      expect(prompt).toContain(
+        "start with what was marked done today; the editorial lead then guides",
+      );
+      expect(prompt).toContain(
+        "An uncompleted reminder record does not prove that its real-world activity is unfinished",
+      );
+      expect(prompt).toContain(
+        "scheduled time, not activation or delivery time",
+      );
+      expect(prompt).toContain("ordinary-language clause");
+      expect(prompt).toContain("not empty");
+      const payload = JSON.parse(prompt.split("Data:\n")[1]);
+      expect(payload.sections.life[0]).toMatchObject(sections.life[0]);
+      expect(payload.sections.completedToday[0]).toMatchObject(
+        sections.completedToday[0],
+      );
+      expect(payload.sourceErrors).toEqual({ inbox: "unavailable" });
+      expect(payload.lifeSummary.activeOccurrenceCount).toBe(1);
+      expect(payload.timeZone).toBe("Asia/Tokyo");
+      expect(
+        payload.sections.completedToday[0].timeContext.dueAt.localDate,
+      ).toBe("2026-02-05");
+      expect(sections).toEqual(original);
+    },
+  );
+
   it("swaps in the optimized meeting_prep artifact for meeting prep briefs", () => {
     const runtime = runtimeWithOptimizedPrompt({
       meeting_prep: "OPTIMIZED: surface agenda gaps and decision owners first.",

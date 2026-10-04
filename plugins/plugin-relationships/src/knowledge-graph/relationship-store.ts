@@ -290,6 +290,56 @@ export class RelationshipStore {
     return results;
   }
   /**
+   * Records an explicit `(from, to, type)` assertion, such as the owner stating
+   * a relationship: the active edge is updated in place with the new evidence
+   * merged in, and created only when none is active. It uses the same
+   * backend-specific operation boundary as `observe`; unlike `observe`, it
+   * does not count an interaction.
+   */
+  async assertEdge(input: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    evidence: string[];
+    confidence: number;
+    source: RelationshipSource;
+  }): Promise<Relationship> {
+    return this.operation(() => this.assertEdgeOperation(input));
+  }
+
+  private async assertEdgeOperation(input: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    evidence: string[];
+    confidence: number;
+    source: RelationshipSource;
+  }): Promise<Relationship> {
+    const [active] = await this.listOperation({
+      fromEntityId: input.fromEntityId,
+      toEntityId: input.toEntityId,
+      type: input.type,
+    });
+    if (active) {
+      return this.upsertOperation({
+        ...active,
+        evidence: Array.from(new Set([...active.evidence, ...input.evidence])),
+        confidence: Math.max(active.confidence, input.confidence),
+        source: input.source,
+      });
+    }
+    return this.upsertOperation({
+      fromEntityId: input.fromEntityId,
+      toEntityId: input.toEntityId,
+      type: input.type,
+      metadata: {},
+      state: {},
+      evidence: input.evidence,
+      confidence: input.confidence,
+      source: input.source,
+    });
+  }
+  /**
    * Strengthen-or-create. If an active edge with the same
    * `(from, to, type)` exists, fold the new evidence in, bump
    * `interactionCount`, advance `state.lastInteractionAt`, and (per spec)

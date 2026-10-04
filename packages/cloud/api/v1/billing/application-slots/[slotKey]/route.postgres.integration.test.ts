@@ -9,7 +9,7 @@ import {
 } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
-import { createPlaywrightTestSessionToken } from "@/lib/auth/playwright-test-session";
+import { createPlaywrightTestSessionToken } from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
 import {
   buyer,
   closeRecordsTest,
@@ -109,7 +109,7 @@ describe.skipIf(!postgresUrl)("native product billing discovery", () => {
     );
     expect(response.status).toBe(500);
     const { readAppBillingApplicationProduct } = await import(
-      "@/db/repositories/app-billing-application-slots"
+      "@elizaos/cloud-shared/db/repositories/app-billing-application-slots"
     );
     await expect(
       readAppBillingApplicationProduct({ slotKey: f.slotKey, livemode: true }),

@@ -1,9 +1,9 @@
 import { afterAll, expect, mock, test } from "bun:test";
-import type { Context } from "hono";
 import {
   CONTAINER_PRICING,
   calculateDailyContainerCost,
-} from "@/lib/constants/pricing";
+} from "@elizaos/cloud-shared/lib/constants/pricing";
+import type { Context } from "hono";
 
 const sent: Array<{
   dailyCost: number;
@@ -12,11 +12,11 @@ const sent: Array<{
   minimumRecommended: number;
 }> = [];
 const resources = { desiredCount: 2, cpu: 2048, memory: 4096 };
-mock.module("@/lib/auth/workers-hono-auth", () => ({ requireCronSecret() {} }));
-mock.module("@/db/repositories", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({ requireCronSecret() {} }));
+mock.module("@elizaos/cloud-shared/db/repositories", () => ({
   usersRepository: { listByOrganization: async () => [] },
 }));
-mock.module("@/db/repositories/container-billing", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/container-billing", () => ({
   containerBillingRepository: {
     listBillableContainers: async (now: Date) => [
       {
@@ -45,33 +45,36 @@ mock.module("@/db/repositories/container-billing", () => ({
     recordBillingFailure: async () => {},
   },
 }));
-mock.module("@/lib/services/container-stop-job-service", () => ({
-  listRecoverableContainerStopIntents: async () => [],
-  enqueueContainerStopOnce: async () => {
-    throw new Error("No stop expected");
-  },
-  rearmRecoverableContainerStopIntentOnce: async () => {
-    throw new Error("No recovery expected");
-  },
-}));
-mock.module("@/lib/services/email", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/services/container-stop-job-service",
+  () => ({
+    listRecoverableContainerStopIntents: async () => [],
+    enqueueContainerStopOnce: async () => {
+      throw new Error("No stop expected");
+    },
+    rearmRecoverableContainerStopIntentOnce: async () => {
+      throw new Error("No recovery expected");
+    },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/email", () => ({
   emailService: {
     sendContainerShutdownWarningEmail: async (mail: (typeof sent)[number]) => {
       sent.push(mail);
     },
   },
 }));
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   provisioningJobService: {},
 }));
-mock.module("@/lib/services/redeemable-earnings", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/redeemable-earnings", () => ({
   redeemableEarningsService: {},
 }));
-mock.module("@/lib/api/cloud-worker-errors", () => ({
+mock.module("@elizaos/cloud-shared/lib/api/cloud-worker-errors", () => ({
   failureResponse: (c: Context, error: Error) =>
     c.json({ error: error.message }, 500),
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { info() {}, error() {}, warn() {} },
 }));
 const { default: route } = await import("../cron/container-billing/route");

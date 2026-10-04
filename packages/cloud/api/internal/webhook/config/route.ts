@@ -1,9 +1,8 @@
 // Handles internal cloud API internal webhook config route traffic with service-to-service auth.
-import { Hono } from "hono";
-import { z } from "zod";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   BLOOIO_API_KEY,
   BLOOIO_FROM_NUMBER,
@@ -18,10 +17,12 @@ import {
   WHATSAPP_BUSINESS_PHONE,
   WHATSAPP_PHONE_NUMBER_ID,
   WHATSAPP_VERIFY_TOKEN,
-} from "@/lib/constants/secrets";
-import { secretsService } from "@/lib/services/secrets";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/constants/secrets";
+import { secretsService } from "@elizaos/cloud-shared/lib/services/secrets";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { requireInternalAuth } from "../../_auth";
 
 const platformSchema = z.enum(["telegram", "blooio", "twilio", "whatsapp"]);

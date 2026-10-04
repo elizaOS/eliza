@@ -49,13 +49,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
-    "@typescript-eslint/parser": "8.71.0",
     "@types/bun": "1.4.2",
     "esbuild": "0.28.1",
     "ioredis-mock": "^8.13.1",
-    "prettier": "3.9.9",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "5.8.3",
-    "uuid": "13.0.2"
+    "typescript": "5.8.3"
   }
 }

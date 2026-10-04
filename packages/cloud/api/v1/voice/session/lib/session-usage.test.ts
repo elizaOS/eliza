@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { InMemoryVoiceUsageStore } from "@/lib/services/voice-usage-meter";
-import type { ServerControlFrame } from "@/lib/voice-session/protocol";
+import { InMemoryVoiceUsageStore } from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
+import type { ServerControlFrame } from "@elizaos/cloud-shared/lib/voice-session/protocol";
 import { VoiceSession } from "./session";
 
 // Exercise the real provider adapters with local WebSocket protocol events.

@@ -18,7 +18,6 @@
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
-      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "@elizaos/cloud-sdk/cloud-setup-session": [
         "../cloud/sdk/src/cloud-setup-session/index.ts"
       ],

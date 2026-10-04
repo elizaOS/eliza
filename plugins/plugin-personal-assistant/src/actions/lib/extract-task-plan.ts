@@ -547,7 +547,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
     const first = await runExtractorPipeline({
       runtime,
       ...(managed.system !== undefined ? { system: managed.system } : {}),
-      prompt: `${prompt}\n\nHistory was selected by the request-bound planner review. Current provider constraints and receipts remain complete. If a constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
+      prompt: `${prompt}\n\nTask-create context is bound to this request. Selected history and provider-owned reference notices preserve standing constraints; current receipts stay complete. If any provider detail, constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
       parser: parsePlan,
     });
     if (first.parsed) return first.parsed;

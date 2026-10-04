@@ -16,20 +16,20 @@
  * session transport, or expires if the code is never consumed.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  deriveRemotePairingCodeVerifier,
+  isRemotePairingUuid,
+} from "@elizaos/cloud-shared/db/crypto/remote-pairing-code";
+import { remoteSessionsRepository } from "@elizaos/cloud-shared/db/repositories/remote-sessions";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   isRemoteControllerPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
 } from "@elizaos/contracts";
 import { Hono } from "hono";
-import {
-  deriveRemotePairingCodeVerifier,
-  isRemotePairingUuid,
-} from "@/db/crypto/remote-pairing-code";
-import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const PAIRING_CODE_TTL_SECONDS = 5 * 60;
 const DEFAULT_GRANT_TTL_SECONDS = 8 * 60 * 60;

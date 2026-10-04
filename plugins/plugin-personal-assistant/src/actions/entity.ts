@@ -769,12 +769,11 @@ export const entityAction: Action & {
       );
       const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
       const fromEntityId = normalizedNonEmpty(params.fromEntityId) ?? "self";
-      const edge = await relationshipStore.upsert({
+      // Restating an edge updates the active one instead of adding a duplicate.
+      const edge = await relationshipStore.assertEdge({
         fromEntityId,
         toEntityId,
         type: relationshipType,
-        metadata: {},
-        state: {},
         evidence: [evidence],
         confidence: 1,
         source: "user_chat",

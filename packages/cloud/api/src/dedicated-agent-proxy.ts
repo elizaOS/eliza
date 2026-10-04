@@ -1,4 +1,4 @@
-import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
+import { mintCloudRuntimeProof } from "@elizaos/cloud-shared/lib/auth/cloud-runtime-proof";
 
 /**
  * Authentication and proxy boundary for dedicated-agent subdomains.
@@ -18,42 +18,42 @@ import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
  * entrypoint stays thin (Cloudflare startup-CPU budget).
  */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import {
+  ApiError,
+  AuthenticationError,
+  ForbiddenError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import {
+  getPresentedMobileApiKeySecret,
+  isMobileApiKeySecret,
+  mobileApiKeyIngressRateLimitKey,
+} from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import { isFirstPartyOrigin } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { getPairingTokenService } from "@elizaos/cloud-shared/lib/services/pairing-token";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import { isContainerBackedExecutionTier } from "@elizaos/cloud-shared/lib/services/sandbox-provider-types";
+import {
+  dedicatedAgentTransportToken,
+  personalDedicatedAgentApiBase,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { renderCloudPairHandoffHtml } from "@elizaos/contracts";
 import { isInferenceTraceId } from "@elizaos/core";
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { runWithDbCacheAsync } from "@/db/client";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import {
-  ApiError,
-  AuthenticationError,
-  ForbiddenError,
-} from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import {
-  getPresentedMobileApiKeySecret,
-  isMobileApiKeySecret,
-  mobileApiKeyIngressRateLimitKey,
-} from "@/lib/auth/mobile-api-key";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { isFirstPartyOrigin } from "@/lib/cors/cloud-api-hono-cors";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { getPairingTokenService } from "@/lib/services/pairing-token";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import {
-  checkProvisioningWorkerHealth,
-  provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { isContainerBackedExecutionTier } from "@/lib/services/sandbox-provider-types";
-import {
-  dedicatedAgentTransportToken,
-  personalDedicatedAgentApiBase,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 type Bindings = AppEnv["Bindings"];
 const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app";

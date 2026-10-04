@@ -1821,6 +1821,9 @@ async function renderLifeActionReply(args: {
       "Mirror the user's phrasing for time and date when possible.",
       "Prefer phrases like tomorrow morning, every night, 7 am, or the user's own wording over robotic schedule language.",
       "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
+      "When confirming a saved reminder, use one short natural sentence with the saved message, timing, and notification destination. Use 'at' for an exact saved time, not 'around'; format that time in created.timezone without seconds or field labels. Do not invent a new reminder message.",
+      "In ordinary reminder confirmations, describe in_app as 'here' or 'in this app' and sms as 'by text'; use ordinary names for other destinations. Do not add channel codes, internal IDs, definition/cadence labels, or storage/runtime/lifecycle status narration. Mention a real limitation only when it affects the owner's requested destination; never invent one.",
+      "Confirm only the saved reminder and channels in this reply's context. Never claim it was added to Apple Reminders or another native app unless created.nativeAppleReminderId is non-null. A saved notification plan does not mean a notification has already been delivered.",
       "If this is a preview, make clear it is not saved yet and the user can confirm or change it naturally.",
       "If this is reply-only, do not pretend you saved or changed anything.",
       // Live receipts behind the two rules below: a review turn reported
@@ -5595,6 +5598,17 @@ async function runLifeOperationHandlerInner(
           created: {
             title: created.definition.title,
             cadence: created.definition.cadence,
+            timezone: created.definition.timezone,
+            notificationChannels:
+              created.reminderPlan?.steps.map((step) => step.channel) ?? [],
+            nativeAppleReminderId:
+              detailString(
+                detailObject(
+                  created.definition.metadata ?? undefined,
+                  "nativeAppleReminder",
+                ),
+                "reminderId",
+              ) ?? null,
             ...(savedLeadSteps.length > 0
               ? {
                   earlyNudges: savedLeadSteps.map(

@@ -80,6 +80,7 @@ type FakeStores = {
   };
   relationshipStore: {
     upsert: ReturnType<typeof vi.fn>;
+    assertEdge: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
   };
 };
@@ -100,22 +101,10 @@ function makeStores(): FakeStores {
       upsert: vi.fn(async (input: Record<string, unknown>) =>
         makeRelationship(input as Partial<Relationship>),
       ),
-      // Filters like the real store, so an edge between other entities is
-      // never mistaken for the one being restated.
-      list: vi.fn(
-        async (filter?: {
-          fromEntityId?: string;
-          toEntityId?: string;
-          type?: string;
-        }) =>
-          [makeRelationship()].filter(
-            (edge) =>
-              (!filter?.fromEntityId ||
-                edge.fromEntityId === filter.fromEntityId) &&
-              (!filter?.toEntityId || edge.toEntityId === filter.toEntityId) &&
-              (!filter?.type || edge.type === filter.type),
-          ),
+      assertEdge: vi.fn(async (input: Record<string, unknown>) =>
+        makeRelationship(input as Partial<Relationship>),
       ),
+      list: vi.fn(async () => [makeRelationship()]),
     },
   };
 }
@@ -317,35 +306,20 @@ describe("KNOWLEDGE_GRAPH action", () => {
     expect(stores.entityStore.upsert).not.toHaveBeenCalled();
   });
 
-  it("set_relationship upserts a typed edge, defaulting from to self", async () => {
+  it("set_relationship asserts a typed edge, defaulting from to self", async () => {
     const result = await call({
       op: "set_relationship",
       toEntityId: "ent_1",
       relationshipType: "manages",
     });
     expect(result?.success).toBe(true);
-    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
+    expect(stores.relationshipStore.assertEdge).toHaveBeenCalledWith(
       expect.objectContaining({
         fromEntityId: "self",
         toEntityId: "ent_1",
         type: "manages",
         source: "user_chat",
         confidence: 1,
-      }),
-    );
-  });
-
-  it("set_relationship restating an active edge updates it in place", async () => {
-    await call({
-      op: "set_relationship",
-      toEntityId: "ent_1",
-      relationshipType: "manages",
-      evidence: "said again",
-    });
-    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        relationshipId: "rel_1",
-        evidence: ["user_chat", "said again"],
       }),
     );
   });
@@ -357,7 +331,7 @@ describe("KNOWLEDGE_GRAPH action", () => {
       toEntityId: "ent_1",
       relationshipType: "works_at",
     });
-    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
+    expect(stores.relationshipStore.assertEdge).toHaveBeenCalledWith(
       expect.objectContaining({ fromEntityId: "ent_2", toEntityId: "ent_1" }),
     );
   });
@@ -366,6 +340,7 @@ describe("KNOWLEDGE_GRAPH action", () => {
     const result = await call({ op: "set_relationship", toEntityId: "ent_1" });
     expect(result?.success).toBe(false);
     expect(result?.data).toMatchObject({ error: "MISSING_FIELDS" });
+    expect(stores.relationshipStore.assertEdge).not.toHaveBeenCalled();
     expect(stores.relationshipStore.upsert).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,14 @@
 /** Enrolls and lists authenticated-owner remote runtime hosts. */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  generateRemoteHostToken,
+  hashRemoteHostToken,
+} from "@elizaos/cloud-shared/db/crypto/remote-host-token";
+import { isRemotePairingUuid } from "@elizaos/cloud-shared/db/crypto/remote-pairing-code";
+import { remoteHostsRepository } from "@elizaos/cloud-shared/db/repositories/remote-hosts";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   isRemoteConnectionMode,
   isRemoteControlIdentifier,
@@ -8,15 +17,6 @@ import {
 } from "@elizaos/contracts";
 import { Hono } from "hono";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
-import {
-  generateRemoteHostToken,
-  hashRemoteHostToken,
-} from "@/db/crypto/remote-host-token";
-import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
-import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { enrollManagedNetwork, managedNetworkConfig } from "../managed-network";
 
 const app = new Hono<AppEnv>();

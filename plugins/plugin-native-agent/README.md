@@ -94,7 +94,10 @@ serves deadline-bound observations off the main thread. Hosts supply a trusted
 HTTPS origin and a read-only JavaScript expression returning a boolean; product
 DOM/content policy stays in that expression. The shared wrapper guards the DOM
 origin and supplies `visible(element)` for ancestor CSS and viewport checks. Resume/pause/destroy transitions,
-renderer replacement, URL changes and late callbacks fence results. It never
+renderer replacement, URL changes and late callbacks fence results. Expired or
+interrupted reads retire their logical request lease; WebView cannot cancel an
+already issued evaluation, so late callbacks cannot complete or clear a newer
+request. Lifecycle transitions retire pending reads immediately. It never
 launches an Activity, navigates a WebView or declares an update healthy. Hosts
 must qualify their actual Activity lifecycle and expression in instrumentation.
 
@@ -119,3 +122,21 @@ success/failure hints never substitute for installed-identity and live-session
 readback, and user-action intents are never launched. The Android contract uses
 real PackageInstaller sessions; hosts must also qualify actual installation,
 callback delivery, process death and cached recovery with their signed fixtures.
+
+### Local runtime health sampling
+
+`health.LocalRuntimeHealth` reads a host-supplied immutable runtime snapshot and
+uses the host's authenticated local transport with an explicit per-probe timeout.
+It samples the agent status and gateway health/storage protocols, rejects a
+changed process lifetime, and rechecks reported process liveness. Transport
+failures produce unavailable observations; malformed protocol payloads fail the
+read. The host owns current-process binding, transport credentials, budgets and
+update admission. The helper neither starts the runtime nor admits an update.
+`LocalRuntimeHealthInstrumentedTest` exercises the shared protocol/lifecycle
+contract; maintained consumers separately qualify their actual IPC binding.
+
+Hosts must change the runtime instance or epoch whenever a child process is
+replaced, including automatic retries: delayed `unchanged` checks use that
+identity. Schema-5 consumers supply the UUID identities required by
+`NativeHealthEvidence`. A gateway that dies during storage sampling reports
+`gatewayResponsive:false` and `taskStorage:unavailable` together.

@@ -1,7 +1,7 @@
 /** Resolve public APIs from the selected checkout without falling back to another revision. */
 import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { listPackages } from "../../scripts/lib/workspaces.ts";
 
@@ -22,7 +22,11 @@ export async function importMeasuredPackage<T = Record<string, unknown>>(
     createRequire(join(root, owner.dir, "package.json")).resolve(specifier),
   );
   const location = relative(root, entry);
-  if (location.startsWith("../") || isAbsolute(location)) {
+  if (
+    location === ".." ||
+    location.startsWith(`..${sep}`) ||
+    isAbsolute(location)
+  ) {
     throw new Error(
       `Measured package ${specifier} resolved outside ${root}: ${entry}`,
     );
