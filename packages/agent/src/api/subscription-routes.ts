@@ -12,14 +12,14 @@ import crypto from "node:crypto";
 import {
   createRuntimeAccountStoragePolicy,
   updateAccountMetadata,
-} from "@elizaos/auth/auth/account-storage";
-import type { AnthropicFlow } from "@elizaos/auth/auth/anthropic";
-import type { CodexFlow } from "@elizaos/auth/auth/openai-codex";
+} from "@elizaos/auth/auth";
+import type { AnthropicFlow } from "@elizaos/auth/auth";
+import type { CodexFlow } from "@elizaos/auth/auth";
 import {
   isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
 import {
   type ElizaConfig,
   type LinkedAccountConfig,

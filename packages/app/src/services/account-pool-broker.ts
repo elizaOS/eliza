@@ -6,8 +6,8 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import { getAccessToken } from "@elizaos/auth/auth/credentials";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth";
+import { getAccessToken } from "@elizaos/auth/auth";
 import {
   type AccountPoolBrokerAccountSnapshot,
   type AccountPoolBrokerFailoverSnapshot,

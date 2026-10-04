@@ -273,11 +273,11 @@ test("wrong attempt, malformed code, resend cooldown and unsupported MFA fail cl
 });
 
 test("active mobile disconnect journals before clearing, retries a lost response after restart", async () => {
-  const secret = "eliza_mobile_" + "a".repeat(64);
+  const secret = `eliza_mobile_${"a".repeat(64)}`;
   const failed = true;
   const f = fixture({
     active: secret,
-    fetch: async (path, body, init, state) => {
+    fetch: async (path, _body, _init, state) => {
       if (path.endsWith("/current")) {
         assert.equal(state.active, null);
         assert.equal(JSON.parse(state.pending).proof.secret, secret);
@@ -292,7 +292,7 @@ test("active mobile disconnect journals before clearing, retries a lost response
   const restarted = createNativeCloudAuth({
     pendingStore: f.pendingStore,
     activate: async () => assert.fail("must never reactivate"),
-    fetchImpl: async (url, init) => {
+    fetchImpl: async (_url, init) => {
       assert.equal(init.method, "DELETE");
       assert.equal(init.headers.Authorization, `Bearer ${secret}`);
       return Response.json({
@@ -308,7 +308,7 @@ test("active mobile disconnect journals before clearing, retries a lost response
   assert.equal(f.state.pending, null);
 });
 test("failed disconnect journal preserves active key and never dispatches revocation", async () => {
-  const secret = "eliza_mobile_" + "b".repeat(64);
+  const secret = `eliza_mobile_${"b".repeat(64)}`;
   const f = fixture({
     active: secret,
     pendingStore: {
@@ -323,7 +323,7 @@ test("failed disconnect journal preserves active key and never dispatches revoca
 });
 test("disconnect rejects malformed receipt and never revokes developer credentials", async () => {
   const f = fixture({
-    active: "eliza_mobile_" + "c".repeat(64),
+    active: `eliza_mobile_${"c".repeat(64)}`,
     fetch: (path) =>
       path.endsWith("/current")
         ? Response.json({
@@ -383,7 +383,7 @@ test("phone sign-in binds code to validated phone and uses the existing private 
   );
 });
 test("Google CLI credential logout is journalled and revoked, including retries", async () => {
-  const secret = "eliza_" + "e".repeat(64);
+  const secret = `eliza_${"e".repeat(64)}`;
   const f = fixture({
     active: secret,
     fetch: (path) =>
@@ -480,7 +480,7 @@ const sessionToken = (exp = Math.floor(Date.now() / 1000) + 900) =>
   ].join(".");
 /** Steward codes for the billing check resolve to `sessionAccount`; the stored key to ACCOUNT. */
 function billingFixture({
-  active = "eliza_mobile_" + "f".repeat(64),
+  active = `eliza_mobile_${"f".repeat(64)}`,
   sessionAccount = ACCOUNT,
   token = sessionToken(),
   fetch,
@@ -564,7 +564,7 @@ test("billing re-verification defaults to the account's own email and never re-e
   assert.equal(authority.expiresAt, result.expiresAt);
   assert.match(authority.token, /private-billing-signature$/);
   // The stored inference credential and pending store are untouched.
-  assert.equal(f.state.active, "eliza_mobile_" + "f".repeat(64));
+  assert.equal(f.state.active, `eliza_mobile_${"f".repeat(64)}`);
   assert.deepEqual(f.writes, []);
   assert.equal(
     f.calls.some((c) => enrollmentPaths.some((p) => c.path.endsWith(p))),
@@ -650,7 +650,7 @@ test("billing authority is cleared by cancel, explicit clear and expiry", async 
 });
 
 test("billing authority follows the exact active credential, not just any credential", async () => {
-  let active = "eliza_mobile_" + "f".repeat(64);
+  let active = `eliza_mobile_${"f".repeat(64)}`;
   // The host can replace the stored key outside this module (account change).
   const swapped = createNativeCloudAuth({
     fetchImpl: async (url, init) => {
@@ -677,9 +677,9 @@ test("billing authority follows the exact active credential, not just any creden
     code: "123456",
   });
   assert.ok(await swapped.billingAuthority());
-  active = "eliza_mobile_" + "9".repeat(64);
+  active = `eliza_mobile_${"9".repeat(64)}`;
   assert.equal(await swapped.billingAuthority(), null);
-  active = "eliza_mobile_" + "f".repeat(64);
+  active = `eliza_mobile_${"f".repeat(64)}`;
   assert.equal(await swapped.billingAuthority(), null);
 });
 

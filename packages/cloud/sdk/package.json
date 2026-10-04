@@ -18,7 +18,12 @@
     "README.md",
     "app-delegation.md",
     "app-inference.md",
-    "app-notifications.md"
+    "app-notifications.md",
+    "native-host/cloud-services.mjs",
+    "native-host/document-runtime.mjs",
+    "native-host/document-image-describer.mjs",
+    "native-host/managed-google-read-port.mjs",
+    "native-host/errors.mjs"
   ],
   "sideEffects": false,
   "scripts": {
@@ -32,7 +37,8 @@
     "lint:check": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:native-host": "node --test native-host/*.test.mjs"
   },
   "exports": {
     ".": {
@@ -129,7 +135,8 @@
       "types": "./dist/app-auth.d.ts",
       "import": "./dist/app-auth.js",
       "default": "./dist/app-auth.js"
-    }
+    },
+    "./native-host": "./native-host/cloud-services.mjs"
   },
   "elizaos": {
     "managedIntegration": {

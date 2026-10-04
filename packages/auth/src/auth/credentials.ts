@@ -863,7 +863,7 @@ export function applySubscriptionCredentialsLocal(
  * Apply subscription credentials to the environment.
  * Called at startup to make credentials available to elizaOS plugins.
  *
- * Combines the local-only model.primary derivation
+ * Combines local account diagnostics
  * ({@link applySubscriptionCredentialsLocal}) with local Claude Code credential
  * discovery ({@link applySubscriptionCredentialsDeferred}). Startup can call
  * either phase separately; API routes and hot reload use this combined form.

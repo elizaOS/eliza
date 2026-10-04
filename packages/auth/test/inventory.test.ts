@@ -1,12 +1,9 @@
+import { createTestVault, type TestVault } from "../src/testing/index";
 /**
  * Tests inventory categorization, metadata profiles, and UI-safe listings.
  */
 
-import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { generateMasterKey } from "../src/vault/crypto.js";
 import {
   categorizeKey,
   inferProviderId,
@@ -16,8 +13,7 @@ import {
   removeEntryMeta,
   setEntryMeta,
 } from "../src/vault/inventory.js";
-import { inMemoryMasterKey } from "../src/vault/master-key.js";
-import { createVault, type Vault } from "../src/vault/vault.js";
+import type { Vault } from "../src/vault/vault.js";
 
 describe("inventory — categorization heuristics", () => {
   it("classifies provider env-var API keys", () => {
@@ -105,21 +101,15 @@ describe("inventory — provider id inference", () => {
 });
 
 describe("inventory — persisted metadata and listings", () => {
-  let workDir: string;
+  let fixture: TestVault;
   let vault: Vault;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-inv-meta-"));
-    vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
+    fixture = await createTestVault();
+    vault = fixture.vault;
   });
   afterEach(async () => {
-    if ("close" in vault && typeof vault.close === "function") {
-      await vault.close();
-    }
-    await fs.rm(workDir, { recursive: true, force: true });
+    await fixture?.dispose();
   });
 
   it("returns null when no meta has been written", async () => {

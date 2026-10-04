@@ -123,7 +123,11 @@ export {
 	type PinnedLookupFetchLike,
 	type PinnedLookupFetchParams,
 } from "./network/fetch-guard.js";
-export { nodeLookupFn, nodePinnedFetch } from "./network/node-pinned-fetch.js";
+export {
+	createValidatedLookup,
+	nodeLookupFn,
+	nodePinnedFetch,
+} from "./network/node-pinned-fetch.js";
 export {
 	assertPublicHostname,
 	createPinnedLookup,
@@ -2706,6 +2710,12 @@ export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";
 export {
+	assertPublicHttpsEndpoint,
+	assertPublicInternetAddress,
+	BLOCKED_PUBLIC_ENDPOINT_DNS_SUFFIXES,
+	isPublicInternetAddress,
+} from "./network/public-endpoint";
+export {
 	buildStoreVariantBlockedMessage,
 	isLocalCodeExecutionAllowed,
 } from "./platform/sandbox-policy.js";
@@ -3247,6 +3257,7 @@ export {
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
+	registerScheduledProcessTask,
 	registerTaskSchedulerRuntime,
 	startTaskScheduler,
 	stopTaskScheduler,

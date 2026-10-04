@@ -37,10 +37,10 @@ import {
   loadAccount,
   saveAccount,
   updateAccountMetadata,
-} from "@elizaos/auth/auth/account-storage";
-import { fetchCodexUsage } from "@elizaos/auth/auth/codex-usage";
-import { getAccessToken } from "@elizaos/auth/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
+} from "@elizaos/auth/auth";
+import { fetchCodexUsage } from "@elizaos/auth/providers";
+import { getAccessToken } from "@elizaos/auth/auth";
+import { probeDirectApiKey } from "@elizaos/auth/providers";
 import {
   cancelFlow,
   getFlowState,
@@ -48,7 +48,7 @@ import {
   startCodexOAuthFlow,
   submitFlowCode,
   subscribeFlow,
-} from "@elizaos/auth/auth/oauth-flow";
+} from "@elizaos/auth/auth";
 import {
   type AccountCredentialProvider,
   CODING_PLAN_PROVIDER_BASE_URL,
@@ -61,7 +61,7 @@ import {
   isSubscriptionProvider,
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
 import {
   type AccountPoolBrokerSnapshot,
   CODING_PROVIDER_DESCRIPTORS,
@@ -671,7 +671,7 @@ async function probeCodexUsage(
 }> {
   const start = Date.now();
   try {
-    // One canonical probe: `@elizaos/auth/auth/codex-usage` hits the ChatGPT/Codex
+    // One canonical probe: `@elizaos/auth/auth` hits the ChatGPT/Codex
     // backend the subscription token actually authenticates against (NOT
     // api.openai.com completions, which bills the API platform org and fails
     // healthy subscription accounts with billing errors), runtime-validates

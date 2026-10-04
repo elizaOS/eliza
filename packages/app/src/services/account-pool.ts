@@ -35,12 +35,12 @@ import {
   type AccountStoragePolicy,
   createRuntimeAccountStoragePolicy,
   withAccountStorageMutation,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import {
   getAccessToken as getAccountAccessToken,
   listProviderAccounts,
-} from "@elizaos/auth/auth/credentials";
-import { fetchAnthropicOAuthProfile } from "@elizaos/auth/auth/oauth-flow";
+} from "@elizaos/auth/auth";
+import { fetchAnthropicOAuthProfile } from "@elizaos/auth/auth";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
@@ -48,7 +48,7 @@ import {
   type DirectAccountProvider,
   isSubscriptionProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
 import {
   type AnthropicAccountPoolBridge,
   ElizaError,

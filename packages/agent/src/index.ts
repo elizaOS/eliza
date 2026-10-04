@@ -61,7 +61,6 @@ export async function validateCloudBaseUrl(
   const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
   return validateCloudBaseUrl(value);
 }
-export * from "@elizaos/auth/auth";
 export type {
   CustomActionDef,
   CustomActionHandler,

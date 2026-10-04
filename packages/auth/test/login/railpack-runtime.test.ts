@@ -106,6 +106,11 @@ test("Railpack runtime resolves workspace dependencies and serves health without
         stderr: "pipe",
       },
     );
+    if (
+      !(server.stdout instanceof ReadableStream) ||
+      !(server.stderr instanceof ReadableStream)
+    )
+      throw new Error("Expected piped subprocess output");
     logs = Promise.all([
       new Response(server.stdout).text(),
       new Response(server.stderr).text(),

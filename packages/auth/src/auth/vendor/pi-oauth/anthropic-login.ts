@@ -9,7 +9,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { generatePKCE } from "./pkce.ts";
+import { generatePKCE } from "../../../contracts/index.ts";
 
 const decode = (s: string): string => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");

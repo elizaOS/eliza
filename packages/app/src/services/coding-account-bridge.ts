@@ -43,20 +43,20 @@ import {
   createRuntimeAccountStoragePolicy,
   loadAccount,
   withAccountStorageMutation,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import {
   type AccessTokenOutcome,
   getAccessToken,
   saveCredentials,
-} from "@elizaos/auth/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
-import { accountRefreshMutex } from "@elizaos/auth/auth/refresh-mutex";
+} from "@elizaos/auth/auth";
+import { probeDirectApiKey } from "@elizaos/auth/providers";
+import { accountRefreshMutex } from "@elizaos/auth/auth";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
   isDirectAccountProvider,
   isSubscriptionProvider,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
