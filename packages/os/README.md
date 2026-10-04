@@ -74,3 +74,9 @@ local-artifact and public-release verifier ports. `createPublicationAuthorizer`
 requires graph-verification and preflight ports and binds fresh source approval
 to exact descriptor bytes. Neither module provides default host trust policy.
 The process graph verifier accepts a host-selected `timeoutMs`.
+
+`createReleaseContract` binds strict descriptor validation and rollout admission to
+an explicitly provisioned product, Android package, and cohort namespace. Preserve
+the namespace across upgrades to retain cohort assignments. Admission requires
+authenticated policy and qualified device observations; it does not authenticate
+metadata or grant installation authority.
