@@ -111,11 +111,25 @@ test("provider failure after a match cannot return partial evidence", async () =
     "provider unavailable",
   );
 });
-test("search budget exhaustion retains uncertainty despite an early match", async () => {
+test("recovers original attribution after more than one hundred complete-window pages", async () => {
   const pages = Array.from({ length: 100 }, (_, i) =>
-    page([event(`evt_${i}`, "in_original", i === 0 ? "owned-key" : "unrelated")], true),
+    page([event(`evt_unrelated${i}`, "in_unrelated", "unrelated")], true),
   );
+  pages.push(page([event("evt_original")]));
+  const r = reader(pages);
+  const result = await find({ reader: r, originalRequest, observedAt });
+  expect(result.origin.invoiceId).toBe("in_original");
+  expect(r.list).toHaveBeenCalledTimes(101);
+});
+test("an early match cannot hide a conflicting invoice beyond page one hundred", async () => {
+  const pages = [page([event("evt_original")], true)];
+  pages.push(
+    ...Array.from({ length: 100 }, (_, i) =>
+      page([event(`evt_unrelated${i}`, "in_unrelated", "unrelated")], true),
+    ),
+  );
+  pages.push(page([event("evt_conflict", "in_different")]));
   const r = reader(pages);
   await expect(find({ reader: r, originalRequest, observedAt })).rejects.toThrow();
-  expect(r.list).toHaveBeenCalledTimes(100);
+  expect(r.list).toHaveBeenCalledTimes(102);
 });
