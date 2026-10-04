@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "test": "node --test suites/mobile-resource/metrics.test.mjs && vitest run suites/loadperf/frontend-kpi.test.mjs && bun run test:content-context && bun run test:planner-optimization",
+    "test": "bun run test:infrastructure && node --test suites/mobile-resource/metrics.test.mjs && vitest run suites/loadperf/frontend-kpi.test.mjs && bun run test:content-context && bun run test:planner-optimization",
     "build:plugin": "bun run --cwd plugin-benchmarks build",
     "test:plugin": "bun run --cwd plugin-benchmarks test",
     "typecheck:plugin": "bun run --cwd plugin-benchmarks typecheck",
@@ -24,7 +24,8 @@
     "gepa:setup": "bun suites/planner-optimization/src/gepa-setup.ts",
     "test:gepa": "node ../scripts/run-vitest.ts run --config suites/planner-optimization/vitest.gepa.config.ts",
     "test:planner-optimization": "node ../scripts/run-vitest.ts run --config suites/planner-optimization/vitest.config.ts",
-    "typecheck:planner-optimization": "tsc --noEmit -p suites/planner-optimization/tsconfig.json"
+    "typecheck:planner-optimization": "tsc --noEmit -p suites/planner-optimization/tsconfig.json",
+    "test:infrastructure": "node --test lib/target-package.test.ts lib/kpi-reporting.test.mjs"
   },
   "engines": {
     "node": "24.15.0",
@@ -37,7 +38,8 @@
     "@elizaos/core": "workspace:*",
     "vitest": "^5.0.2",
     "fflate": "^0.8.3",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "exports": {
     "./content-context": "./suites/content-context/index.ts",

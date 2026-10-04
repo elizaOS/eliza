@@ -452,6 +452,7 @@
       "name": "elizaos-benchmarks",
       "version": "0.1.0",
       "devDependencies": {
+        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@elizaos/vitest-vite": "npm:vite@7.3.5",
@@ -480,6 +481,7 @@
       "name": "@elizaos/benchmark-eliza-host",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/plugin-benchmarks": "workspace:*",
         "@elizaos/agent": "workspace:*",
         "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -641,6 +643,7 @@
       "name": "@elizaos/lifeops-bench",
       "version": "0.1.0",
       "devDependencies": {
+        "@elizaos/core": "workspace:*",
         "@types/node": "25.6.2",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsx": "^4.21.0",

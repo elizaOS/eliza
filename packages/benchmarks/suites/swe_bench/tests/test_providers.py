@@ -2,7 +2,7 @@
 
 import pytest
 
-from benchmarks.swe_bench.providers import (
+from benchmarks.suites.swe_bench.providers import (
     SWE_BENCH_PROVIDERS,
     SWEBenchActionResultsProvider,
     get_current_instance,
@@ -12,7 +12,7 @@ from benchmarks.swe_bench.providers import (
     swe_bench_strategy_provider,
     swe_bench_tools_provider,
 )
-from benchmarks.swe_bench.types import SWEBenchInstance
+from benchmarks.suites.swe_bench.types import SWEBenchInstance
 
 
 class TestProviderList:

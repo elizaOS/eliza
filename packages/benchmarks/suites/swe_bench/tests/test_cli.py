@@ -4,9 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import benchmarks.swe_bench.cli as swe_cli
+import benchmarks.suites.swe_bench.cli as swe_cli
 import pytest
-from benchmarks.swe_bench.cli import (
+from benchmarks.suites.swe_bench.cli import (
     _BaselineClient,
     _build_client_for_harness,
     _build_prompt,
@@ -28,7 +28,7 @@ from benchmarks.swe_bench.cli import (
     _subtask_provider_command,
     _validate_instances,
 )
-from benchmarks.swe_bench.types import (
+from benchmarks.suites.swe_bench.types import (
     PatchStatus,
     SWEBenchConfig,
     SWEBenchInstance,

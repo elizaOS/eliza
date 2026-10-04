@@ -1,8 +1,10 @@
 /** Candidate-only planner boundary. No optimizer, promotion, or effect qualification is implied. */
 import { createHash } from "node:crypto";
+import {
+  parseOptimizedPromptArtifact,
+  parseOptimizedPromptTargetBinding,
+} from "@elizaos/plugin-assistant";
 import { z } from "zod";
-import { parseOptimizedPromptArtifact } from "../../../../../plugins/plugin-assistant/src/services/optimized-prompt.ts";
-import { parseOptimizedPromptTargetBinding } from "../../../../../plugins/plugin-assistant/src/services/optimized-prompt-provenance.ts";
 
 export function gepaHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");

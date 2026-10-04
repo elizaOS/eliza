@@ -1,6 +1,6 @@
 """One contract for BFCL schema adaptation shared by the native harnesses."""
 
-from benchmarks.bfcl import provider_safe_tools as _provider_safe_tools
+from benchmarks.suites.bfcl import provider_safe_tools as _provider_safe_tools
 
 
 def test_provider_safe_tools_uniquifies_collisions() -> None:
@@ -61,7 +61,7 @@ def test_provider_safe_tools_preserves_schema_field_names_and_defaults() -> None
 
 def test_malformed_arguments_cannot_become_a_valid_empty_call():
     import pytest
-    from benchmarks.bfcl import coerce_arguments
+    from benchmarks.suites.bfcl import coerce_arguments
 
     for invalid in ("not-json", "[]", [], None):
         with pytest.raises(ValueError):

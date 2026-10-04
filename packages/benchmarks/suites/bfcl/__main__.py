@@ -34,14 +34,14 @@ except ImportError:  # pragma: no cover - lean benchmark envs may omit python-do
 
 load_dotenv()
 
-from benchmarks.bfcl.runner import BFCLRunner  # noqa: E402
-from benchmarks.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases  # noqa: E402
-from benchmarks.bfcl.types import (  # noqa: E402
+from benchmarks.suites.bfcl.runner import BFCLRunner  # noqa: E402
+from benchmarks.suites.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases  # noqa: E402
+from benchmarks.suites.bfcl.types import (  # noqa: E402
     BFCLCategory,
     BFCLConfig,
     BFCL_V3_SCORING_CATEGORIES,
 )
-from benchmarks.bfcl.reporting import print_results  # noqa: E402
+from benchmarks.suites.bfcl.reporting import print_results  # noqa: E402
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -356,7 +356,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
                 print(f"\n🤖 Model: {args.model or 'eliza-ts-bridge'}")
                 print("   Provider: eliza (elizaOS TypeScript benchmark bridge)")
             else:
-                from benchmarks.bfcl.models import (
+                from benchmarks.suites.bfcl.models import (
                     get_default_model_config,
                     get_model_config,
                 )
@@ -420,7 +420,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
 
 def show_models(args: argparse.Namespace) -> int:
     """List available models."""
-    from benchmarks.bfcl.models import (
+    from benchmarks.suites.bfcl.models import (
         PROVIDER_CONFIGS,
         SUPPORTED_MODELS,
         get_available_providers,
@@ -480,7 +480,7 @@ def show_models(args: argparse.Namespace) -> int:
 
 def show_info(args: argparse.Namespace) -> int:
     """Show benchmark information."""
-    from benchmarks.bfcl.types import LEADERBOARD_SCORES
+    from benchmarks.suites.bfcl.types import LEADERBOARD_SCORES
 
     if args.baselines:
         print("\n📊 BFCL Leaderboard Baselines\n")

@@ -36,7 +36,8 @@
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/lifeops-bench": "workspace:*",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/plugin-benchmarks": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/ui": "workspace:*",

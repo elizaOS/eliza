@@ -25,7 +25,7 @@ import {
 } from "./progressive-content-benchmark.ts";
 import { validateProgressiveContentPostgresEvidence } from "./progressive-content-postgres-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
-import { parseStrictJson } from "./strict-json.ts";
+import { canonicalJson, parseStrictJson } from "./strict-json.ts";
 
 export const CONTENT_CONTEXT_RESULT_SCHEMA_VERSION =
   "elizaos.content-context.result.v3" as const;
@@ -174,18 +174,6 @@ function exactKeys(
   ) {
     throw new TypeError(`${label} fields are not exact`);
   }
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entry = value as Record<string, unknown>;
-    return `{${Object.keys(entry)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(entry[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 /** Hash a strict JSON value using the canonical representation required by live evidence. */

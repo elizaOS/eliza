@@ -13,6 +13,8 @@ dependencies. Keep `packages/` on `PYTHONPATH` when running Python modules.
 bun run --cwd packages/benchmarks build:plugin
 # Test shared infrastructure, registry, orchestrator and native harness contracts
 PYTHONPATH="$PWD/packages" bun run --cwd packages/benchmarks test:py
+# Test TypeScript infrastructure and offline content/planner suites
+bun run --cwd packages/benchmarks test
 # List available benchmarks
 PYTHONPATH=packages python3 -m benchmarks.orchestrator list-benchmarks
 # Run one benchmark with the selected provider/model
@@ -37,4 +39,4 @@ configured image model or the selected primary model. Results record image-model
 usage, and comparison groups include the configured vision model and endpoint
 fingerprint. A successful transport test is not a live vision-quality score.
 
-The shared Eliza host is in `harnesses/eliza/runner`; LifeOps owns its simulated backend. Provider transports live in `harnesses/transports`, and meeting importers in `datasets`. Cross-package Python imports use `benchmarks.*`; installed standalone harness clients depend on `elizaos-benchmark-support`.
+The shared Eliza host is in `harnesses/eliza/runner`; LifeOps owns its simulated backend. Provider transports live in `harnesses/transports`, and meeting importers in `datasets`. Python suites use `benchmarks.suites.*`; installed standalone harness clients depend on `elizaos-benchmark-support`.

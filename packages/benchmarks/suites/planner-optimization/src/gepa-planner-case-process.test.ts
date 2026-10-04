@@ -14,8 +14,8 @@ import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { plannerTemplate } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { plannerTemplate } from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
 import { gepaHash } from "./gepa-planner-case.ts";
 import type { runIsolatedGepaPlannerCase as RunIsolatedGepaPlannerCase } from "./gepa-planner-case-process.ts";
 

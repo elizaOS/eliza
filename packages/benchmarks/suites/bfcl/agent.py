@@ -10,14 +10,14 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from benchmarks.bfcl.models import (
+from benchmarks.suites.bfcl.models import (
     BenchmarkModelConfig,
     get_default_model_config,
     get_model_config,
 )
-from benchmarks.bfcl.parser import FunctionCallParser
-from benchmarks.bfcl.plugin import generate_openai_tools_format
-from benchmarks.bfcl.types import BFCLConfig, BFCLTestCase, FunctionCall
+from benchmarks.suites.bfcl.parser import FunctionCallParser
+from benchmarks.suites.bfcl.plugin import generate_openai_tools_format
+from benchmarks.suites.bfcl.types import BFCLConfig, BFCLTestCase, FunctionCall
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class BFCLAgent:
             if resolved is not None:
                 return resolved
         if provider:
-            from benchmarks.bfcl.models import ModelProvider, PROVIDER_CONFIGS
+            from benchmarks.suites.bfcl.models import ModelProvider, PROVIDER_CONFIGS
             import os
 
             try:

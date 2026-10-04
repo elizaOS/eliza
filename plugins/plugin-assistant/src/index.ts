@@ -86,6 +86,11 @@ export {
   roleAction,
   updateRoleAction,
 } from "./features/advanced-capabilities/actions/role.ts";
+export { reflectionItems } from "./features/advanced-capabilities/evaluators/reflection-items.ts";
+export {
+  getTaskCompletionCacheKey,
+  type TaskCompletionAssessment,
+} from "./features/advanced-capabilities/evaluators/task-completion.ts";
 export {
   buildFactKeywordsForStorage,
   buildFactSearchText,
@@ -173,6 +178,7 @@ export {
 } from "./features/secrets/index.ts";
 export * from "./features/sub-agent-credentials/index.ts";
 export * from "./plugins/native-features.ts";
+export { plannerTemplate } from "./prompts/planner.ts";
 export * from "./runtime/action-catalog.js";
 // Feature-owned public API.
 export * from "./runtime/builtin-field-evaluators.ts";
@@ -186,7 +192,10 @@ export {
   type V5MessageHandlerOutput,
 } from "./runtime/message-handler.ts";
 export * from "./runtime/model-pricing";
-export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop.ts";
+export {
+  FAILED_TOOL_FALLBACK_MESSAGE,
+  runPlannerLoop,
+} from "./runtime/planner-loop.ts";
 export {
   projectToolResultForModel,
   renderActionResultsForModel,
@@ -229,6 +238,7 @@ export {
 } from "./services/message/direct-action-heuristics.ts";
 export * from "./services/message.ts";
 export * from "./services/optimized-prompt.ts";
+export { parseOptimizedPromptTargetBinding } from "./services/optimized-prompt-provenance.ts";
 export * from "./services/pending-prompts/index.ts";
 export { RelationshipsService } from "./services/relationships.ts";
 export * from "./services/relationships-graph-builder.ts";

@@ -85,7 +85,6 @@ def parse_args() -> argparse.Namespace:
             "`python -m elizaos_webshop_tools.fetch_data --profile <profile>` first."
         ),
     )
-    p.add_argument("--hf", action="store_true", help="(deprecated) Load tasks from HuggingFace (tasks only)")
     p.add_argument(
         "--split",
         type=str,
@@ -119,7 +118,6 @@ def parse_args() -> argparse.Namespace:
 
     # Eliza integration
     p.add_argument("--mock", action="store_true", help="Use mock agent instead of real LLM (for testing)")
-    p.add_argument("--real-llm", action="store_true", help="(deprecated) Non-mock runs use the TypeScript bridge")
     p.add_argument(
         "--bridge",
         action="store_true",
@@ -192,14 +190,12 @@ async def run(
     config: WebShopConfig,
     *,
     split: str,
-    use_hf: bool,
     profile: str = "small",
     use_sample_tasks: bool = False,
 ) -> dict[str, object]:
     runner = WebShopRunner(
         config,
         split=split,
-        use_hf=use_hf,
         profile=profile,
         use_sample_tasks=use_sample_tasks,
     )
@@ -221,7 +217,6 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    use_hf = bool(args.hf)
 
     config = create_config(args)
     if args.count_scenarios or args.validate_scenarios:
@@ -294,7 +289,6 @@ def main() -> int:
             run(
                 config,
                 split=str(args.split),
-                use_hf=use_hf,
                 profile=str(args.profile),
                 use_sample_tasks=bool(args.use_sample_tasks),
             )

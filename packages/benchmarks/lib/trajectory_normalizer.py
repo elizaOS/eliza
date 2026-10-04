@@ -23,13 +23,27 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Iterable
 
-logger = logging.getLogger(__name__)
+class TrajectoryFormatError(ValueError):
+    """Native evidence cannot be normalized without loss."""
+
+
+def _jsonl_rows(path: Path) -> Iterable[dict[str, Any]]:
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise TrajectoryFormatError(f"{path}:{number}: invalid JSON") from exc
+        if not isinstance(row, dict):
+            raise TrajectoryFormatError(f"{path}:{number}: expected an object")
+        yield row
+
 
 @dataclass(frozen=True)
 class CanonicalEntry:
@@ -57,6 +71,15 @@ class CanonicalEntry:
     metadata: dict[str, Any] = field(default_factory=dict)
     trajectoryTotals: dict[str, Any] = field(default_factory=dict)
     cacheStats: dict[str, Any] = field(default_factory=dict)
+    extensions: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> CanonicalEntry:
+        names = {item.name for item in fields(cls)} - {"extensions"}
+        return cls(
+            **{key: value for key, value in row.items() if key in names},
+            extensions={key: value for key, value in row.items() if key not in names},
+        )
 
     def to_json(self) -> str:
         """Serialize to a single-line JSON string (no whitespace).
@@ -65,7 +88,9 @@ class CanonicalEntry:
         and ``response.toolCalls`` because they are plain dict/list
         structures by construction.
         """
-        return json.dumps(asdict(self), separators=(",", ":"), ensure_ascii=False)
+        row = asdict(self)
+        extensions = row.pop("extensions")
+        return json.dumps({**extensions, **row}, separators=(",", ":"), ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -80,48 +105,19 @@ def normalize_eliza_jsonl(
     benchmark_id: str,
     task_id: str,
 ) -> list[CanonicalEntry]:
-    """Parse an ``eliza_native_v1`` JSONL file and enrich with metadata.
-
-    Each input row already conforms to the canonical schema; this
-    function exists to add our cross-agent metadata (agent_id,
-    benchmark_id, task_id, step_index) and to filter out non-schema
-    rows defensively (lines that fail to parse are skipped with a
-    debug log).
-    """
-    raw = path.read_text(encoding="utf-8")
-    entries: list[CanonicalEntry] = []
-    step = 0
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            logger.debug("Skipping malformed JSONL line in %s", path)
-            continue
-        if not isinstance(row, dict):
-            continue
-        entries.append(
-            CanonicalEntry(
-                format=row.get("format", "eliza_native_v1"),
-                boundary=row.get("boundary", "vercel_ai_sdk.generateText"),
-                request=row.get("request", {}) or {},
-                response=row.get("response", {}) or {},
-                agent_id=agent_id,
-                benchmark_id=benchmark_id,
-                task_id=task_id,
-                step_index=step,
-                timestamp_ms=row.get("timestamp_ms") or row.get("timestamp"),
-                model=row.get("model"),
-                scenarioId=row.get("scenarioId"),
-                batchId=row.get("batchId"),
-                metadata=row.get("metadata", {}) or {},
-                trajectoryTotals=row.get("trajectoryTotals", {}) or {},
-                cacheStats=row.get("cacheStats", {}) or {},
-            )
-        )
-        step += 1
+    """Enrich canonical evidence, retaining native fields and rejecting corrupt rows."""
+    entries = []
+    for step, row in enumerate(_jsonl_rows(path)):
+        if row.get("format", "eliza_native_v1") != "eliza_native_v1":
+            raise TrajectoryFormatError(f"{path}: unsupported trajectory format")
+        if not isinstance(row.get("request"), dict) or not isinstance(row.get("response"), dict):
+            raise TrajectoryFormatError(f"{path}: request and response must be objects")
+        entries.append(replace(
+            CanonicalEntry.from_row(row), agent_id=agent_id,
+            benchmark_id=benchmark_id, task_id=task_id,
+            step_index=row.get("step_index", step),
+            timestamp_ms=row.get("timestamp_ms", row.get("timestamp")),
+        ))
     return entries
 
 
@@ -130,42 +126,30 @@ def normalize_eliza_jsonl(
 # ---------------------------------------------------------------------------
 
 
-def _coerce_tool_call(raw: Any) -> dict[str, Any] | None:
-    """Coerce a tool-call-like dict into our canonical shape.
-
-    Accepts the OpenAI ``function``-wrapper shape and the flat shape;
-    drops anything without a ``name``.
-    """
-    if not isinstance(raw, dict):
-        return None
-    if "function" in raw and isinstance(raw["function"], dict):
-        fn = raw["function"]
-        name = fn.get("name")
-        if not name:
-            return None
-        args = fn.get("arguments", {})
-        if isinstance(args, str):
+def _normalize_tool_calls(raw: Any) -> list[dict[str, Any]]:
+    """Normalize flat/OpenAI calls without silently dropping invalid evidence."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise TrajectoryFormatError("Tool calls must be a list")
+    calls = []
+    for call in raw:
+        if not isinstance(call, dict):
+            raise TrajectoryFormatError("Tool calls must contain objects")
+        function = call.get("function", call)
+        if not isinstance(function, dict) or not isinstance(function.get("name"), str) or not function["name"]:
+            raise TrajectoryFormatError("Tool call requires a nonempty function name")
+        arguments = function.get("arguments", {})
+        if "function" in call and isinstance(arguments, str):
             try:
-                args = json.loads(args)
+                arguments = json.loads(arguments)
             except json.JSONDecodeError:
-                # Keep the raw string — the schema does not constrain
-                # the type of `arguments`.
-                pass
-        return {
-            "name": name,
-            "arguments": args,
-            "id": raw.get("id", ""),
-            "result": raw.get("result"),
-        }
-    name = raw.get("name")
-    if not name:
-        return None
-    return {
-        "name": name,
-        "arguments": raw.get("arguments", {}),
-        "id": raw.get("id", ""),
-        "result": raw.get("result"),
-    }
+                pass  # Incomplete generated JSON remains exact model evidence.
+        calls.append({
+            "name": function["name"], "arguments": arguments,
+            "id": call.get("id", ""), "result": call.get("result"),
+        })
+    return calls
 
 
 def normalize_openclaw_response(
@@ -177,52 +161,42 @@ def normalize_openclaw_response(
 ) -> list[CanonicalEntry]:
     """Normalize OpenClaw ``agent --json`` output.
 
-    Emits one ``CanonicalEntry`` per assistant turn. The conversation
+    Emits one ``CanonicalEntry`` per assistant turn and an explicit incomplete
+    entry for a pending tail. The conversation
     prefix (every message before the assistant turn) is folded into
     ``request.messages``; the assistant ``content`` populates
     ``response.text``; ``tool_calls`` (if any) populate
     ``response.toolCalls`` after coercion.
     """
-    messages = response_json.get("messages") or []
+    messages = response_json.get("messages")
+    if not isinstance(messages, list) or not messages or any(not isinstance(msg, dict) for msg in messages):
+        raise TrajectoryFormatError("OpenClaw messages must be a nonempty list of objects")
     entries: list[CanonicalEntry] = []
     step = 0
     for idx, msg in enumerate(messages):
-        if not isinstance(msg, dict):
-            continue
         if msg.get("role") != "assistant":
             continue
 
-        prior_messages: list[dict[str, str]] = []
-        for prior in messages[:idx]:
-            if not isinstance(prior, dict):
-                continue
-            role = prior.get("role")
-            if role not in {"system", "user", "assistant", "tool"}:
-                continue
-            content = prior.get("content")
-            if content is None:
-                content = ""
-            prior_messages.append({"role": role, "content": str(content)})
-
+        prior_messages = [dict(prior) for prior in messages[:idx]]
         request: dict[str, Any] = {"messages": prior_messages}
+        if "tools" in response_json:
+            request["tools"] = response_json["tools"]
 
-        raw_tool_calls = msg.get("tool_calls") or []
-        tool_calls: list[dict[str, Any]] = []
-        for tc in raw_tool_calls:
-            coerced = _coerce_tool_call(tc)
-            if coerced is not None:
-                tool_calls.append(coerced)
+        tool_calls = _normalize_tool_calls(msg.get("tool_calls"))
 
         response: dict[str, Any] = {}
         text = msg.get("content")
-        if text:
-            response["text"] = str(text)
+        if isinstance(text, str):
+            response["text"] = text
+        elif text is not None:
+            response["content"] = text
         if tool_calls:
             response["toolCalls"] = tool_calls
 
         entries.append(
             CanonicalEntry(
                 boundary="openclaw_agent_v1",
+                metadata={"native": response_json, "complete": True},
                 request=request,
                 response=response,
                 agent_id="openclaw",
@@ -233,6 +207,16 @@ def normalize_openclaw_response(
             )
         )
         step += 1
+    if messages[-1].get("role") != "assistant":
+        request = {"messages": [dict(message) for message in messages]}
+        if "tools" in response_json:
+            request["tools"] = response_json["tools"]
+        entries.append(CanonicalEntry(
+            boundary="openclaw_agent_v1",
+            metadata={"native": response_json, "complete": False},
+            request=request, response={}, agent_id="openclaw",
+            benchmark_id=benchmark_id, task_id=task_id, step_index=step, model=model,
+        ))
     return entries
 
 
@@ -283,66 +267,42 @@ def normalize_hermes_samples_jsonl(
     non-assistant turns rolled into ``request.messages`` and an empty
     response.
     """
-    raw = path.read_text(encoding="utf-8")
     entries: list[CanonicalEntry] = []
-    step = 0
-
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            logger.debug("Skipping malformed Hermes JSONL line in %s", path)
-            continue
-        if not isinstance(row, dict):
-            continue
-
-        msgs = row.get("messages") or []
-        if not isinstance(msgs, list) or not msgs:
-            continue
-
-        # Find the index of the final ``gpt`` turn — that's the one we
-        # split on. If there isn't one, treat the row as request-only.
-        split_idx = -1
-        for i in range(len(msgs) - 1, -1, -1):
-            m = msgs[i]
-            if isinstance(m, dict) and m.get("from") == "gpt":
-                split_idx = i
-                break
-
-        request_messages: list[dict[str, str]] = []
+    for step, row in enumerate(_jsonl_rows(path)):
+        msgs = row.get("messages")
+        if not isinstance(msgs, list) or not msgs or any(not isinstance(msg, dict) for msg in msgs):
+            raise TrajectoryFormatError(f"{path}: Hermes messages must be a nonempty list of objects")
+        split_idx = len(msgs) - 1 if msgs[-1].get("from") == "gpt" else -1
+        request_messages: list[dict[str, Any]] = []
         prefix = msgs if split_idx == -1 else msgs[:split_idx]
-        for m in prefix:
-            if not isinstance(m, dict):
-                continue
-            role = _HERMES_ROLE_MAP.get(m.get("from"), None)
+        for msg in prefix:
+            role = _HERMES_ROLE_MAP.get(msg.get("from"))
             if role is None:
-                continue
-            content = _stringify_tool_value(m.get("value"))
-            request_messages.append({"role": role, "content": content})
+                raise TrajectoryFormatError(f"{path}: unsupported Hermes message role")
+            converted = {key: value for key, value in msg.items() if key not in {"from", "value"}}
+            converted.update(role=role, content=_stringify_tool_value(msg.get("value")) if role == "tool" else msg.get("value", ""))
+            request_messages.append(converted)
 
         request: dict[str, Any] = {"messages": request_messages}
+        if "tools" in row:
+            request["tools"] = row["tools"]
 
         response: dict[str, Any] = {}
         if split_idx != -1:
             final = msgs[split_idx]
-            text_value = _stringify_tool_value(final.get("value"))
-            if text_value:
-                response["text"] = text_value
-            raw_calls = final.get("tool_calls") or final.get("toolCalls") or []
-            tool_calls = [
-                coerced
-                for raw_call in raw_calls
-                if (coerced := _coerce_tool_call(raw_call)) is not None
-            ] if isinstance(raw_calls, list) else []
+            value = final.get("value", "")
+            if isinstance(value, str):
+                response["text"] = value
+            elif value is not None:
+                response["content"] = value
+            tool_calls = _normalize_tool_calls(final.get("tool_calls", final.get("toolCalls")))
             if tool_calls:
                 response["toolCalls"] = tool_calls
 
         entries.append(
             CanonicalEntry(
                 boundary="hermes_atropos_v1",
+                metadata={"native": row, "complete": split_idx != -1},
                 request=request,
                 response=response,
                 agent_id="hermes",
@@ -385,13 +345,11 @@ def align_by_step(
 
     Pads the shorter side with ``None``.
     """
-    length = max(len(entries_a), len(entries_b))
-    pairs: list[tuple[CanonicalEntry | None, CanonicalEntry | None]] = []
-    for i in range(length):
-        a = entries_a[i] if i < len(entries_a) else None
-        b = entries_b[i] if i < len(entries_b) else None
-        pairs.append((a, b))
-    return pairs
+    left = {entry.step_index: entry for entry in entries_a}
+    right = {entry.step_index: entry for entry in entries_b}
+    if len(left) != len(entries_a) or len(right) != len(entries_b):
+        raise TrajectoryFormatError("Duplicate step indices cannot be aligned")
+    return [(left.get(step), right.get(step)) for step in sorted(left.keys() | right.keys())]
 
 
 # ---------------------------------------------------------------------------
@@ -400,33 +358,8 @@ def align_by_step(
 
 
 def _read_jsonl_entries(path: Path) -> list[CanonicalEntry]:
-    """Re-read a canonical JSONL file back into ``CanonicalEntry`` instances.
-
-    Used by the diff subcommand. Unknown fields are ignored to keep
-    the reader forward-compatible.
-    """
-    raw = path.read_text(encoding="utf-8")
-    out: list[CanonicalEntry] = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        row = json.loads(line)
-        out.append(
-            CanonicalEntry(
-                format=row.get("format", "eliza_native_v1"),
-                boundary=row.get("boundary", "vercel_ai_sdk.generateText"),
-                request=row.get("request", {}) or {},
-                response=row.get("response", {}) or {},
-                agent_id=row.get("agent_id", ""),
-                benchmark_id=row.get("benchmark_id", ""),
-                task_id=row.get("task_id", ""),
-                step_index=row.get("step_index", 0),
-                timestamp_ms=row.get("timestamp_ms"),
-                model=row.get("model"),
-            )
-        )
-    return out
+    """Re-read complete canonical evidence for the diff command."""
+    return [CanonicalEntry.from_row(row) for row in _jsonl_rows(path)]
 
 
 def cli() -> int:
