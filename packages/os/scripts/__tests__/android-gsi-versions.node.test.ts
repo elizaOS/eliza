@@ -13,8 +13,6 @@ const lockPath = path.join(androidDir, "aosp.lock.json");
 const read = (relative: string) =>
   fs.readFileSync(path.join(vendorDir, relative), "utf8");
 const GSI_PROFILES = {
-  "gsi-android15": { tag: /^android-15\.0\.0_r\d+$/, release: "bp1a" },
-  "gsi-android16": { tag: /^android-16\.0\.0_r\d+$/, release: "bp4a" },
   "gsi-android17": { tag: /^android-17\.0\.0_r\d+$/, release: "cp2a" },
 };
 
@@ -55,7 +53,7 @@ function selectPolicy(sdk: string, gsi: boolean) {
   };
 }
 
-test("GSI source profiles pin Android 15, 16 and 17 with matching products", () => {
+test("GSI source profiles pin Android 17 with matching products", () => {
   for (const [name, expected] of Object.entries(GSI_PROFILES)) {
     const profile = loadProfile(name, lockPath);
     assert.equal(profile.kind, "virtual", name);

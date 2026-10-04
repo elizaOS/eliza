@@ -24,8 +24,7 @@ a build input; physical installation still requires qualification and a signed c
 Alpha Phone (#31023) names Pixel 10, which has no lock here; see the grizzly
 `decisionNote` in `hardware-targets.json` before choosing a device.
 The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
-images from the separate `gsi-android15` (`bp1a`), `gsi-android16` (`bp4a`) and
-`gsi-android17` (`cp2a`) profiles in `aosp.lock.json`, not from the Cuttlefish
+images from the `gsi-android17` (`cp2a`) profile in `aosp.lock.json`, not from the Cuttlefish
 checkout; `make build` does not select them. They use system_ext SELinux policy,
 are userdebug-only, and `generic-mediatek-gsi` stays blocked in
 `hardware-targets.json`. Every product selects the Android 17-only
