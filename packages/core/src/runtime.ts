@@ -4496,11 +4496,15 @@ export class AgentRuntime implements IAgentRuntime {
 		// deleted after the grace window — "transcripts" rows anchor retained
 		// recordings via the audioUrl inside content.transcript (#14751). It also
 		// bounds clearAllAgentMemories: an unlisted partition survives a wipe.
+		// document_fragments are the searchable chunks of documents; leaving
+		// them off this list kept deleted-document text and any media they
+		// reference after a wipe.
 		const tables = [
 			"memories",
 			"messages",
 			"facts",
 			"documents",
+			"document_fragments",
 			"transcripts",
 		];
 		const allMemories: Memory[] = [];

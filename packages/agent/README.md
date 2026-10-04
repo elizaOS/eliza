@@ -151,3 +151,25 @@ IP literals from their trusted native network configuration. Missing configurati
 retains the public resolver defaults; malformed addresses reject before installing
 DNS overrides. This startup snapshot does not implement Private DNS, VPN-bound
 resolution or automatic network-change refresh.
+
+## Native host composition
+
+`native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
+hosts shipping a separately verified gateway payload. Supply an explicit
+`hostPolicy`: origins, resetPaths, conversationTitle, abortReason, validateTitle,
+prepareMessage, isPaidAction, formatTaskContext, and optional messages. The policy
+owns product language and view metadata; the gateway owns authenticated loopback
+transport, bounded JSON, conversation ownership, request cancellation, account
+fencing and authenticated task presentation. Only trusted host code provides this
+policy; never accept it from renderer input.
+
+`native-host/account-state.mjs` preserves private credential-derived namespaces
+and configuration migration. `native-host/runtime-supervisor.mjs` serializes
+identity transitions and stops only the child returned by the host launcher.
+These are source entrypoints for explicit payload composition, not additional
+browser SDK or published dist exports. Production consumers must preserve their
+own registration, origin policy, encrypted storage and lifecycle adapters.
+
+The native-host end-to-end test uses real local HTTP, disk restart and child
+processes. Run `node --test packages/agent/native-host/gateway.e2e.test.mjs` from
+the repository root; it is also included by the package's Vitest suite.

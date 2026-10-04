@@ -1505,7 +1505,7 @@ export class GmailDomain {
       cc: request.cc,
       subject:
         request.subject ??
-        `Re: ${read.message.subject.replace(/^Re:\\s*/i, "")}`,
+        `Re: ${read.message.subject.replace(/^Re:\s*/i, "")}`,
       bodyText: normalizeGmailReplyBody(request.bodyText),
       threadId: threading.threadId,
       inReplyTo: threading.inReplyTo,
