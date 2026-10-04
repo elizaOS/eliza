@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any, Mapping
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
+from eliza_training.manifest.audit_hf_eliza1_release import (  # noqa: E402
     DATASET_API,
     ACTIVE_TEXT_SFT_REQUIRED_FILES,
     ACTIVE_TEXT_SFT_ROOT,
@@ -24,13 +21,13 @@ from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
     TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
     audit_hf_release,
 )
-from scripts.manifest.eliza1_manifest import (  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_HF_REPO,
     ELIZA_1_TIERS,
     SUPPORTED_BACKENDS_BY_TIER,
 )
-from scripts.manifest.eliza1_platform_plan import build_plan, text_artifact_name  # noqa: E402
-from scripts.quantization._kernel_manifest import kernel_manifest_fragment  # noqa: E402
+from eliza_training.manifest.eliza1_platform_plan import build_plan, text_artifact_name  # noqa: E402
+from eliza_training.quantization._kernel_manifest import kernel_manifest_fragment  # noqa: E402
 
 
 DATASET_REPO = "elizaos/eliza-1-training"

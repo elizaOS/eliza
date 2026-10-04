@@ -517,7 +517,7 @@ def test_publish_model_dispatches_bundle_mode(publish_model, monkeypatch):
         [
             sys.executable,
             "-m",
-            "scripts.publish.orchestrator",
+            "eliza_training.publish.orchestrator",
             "--tier",
             "2b",
         ]
@@ -535,7 +535,7 @@ def test_publish_model_dispatches_tier_mode(publish_model, monkeypatch):
         [
             sys.executable,
             "-m",
-            "scripts.publish.publish_eliza1_model_repo",
+            "eliza_training.publish.publish_eliza1_model_repo",
             "--tier",
             "2b",
         ]

@@ -12,14 +12,12 @@ import argparse
 import json
 import logging
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.native_record import (
+from eliza_training.lib.native_record import (
     native_text_record,
     native_tool_call_record,
     stable_id,

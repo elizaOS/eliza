@@ -33,8 +33,7 @@ SCAMBENCH = ROOT / "data" / "synthesized" / "scambench" / "scambench.jsonl"
 THOUGHTS = ROOT / "data" / "synthesized" / "manual_reasoning" / "thoughts.jsonl"
 
 
-sys.path.insert(0, str(ROOT / "scripts"))
-from lib.caveman import compress as caveman_compress  # noqa: E402
+from eliza_training.lib.caveman import compress as caveman_compress  # noqa: E402
 
 
 def stream_jsonl(path: Path):

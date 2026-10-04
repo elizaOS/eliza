@@ -19,11 +19,11 @@ from dataclasses import dataclass
 
 import torch
 
-from quantization.fused_turboquant_vendored.core.hadamard import (
+from eliza_training.quantization.fused_turboquant_vendored.core.hadamard import (
     RHTRotation,
 )
-from quantization.fused_turboquant_vendored.core.lloyd_max import LloydMaxQuantizer
-from quantization.fused_turboquant_vendored.core.packing import (
+from eliza_training.quantization.fused_turboquant_vendored.core.lloyd_max import LloydMaxQuantizer
+from eliza_training.quantization.fused_turboquant_vendored.core.packing import (
     pack_2bit,
     pack_3bit,
     pack_nibbles,
@@ -94,7 +94,7 @@ class TurboQuantMSE:
         ):
             self._use_fused_triton = False
             return
-        from quantization.fused_turboquant_vendored.kernels.triton_rht import is_triton_available
+        from eliza_training.quantization.fused_turboquant_vendored.kernels.triton_rht import is_triton_available
         if is_triton_available() and str(self.device).startswith("cuda"):
             self._use_fused_triton = True
 
@@ -116,7 +116,7 @@ class TurboQuantMSE:
         return self._encode_unfused(x)
 
     def _encode_fused(self, x: torch.Tensor) -> CompressedTensor:
-        from quantization.fused_turboquant_vendored.kernels.triton_encode import triton_fused_encode
+        from eliza_training.quantization.fused_turboquant_vendored.kernels.triton_encode import triton_fused_encode
         packed, norms = triton_fused_encode(
             x, self.rotation.signs,
             self.quantizer.boundaries,
@@ -172,7 +172,7 @@ class TurboQuantMSE:
         return self._decode_unfused(compressed)
 
     def _decode_fused(self, compressed: CompressedTensor) -> torch.Tensor:
-        from quantization.fused_turboquant_vendored.kernels.triton_decode import triton_fused_decode
+        from eliza_training.quantization.fused_turboquant_vendored.kernels.triton_decode import triton_fused_decode
         return triton_fused_decode(
             compressed.indices, compressed.norms,
             self.quantizer.levels, self.rotation.signs,
