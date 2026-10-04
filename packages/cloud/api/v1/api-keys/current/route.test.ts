@@ -84,6 +84,7 @@ const revokePresentedMobileCredential = mock(async (secret: string) =>
     ? selfRevocationResult(authenticationDependencyUnavailable)
     : null,
 );
+const revokePresentedStandardCredential = mock(async (_secret: string) => null);
 const emitAudit = mock(async () => undefined);
 const requireUserWithOrg = mock(async () => ({
   id: credential.user_id,
@@ -161,6 +162,7 @@ mock.module("@/lib/services/api-keys", () => ({
     revokeExactMobileCredential,
     revokeMobileCredentialForAccount,
     revokePresentedMobileCredential,
+    revokePresentedStandardCredential,
     update,
   },
   isMobileApiKeySecret: (value: string) =>
@@ -243,6 +245,7 @@ beforeEach(() => {
   revokeExactMobileCredential.mockClear();
   revokeMobileCredentialForAccount.mockClear();
   revokePresentedMobileCredential.mockClear();
+  revokePresentedStandardCredential.mockClear();
   emitAudit.mockClear();
 });
 
@@ -302,7 +305,7 @@ describe("DELETE /api/v1/api-keys/current", () => {
     ["missing auth", undefined],
     ["JWT session", "Bearer header.payload.signature"],
     ["invalid key", "Bearer eliza_unknown"],
-    ["ordinary API key", `Bearer eliza_${"f".repeat(64)}`],
+    ["unrecognized standard API key", `Bearer eliza_${"f".repeat(64)}`],
     ["wrong exact-shaped mobile key", `Bearer eliza_mobile_${"f".repeat(64)}`],
   ])(
     "rejects %s without revoking another key",
@@ -318,6 +321,14 @@ describe("DELETE /api/v1/api-keys/current", () => {
         code: "authentication_required",
       });
       expect(revokeExactMobileCredential).not.toHaveBeenCalled();
+      if (_label === "unrecognized standard API key") {
+        expect(revokePresentedStandardCredential).toHaveBeenCalledWith(
+          `eliza_${"f".repeat(64)}`,
+          expect.any(Function),
+        );
+      } else {
+        expect(revokePresentedStandardCredential).not.toHaveBeenCalled();
+      }
     },
   );
 

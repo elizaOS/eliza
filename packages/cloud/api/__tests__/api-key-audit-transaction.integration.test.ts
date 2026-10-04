@@ -1,6 +1,7 @@
-import { beforeAll, afterAll, test, expect, mock } from "bun:test";
-import { sql } from "drizzle-orm";
+import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { sql } from "drizzle-orm";
+
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 const original = await import("@/lib/services/inference-credential-revocation");

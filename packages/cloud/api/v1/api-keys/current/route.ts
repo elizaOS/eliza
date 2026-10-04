@@ -5,8 +5,8 @@
  * credential's durable tombstone.
  */
 import { Hono } from "hono";
-import { authEvents } from "@/db/schemas/auth-events";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { authEvents } from "@/db/schemas/auth-events";
 import {
   ApiError,
   AuthenticationError,
