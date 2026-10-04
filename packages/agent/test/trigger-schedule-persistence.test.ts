@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type http from "node:http";
+import http from "node:http";
 import {
   type JsonObject,
   type Memory,
@@ -15,8 +15,14 @@ import {
 } from "../../../plugins/plugin-workflow/src/trigger-routes.ts";
 import { triggerAction } from "../src/actions/trigger.ts";
 import {
+  executeTriggerTask,
+  getTriggerHealthSnapshot,
+  getTriggerLimit,
+  listTriggerTasks,
   readTriggerConfig,
   readTriggerRuns,
+  TRIGGER_TASK_NAME,
+  TRIGGER_TASK_TAGS,
   taskToTriggerSummary,
   triggersFeatureEnabled,
 } from "../src/triggers/runtime.ts";
@@ -197,3 +203,225 @@ it("persists the timezone through pause and re-enable and schedules in that zone
     await fixture.runtime.deleteTask(taskId);
   }
 });
+
+async function requestTrigger(
+  method: string,
+  pathname: string,
+  body: JsonObject,
+) {
+  let routeFailure: unknown;
+  const sendJson = (
+    res: http.ServerResponse,
+    payload: unknown,
+    status = 200,
+  ) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(payload));
+  };
+  const server = http.createServer(async (req, res) => {
+    try {
+      const context: TriggerRouteContext = {
+        method,
+        pathname,
+        req,
+        res,
+        runtime: fixture.runtime,
+        ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+        localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+        readJsonBody: async () => {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(Buffer.from(chunk));
+          return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        },
+        json: sendJson,
+        error: (response, message, status) =>
+          sendJson(response, { error: message }, status),
+        executeTriggerTask,
+        getTriggerHealthSnapshot,
+        getTriggerLimit,
+        listTriggerTasks,
+        readTriggerConfig,
+        readTriggerRuns,
+        taskToTriggerSummary,
+        triggersFeatureEnabled,
+        buildTriggerConfig,
+        buildTriggerMetadata,
+        normalizeTriggerDraft,
+        DISABLED_TRIGGER_INTERVAL_MS,
+        TRIGGER_TASK_NAME,
+        TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
+      };
+      if (!(await handleTriggerRoutes(context)))
+        sendJson(res, { error: "Route not found" }, 404);
+    } catch (error) {
+      routeFailure = error;
+      res.destroy();
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing loopback port");
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}${pathname}`,
+      {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    const payload = await response.json();
+    if (routeFailure) throw routeFailure;
+    return { status: response.status, payload };
+  } catch (error) {
+    throw routeFailure ?? error;
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}
+
+it.each([
+  { future: false, enabled: true, status: 400 },
+  { future: true, enabled: true, status: 201 },
+  { future: false, enabled: false, status: 201 },
+])(
+  "validates new once schedules over HTTP: $future / $enabled",
+  async ({ future, enabled, status }) => {
+    const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    const instructions = `HTTP once ${randomUUID()}`;
+    const scheduledAtIso = new Date(
+      Date.now() + (future ? 3_600_000 : -60_000),
+    ).toISOString();
+    const response = await requestTrigger("POST", "/api/triggers", {
+      kind: "prompt",
+      displayName: instructions,
+      instructions,
+      triggerType: "once",
+      scheduledAtIso,
+      enabled,
+    });
+    expect(response.status).toBe(status);
+    const after = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    if (status === 400) {
+      expect(response.payload).toEqual({
+        error: "Once trigger requires a future scheduledAtIso",
+      });
+      expect(after).toEqual(before);
+    } else {
+      const saved = after.find(
+        (task) => readTriggerConfig(task)?.instructions === instructions,
+      );
+      if (!saved?.id) throw new Error("Created once task missing");
+      try {
+        expect(readTriggerConfig(saved)).toMatchObject({
+          enabled,
+          scheduledAtIso,
+          runCount: 0,
+        });
+        expect(saved.entityId).toBe(
+          resolveOwnerEntityIdOrDefault(fixture.runtime),
+        );
+      } finally {
+        await fixture.runtime.deleteTask(saved.id);
+      }
+    }
+  },
+);
+
+const onceUpdates: { enabled: boolean; body: JsonObject; status: number }[] = [
+  {
+    enabled: true,
+    body: { displayName: "Rename past completed trigger" },
+    status: 200,
+  },
+  { enabled: true, body: { enabled: true }, status: 200 },
+  {
+    enabled: false,
+    body: { displayName: "Rename paused trigger" },
+    status: 200,
+  },
+  { enabled: true, body: { enabled: false }, status: 200 },
+  { enabled: false, body: { enabled: true }, status: 400 },
+  {
+    enabled: true,
+    body: { scheduledAtIso: "2000-01-01T00:00:00.000Z" },
+    status: 400,
+  },
+  {
+    enabled: false,
+    body: {
+      enabled: true,
+      scheduledAtIso: new Date(Date.now() + 3_600_000).toISOString(),
+    },
+    status: 200,
+  },
+];
+it.each(onceUpdates)(
+  "preserves once update intent over HTTP: $body",
+  async ({ enabled, body, status }) => {
+    const triggerId = randomUUID() as UUID;
+    const normalized = normalizeTriggerDraft({
+      input: {
+        kind: "prompt",
+        triggerType: "once",
+        scheduledAtIso: "2001-01-01T00:00:00.000Z",
+      },
+      fallback: {
+        displayName: "Completed once",
+        instructions: "Do not execute",
+        triggerType: "once",
+        wakeMode: "inject_now",
+        enabled,
+        createdBy: "api",
+      },
+    });
+    if (!normalized.draft) throw new Error(normalized.error ?? "Missing draft");
+    const trigger = {
+      ...buildTriggerConfig({ draft: normalized.draft, triggerId }),
+      runCount: 1,
+      lastStatus: "success" as const,
+      lastRunAtIso: "2001-01-01T00:00:00.000Z",
+    };
+    const taskId = await fixture.runtime.createTask({
+      name: TRIGGER_TASK_NAME,
+      agentId: fixture.runtime.agentId,
+      entityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+      tags: [...TRIGGER_TASK_TAGS],
+      metadata: {
+        trigger,
+        updatedAt: Date.now(),
+        updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+      },
+    });
+    try {
+      const before = await fixture.runtime.getTask(taskId);
+      const response = await requestTrigger(
+        "PUT",
+        `/api/triggers/${triggerId}`,
+        body,
+      );
+      expect(response.status).toBe(status);
+      const saved = await fixture.runtime.getTask(taskId);
+      if (!saved) throw new Error("Updated task missing");
+      if (status === 400) expect(saved).toEqual(before);
+      else
+        expect(readTriggerConfig(saved)).toMatchObject({
+          triggerId,
+          runCount: 1,
+          lastStatus: "success",
+          lastRunAtIso: trigger.lastRunAtIso,
+          enabled: "enabled" in body ? body.enabled : enabled,
+          scheduledAtIso:
+            typeof body.scheduledAtIso === "string"
+              ? body.scheduledAtIso
+              : trigger.scheduledAtIso,
+          ...("displayName" in body ? { displayName: body.displayName } : {}),
+        });
+    } finally {
+      await fixture.runtime.deleteTask(taskId);
+    }
+  },
+);
