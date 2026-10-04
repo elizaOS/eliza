@@ -5,7 +5,7 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client-types-core";
@@ -42,8 +42,8 @@ const mocks = vi.hoisted(() => ({
     saveComputerUseEnabled: vi.fn(),
   },
 }));
-vi.mock("../api", () => ({ client: mocks.client }));
 vi.mock("../api/client", () => ({ client: mocks.client }));
+
 vi.mock("./agent-profiles", () => ({
   loadAgentProfileRegistry: () => ({
     version: 1,

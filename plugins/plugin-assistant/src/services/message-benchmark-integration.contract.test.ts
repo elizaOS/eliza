@@ -1,7 +1,8 @@
 /** Exercises benchmark admission through real provider composition and ordinary plugin registration. */
 
 import { AgentRuntime, type Memory } from "@elizaos/core";
-import { contextBenchProvider, initializeTestRuntime } from "@elizaos/testing";
+import { contextBenchProvider } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import {
   composeResponseState,

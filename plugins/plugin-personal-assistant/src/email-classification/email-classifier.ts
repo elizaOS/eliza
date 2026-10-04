@@ -19,7 +19,7 @@ import {
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { wrapUntrustedEmailContent } from "@elizaos/core/text/untrusted-email-content";
+import { wrapUntrustedEmailContent } from "@elizaos/core/protocol";
 
 export type EmailCategory =
   | "promotional"

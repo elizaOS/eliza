@@ -1,12 +1,7 @@
 /** Resolves Cloud credentials, connection state, and billing against the configured deployment. */
-import {
-    type AgentRuntime,
-    isCloudInferenceSelectedInConfig,
-    isElizaSettingsDebugEnabled,
-    logger,
-    migrateLegacyRuntimeConfig,
-    settingsDebugCloudSummary,
-} from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/host/protocol";
+import { isElizaSettingsDebugEnabled, settingsDebugCloudSummary } from "@elizaos/host/protocol";
 import {
     resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
     resolveCloudBillingUrl,

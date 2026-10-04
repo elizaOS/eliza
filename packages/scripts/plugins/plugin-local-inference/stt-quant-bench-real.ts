@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { wordErrorRate } from "@elizaos/core/voice-wer";
+import { wordErrorRate } from "@elizaos/voice";
 import { STT_BENCH_CORPUS } from "../../../../plugins/plugin-local-inference/src/services/voice/bench-utils";
 /**
  * STT quality benchmark across the published eliza-1-asr GGUF quants (#10726

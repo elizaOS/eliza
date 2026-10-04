@@ -8,9 +8,8 @@ import {
   AgentBackupRestoreV3ComponentReceiptSchema,
   type AgentBackupRestoreV3OperationControl,
   type AgentBackupRestoreV3StagingSession,
-  ElizaError,
-  parseAndValidateCharacter,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError, parseAndValidateCharacter } from "@elizaos/core";
 import {
   type AgentBackupRestoreV3CandidateFileTreeFileProof,
   type AgentBackupRestoreV3CandidateFileTreeProof,

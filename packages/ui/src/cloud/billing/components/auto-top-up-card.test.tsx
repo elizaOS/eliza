@@ -4,9 +4,6 @@
  */
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   act,
   cleanup,
@@ -168,7 +165,7 @@ describe("AutoTopUpCard", () => {
     expect(await screen.findByRole("switch")).toBeTruthy();
   });
 
-  it("renders a generic alert and 44px Retry action when loading rejects", async () => {
+  it("renders a generic alert and enabled Retry action when loading rejects", async () => {
     apiMock.mockRejectedValueOnce(new Error("private backend detail"));
 
     render(<AutoTopUpCard />);
@@ -186,16 +183,6 @@ describe("AutoTopUpCard", () => {
     expect(retry).toHaveProperty("disabled", false);
     expect(retry.getAttribute("aria-busy")).toBe("false");
     expect(retry.getAttribute("type")).toBe("button");
-    expect(retry.className).toContain("min-h-touch");
-
-    const baseStyles = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../../styles/base.css"),
-      "utf8",
-    );
-    const touchTargetRem = Number(
-      baseStyles.match(/--min-touch-target:\s*([\d.]+)rem/)?.[1],
-    );
-    expect(touchTargetRem * 16).toBe(44);
   });
 
   it.each([

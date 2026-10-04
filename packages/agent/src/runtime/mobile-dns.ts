@@ -14,7 +14,7 @@ import dns, { type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { decodeMobileFetchBody } from "./mobile-dns-decode-budget.ts";
 
 export {

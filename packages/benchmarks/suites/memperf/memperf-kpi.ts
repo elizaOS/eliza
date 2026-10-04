@@ -36,7 +36,7 @@
  *   MEMPERF_MAX_TOKENS=24                  text/vision generation length for tok/s
  */
 
-import type { InstalledModel } from "@elizaos/core/contracts/local-inference";
+import type { InstalledModel } from "@elizaos/contracts";
 import type {
   ArbiterCapability,
   ArbiterEvent,

@@ -10,8 +10,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ fetch: vi.fn() }));
-vi.mock("../../api", () => ({ client: api }));
-vi.mock("../../state", () => ({
+vi.mock("../../api/client", () => ({ client: api }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     select: (state: {
       t: (key: string, options?: { defaultValue?: string }) => string;

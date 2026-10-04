@@ -18,7 +18,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StoredFile } from "../../api";
+import type { StoredFile } from "../../api/client-files";
 import { RoleProvider } from "../../hooks/useRole";
 import { FilesView } from "./FilesView";
 
@@ -43,9 +43,7 @@ vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({ views: [] }),
 }));
 
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 // The download/share affordances delegate to the transport-aware helper. Mock
 // it so we can assert intent without touching the DOM/Capacitor bridges.

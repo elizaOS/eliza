@@ -5,9 +5,11 @@
  */
 import { useEffect, useState } from "react";
 import { reportShortcutFired } from "../../chat/shortcut-report";
-import { COMMON_SHORTCUTS } from "../../hooks";
-import { SHORTCUT_SHOW_KEYBOARD_SHORTCUTS } from "../../hooks/useKeyboardShortcuts";
-import { useTranslation } from "../../state";
+import {
+  COMMON_SHORTCUTS,
+  SHORTCUT_SHOW_KEYBOARD_SHORTCUTS,
+} from "../../hooks/useKeyboardShortcuts";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {

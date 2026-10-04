@@ -1589,7 +1589,7 @@ function propertyValueGbnf(
 ): string {
 	const type = (propSchema as { type?: unknown }).type;
 	if (type === "string") {
-		const enumValues = readStringEnumForGrammar(propSchema);
+		const enumValues = readStringEnum(propSchema);
 		if (enumValues !== null) {
 			if (enumValues.length === 1) {
 				return gbnfJsonStringLiteral(enumValues[0]);
@@ -1627,7 +1627,7 @@ function propertyValueGbnf(
 		const items = (propSchema as { items?: JSONSchema }).items;
 		const itemsType = items && (items as { type?: unknown }).type;
 		if (itemsType === "string") {
-			const enumValues = readStringEnumForGrammar(items as JSONSchema);
+			const enumValues = readStringEnum(items as JSONSchema);
 			if (enumValues !== null && enumValues.length > 0) {
 				builder.useShared("ws");
 				const elem = `( ${enumValues
@@ -1671,18 +1671,6 @@ function schemaHasDeclaredProperties(schema: JSONSchema): boolean {
 		properties !== null &&
 		Object.keys(properties).length > 0
 	);
-}
-
-/** Reuse the conservative string-enum reader from buildPlannerParamsSkeleton. */
-function readStringEnumForGrammar(propSchema: JSONSchema): string[] | null {
-	const raw = (propSchema as { enum?: unknown }).enum;
-	if (!Array.isArray(raw) || raw.length === 0) return null;
-	const normalized: string[] = [];
-	for (const v of raw) {
-		if (typeof v !== "string") return null;
-		normalized.push(v);
-	}
-	return normalized;
 }
 
 function escapeJsonKey(key: string): string {

@@ -15,7 +15,7 @@ import {
 } from "vitest";
 import { testOutputPath } from "../../../scripts/lib/test-output";
 import { resolveBunExecutable } from "../../../scripts/lib/vitest-batches";
-import { StandaloneKokoroService } from "./standalone-kokoro-service";
+import { StandaloneKokoroService, speechWorkerArgs } from "./standalone-kokoro-service";
 
 class Worker extends EventEmitter {
   stdin = new PassThrough();
@@ -293,3 +293,18 @@ for (const mode of ["slow", "pipe-end", "malformed", "cancel-http"]) {
     }
   });
 }
+
+describe("standalone Kokoro worker command", () => {
+  it("passes the source condition only to a source worker", () => {
+    expect(speechWorkerArgs("/repo/plugins/x/src/host-tts-worker.ts")).toEqual([
+      "--no-install",
+      "--conditions=eliza-source",
+      "/repo/plugins/x/src/host-tts-worker.ts",
+    ]);
+    // A packaged build ships only the bundled worker; it resolves its
+    // dependencies from their built files.
+    expect(
+      speechWorkerArgs("/app/node_modules/x/dist/host-tts-worker.js"),
+    ).toEqual(["--no-install", "/app/node_modules/x/dist/host-tts-worker.js"]);
+  });
+});

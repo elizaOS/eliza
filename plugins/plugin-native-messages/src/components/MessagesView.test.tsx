@@ -43,7 +43,7 @@ vi.mock("@elizaos/capacitor-system", () => ({
   },
 }));
 
-import { __setNavigateViewPayloadForTests } from "@elizaos/ui/app-navigate-view";
+import { __setNavigateViewPayloadForTests } from "../../../../packages/ui/src/app-navigate-view";
 import { MessagesView } from "./MessagesView";
 
 // Real-shaped SmsMessageSummary rows. type 1 = inbound, 2 = sent.

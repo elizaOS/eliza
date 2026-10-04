@@ -9,6 +9,9 @@ const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const script = fileURLToPath(
   new URL("./staging-acceptance.mjs", import.meta.url),
 );
+const preload = fileURLToPath(
+  new URL("./staging-session-exchange.preload.mjs", import.meta.url),
+);
 const output = testOutputPath("native-staging-acceptance", "receipt.json");
 const fixtureKey = `eliza_${"a".repeat(64)}`;
 const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -59,3 +62,24 @@ for (const [context, override] of [
     assert.equal(result.stderr, "");
   });
 }
+
+test("actual fixture passes single-use session PKCE against the staging exchange", () => {
+  rmSync(output, { force: true });
+  const result = spawnSync(
+    "node",
+    ["--import", "tsx", "--import", preload, script],
+    { cwd: repoRoot, env: protectedRun, encoding: "utf8" },
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1);
+  assert.deepEqual(JSON.parse(readFileSync(output, "utf8")), {
+    schema: "elizaos.native-staging-acceptance/v1",
+    sourceSha,
+    servedSha: sourceSha,
+    status: "failed",
+    failedStep: "native-grant",
+    checks: { protectedAdmission: true, singleUseSessionPkce: true },
+    providerSignInVerified: false,
+    physicalDeviceVerified: false,
+  });
+});

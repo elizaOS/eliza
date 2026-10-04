@@ -27,6 +27,10 @@
  */
 
 import {
+  type KnowledgeGraphEntity as Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/contracts";
+import {
   type Action,
   type ActionResult,
   describeUserReference,
@@ -38,10 +42,6 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import {
-  type Entity,
-  SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
 import {
   ENTITY_OPS,

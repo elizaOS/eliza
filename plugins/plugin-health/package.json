@@ -68,7 +68,8 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "lucide-react": "^1.0.0"
+    "lucide-react": "^1.0.0",
+    "@elizaos/contracts": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.3.0",

@@ -14,7 +14,7 @@
  */
 
 import { useMemo } from "react";
-import { isDesktopPlatform, isWebPlatform } from "../platform";
+import { isDesktopPlatform, isWebPlatform } from "../platform/init";
 import {
   type DefaultVoiceProviderResult,
   type PresetPlatform,

@@ -16,10 +16,10 @@ import {
   ServiceType,
   stringToUuid as sqliteTestAgentId,
 } from "@elizaos/core";
-import { type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import type { RouteHandlerResult } from "@elizaos/host/protocol";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
-import { type StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
+import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {
   type AndroidCoreRouteDeps,
   type AndroidDispatchRoute,

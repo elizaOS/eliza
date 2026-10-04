@@ -19,10 +19,14 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   asObjectRecord as asRecord,
+  logger,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import {
   type DeploymentTargetConfig,
   getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
-  logger,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
@@ -31,9 +35,7 @@ import {
   PostFirstRunRequestSchema,
   type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";

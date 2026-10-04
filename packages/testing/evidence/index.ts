@@ -174,6 +174,12 @@ export {
   type ValidationIssue,
 } from "./errors.ts";
 export {
+  resolveFfmpegBinary,
+  resolveFfprobeBinary,
+  resolveVideoBinaries,
+} from "./ffmpeg-binaries.ts";
+export {
+  captureSiloSnapshot,
   type IngestResult,
   ingestAllSilos,
   ingestNamedSilo,

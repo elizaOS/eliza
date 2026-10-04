@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
-  PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
+  observeProgressiveContentFaultEffects,
   type ProgressiveContentFaultExecutor,
 } from "./progressive-content-faults.ts";
 import {
@@ -430,19 +430,11 @@ async function executeLifecycleCycle(input: {
     } catch (error) {
       observedCode = lifecycleErrorCode(error);
     }
-    try {
-      observedEffects = (await declaration.executor.observeEffects?.()) ?? [];
-    } catch (error) {
-      observedEffects = [
-        `observer-error:${error instanceof Error ? error.name : "unknown"}`,
-      ];
-    }
-    const forbidden = observedEffects.some((effect) =>
-      PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS.includes(
-        effect as (typeof PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS)[number],
-      ),
+    observedEffects = await observeProgressiveContentFaultEffects(
+      declaration.executor,
     );
-    const passed = observedCode === declaration.expectedCode && !forbidden;
+    const passed =
+      observedCode === declaration.expectedCode && observedEffects.length === 0;
     results.push({
       id,
       cycle: input.cycle,

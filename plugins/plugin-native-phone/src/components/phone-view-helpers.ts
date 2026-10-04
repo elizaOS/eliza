@@ -4,7 +4,7 @@
 // Fast-Refresh-compatible (Vite full-reloads a component file that also exports
 // plain functions).
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import type { CallLogEntry } from "@elizaos/plugin-native-phone/bridge";
 import { Phone } from "@elizaos/plugin-native-phone/bridge";
 

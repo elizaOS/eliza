@@ -13,7 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type {
   NativeToolCallEvent,
@@ -25,7 +25,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryProviderAccess,
 } from "../../api/client-types-cloud";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,

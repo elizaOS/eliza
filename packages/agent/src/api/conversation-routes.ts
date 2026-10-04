@@ -19,14 +19,24 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  isChatFailureKind,
+  PatchConversationRequestSchema,
+  PostConversationCleanupEmptyRequestSchema,
+  PostConversationRequestSchema,
+  PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
+import {
   type ActionResult,
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   authorizeOwnerExclusiveDisclosure,
   bindIncomingMessagePersistence,
   ChannelType,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
   type Content,
   composeToolDiagnosticRedactor,
   conversationClientUserMemoryId,
@@ -38,9 +48,6 @@ import {
   getInferenceTimer,
   hasAtLeastRole,
   InferenceTurnTimer,
-  isChatFailureKind,
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -50,13 +57,6 @@ import {
   normalizeActionFailureProvenance,
   normalizeActionReplyFailure,
   normalizeEffectReceipts,
-  PatchConversationRequestSchema,
-  PostConversationCleanupEmptyRequestSchema,
-  PostConversationRequestSchema,
-  PostConversationTruncateRequestSchema,
-  PostSeedMessagesRequestSchema,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
   parsePositiveInteger,
   parseSharedTodoCutoverSnapshot,
   projectCompleteToolValueForModel,
@@ -66,7 +66,6 @@ import {
   RoomHandlerQueueClosedError,
   RoomHandlerQueueGlobalSaturatedError,
   RoomHandlerQueueSaturatedError,
-  type RouteRequestContext,
   readDurableConversationChatMarker,
   readSystemNotice,
   recordOwnerGrant,
@@ -82,6 +81,11 @@ import {
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import {
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  type RouteRequestContext,
+} from "@elizaos/host/protocol";
 import {
   DeviceActionError,
   enforceTrustedDeliveryAudienceAtEgress,

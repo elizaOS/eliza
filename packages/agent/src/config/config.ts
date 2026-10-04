@@ -11,16 +11,15 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { ElizaError, logger } from "@elizaos/core";
 import {
   type ElizaConfig,
-  ElizaError,
   isElizaSettingsDebugEnabled,
-  logger,
   migrateLegacyRuntimeConfig,
   migrateRetiredSubscriptionChatRoute,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 import JSON5 from "json5";
 import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";
@@ -46,7 +45,7 @@ import {
 } from "./paths.ts";
 import { assertNoRetiredToolRestrictions } from "./retired-tool-policy.ts";
 
-export type { ElizaConfig } from "@elizaos/core";
+export type { ElizaConfig } from "@elizaos/host/protocol";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

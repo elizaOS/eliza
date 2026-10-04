@@ -12,27 +12,25 @@
  * - webview.messages: Messages the webview receives (Bun sends these)
  */
 
-import type { JsonValue } from "@elizaos/core";
-import type {
-	AgentAutomationMode as SharedAgentAutomationMode,
-	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
-} from "@elizaos/core/api/agent-api-types";
-import type { SubscriptionStatusResponse } from "@elizaos/core/contracts/first-run-options";
-import type { ExistingElizaInstallInfo } from "@elizaos/core/contracts/host-types";
-import type {
-	PermissionId,
-	PermissionState,
-} from "@elizaos/core/contracts/permissions";
 import type {
 	EncryptedRemoteControlEnvelope,
+	ExistingElizaInstallInfo,
 	RemoteCommandAction,
 	RemoteControllerPlatform,
 	RemoteControllerPublicIdentity,
 	RemoteJsonValue,
 	RemoteTargetPublicIdentity,
+	TradePermissionMode as SharedTradePermissionMode,
 	SignedRemoteCommand,
-} from "@elizaos/core/contracts/remote-control";
-import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import type { JsonValue } from "@elizaos/core";
+import type {
+	PermissionId,
+	PermissionState,
+	AgentAutomationMode as SharedAgentAutomationMode,
+	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
+} from "@elizaos/core/protocol";
+import type { SubscriptionStatusResponse } from "@elizaos/host/protocol";
 import type { RPCSchema } from "electrobun/bun";
 import type {
 	DatabaseBackupResult,
@@ -136,7 +134,7 @@ export interface NavigateBrowserWorkspaceTabRequest {
 export type {
 	ExistingElizaInstallInfo,
 	ExistingElizaInstallSource,
-} from "@elizaos/core/contracts/host-types";
+} from "@elizaos/contracts";
 export interface StateDirMigrationResult {
 	ok: boolean;
 	migrated: boolean;
@@ -393,7 +391,7 @@ export type {
 	PermissionId,
 	PermissionState,
 	PermissionStatus,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core/protocol";
 export type SystemPermissionId = PermissionId;
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {
@@ -912,7 +910,7 @@ export interface FirstRunStatusSnapshot {
 /**
  * Typed response for `getFirstRunOptions` — provider/model catalogs +
  * style presets used by the first-run UI. Mirrors the first-run options
- * structure in `@elizaos/core/contracts/firstRun`, narrowed to the
+ * structure in `@elizaos/contracts`, narrowed to the
  * subset the server actually returns at `/api/first-run/options`
  * (server source: `first-run-routes.ts:328`). Fields are kept structural
  * (`unknown`/`Record<string, unknown>`) for items whose shape lives

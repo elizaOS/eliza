@@ -8,8 +8,8 @@ import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
-} from "@elizaos/core/voice";
-import type { VoiceConfig } from "../../api/client";
+} from "@elizaos/host/protocol";
+import type { VoiceConfig } from "../../api/client-types-config";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 /* ── Constants ─────────────────────────────────────────────────────── */
 export const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";

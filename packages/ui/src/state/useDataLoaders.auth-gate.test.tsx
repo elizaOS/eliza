@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   auth: { authenticated: false },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 vi.mock("../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => mocks.auth.authenticated,

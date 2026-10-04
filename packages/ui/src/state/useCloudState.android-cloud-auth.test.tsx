@@ -62,7 +62,7 @@ vi.mock("../platform/android-runtime", () => ({
   isAndroidLauncherBuild: () => false,
 }));
 
-vi.mock("../api", () => ({ client: harness.api }));
+vi.mock("../api/client", () => ({ client: harness.api }));
 
 vi.mock("../android-cloud/android-cloud-auth", () => ({
   ANDROID_CLOUD_AUTH_RESULT_EVENT: "eliza:android-cloud-auth-result",
@@ -83,8 +83,9 @@ vi.mock("../android-cloud/android-cloud-auth", () => ({
   takeLatestAndroidCloudCompletion: vi.fn(() => null),
 }));
 
-vi.mock("../utils", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../utils")>();
+vi.mock("../utils/openExternalUrl", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../utils/openExternalUrl")>();
   return {
     ...original,
     closeExternalBrowser: vi.fn(async () => {}),

@@ -11,7 +11,7 @@ import {
   type ContentPackSource,
   type ResolvedContentPack,
   validateContentPackManifest,
-} from "@elizaos/core/contracts/content-pack";
+} from "@elizaos/contracts";
 /** Manifest reads are short UI requests and must not stall pack loading. */
 export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15000;
 /** A manifest is metadata, so bound it independently of its asset payloads. */

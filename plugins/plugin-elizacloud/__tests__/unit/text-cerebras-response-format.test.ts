@@ -11,7 +11,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateNativeChatCompletion } from "../../src/models/text";
 

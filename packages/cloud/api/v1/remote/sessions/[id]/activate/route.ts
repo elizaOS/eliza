@@ -7,7 +7,7 @@ import { isRemotePairingUuid } from "@elizaos/cloud-shared/db/crypto/remote-pair
 import { remoteSessionsRepository } from "@elizaos/cloud-shared/db/repositories/remote-sessions";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/core/contracts/remote-control";
+import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/contracts";
 import { Hono } from "hono";
 import { parseRemoteHostCredential } from "../../../host-auth";
 

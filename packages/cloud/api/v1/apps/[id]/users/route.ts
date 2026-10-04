@@ -7,7 +7,7 @@ import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 
 const MAX_LIMIT = 100;

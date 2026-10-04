@@ -6,8 +6,6 @@
  * @vitest-environment jsdom
  */
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
   cleanup,
   fireEvent,
@@ -17,6 +15,8 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NAVIGATE_VIEW_EVENT } from "../../../../packages/ui/src/events/index";
+import { SpatialSurface } from "../../../../packages/ui/src/spatial/index";
 
 import { TrajectoryLoggerView } from "./TrajectoryLoggerView.js";
 

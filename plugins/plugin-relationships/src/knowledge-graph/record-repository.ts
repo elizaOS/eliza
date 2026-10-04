@@ -3,20 +3,19 @@
  * Stores hold one database transaction across each complete graph operation,
  * including identity decisions, edge rewrites and audit writes. No SQL is parsed.
  */
+
+import {
+  type KnowledgeGraphEntity as Entity,
+  type EntityFilter,
+  normalizeEntityConnectorAccountId,
+  type KnowledgeGraphRelationship as Relationship,
+  type RelationshipFilter,
+} from "@elizaos/contracts";
 import {
   type DurableRecordStore,
   ElizaError,
   type IAgentRuntime,
 } from "@elizaos/core";
-import {
-  type Entity,
-  type EntityFilter,
-  normalizeEntityConnectorAccountId,
-} from "@elizaos/core/knowledge-graph/entity-types";
-import {
-  type Relationship,
-  type RelationshipFilter,
-} from "@elizaos/core/knowledge-graph/relationship-types";
 
 const ENTITIES = "plugin_knowledge_graph_entities_v1";
 const RELATIONSHIPS = "plugin_knowledge_graph_relationships_v1";

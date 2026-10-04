@@ -7,8 +7,8 @@ import {
   type SystemVolumeStatus,
   type SystemVolumeStream,
 } from "@elizaos/capacitor-system";
-import { Button, Input } from "@elizaos/ui";
-import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
+import { Button, Input, type OverlayAppContext } from "@elizaos/ui";
+
 import {
   ArrowLeft,
   Bell,

@@ -4,7 +4,7 @@ import type {
   LifeOpsOccurrence,
   LifeOpsReminderAttempt,
   LifeOpsTaskDefinition,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 import { Bell, CalendarClock, ChevronDown } from "lucide-react";
 import {
   type ReactNode,
@@ -16,8 +16,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { ApiError, isApiError } from "../../api/client-types-core";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";

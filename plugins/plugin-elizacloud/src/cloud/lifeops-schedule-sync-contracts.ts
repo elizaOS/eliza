@@ -1,4 +1,4 @@
-import { type LifeOpsAwakeProbability, type LifeOpsCircadianState, type LifeOpsPersonalBaseline, type LifeOpsRelativeTime, type LifeOpsScheduleInsight, type LifeOpsScheduleMealLabel, type LifeOpsScheduleRegularity, type LifeOpsScheduleSleepStatus, type LifeOpsUnclearReason } from "@elizaos/core/contracts/personal-assistant";
+import { type LifeOpsAwakeProbability, type LifeOpsCircadianState, type LifeOpsPersonalBaseline, type LifeOpsRelativeTime, type LifeOpsScheduleInsight, type LifeOpsScheduleMealLabel, type LifeOpsScheduleRegularity, type LifeOpsScheduleSleepStatus, type LifeOpsUnclearReason } from "@elizaos/contracts";
 
 export const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
   "iphone",

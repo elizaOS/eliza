@@ -5,6 +5,7 @@
  */
 
 import type { VoiceAudioArtifact } from "@elizaos/plugin-local-inference/voice-workbench";
+import type { DeterministicModelDiagnostics } from "../../src/deterministic-model-plugin.ts";
 import type {
   ApprovalRequestState,
   CapturedAction,
@@ -13,13 +14,12 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
-  DeterministicModelDiagnostics,
   ScenarioContext,
   ScenarioEvidenceScope,
   ScenarioExecutionProfile,
   ScenarioLane,
   ScenarioTurnExecution,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 import type { JudgeEvidence, JudgeResult } from "./judge.ts";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 

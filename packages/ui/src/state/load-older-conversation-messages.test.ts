@@ -1,6 +1,6 @@
 /** Older-page loads must report how many turns were actually prepended. */
 import { expect, it } from "vitest";
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 import { loadOlderConversationMessages } from "./load-older-conversation-messages";
 
 function message(id: string, timestamp: number): ConversationMessage {

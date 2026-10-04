@@ -80,6 +80,8 @@ export type EmitArtifact = (
 
 /** Shared context passed to every analyzer for one run. */
 export interface AnalyzerContext {
+  /** Cancellation propagated into network and subprocess analyzers. */
+  signal?: AbortSignal;
   /** Tier the run is executing at; analyzers above it record `skipped-tier`. */
   tier: Tier;
   /** Resolve a baseline image for diff analyzers, or null when unavailable. */

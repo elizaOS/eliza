@@ -6,7 +6,7 @@
 
 import type { AgentRuntime, Evaluator, Memory, State } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import { factMemoryEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { createAssistantPlugin } from "../index.ts";

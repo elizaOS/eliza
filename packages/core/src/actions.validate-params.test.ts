@@ -1,7 +1,7 @@
 /** validateActionParams reports every supplied value that fails its declared schema, including optional parameters, instead of discarding or replacing it. */
 import { describe, expect, it } from "vitest";
 import { validateActionParams } from "./actions";
-import type { Action } from "./types";
+import type { Action } from "./types/components.js";
 
 const action: Action = {
 	name: "DEMO",

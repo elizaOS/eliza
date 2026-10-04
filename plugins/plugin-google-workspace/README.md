@@ -38,3 +38,8 @@ caller limit up to 25 MiB, and returns complete bytes with their SHA-256 hash.
 Filenames are untrusted metadata, never output paths. Hosts still own task
 reauthorization, content-type policy and document extraction; this method does
 not register a model action, parse documents or persist attachment contents.
+
+Hosts can supply `GoogleWorkspaceServiceOptions.apiRootUrl` (or a runtime-local
+`ELIZA_MOCK_GOOGLE_BASE`) for an isolated API world. `GoogleApiClientFactory`
+also accepts an explicit endpoint. Credential resolution remains account-scoped;
+independent clients do not require changing process environment variables.

@@ -6,7 +6,8 @@ import { handleDocumentsRoutes } from "./routes.ts";
 
 const searchDocuments = vi.fn(async () => []);
 
-vi.mock("@elizaos/core/utils/number-parsing", () => ({
+vi.mock("@elizaos/core/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core/protocol")>()),
   parseClampedFloat: () => 0.3,
   parsePositiveInteger: () => 20,
 }));

@@ -17,9 +17,9 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
-  Textarea,
-} from "../../../components/primitives";
+} from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
+import { Textarea } from "../../../components/ui/textarea";
 import {
   type ApprovalRequest,
   formatApprovalTimestamp,

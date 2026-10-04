@@ -10,7 +10,7 @@
 
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../api";
+import { client } from "../api/client";
 import { useCloudState } from "./useCloudState";
 
 const STEWARD_TOKEN_KEY = "steward_session_token";

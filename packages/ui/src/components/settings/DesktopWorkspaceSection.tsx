@@ -15,13 +15,14 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { fetchWithCsrf } from "../../api/csrf-client";
-import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {

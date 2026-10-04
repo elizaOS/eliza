@@ -8,7 +8,7 @@ import {
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
   normalizeCompletedActionHandoffId,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 import { getWindowNavigationPath } from "./navigation";
 
 const MAX_TRACKED_HANDOFFS = 256;

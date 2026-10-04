@@ -7,11 +7,11 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AgentRuntime } from "@elizaos/core";
 import {
-  type EntityAttribute,
+  type LifeOpsEntityAttribute as EntityAttribute,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   getHouseholdOperationsService,
   getSchoolSourceFactRuntimeService,

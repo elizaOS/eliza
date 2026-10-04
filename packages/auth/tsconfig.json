@@ -16,7 +16,7 @@
     "declaration": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core/*": ["../core/src/*"]
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "include": [
@@ -25,6 +25,7 @@
     "src/kms/**/*",
     "src/index.ts",
     "test/*.ts",
+    "src/accounts/**/*",
     "src/providers/**/*"
   ]
 }

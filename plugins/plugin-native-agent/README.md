@@ -149,6 +149,14 @@ the installer must repeat current trust and APK checks at commit. Hosts retain
 security-floor policy, generated trust bindings and package identity. Its portable
 contract is included in `test:native-host`.
 
+`PrivateOAuthCallback` admits a host-configured HTTPS callback and queues it to a
+private sink without persistence, logging or renderer output. Hosts must strip
+handled Intent data before passing lifecycle events to a WebView, use a bounded
+executor and supply coarse delivery-failure handling. The sink must validate state,
+PKCE, account identity and single-use exchange. `QUEUED` is transport admission,
+not authentication success. Portable JVM coverage is in `test:native-host`; Android
+intent/app-link delivery and provider callback registration need host qualification.
+
 `NativeProcessLog` drains child diagnostics with bounded line buffers, literal
 secret redaction before truncation, UTF-8 byte-limited rotation and serialized
 records across writers in one JVM. Hosts provide a private real parent directory,
@@ -157,10 +165,9 @@ are mode 0600; symlink/non-file destinations are refused. It does not store mode
 context or durable events. The portable suite exercises a 32 MiB line under a
 12 MiB heap; `NativeProcessLogInstrumentedTest` covers Android file semantics.
 
-`PrivateOAuthCallback` admits a host-configured HTTPS callback and queues it to a
-private sink without persistence, logging or renderer output. Hosts must strip
-handled Intent data before passing lifecycle events to a WebView, use a bounded
-executor and supply coarse delivery-failure handling. The sink must validate state,
-PKCE, account identity and single-use exchange. `QUEUED` is transport admission,
-not authentication success. Portable JVM coverage is in `test:native-host`; Android
-intent/app-link delivery and provider callback registration need host qualification.
+`RuntimePrivateFiles` publishes host-selected files with mode 0600 and atomic
+replacement, and reads optional single-line UTF-8 inputs with host-selected byte
+bounds. The host supplies a real private parent, serialized writes and directory
+sync. A sync failure after rename means publication happened but durability is
+unknown. Portable tests cover concurrent readers and rejected inputs; Android
+instrumentation qualifies the real directory-sync adapter.

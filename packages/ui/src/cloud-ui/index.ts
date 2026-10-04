@@ -85,7 +85,6 @@ export * from "./components/product-switcher";
 export * from "./components/promotion/promote-app-dialog";
 export * from "./components/promotion/social-connection-hint";
 export * from "./components/voice";
-export { default as dynamic } from "./runtime/dynamic";
 export { default as Image } from "./runtime/image";
 export * from "./runtime/navigation";
 export * from "./runtime/render-telemetry";

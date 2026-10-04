@@ -22,7 +22,7 @@ import { workflowSurfaceClient } from "./workflow-surface-routing";
 // Declaration merging
 // ---------------------------------------------------------------------------
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getWorkflowStatus(): Promise<WorkflowStatusResponse>;
     getWorkflowDefinition(id: string): Promise<WorkflowDefinition>;

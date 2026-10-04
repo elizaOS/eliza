@@ -58,27 +58,31 @@ import {
 } from "@elizaos/auth/auth";
 import { fetchCodexUsage, probeDirectApiKey } from "@elizaos/auth/providers";
 import {
-  type AccountPoolBrokerSnapshot,
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
-  type ElizaConfig,
-  ElizaError,
-  type IAgentRuntime,
-  isLinkedAccountProviderId,
-  type LinkedAccountConfig,
-  type LinkedAccountProviderId,
-  logger,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
-  type RouteRequestContext,
-  resolveServiceRoutingInConfig,
+} from "@elizaos/contracts";
+import {
+  type AccountPoolBrokerSnapshot,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
   resolveStateDir,
-  type ServiceRouteAccountStrategy,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  type ElizaConfig,
+  isLinkedAccountProviderId,
+  type LinkedAccountConfig,
+  type LinkedAccountProviderId,
+  type RouteRequestContext,
+  resolveServiceRoutingInConfig,
+  type ServiceRouteAccountStrategy,
+} from "@elizaos/host/protocol";
 
 import * as zod from "zod";
 import {

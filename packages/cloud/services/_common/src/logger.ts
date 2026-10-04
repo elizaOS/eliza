@@ -1,4 +1,4 @@
-import { redactTrailingArgs } from "@elizaos/core/security/log-redaction";
+import { redactTrailingArgs } from "@elizaos/core/protocol";
 
 /**
  * Structured JSON logger factory shared by cloud-services packages.

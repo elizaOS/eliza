@@ -5,9 +5,9 @@
  * CharacterRoster.helpers); preview URLs resolve lazily from the VRM state.
  */
 
-import type { StylePreset } from "@elizaos/core/contracts/first-run-options";
+import type { StylePreset } from "@elizaos/host/protocol";
 import { useEffect, useState } from "react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import { Button } from "../ui/button";
 import { INSET_CLIP, SLANT_CLIP } from "./CharacterRoster.helpers";

@@ -18,17 +18,18 @@ import {
   updateAccountMetadata,
 } from "@elizaos/auth/auth";
 import {
-  type ElizaConfig,
-  type LinkedAccountConfig,
-  type LinkedAccountHealth,
-  type LinkedAccountUsage,
-  logger,
   PostSubscriptionAnthropicExchangeRequestSchema,
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
-  type RouteRequestContext,
-  resolveStateDir,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { logger, resolveStateDir } from "@elizaos/core";
+import type {
+  ElizaConfig,
+  LinkedAccountConfig,
+  LinkedAccountHealth,
+  LinkedAccountUsage,
+  RouteRequestContext,
+} from "@elizaos/host/protocol";
 
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

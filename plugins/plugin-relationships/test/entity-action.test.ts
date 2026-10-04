@@ -15,13 +15,15 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 }));
 
 import type {
+  KnowledgeGraphEntity as Entity,
+  KnowledgeGraphRelationship as Relationship,
+} from "@elizaos/contracts";
+import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { Entity } from "@elizaos/core/knowledge-graph/entity-types";
-import type { Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

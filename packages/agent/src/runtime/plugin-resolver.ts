@@ -20,14 +20,11 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { ElizaError, formatError, logger, type Plugin } from "@elizaos/core";
 import {
-  ElizaError,
-  formatError,
   isMobilePlatform,
-  logger,
-  type Plugin,
   type PluginInstallRecord,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {

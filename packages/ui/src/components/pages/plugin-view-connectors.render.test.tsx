@@ -17,21 +17,22 @@
  * real `PluginConfigForm`/`ConfigRenderer` — renders for real.
  */
 
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginInfo, PluginParamDef } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 
 const stateMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 
-vi.mock("../../state", () => ({
-  useApp: () => stateMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => stateMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(stateMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(stateMock.value),
 }));
 
-vi.mock("../../api", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: {} }));
 
 vi.mock("../connectors/ConnectorSetupPanel", async () => {
   const helpers = await vi.importActual<

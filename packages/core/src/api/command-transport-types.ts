@@ -30,7 +30,7 @@ export type {
 	CommandScope,
 	CommandSurface,
 	CommandTarget,
-} from "@elizaos/core";
+} from "../types/commands.js";
 
 /**
  * Wire-safe argument shape produced by `serializeCommand`. Static `choices` are

@@ -4,11 +4,11 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type {
+  KnowledgeGraphEntity as Entity,
+  LifeOpsEntityIdentity as EntityIdentity,
+} from "@elizaos/contracts";
 import { AgentRuntime, type UUID } from "@elizaos/core";
-import {
-  type Entity,
-  type EntityIdentity,
-} from "@elizaos/core/knowledge-graph/entity-types";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { LegacyRelationshipsSchemaAuditService } from "../services/legacy-schema-audit.ts";

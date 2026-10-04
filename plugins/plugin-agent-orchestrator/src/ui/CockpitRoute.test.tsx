@@ -32,7 +32,8 @@ type ButtonMockProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
   variant?: string;
 };
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     getOrchestratorRooms: mocks.getOrchestratorRooms,
     createOrchestratorTask: mocks.createOrchestratorTask,
@@ -55,8 +56,6 @@ vi.mock("@elizaos/ui/api", () => ({
       </button>
     );
   },
-  // Stub the presentational view: surface the deck count + a spawn button that
-  // fires onCreateSession with a representative create-task input.
   CockpitView: (props: {
     rooms: { rooms: unknown[] } | null;
     onCreateSession: (i: unknown) => void;
@@ -102,16 +101,6 @@ vi.mock("@elizaos/ui/api", () => ({
     );
   },
 }));
-
-vi.mock("@elizaos/ui/components", async () => {
-  const apiMock = await import("@elizaos/ui/api");
-  return { CockpitView: apiMock.CockpitView };
-});
-
-vi.mock("@elizaos/ui/components/ui/button", async () => {
-  const apiMock = await import("@elizaos/ui/api");
-  return { Button: apiMock.Button };
-});
 
 // Stub the (separately-tested) heavy session pane — the container test only
 // proves the drill-in ROUTING (deck ⇄ pane), not the pane internals.

@@ -26,7 +26,9 @@ vi.mock("../../bridge/storage-bridge", () => ({
   getStorageValue: boundary.get,
   setStorageValue: boundary.set,
 }));
-vi.mock("../../utils", () => ({ openExternalUrl: boundary.external }));
+vi.mock("../../utils/openExternalUrl", () => ({
+  openExternalUrl: boundary.external,
+}));
 vi.mock("./BrowserSearchSettings", () => ({
   BrowserSearchSettings: () => <p>Explicit browser authorization</p>,
 }));

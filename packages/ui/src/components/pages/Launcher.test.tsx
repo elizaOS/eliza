@@ -8,7 +8,7 @@
 // glyph (never probing API heroes) for dedicated cloud agents.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { withBuiltinShellViews } from "../../hooks/useAvailableViews";
 import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { readViewInteractions } from "../../view-telemetry";

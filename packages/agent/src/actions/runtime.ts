@@ -20,19 +20,21 @@ import {
   type Action,
   type ActionResult,
   type AwarenessRegistry,
-  createSelfApiRequestHeaders,
   getValidationKeywordTerms,
   type HandlerOptions,
   type IAgentRuntime,
-  isSelfEditEnabled,
   logger,
   type Memory,
-  requireRestartHandler,
   textIncludesKeywordTerm,
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import { isSelfEditEnabled } from "@elizaos/host";
+import {
+  createSelfApiRequestHeaders,
+  requireRestartHandler,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 const RUNTIME_OPS = [
   "status",

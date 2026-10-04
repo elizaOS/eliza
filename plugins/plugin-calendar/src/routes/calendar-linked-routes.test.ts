@@ -4,7 +4,7 @@
  * mutation gateway instead of calling CalendarService directly.
  */
 
-import { type LifeOpsLinkedCalendarLink } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsLinkedCalendarLink } from "@elizaos/contracts";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarRouteDeps,

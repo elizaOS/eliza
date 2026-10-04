@@ -13,30 +13,34 @@ import {
   ElizaError,
   EventType,
   formatError,
-  getHttpRuntime,
-  getStylePresets,
   type IAgentRuntime,
-  isMobilePlatform,
   logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
   normalizeCharacterLanguage,
   parseClampedInteger,
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
-  type Route,
-  readAliasedEnv,
-  readRequestBody,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
   resolveOwnerEntityIdOrDefault,
-  resolveServerOnlyPort,
   ServiceType,
+} from "@elizaos/core";
+import {
+  readJsonBody as parseJsonBody,
+  readRequestBody,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/core";
+} from "@elizaos/host";
+import {
+  getHttpRuntime,
+  getStylePresets,
+  isMobilePlatform,
+  type ReadJsonBodyOptions,
+  type Route,
+  readAliasedEnv,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
+  resolveServerOnlyPort,
+} from "@elizaos/host/protocol";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import {
@@ -174,6 +178,7 @@ import {
   createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
 } from "./event-hub.ts";
+import type { ApiStatusComposer } from "./health-routes.ts";
 import { responseReadinessFields } from "./health-routes.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
@@ -1187,6 +1192,7 @@ export interface RuntimeRestartOptions {
   disposeCurrentBeforeBuild?: boolean;
 }
 interface RequestContext {
+  composeStatus?: ApiStatusComposer;
   hostRuntimeMode?: RuntimeModeSnapshot;
   restartRequiresRuntimeDisposal?: boolean;
   onRestart:
@@ -2113,6 +2119,7 @@ async function handleRequestForViewClient(
   }
   if (
     await handleHealthRoutes({
+      composeStatus: ctx?.composeStatus,
       req,
       res,
       method,
@@ -3398,6 +3405,8 @@ function strictPortBindingEnabled(): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 export async function startApiServer(opts?: {
+  /** Compose product status fields before serialization; does not intercept transport. */
+  composeStatus?: ApiStatusComposer;
   port?: number;
   runtime?: AgentRuntime;
   /**
@@ -3681,6 +3690,7 @@ export async function startApiServer(opts?: {
   );
   apiLap("pre-createServer (route imports + middleware setup done)");
   const requestContext: RequestContext = {
+    composeStatus: opts?.composeStatus,
     hostRuntimeMode:
       hostConfig === undefined ? undefined : resolveRuntimeMode(hostConfig),
     onRestart,

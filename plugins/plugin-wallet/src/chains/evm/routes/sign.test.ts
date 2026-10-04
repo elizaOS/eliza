@@ -12,8 +12,8 @@ import { evmSignRoutes } from "./sign";
 import { expect } from "vitest";
 import { it } from "vitest";
 import { type IAgentRuntime } from "@elizaos/core";
-import { type RouteRequest } from "@elizaos/core/api/http-plugin";
-import { type RouteResponse } from "@elizaos/core/api/http-plugin";
+import { type RouteRequest } from "@elizaos/host/protocol";
+import { type RouteResponse } from "@elizaos/host/protocol";
 import { vi } from "vitest";
 const walletBackendMocks = vi.hoisted(() => ({
     resolveWalletBackend: vi.fn(),

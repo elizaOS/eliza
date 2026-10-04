@@ -9,12 +9,10 @@
  * returns 503 when the feature is unavailable. The activity feed also folds in
  * recent extracted facts from runtime memory.
  */
-import {
-  type IAgentRuntime,
-  PostRelationshipLinkRequestSchema,
-  type RouteRequestContext,
-  type UUID,
-} from "@elizaos/core";
+
+import { PostRelationshipLinkRequestSchema } from "@elizaos/contracts";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import type {
   RelationshipsGraphQuery,

@@ -15,7 +15,7 @@
 // the post-merge lane that runs it explicitly. The describe.skipIf guard keeps
 // it a clean no-op without a token regardless.
 
-import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   GoogleApiClientFactory,
   type GoogleAuthClient,
