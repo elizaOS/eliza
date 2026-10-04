@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 const modules = [
+  "../trust/index",
   "eliza-source",
   "android/build-eliza-bootanimation",
   "aosp/verify-android-instrumentation-results",
@@ -44,7 +45,7 @@ const modules = [
   "verify-image-reproducibility",
 ];
 for (const name of modules) {
-  test(`${name} can be imported without invoking its CLI`, () => {
+  test(`${name} imports without side effects`, () => {
     const module = new URL(`../${name}.ts`, import.meta.url);
     const result = spawnSync(
       process.execPath,

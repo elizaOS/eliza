@@ -124,7 +124,7 @@ export function loadPinnedEd25519PublicKey(
   return key;
 }
 
-export function decodeDetachedEd25519Signature(bytes: Uint8Array): Buffer {
+function decodeDetachedEd25519Signature(bytes: Uint8Array): Buffer {
   if (bytes.byteLength === ED25519_SIGNATURE_BYTES) return Buffer.from(bytes);
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes).trim();
   const decoded = decodeStrictBase64(text, "Detached Ed25519 signature");

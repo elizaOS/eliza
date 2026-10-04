@@ -1,6 +1,5 @@
 export {
   assertEd25519Signature,
-  decodeDetachedEd25519Signature,
   loadPinnedEd25519PublicKey,
   publicKeyFingerprint,
   RELEASE_PUBLIC_KEY_ENV,
@@ -12,4 +11,5 @@ export {
   configuredReleaseSequenceStore,
   FileReleaseSequenceStore,
   RELEASE_SEQUENCE_STATE_PATH_ENV,
+  ReleaseSequencePersistenceError,
 } from "./release-sequence-store.ts";
