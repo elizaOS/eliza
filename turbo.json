@@ -389,7 +389,7 @@
       ]
     },
     "@elizaos/plugin-anthropic#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-assistant#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]
