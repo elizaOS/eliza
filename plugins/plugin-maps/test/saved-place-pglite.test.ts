@@ -4,7 +4,10 @@
  * the persisted resource plus immutable operation ledger are inspected.
  */
 
-import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
+import {
+  createTestRuntime,
+  type TestRuntimeResult,
+} from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MapsService } from "../src/service.js";
 import { MAX_SAVED_PLACES_PER_OWNER } from "../src/store.js";

@@ -8,7 +8,7 @@
  * Framework-free so it unit-tests without the React graph; consumed by
  * `AccountRequiredCard`, `ConnectorAccountPicker`, and the composer.
  */
-import type { ConnectorAccountRecord } from "../../api/client-agent";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
 
 export const CONNECTOR_SEND_AS_METADATA_KEY = "connectorSendAs";
 

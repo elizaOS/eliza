@@ -3,7 +3,7 @@
  * streamed event envelopes so the UI can flag missing/partial/recovered runs.
  * Feeds the autonomy status surfaces.
  */
-import type { StreamEventEnvelope } from "../api/client";
+import type { StreamEventEnvelope } from "../api/client-types-core";
 
 export type AutonomyRunHealthStatus =
   | "ok"

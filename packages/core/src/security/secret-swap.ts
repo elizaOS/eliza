@@ -171,7 +171,7 @@ function collectMatches(
 		for (const match of text.matchAll(pattern)) {
 			const token = extractToken(match[0], match.slice(1));
 			if (!/^[[{]+$/.test(token) && shouldSwapValue(token, exemptValues)) {
-				const start = match.index! + match[0].lastIndexOf(token);
+				const start = match.index + match[0].lastIndexOf(token);
 				values.push({ value: token, start, end: start + token.length });
 			}
 		}
@@ -206,7 +206,7 @@ function collectQuotedCredentials(
 			continue;
 		}
 		if (!shouldSwapValue(value, exemptValues)) continue;
-		const end = match.index! + match[0].length - 1;
+		const end = match.index + match[0].length - 1;
 		spans.push({ value, start: end - value.length, end });
 	}
 	return spans;
@@ -227,7 +227,7 @@ function collectUriCredentials(
 		if (separator <= 0 || separator === authority.length - 1) continue;
 		const value = authority.slice(0, separator);
 		if (!shouldSwapValue(value, exemptValues)) continue;
-		const start = match.index! + match[0].length - authority.length;
+		const start = match.index + match[0].length - authority.length;
 		spans.push({ value, start, end: start + value.length });
 	}
 	return spans;
@@ -314,7 +314,7 @@ function replaceValue(text: string, entry: SecretSwapEntry): string {
 	);
 	return text.replace(
 		pattern,
-		(match, existingPlaceholder) => existingPlaceholder ?? entry.placeholder,
+		(_match, existingPlaceholder) => existingPlaceholder ?? entry.placeholder,
 	);
 }
 
@@ -583,7 +583,7 @@ export class SecretSwapSession {
 			if (span.start < cursor) continue;
 			parts.push(
 				result.slice(cursor, span.start),
-				this.valueToEntry.get(span.value)!.placeholder,
+				this.entryForValue(span.value, "secret").placeholder,
 			);
 			cursor = span.end;
 		}

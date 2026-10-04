@@ -9,20 +9,22 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import type {
+  BscTradeSide,
+  BscTradeTxStatus,
+  WalletTradeLedgerEntry,
+  WalletTradeLedgerQuoteLeg,
+  WalletTradeLedgerRecordInput,
+  WalletTradeSource,
+  WalletTradingProfileRecentSwap,
+  WalletTradingProfileResponse,
+  WalletTradingProfileSourceFilter,
+  WalletTradingProfileTokenBreakdown,
+  WalletTradingProfileWindow,
+} from "@elizaos/contracts";
 import {
-  type BscTradeSide,
-  type BscTradeTxStatus,
   ElizaError,
   resolveStateDir,
-  type WalletTradeLedgerEntry,
-  type WalletTradeLedgerQuoteLeg,
-  type WalletTradeLedgerRecordInput,
-  type WalletTradeSource,
-  type WalletTradingProfileRecentSwap,
-  type WalletTradingProfileResponse,
-  type WalletTradingProfileSourceFilter,
-  type WalletTradingProfileTokenBreakdown,
-  type WalletTradingProfileWindow,
   writeJsonAtomicSync,
 } from "@elizaos/core";
 

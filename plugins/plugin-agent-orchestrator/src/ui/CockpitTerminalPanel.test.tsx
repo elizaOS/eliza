@@ -10,7 +10,7 @@
 // HONEST NOTE: this proves the panel's wiring + mount behavior. That raw stdin
 // actually reaches a prompt so a live `/slash` executes needs a runtime with a
 // registered PTY_SERVICE (node-pty) — out of reach for a unit test; see the
-// component docblock + 05-GAP-FILL-PLAN.md Step 3 "Build-lead call".
+// the owning runtime integration tests.
 
 import {
   act,
@@ -76,21 +76,8 @@ const ui = vi.hoisted(() => {
   return { client, emit };
 });
 
-vi.mock("@elizaos/ui/api", () => ({
-  Button: ({ children, ...rest }: Record<string, unknown>) =>
-    React.createElement(
-      "button",
-      { type: "button", ...rest },
-      children as React.ReactNode,
-    ),
-  Card: ({ children, ...rest }: Record<string, unknown>) =>
-    React.createElement("div", rest, children as React.ReactNode),
-  Input: (props: Record<string, unknown>) =>
-    React.createElement("input", props),
-  client: ui.client,
-}));
-
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: ui.client,
   Button: (props: Record<string, unknown>) => {
     const {

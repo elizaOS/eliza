@@ -8,5 +8,5 @@
  * a thin re-export shim for backwards compatibility.
  */
 
-export * from "@elizaos/core/text/untrusted-email-content";
+export { wrapUntrustedEmailContent } from "@elizaos/core/protocol";
 export * from "./email-classifier.js";

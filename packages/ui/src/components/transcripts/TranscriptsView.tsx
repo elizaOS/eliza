@@ -11,25 +11,25 @@
  * detail pane renders the {@link LiveMeetingPane} for an in-progress meeting.
  */
 
+import type {
+  MeetingJoinRequest,
+  MeetingPlatform,
+  MeetingSession,
+  Transcript,
+  TranscriptCapturePrivacyState,
+  TranscriptConsentState,
+  TranscriptRetentionState,
+  TranscriptSharingState,
+  TranscriptStatus,
+  TranscriptSummary,
+} from "@elizaos/core/protocol";
 import {
   MEETING_PLATFORM_LABELS,
-  type MeetingJoinRequest,
-  type MeetingPlatform,
-  type MeetingSession,
-} from "@elizaos/core/meetings";
-import {
-  type Transcript,
-  type TranscriptCapturePrivacyState,
-  type TranscriptConsentState,
-  type TranscriptRetentionState,
-  type TranscriptSharingState,
-  type TranscriptStatus,
-  type TranscriptSummary,
   transcriptCapturePrivacyState,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import { AudioLines } from "lucide-react";
 import type * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { cn } from "../../lib/utils";
 import { PagePanel } from "../composites/page-panel";
 import { RedactedBadge } from "../RedactedBadge";

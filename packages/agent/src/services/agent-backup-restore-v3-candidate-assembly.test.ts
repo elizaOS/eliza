@@ -17,7 +17,7 @@ import {
   type AgentBackupRestoreV3CandidateReceipt,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import {
   afterAll,
   afterEach,

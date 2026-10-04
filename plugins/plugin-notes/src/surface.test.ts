@@ -1,11 +1,11 @@
 /** Proves the production Notes surface admits every declared Notes capability through the real view broker. */
 
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { resolveSurfaceManifest } from "@elizaos/core/protocol";
+import { expect, it } from "vitest";
 import {
   brokerViewInteract,
   viewManifestAllowsCapability,
-} from "@elizaos/ui/components/views/view-capability-broker";
-import { expect, it } from "vitest";
+} from "../../../packages/ui/src/components/views/view-capability-broker";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { NOTES_SURFACE } from "./surface.js";
 

@@ -17,11 +17,8 @@ import {
   buildProactiveJudgePrompt,
   parseProactiveJudgeDecisionOutput,
 } from "@elizaos/agent/services/proactive-interaction-decider";
-import {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  type IAgentRuntime,
-  type ViewSwitchedPayload,
-} from "@elizaos/core";
+import type { IAgentRuntime, ViewSwitchedPayload } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 
 const BASE_URL =
   process.env.OPENAI_BASE_URL ||

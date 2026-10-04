@@ -12,9 +12,9 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page";
+} from "../../layouts/framed-page/framed-page";
 import { DATABASE_VECTOR_VIEW } from "../../navigation/builtin-route-descriptors";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { SegmentedControl } from "../ui/segmented-control";
 import { DynamicViewLoader } from "../views/DynamicViewLoader";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";

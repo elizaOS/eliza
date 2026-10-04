@@ -15,20 +15,21 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
+import type { CustomActionDef, CustomActionHandler } from "@elizaos/contracts";
 import {
   type Action,
-  type CustomActionDef,
-  type CustomActionHandler,
-  createSelfApiRequestHeaders,
   type HandlerOptions,
   type IAgentRuntime,
   isPrivateIpAddress,
   normalizeHostLike,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import {
+  createSelfApiRequestHeaders,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
-import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
+import { hasSelectedContextOrSignalSync } from "@elizaos/plugin-assistant";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;

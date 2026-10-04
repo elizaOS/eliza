@@ -10,7 +10,6 @@ from unittest.mock import patch
 from hermes_adapter.bfcl import (
     HermesBFCLAgent,
     _extract_calls_from_response,
-    _provider_safe_tools,
 )
 from hermes_adapter.client import HermesClient, MessageResponse
 
@@ -84,7 +83,7 @@ def test_extract_calls_rejects_text_json_fallback() -> None:
 def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -162,7 +161,7 @@ def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(
 def test_hermes_bfcl_agent_maps_provider_safe_tool_names_back(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -234,7 +233,7 @@ def test_hermes_bfcl_agent_maps_provider_safe_tool_names_back(
 def test_hermes_bfcl_agent_parallel_case_requires_one_native_call_per_operation(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -327,7 +326,7 @@ def test_hermes_bfcl_agent_parallel_case_requires_one_native_call_per_operation(
 
 
 def test_hermes_bfcl_agent_irrelevant_case_disables_tool_calls(tmp_path: Path) -> None:
-    from benchmarks.bfcl.types import BFCLCategory, BFCLTestCase
+    from benchmarks.suites.bfcl.types import BFCLCategory, BFCLTestCase
 
     client = _fake_client(tmp_path)
     agent = HermesBFCLAgent(client=client, model_name="gpt-oss-120b")
@@ -364,7 +363,7 @@ def test_hermes_bfcl_agent_irrelevant_case_disables_tool_calls(tmp_path: Path) -
 def test_hermes_bfcl_agent_retries_prompt_only_on_native_tool_schema_error(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,

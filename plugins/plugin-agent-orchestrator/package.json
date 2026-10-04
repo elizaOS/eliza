@@ -89,22 +89,24 @@
     "@elizaos/core": "workspace:*"
   },
   "dependencies": {
-    "git-workspace-service": "0.4.5",
-    "@octokit/rest": "^22.0.0",
-    "smthrs": "0.35.0",
-    "coding-agent-adapters": "0.17.0",
-    "drizzle-orm": "0.45.3",
-    "smol-toml": "^1.8.0",
     "@elizaos/auth": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/ui": "workspace:*",
+    "@octokit/rest": "^22.0.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "coding-agent-adapters": "0.17.0",
+    "drizzle-orm": "0.45.3",
+    "git-workspace-service": "0.4.5",
     "lucide-react": "^1.0.0",
     "marked": "^18.0.13",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@elizaos/plugin-elizacloud": "workspace:*"
+    "smol-toml": "^1.8.0",
+    "smthrs": "0.35.0",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
@@ -149,7 +151,8 @@
     "test:ui": "vitest run --config ui/vitest.config.ts",
     "typecheck:ui": "tsc --noEmit -p ui/tsconfig.build.json",
     "test:e2e:cockpit-browser": "node ui/test/browser-e2e/run-cockpit-browser-e2e.mjs",
-    "test:e2e:ui": "vitest run --root ui --config vitest.live.config.ts"
+    "test:e2e:ui": "vitest run --root ui --config vitest.live.config.ts",
+    "test:live:task-agent-live-smoke": "bun --conditions=eliza-source test/live/task-agent-live-smoke.ts"
   },
   "publishConfig": {
     "access": "public"

@@ -20,12 +20,12 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../../api";
-import type { LoadConversationMessagesResult } from "../../state/internal";
+} from "../../api/client-types-chat";
+import type { CodingAgentSession } from "../../api/client-types-cloud";
+import type { LoadConversationMessagesResult } from "../../state/types";
 import { type UseChatSendDeps, useChatSend } from "../../state/useChatSend";
 import { ChatMessage } from "../composites/chat/chat-message";
 
@@ -41,7 +41,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../api", () => ({ client: mocks.client }));
+vi.mock("../../api/client", () => ({ client: mocks.client }));
 
 function conversation(id: string, roomId: string): Conversation {
   return {

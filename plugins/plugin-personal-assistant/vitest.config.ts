@@ -27,14 +27,6 @@ const appCoreTestSetup = path.join(
 );
 const lifeopsTestSetup = path.join(here, "test", "setup.ts");
 const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
-const appCoreTaskHostCapabilities = path.join(
-  elizaRoot,
-  "packages",
-  "app",
-  "src",
-  "services",
-  "task-host-capabilities.ts",
-);
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const assistantPackageRequire = createRequire(
   path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
@@ -317,10 +309,6 @@ export default defineConfig({
           elizaRoot,
           "packages/app/src/services/auth-store.ts",
         ),
-      },
-      {
-        find: /^@elizaos\/app\/services\/task-host-capabilities$/,
-        replacement: appCoreTaskHostCapabilities,
       },
       {
         find: /^@elizaos\/core\/node$/,

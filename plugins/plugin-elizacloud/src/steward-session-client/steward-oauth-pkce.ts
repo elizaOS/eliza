@@ -12,7 +12,7 @@
  * into the attacker's account (login CSRF).
  */
 
-import { trimEndCharacters } from "@elizaos/core/utils/string-boundaries";
+import { trimEndCharacters } from "@elizaos/core/protocol";
 
 export type StewardOAuthProvider =
   | "google"

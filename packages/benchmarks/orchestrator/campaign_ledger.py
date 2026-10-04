@@ -936,6 +936,14 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
         basis="The deterministic gates score 56 triage items and 22 scheduled tasks; 2,306 scheduler ticks are execution work, not additional scenarios.",
     ),
     _direct(
+        "content_context", _C.INFRASTRUCTURE, None, None, None, _M.NOT_APPLICABLE,
+        basis="Offline content-context contracts validate infrastructure; fixture counts are not agent-quality measurements.",
+    ),
+    _direct(
+        "planner_optimization", _C.MANUAL, None, None, None, _M.UNKNOWN,
+        basis="The trusted adapter, manifest and prepared environment determine optimization workload and model calls.",
+    ),
+    _direct(
         "meeting_corpus_importers",
         _C.INFRASTRUCTURE,
         None,

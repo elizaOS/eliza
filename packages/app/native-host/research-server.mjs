@@ -48,6 +48,7 @@ export function createResearchServer({ store, operators, readAsset }) {
       ) {
         const name =
           url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+        const content = readAsset(name);
         res.writeHead(200, {
           ...headers,
           "Content-Type": name.endsWith(".html")
@@ -56,7 +57,7 @@ export function createResearchServer({ store, operators, readAsset }) {
               ? "text/javascript"
               : "text/css",
         });
-        return res.end(readAsset(name));
+        return res.end(content);
       }
       const token = req.headers.authorization?.match(
         /^Bearer ([A-Za-z0-9_-]{32,256})$/,

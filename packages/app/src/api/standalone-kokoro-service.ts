@@ -2,6 +2,21 @@ import { type ChildProcess, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 /** One initialized host voice worker. Cancellation destroys its native context. */
+/**
+ * Bun arguments for the speech worker. A source checkout resolves the worker
+ * to its `.ts` file, which needs the `eliza-source` condition to load
+ * workspace sources. A packaged build resolves the bundled `.js` worker, which
+ * must resolve its external dependencies from their built `dist` files, so the
+ * condition is not passed there.
+ */
+export function speechWorkerArgs(workerPath: string): string[] {
+  return [
+    "--no-install",
+    ...(workerPath.endsWith(".ts") ? ["--conditions=eliza-source"] : []),
+    workerPath,
+  ];
+}
+
 export class StandaloneKokoroService {
   private child?: ChildProcess;
   private boot?: Promise<void>;
@@ -50,36 +65,32 @@ export class StandaloneKokoroService {
     );
     const child = spawn(
       process.execPath,
-      [
-        "--no-install",
-        "--conditions=eliza-source",
+      speechWorkerArgs(
         fileURLToPath(
           import.meta.resolve(
             "@elizaos/plugin-local-inference/host-tts-worker",
           ),
         ),
-      ],
+      ),
       { env, stdio: ["pipe", "ignore", "ignore", "pipe"] },
     );
     this.child = child;
     const work = new Promise<void>((resolve, reject) => {
       this.rejectBoot = reject;
       let text = "";
-      // Cold model loading and first-use compute compilation can exceed 15 seconds.
-      // Readiness stays false until the worker completes its synthesis probe;
-      // cancellation and pipe failure still retire this bounded wait immediately.
-      const timer = setTimeout(() => {
-        if (this.child === child) this.stop();
-      }, 60000);
+      // The host lifecycle and synthesis caller own cancellation. Cold loading
+      // has no independent retirement deadline before its readiness probe.
       const failed = () => {
-        clearTimeout(timer);
         if (this.child === child) this.stop();
       };
       child.once("error", failed);
       child.once("exit", failed);
       child.stdin?.on("error", failed);
-      (child.stdio[3] as Readable).on("error", failed);
-      (child.stdio[3] as Readable).on("data", (bytes: Buffer) => {
+      const output = child.stdio[3] as Readable;
+      output.on("error", failed);
+      output.once("end", failed);
+      output.once("close", failed);
+      output.on("data", (bytes: Buffer) => {
         if (this.child !== child) return;
         text += bytes.toString("utf8");
         if (text.length > 2 * 1024 * 1024) {
@@ -99,7 +110,6 @@ export class StandaloneKokoroService {
               if (value.ready !== true) throw Error("Invalid readiness");
               this.ready = true;
               this.rejectBoot = undefined;
-              clearTimeout(timer);
               resolve();
               continue;
             }
@@ -125,6 +135,7 @@ export class StandaloneKokoroService {
             pending.resolve(audio);
           } catch {
             failed();
+            return;
           }
         }
       });

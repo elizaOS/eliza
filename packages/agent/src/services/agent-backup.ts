@@ -28,7 +28,6 @@ import {
 } from "@elizaos/auth/kms";
 import { defaultMasterKey, type MasterKeyResolver } from "@elizaos/auth/vault";
 import {
-  AGENT_BACKUP_CANONICAL_JSON,
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
@@ -38,16 +37,19 @@ import {
   type AgentBackupCaptureV2FileEntry,
   type AgentBackupCaptureV2FrameHeader,
   type AgentBackupCaptureV2Request,
-  type AgentRuntime,
   compareAgentBackupCaptureV2FilePaths,
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   parseAgentBackupCaptureV2Frames,
   parseAgentBackupCaptureV2Request,
   readAgentBackupCaptureV2FrameDigest,
   serializeAgentBackupCaptureV2Frame,
+} from "@elizaos/contracts";
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  type AgentRuntime,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   stableJsonString,
   timeInferenceSpan,
 } from "@elizaos/core";
@@ -443,7 +445,13 @@ function getLocalBackupKmsClient(): Promise<KmsClient> {
  * already-written `stateSha256` envelopes stay verifiable.
  */
 function stableJson(value: unknown): string {
-  return stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
+  const serialized = stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
+  if (serialized === undefined) {
+    throw new ElizaError("Backup integrity input is not a JSON value", {
+      code: "INVALID_BACKUP_INTEGRITY_INPUT",
+    });
+  }
+  return serialized;
 }
 function sha256Bytes(bytes: Buffer | string): string {
   return crypto.createHash("sha256").update(bytes).digest("hex");

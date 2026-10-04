@@ -5,10 +5,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import {
-  type MeetingEndReason,
-  type MeetingPlatform,
-} from "@elizaos/core/meetings";
+import type { MeetingEndReason, MeetingPlatform } from "@elizaos/core/protocol";
 import type { MeetingBotSession, MeetingPlatformAdapter } from "../../types.js";
 import { selectInputDriver } from "../humanized/index.js";
 import { launchMeetingBrowser } from "../shared/launch.js";

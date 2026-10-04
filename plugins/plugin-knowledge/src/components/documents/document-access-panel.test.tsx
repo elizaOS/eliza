@@ -15,11 +15,12 @@ const api = vi.hoisted(() => ({
   getRelationshipsPeople: vi.fn(),
   updateDocumentAccess: vi.fn(),
 }));
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: api,
   isApiError: (error: { status?: number }) => typeof error?.status === "number",
 }));
-vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
+vi.mock("../../../../../packages/ui/src/hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => "test-agent",
 }));
 

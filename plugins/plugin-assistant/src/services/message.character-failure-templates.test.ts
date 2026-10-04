@@ -28,7 +28,7 @@ import {
   TurnControllerRegistry,
   type UUID,
 } from "@elizaos/core";
-import type { CharacterFailureTemplates } from "@elizaos/core/contracts/first-run-options";
+import type { CharacterFailureTemplates } from "@elizaos/host/protocol";
 import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

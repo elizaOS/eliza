@@ -12,11 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const registration = vi.hoisted(() => ({ register: vi.fn() }));
 
-vi.mock("@elizaos/ui/app-shell-registry", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   registerAppShellPage: registration.register,
-}));
-vi.mock("@elizaos/ui/platform/init", () => ({ isElizaOS: () => true }));
-vi.mock("@elizaos/ui/components", () => ({
+  isElizaOS: () => true,
   PluginPageFrame: ({
     children,
     title,

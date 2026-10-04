@@ -4,7 +4,7 @@
  * unauthenticated viewer.
  */
 
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
+import type { UiSpec } from "@elizaos/host/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { UiRenderer } from "./ui-renderer";

@@ -11,7 +11,7 @@ import {
 	type TargetSourceRegistry,
 	TargetSourceRegistryService,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createDiscordSourceCache,

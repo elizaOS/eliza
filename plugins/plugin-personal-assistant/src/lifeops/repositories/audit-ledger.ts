@@ -1,10 +1,11 @@
 /** Owns audit ledger persistence for LifeOps. Keeps domain mutations and existing transaction or claim boundaries together. */
-import type { IAgentRuntime } from "@elizaos/core";
+
 import type {
   LifeOpsAuditEvent,
   LifeOpsProgressEvent,
   LifeOpsRelationshipInteraction,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCommitmentLedgerRecord,
   LifeOpsCommitmentSource,

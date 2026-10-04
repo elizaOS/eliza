@@ -25,7 +25,7 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => platform.mobile },
 }));
 
-vi.mock("../../platform", () => ({
+vi.mock("../../platform/init", () => ({
   isDesktopPlatform: () => platform.desktop,
 }));
 
@@ -40,7 +40,7 @@ vi.mock("../../state/notifications/useWebPush", () => ({
   }),
 }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: (options: { id: string }) => ({
     ref: null,
     agentProps: { "data-agent-id": options.id },

@@ -25,7 +25,7 @@ const clearStaleStewardSessionMock = vi.hoisted(() => vi.fn());
 const clearCloudPairApiTokenMock = vi.hoisted(() => vi.fn());
 const clearStoredStewardTokenMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: vi.fn(() => "https://api.elizacloud.ai"),
     getRestAuthToken: vi.fn(() => "token"),

@@ -12,7 +12,7 @@ import {
   fetchManagedGoogleGmailTriage,
 } from "@elizaos/cloud-shared/lib/services/agent-google-connector";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();

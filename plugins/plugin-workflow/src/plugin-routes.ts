@@ -4,8 +4,8 @@
  * plugin-workflow services; there is no external workflow server or sidecar.
  */
 import type http from 'node:http';
-import type { HttpPlugin as Plugin, Route } from '@elizaos/core/api/http-plugin';
-import { getCloudRuntimeRequestIdentity } from '@elizaos/core/contracts/cloud-runtime-request';
+import { getCloudRuntimeRequestIdentity } from '@elizaos/contracts';
+import type { HttpPlugin as Plugin, Route } from '@elizaos/host/protocol';
 import { handleAutomationsRoutes, readAutomations } from './routes/automations';
 import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';

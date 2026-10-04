@@ -14,10 +14,6 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import {
   type CustomActionDef,
-  isAndroidMobile,
-  isLocalCodeExecutionAllowed,
-  logger,
-  ModelType,
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
@@ -25,10 +21,18 @@ import {
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
-  type ReadJsonBodyOptions,
+} from "@elizaos/contracts";
+import {
+  isLocalCodeExecutionAllowed,
+  logger,
+  ModelType,
   type StreamEventEnvelope,
   validateUuid,
 } from "@elizaos/core";
+import {
+  isAndroidMobile,
+  type ReadJsonBodyOptions,
+} from "@elizaos/host/protocol";
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {

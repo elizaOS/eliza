@@ -11,10 +11,12 @@ import {
   type IAgentRuntime,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
-  type OwnerContactEntry,
-  type OwnerContactsConfig,
   type UUID,
 } from "@elizaos/core";
+import type {
+  OwnerContactEntry,
+  OwnerContactsConfig,
+} from "@elizaos/host/protocol";
 import { loadElizaConfig } from "./config.ts";
 
 type OwnerContactsLoadContext = {

@@ -22,7 +22,9 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // HealthView only touches client.getBaseUrl; spatial primitives stay unmocked.
-vi.mock("@elizaos/ui", () => ({
+// They now come from the @elizaos/ui root too, so keep its real exports.
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: { getBaseUrl: () => "http://test.local" },
 }));
 

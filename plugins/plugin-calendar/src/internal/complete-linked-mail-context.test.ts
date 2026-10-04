@@ -1,5 +1,5 @@
 /** Verifies that next-event model context preserves complete linked-mail snippets. */
-import { type LifeOpsNextCalendarEventContext } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsNextCalendarEventContext } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import { formatNextEventContext } from "./format.ts";
 

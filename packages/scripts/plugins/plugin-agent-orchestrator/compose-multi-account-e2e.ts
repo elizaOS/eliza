@@ -24,6 +24,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+// Import the pool from app SRC, not the package barrel: app has no
+// `eliza-source` export condition, so the barrel resolves to (possibly stale)
+// dist — which may predate the coding-agent selector bridge. The src path
+// guarantees we install the bridge under test.
+import { getDefaultAccountPool } from "@elizaos/auth/accounts";
 // Runtime (not isolated-test) policy: the default AccountPool reads with a
 // runtime policy, and envelope encryption is keyed per policy owner — an
 // isolated-test write uses an in-memory random key the pool's runtime read
@@ -33,11 +38,6 @@ import {
   saveAccount,
 } from "@elizaos/auth/auth";
 import { AcpService } from "../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.ts";
-// Import the pool from app SRC, not the package barrel: app has no
-// `eliza-source` export condition, so the barrel resolves to (possibly stale)
-// dist — which may predate the coding-agent selector bridge. The src path
-// guarantees we install the bridge under test.
-import { getDefaultAccountPool } from "../../../app/src/services/account-pool.ts";
 
 const FAR_FUTURE = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
 const home = mkdtempSync(path.join(tmpdir(), "ma-compose-e2e-"));

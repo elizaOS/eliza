@@ -8,7 +8,7 @@ import {
   type AutomationNodeContributorContext,
   clearAutomationNodeContributorsForTests,
   listAutomationNodeContributors,
-} from "@elizaos/core/automation-node-contributors";
+} from "@elizaos/host/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerWalletAutomationNodeContributor } from "./automation-node-contributor";
 

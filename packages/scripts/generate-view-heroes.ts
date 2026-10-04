@@ -10,15 +10,18 @@ import { fileURLToPath } from "node:url";
  * extension). All existing real heroes are 1024x1024.
  *
  * The art itself (frame, palette, icon glyphs) is the shared, single source of
- * truth in `@elizaos/ui/view-hero-art` (`view-hero-art.ts`) — the same generator the
+ * truth in `packages/agent/src/api/view-hero-art.ts` — the same generator the
  * agent uses for its runtime hero fallback and that view scaffolding uses to
  * seed a new plugin's icon. This script owns curated fallback config and checks
  * the full manifest-derived app catalog so hero omissions cannot silently ship.
  *
  * Output is deterministic: re-running produces byte-identical files. Run with
- * `node packages/scripts/generate-view-heroes.ts` (requires `@elizaos/ui/view-hero-art` built).
+ * `node packages/scripts/generate-view-heroes.ts`.
  */
-import { renderViewHeroSvg, VIEW_HERO_ICONS } from "@elizaos/ui/view-hero-art";
+import {
+  renderViewHeroSvg,
+  VIEW_HERO_ICONS,
+} from "../agent/src/api/view-hero-art.ts";
 export const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",

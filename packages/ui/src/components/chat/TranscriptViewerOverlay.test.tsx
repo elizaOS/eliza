@@ -27,7 +27,7 @@ const {
   shareTranscript: vi.fn(),
   revokeTranscriptShare: vi.fn(),
 }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     getTranscript,
     updateTranscript,

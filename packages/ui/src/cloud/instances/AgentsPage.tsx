@@ -4,13 +4,15 @@
 
 import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import {
-  Badge,
   ContainersSkeleton,
+  ElizaAgentsPageWrapper,
+} from "../../cloud-ui/components/dashboard/cloud-dashboard-components";
+import {
   DashboardErrorState,
   DashboardLoadingState,
-  DashboardPageContainer,
-  ElizaAgentsPageWrapper,
-} from "@elizaos/ui/cloud-ui";
+} from "../../cloud-ui/components/dashboard/route-placeholders";
+import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
+import { Badge } from "../../components/ui/badge";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { ElizaAgentActions } from "./components/agent-actions";

@@ -4,6 +4,27 @@
  * `@elizaos/plugin-health` into assistant DTOs. All health/circadian domain
  * logic lives in the health plugin; this is a thin owner-access wrapper.
  */
+
+import type {
+  DisconnectLifeOpsHealthConnectorRequest,
+  GetLifeOpsHealthSummaryRequest,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsHealthConnectorCapability,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthDailySummary,
+  LifeOpsHealthMetric,
+  LifeOpsHealthMetricSample,
+  LifeOpsHealthSummaryResponse,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
+  SyncLifeOpsHealthConnectorRequest,
+} from "@elizaos/contracts";
+import {
+  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
+} from "@elizaos/contracts";
 import {
   completeHealthConnectorOAuth,
   deleteStoredHealthToken,
@@ -22,26 +43,6 @@ import {
   startHealthConnectorOAuth,
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
-import type {
-  DisconnectLifeOpsHealthConnectorRequest,
-  GetLifeOpsHealthSummaryRequest,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsHealthConnectorCapability,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorStatus,
-  LifeOpsHealthDailySummary,
-  LifeOpsHealthMetric,
-  LifeOpsHealthMetricSample,
-  LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
-  SyncLifeOpsHealthConnectorRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-} from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   createLifeOpsConnectorGrant,

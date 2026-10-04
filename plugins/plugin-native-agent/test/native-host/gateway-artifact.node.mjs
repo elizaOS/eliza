@@ -200,3 +200,54 @@ test("compiler failure leaves generated output unqualified until restaged", (t) 
   const recovered = stageGatewayArtifact(options);
   verifyGatewayArtifact({ ...options, provenance: provenance(recovered) });
 });
+
+test("host layout and committed DNS callbacks preserve the deployed import tree", async (t) => {
+  const { options, write, provenance } = fixture(t);
+  options.productFiles = ["apps/app/gateway.mjs"];
+  write(
+    options.productDirectory,
+    "apps/app/gateway.mjs",
+    "globalThis.__gatewayArtifactFixture=true;",
+  );
+  options.productOutputDirectory = path.dirname(options.gatewayDirectory);
+  options.gatewayEntrypoint = "../apps/app/gateway.mjs";
+  options.extraGeneratedFiles = [
+    "mobile-dns.mjs.json",
+    "local-agent-gateway.mjs",
+  ];
+  options.buildMobileDns = (file) => {
+    fs.writeFileSync(file, "export function configureMobileDnsIfNeeded() {}");
+    fs.writeFileSync(`${file}.json`, '{"verified":true}');
+  };
+  options.verifyMobileDns = (file) =>
+    assert.deepEqual(JSON.parse(fs.readFileSync(`${file}.json`)), {
+      verified: true,
+    });
+  options.stageAdditionalFiles = (gateway) =>
+    write(
+      gateway,
+      "local-agent-gateway.mjs",
+      'export * from "../apps/app/gateway.mjs";',
+    );
+  const hashes = stageGatewayArtifact(options);
+  verifyGatewayArtifact({ ...options, provenance: provenance(hashes) });
+  const { pathToFileURL } = await import("node:url");
+  const argv = process.argv[1];
+  try {
+    await import(
+      pathToFileURL(path.join(options.gatewayDirectory, "bootstrap.mjs")).href
+    );
+    assert.equal(globalThis.__gatewayArtifactFixture, true);
+  } finally {
+    process.argv[1] = argv;
+    delete globalThis.__gatewayArtifactFixture;
+  }
+  fs.appendFileSync(
+    path.join(options.gatewayDirectory, "local-agent-gateway.mjs"),
+    "changed",
+  );
+  assert.throws(
+    () => verifyGatewayArtifact({ ...options, provenance: provenance(hashes) }),
+    /integrity mismatch/,
+  );
+});

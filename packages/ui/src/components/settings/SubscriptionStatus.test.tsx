@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { resolveSurfaceManifest } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,
@@ -16,16 +16,16 @@ import {
 } from "../../surface-realm-broker";
 import { SubscriptionStatus } from "./SubscriptionStatus";
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     select: (state: { t: (key: string) => string }) => unknown,
   ) => select({ t: (key: string) => key }),
 }));
-vi.mock("../../utils", () => ({
+vi.mock("../../utils/openExternalUrl", () => ({
   preOpenWindow: () => ({ close: () => undefined }),
   navigatePreOpenedWindow: () => true,
 }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     startAnthropicLogin: vi.fn(async () => ({
       authUrl: "https://claude.ai/oauth/authorize?x=1",

@@ -10,7 +10,7 @@ import { advertisingService } from "@elizaos/cloud-shared/lib/services/advertisi
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { conversionTrackingService } from "@elizaos/cloud-shared/lib/services/conversion-tracking";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 
 const MAX_ANALYTICS_DAYS = 90;

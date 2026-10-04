@@ -12,7 +12,7 @@
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/contracts";
 import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { isMobileLocalAgentIpcBase } from "../first-run/mobile-runtime-mode";
 import {

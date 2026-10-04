@@ -90,7 +90,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 // The managed-cloud branch only shows itself when a handoff is actually
 // available; with the real `shouldAutoBridgeToSso` it short-circuits back to

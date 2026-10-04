@@ -3,7 +3,7 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { RemotePluginModuleManifest } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { bootstrapRemoteCapabilityPlugins } from "../src/services/remote-plugin-adapter.ts";
 

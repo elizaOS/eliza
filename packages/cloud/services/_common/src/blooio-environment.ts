@@ -14,7 +14,7 @@
 
 /**
  * Publicly advertised production sender numbers (E.164). The homepage
- * readiness check (`packages/app/scripts/check-homepage-public-readiness.ts`)
+ * readiness check (`packages/cloud/scripts/check-homepage-public-readiness.ts`)
  * publishes the same number.
  */
 export const PRODUCTION_BLOOIO_SENDER_NUMBERS: readonly string[] = [

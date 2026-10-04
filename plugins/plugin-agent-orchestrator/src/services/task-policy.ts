@@ -12,7 +12,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 
 type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 type TaskAgentAbility = "create" | "interact";

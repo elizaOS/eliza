@@ -10,7 +10,7 @@ import type {
   IPermissionsRegistry,
   PermissionId,
   PermissionState,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PermissionCard } from "./permission-card";

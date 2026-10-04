@@ -10,7 +10,8 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { PageHeaderProvider, usePageHeader } from "../../cloud-ui";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
+import { usePageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 
 vi.mock("../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>

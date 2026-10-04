@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Proves the owner-gated LifeOps calendar adapter dispatches to the registered
  * CalendarService, including source administration and typed domain failures.

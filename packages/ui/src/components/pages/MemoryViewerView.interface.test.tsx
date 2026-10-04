@@ -40,7 +40,7 @@ vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityMock.value,
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (s: {
       t: (key: string, options?: { defaultValue?: string }) => string;

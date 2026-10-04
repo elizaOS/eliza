@@ -17,7 +17,7 @@ import {
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,

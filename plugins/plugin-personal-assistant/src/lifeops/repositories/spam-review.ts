@@ -1,11 +1,12 @@
 /** Adapts LifeOps spam review persistence to canonical domain records. Preserves existing agent scoping, transaction handles, and conditional mutation contracts. */
-import type { IAgentRuntime } from "@elizaos/core";
+
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
   LifeOpsGmailSpamReviewItem,
   LifeOpsGmailSpamReviewStatus,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   sqlInteger,

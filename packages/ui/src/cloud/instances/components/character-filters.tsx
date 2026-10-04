@@ -7,16 +7,16 @@
 
 "use client";
 
+import { LayoutGrid, List, Search } from "lucide-react";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
 import {
-  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/ui/cloud-ui";
-import { LayoutGrid, List, Search } from "lucide-react";
-import { Button } from "../../../components/ui/button";
+} from "../../../components/ui/select";
 import { useT } from "../lib/i18n";
 import type { SortOption, ViewMode } from "./types";
 

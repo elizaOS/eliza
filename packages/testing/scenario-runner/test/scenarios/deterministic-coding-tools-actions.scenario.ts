@@ -12,6 +12,7 @@ import type {
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   type DeterministicModelCall,
   type DeterministicModelFixture,
@@ -19,9 +20,8 @@ import {
   postToolEvaluatorFixture,
   type RuntimeWithScenarioModelFixtures,
   type StrictActionRouteFixture,
-  scenario,
   stage1ResponseHandlerFixture,
-} from "@elizaos/testing";
+} from "@elizaos/testing/models";
 import codingToolsPlugin from "../../../../../plugins/plugin-coding-tools/src/index.ts";
 
 const execFileAsync = promisify(execFile);

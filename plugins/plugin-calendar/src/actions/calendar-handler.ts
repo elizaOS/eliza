@@ -14,6 +14,17 @@
 
 import { createHash } from "node:crypto";
 import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
+import { resolveCalendarTimeZone as resolveOwnerCalendarTimeZone } from "@elizaos/contracts";
+import type {
   Action,
   ActionExample,
   ActionResult,
@@ -32,20 +43,10 @@ import {
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
 import {
   selectUserAuthorizedRecurrence,
   textStatesExplicitRecurrence,
-} from "@elizaos/core/i18n/recurrence-markers";
+} from "@elizaos/core/protocol";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import {
   CALENDAR_DETAIL_ALIASES,
@@ -1818,30 +1819,6 @@ function resolveCalendarTimeZone(
   fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): string {
   return plannerRequestedTimeZone(details) ?? fallbackTimeZone;
-}
-
-/**
- * The zone calendar work defaults to when the planner supplies none: the
- * agent's configured `TIMEZONE` (the same setting the runtime clock provider
- * reports as the agent zone), else the host zone. Live 2026-09-05 the host was
- * UTC while the owner and the clock provider were in Pacific time, so "tuesday
- * at 7am" was extracted, stored and rendered in UTC and one intent produced a
- * 7 AM and a 2 PM event.
- */
-function configuredCalendarTimeZone(runtime: IAgentRuntime): string | null {
-  const configured =
-    typeof runtime.getSetting === "function"
-      ? runtime.getSetting("TIMEZONE")
-      : undefined;
-  return typeof configured === "string" &&
-    configured.trim().length > 0 &&
-    isValidTimeZone(configured.trim())
-    ? configured.trim()
-    : null;
-}
-
-function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
-  return configuredCalendarTimeZone(runtime) ?? resolveDefaultTimeZone();
 }
 
 type LocalDateOnly = Pick<
@@ -5199,9 +5176,13 @@ const calendarAction: CalendarHandlerAction = {
       params.title,
       params.query,
     ]);
+    const calendarZone = await resolveOwnerCalendarTimeZone(
+      runtime,
+      new Date(),
+    );
     const planningTimeZone = resolveCalendarTimeZone(
       details,
-      resolveConfiguredCalendarTimeZone(runtime),
+      calendarZone.timeZone,
     );
     const explicitSubaction = normalizeCalendarSubaction(params.subaction);
     // A promoted CALENDAR_* tool call is already the action planner's typed
@@ -5541,7 +5522,9 @@ const calendarAction: CalendarHandlerAction = {
           details,
           true,
           planningTimeZone,
-          configuredCalendarTimeZone(runtime),
+          calendarZone.source === "runtime-default"
+            ? null
+            : calendarZone.timeZone,
         );
         if (!calendarContext) {
           throw new CalendarServiceError(

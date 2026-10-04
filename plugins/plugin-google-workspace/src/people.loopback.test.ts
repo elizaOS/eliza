@@ -92,3 +92,54 @@ describe("Google People provider boundary", () => {
     expect(paths).toEqual([]);
   });
 });
+
+it("keeps explicit API worlds isolated while resolving each requested account", async () => {
+  const accounts: string[] = [];
+  const endpoints: string[] = [];
+  const servers: Server[] = [];
+  try {
+    for (const name of ["first", "second"]) {
+      const listener = createServer((_request, response) => {
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            resourceName: "people/canonical-contact",
+            names: [{ displayName: name }],
+          })
+        );
+      });
+      servers.push(listener);
+      await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+      const address = listener.address() as AddressInfo;
+      endpoints.push(`http://127.0.0.1:${address.port}`);
+    }
+    const scopedResolver: GoogleCredentialResolver = {
+      async getAuthClient(request) {
+        accounts.push(request.accountId);
+        return resolver.getAuthClient();
+      },
+    };
+    const clients = endpoints.map(
+      (endpoint) => new GooglePeopleClient(new GoogleApiClientFactory(scopedResolver, endpoint))
+    );
+    const results = await Promise.all(
+      clients.map((value, index) =>
+        value.getContact({
+          accountId: `account-${index}`,
+          resourceName: "people/canonical-contact",
+        })
+      )
+    );
+    expect(results.map((value) => value.displayName)).toEqual(["first", "second"]);
+    expect(accounts.sort()).toEqual(["account-0", "account-1"]);
+  } finally {
+    await Promise.all(
+      servers.map(
+        (listener) =>
+          new Promise<void>((resolve, reject) =>
+            listener.close((error) => (error ? reject(error) : resolve()))
+          )
+      )
+    );
+  }
+});

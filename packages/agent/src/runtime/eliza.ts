@@ -19,42 +19,46 @@ import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AgentRuntime,
   addLogListener,
-  buildDefaultElizaCloudServiceRouting,
   ChannelType,
   type Component,
-  captureHostExecutionBaseline,
   createMessageMemory,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  drainAppRoutePluginLoaders,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
   formatError,
-  getFirstRunProviderOption,
   type IAgentRuntime,
-  isElizaSettingsDebugEnabled,
-  isMobilePlatform,
   type LogEntry,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunProviderId,
   type Plugin,
   type Provider,
   type RuntimeStopOptions,
-  readAliasedEnv,
   requireConfirmedSendHandlerDelivery,
+  stringToUuid,
+  type TargetInfo,
+  type UUID,
+  warnOnUnmatchedActionRolePolicyKeys,
+} from "@elizaos/core";
+import {
+  captureHostExecutionBaseline,
+  drainAppRoutePluginLoaders,
+} from "@elizaos/host";
+import {
+  buildDefaultElizaCloudServiceRouting,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  getFirstRunProviderOption,
+  isElizaSettingsDebugEnabled,
+  isMobilePlatform,
+  migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
+  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
   resolveElizaCloudTopology,
   resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
-  stringToUuid,
-  type TargetInfo,
-  type UUID,
-  warnOnUnmatchedActionRolePolicyKeys,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
@@ -140,6 +144,7 @@ import {
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
 } from "../shared/workspace-resolution.ts";
+import { isModuleNotFoundError } from "../utils/module-resolution-error.ts";
 import { createAssistantPlugins } from "./assistant-plugins.ts";
 import {
   initializeBlockingCoreRuntimeForBoot,
@@ -161,13 +166,7 @@ import {
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
 import { buildCharacterFromConfig } from "./build-character-config.ts";
-import {
-  BLOCKING_CORE_PLUGINS,
-  CORE_PLUGINS,
-  DEFERRED_CORE_PLUGINS,
-  LEAN_CHAT_PLUGINS,
-  OPTIONAL_CORE_PLUGINS,
-} from "./core-plugins.ts";
+import { BLOCKING_CORE_PLUGINS, CORE_PLUGINS } from "./core-plugins.ts";
 import { maybeInjectFault } from "./crash-injection.ts";
 import {
   isSQLiteSelected,
@@ -185,11 +184,7 @@ import { markDeferredBootPhase } from "./deferred-boot-status.ts";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
-import {
-  type AgentHostBridge,
-  getAgentHostBridge,
-  hasDurableHostVault,
-} from "./host-bridge.ts";
+import { getAgentHostBridge, hasDurableHostVault } from "./host-bridge.ts";
 import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import {
   resolvePreferredProviderId,
@@ -258,60 +253,6 @@ import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-internals.t
 import { installDatabaseTrajectoryLogger } from "./trajectory-storage.ts";
 import { validateViewActionMap } from "./view-action-affinity.ts";
 
-// ---------------------------------------------------------------------------
-// Extracted modules — re-exported for backward compatibility
-// ---------------------------------------------------------------------------
-// Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
-// is armed, and it refuses to arm in production — see crash-injection.ts.
-export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
-export {
-  CHANNEL_PLUGIN_MAP,
-  collectPluginNames,
-  OPTIONAL_PLUGIN_MAP,
-  PROVIDER_PLUGIN_MAP,
-} from "./plugin-collector.ts";
-export {
-  CUSTOM_PLUGINS_DIRNAME,
-  EJECTED_PLUGINS_DIRNAME,
-  findRuntimePluginExport,
-  mergeDropInPlugins,
-  type PluginModuleShape,
-  type ResolvedPlugin,
-  repairBrokenInstallRecord,
-  resolveElizaPluginImportSpecifier,
-  resolvePackageEntry,
-  STATIC_ELIZA_PLUGINS,
-  scanDropInPlugins,
-} from "./plugin-types.ts";
-export {
-  hydrateConfigEnvForBoot,
-  isEnvKeyAllowedForForwarding,
-} from "./runtime-settings.ts";
-
-// resolvePlugins is re-exported via index.ts from ./plugin-resolver
-// `@elizaos/plugin-personal-assistant` is NOT eagerly imported here. It
-// transitively imports from `@elizaos/agent` (e.g. `hasOwnerAccess` from this
-// package's barrel) — a top-level static import would form a module-init cycle
-// that leaves named exports (like a plugin's actions array) as `undefined`,
-// crashing `runtime.registerPlugin` when it iterates `plugin.actions`.
-//
-// It still resolves at plugin-load time via a headless dynamic-import
-// entrypoint in `plugin-resolver.ts`, after the static module graph has fully
-// evaluated, so the cycle never forms and browser-only UI exports stay out of
-// the agent process.
-// Keep this here as a single sentinel: if we ever need a static reference,
-// add `as const` data only — never an `import * as` of these packages.
-// Host capabilities (wallet-key hydration, vault bootstrap/access, account
-// pool, build variant) are INJECTED downward by the app host via
-// `setAgentHostBridge` before boot — agent never imports `@elizaos/app`.
-// When no host installs a bridge (mobile bundle / standalone agent), the leaf
-// default in `./host-bridge.ts` supplies the same no-op behavior the mobile
-// `app-runtime.ts` stub used to. `await`-compatible (returns the bridge
-// synchronously) so existing `await importAppCoreRuntime()` call sites are
-// unchanged.
-function importAppCoreRuntime(): AgentHostBridge {
-  return getAgentHostBridge();
-}
 // Single-flight desktop vault boot hydration: the OS-keychain wallet/steward
 // hydrate plus the plaintext→vault migration (`runVaultBootstrap`), moved off
 // the blocking boot path because nothing there consumes its outputs (see the
@@ -332,7 +273,7 @@ async function runVaultBootHydration(): Promise<void> {
   if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
     return;
   }
-  const bridge = importAppCoreRuntime();
+  const bridge = getAgentHostBridge();
   // The two serial cost centers (OS-keychain hydrate, vault PGlite cold
   // start) are timed separately so boot-history telemetry shows the long
   // pole. Order is load-bearing: the hydrate writes wallet keys into
@@ -457,8 +398,13 @@ async function getPluginLocalEmbedding(): Promise<
         return await import(
           /* @vite-ignore */ "@elizaos/plugin-local-inference"
         );
-      } catch {
-        return null;
+      } catch (cause) {
+        if (isModuleNotFoundError(cause, "@elizaos/plugin-local-inference"))
+          return null;
+        throw new ElizaError("Local inference plugin could not be loaded", {
+          code: "LOCAL_INFERENCE_PLUGIN_LOAD_FAILED",
+          cause,
+        });
       }
     })();
   }
@@ -1791,19 +1737,6 @@ async function wireTrajectoryCaptureService(
 const CHANNEL_ENV_MAP = CONNECTOR_ENV_MAP;
 
 // ---------------------------------------------------------------------------
-// Plugin resolution
-// ---------------------------------------------------------------------------
-export {
-  BLOCKING_CORE_PLUGINS,
-  CORE_PLUGINS,
-  DEFERRED_CORE_PLUGINS,
-  LEAN_CHAT_PLUGINS,
-  OPTIONAL_CORE_PLUGINS,
-};
-
-// CHANNEL_PLUGIN_MAP, PROVIDER_PLUGIN_MAP, and OPTIONAL_PLUGIN_MAP live in
-// ./plugin-collector.ts and are re-exported from this module for backward compatibility.
-// ---------------------------------------------------------------------------
 // Browser server pre-flight
 // ---------------------------------------------------------------------------
 function assertPersistentDatabaseRequired(
@@ -1839,9 +1772,7 @@ function assertPersistentDatabaseRequired(
  */
 /** @internal Exported for testing. */
 export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
-  // Prefer config.connectors, fall back to config.channels for backward compatibility
-  const connectors =
-    config.connectors ?? (config as Record<string, unknown>).channels ?? {};
+  const connectors = config.connectors ?? {};
   for (const [channelName, channelConfig] of Object.entries(connectors)) {
     if (!channelConfig || typeof channelConfig !== "object") continue;
     const configObj = channelConfig as Record<string, unknown>;
@@ -1949,7 +1880,7 @@ export async function resolveConnectorSecretsOverlayForBoot(
     );
     return {};
   }
-  const { sharedVault } = importAppCoreRuntime();
+  const { sharedVault } = getAgentHostBridge();
   const { resolved, failures } = await resolveConnectorSecretSettings(
     connectorEnvVars,
     sharedVault(),
@@ -1976,7 +1907,7 @@ export async function resolveConfigEnvVaultRefsForBoot(
   ) {
     return;
   }
-  const vault = importAppCoreRuntime().sharedVault();
+  const vault = getAgentHostBridge().sharedVault();
   const configEnv = config.env as Record<string, unknown>;
   const { resolved, missing } = await resolveConfigEnvForProcess(
     configEnv,
@@ -3424,12 +3355,6 @@ const REQUIRED_BLOCKING_CORE_PLUGINS = new Set(
     .map(([packageName]) => packageName),
 );
 
-export {
-  buildCharacterFromConfig,
-  resolvePreferredProviderId,
-  resolvePreferredProviderPluginName,
-  resolvePrimaryModel,
-};
 /**
  * Vision is a heavy optional plugin. When Eliza enables it, keep the service
  * loaded but idle until the user explicitly selects CAMERA, SCREEN, or BOTH.
@@ -4047,8 +3972,8 @@ export async function startEliza(
   const isCloudProvisioned = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
   vaultBootHydration = null;
   if (!isMobilePlatform() && !isCloudProvisioned) {
-    importAppCoreRuntime().captureWalletEnvBootBaseline();
-    const { sharedVault } = await importAppCoreRuntime();
+    getAgentHostBridge().captureWalletEnvBootBaseline();
+    const { sharedVault } = getAgentHostBridge();
     const vault = sharedVault();
     // Standalone hosts without a durable vault use the baseline prompts;
     // the no-op bridge cannot persist an integrity key for optimized prompts.
@@ -4159,7 +4084,7 @@ export async function startEliza(
   // bridge (see ./host-bridge.ts) — no app import, no boot-time cycle.
   if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1")
     try {
-      const accountPool = await importAppCoreRuntime();
+      const accountPool = getAgentHostBridge();
       accountPool.getDefaultAccountPool();
       await accountPool.applyAccountPoolApiCredentials({
         activeBackend: resolveServiceRoutingInConfig(
@@ -4232,7 +4157,7 @@ export async function startEliza(
   // policy is incompatible with running an embedded local AgentRuntime, so
   // store builds must route to Eliza Cloud. If the cloud config is missing,
   // fail loudly and route the user to first-run setup.
-  const { isStoreBuild, getBuildVariant } = await importAppCoreRuntime();
+  const { isStoreBuild, getBuildVariant } = getAgentHostBridge();
   // Boot-time observability: print the resolved (buildVariant, deploymentTarget,
   // stateDir, workspaceDir) tuple so support has it for sandbox issues.
   logger.info(
@@ -4338,7 +4263,7 @@ export async function startEliza(
     existsSync(resolveDefaultVaultDataDir())
   ) {
     try {
-      const { sharedVault } = await importAppCoreRuntime();
+      const { sharedVault } = getAgentHostBridge();
       const { applyVaultProfilesForAgent } = await import(
         "./vault-profile-resolver.ts"
       );
@@ -4361,7 +4286,7 @@ export async function startEliza(
     const providerCredential = await hydrateSelectedProviderCredentialFromVault(
       {
         providerId: preferredProviderId,
-        vault: importAppCoreRuntime().sharedVault(),
+        vault: getAgentHostBridge().sharedVault(),
         settingsOverlay: providerCredentialsOverlay,
       },
     );
@@ -4964,7 +4889,7 @@ export async function startEliza(
       return;
     }
     try {
-      const { sharedVault } = await importAppCoreRuntime();
+      const { sharedVault } = getAgentHostBridge();
       const { VaultSignerBackend } = await import(
         "../services/vault-signer-backend.ts"
       );
@@ -5334,7 +5259,7 @@ export async function startEliza(
     walletInitPromise = (async () => {
       try {
         abortSignal.throwIfAborted();
-        const { sharedVault } = await importAppCoreRuntime();
+        const { sharedVault } = getAgentHostBridge();
         abortSignal.throwIfAborted();
         const { ensureAgentWallets } = await import("./agent-wallets.ts");
         abortSignal.throwIfAborted();

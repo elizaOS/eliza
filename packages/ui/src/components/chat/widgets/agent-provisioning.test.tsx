@@ -31,7 +31,7 @@ const {
   openCloudBillingConsoleMock: vi.fn(async () => {}),
 }));
 
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: { getCloudCompatAgent: getCloudCompatAgentMock },
 }));
 vi.mock("../../../api/client-cloud", () => ({

@@ -1,6 +1,8 @@
 /** Verifies mapping of knowledge-graph entities into LifeOps relationship DTOs (identities, tags, last-contacted). Deterministic vitest. */
-import { type Entity } from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
+import type {
+  KnowledgeGraphEntity as Entity,
+  KnowledgeGraphRelationship as Relationship,
+} from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   contactIdentities,

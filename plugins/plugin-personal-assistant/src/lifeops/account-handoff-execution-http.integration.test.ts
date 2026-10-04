@@ -1,6 +1,6 @@
 /** Real loopback HTTP and PGlite execute the saved Google account switch; provider probes are deterministic and no external message or account mutation occurs. */
 
-import { ElizaClient } from "@elizaos/ui/api/client-base";
+import { ElizaClient } from "../../../../packages/ui/src/api/client-base";
 import "../api/client-lifeops.js";
 import { getConnectorAccountManager } from "@elizaos/core";
 import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
@@ -20,11 +20,11 @@ import { LifeOpsService } from "./service.js";
 
 // The package harness aliases UI modules to inert controls. Restore the real
 // client for this transport test; requests still cross the actual HTTP socket.
-vi.mock("@elizaos/ui/api/client-base", async () => ({
+vi.mock("../../../../packages/ui/src/api/client-base", async () => ({
   ...(await vi.importActual<typeof import("../../test/stubs/ui.js")>(
     "../../test/stubs/ui.js",
   )),
-  ...(await import("../../../../packages/ui/src/api/client-base.js")),
+  ...(await import("../../../../packages/ui/src/api/client-base")),
 }));
 
 let host: RealTestRuntimeResult | undefined;

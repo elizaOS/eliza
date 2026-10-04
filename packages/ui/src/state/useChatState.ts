@@ -7,12 +7,12 @@
 
 import { useCallback, useReducer, useRef } from "react";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-  StreamEventEnvelope,
-} from "../api";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
+import type { StreamEventEnvelope } from "../api/client-types-core";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { dedupeGreetings, isAgentGreetingMessage } from "./greeting-dedupe";

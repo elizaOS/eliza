@@ -29,3 +29,9 @@ reviewed linker policy. The host supplies SDK/JDK environment paths and serializ
 builds to that output. A failed build preserves the previous AAR. Run the build
 contracts with `node --test scripts/build-android.test.mjs`; qualify the resulting
 AAR in the consuming Android host before release.
+
+`composeTrustSource` in `scripts/compose-source.mjs` combines an admitted shared
+source directory, build-time host policy and optional consumer Go tests. The host
+verifies its reviewed pin before calling. The composer hashes all inputs, rejects
+test collisions and symlinks, and verifies cached bytes before reuse. Run its
+contracts with `node --test scripts/compose-source.test.mjs`.

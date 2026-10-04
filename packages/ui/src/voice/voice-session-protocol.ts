@@ -18,7 +18,7 @@
  *   - Every server state event carries a `traceId`.
  */
 /** Wire protocol version. Bumped only on breaking control-frame changes. */
-import type { VoiceUiContext } from "@elizaos/core/voice";
+import type { VoiceUiContext } from "@elizaos/host/protocol";
 export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
 /** Uplink/downlink codecs negotiated in `hello`. */
 export type VoiceSessionCodec = "pcm16" | "opus";

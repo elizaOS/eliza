@@ -20,7 +20,7 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import { Connection, type SendOptions, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { resolveWalletBackend } from "../../../wallet/select-backend";

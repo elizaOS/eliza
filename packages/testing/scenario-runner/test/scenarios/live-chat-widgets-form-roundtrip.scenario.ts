@@ -20,8 +20,8 @@
  * raw submit re-entry, and submitted-value consumption pinned end to end.
  */
 
+import type { FormInteraction } from "@elizaos/core";
 import { scenario } from "@elizaos/testing";
-import type { FormInteraction } from "../../../../core/src/types/interactions.ts";
 import {
   buildFormSubmitText,
   CANONICAL_FORM_DATE,

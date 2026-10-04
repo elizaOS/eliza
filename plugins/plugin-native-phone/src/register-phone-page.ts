@@ -5,7 +5,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 import { PHONE_VIEW_CAPABILITIES } from "./view-capabilities";
 
 if (Capacitor.getPlatform() === "android") {

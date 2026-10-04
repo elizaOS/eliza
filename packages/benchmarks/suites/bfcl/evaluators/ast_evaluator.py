@@ -13,7 +13,7 @@ import logging
 import math
 from typing import Optional
 
-from benchmarks.bfcl.types import ArgumentValue, FunctionCall, ResultDetails
+from benchmarks.suites.bfcl.types import ArgumentValue, FunctionCall, ResultDetails
 
 logger = logging.getLogger(__name__)
 

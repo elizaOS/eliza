@@ -21,11 +21,11 @@ import { Plus } from "lucide-react";
 import { type FormEvent, useCallback, useState } from "react";
 import { toast } from "../../bridge/toast";
 import { ApiKeyEmptyState } from "../../cloud-ui/components/api-key-empty-state";
+import type { ApiKeyDisplay } from "../../cloud-ui/components/data-list/api-keys-table";
 import {
-  type ApiKeyDisplay,
   ApiKeysTable,
   formatApiKeyDate,
-} from "../../cloud-ui/components/data-list";
+} from "../../cloud-ui/components/data-list/api-keys-table";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import {

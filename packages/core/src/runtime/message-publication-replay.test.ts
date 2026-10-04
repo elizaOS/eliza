@@ -2,7 +2,9 @@
 
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime, Memory, UUID } from "../types";
+import type { Memory } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { stripAugmentationForPersistence } from "../utils/message-text";
 import {
 	RuntimeDataMutations,

@@ -16,26 +16,30 @@ import dns from "node:dns";
 import type http from "node:http";
 import net from "node:net";
 import { promisify } from "node:util";
+import type { DatabaseProviderType } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   type ColumnInfo,
   type ConnectionTestResult,
-  type DatabaseConfig,
-  type DatabaseProviderType,
   type DatabaseStatus,
   isLoopbackHost,
   logger,
   normalizeHostLike,
   normalizeIpForPolicy,
-  type PostgresCredentials,
   parseClampedInteger,
-  readJsonBody as parseJsonBody,
   type QueryResult,
-  resolveApiBindHost,
-  sendJson,
-  sendJsonError,
   type TableInfo,
 } from "@elizaos/core";
+import {
+  readJsonBody as parseJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/host";
+import {
+  type DatabaseConfig,
+  type PostgresCredentials,
+  resolveApiBindHost,
+} from "@elizaos/host/protocol";
 
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";

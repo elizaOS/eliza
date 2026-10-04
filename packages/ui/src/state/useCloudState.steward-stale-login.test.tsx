@@ -13,7 +13,7 @@
 import { registerStewardTokenRemoval } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../api";
+import { client } from "../api/client";
 import { registerStewardLoginLauncher } from "./cloud-steward-login";
 import { useCloudState } from "./useCloudState";
 

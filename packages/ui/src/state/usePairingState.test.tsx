@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   resume: vi.fn(),
   scrub: vi.fn(),
 }));
-vi.mock("../api", () => ({ client: mocks }));
+vi.mock("../api/client", () => ({ client: mocks }));
 vi.mock("./active-server-credential", () => ({
   persistActiveServerCredential: mocks.persist,
   scrubRejectedActiveServerCredential: mocks.scrub,

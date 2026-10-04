@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-from benchmarks.nl2repo.adapter_matrix import (
+from benchmarks.suites.nl2repo.adapter_matrix import (
     NL2RepoTask,
     count_tasks,
     expand_tasks,

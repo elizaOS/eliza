@@ -21,7 +21,7 @@ import { Capacitor } from "@capacitor/core";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   resolveDirectCloudAppBase,
-} from "../../../api/direct-cloud-endpoints";
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import { isElectrobunRuntime } from "../../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../../config/boot-config";
 import { openExternalUrl } from "../../../utils/openExternalUrl";

@@ -5,7 +5,7 @@
 // concurrency: several separate OS processes drain one shared queue and every
 // job is claimed by exactly one of them, never twice and never lost.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -181,4 +181,48 @@ process.stdout.write(claimed.join("\\n"));
     expect(new Set(claimedAll)).toEqual(enqueued);
     expect(queue.pendingCount()).toBe(0);
   });
+});
+
+it("recovers a real exited worker without reclaiming a live worker", () => {
+  const queue = new FileJobQueue(newRoot());
+  const abandoned = queue.enqueue(
+    "/abs/recover.png",
+    "ocr.unlimited",
+    enqueueParams("recover"),
+  );
+  const modulePath = fileURLToPath(new URL("./file-queue.ts", import.meta.url));
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { FileJobQueue } from ${JSON.stringify(modulePath)}; const queue = new FileJobQueue(${JSON.stringify(queue.root)}); if (!queue.claim()) process.exit(2);`,
+    ],
+    { encoding: "utf8" },
+  );
+  expect(child.status, child.stderr).toBe(0);
+  expect(queue.recoverAbandoned()).toEqual({
+    requeued: 1,
+    completed: 0,
+    unverifiable: 0,
+  });
+  const reclaimed = queue.claim();
+  expect(reclaimed?.job.id).toBe(abandoned.id);
+  expect(queue.recoverAbandoned()).toEqual({
+    requeued: 0,
+    completed: 0,
+    unverifiable: 0,
+  });
+});
+
+it("rejects malformed or mismatched persisted results and unsafe result IDs", () => {
+  const queue = new FileJobQueue(newRoot());
+  fs.writeFileSync(
+    path.join(queue.root, "results", "result.json"),
+    JSON.stringify({ schema: 1, id: "other", status: "completed" }),
+  );
+  expect(() => queue.readResult("result")).toThrow("invalid queue result");
+  expect(() => queue.readResult("../result")).toThrow(
+    "invalid result identity",
+  );
 });

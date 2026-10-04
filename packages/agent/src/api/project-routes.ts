@@ -15,13 +15,13 @@
  * behind the user's back. Absent registry ⇒ empty list + `null` active, which
  * the switcher renders as its no-projects empty state.
  */
+import { logger } from "@elizaos/core";
 import {
   getActiveProject,
-  logger,
-  type RouteRequestContext,
   readProjectRegistry,
   setActiveProject,
-} from "@elizaos/core";
+} from "@elizaos/host";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 /** DTO for the switcher: only the fields the UI renders + switches on. Internal
  * bookkeeping (bookmark, createdAt) is intentionally not surfaced. */

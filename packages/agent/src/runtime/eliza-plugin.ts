@@ -8,10 +8,10 @@ import {
   type IAgentRuntime,
   NotificationService,
   PairingService,
-  type HttpPlugin as Plugin,
   promoteSubactionsToActions,
   type ServiceClass,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   ApprovalService,
   GlobalPauseService,
@@ -85,7 +85,6 @@ import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
 import { preparePluginForSelectedDatabase } from "./database-selection.ts";
-import { elizaSchema } from "./eliza-schema.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";

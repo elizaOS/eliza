@@ -14,15 +14,15 @@ import type {
   MeetingSession,
   MeetingStatusEvent,
   MeetingTranscriptEvent,
-} from "@elizaos/core/meetings";
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+  TranscriptSegment,
+} from "@elizaos/core/protocol";
 import { ElizaClient } from "./client-base";
 /** Options for listing meeting sessions. */
 export interface ListMeetingsOptions {
   /** When true, only sessions that are not yet ended/failed. */
   active?: boolean;
 }
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     requestMeetingBot(input: MeetingJoinRequest): Promise<{
       session: MeetingSession;

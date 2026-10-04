@@ -585,6 +585,9 @@ describe("durable SQLite agent adapter", () => {
   it("restores document permissions and commits only one concurrent revision", async () => {
     const adapter = await open();
     const document = memory("private original");
+    await adapter.createRooms([
+      { id: roomId, agentId, source: "test", type: ChannelType.GROUP },
+    ]);
     await adapter.createRoomParticipants([entityId], roomId);
     const documentMetadata = {
       type: MemoryType.DOCUMENT,
@@ -1285,6 +1288,170 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
   expect(await reopened.compareAndSetCache("claim", undefined, "replay")).toBe(
     false,
   );
+});
+
+it("keeps another agent's worlds out of listing, updates, and metadata swaps", async () => {
+  const adapter = await open();
+  const ownedId = id();
+  const foreignId = id();
+  const otherAgentId = id();
+  await adapter.createWorlds([{ id: ownedId, agentId, name: "home" }]);
+  const storage = await adapter.getConnection();
+  await storage.set("worlds", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "secret",
+  });
+
+  expect((await adapter.getAllWorlds()).map((world) => world.id)).toEqual([
+    ownedId,
+  ]);
+  expect(await adapter.getWorldsByIds([foreignId])).toEqual([]);
+  await adapter.deleteWorlds([foreignId]);
+  expect(await storage.get("worlds", foreignId)).toMatchObject({
+    agentId: otherAgentId,
+    name: "secret",
+  });
+  await adapter.updateWorlds([{ id: foreignId, agentId, name: "rewritten" }]);
+  await adapter.upsertWorlds([{ id: foreignId, agentId, name: "upserted" }]);
+  expect(
+    await adapter.compareAndSwapWorldMetadata({
+      worldId: foreignId,
+      expectedMetadata: {},
+      replacementMetadata: { note: "nope" },
+    }),
+  ).toEqual({ status: "not_found" });
+  expect(await storage.get("worlds", foreignId)).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "secret",
+  });
+});
+
+it("keeps another agent's tasks out of name lookup, id lookup, and writes", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const ownedId = id();
+  const unscopedId = id();
+  const foreignId = id();
+  await adapter.createTasks([
+    {
+      id: ownedId,
+      agentId,
+      name: "Check in",
+      tags: ["queue"],
+      metadata: { status: "pending" },
+    },
+    {
+      id: unscopedId,
+      name: "Check in",
+      tags: ["queue"],
+      metadata: { status: "pending" },
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("tasks", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "Check in",
+    tags: ["queue"],
+    metadata: { status: "pending" },
+  });
+
+  const named = await adapter.getTasksByName("Check in");
+  expect(named.map((task) => task.id).sort()).toEqual(
+    [ownedId, unscopedId].sort(),
+  );
+  expect(await adapter.getTasksByIds([foreignId, ownedId])).toEqual([
+    expect.objectContaining({ id: ownedId }),
+  ]);
+
+  expect(
+    await adapter.updatePendingTask(foreignId, {
+      metadata: { status: "executing", leaseOwner: "intruder" },
+    }),
+  ).toBe(false);
+  await adapter.updateTasks([
+    { id: foreignId, task: { description: "rewritten" } },
+  ]);
+  expect(
+    await adapter.patchTaskMetadata(foreignId, { set: { reason: "nope" } }),
+  ).toBe(false);
+  await adapter.deleteTasks([foreignId]);
+
+  const foreign = await storage.get("tasks", foreignId);
+  expect(foreign).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "Check in",
+    metadata: { status: "pending" },
+  });
+  expect(foreign).not.toMatchObject({ description: "rewritten" });
+});
+
+it("keeps another agent's rooms out of lookup and world deletion", async () => {
+  const adapter = await open();
+  const worldId = id();
+  const ownedRoom = id();
+  const unscopedRoom = id();
+  const foreignRoom = id();
+  const otherAgentId = id();
+  await adapter.createWorlds([{ id: worldId, name: "Shared", agentId }]);
+  await adapter.createRooms([
+    {
+      id: ownedRoom,
+      agentId,
+      worldId,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "owned",
+    },
+    {
+      id: unscopedRoom,
+      worldId,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "unscoped",
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("rooms", foreignRoom, {
+    id: foreignRoom,
+    agentId: otherAgentId,
+    worldId,
+    source: "test",
+    type: ChannelType.GROUP,
+    name: "foreign",
+  });
+  await adapter.createRoomParticipants([entityId], ownedRoom);
+  await adapter.createRoomParticipants([entityId], unscopedRoom);
+  await storage.set("participants", id(), {
+    id: id(),
+    entityId,
+    roomId: foreignRoom,
+  });
+
+  const visible = [ownedRoom, unscopedRoom].sort();
+  expect(
+    (await adapter.getRoomsByIds([foreignRoom, ownedRoom, unscopedRoom]))
+      .map((room) => room.id)
+      .sort(),
+  ).toEqual(visible);
+  expect(
+    (await adapter.getRoomsByWorlds([worldId])).map((room) => room.id).sort(),
+  ).toEqual(visible);
+  expect((await adapter.getRoomsForParticipants([entityId])).sort()).toEqual(
+    visible,
+  );
+
+  await adapter.deleteRoomsByWorldIds([worldId]);
+  expect(await storage.get("rooms", foreignRoom)).toMatchObject({
+    id: foreignRoom,
+    agentId: otherAgentId,
+    name: "foreign",
+  });
+  expect(await storage.get("rooms", ownedRoom)).toBeNull();
+  expect(await storage.get("rooms", unscopedRoom)).toBeNull();
 });
 
 const LOWER_PAIRING_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;

@@ -15,7 +15,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {

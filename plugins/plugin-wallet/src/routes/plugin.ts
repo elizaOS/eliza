@@ -11,10 +11,7 @@
  * Migrated from packages/app/src/api/wallet-market-overview-route.ts.
  */
 import type http from "node:http";
-import {
-  type HttpPlugin as Plugin,
-  type Route,
-} from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin, Route } from "@elizaos/host/protocol";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
 
 async function marketOverviewHandler(

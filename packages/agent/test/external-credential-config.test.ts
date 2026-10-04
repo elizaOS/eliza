@@ -53,11 +53,9 @@ it("leaves unselected credentials unchanged and rejects malformed policy before 
   expect(fs.readFileSync(file, "utf8")).toBe(before);
 });
 
-it("preserves saved and explicit connector options when legacy credentials are persisted", async () => {
+it("preserves saved and explicit connector options when connector credentials are persisted", async () => {
   const file = destination();
-  const { prepareFirstRunConnectors } = await import(
-    "../src/first-run-config.ts"
-  );
+  const { prepareFirstRunConnectors } = await import("@elizaos/host/protocol");
   const { loadElizaConfig } = await import("../src/config/config.ts");
   const prepared = prepareFirstRunConnectors(
     {
@@ -68,10 +66,11 @@ it("preserves saved and explicit connector options when legacy credentials are p
       },
     },
     {
-      connectors: { telegram: { groupPolicy: "allowlist" } },
-      telegramToken: "new-telegram",
-      discordToken: "new-discord",
-      whatsappSessionPath: "/new/session",
+      connectors: {
+        telegram: { groupPolicy: "allowlist", botToken: "new-telegram" },
+        discord: { token: "new-discord" },
+        whatsapp: { sessionPath: "/new/session" },
+      },
     },
   );
   if (!prepared.ok) throw new Error(prepared.error);
@@ -105,3 +104,107 @@ it("keeps unavailable owner configuration distinct from an unset name", async ()
   );
   expect(fs.readFileSync(file, "utf8")).toBe("{broken");
 });
+
+it.each([
+  { provider: "openai-api", strategy: "round-robin" },
+  { provider: "openai-codex", strategy: "least-used" },
+  { provider: "anthropic-subscription", strategy: "round-robin" },
+] as const)(
+  "applies authenticated $provider strategy changes to the live pool and durable config",
+  async ({ provider, strategy }) => {
+    const file = destination();
+    vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
+    vi.stubEnv("ELIZA_API_TOKEN", "strategy-route-test-token");
+    vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
+    const { DIRECT_ACCOUNT_PROVIDER_ENV } = await import("@elizaos/auth/auth");
+    for (const key of new Set([
+      ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
+      "Z_AI_API_KEY",
+      "KIMI_API_KEY",
+      "OPENAI_API_KEY",
+      "OPENAI_BASE_URL",
+    ]))
+      vi.stubEnv(key, "");
+    const { applyAccountPoolApiCredentials, selectionForProvider } =
+      await import("@elizaos/auth/accounts");
+    const { AgentRuntime } = await import("@elizaos/core");
+    const { SQLiteDatabaseAdapter } = await import("@elizaos/testing/runtime");
+    const { getAgentHostBridge, setAgentHostBridge } = await import(
+      "../src/runtime/host-bridge.ts"
+    );
+    const { startApiServer } = await import("../src/api/server.ts");
+    const { loadElizaConfig } = await import("../src/config/config.ts");
+    const savedBridge = getAgentHostBridge();
+    setAgentHostBridge({ ...savedBridge, applyAccountPoolApiCredentials });
+    const config = {
+      env: { vars: { STRATEGY_FIXTURE_MARKER: "kept" } },
+      accountStrategies: { [provider]: "priority" },
+    };
+    let runtime: InstanceType<typeof AgentRuntime> | undefined;
+    let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+    try {
+      saveElizaConfig(config);
+      await applyAccountPoolApiCredentials({
+        accountStrategies: structuredClone(config.accountStrategies),
+      });
+      expect(selectionForProvider(provider).strategy).toBe("priority");
+      runtime = new AgentRuntime({
+        character: { name: "Strategy host", bio: [] },
+        logLevel: "fatal",
+        enableAutonomy: false,
+      });
+      runtime.registerDatabaseAdapter(
+        SQLiteDatabaseAdapter.create(
+          path.join(path.dirname(file), "state.sqlite"),
+          runtime.agentId,
+        ),
+      );
+
+      await runtime.init();
+      server = await startApiServer({
+        port: 0,
+        runtime,
+        skipDeferredStartupWork: true,
+      });
+      const url = `http://127.0.0.1:${server.port}/api/providers/${provider}/strategy`;
+      const patch = (value: string, authorized = true) =>
+        fetch(url, {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            ...(authorized
+              ? { authorization: "Bearer strategy-route-test-token" }
+              : {}),
+          },
+          body: JSON.stringify({ strategy: value }),
+        });
+      const denied = await patch(strategy, false);
+      expect([401, 403]).toContain(denied.status);
+      await denied.text();
+      expect(selectionForProvider(provider).strategy).toBe("priority");
+      expect(loadElizaConfig()).toMatchObject({
+        accountStrategies: { [provider]: "priority" },
+      });
+      const applied = await patch(strategy);
+      expect(applied.status).toBe(200);
+      expect(await applied.json()).toEqual({ providerId: provider, strategy });
+      expect(selectionForProvider(provider).strategy).toBe(strategy);
+      expect(loadElizaConfig()).toMatchObject({
+        accountStrategies: { [provider]: strategy },
+      });
+      const invalid = await patch("invalid-strategy");
+      expect(invalid.status).toBe(400);
+      await invalid.text();
+      expect(selectionForProvider(provider).strategy).toBe(strategy);
+      expect(loadElizaConfig()).toMatchObject({
+        accountStrategies: { [provider]: strategy },
+      });
+    } finally {
+      if (server) await server.close();
+      if (runtime) await runtime.close();
+      setAgentHostBridge(savedBridge);
+      await applyAccountPoolApiCredentials();
+    }
+  },
+  120_000,
+);

@@ -69,12 +69,14 @@
     "test:remote-control": "bun test --conditions=eliza-source test/remote-control"
   },
   "dependencies": {
+    "@elizaos/auth": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "drizzle-orm": "0.45.3",
     "linkify-it": "5.0.2",
-    "@elizaos/auth": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",

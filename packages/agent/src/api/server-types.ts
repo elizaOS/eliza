@@ -9,17 +9,19 @@
  */
 import type http from "node:http";
 import type {
+  ConversationMetadata,
+  TradePermissionMode,
+} from "@elizaos/contracts";
+import type {
   AgentAutomationMode,
   AgentRuntime,
   AgentStartupDiagnostics,
-  ConversationMetadata,
   AgentLogEntry as LogEntry,
   Media,
   PermissionState,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
-  TradePermissionMode,
   UUID,
 } from "@elizaos/core";
 
@@ -40,14 +42,16 @@ export interface TelegramAccountAuthSessionLike {
 }
 
 export type {
+  ConversationAutomationType,
+  ConversationMetadata,
+  ConversationScope,
+} from "@elizaos/contracts";
+export type {
   AgentAutomationMode,
   AgentLogEntry as LogEntry,
   AgentStartupDiagnostics,
   AgentStreamEventType as StreamEventType,
   ChatImageAttachment,
-  ConversationAutomationType,
-  ConversationMetadata,
-  ConversationScope,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
@@ -81,7 +85,7 @@ export type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-export type { TradePermissionMode } from "@elizaos/core";
+export type { TradePermissionMode } from "@elizaos/contracts";
 
 export interface PluginEntry {
   id: string;

@@ -3,8 +3,8 @@
  * external-file-input, and controlled-selection surfaces.
  */
 
-import { withMockApp } from "@elizaos/ui/storybook/mock-providers.helpers";
 import type { Meta, StoryObj } from "@storybook/react";
+import { withMockApp } from "../../../../../packages/ui/src/storybook/mock-providers.helpers";
 import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView.js";
 
 /**

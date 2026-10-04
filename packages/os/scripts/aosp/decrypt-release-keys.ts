@@ -59,11 +59,19 @@ export function decrypt({
   const fingerprints = JSON.parse(
     fs.readFileSync(path.join(input, "fingerprints.json"), "utf8"),
   );
-  const selected = only ? new Set(only.split(",")) : null;
+  const known = new Set<string>();
   for (const entry of fingerprints.keys) {
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(entry?.name ?? ""))
       throw new Error(`fingerprints.json has an invalid key name`);
+    known.add(entry.name);
   }
+  const selected = only === undefined ? null : new Set(only.split(","));
+  // A misspelled or empty --only name must not "succeed" by decrypting nothing.
+  for (const name of selected ?? [])
+    if (!known.has(name))
+      throw new Error(
+        `--only names a key that is not in fingerprints.json: ${name || "(empty)"}`,
+      );
   fs.mkdirSync(target, { mode: 0o700 });
   const written: string[] = [];
   for (const entry of fingerprints.keys) {

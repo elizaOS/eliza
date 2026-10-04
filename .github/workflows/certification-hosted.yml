@@ -157,7 +157,7 @@ jobs:
       # refuses an empty verdicts document (proven by hosted run
       # 31056825214). Run the same deterministic scenario lane the
       # develop-exhaustive matrix runs — real runtime, deterministic model,
-      # keyless — which writes the reports/scenarios silo.
+      # keyless — which writes the test-results/scenario-runner silo.
       - name: Produce evidence — deterministic scenario lane
         env:
           TZ: UTC

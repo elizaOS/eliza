@@ -5,8 +5,8 @@
  * Electrobun desktop app when running under it, else reload the page.
  */
 import { useState } from "react";
-import { isElectrobunRuntime } from "../../bridge";
-import { useAppSelectorShallow } from "../../state";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 

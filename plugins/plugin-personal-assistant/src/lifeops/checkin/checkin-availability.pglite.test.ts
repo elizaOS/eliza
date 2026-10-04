@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveOwnerFactStore } from "../owner/fact-store.js";
 import { composeOwnerFacingScheduledTaskText } from "../scheduled-task/runtime-wiring.js";
 import type { RawSqlQuery } from "../sql.js";
-import { CheckinService } from "./checkin-service.js";
+import {
+  buildCheckinSummaryPrompt,
+  CheckinService,
+} from "./checkin-service.js";
 import type { CheckinReport } from "./types.js";
 
 describe("check-in source availability and generation failures", () => {
@@ -204,9 +207,8 @@ describe("check-in source availability and generation failures", () => {
         "Existing inbox adapter proof",
       );
       expect(
-        payload.briefingSections.find((section) => section.key === "gmail")
-          ?.error,
-      ).toEqual(expect.any(String));
+        payload.briefingSections.find((section) => section.key === "gmail"),
+      ).toBeUndefined();
       expect(stored.rows).toHaveLength(1);
       expect(stored.rows[0].payload_json.summaryText).toBe(summary);
     },
@@ -569,4 +571,302 @@ describe("check-in source availability and generation failures", () => {
     );
     expect(stored.rows[0].payload_json.sleepRecap).toBeNull();
   });
+});
+
+describe("automatic morning configured source selection", () => {
+  it.each([
+    "uninstalled",
+    "unconfigured",
+    "pending",
+    "agent-only",
+    "calendar-only",
+    "reauth",
+    "google-reauth",
+    "connected-failure",
+    "multiple",
+    "partial",
+    "partial-empty",
+    "probe-failure",
+    "dm-only",
+  ])(
+    "collects %s using actual owner account/status methods",
+    async (mode) => {
+      const { createLifeOpsTestRuntime } = await import(
+        "../../../test/helpers/runtime.js"
+      );
+      const { LifeOpsService } = await import("../service.js");
+      const { getConnectorAccountManager } = await import("@elizaos/core");
+      const { createGoogleConnectorAccountProvider } = await import(
+        "../../../../plugin-google-workspace/src/connector-account-provider.ts"
+      );
+      const fixture = await createLifeOpsTestRuntime();
+      const service = new LifeOpsService(fixture.runtime);
+      const manager = getConnectorAccountManager(fixture.runtime);
+      manager.registerProvider(
+        createGoogleConnectorAccountProvider(fixture.runtime),
+      );
+      const originalGetService = fixture.runtime.getService.bind(
+        fixture.runtime,
+      );
+      const getAccountStatus = vi.fn(async () => {
+        if (mode === "probe-failure") throw new Error("X status probe failed");
+        return {
+          configured: ![
+            "unconfigured",
+            "pending",
+            "agent-only",
+            "calendar-only",
+          ].includes(mode),
+          connected: ![
+            "unconfigured",
+            "pending",
+            "agent-only",
+            "calendar-only",
+            "reauth",
+          ].includes(mode),
+          reason:
+            mode === "reauth"
+              ? "needs_reauth"
+              : [
+                    "unconfigured",
+                    "pending",
+                    "agent-only",
+                    "calendar-only",
+                  ].includes(mode)
+                ? "config_missing"
+                : "connected",
+          grantedCapabilities:
+            mode === "dm-only" ? ["x.dm.read"] : ["x.dm.read", "x.read"],
+          grantedScopes: [],
+          identity: null,
+        };
+      });
+      vi.spyOn(fixture.runtime, "getService").mockImplementation((type) =>
+        type === "x"
+          ? mode === "uninstalled"
+            ? null
+            : ({ getAccountStatus } as never)
+          : originalGetService(type),
+      );
+      const model = vi
+        .spyOn(fixture.runtime, "useModel")
+        .mockImplementation(async () => {
+          throw new Error("morning must not call a model");
+        });
+      const gmail = vi
+        .spyOn(service, "getGmailTriage")
+        .mockImplementation(async (_url, request) => {
+          if (
+            mode === "connected-failure" ||
+            mode === "google-reauth" ||
+            (mode.startsWith("partial") && request?.grantId === failedGrant)
+          )
+            throw new Error("Connected Gmail fetch failed");
+          return {
+            messages:
+              mode === "partial-empty"
+                ? []
+                : [
+                    {
+                      from: "Sender",
+                      subject: request?.grantId,
+                      snippet: "Useful owner mail",
+                      receivedAt: "2026-10-04T05:00:00.000Z",
+                      isUnread: true,
+                      isImportant: false,
+                      likelyReplyNeeded: true,
+                      triageScore: 1,
+                      triageReason: "Reply needed",
+                      htmlLink: null,
+                    },
+                  ],
+            summary: {
+              unreadCount: mode === "partial-empty" ? 0 : 1,
+              importantNewCount: 0,
+              likelyReplyNeededCount: mode === "partial-empty" ? 0 : 1,
+            },
+          } as never;
+        });
+      const dms = vi.spyOn(service, "syncXDms").mockImplementation(async () => {
+        if (mode === "connected-failure")
+          throw new Error("Connected X DM fetch failed");
+        return { synced: 0 };
+      });
+      vi.spyOn(service, "getXDms").mockResolvedValue([]);
+      const feeds = vi
+        .spyOn(service, "syncXFeed")
+        .mockImplementation(async () => {
+          if (mode === "connected-failure")
+            throw new Error("Connected X feed failed");
+          return { synced: 0 };
+        });
+      vi.spyOn(service, "getXFeedItems").mockResolvedValue([]);
+      const grants: string[] = [];
+      let failedGrant = "";
+      try {
+        if (!["uninstalled", "unconfigured"].includes(mode)) {
+          const count = ["multiple", "partial", "partial-empty"].includes(mode)
+            ? 2
+            : 1;
+          for (let index = 0; index < count; index++) {
+            const account = await manager.upsertAccount("google", {
+              id: `mail-${index}`,
+              provider: "google",
+              role: mode === "agent-only" ? "AGENT" : "OWNER",
+              purpose: ["messaging"],
+              accessGate: "owner",
+              status:
+                mode === "pending"
+                  ? "pending"
+                  : mode === "google-reauth"
+                    ? "error"
+                    : "connected",
+              metadata: {
+                grantedCapabilities: [
+                  mode === "calendar-only" ? "calendar.read" : "gmail.read",
+                ],
+              },
+            });
+            const status = (
+              await service.getGoogleConnectorAccounts(
+                new URL("http://127.0.0.1/"),
+                "owner",
+              )
+            ).find((item) => item.grant?.connectorAccountId === account.id);
+            if (mode === "google-reauth")
+              expect(status).toMatchObject({
+                configured: true,
+                connected: false,
+                reason: "needs_reauth",
+              });
+            if (mode !== "agent-only") {
+              if (!status?.grant) throw new Error("Missing real account grant");
+              grants.push(status.grant.id);
+            }
+          }
+          failedGrant = grants[1] ?? "";
+        }
+        const before = await manager.listAccounts("google");
+        const report = await new CheckinService(fixture.runtime, {
+          sources: service,
+        }).runMorningCheckin({
+          now: new Date("2026-10-04T15:00:00.000Z"),
+          timezone: "America/Los_Angeles",
+        });
+        const googleSection = report.briefingSections.find(
+          (section) => section.key === "gmail",
+        );
+        const xSections = report.briefingSections.filter(
+          (section) => section.key === "x" || section.key.startsWith("x_"),
+        );
+        if (
+          [
+            "uninstalled",
+            "unconfigured",
+            "pending",
+            "agent-only",
+            "calendar-only",
+          ].includes(mode)
+        ) {
+          expect(googleSection).toBeUndefined();
+          expect(xSections).toEqual([]);
+          await expect(service.getXConnectorStatus()).resolves.toMatchObject({
+            connected: false,
+          });
+          expect(gmail).not.toHaveBeenCalled();
+          expect(dms).not.toHaveBeenCalled();
+          expect(feeds).not.toHaveBeenCalled();
+          expect(report.summaryText).not.toContain("Gmail");
+          expect(report.summaryText).not.toContain("X isn't");
+        } else {
+          expect(
+            gmail.mock.calls.map(([, request]) => request?.grantId).sort(),
+          ).toEqual(grants.sort());
+          expect(
+            gmail.mock.calls.every(([, request]) => request?.side === "owner"),
+          ).toBe(true);
+          if (mode === "connected-failure") {
+            expect(googleSection?.error).toBe("Connected Gmail fetch failed");
+            expect(xSections.map((section) => section.error)).toEqual([
+              "Connected X DM fetch failed",
+              "Connected X feed failed",
+              "Connected X feed failed",
+            ]);
+          } else if (mode === "google-reauth") {
+            expect(googleSection?.error).toBe("Connected Gmail fetch failed");
+            expect(googleSection?.items).toEqual([]);
+            expect(report.summaryText).toContain("Gmail unavailable");
+          } else if (mode.startsWith("partial")) {
+            expect(googleSection?.coverage).toBe("partial");
+            expect(googleSection?.error).toBe("Connected Gmail fetch failed");
+            expect(googleSection?.items).toHaveLength(
+              mode === "partial-empty" ? 0 : 1,
+            );
+            expect(report.summaryText).toMatch(
+              /Some Gmail inboxes|some connected inboxes/,
+            );
+            const prompt = buildCheckinSummaryPrompt(report);
+            const payload = JSON.parse(
+              prompt.split("Report JSON:\n")[1].split("\n")[0],
+            );
+            expect(
+              payload.briefingSections.available.find(
+                (section: { key: string }) => section.key === "gmail",
+              ),
+            ).toMatchObject({
+              coverage: "partial",
+              error: "Connected Gmail fetch failed",
+            });
+            expect(
+              payload.briefingSections.unavailable.some(
+                (section: { key: string }) => section.key === "gmail",
+              ),
+            ).toBe(false);
+            expect(report.summaryText).not.toContain("No Gmail");
+          } else
+            expect(googleSection?.items).toHaveLength(
+              mode === "multiple" ? 2 : 1,
+            );
+          if (mode === "probe-failure" || mode === "reauth") {
+            expect(xSections.map((section) => section.key)).toEqual(["x"]);
+            expect(report.summaryText).toContain("X unavailable");
+            expect(report.summaryText).not.toContain("X (DMs)");
+          }
+          if (mode === "probe-failure") {
+            expect(xSections[0]?.error).toBe("X status probe failed");
+            expect(dms).not.toHaveBeenCalled();
+            expect(feeds).not.toHaveBeenCalled();
+          }
+          if (mode === "reauth") {
+            expect(xSections[0]?.error).toContain("needs reauthorization");
+            expect(dms).not.toHaveBeenCalled();
+            expect(feeds).not.toHaveBeenCalled();
+          }
+          if (mode === "probe-failure") {
+            await expect(service.getXConnectorStatus()).resolves.toMatchObject({
+              connected: false,
+              probeError: "X status probe failed",
+            });
+            const { createXConnectorContribution } = await import(
+              "../connectors/x.js"
+            );
+            await expect(
+              createXConnectorContribution(fixture.runtime).verify(),
+            ).resolves.toBe(false);
+          }
+          if (mode === "dm-only") {
+            expect(xSections.map((section) => section.key)).toEqual(["x_dms"]);
+            expect(feeds).not.toHaveBeenCalled();
+          }
+        }
+        expect(await manager.listAccounts("google")).toEqual(before);
+        expect(model).not.toHaveBeenCalled();
+        expect(report.timezone).toBe("America/Los_Angeles");
+      } finally {
+        vi.restoreAllMocks();
+        await fixture.cleanup();
+      }
+    },
+    120000,
+  );
 });

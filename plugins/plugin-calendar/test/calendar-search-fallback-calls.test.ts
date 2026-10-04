@@ -3,12 +3,13 @@
  * a controlled feed and model ports. Valid filters read without inference;
  * missing filters return a repairable error before any feed or model call.
  */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import {
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   actionResultToPlannerToolResult,
@@ -79,6 +80,7 @@ function fakeRuntime(service: ReturnType<typeof stubService>): IAgentRuntime {
       debug: () => undefined,
     },
     reportError: () => undefined,
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }

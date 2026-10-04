@@ -34,19 +34,32 @@ vi.mock("../../../shell/CloudI18nProvider", () => {
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
-vi.mock("../../../../components/primitives", () => {
+vi.mock("../../../../components/ui/alert", () => {
+  const Container = ({ children }: { children?: ReactNode }) => (
+    <div>{children}</div>
+  );
+  return { Alert: Container, AlertDescription: Container };
+});
+vi.mock("../../../../components/ui/badge", () => {
+  const Container = ({ children }: { children?: ReactNode }) => (
+    <div>{children}</div>
+  );
+  return { Badge: Container };
+});
+vi.mock("../../../../components/ui/card", () => {
   const Container = ({ children }: { children?: ReactNode }) => (
     <div>{children}</div>
   );
   return {
-    Alert: Container,
-    AlertDescription: Container,
-    Badge: Container,
     Card: Container,
     CardContent: Container,
     CardDescription: Container,
     CardHeader: Container,
     CardTitle: Container,
+  };
+});
+vi.mock("../../../../components/ui/button", () => {
+  return {
     Button: ({
       children,
       disabled,

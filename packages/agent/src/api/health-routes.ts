@@ -80,7 +80,13 @@ export interface HealthRouteState {
   pendingRestartReasons: string[];
   connectorHealthMonitor: ConnectorHealthMonitor | null;
 }
+/** Trusted host composition before status JSON is serialized. */
+export type ApiStatusComposer = (
+  payload: Record<string, unknown>,
+) => Record<string, unknown>;
+
 export interface HealthRouteContext {
+  composeStatus?: ApiStatusComposer;
   req: http.IncomingMessage;
   res: http.ServerResponse;
   method: string;
@@ -728,7 +734,7 @@ export async function handleHealthRoutes(
       cloudProvisioned,
       hasApiKey: hasCloudApiKey,
     };
-    json(res, {
+    const payload = {
       state: state.agentState,
       agentName: state.agentName,
       model,
@@ -739,7 +745,8 @@ export async function handleHealthRoutes(
       cloud: cloudStatus,
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
-    });
+    };
+    json(res, ctx.composeStatus ? ctx.composeStatus(payload) : payload);
     return true;
   }
   // ── GET /api/health ──────────────────────────────────────────────────────

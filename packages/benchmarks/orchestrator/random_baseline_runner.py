@@ -32,7 +32,6 @@ import importlib
 import json
 import logging
 import math
-import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -136,7 +135,7 @@ def _bfcl_payload(score: float) -> dict[str, Any]:
 def _action_calling_payload(score: float) -> dict[str, Any]:
     """Build a full-corpus synthetic ledger without weakening publication checks."""
 
-    action_cli = importlib.import_module("benchmarks.action-calling.cli")
+    action_cli = importlib.import_module("benchmarks.suites.action-calling.cli")
     base_cases = action_cli._load_cases(action_cli.DEFAULT_TEST, None)
     cases = action_cli._expand_cases(base_cases)
     if len(base_cases) != 63 or len(cases) != 693:
@@ -747,11 +746,11 @@ def _openclaw_payload(score: float) -> dict[str, Any]:
 def _orchestrator_lifecycle_payload(score: float) -> dict[str, Any]:
     """Build a full pinned-corpus report that the strict scorer recomputes."""
 
-    from benchmarks.orchestrator_lifecycle.dataset import LifecycleDataset
-    from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
-    from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
-    from benchmarks.orchestrator_lifecycle.runner import _simulate_turn
-    from benchmarks.orchestrator_lifecycle.types import TurnRecord
+    from benchmarks.suites.orchestrator_lifecycle.dataset import LifecycleDataset
+    from benchmarks.suites.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+    from benchmarks.suites.orchestrator_lifecycle.events import extract_lifecycle_events
+    from benchmarks.suites.orchestrator_lifecycle.runner import _simulate_turn
+    from benchmarks.suites.orchestrator_lifecycle.types import TurnRecord
 
     if math.isclose(score, 1.0, abs_tol=1e-12):
         ideal_scenarios = ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT
@@ -1147,7 +1146,7 @@ def run_synthetic_baseline(
             note="Runtime throughput and child orchestration require execution receipts, not synthetic correctness calibration.",
         )
     if benchmark_id == "action-calling":
-        action_cli = importlib.import_module("benchmarks.action-calling.cli")
+        action_cli = importlib.import_module("benchmarks.suites.action-calling.cli")
         if not action_cli.DEFAULT_TEST.is_file():
             return RandomBaselineOutcome(
                 harness=harness,

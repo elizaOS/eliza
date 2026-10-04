@@ -26,7 +26,7 @@
  */
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { AgentBackupRestoreV3CandidateReceiptSchema } from "@elizaos/contracts";
 import {
   type AgentBackupRestoreV3Attestation,
   type AgentBackupRestoreV3AttestationBody,
@@ -35,8 +35,8 @@ import {
   agentBackupRestoreV3TokenSha256,
   canonicalizeAgentBackupRestoreV3ServingValue,
   verifyAgentBackupRestoreV3Attestation,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
-import { AgentBackupRestoreV3CandidateReceiptSchema } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts/node";
+import { ElizaError } from "@elizaos/core";
 import type { AgentBackupRestoreSourceV3Input } from "../../db/repositories/agent-backup-restore";
 import {
   commitAgentBackupRestore,
