@@ -14,7 +14,7 @@
  * place auto-updates fire — the runtime tick is suppressed (R5 §4.5).
  */
 
-import type { ReleaseChannel } from "@elizaos/agent";
+import type { ReleaseChannel } from "@elizaos/contracts";
 import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
 import { CLI_VERSION } from "../version";

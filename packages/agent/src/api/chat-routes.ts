@@ -24,7 +24,6 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
-  DELTA_STREAM_PROTOCOL,
   type EffectReceipt,
   ElizaError,
   EventType,
@@ -331,40 +330,11 @@ export function admitChatMessageId(
 export function normalizeClientMessageId(value: unknown): string | null {
   return chatIdempotency.normalize(value);
 }
-/**
- * Lifecycle-aware O(1) duplicate check for an HTTP chat send. Active turns
- * remain reserved until their owner either settles or explicitly releases the
- * key; they must not become duplicate work merely because generation is slow.
- * Settled outcomes remain replayable for a bounded retention period.
- *
- * `scope` is the conversation room id (dashboard chat) or the per-user room key
- * (agent-message API) so the key cannot collide across conversations/users.
- */
-export function isDuplicateChatMessage(
-  scope: string,
-  clientMessageId: string | null,
-  now: number = Date.now(),
-): boolean {
-  return chatIdempotency.reserve(scope, clientMessageId, now);
-}
-/**
- * Roll back an idempotency key recorded by {@link isDuplicateChatMessage}.
- *
- * The guard records at request ARRIVAL (so a duplicate landing while the
- * original is still mid-turn is suppressed — that's the blip-retry window it
- * exists for). But when the original turn dies WITHOUT persisting a visible
- * assistant reply — a client disconnect aborts generation, or an error hits
- * after a disconnect so no fallback reply is persisted — a suppressed retry
- * would eat the user's message entirely: no reply, no error, no retry chip.
- * Callers release the key on exactly those paths so the client's single
- * auto-retry legitimately re-runs the turn (it is not a duplicate of any
- * delivered outcome). Releasing is always safe: the worst case is the
- * pre-guard behavior (a second turn) on a turn that produced nothing.
- */
+/** Release an active reservation held by the requesting turn. */
 export function releaseChatMessageId(
   scope: string,
   clientMessageId: string | null,
-  reservation?: ChatMessageIdReservation | null,
+  reservation: ChatMessageIdReservation | null,
 ): void {
   chatIdempotency.release(scope, clientMessageId, reservation);
 }
@@ -392,7 +362,7 @@ export function setChatMessageIdOutcome(
   scope: string,
   clientMessageId: string | null,
   outcome: ChatMessageIdOutcome,
-  reservation?: ChatMessageIdReservation | null,
+  reservation: ChatMessageIdReservation | null,
 ): void {
   chatIdempotency.settle(scope, clientMessageId, outcome, reservation);
 }
@@ -1667,15 +1637,11 @@ function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
 // SSE helpers
 // ---------------------------------------------------------------------------
 export {
-  type ChatTokenStreamProtocol,
   type ChatTokenStreamWriter,
-  type ChatTokenStreamWriterDeps,
   type ChatTokenWriteOptions,
   createChatTokenStreamWriter,
-  DELTA_STREAM_PROTOCOL,
   initSse,
   writeChatStatusSse,
-  writeChatTokenSse,
   writeChatToolSse,
   writeSse,
   writeSseData,
@@ -2183,13 +2149,9 @@ export async function readChatRequestPayload(
   preferredLanguage?: string;
   source?: string;
   metadata?: Record<string, unknown>;
-  /** Client-supplied idempotency key (see `isDuplicateChatMessage`); absent
+  /** Client-supplied idempotency key (see `admitChatMessageId`); absent
    *  when the client did not stamp one. */
   clientMessageId?: string;
-  /** Present only when the client advertised the exact delta-v2 wire protocol;
-   *  drives `createChatTokenStreamWriter`. Unknown values are ignored so the
-   *  server stays on legacy framing for un-negotiated clients. */
-  streamProtocol?: typeof DELTA_STREAM_PROTOCOL;
 } | null> {
   const body = await helpers.readJsonBody<{
     text?: string;
@@ -2199,7 +2161,6 @@ export async function readChatRequestPayload(
     source?: string;
     metadata?: Record<string, unknown>;
     clientMessageId?: string;
-    streamProtocol?: string;
   }>(req, res, { maxBytes });
   if (!body) return null;
   const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
@@ -2259,10 +2220,6 @@ export async function readChatRequestPayload(
     );
     return null;
   }
-  const streamProtocol =
-    body.streamProtocol === DELTA_STREAM_PROTOCOL
-      ? DELTA_STREAM_PROTOCOL
-      : undefined;
   return {
     prompt: normalizedPrompt,
     channelType,
@@ -2271,7 +2228,6 @@ export async function readChatRequestPayload(
     ...(source ? { source } : {}),
     ...(metadata ? { metadata } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
-    ...(streamProtocol ? { streamProtocol } : {}),
   };
 }
 function readMessageTrajectoryStepId(

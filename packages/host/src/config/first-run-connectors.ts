@@ -1,10 +1,10 @@
 /**
  * Prepares first-run connector configuration for every application host.
- * Validation and legacy field normalization are pure; hosts retain credential
+ * Validation is pure; hosts retain credential
  * resolution, durable config commits, environment updates, and authorization.
  */
-import { asObjectRecord as asRecord } from "@elizaos/core";
-import type { ConnectorConfig, ElizaConfig } from "@elizaos/host/protocol";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
+import type { ConnectorConfig, ElizaConfig } from "./types.eliza.js";
 
 export interface CanonicalBlooioConnectorConfig {
   apiKey: string;
@@ -31,51 +31,34 @@ interface BlooioFirstRunInput {
   current?: Record<string, unknown> | null;
   explicit?: Record<string, unknown> | null;
   explicitConnectorRequested?: boolean;
-  blooioApiKey?: unknown;
-  blooioWebhookSecret?: unknown;
-  blooioPhoneNumber?: unknown;
-  blooioChannelId?: unknown;
 }
 
 function readBlooioFields(input: BlooioFirstRunInput) {
   const apiKey = firstNonBlankString(
     input.explicit?.apiKey,
-    input.blooioApiKey,
     input.current?.apiKey,
   );
   const webhookSecret = firstNonBlankString(
     input.explicit?.webhookSecret,
-    input.blooioWebhookSecret,
     input.current?.webhookSecret,
   );
   const fromNumber = firstNonBlankString(
     input.explicit?.fromNumber,
-    input.explicit?.phoneNumber,
-    input.blooioPhoneNumber,
     input.current?.fromNumber,
-    input.current?.phoneNumber,
   );
   const channelId = firstNonBlankString(
     input.explicit?.channelId,
-    input.blooioChannelId,
     input.current?.channelId,
   );
 
   return { apiKey, webhookSecret, fromNumber, channelId };
 }
 
-/** Resolves legacy first-run fields into the complete canonical connector. */
+/** Resolves a complete connector from an explicit update and saved credentials. */
 export function resolveBlooioFirstRunConfig(
   input: BlooioFirstRunInput,
 ): BlooioFirstRunResolution {
-  const legacyRequested = [
-    input.blooioApiKey,
-    input.blooioWebhookSecret,
-    input.blooioPhoneNumber,
-    input.blooioChannelId,
-  ].some((value) => value !== undefined);
-  const requested =
-    input.explicitConnectorRequested === true || legacyRequested;
+  const requested = input.explicitConnectorRequested === true;
   if (!requested) return { requested: false };
 
   const { apiKey, webhookSecret, fromNumber, channelId } =
@@ -132,10 +115,6 @@ export function prepareFirstRunConnectors(
     explicitConnectorRequested: Boolean(
       requested && Object.hasOwn(requested, "blooio"),
     ),
-    blooioApiKey: body.blooioApiKey,
-    blooioWebhookSecret: body.blooioWebhookSecret,
-    blooioPhoneNumber: body.blooioPhoneNumber,
-    blooioChannelId: body.blooioChannelId,
   };
   const blooio: BlooioFirstRunResolution = blooioDisabled
     ? { requested: false }
@@ -160,18 +139,6 @@ export function prepareFirstRunConnectors(
       }
     }
   }
-  const telegramToken = firstNonBlankString(body.telegramToken);
-  if (telegramToken)
-    connectors.telegram = { ...connectors.telegram, botToken: telegramToken };
-  const discordToken = firstNonBlankString(body.discordToken);
-  if (discordToken)
-    connectors.discord = { ...connectors.discord, token: discordToken };
-  const whatsappSessionPath = firstNonBlankString(body.whatsappSessionPath);
-  if (whatsappSessionPath)
-    connectors.whatsapp = {
-      ...connectors.whatsapp,
-      sessionPath: whatsappSessionPath,
-    };
   const twilioAccountSid = firstNonBlankString(body.twilioAccountSid);
   const twilioAuthToken = firstNonBlankString(body.twilioAuthToken);
   if (twilioAccountSid && twilioAuthToken) {
