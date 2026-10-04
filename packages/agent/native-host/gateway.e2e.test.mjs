@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import {
   mkdtemp,
@@ -98,6 +99,32 @@ test("private launch persists token, preserves user config and isolates actual c
   );
   assert.equal(signals.listenerCount("SIGTERM"), 0);
   assert.equal(signals.listenerCount("SIGINT"), 0);
+});
+
+test("host token format is selected only on creation and survives default reopen", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-launch-token-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let generated = 0;
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath: join(root, "config.json"),
+    launchConfigPath: join(root, "launch.json"),
+    initialConfig: {},
+    selectConfig: (existing) => existing,
+  };
+  const createToken = () => {
+    generated++;
+    return randomBytes(32).toString("hex");
+  };
+  const first = await preparePrivateRuntimeFiles({ ...options, createToken });
+  assert.match(first.token, /^[a-f0-9]{64}$/);
+  assert.equal(
+    (await preparePrivateRuntimeFiles({ ...options, createToken })).token,
+    first.token,
+  );
+  assert.equal((await preparePrivateRuntimeFiles(options)).token, first.token);
+  assert.equal(generated, 1);
+  assert.equal((await stat(options.tokenPath)).mode & 0o777, 0o600);
 });
 
 test("private launch rejects malformed settings, links and empty authority without spawning", async (t) => {

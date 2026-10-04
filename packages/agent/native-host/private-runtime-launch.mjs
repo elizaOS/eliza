@@ -38,7 +38,7 @@ async function privateFile(file, initial) {
   let handle;
   try {
     handle = await open(file, "wx", 0o600);
-    await handle.writeFile(initial);
+    await handle.writeFile(typeof initial === "function" ? initial() : initial);
   } catch (error) {
     if (handle || error.code !== "EEXIST") throw error;
   } finally {
@@ -83,10 +83,9 @@ export async function preparePrivateRuntimeFiles({
   launchConfigPath,
   initialConfig,
   selectConfig,
+  createToken = () => randomBytes(48).toString("base64url"),
 }) {
-  const token = (
-    await privateFile(tokenPath, randomBytes(48).toString("base64url"))
-  ).trim();
+  const token = (await privateFile(tokenPath, createToken)).trim();
   if (!token || /[\r\n\0]/.test(token))
     throw new RuntimeLaunchError("INVALID_RUNTIME_TOKEN");
   const existing = JSON.parse(
