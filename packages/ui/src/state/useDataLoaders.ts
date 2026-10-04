@@ -1759,7 +1759,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // user navigated away before it landed. Best-effort — a failure leaves the
   // current thread untouched and the caller simply doesn't scroll.
   const loadConversationMessagesAround = useCallback(
-    async (convId: string, messageId: string): Promise<boolean> => {
+    async (
+      convId: string,
+      messageId: string,
+      options?: {
+        onMessages: (messages: readonly ConversationMessage[]) => void;
+      },
+    ): Promise<boolean> => {
       if (
         activeConversationIdRef.current !== convId ||
         visibleConversationMessagesOwnerRef.current !== convId
@@ -1792,6 +1798,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (!isCurrentConversationMessageFence(fence)) return false;
         captureVisibleConversationMessageOverlay(convId);
         const serverMessages = filterRenderableConversationMessages(messages);
+        options?.onMessages(serverMessages);
         const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
           conversationMessageOverlayRef.current.get(convId),

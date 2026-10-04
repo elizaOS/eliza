@@ -489,6 +489,13 @@ export function transitionInteractiveTask(
 			if (transition.evidenceRef !== undefined) id(transition.evidenceRef);
 			operation.status = transition.status;
 			operation.evidenceRef = transition.evidenceRef;
+			if (transition.type === "reconcile" && transition.status !== "unknown") {
+				// Readback authority must not become effect authority in the same epoch.
+				// Commit the fence with the result so a crash cannot strand a narrower
+				// native binding or restore a previously actionable observation.
+				task.epoch++;
+				task.observation = null;
+			}
 			if (task.status === "waiting")
 				task.status = transition.status === "unknown" ? "blocked" : "active";
 			if (

@@ -2,6 +2,10 @@ import {
   type CalendarOperation,
   validateCalendarOperation,
 } from "./calendar-contract.ts";
+import {
+  type ClockOperation,
+  validateClockOperation,
+} from "./clock-contract.ts";
 import { type MapsOperation, validateMapsOperation } from "./maps-contract.ts";
 import {
   type NotesOperation,
@@ -11,6 +15,10 @@ import {
   type ReminderOperation,
   validateReminderOperation,
 } from "./reminder-contract.ts";
+import {
+  type ReminderCreateOperation,
+  validateReminderCreate,
+} from "./reminder-create-contract.ts";
 import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,
@@ -42,8 +50,11 @@ export const DEVICE_VIEWS = [
   "maps",
   "inbox",
   "settings",
+  "workflows",
 ] as const;
 export type DeviceOperation =
+  | ReminderCreateOperation
+  | ClockOperation
   | MapsOperation
   | ReminderOperation
   | NotesOperation
@@ -61,6 +72,7 @@ export type DeviceActionPayload = {
   enrollmentId: string;
   operation: DeviceOperation;
   workflow?: WorkflowDeviceBinding;
+  viewProfileRevision?: string;
 };
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -93,6 +105,18 @@ export function exactKeys(
 export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
   switch (p.type) {
+    case "reminder_create":
+      try {
+        return validateReminderCreate(p);
+      } catch {
+        throw new DeviceActionError("Invalid reminder creation");
+      }
+    case "clock_handoff":
+      try {
+        return validateClockOperation(p);
+      } catch {
+        throw new DeviceActionError("Invalid Clock operation");
+      }
     case "maps_read_selected":
       try {
         return validateMapsOperation(p);
@@ -124,7 +148,9 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       try {
         return validateCalendarOperation(p);
       } catch {
-        throw new DeviceActionError("Invalid Calendar operation");
+        throw new DeviceActionError(
+          "Invalid Calendar operation. Calendar fields require title, description, location, start, end and timeZone. Use canonical UTC start/end with milliseconds (YYYY-MM-DDTHH:mm:ss.sssZ), end after start, a valid IANA timeZone, and exact observed source/target IDs and revisions.",
+        );
       }
     case "post_notification":
       exactKeys(p, ["type", "title", "body"]);
@@ -190,6 +216,7 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     "enrollmentId",
     "operation",
     "workflow",
+    "viewProfileRevision",
   ]);
   if (p.action !== "device_action" || p.version !== 1)
     throw new DeviceActionError("Unsupported device protocol");
@@ -210,6 +237,9 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     installationId: identifier(p.installationId),
     enrollmentId: identifier(p.enrollmentId),
     operation,
+    ...(p.viewProfileRevision === undefined
+      ? {}
+      : { viewProfileRevision: identifier(p.viewProfileRevision) }),
     ...(p.workflow === undefined
       ? {}
       : { workflow: validateWorkflowBinding(p.workflow) }),
