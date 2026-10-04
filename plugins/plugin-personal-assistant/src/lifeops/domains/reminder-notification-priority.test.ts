@@ -41,9 +41,11 @@ describe("resolveReminderNotificationPriority", () => {
     expect(priority("calendar_event", at(6 * 60 * 60_000))).toBe("normal");
   });
 
-  it("keeps non-calendar reminders at normal regardless of lead time", () => {
-    expect(priority("occurrence", at(10 * 60_000))).toBe("normal");
-    expect(priority("occurrence", at(30 * 60 * 60_000))).toBe("normal");
+  it("alerts occurrence reminders at high without flattening calendar tiers", () => {
+    expect(priority("occurrence", at(10 * 60_000))).toBe("high");
+    expect(priority("occurrence", at(30 * 60 * 60_000))).toBe("high");
+    expect(priority("occurrence", null)).toBe("high");
+    expect(priority("occurrence", "not-a-date")).toBe("high");
   });
 
   it("falls back to normal for a missing / unparseable dueAt", () => {

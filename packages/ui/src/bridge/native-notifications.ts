@@ -14,7 +14,10 @@ import {
   navigateDeepLink,
   readNotificationChatTarget,
 } from "../state/notifications/navigate-deep-link";
-import { getNativePlugin } from "./native-plugins";
+import {
+  getNativePlugin,
+  type PushNotificationsPluginLike,
+} from "./native-plugins";
 
 export interface NativeNotificationRequest {
   /** Stable string id (used to derive a numeric LocalNotifications id). */
@@ -302,7 +305,46 @@ async function tryLocalNotifications(
     if (requested.display !== "granted") return "denied";
   }
 
-  const channel = await ensureAndroidChannel(plugin, req.priority);
+  let channelPriority = req.priority;
+  const ownerType = req.data?.ownerType;
+  if (
+    Capacitor.getPlatform() === "android" &&
+    (ownerType === "occurrence" || ownerType === "calendar_event")
+  ) {
+    const push =
+      getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
+    const capabilities = await push.getReminderDataCapabilities?.();
+    // Old native builds cannot observe legacy channel provenance. Keep the
+    // durable in-app fallback rather than guess a louder OS channel.
+    if (
+      capabilities?.reminderChannelSelection !== true ||
+      typeof push.resolveReminderChannel !== "function"
+    ) {
+      if (ownerType === "occurrence" && req.priority === "high") return false;
+    } else {
+      const selected = await push.resolveReminderChannel({
+        priority: req.priority,
+        ownerType,
+      });
+      if (typeof selected.blocked !== "boolean" || selected.blocked)
+        return false;
+      const entry = Object.entries(ANDROID_CHANNELS).find(
+        ([, channel]) => channel.id === selected.channelId,
+      );
+      if (
+        !entry ||
+        (entry[0] !== req.priority &&
+          !(
+            ownerType === "occurrence" &&
+            req.priority === "high" &&
+            entry[0] === "normal"
+          ))
+      )
+        return false;
+      if (entry[0] === "normal") channelPriority = "normal";
+    }
+  }
+  const channel = await ensureAndroidChannel(plugin, channelPriority);
   // A required Android channel that couldn't be created means the OS would drop
   // the post — don't claim success; let the store's glass fallback deliver.
   if (channel.unusable) return false;
