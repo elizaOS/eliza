@@ -29,6 +29,7 @@ export async function runIsolatedAndroidTest({
   testPackage = `${packageName}.test`,
   runner = "androidx.test.runner.AndroidJUnitRunner",
   testClass,
+  testClasses,
   expectedTests = 1,
   requiredAbi,
   expectedAvdName,
@@ -45,14 +46,31 @@ export async function runIsolatedAndroidTest({
   collectVariant,
 }) {
   assert.match(serial ?? "", /^emulator-\d+$/);
-  for (const name of [packageName, testPackage, runner, testClass])
+  assert.ok(
+    testClasses === undefined || testClass === undefined,
+    "Choose testClass or testClasses",
+  );
+  assert.ok(
+    testClasses === undefined || Array.isArray(testClasses),
+    "Explicit test class list required",
+  );
+  const classes = testClasses === undefined ? [testClass] : [...testClasses];
+  assert.ok(classes.length > 0, "At least one test class required");
+  assert.equal(
+    new Set(classes).size,
+    classes.length,
+    "Duplicate requested class",
+  );
+  for (const name of [packageName, testPackage, runner, ...classes])
     assert.match(name ?? "", packagePattern);
   assert.notEqual(packageName, testPackage);
   assert.ok(
     ["arm64-v8a", "x86_64"].includes(requiredAbi),
     "Explicit emulator ABI required",
   );
-  assert.ok(Number.isSafeInteger(expectedTests) && expectedTests > 0);
+  assert.ok(
+    Number.isSafeInteger(expectedTests) && expectedTests >= classes.length,
+  );
   assert.ok(
     Number.isSafeInteger(androidUser) && androidUser >= 0,
     "Explicit Android user required",
@@ -196,6 +214,8 @@ export async function runIsolatedAndroidTest({
     expectedAvdName,
     requiredAbi,
     androidUser,
+    testClasses: classes,
+    expectedTests,
     evidence,
     variants: [],
   };
@@ -283,14 +303,12 @@ export async function runIsolatedAndroidTest({
         "-r",
         "-e",
         "class",
-        testClass,
+        classes.join(","),
         ...runnerArgs,
         `${testPackage}/${runner}`,
       );
       fs.writeFileSync(path.join(directory, `${variant.name}.log`), output);
-      record.instrumentation = requireInstrumentationSuccess(output, [
-        testClass,
-      ]);
+      record.instrumentation = requireInstrumentationSuccess(output, classes);
       assert.equal(
         record.instrumentation.totalTests,
         expectedTests,
