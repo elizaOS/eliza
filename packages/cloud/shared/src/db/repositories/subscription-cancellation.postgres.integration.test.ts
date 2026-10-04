@@ -2,10 +2,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
-import {
-  installCancellationTestSchema,
-  seedCancellationTestAccount,
-} from "./subscription-cancellation-test-fixture";
+import { installOrganizationUpgradeTestSchema } from "./organization-upgrade-test-fixture";
+import { seedCancellationTestAccount } from "./subscription-cancellation-test-fixture";
 
 const url = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schema = `cancellation_${randomUUID().replaceAll("-", "_")}`;
@@ -38,7 +36,7 @@ async function waitForPublicationLock() {
     await setup.connect();
     await setup.query(`CREATE SCHEMA ${schema}`);
     await setup.query(`SET search_path TO ${schema},public`);
-    await installCancellationTestSchema((query) => setup.query(query));
+    await installOrganizationUpgradeTestSchema((query) => setup.query(query));
     const target = new URL(url!);
     target.searchParams.set("options", `-c search_path=${schema},public`);
     target.searchParams.set("application_name", schema);
