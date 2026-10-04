@@ -441,6 +441,8 @@ export interface Bindings {
 
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
+  /** Browser-safe key returned with in-app subscription checkout; pk_live_ only in production, else pk_test_. */
+  STRIPE_PUBLISHABLE_KEY?: string;
   /** Explicit approved per-revision notice dispatches; omission leaves durable notices policy-unavailable. */
   SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON?: string;
   /** Explicit default app billing mode; live is accepted only in production. */

@@ -23,6 +23,8 @@ process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
 process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
 process.env.STRIPE_PRO_PRODUCT_ID = "prod_pro";
 process.env.NEXT_PUBLIC_APP_URL = "https://cloud.example.test";
+process.env.NEXT_PUBLIC_API_URL = "https://api.example.test";
+process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_cloudcheckout";
 setDefaultTimeout(180_000);
 
 const HOUR = 60 * 60 * 1000;
@@ -170,9 +172,13 @@ const server = createServer((request, response) => {
       const replay = recorded.idempotencyKey && sessionsByKey.get(recorded.idempotencyKey);
       if (replay) return send(200, sessions.get(replay));
       const id = `cs_test_${++sequence}`;
+      const embedded = body.get("ui_mode") === "embedded";
       const session = {
         id,
         object: "checkout.session",
+        ui_mode: embedded ? "embedded" : "hosted",
+        client_secret: embedded ? `${id}_secret_loopback` : null,
+        amount_total: priceObject(body.get("line_items[0][price]") ?? "").unit_amount,
         mode: "subscription",
         status: "open",
         payment_status: "unpaid",
@@ -188,7 +194,7 @@ const server = createServer((request, response) => {
           organization_id: body.get("metadata[organization_id]"),
           command_id: body.get("metadata[command_id]"),
         },
-        url: `https://checkout.stripe.com/c/pay/${id}`,
+        url: embedded ? null : `https://checkout.stripe.com/c/pay/${id}`,
       };
       sessions.set(id, session);
       if (recorded.idempotencyKey) sessionsByKey.set(recorded.idempotencyKey, id);
@@ -411,10 +417,21 @@ function openSession(org: Org, commandId: string, status: "open" | "complete" | 
   return id;
 }
 
-function submit(org: Org, planKey: "plus_monthly" | "pro_monthly", idempotencyKey: string) {
+function submit(
+  org: Org,
+  planKey: "plus_monthly" | "pro_monthly",
+  idempotencyKey: string,
+  presentation?: "hosted" | "embedded" | "shared",
+) {
   let reauthorizations = 0;
   const result = checkout.submitSubscriptionCheckout(
-    { organizationId: org.organizationId, actorId: org.actorId, planKey, idempotencyKey },
+    {
+      organizationId: org.organizationId,
+      actorId: org.actorId,
+      planKey,
+      idempotencyKey,
+      ...(presentation ? { presentation } : {}),
+    },
     async () => {
       reauthorizations++;
     },
@@ -594,6 +611,220 @@ test("a different-plan request never starts a second purchase after the pending 
     [org.organizationId],
   );
   expect(commands).toEqual([{ id: pending.command.id, status: "OUTCOME_UNKNOWN" }]);
+});
+
+const sessionCreates = () =>
+  providerWrites().filter((request) => request.path === "/v1/checkout/sessions");
+
+test("embedded checkout returns an in-app client secret, server quote and no redirect", async () => {
+  const org = await seedOrganization();
+  const key = randomUUID();
+  const result = await submit(org, "plus_monthly", key, "embedded").result;
+  if (result.status !== "open" || !("presentation" in result) || result.presentation !== "embedded")
+    throw new Error("expected an open embedded checkout");
+  expect(result).toMatchObject({
+    checkoutUrl: null,
+    uiMode: "embedded",
+    publishableKey: "pk_test_cloudcheckout",
+    amountDueCents: 3000,
+    currency: "usd",
+    interval: "month",
+  });
+  expect(result.clientSecret).toBe(`${result.sessionId}_secret_loopback`);
+  expect(Date.parse(result.expiresAt)).toBeGreaterThan(Date.now() + 23 * HOUR);
+  const [create] = sessionCreates();
+  expect(create?.body.get("ui_mode")).toBe("embedded");
+  expect(create?.body.get("redirect_on_completion")).toBe("never");
+  expect(create?.body.get("payment_method_types[0]")).toBe("card");
+  expect(create?.body.has("payment_method_types[1]")).toBe(false);
+  expect(create?.body.has("success_url")).toBe(false);
+  expect(create?.body.has("cancel_url")).toBe(false);
+  expect(create?.body.has("return_url")).toBe(false);
+
+  // The same intent resumes the same provider session.
+  requests.length = 0;
+  expect(await submit(org, "plus_monthly", key, "embedded").result).toEqual(result);
+  expect(sessionCreates()).toEqual([]);
+  // Another device asking for the same plan in the same presentation resumes it too.
+  expect(await submit(org, "plus_monthly", randomUUID(), "embedded").result).toEqual(result);
+  expect(sessionCreates()).toEqual([]);
+});
+
+test("embedded checkout fails before any provider write without a same-mode publishable key", async () => {
+  const org = await seedOrganization();
+  for (const value of [undefined, "pk_live_wrongmode", "sk_test_notpublishable"]) {
+    if (value === undefined) delete process.env.STRIPE_PUBLISHABLE_KEY;
+    else process.env.STRIPE_PUBLISHABLE_KEY = value;
+    requests.length = 0;
+    try {
+      await expect(
+        submit(org, "plus_monthly", randomUUID(), "embedded").result,
+      ).rejects.toMatchObject({
+        code: "SUBSCRIPTION_CHECKOUT_UNAVAILABLE",
+        context: { reason: "publishable_key_unavailable" },
+      });
+      expect(providerWrites()).toEqual([]);
+    } finally {
+      process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_cloudcheckout";
+    }
+  }
+  const commands = await query(
+    "SELECT id FROM billing_subscription_commands WHERE organization_id=$1",
+    [org.organizationId],
+  );
+  expect(commands).toEqual([]);
+});
+
+test("shared checkout is a hosted link that returns to the public payer page without session ids", async () => {
+  const org = await seedOrganization();
+  const result = await submit(org, "pro_monthly", randomUUID(), "shared").result;
+  expect(result).toMatchObject({ status: "open", presentation: "shared" });
+  if (!("expiresAt" in result) || typeof result.checkoutUrl !== "string")
+    throw new Error("expected a shared link");
+  expect(new URL(result.checkoutUrl).hostname).toBe("checkout.stripe.com");
+  expect(Date.parse(result.expiresAt)).toBeGreaterThan(Date.now() + 23 * HOUR);
+  const [create] = sessionCreates();
+  expect(create?.body.get("success_url")).toBe(
+    "https://api.example.test/api/v1/subscriptions/checkout/payer?outcome=paid",
+  );
+  expect(create?.body.get("cancel_url")).toBe(
+    "https://api.example.test/api/v1/subscriptions/checkout/payer?outcome=canceled",
+  );
+  expect(create?.body.has("ui_mode")).toBe(false);
+});
+
+test("switching presentation for the same plan closes the previous session before creating one", async () => {
+  const org = await seedOrganization();
+  const embeddedKey = randomUUID();
+  const embedded = await submit(org, "plus_monthly", embeddedKey, "embedded").result;
+  if (!("sessionId" in embedded)) throw new Error("expected an embedded checkout");
+  requests.length = 0;
+
+  const sharedKey = randomUUID();
+  const shared = await submit(org, "plus_monthly", sharedKey, "shared").result;
+  expect(shared).toMatchObject({ status: "open", presentation: "shared" });
+  expect(shared.commandId).not.toBe(embedded.commandId);
+  expect(sessions.get(embedded.sessionId)?.status).toBe("expired");
+  expect(providerWrites().map((request) => request.path)).toEqual([
+    `/v1/checkout/sessions/${embedded.sessionId}/expire`,
+    "/v1/checkout/sessions",
+  ]);
+  expect(await commandRow(embedded.commandId)).toEqual({
+    status: "FAILED",
+    error_code: "CHECKOUT_SUPERSEDED_BY_PRESENTATION_CHANGE",
+  });
+  expect((await operations.findPendingCheckout(org.organizationId))?.id).toBe(shared.commandId);
+
+  // Retrying either intent is idempotent: the shared link is stable and the closed form stays closed.
+  requests.length = 0;
+  expect(await submit(org, "plus_monthly", sharedKey, "shared").result).toEqual(shared);
+  expect(await submit(org, "plus_monthly", embeddedKey, "embedded").result).toEqual({
+    status: "expired",
+    commandId: embedded.commandId,
+    checkoutUrl: null,
+  });
+  expect(providerWrites()).toEqual([]);
+  // A key is bound to its presentation; reusing it for another one is a conflict.
+  await expect(submit(org, "plus_monthly", sharedKey, "embedded").result).rejects.toMatchObject({
+    code: "SUBSCRIPTION_CHECKOUT_REJECTED",
+    context: { reason: "checkout_replay_mismatch" },
+  });
+  // The default hosted presentation also supersedes the shared link.
+  const hosted = await submit(org, "plus_monthly", randomUUID()).result;
+  expect(hosted).toEqual({
+    status: "open",
+    commandId: hosted.commandId,
+    checkoutUrl: expect.stringMatching(/^https:\/\/checkout\.stripe\.com\//),
+  });
+  expect(await commandRow(shared.commandId)).toEqual({
+    status: "FAILED",
+    error_code: "CHECKOUT_SUPERSEDED_BY_PRESENTATION_CHANGE",
+  });
+});
+
+test("switching presentation never starts a second purchase after the pending one completed", async () => {
+  const org = await seedOrganization();
+  const pending = await seedCheckout(org, "plus_monthly", { dispatched: true });
+  openSession(org, pending.command.id, "complete");
+  await expect(submit(org, "plus_monthly", randomUUID(), "shared").result).rejects.toBeDefined();
+  expect(sessionCreates()).toEqual([]);
+});
+
+test("checkout contracts bind return behavior to their presentation", () => {
+  const id = randomUUID();
+  const organizationId = randomUUID();
+  const identity = { app: "eliza-cloud", organization_id: organizationId, command_id: id };
+  const base = {
+    version: 1,
+    catalogVersion: "v1",
+    planKey: "plus_monthly",
+    accountId: ACCOUNT_ID,
+    expectedLivemode: false,
+    priceId: "price_plus",
+    productId: "prod_plus",
+  };
+  const params = {
+    mode: "subscription",
+    currency: "usd",
+    customer: "cus_contract",
+    client_reference_id: id,
+    line_items: [{ price: "price_plus", quantity: 1 }],
+    payment_method_types: ["card"],
+    allow_promotion_codes: false,
+    automatic_tax: { enabled: false },
+    metadata: identity,
+    subscription_data: { metadata: identity },
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+  };
+  const payer = (outcome: string) =>
+    `https://api.example.test/api/v1/subscriptions/checkout/payer?outcome=${outcome}`;
+  const valid = (value: unknown) => contracts.checkoutContractSchema.safeParse(value).success;
+  const embedded = { ui_mode: "embedded", redirect_on_completion: "never" };
+  const sharedReturns = { success_url: payer("paid"), cancel_url: payer("canceled") };
+  expect(valid({ ...base, presentation: "embedded", params: { ...params, ...embedded } })).toBe(
+    true,
+  );
+  expect(valid({ ...base, presentation: "shared", params: { ...params, ...sharedReturns } })).toBe(
+    true,
+  );
+  // An embedded form never carries a redirect target, and must never redirect.
+  expect(
+    valid({
+      ...base,
+      presentation: "embedded",
+      params: { ...params, ...embedded, success_url: payer("paid") },
+    }),
+  ).toBe(false);
+  expect(
+    valid({
+      ...base,
+      presentation: "embedded",
+      params: { ...params, ui_mode: "embedded", redirect_on_completion: "always" },
+    }),
+  ).toBe(false);
+  // Shared returns are only the fixed public payer page, never a billing page with a session id.
+  expect(
+    valid({
+      ...base,
+      presentation: "shared",
+      params: {
+        ...params,
+        success_url:
+          "https://api.example.test/cloud/billing?subscription_session_id={CHECKOUT_SESSION_ID}",
+        cancel_url: payer("canceled"),
+      },
+    }),
+  ).toBe(false);
+  expect(
+    valid({
+      ...base,
+      presentation: "shared",
+      params: { ...params, success_url: payer("paid"), cancel_url: "https://evil.example/x" },
+    }),
+  ).toBe(false);
+  // Hosted (absent presentation) contracts cannot carry embedded mode or omit return URLs.
+  expect(valid({ ...base, params: { ...params, ...embedded } })).toBe(false);
+  expect(valid({ ...base, params })).toBe(false);
 });
 
 test("recovery settles provider-expired checkouts and closes payable sessions of fenced organizations", async () => {

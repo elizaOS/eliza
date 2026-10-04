@@ -402,6 +402,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS
 #                                      Exact allowlisted Cloud organization UUIDs
 #   STRIPE_SECRET_KEY                  Stripe billing
+#   STRIPE_PUBLISHABLE_KEY             Same-account pk_live_ (production) / pk_test_ key for in-app subscription checkout
 #   STRIPE_TEST_SECRET_KEY             Optional test-mode app billing in production
 #   STRIPE_PLATFORM_BILLING_ORGANIZATION_ID  Owner of first-party platform merchant
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
