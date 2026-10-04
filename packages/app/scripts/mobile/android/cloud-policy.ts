@@ -305,6 +305,8 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ElizaWorkSchedulerPolicyTest.java",
   "InferenceMemoryPolicyTest.java",
   "NativeTranscriptReducerTest.java",
+  "ResidentStopOwnershipInstrumentedTest.java",
+  "ResidentStreamTransportInstrumentedTest.java",
 ];
 
 export function isAndroidLp3ColorPolicyEnabled(env = process.env) {
