@@ -8,6 +8,12 @@ on:
         required: true
         type: string
 
+      read_only_deletion_billing_provenance:
+        description: Also report unresolved migration 0398 authority counts without changing any row
+        required: false
+        default: false
+        type: boolean
+
 permissions:
   contents: read
 
@@ -82,3 +88,19 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts
+
+      - name: Report deletion billing provenance counts without mutation
+        if: ${{ inputs.read_only_deletion_billing_provenance == true }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ELIZA_DELETION_BILLING_PROVENANCE_REPORT: "1"
+        run: bun run packages/cloud/scripts/admin/deletion-billing-provenance-report.ts
+
+      - name: Retain closed deletion billing provenance receipt
+        if: ${{ inputs.read_only_deletion_billing_provenance == true }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: deletion-billing-provenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/issue-review-cloud/deletion-billing-provenance.json
+          if-no-files-found: error
+          retention-days: 7
