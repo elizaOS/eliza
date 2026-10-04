@@ -1062,3 +1062,73 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
     false,
   );
 });
+
+it("returns messages from the requested world and treats limit 0 as empty", async () => {
+  const adapter = await open();
+  const worldId = id();
+  const otherWorldId = id();
+  const worldRoomId = id();
+  const otherRoomId = id();
+  const homeId = id();
+  await adapter.createAgents([{ id: agentId, name: "World owner" }]);
+  await adapter.createEntities([{ id: entityId, agentId, names: ["Owner"] }]);
+  await adapter.createWorlds([
+    { id: worldId, name: "Home", agentId },
+    { id: otherWorldId, name: "Other", agentId },
+  ]);
+  await adapter.createRooms([
+    {
+      id: worldRoomId,
+      agentId,
+      worldId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+    {
+      id: otherRoomId,
+      agentId,
+      worldId: otherWorldId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+  ]);
+  await adapter.createMemories([
+    {
+      tableName: "messages",
+      memory: {
+        id: homeId,
+        agentId,
+        entityId,
+        roomId: worldRoomId,
+        content: { text: "home" },
+      },
+    },
+    {
+      tableName: "messages",
+      memory: {
+        id: id(),
+        agentId,
+        entityId,
+        roomId: otherRoomId,
+        content: { text: "away" },
+      },
+    },
+    {
+      tableName: "documents",
+      memory: {
+        id: id(),
+        agentId,
+        entityId,
+        roomId: worldRoomId,
+        content: { text: "doc" },
+      },
+    },
+  ]);
+
+  const found = await adapter.getMemoriesByWorldId({ worldId });
+  expect(found.map((memory) => memory.id)).toEqual([homeId]);
+  expect(await adapter.getMemoriesByWorldId({ worldIds: [worldId] })).toEqual(
+    found,
+  );
+  expect(await adapter.getMemoriesByWorldId({ worldId, limit: 0 })).toEqual([]);
+});
