@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from benchmarks.swe_bench.orchestrator.types import OrchestratedBenchmarkConfig
+from benchmarks.suites.swe_bench.orchestrator.types import OrchestratedBenchmarkConfig
 
 
 class OrchestratingAgent:

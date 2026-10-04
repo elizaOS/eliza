@@ -3,6 +3,7 @@
 from importlib import import_module
 
 _EXPORTS = {
+    "run_code_agent_task": ("eliza_adapter.code_agent", "run_code_agent_task"),
     "ElizaClient": ("eliza_adapter.client", "ElizaClient"),
     "ElizaServerManager": ("eliza_adapter.server_manager", "ElizaServerManager"),
     "SWEBenchModelHandler": ("eliza_adapter.swe_bench", "SWEBenchModelHandler"),

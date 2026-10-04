@@ -23,7 +23,8 @@ vi.mock("@elizaos/agent", () => ({
   }),
 }));
 
-vi.mock("@elizaos/agent/first-run-config", () => ({
+vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/host/protocol")>()),
   prepareFirstRunConnectors: vi.fn(() => ({
     ok: true,
     connectors: { test: { enabled: true } },

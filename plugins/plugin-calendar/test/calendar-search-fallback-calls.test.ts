@@ -80,6 +80,7 @@ function fakeRuntime(service: ReturnType<typeof stubService>): IAgentRuntime {
       debug: () => undefined,
     },
     reportError: () => undefined,
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }

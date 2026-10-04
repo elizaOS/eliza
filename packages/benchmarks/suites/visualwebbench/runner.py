@@ -12,10 +12,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from benchmarks.visualwebbench.agent import OracleVisualWebBenchAgent
-from benchmarks.visualwebbench.dataset import VisualWebBenchDataset
-from benchmarks.visualwebbench.evaluator import VisualWebBenchEvaluator
-from benchmarks.visualwebbench.types import (
+from benchmarks.suites.visualwebbench.agent import OracleVisualWebBenchAgent
+from benchmarks.suites.visualwebbench.dataset import VisualWebBenchDataset
+from benchmarks.suites.visualwebbench.evaluator import VisualWebBenchEvaluator
+from benchmarks.suites.visualwebbench.types import (
     VisualWebBenchConfig,
     VisualWebBenchPrediction,
     VisualWebBenchReport,

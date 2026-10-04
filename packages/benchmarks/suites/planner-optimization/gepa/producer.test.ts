@@ -1,7 +1,7 @@
 /** Executes the installed upstream engine and real isolated planner; not model-quality evidence. */
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { watch } from "node:fs";
+import { readdirSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -16,9 +16,11 @@ import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterAll, beforeAll, expect, test } from "vitest";
-import { plannerTemplate } from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
-import { parseOptimizedPromptArtifact } from "../../../../../plugins/plugin-assistant/src/services/optimized-prompt.ts";
+import {
+  parseOptimizedPromptArtifact,
+  plannerTemplate,
+} from "@elizaos/plugin-assistant";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import { gepaHash } from "../src/gepa-planner-case.ts";
 import type * as Producer from "../src/gepa-producer.ts";
@@ -377,10 +379,18 @@ test("publication rejects an artifact detached from its observed evidence", asyn
 test("publication abort after staging leaves no candidate or staging directory", async () => {
   expect(completed).toBeDefined();
   const controller = new AbortController();
-  const watcher = watch(publicationRoot, (_event, name) => {
-    if (String(name).startsWith(".publish-"))
-      controller.abort(new Error("publication canceled"));
-  });
+  const checkAbort = controller.signal.throwIfAborted.bind(controller.signal);
+  const cancellation = vi
+    .spyOn(controller.signal, "throwIfAborted")
+    .mockImplementation(() => {
+      if (
+        readdirSync(publicationRoot).some((name) =>
+          name.startsWith(".publish-"),
+        )
+      )
+        controller.abort(new Error("publication canceled"));
+      checkAbort();
+    });
   try {
     await expect(
       publishGepaCandidate(completed, controller.signal),
@@ -400,7 +410,7 @@ test("publication abort after staging leaves no candidate or staging directory",
       ),
     ).toEqual([]);
   } finally {
-    watcher.close();
+    cancellation.mockRestore();
   }
 });
 

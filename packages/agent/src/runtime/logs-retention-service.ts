@@ -22,20 +22,6 @@ export const LOGS_RETENTION_PREFIX = "ELIZA_LOGS_RETENTION";
 /** Stable bucket key for logs that carry no roomId (count bound still applies). */
 const NULL_ROOM_KEY = "__no_room__";
 
-/** Legacy public adapter shape retained for existing type consumers; the service uses the canonical runtime contract. */
-export interface LogsRetentionAdapter {
-  getLogs(params: {
-    entityId?: string;
-    roomId?: string;
-    type?: string;
-    limit?: number;
-    offset?: number;
-  }): Promise<
-    Array<{ id?: string; roomId?: string; createdAt?: number | Date }>
-  >;
-  deleteLogs(logIds: string[]): Promise<void>;
-}
-
 export interface LogsSweepResult {
   scanned: number;
   evictable: number;

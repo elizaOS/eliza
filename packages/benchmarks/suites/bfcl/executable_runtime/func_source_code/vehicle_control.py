@@ -2,7 +2,7 @@ import random
 from copy import deepcopy
 from typing import Dict, List, Union
 
-from benchmarks.bfcl.executable_runtime.func_source_code.long_context import (
+from benchmarks.suites.bfcl.executable_runtime.func_source_code.long_context import (
     CAR_STATUS_METADATA_EXTENSION,
     INTERMEDIARY_CITIES,
     LONG_WEATHER_EXTENSION,

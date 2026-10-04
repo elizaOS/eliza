@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -831,7 +832,9 @@ def _pick_score(metrics: dict[str, Any]) -> tuple[float, bool]:
         "score",
     ):
         val = metrics.get(key)
-        if isinstance(val, (int, float)):
+        if val is not None:
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+                raise ValueError(f"Hermes env score {key} must be a finite number")
             return float(val), True
     raise RuntimeError(
         "Hermes env summary has no recognized score field; refusing to fabricate 0.0"

@@ -455,7 +455,7 @@ class OpenClawClient:
         repo_path: Path | None = None,
         binary_path: Path | None = None,
         provider: str = DEFAULT_PROVIDER,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
         api_key: str | None = None,
         api_key_env: str = DEFAULT_API_KEY_ENV,
         base_url: str | None = None,
@@ -474,8 +474,7 @@ class OpenClawClient:
         if provider == DEFAULT_PROVIDER and campaign_provider:
             provider = campaign_provider
         campaign_model = os.environ.get("BENCHMARK_MODEL_NAME", "").strip()
-        if model == DEFAULT_MODEL and campaign_model:
-            model = campaign_model
+        model = model or campaign_model or DEFAULT_MODEL
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = (
             Path(binary_path) if binary_path else _resolve_default_binary()
@@ -1665,26 +1664,6 @@ def _normalize_tool_call(
         else f"call_{fallback_index}",
         "name": name_obj,
         "arguments": args_obj if args_obj is not None else {},
-    }
-
-
-def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
-    if not isinstance(raw, Mapping):
-        return None
-    fn = raw.get("function")
-    if isinstance(fn, Mapping):
-        name = fn.get("name")
-        args: object = fn.get("arguments", {})
-    else:
-        name = raw.get("name")
-        args = raw.get("arguments", {})
-    if not isinstance(name, str) or not name:
-        return None
-    args = _decode_tool_arguments(args)
-    return {
-        "id": str(raw.get("id") or ""),
-        "name": name,
-        "arguments": args,
     }
 
 

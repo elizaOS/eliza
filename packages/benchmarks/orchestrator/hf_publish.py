@@ -25,7 +25,9 @@ cohort is deliberately deferred to keep the runner stable.
 
 from __future__ import annotations
 
-from benchmarks.orchestrator.result_store import result_store_root
+from benchmarks.lib.repository import monorepo_root
+
+from .result_store import result_store_root
 
 import fnmatch
 import json
@@ -242,7 +244,7 @@ def publish_to_hf(
     :class:`PublishRefusedError` on a real publish.
     """
     output_root = result_store_root(workspace_root)
-    repo_root = workspace_root.parent
+    repo_root = monorepo_root(workspace_root)
     _require_nested_repo(output_root)
 
     token: str | None = None

@@ -14,7 +14,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "check": "bun run typecheck && bun run lint:check && bun run format:check"
+    "check": "bun run typecheck && bun run lint:check && bun run format:check",
+    "test": "bun test src/metrics.test.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -26,5 +27,12 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "@types/node": "^25.0.0",
     "bun-types": "1.4.2"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }

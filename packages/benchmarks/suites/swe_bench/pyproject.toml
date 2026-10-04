@@ -50,7 +50,7 @@ dev = [
 ]
 
 [project.scripts]
-swe-bench = "benchmarks.swe_bench.cli:main"
+swe-bench = "benchmarks.suites.swe_bench.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/elizaos/eliza"

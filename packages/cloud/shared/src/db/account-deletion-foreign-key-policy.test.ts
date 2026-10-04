@@ -33,3 +33,11 @@ test("organization plan quotes retain anonymized financial review history", () =
   expect(quotes).toHaveLength(1);
   expect(classifyAccountDeletionForeignKey(quotes[0]!)).toBe("anonymize_retained_record");
 });
+
+test("organization upgrade invoice origins retain anonymized financial provenance", () => {
+  const receipts = listAccountDeletionForeignKeys().filter(
+    (d) => d.sourceTable === "organization_upgrade_invoice_origins",
+  );
+  expect(receipts).toHaveLength(1);
+  expect(classifyAccountDeletionForeignKey(receipts[0]!)).toBe("anonymize_retained_record");
+});

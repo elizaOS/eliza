@@ -25,7 +25,6 @@ import {
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
-  type ElizaConfig,
   ensureProtectedProfileAdmission,
   extractAuthToken,
   fetchWithTimeoutGuard,
@@ -61,6 +60,7 @@ import {
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import {
+  type ElizaConfig,
   getHttpRuntime,
   isElizaSettingsDebugEnabled,
   resolveLinkedAccountsInConfig,

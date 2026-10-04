@@ -150,7 +150,6 @@ import {
   createChatTokenStreamWriter,
   initSse,
   writeChatStatusSse,
-  writeChatTokenSse,
   writeChatToolSse,
   writeSse,
   writeSseJson,
@@ -5153,18 +5152,13 @@ async function streamConversationMessage(
     preferredLanguage,
     source,
     metadata: chatMetadata,
-    streamProtocol,
     clientMessageId,
   } = chatPayload;
   logger.info(
     { traceId: trace.traceId, traceSource: trace.source },
     "[ConversationStream] accepted validated trace context",
   );
-  // Both protocols use the same response writer and delivery boundary.
-  const tokenWriter = createChatTokenStreamWriter(streamProtocol ?? "legacy", {
-    writeChatTokenSse,
-    writeSse,
-  });
+  const tokenWriter = createChatTokenStreamWriter();
   // The SSE channel opens as soon as the request is validated — before
   // runtime resolution, room setup, and user-message persistence — so the
   // client sees headers, an immediate `thinking` status, and heartbeats

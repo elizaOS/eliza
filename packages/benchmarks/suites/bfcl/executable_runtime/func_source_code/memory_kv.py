@@ -3,7 +3,7 @@ import re
 from copy import deepcopy
 from typing import Dict, List, Tuple
 
-from benchmarks.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
+from benchmarks.suites.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
 

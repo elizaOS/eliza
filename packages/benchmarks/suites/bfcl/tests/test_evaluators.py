@@ -6,12 +6,12 @@ Tests for AST, Execution, and Relevance evaluators.
 
 import pytest
 
-from benchmarks.bfcl.evaluators import (
+from benchmarks.suites.bfcl.evaluators import (
     ASTEvaluator,
     ExecutionEvaluator,
     RelevanceEvaluator,
 )
-from benchmarks.bfcl.types import FunctionCall, FunctionDefinition, FunctionParameter
+from benchmarks.suites.bfcl.types import FunctionCall, FunctionDefinition, FunctionParameter
 
 
 class TestASTEvaluator:
@@ -272,7 +272,7 @@ class TestExecutionEvaluator:
         removed. setup_standard_mocks is now a no-op; unregistered functions
         must NOT be silently accepted."""
         evaluator.setup_standard_mocks()  # intentional no-op
-        from benchmarks.bfcl.types import FunctionDefinition
+        from benchmarks.suites.bfcl.types import FunctionDefinition
 
         evaluator.register_mocks_from_definitions(
             [

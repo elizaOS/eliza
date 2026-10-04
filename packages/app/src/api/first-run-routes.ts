@@ -16,7 +16,6 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import type { FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
-import { prepareFirstRunConnectors } from "@elizaos/agent/first-run-config";
 import { ElizaError, logger } from "@elizaos/core";
 import { readRequestBody } from "@elizaos/host";
 import {
@@ -28,6 +27,7 @@ import {
   normalizeFirstRunProviderId,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
+  prepareFirstRunConnectors,
 } from "@elizaos/host/protocol";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import {

@@ -20,12 +20,8 @@
  *     via the matching `config.env.bak` in the state dir or the
  *     documented `bun run agent:repair-config` command.
  *
- * This module is the single config.env writer for the process: the agent
- * re-exports it from `@elizaos/agent/api/config-env` (agent already depends
- * on this plugin; the reverse edge would be a cycle). Every writer — agent
- * server, app vault bootstrap, and this plugin's cloud-wallet flows — must go
- * through it so they share ONE promise-chain mutex, the spawn-env denylist,
- * and the 0700 state-dir hardening.
+ * Agent, app vault bootstrap, and cloud-wallet writers import this module
+ * directly to share its mutex, spawn-env denylist, and state-dir permissions.
  *
  * Concurrent writes in-process are serialised via a promise chain mutex.
  * Cross-process coordination is NOT provided — callers must ensure only

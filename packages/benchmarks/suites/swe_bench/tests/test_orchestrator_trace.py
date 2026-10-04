@@ -7,11 +7,11 @@ import json
 import pytest
 
 
-from benchmarks.swe_bench.orchestrator.agent import OrchestratingAgent
-from benchmarks.swe_bench.orchestrator.trace import RunTraceRecorder
-from benchmarks.swe_bench.orchestrator.types import OrchestratedBenchmarkConfig, ProviderType
-from benchmarks.swe_bench.repo_manager import RepositoryManager
-from benchmarks.swe_bench.types import SWEBenchInstance, SWEBenchVariant
+from benchmarks.suites.swe_bench.orchestrator.agent import OrchestratingAgent
+from benchmarks.suites.swe_bench.orchestrator.trace import RunTraceRecorder
+from benchmarks.suites.swe_bench.orchestrator.types import OrchestratedBenchmarkConfig, ProviderType
+from benchmarks.suites.swe_bench.repo_manager import RepositoryManager
+from benchmarks.suites.swe_bench.types import SWEBenchInstance, SWEBenchVariant
 
 
 def _make_instance() -> SWEBenchInstance:

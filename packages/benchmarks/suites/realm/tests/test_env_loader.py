@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.realm.cli import _parse_env_line, load_env_file
+from benchmarks.suites.realm.cli import _parse_env_line, load_env_file
 
 
 def test_parse_env_line() -> None:
