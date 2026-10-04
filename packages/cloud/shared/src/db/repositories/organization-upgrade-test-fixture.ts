@@ -18,6 +18,7 @@ export async function installOrganizationUpgradeTestSchema(
           "0514_organization_upgrade_quote_binding",
           "0515_organization_upgrade_invoice_origins",
           "0516_organization_upgrade_paid_finalization",
+          "0517_organization_upgrade_historical_targets",
         ]
       : []),
   ]) {

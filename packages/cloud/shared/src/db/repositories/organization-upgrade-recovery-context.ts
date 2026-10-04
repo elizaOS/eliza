@@ -7,6 +7,7 @@ import {
   organizationUpgradeProviderBindingSchema,
 } from "../../lib/services/organization-upgrade-provider-binding";
 import { settlementDigest } from "../../lib/services/settlement-digest";
+import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import { billingSubscriptionRevisions as revisions } from "../schemas/billing-subscriptions";
 import { organizationPlanChangeQuotes as quotes } from "../schemas/organization-plan-change-quotes";
@@ -18,11 +19,14 @@ function reject(): never {
     code: "SUBSCRIPTION_UPGRADE_RECOVERY_CONTEXT_UNAVAILABLE",
   });
 }
-export async function readOrganizationUpgradeRecoveryContext(input: {
-  organizationId: string;
-  commandId: string;
-}) {
-  const [command] = await dbWrite
+export async function readOrganizationUpgradeRecoveryContext(
+  input: {
+    organizationId: string;
+    commandId: string;
+  },
+  reader: Pick<DbTransaction, "select"> = dbWrite,
+) {
+  const [command] = await reader
     .select()
     .from(commands)
     .where(
@@ -43,7 +47,7 @@ export async function readOrganizationUpgradeRecoveryContext(input: {
     command.expected_subscription_revision === null
   )
     reject();
-  const [quote] = await dbWrite
+  const [quote] = await reader
     .select()
     .from(quotes)
     .where(
@@ -75,7 +79,7 @@ export async function readOrganizationUpgradeRecoveryContext(input: {
     })
   )
     reject();
-  const [source] = await dbWrite
+  const [source] = await reader
     .select()
     .from(revisions)
     .where(
@@ -93,7 +97,7 @@ export async function readOrganizationUpgradeRecoveryContext(input: {
     binding.livemode !== (source.provider_environment === "live")
   )
     reject();
-  const [origin] = await dbWrite
+  const [origin] = await reader
     .select()
     .from(origins)
     .where(
@@ -104,6 +108,7 @@ export async function readOrganizationUpgradeRecoveryContext(input: {
     );
   return {
     command,
+    historicalSource: source,
     quote,
     binding,
     origin: origin ?? null,

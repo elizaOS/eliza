@@ -440,6 +440,7 @@ jobs:
             packages/cloud/shared/src/db/repositories/organization-upgrade-recovery-context.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-recovery.postgres.integration.test.ts
+            packages/cloud/shared/src/lib/services/organization-upgrade-historical-target.pglite.test.ts
             packages/cloud/api/__tests__/stripe-event.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/organization-upgrade-observation-lease.postgres.integration.test.ts
