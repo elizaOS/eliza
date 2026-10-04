@@ -154,7 +154,6 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
 import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
-import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
@@ -237,6 +236,7 @@ import {
   removeUrlParameter,
 } from "./runtime-chooser-override";
 import {
+  isElizaCloudAgentHost,
   isElizaCloudSharedHost,
   isLoopbackApiHost,
   isPrivateOrLoopbackApiHost,
@@ -1932,15 +1932,6 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
-/**
- * Dedicated Cloud agents serve their runtime on the canonical managed-agent
- * hostname family. The shared classifier also recognizes legacy agent hosts
- * during the DNS migration; control-plane hosts never match this predicate.
- */
-function isElizaCloudAgentSubdomain(host: string): boolean {
-  return isElizaDedicatedAgentHostname(host);
-}
-
 function isNativeIosStoreBuild(): boolean {
   return isNative && isIOS && isStoreBuild;
 }
@@ -2007,7 +1998,7 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
       isCurrentOriginHost(host) ||
       isConfiguredCloudApiHost(host) ||
       isElizaCloudSharedHost(host) ||
-      isElizaCloudAgentSubdomain(host)
+      isElizaCloudAgentHost(host)
     );
   }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
@@ -2018,7 +2009,7 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentHost(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }
@@ -2039,14 +2030,14 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
       isCurrentOriginHost(host) ||
       (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
       (parsed.protocol === "https:" && isElizaCloudSharedHost(host)) ||
-      (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host))
+      (parsed.protocol === "https:" && isElizaCloudAgentHost(host))
     );
   }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentHost(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }
