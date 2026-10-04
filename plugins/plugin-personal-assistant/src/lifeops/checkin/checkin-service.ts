@@ -375,7 +375,7 @@ export function renderMorningCheckinReport(
   }
   if (clearDay)
     paragraphs.push(
-      "Your calendar is clear today, with no overdue tasks listed.",
+      "No Calendar events or overdue tasks are listed for today.",
     );
   if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
   const xUnavailable: { label: string; setupUnavailable: boolean }[] = [];
