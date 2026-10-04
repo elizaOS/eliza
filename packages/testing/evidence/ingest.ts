@@ -31,6 +31,8 @@ export interface IngestResult {
 interface SiloRoot {
   label: string;
   dir: string;
+  /** Preserve an existing archive path when adding another producer location. */
+  namespace?: boolean;
 }
 
 interface SiloDefinition {
@@ -295,9 +297,11 @@ async function ingestSilo(
   if (presentRoots.length === 0) {
     return { silo: definition.silo, status: "absent", artifactCount: 0 };
   }
-  const namespace = definition.namespaceRoot || definition.roots.length > 1;
   let artifactCount = 0;
   for (const root of presentRoots) {
+    const namespace =
+      root.namespace ??
+      (definition.namespaceRoot || definition.roots.length > 1);
     const rootDir = path.join(repoRoot, root.dir);
     assertCanonicalRoot(repoRoot, rootDir);
     const rootStat = fs.lstatSync(rootDir);
@@ -454,7 +458,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     producedBy: "walkthrough capture lanes",
     roots: [
       { label: "current", dir: "test-results/walkthrough" },
-      { label: "repo", dir: "reports/walkthrough" },
+      { label: "repo", dir: "reports/walkthrough", namespace: false },
     ],
   },
   {
@@ -463,7 +467,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     producedBy: "packages/scripts/run-live-test-with-artifacts.ts",
     roots: [
       { label: "current", dir: "test-results/live-test-runs" },
-      { label: "repo", dir: "reports/live-test-runs" },
+      { label: "repo", dir: "reports/live-test-runs", namespace: false },
     ],
   },
   {
@@ -487,7 +491,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     lane: "evaluation",
     roots: [
       { label: "current", dir: "test-results/group-chat-timing" },
-      { label: "repo", dir: "reports/group-chat-timing" },
+      { label: "repo", dir: "reports/group-chat-timing", namespace: false },
     ],
   },
   {
@@ -497,7 +501,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     lane: "content-context",
     roots: [
       { label: "current", dir: "test-results/content-context" },
-      { label: "repo", dir: "reports/content-context" },
+      { label: "repo", dir: "reports/content-context", namespace: false },
     ],
   },
 ];

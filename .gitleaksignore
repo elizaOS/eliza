@@ -641,3 +641,8 @@ df90e84500df616bd4c170f364a3a7f1dfed13b8:packages/core/src/__tests__/swap-user-r
 
 # Synthetic token in the moved benchmark redaction regression; current fixture assembles it.
 9081c5542f90843d1d97a7aaaccdeae440b0e3f2:packages/benchmarks/orchestrator/tests/test_code_agent_matrix.py:generic-api-key:1640
+
+# Empty shell assignments were parsed as the following environment-variable name.
+# These two immutable findings contain no credential; current assignments are quoted.
+dfc0e413cecb2c8ee6d43ec0bffbb71bdfcecba8:packages/testing/package.json:generic-api-key:52
+dfc0e413cecb2c8ee6d43ec0bffbb71bdfcecba8:packages/testing/package.json:generic-api-key:53

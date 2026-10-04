@@ -184,6 +184,39 @@ async function build(repo: string): Promise<{
 }
 
 describe("ingestAllSilos", () => {
+  it("preserves legacy archive paths while retaining colliding current producer reports", async () => {
+    const repo = tmpDir();
+    write(
+      repo,
+      "reports/content-context/run/report.json",
+      '{"source":"legacy"}',
+    );
+    write(
+      repo,
+      "test-results/content-context/run/report.json",
+      '{"source":"current"}',
+    );
+    const { bundle, artifacts } = await build(repo);
+    expect(artifacts.map((entry) => entry.path).sort()).toEqual([
+      "lanes/content-context/current/run/report.json",
+      "lanes/content-context/run/report.json",
+    ]);
+    for (const [relative, source] of [
+      ["current/run/report.json", "current"],
+      ["run/report.json", "legacy"],
+    ]) {
+      expect(
+        JSON.parse(
+          fs.readFileSync(
+            path.join(bundle.dir, "lanes/content-context", relative),
+            "utf8",
+          ),
+        ),
+      ).toEqual({ source });
+    }
+    expect((await verifyBundle(bundle.dir)).ok).toBe(true);
+  });
+
   it("includes a byte-identical file rewritten during the run", async () => {
     const repo = tmpDir();
     const file = path.join(repo, "test-results/app/reused.log");
@@ -410,13 +443,13 @@ describe("ingestAllSilos", () => {
     expect(
       byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
-    expect(byPath["lanes/evaluation/repo/when2speak.json"]).toMatchObject({
+    expect(byPath["lanes/evaluation/when2speak.json"]).toMatchObject({
       kind: "report",
       source: "group-chat-timing",
       lane: "evaluation",
     });
     expect(
-      byPath["lanes/content-context/repo/run-1/benchmark.json"],
+      byPath["lanes/content-context/run-1/benchmark.json"],
     ).toMatchObject({
       kind: "report",
       source: "content-context",
@@ -432,21 +465,21 @@ describe("ingestAllSilos", () => {
       "source-work.json",
       "cleanup.json",
     ]) {
-      expect(byPath[`lanes/content-context/repo/run-1/${name}`]).toMatchObject({
+      expect(byPath[`lanes/content-context/run-1/${name}`]).toMatchObject({
         kind: "report",
         source: "content-context",
         lane: "content-context",
       });
     }
     expect(
-      byPath["trajectories/content-context/repo/run-1/page-ledger.jsonl"],
+      byPath["trajectories/content-context/run-1/page-ledger.jsonl"],
     ).toMatchObject({
       kind: "trajectory",
       source: "content-context",
       lane: "content-context",
     });
     expect(
-      byPath["misc/content-context/repo/run-1/e2e-artifacts/browser/trace.zip"],
+      byPath["misc/content-context/run-1/e2e-artifacts/browser/trace.zip"],
     ).toMatchObject({
       source: "content-context",
       lane: "content-context",
@@ -479,7 +512,7 @@ describe("ingestAllSilos", () => {
       source: "ios-device-capture",
     });
 
-    expect(byPath["video/walkthrough/repo/desktop.mp4"]).toBeDefined();
+    expect(byPath["video/walkthrough/desktop.mp4"]).toBeDefined();
 
     // node_modules content is never evidence.
     expect(artifacts.some((entry) => entry.path.includes("node_modules"))).toBe(
