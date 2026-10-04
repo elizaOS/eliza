@@ -976,7 +976,8 @@ public class ElizaAgentService extends Service {
             bionicInferenceServer = null;
         }
         if (requestedStop) {
-            stopAgentProcess(true);
+            // A refusal must not escape onDestroy: Android rethrows it and kills the app.
+            stopAgentProcessOrPreserve(true);
         } else {
             // AMS tore this record down without an explicit stop request (an
             // ANR'd duplicate record whose startForeground never got processed
@@ -1932,8 +1933,11 @@ public class ElizaAgentService extends Service {
             updateNotification();
             startWorker = new Thread(() -> {
                 try {
-                    if (restartFirst) {
-                        stopAgentProcess(false);
+                    if (restartFirst && !stopAgentProcessOrPreserve(false)) {
+                        // The prior resident still owns the runtime; never start a second one.
+                        currentStatus = "stop-failed";
+                        updateNotification();
+                        return;
                     }
                     startAgentProcess(!restartFirst);
                 } finally {
@@ -2218,7 +2222,8 @@ public class ElizaAgentService extends Service {
             agentEnv.put("LD_PATH", canonicalLoader);
             agentEnv.put("BUN_PATH", canonicalBun);
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
-            agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
+            // The resident's argv carries this path; stopResident matches it canonically.
+            agentEnv.put("AGENT_BUNDLE_PATH", new File(canonicalRoot, AGENT_BUNDLE_NAME).getPath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
             agentEnv.put(
                 "DIAGNOSTICS_FILE",
@@ -2996,6 +3001,21 @@ public class ElizaAgentService extends Service {
         if (errPump != null) errPump.interrupt();
     }
 
+    /**
+     * Lifecycle callbacks and worker threads use this: a refused detached stop
+     * keeps ownership for a later retry and must never escape as a crash.
+     */
+    private boolean stopAgentProcessOrPreserve(boolean terminalStop) {
+        try {
+            stopAgentProcess(terminalStop);
+            return true;
+        } catch (IllegalStateException refused) {
+            Log.w(TAG, "Resident stop refused; runtime ownership preserved for retry", refused);
+            appendDiagnosticEvent("stop-detached-agent-refused", null);
+            return false;
+        }
+    }
+
     private void stopDetachedAgentProcess() {
         String abi = resolveRuntimeAbi();
         File abiDir = agentAbiDir(abi);
@@ -3014,7 +3034,10 @@ public class ElizaAgentService extends Service {
                     packagedLoaderName.replace(".so", "_real.so"));
                 if (realLoader.isFile()) loader = realLoader;
             }
-            WorkflowSurvivorInventory.stopResident(bun, loader, bundle);
+            // Startup launches with canonical paths, and getFilesDir() is usually
+            // the /data/user/0 alias of /data/data, so match canonically.
+            WorkflowSurvivorInventory.stopResident(
+                bun.getCanonicalFile(), loader.getCanonicalFile(), bundle.getCanonicalFile());
         } catch (Exception error) {
             // Never fall back to path-wide signals: those also kill admitted workers.
             Log.w(TAG, "Resident stop identity unproven; preserving processes", error);
@@ -3931,8 +3954,12 @@ public class ElizaAgentService extends Service {
                         + " consecutive).");
                     if (decision.restartRequired) {
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
-                        stopAgentProcess(false);
-                        scheduleRestart(true);
+                        if (stopAgentProcessOrPreserve(false)) {
+                            scheduleRestart(true);
+                        } else {
+                            currentStatus = "stop-failed";
+                            updateNotification();
+                        }
                     }
                 }
             }
@@ -4046,6 +4073,10 @@ public class ElizaAgentService extends Service {
             case "spawn-failed":
                 title = "Eliza agent · Spawn failed";
                 text = "Could not start runtime process";
+                break;
+            case "stop-failed":
+                title = "Eliza agent · Restart blocked";
+                text = "The running runtime could not be stopped safely";
                 break;
             default:
                 title = "Eliza agent";
