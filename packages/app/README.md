@@ -297,3 +297,8 @@ skills and gateway callback. Development checkout inspection lives in
 readiness transports for development hosts. TCP success does not identify an
 owner; JSON probes reject redirects and bound the body read. Hosts retain
 identity, readiness predicates and process reuse policy.
+
+`createDevelopmentProcessScope` composes owned child registration and signal
+cleanup with the existing process-group drain. It never adopts or restarts a
+process. Hosts choose commands, environments, readiness and diagnostics; call
+`dispose` in finally. `waitForClose` remains valid after an early close event.
