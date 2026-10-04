@@ -16,7 +16,7 @@
     "test:local-reset": "node scripts/run-node-tsx.ts scripts/check-real-local-reset.ts",
     "serve:local-agent:e2e": "node scripts/run-node-tsx.ts scripts/serve-real-local-agent.ts",
     "lint": "bunx @biomejs/biome check --write src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
-    "lint:check": "bunx @biomejs/biome check native-host src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
+    "lint:check": "bunx @biomejs/biome check src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts test/native-host",
     "format": "bunx @biomejs/biome format --write src scripts",
     "format:check": "bunx @biomejs/biome format src scripts",
     "build:dist": "node ../scripts/with-package-build-lock.ts packages/app -- bun run build:dist:unlocked",
@@ -208,7 +208,7 @@
     "test:tts:standalone": "bun --no-install --conditions=eliza-source scripts/qualify-standalone-kokoro.ts",
     "build:consumer-tasks": "node scripts/build-consumer-task-runtime.mjs",
     "typecheck:consumer-build": "tsc --noEmit -p scripts/tsconfig.consumer-build.json",
-    "test:consumer-host": "node --test native-host/*.test.mjs"
+    "test:consumer-host": "node --test test/native-host/*.test.mjs"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
@@ -455,11 +455,6 @@
       "types": "./dist/dev-tools.d.ts",
       "import": "./dist/dev-tools.js",
       "default": "./dist/dev-tools.js"
-    },
-    "./native-host": {
-      "browser": null,
-      "import": "./native-host/index.mjs",
-      "default": "./native-host/index.mjs"
     }
   },
   "main": "./dist/index.js",
@@ -471,10 +466,7 @@
   "license": "MIT",
   "files": [
     "dist",
-    "web-dist",
-    "native-host/*.mjs",
-    "native-host/*.patch",
-    "!native-host/*.test.mjs"
+    "web-dist"
   ],
   "description": "Eliza application host, renderer, and native platform tooling.",
   "publishConfig": {

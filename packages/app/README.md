@@ -219,15 +219,15 @@ files and Git stat-cache bypasses. Hosts declare their generated metadata/output
 paths; declared Turbo outputs and dependency directories are allowed, while
 tracked source bytes remain immutable. Git submodules require separate admission.
 
-Consumer hosts can use `native-host/task-runtime-gateway.mjs` for authenticated
+Consumer hosts can use `@elizaos/host/native-host` for authenticated
 SQLite task lifecycles and explicit domain-route extensions. Document/canvas
-bundling and verified ARM64 packaging live in `native-host/build-document-runtime.mjs`
-and `native-host/android-documents.mjs`; consumers supply reviewed source identity,
+bundling and verified ARM64 packaging live in `../host/native-host/build-document-runtime.mjs`
+and `../host/native-host/android-documents.mjs`; consumers supply reviewed source identity,
 canvas version and locked package records. Run `bun run test:consumer-host` here.
 The renderer gateway and Cloud services remain owned by `packages/agent/native-host`
 and `packages/auth/native-host`; these build helpers do not provide device acceptance.
 
-Native hosts can compose `native-host/trace-queue.mjs`, `trace-transport.mjs` and
+Native hosts can compose `../host/native-host/trace-queue.mjs`, `trace-transport.mjs` and
 `database-lease.mjs` for opt-in, encrypted research uploads. Hosts must supply an
 explicit `validateEvent` policy, private database path/key, authenticated collector
 and lifecycle/cancellation ownership. The queue retains events until the collector
@@ -252,10 +252,10 @@ pseudonymous structural events, excluding task text and connector content.
 `research-capture-host.mjs` composes the collector, encrypted queue, exclusive
 lease and caller-cancelled transport. Its explicit start/stop lifecycle preserves
 consent and current-owner fences; importing it starts no collection. Run the
-native-host tests for real SQLite/HTTP evidence, including stop during an
+`packages/host` native-host tests for real SQLite/HTTP evidence, including stop during an
 unanswered request. These modules do not authorize enrolling real participants.
 
-`native-host/research-configuration.mjs` owns private research configuration
+`../host/native-host/research-configuration.mjs` owns private research configuration
 initialization and offline key rotation. Hosts supply retention, capacity,
 operator identity and the existing measurement-policy store factory. Rotation
 uses the canonical database lease and retains previous/next recovery files before
@@ -292,4 +292,4 @@ Consumer Android hosts can use `scripts/lib/consumer-android-runtime.mjs` to bui
 and stage a pinned mobile runtime with byte provenance, supplying their own
 skills and gateway callback. Development checkout inspection lives in
 `scripts/lib/committed-source.mjs`; APK document integrity verification lives in
-`native-host/android-documents.mjs`.
+`../host/native-host/android-documents.mjs`.

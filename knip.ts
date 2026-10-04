@@ -227,7 +227,7 @@ const config = {
         "scripts/voice-attribution-smoke.ts",
         "scripts/mobile/android/qualify-consumer-host.mjs",
         "scripts/android-native-plugins-gradle/bridge-tests/assets/contracts.ts",
-        "test/**/*.{ts,tsx}",
+        "test/**/*.{ts,tsx,mjs}",
         "e2e/**/*.{ts,tsx,mjs}",
         "platforms/electrobun/electrobun.config.ts",
         "platforms/electrobun/src/index.ts",
@@ -236,10 +236,9 @@ const config = {
       project: [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{ts,mjs}",
-        "native-host/**/*.mjs",
         "vite/**/*.ts",
         "*.ts",
-        "test/**/*.{ts,tsx}",
+        "test/**/*.{ts,tsx,mjs}",
       ],
       ignore: ["dist/**", "ios/**", "android/**"],
       ignoreDependencies: [

@@ -4,10 +4,13 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before } from "node:test";
-import { startResearchCapture } from "./research-capture-host.mjs";
-import { createResearchServer } from "./research-server.mjs";
-import { openResearchStore, validateTraceEvent } from "./research-store.mjs";
-import { createTraceTransport } from "./trace-transport.mjs";
+import {
+  createResearchServer,
+  createTraceTransport,
+  openResearchStore,
+  startResearchCapture,
+  validateTraceEvent,
+} from "@elizaos/host/native-host";
 
 const measurementPolicy = {
   validateDataset: (data) => {
@@ -425,9 +428,9 @@ before(async () => {
   const { resolve } = await import("node:path");
   const { pathToFileURL } = await import("node:url");
   const { buildTaskRuntime } = await import(
-    "../scripts/build-consumer-task-runtime.mjs"
+    "../../scripts/build-consumer-task-runtime.mjs"
   );
-  const sourceRoot = resolve(import.meta.dirname, "../../..");
+  const sourceRoot = resolve(import.meta.dirname, "../../../..");
   const bundlePath = join(taskBundleDirectory, "task-runtime.mjs");
   buildTaskRuntime(bundlePath, {
     sourceRoot,

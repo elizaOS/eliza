@@ -1171,6 +1171,7 @@
       "dependencies": {
         "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "tar": "7.5.22",
         "zod": "^4.6.5",
       },
       "devDependencies": {

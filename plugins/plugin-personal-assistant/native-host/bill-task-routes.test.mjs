@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { createTaskGateway as createGateway } from "@elizaos/app/native-host";
+import { createTaskGateway as createGateway } from "@elizaos/host/native-host";
 import { createLocalAgentGateway as createHttpGateway } from "../../../packages/agent/native-host/gateway.mjs";
 import { buildTaskRuntime as build } from "../../../packages/app/scripts/build-consumer-task-runtime.mjs";
 import { createBillOutcomeStore } from "./bill-outcome-store.mjs";
