@@ -1062,3 +1062,68 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
     false,
   );
 });
+
+it("keeps another agent's rooms out of lookup and world deletion", async () => {
+  const adapter = await open();
+  const worldId = id();
+  const ownedRoom = id();
+  const unscopedRoom = id();
+  const foreignRoom = id();
+  const otherAgentId = id();
+  await adapter.createWorlds([{ id: worldId, name: "Shared", agentId }]);
+  await adapter.createRooms([
+    {
+      id: ownedRoom,
+      agentId,
+      worldId,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "owned",
+    },
+    {
+      id: unscopedRoom,
+      worldId,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "unscoped",
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("rooms", foreignRoom, {
+    id: foreignRoom,
+    agentId: otherAgentId,
+    worldId,
+    source: "test",
+    type: ChannelType.GROUP,
+    name: "foreign",
+  });
+  await adapter.createRoomParticipants([entityId], ownedRoom);
+  await adapter.createRoomParticipants([entityId], unscopedRoom);
+  await storage.set("participants", id(), {
+    id: id(),
+    entityId,
+    roomId: foreignRoom,
+  });
+
+  const visible = [ownedRoom, unscopedRoom].sort();
+  expect(
+    (await adapter.getRoomsByIds([foreignRoom, ownedRoom, unscopedRoom]))
+      .map((room) => room.id)
+      .sort(),
+  ).toEqual(visible);
+  expect(
+    (await adapter.getRoomsByWorlds([worldId])).map((room) => room.id).sort(),
+  ).toEqual(visible);
+  expect((await adapter.getRoomsForParticipants([entityId])).sort()).toEqual(
+    visible,
+  );
+
+  await adapter.deleteRoomsByWorldIds([worldId]);
+  expect(await storage.get("rooms", foreignRoom)).toMatchObject({
+    id: foreignRoom,
+    agentId: otherAgentId,
+    name: "foreign",
+  });
+  expect(await storage.get("rooms", ownedRoom)).toBeNull();
+  expect(await storage.get("rooms", unscopedRoom)).toBeNull();
+});
