@@ -108,7 +108,7 @@ export function TaskChoice({
   const unavailable = pending || busy || expired || widget.state !== "pending";
   const showOptions = !explainUnavailable || widget.state === "pending";
   return (
-    <fieldset aria-busy={pending || busy}>
+    <fieldset>
       <legend>
         {widget.block.prompt || messages?.choose || "Choose an option"}
       </legend>
@@ -117,19 +117,27 @@ export function TaskChoice({
           {messages?.failed ?? "The choice could not be sent. Try again."}
         </p>
       )}
-      {showOptions &&
-        widget.block.options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            disabled={!explainUnavailable && unavailable}
-            aria-disabled={explainUnavailable && unavailable ? true : undefined}
-            onClick={() => void choose(option.value)}
-          >
-            {option.label}
-            {option.description && <span>{option.description}</span>}
-          </button>
-        ))}
+      {/* Only the options are busy: assistive technology may hold back live
+          regions inside an aria-busy subtree, and the checking notice exists
+          only while busy, so it would never be announced. */}
+      {showOptions && (
+        <div aria-busy={pending || busy}>
+          {widget.block.options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              disabled={!explainUnavailable && unavailable}
+              aria-disabled={
+                explainUnavailable && unavailable ? true : undefined
+              }
+              onClick={() => void choose(option.value)}
+            >
+              {option.label}
+              {option.description && <span>{option.description}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       {checkingNotice && !expired && widget.state === "pending" && (
         <p role="status">
           {messages?.checking ??
