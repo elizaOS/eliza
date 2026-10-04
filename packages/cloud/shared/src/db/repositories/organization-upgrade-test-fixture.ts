@@ -8,11 +8,13 @@ export async function installOrganizationUpgradeTestSchema(
   execute: (query: string) => Promise<unknown>,
 ) {
   await installCancellationTestSchema(execute);
-  const migration = await readFile(
-    new URL("../migrations/0511_organization_plan_change_quotes.sql", import.meta.url),
-    "utf8",
-  );
-  for (const q of migration.split("--> statement-breakpoint")) if (q.trim()) await execute(q);
+  for (const name of [
+    "0511_organization_plan_change_quotes",
+    "0512_organization_upgrade_dispatch",
+  ]) {
+    const migration = await readFile(new URL(`../migrations/${name}.sql`, import.meta.url), "utf8");
+    for (const q of migration.split("--> statement-breakpoint")) if (q.trim()) await execute(q);
+  }
 }
 export async function seedOrganizationUpgradeTestAccount(
   queryOverride?: (text: string, values: unknown[]) => Promise<unknown>,
