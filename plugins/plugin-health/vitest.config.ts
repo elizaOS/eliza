@@ -20,7 +20,7 @@ const aliases = [
   {
     find: /^@elizaos\/ui$/,
     replacement: fileURLToPath(
-      new URL("../../packages/ui/src/api/client.ts", import.meta.url),
+      new URL("../../packages/ui/src/index.ts", import.meta.url),
     ),
   },
   {
