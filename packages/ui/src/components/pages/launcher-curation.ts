@@ -110,8 +110,6 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "character-select",
   // Character-family sections — reached via the Character tile's section
   // strip (CharacterSectionNav); standalone tiles would triple-tile one hub.
-  // The hidden-set check runs on the CANONICAL id, so this also swallows the
-  // `rolodex` alias and `@elizaos/app-relationship-viewer`'s targetTab.
   "character-skills",
   "experience",
   "relationships",

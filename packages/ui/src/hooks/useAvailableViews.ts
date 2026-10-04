@@ -433,7 +433,6 @@ const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
       "memories",
       "relationships",
       "automations",
-      "triggers",
       "plugins",
       "skills",
       "trajectories",

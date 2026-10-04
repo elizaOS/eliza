@@ -930,7 +930,7 @@ try {
     assert((await mobile.getByTestId("launcher-tile-chat").count()) === 0, "Chat is not duplicated as a launcher tile (home rail is the chat surface)");
     // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
     // and the deduped duplicate registrations.
-    for (const id of ["views", "wallet-trading", "inventory", "triggers"]) {
+    for (const id of ["views", "wallet-trading", "inventory"]) {
         assert((await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0, `"${id}" is absent from the launcher (removed/hidden/deduped)`);
     }
     // A single Wallet tile survives the duplicate wallet + inventory registrations.

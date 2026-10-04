@@ -1,8 +1,13 @@
 /** Verifies detached Settings authorization context through the real shell and role gate with a controlled auth snapshot. */
 // @vitest-environment jsdom
+import { parseWindowShellRoute, resolveDetachedShellTarget } from "@elizaos/ui";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  buildSurfaceWindowRendererUrl,
+  isDetachedSurface,
+} from "../../../platforms/electrobun/src/surface-windows";
 import { DetachedShellRoot } from "./DetachedShellRoot";
 
 const setup = vi.hoisted(() => ({ complete: true }));
@@ -94,4 +99,15 @@ it("allows setup recovery in Settings while keeping other windows blocked", asyn
   auth.phase = "authenticated";
   rerender(<DetachedShellRoot route={{ mode: "surface", tab: "chat" }} />);
   expect(screen.getByTestId("first-run-blocked-view")).toBeTruthy();
+});
+
+it("routes a desktop automation window through the renderer surface protocol", () => {
+  expect(isDetachedSurface("automations")).toBe(true);
+  const url = buildSurfaceWindowRendererUrl(
+    "http://localhost/index.html",
+    "automations",
+  );
+  const route = parseWindowShellRoute(new URL(url).search);
+  expect(route).toEqual({ mode: "surface", tab: "automations" });
+  expect(resolveDetachedShellTarget(route)).toEqual({ tab: "automations" });
 });

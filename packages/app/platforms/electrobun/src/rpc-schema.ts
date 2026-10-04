@@ -1,4 +1,5 @@
 import type { RoleGateRole } from "@elizaos/core/protocol";
+import type { DetachedSurface } from "./surface-windows";
 /**
  * elizaOS Desktop RPC Schema for Electrobun
  *
@@ -1918,14 +1919,7 @@ export type ElizaDesktopRPCSchema = {
 			};
 			desktopOpenSurfaceWindow: {
 				params: {
-					surface:
-						| "chat"
-						| "browser"
-						| "release"
-						| "triggers"
-						| "plugins"
-						| "connectors"
-						| "cloud";
+					surface: DetachedSurface;
 					browse?: string;
 					alwaysOnTop?: boolean;
 				};

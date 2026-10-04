@@ -52,7 +52,10 @@ vi.mock("../../../ui/src/utils/with-timeout", () => ({
 
 import { getShaderPreset } from "../../../ui/src/backgrounds/shader-presets";
 import { BACKGROUND_APPLY_EVENT } from "../../../ui/src/backgrounds/useBackgroundApplyChannel";
-import type { BuiltinTab } from "../../../ui/src/navigation/builtin-route-descriptors";
+import {
+  BUILTIN_ROUTE_DESCRIPTORS,
+  type BuiltinTab,
+} from "../../../ui/src/navigation/builtin-route-descriptors";
 import type { BackgroundConfig } from "../../../ui/src/state/ui-preferences";
 import { makeGlslConfig } from "../../../ui/src/state/ui-preferences";
 import { emitViewEvent } from "../../../ui/src/views/view-event-bus";
@@ -464,40 +467,9 @@ vi.mock("three", () => {
 import { shellHistory } from "../../../ui/src/surface-realm-channel";
 import { App } from "./App";
 
-// ── The full builtin tab universe (mirrors navigation/index.ts BuiltinTab). ──
-// Each entry: the tab id + the route path it activates.
-const BUILTIN_TABS: { tab: BuiltinTab; path: string }[] = [
-  { tab: "chat", path: "/chat" },
-  { tab: "phone", path: "/phone" },
-  { tab: "messages", path: "/messages" },
-  { tab: "contacts", path: "/contacts" },
-  { tab: "camera", path: "/camera" },
-  { tab: "tasks", path: "/tasks" },
-  { tab: "automations", path: "/automations" },
-  { tab: "browser", path: "/browser" },
-  { tab: "stream", path: "/stream" },
-  { tab: "apps", path: "/apps" },
-  { tab: "views", path: "/views" },
-  { tab: "character", path: "/character" },
-  { tab: "character-select", path: "/character-select" },
-  { tab: "inventory", path: "/inventory" },
-  { tab: "documents", path: "/documents" },
-  { tab: "files", path: "/files" },
-  { tab: "triggers", path: "/triggers" },
-  { tab: "plugins", path: "/plugins" },
-  { tab: "skills", path: "/skills" },
-  { tab: "trajectories", path: "/trajectories" },
-  { tab: "transcripts", path: "/transcripts" },
-  { tab: "relationships", path: "/relationships" },
-  { tab: "memories", path: "/memories" },
-  { tab: "rolodex", path: "/rolodex" },
-  { tab: "runtime", path: "/runtime" },
-  { tab: "database", path: "/database" },
-  { tab: "desktop", path: "/desktop" },
-  { tab: "settings", path: "/settings" },
-  { tab: "logs", path: "/logs" },
-  { tab: "background", path: "/background" },
-];
+const BUILTIN_TABS = (
+  Object.keys(BUILTIN_ROUTE_DESCRIPTORS) as BuiltinTab[]
+).map((tab) => ({ tab, path: BUILTIN_ROUTE_DESCRIPTORS[tab].path }));
 
 // The launcher / springboard is the `views` tab on the `/views` route.
 const LAUNCHER = { tab: "views" as BuiltinTab, path: "/views" };
