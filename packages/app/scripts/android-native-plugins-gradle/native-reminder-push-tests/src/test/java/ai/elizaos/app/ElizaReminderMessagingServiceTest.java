@@ -190,6 +190,16 @@ public class ElizaReminderMessagingServiceTest {
         assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
+    @Test @Config(sdk = {26, 29}) public void legacyDefaultImportanceCustomSoundIsPreserved() {
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        android.net.Uri sound = android.net.Uri.parse("content://media/internal/audio/media/42");
+        updates.setSound(sound, new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build());
+        manager.createNotificationChannel(updates);
+        receiver().onMessageReceived(message(data(A), "legacy-sound"));
+        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals(sound, manager.getNotificationChannel("eliza_updates").getSound());
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
     @Test public void existingBlockedAlertChannelIsNotOverridden() {
         manager.createNotificationChannel(new NotificationChannel("eliza_notifications", "Blocked", NotificationManager.IMPORTANCE_NONE));
         receiver().onMessageReceived(message(data(A), "blocked-alert"));

@@ -103,8 +103,11 @@ public final class ElizaReminderMessagingService extends MessagingService {
                 NotificationChannel previous = manager.getNotificationChannel("eliza_updates");
                 // Timed reminders alert by default; retain an existing user-selected
                 // quiet/blocked tier rather than moving it to another channel.
+                // Older Android cannot report user-selected sound provenance,
+                // so preserve its existing channel conservatively.
                 boolean customized = previous != null && (
-                    previous.getImportance() != NotificationManager.IMPORTANCE_DEFAULT
+                    Build.VERSION.SDK_INT < 30
+                    || previous.getImportance() != NotificationManager.IMPORTANCE_DEFAULT
                     || (Build.VERSION.SDK_INT >= 29 && previous.hasUserSetImportance())
                     || (Build.VERSION.SDK_INT >= 30 && previous.hasUserSetSound())
                 );
