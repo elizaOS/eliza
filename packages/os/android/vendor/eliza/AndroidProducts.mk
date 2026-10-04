@@ -15,7 +15,6 @@ PRODUCT_MAKEFILES := \
     $(LOCAL_DIR)/products/eliza_cf_x86_64_phone.mk \
     $(LOCAL_DIR)/products/eliza_cf_riscv64_phone.mk \
     $(LOCAL_DIR)/products/eliza_cf_riscv64_e1_phone.mk \
-    $(LOCAL_DIR)/products/eliza_tegu_phone.mk \
     $(LOCAL_DIR)/products/eliza_grizzly_phone.mk \
     $(LOCAL_DIR)/products/eliza_gsi_arm64.mk \
     $(LOCAL_DIR)/products/eliza_gsi_x86_64.mk
@@ -25,7 +24,6 @@ COMMON_LUNCH_CHOICES := \
     eliza_cf_x86_64_phone-trunk_staging-userdebug \
     eliza_cf_riscv64_phone-trunk_staging-userdebug \
     eliza_cf_riscv64_e1_phone-trunk_staging-userdebug \
-    eliza_tegu_phone-trunk_staging-userdebug \
     eliza_grizzly_phone-cp2a-userdebug \
     eliza_gsi_arm64-cp2a-userdebug \
     eliza_gsi_x86_64-cp2a-userdebug

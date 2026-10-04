@@ -41,7 +41,7 @@ function selectPolicy(sdk: string, gsi: boolean) {
   );
   fs.rmSync(path.dirname(printer), { recursive: true, force: true });
   assert.ifError(result.error);
-  if (sdk) {
+  if (sdk === "37") {
     assert.equal(result.status, 0, result.stderr);
   }
   const [vendor = "", systemExt = ""] = result.stdout.trim().split("|");
@@ -99,52 +99,29 @@ test("GSI products inherit the AOSP GSI layers before the shared Eliza layer", (
   }
 });
 
-test("SELinux policy directories follow PLATFORM_SDK_VERSION", () => {
-  for (const sdk of ["35", "36"]) {
-    assert.deepEqual(selectPolicy(sdk, false).vendor, [
-      "vendor/eliza/sepolicy",
-    ]);
-    assert.deepEqual(selectPolicy(sdk, true).systemExt, [
-      "vendor/eliza/sepolicy/system_ext",
-    ]);
-    assert.deepEqual(selectPolicy(sdk, true).vendor, []);
+test("Android 17 selects policy for the image partition", () => {
+  assert.deepEqual(selectPolicy("37", false).vendor, ["vendor/eliza/sepolicy"]);
+  const gsi = selectPolicy("37", true);
+  assert.deepEqual(gsi.systemExt, ["vendor/eliza/sepolicy/system_ext"]);
+  assert.deepEqual(gsi.vendor, []);
+  for (const sdk of ["", "35", "36", "38"]) {
+    const rejected = selectPolicy(sdk, false);
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /Android 17 SDK 37 is required/);
   }
-  assert.deepEqual(selectPolicy("37", false).vendor, [
-    "vendor/eliza/sepolicy",
-    "vendor/eliza/sepolicy/api37",
-  ]);
-  assert.deepEqual(selectPolicy("37", true).systemExt, [
-    "vendor/eliza/sepolicy/system_ext",
-    "vendor/eliza/sepolicy/system_ext_api37",
-  ]);
-  const unset = selectPolicy("", false);
-  assert.notEqual(unset.status, 0);
-  assert.match(unset.stderr, /PLATFORM_SDK_VERSION is unset/);
 });
 
-test("Android 17-only platform_app_36 rules stay out of shared policy", () => {
-  const strip = (text: string) => text.replace(/^\s*#.*$/gm, "");
-  for (const shared of [
-    "sepolicy/eliza_agent.te",
-    "sepolicy/system_ext/eliza_agent.te",
-  ])
-    assert.doesNotMatch(strip(read(shared)), /platform_app_36/, shared);
-  for (const api37 of [
-    "sepolicy/api37/eliza_agent_app36.te",
-    "sepolicy/system_ext_api37/eliza_agent_app36.te",
+test("Android 17 app compatibility rules stay development-only", () => {
+  for (const policyPath of [
+    "sepolicy/eliza_agent_app36.te",
+    "sepolicy/system_ext/eliza_agent_app36.te",
   ]) {
-    const policy = strip(read(api37));
+    const policy = read(policyPath).replace(/^\s*#.*$/gm, "");
     assert.match(
       policy,
-      /allow platform_app_36 app_data_file:file \{ execute execute_no_trans \};/,
-      api37,
+      /userdebug_or_eng\(`[\s\S]*allow platform_app_36 app_data_file:file \{ execute execute_no_trans \};[\s\S]*allow platform_app_36 app_data_file:file link;/,
     );
-    assert.match(policy, /userdebug_or_eng\(/, api37);
   }
-  assert.match(
-    strip(read("sepolicy/system_ext/eliza_agent.te")),
-    /userdebug_or_eng\([\s\S]*allow platform_app app_data_file:file \{ execute execute_no_trans \};/,
-  );
 });
 
 test("the generic MediaTek GSI target stays blocked", () => {

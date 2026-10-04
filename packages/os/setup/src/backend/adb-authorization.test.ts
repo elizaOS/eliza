@@ -53,7 +53,7 @@ async function fixture(): Promise<FlashPlan> {
     device: {
       serial: "fixture",
       model: "fixture",
-      codename: "tegu",
+      codename: "grizzly",
       state: "device",
       bootloaderUnlocked: false,
     },
@@ -62,8 +62,8 @@ async function fixture(): Promise<FlashPlan> {
       label: "fixture",
       version: "fixture",
       channel: "beta",
-      targetDevice: "tegu",
-      targetId: "pixel9a-tegu",
+      targetDevice: "grizzly",
+      targetId: "pixel11pro-grizzly",
       architecture: "arm64-v8a",
       publishedAt: "2026-09-25T00:00:00Z",
       manifestUrl: "",
@@ -99,8 +99,8 @@ function authenticateFixture() {
       channel: "beta",
       operation: "os-install",
       target: {
-        id: "pixel9a-tegu",
-        codename: "tegu",
+        id: "pixel11pro-grizzly",
+        codename: "grizzly",
         kind: "physical",
         architecture: "arm64",
       },
@@ -201,7 +201,7 @@ test("standalone unlock resumes in fastboot and verifies completion without ADB"
       result("fixture fastboot\n") as ReturnType<typeof spawnSync>,
     )
     .mockReturnValueOnce(
-      result("", "(bootloader) product: tegu\n") as ReturnType<
+      result("", "(bootloader) product: grizzly\n") as ReturnType<
         typeof spawnSync
       >,
     )
@@ -250,14 +250,14 @@ test("device discovery includes fastboot-only devices", async () => {
   vi.mocked(spawnSync)
     .mockReturnValueOnce(result("List of devices attached\n"))
     .mockReturnValueOnce(result("fixture fastboot\n"))
-    .mockReturnValueOnce(result("", "product: tegu\n"))
+    .mockReturnValueOnce(result("", "product: grizzly\n"))
     .mockReturnValueOnce(result("", "unlocked: no\n"));
   expect(await new AdbFlasherBackend().listConnectedDevices()).toEqual([
     {
       serial: "fixture",
       state: "bootloader",
       model: "Unknown",
-      codename: "tegu",
+      codename: "grizzly",
       bootloaderUnlocked: false,
     },
   ]);

@@ -27,9 +27,7 @@ The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
 images from the `gsi-android17` (`cp2a`) profile in `aosp.lock.json`, not from the Cuttlefish
 checkout; `make build` does not select them. They use system_ext SELinux policy,
 are userdebug-only, and `generic-mediatek-gsi` stays blocked in
-`hardware-targets.json`. Every product selects the Android 17-only
-`platform_app_36` policy (`sepolicy/api37`, `sepolicy/system_ext_api37`) from
-`PLATFORM_SDK_VERSION`, so the same vendor tree compiles on Android 15, 16 and 17.
+`hardware-targets.json`. Every product requires Android 17 (SDK 37).
 Builds leave existing Cuttlefish sessions running. Stop selected instances
 explicitly when reclaiming memory before a build.
 

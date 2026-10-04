@@ -78,22 +78,11 @@ endif
 # system_ext instead. Soong globs each policy directory non-recursively, so
 # the subdirectories below are only compiled where they are listed.
 #
-# Android 17 (SDK 37) added the platform_app_36 compatibility domain; naming it
-# on Android 15 or 16 fails policy compilation. version_util.mk derives
-# PLATFORM_SDK_VERSION from the release config before product config runs, so
-# the API 37 rules are selected per source profile here.
-ifeq ($(PLATFORM_SDK_VERSION),)
-$(error vendor/eliza: PLATFORM_SDK_VERSION is unset during product configuration)
+ifneq ($(PLATFORM_SDK_VERSION),37)
+$(error vendor/eliza: Android 17 SDK 37 is required)
 endif
-ELIZA_SEPOLICY_API37 := $(if $(filter 34 35 36,$(PLATFORM_SDK_VERSION)),,true)
 ifeq ($(ELIZA_GSI),true)
 SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += vendor/eliza/sepolicy/system_ext
-ifeq ($(ELIZA_SEPOLICY_API37),true)
-SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += vendor/eliza/sepolicy/system_ext_api37
-endif
 else
 BOARD_VENDOR_SEPOLICY_DIRS += vendor/eliza/sepolicy
-ifeq ($(ELIZA_SEPOLICY_API37),true)
-BOARD_VENDOR_SEPOLICY_DIRS += vendor/eliza/sepolicy/api37
-endif
 endif

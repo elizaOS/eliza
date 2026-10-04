@@ -114,7 +114,7 @@ it("waits for verified unlock, then rechecks stock Android before installation",
   const device = {
     serial: "fixture",
     model: "Fixture phone",
-    codename: "tegu",
+    codename: "grizzly",
     state: "device" as const,
     bootloaderUnlocked: false,
   };
@@ -129,7 +129,7 @@ it("waits for verified unlock, then rechecks stock Android before installation",
       abi: "arm64-v8a",
       bootloaderLocked: true,
       supportedByElizaOs: true,
-      supportedBuildCodename: "tegu",
+      supportedBuildCodename: "grizzly",
     })),
     createFlashPlan: vi.fn(async (request) => ({
       device,

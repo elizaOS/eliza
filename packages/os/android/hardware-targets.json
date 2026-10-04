@@ -2,28 +2,6 @@
   "schemaVersion": 1,
   "targets": [
     {
-      "targetId": "pixel9a-tegu",
-      "marketingName": "Pixel 9a",
-      "manufacturer": "Google",
-      "codenames": ["tegu"],
-      "reviewedAt": "2026-08-18",
-      "authoritativeReferences": [
-        "https://developers.google.com/android/drivers",
-        "https://android.googlesource.com/platform/manifest/+/refs/tags/android-15.0.0_r31"
-      ],
-      "productName": "eliza_tegu_phone",
-      "lunchTarget": "eliza_tegu_phone-trunk_staging-userdebug",
-      "expectedFingerprintPrefix": "elizaOS/eliza_tegu_phone/tegu:",
-      "aospLockPath": "android/pixel9a.lock.json",
-      "sourceStatus": "pinned",
-      "installerEligible": false,
-      "blockedReasons": [
-        "The active Gemma ASR artifact is not yet published and digest-pinned in the application catalog.",
-        "No retained Pixel 9a flash and post-boot validation evidence exists yet."
-      ],
-      "labExperimentsEligible": false
-    },
-    {
       "targetId": "pixel11pro-grizzly",
       "marketingName": "Pixel 11 Pro",
       "manufacturer": "Google",
