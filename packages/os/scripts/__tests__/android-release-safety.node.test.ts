@@ -1446,7 +1446,16 @@ test("image and credential named pipes fail without waiting for a writer", {
         "--input-type=module",
         "-e",
         `import { ${method} } from ${JSON.stringify(url)};
-process.once("message", () => ${method}(process.argv[1]));
+process.once("message", () => {
+  const started = performance.now();
+  try {
+    ${method}(process.argv[1]);
+    process.send({ elapsedMs: performance.now() - started });
+  } catch (error) {
+    process.send({ elapsedMs: performance.now() - started });
+    throw error;
+  }
+});
 process.send("ready");`,
         pipe,
       ],
@@ -1458,20 +1467,30 @@ process.send("ready");`,
       stderr += chunk;
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let elapsedMs: number | undefined;
     try {
       const status = await new Promise((resolve, reject) => {
         const expire = (message) => {
           child.kill("SIGKILL");
           reject(new Error(message));
         };
-        // Startup is not FIFO validation. Keep the original two-second bound
-        // around the operation after the real child has imported its module.
+        // Measure the synchronous operation in the child. IPC delivery and
+        // process teardown can be delayed by parallel CI workers. Keep a
+        // bounded parent watchdog for an operation genuinely blocked on FIFO I/O.
         timer = setTimeout(
           () => expire("validation child did not start"),
           20_000,
         );
         child.once("error", reject);
-        child.once("message", (message) => {
+        child.on("message", (message) => {
+          if (
+            typeof message === "object" &&
+            message !== null &&
+            "elapsedMs" in message
+          ) {
+            elapsedMs = Number(message.elapsedMs);
+            return;
+          }
           if (message !== "ready") {
             reject(new Error("validation child sent an unexpected message"));
             return;
@@ -1479,13 +1498,17 @@ process.send("ready");`,
           clearTimeout(timer);
           timer = setTimeout(
             () => expire("file validation must not hang on FIFO open"),
-            2000,
+            20_000,
           );
           child.send("validate");
         });
         child.once("close", (code) => resolve(code));
       });
       assert.equal(status, 1);
+      assert.ok(
+        typeof elapsedMs === "number" && Number.isFinite(elapsedMs) && elapsedMs < 2000,
+        `FIFO validation must finish within two seconds (observed ${elapsedMs}ms)`,
+      );
       assert.match(stderr, /regular/);
     } finally {
       clearTimeout(timer);

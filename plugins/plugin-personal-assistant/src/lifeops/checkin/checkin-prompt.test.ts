@@ -125,7 +125,7 @@ describe("buildCheckinSummaryPrompt", () => {
     expect(text).not.toContain("No recent GitHub");
     expect(text).not.toContain("couldn't check");
     expect(text).not.toContain("tracking states");
-    expect(text).toMatch(/As of Oct 3, 2026, 6:00 PM PDT.$/);
+    expect(text).toMatch(/As of Oct 3, 2026(?:,| at) 6:00 PM PDT\.$/);
     expect(report).toEqual(original);
 
     const setupReport = baseReport({

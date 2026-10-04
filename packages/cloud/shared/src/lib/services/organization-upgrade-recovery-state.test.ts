@@ -72,3 +72,15 @@ for (const change of [
   test(`rejects foreign or unsupported observation ${JSON.stringify(change)}`, () => {
     expect(() => observe({ ...identity, raw: { ...invoice(), ...change } })).toThrow();
   });
+
+for (const raw of [{}, { ...invoice(), customer: "cus_other" }]) {
+  test(`invalid recovery observation has a stable public error code: ${JSON.stringify(raw)}`, () => {
+    let caught: unknown;
+    try {
+      observe({ ...identity, raw });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ code: "SUBSCRIPTION_UPGRADE_INVOICE_RECOVERY_UNAVAILABLE" });
+  });
+}
