@@ -57,6 +57,11 @@ on:
         required: false
         default: false
         type: boolean
+      approve_staging_billable_dedicated_confirmation:
+        description: Explicitly approve the staging fixture Dedicated compute quote during the browser proof
+        required: false
+        default: false
+        type: boolean
       production_binding_only_recovery:
         description: Admit only the bounded production Hyperdrive binding recovery against the currently served certified base
         required: false
@@ -1095,6 +1100,7 @@ jobs:
       # automatic release is a Develop effect reconciliation with a bound
       # digest; an ordinary manual dispatch must honor its explicit false.
       run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && (inputs.run_deployed_renderer_staging == true || (inputs.effect_digest != '' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1')) }}
+      approve_staging_billable_dedicated_confirmation: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && inputs.approve_staging_billable_dedicated_confirmation == true }}
       production_binding_only_recovery: ${{ github.event_name == 'workflow_dispatch' && inputs.production_binding_only_recovery == true }}
       certified_production_base_sha: ${{ inputs.certified_production_base_sha }}
       certified_recovery_policy_sha: ${{ inputs.certified_recovery_policy_sha }}
