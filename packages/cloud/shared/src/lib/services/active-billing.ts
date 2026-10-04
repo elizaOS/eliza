@@ -46,7 +46,7 @@ import {
 } from "./billing-resource-cancellations";
 import { retireContainerWithDeleteJob } from "./container-retirement";
 import { enqueueContainerUserStopOnce } from "./container-stop-job-service";
-import { provisioningJobService } from "./provisioning-jobs";
+import { provisioningJobService } from "./provisioning-job-queue";
 
 export type BillableResourceType = "container" | "agent_sandbox";
 export type BillableInterval = "day" | "hour";

@@ -3,6 +3,16 @@
  * PATCH /api/v1/user — update profile fields.
  */
 
+import { requireUserOrApiKey } from "@elizaos/cloud-shared/auth";
+import {
+  NotFoundError,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
 import type {
   CurrentUserDto,
   CurrentUserOrganizationDto,
@@ -10,16 +20,9 @@ import type {
   UpdatedUserDto,
   UpdatedUserResponse,
 } from "@elizaos/cloud-shared/types";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { usersService } from "@/lib/services/users";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const updateUserSchema = z.object({
   name: z.string().min(1).max(100).optional(),

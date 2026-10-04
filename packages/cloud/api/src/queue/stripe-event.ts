@@ -1,7 +1,7 @@
 import {
   projectLegacyStripeCheckoutReceipt,
   projectStripeCheckoutReceipt,
-} from "@/lib/services/stripe-checkout-receipt";
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-receipt";
 /**
  * Redis queue consumer for Stripe events.
  *
@@ -46,39 +46,39 @@ import {
  */
 
 import { createHmac } from "node:crypto";
-import { eq } from "drizzle-orm";
-import type Stripe from "stripe";
-import { ZodError } from "zod";
-import { dbRead } from "@/db/helpers";
-import { organizationsRepository } from "@/db/repositories/organizations";
-import { usersRepository } from "@/db/repositories/users";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import type { DrainResult } from "@/lib/queue/redis-queue";
-import { safeFetch } from "@/lib/security/safe-fetch";
-import { autoTopUpService } from "@/lib/services/auto-top-up";
-import { autoTopUpChargeBreakdownFromMetadata } from "@/lib/services/auto-top-up-charge-breakdown";
-import { creditsService } from "@/lib/services/credits";
-import { discordService } from "@/lib/services/discord";
-import { invoicesService } from "@/lib/services/invoices";
-import { invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
-import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
 import {
   CONTAINER_BACKED_TARGET_REJECTION_REASON,
   provisioningJobService,
-} from "@/lib/services/provisioning-jobs";
-import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { referralsService } from "@/lib/services/referrals";
-import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
-import { reconcileStripeScheduledCancellationLifecycle } from "@/lib/services/stripe-scheduled-cancellation-lifecycle";
-import { reconcileStripeTerminalLifecycle } from "@/lib/services/stripe-terminal-lifecycle";
+} from "@elizaos/cloud-shared/agents";
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { DrainResult } from "@elizaos/cloud-shared/lib/queue/redis-queue";
+import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
+import { autoTopUpService } from "@elizaos/cloud-shared/lib/services/auto-top-up";
+import { autoTopUpChargeBreakdownFromMetadata } from "@elizaos/cloud-shared/lib/services/auto-top-up-charge-breakdown";
+import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
+import { discordService } from "@elizaos/cloud-shared/lib/services/discord";
+import { invoicesService } from "@elizaos/cloud-shared/lib/services/invoices";
+import { invalidateOrgTierCache } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import { JOB_TYPES } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
+import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
+import { referralsService } from "@elizaos/cloud-shared/lib/services/referrals";
+import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { reconcileStripeScheduledCancellationLifecycle } from "@elizaos/cloud-shared/lib/services/stripe-scheduled-cancellation-lifecycle";
+import { reconcileStripeTerminalLifecycle } from "@elizaos/cloud-shared/lib/services/stripe-terminal-lifecycle";
 import {
   subscriptionPolicyFailureReason,
   typedFailure,
-} from "@/lib/services/subscription-lifecycle-failures";
-import { requireStripe } from "@/lib/stripe";
-import { STRIPE_API_VERSION } from "@/lib/stripe-api-version";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/subscription-lifecycle-failures";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { STRIPE_API_VERSION } from "@elizaos/cloud-shared/lib/stripe-api-version";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { eq } from "drizzle-orm";
+import type Stripe from "stripe";
+import { ZodError } from "zod";
 
 import type { StripeEventMessage } from "./types";
 
@@ -338,7 +338,9 @@ async function acknowledgeUnownedSubscriptionEvent(
   const opened =
     incident && stripeSubscriptionId
       ? await (
-          await import("@/lib/services/subscription-event-incidents")
+          await import(
+            "@elizaos/cloud-shared/lib/services/subscription-event-incidents"
+          )
         ).openSubscriptionEventIncident({
           stripeSubscriptionId,
           livemode: event.livemode,
@@ -421,7 +423,9 @@ async function classifySubscriptionFailure(
         failure?.code !== "SUBSCRIPTION_RENEWAL_UNAVAILABLE"
       )
         await (
-          await import("@/lib/services/subscription-event-incidents")
+          await import(
+            "@elizaos/cloud-shared/lib/services/subscription-event-incidents"
+          )
         ).openSubscriptionEventIncident({
           stripeSubscriptionId,
           livemode: event.livemode,
@@ -504,7 +508,7 @@ async function processSubscriptionEvent(
       event.data.object.mode === "subscription"
     ) {
       const { reconcileSubscriptionCheckout } = await import(
-        "@/lib/services/subscription-checkout"
+        "@elizaos/cloud-shared/lib/services/subscription-checkout"
       );
       await reconcileSubscriptionCheckout(event.data.object.id);
       return "ack";
@@ -528,7 +532,9 @@ async function processSubscriptionEvent(
         case "past_due":
         case "unpaid":
           await (
-            await import("@/lib/services/stripe-dunning-lifecycle")
+            await import(
+              "@elizaos/cloud-shared/lib/services/stripe-dunning-lifecycle"
+            )
           ).reconcileStripeDunningLifecycle(
             delivery.body,
             stripeSubscriptionId,
@@ -552,7 +558,7 @@ async function processSubscriptionEvent(
       warnOnUnexpectedApiVersion(event);
       stripeSubscriptionId = invoiceSubscriptionId(event.data.object);
       const { reconcileStripePaidRenewal } = await import(
-        "@/lib/services/stripe-paid-renewal"
+        "@elizaos/cloud-shared/lib/services/stripe-paid-renewal"
       );
       await reconcileStripePaidRenewal(delivery.body);
       return "ack";
@@ -577,7 +583,9 @@ async function processSubscriptionEvent(
         await requireStripe().subscriptions.retrieve(stripeSubscriptionId);
       if (live.status === "past_due" || live.status === "unpaid") {
         await (
-          await import("@/lib/services/stripe-dunning-lifecycle")
+          await import(
+            "@elizaos/cloud-shared/lib/services/stripe-dunning-lifecycle"
+          )
         ).reconcileStripeDunningLifecycle(delivery.body, stripeSubscriptionId);
         return "ack";
       }
@@ -630,7 +638,7 @@ export async function processStripeEvent(
   if (delivery.body.appBilling) {
     try {
       const { appBillingReconciliation } = await import(
-        "@/lib/services/app-billing-reconciliation"
+        "@elizaos/cloud-shared/lib/services/app-billing-reconciliation"
       );
       await appBillingReconciliation.processPersisted(
         delivery.body.appBilling.receiptKey,
@@ -1848,7 +1856,7 @@ async function handleChargeDisputeFundsReinstated(
   // outstanding amount is frozen at release, which keeps the repayment
   // returned below stable across redeliveries.
   const { releaseShortfallHoldForReinstatement } = await import(
-    "@/db/repositories/payment-reversal-holds"
+    "@elizaos/cloud-shared/db/repositories/payment-reversal-holds"
   );
   const hold = await releaseShortfallHoldForReinstatement({
     clawbackTransactionId: clawback.id,
@@ -1933,7 +1941,9 @@ async function settleShortfallsAfterCredit(
   organizationId: string,
   source: string,
 ): Promise<boolean> {
-  const { billingHoldService } = await import("@/lib/services/billing-hold");
+  const { billingHoldService } = await import(
+    "@elizaos/cloud-shared/lib/services/billing-hold"
+  );
   const settlement =
     await billingHoldService.settleOutstandingShortfalls(organizationId);
   if (settlement.appliedUsd !== "0.000000") {

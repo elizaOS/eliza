@@ -39,12 +39,12 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadCloudLocalEnv } from "@elizaos/cloud-services-common/node";
 import { APPS_JOB_TYPES } from "@elizaos/cloud-shared/agent-contracts";
-import type { ProcessingResult } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import type { ProcessingResult } from "@elizaos/cloud-shared/node";
 
 type WorkerLogger =
   typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
 type WorkerService =
-  typeof import("@elizaos/cloud-shared/lib/services/provisioning-jobs").provisioningJobService;
+  typeof import("@elizaos/cloud-shared/node").provisioningJobService;
 
 interface AppsWorkerDeps {
   logger: WorkerLogger;
@@ -90,7 +90,7 @@ let depsPromise: Promise<AppsWorkerDeps> | null = null;
 async function loadDeps(): Promise<AppsWorkerDeps> {
   if (!depsPromise) {
     depsPromise = Promise.all([
-      import("@elizaos/cloud-shared/lib/services/provisioning-jobs"),
+      import("@elizaos/cloud-shared/node"),
       import("@elizaos/cloud-shared/lib/utils/logger"),
     ]).then(([jobsModule, loggerModule]) => ({
       provisioningJobService: jobsModule.provisioningJobService,

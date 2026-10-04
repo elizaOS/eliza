@@ -731,6 +731,7 @@
         "@cloudflare/workers-types": "^4.20260429.1",
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/cloud-routing": "workspace:*",
+        "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -757,7 +758,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
-        "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
@@ -812,9 +812,7 @@
         "@types/node": "^25.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
-        "fast-check": "^4.10.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.2",
       },
     },
     "packages/cloud/scripts": {

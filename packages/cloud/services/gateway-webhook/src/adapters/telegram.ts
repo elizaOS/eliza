@@ -14,7 +14,7 @@ import {
   type TelegramConnectorEvent,
   telegramReplyWithMedia,
   verifyTelegramWebhook,
-} from "@elizaos/cloud-services-common/telegram-connector";
+} from "@elizaos/cloud-services-common/telegram";
 import { normalizeIdentityLinkCodeBody } from "@elizaos/cloud-services-common/transport";
 import { resolveConnectorAccountId } from "../connector-account";
 import { logger } from "../logger";

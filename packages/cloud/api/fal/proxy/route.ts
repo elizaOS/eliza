@@ -8,6 +8,20 @@
  */
 
 import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { BillingContext } from "@elizaos/cloud-shared/lib/services/ai-billing";
+import {
+  calculateVideoGenerationCostFromCatalog,
+  getDefaultVideoBillingDimensions,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { getSupportedVideoModelDefinition } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
   DEFAULT_ALLOWED_URL_PATTERNS,
   getEndpoint,
   resolveApiKeyFromEnv,
@@ -22,17 +36,6 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { BillingContext } from "@/lib/services/ai-billing";
-import {
-  calculateVideoGenerationCostFromCatalog,
-  getDefaultVideoBillingDimensions,
-} from "@/lib/services/ai-pricing";
-import { getSupportedVideoModelDefinition } from "@/lib/services/ai-pricing-definitions";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const falHandler = createRouteHandler({
   allowedUrlPatterns: DEFAULT_ALLOWED_URL_PATTERNS,

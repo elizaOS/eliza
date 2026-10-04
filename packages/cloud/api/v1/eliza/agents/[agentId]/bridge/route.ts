@@ -6,38 +6,45 @@
  * to its own container bridge. Losing that second branch is what 404'd every
  * dedicated agent between 2026-07-23 and #18062.
  */
-import type { Context } from "hono";
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { resolvePersonalDedicatedTrafficAccess } from "@/lib/services/personal-dedicated-fallback";
+
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { resolvePersonalDedicatedTrafficAccess } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
 import {
   personalDirectChatRefusalResponse,
   resolveSharedSurfaceTarget,
-} from "@/lib/services/personal-direct-chat-route";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { coordinateSharedBridge } from "@/lib/services/shared-runtime/conversation-coordinator";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { coordinateSharedBridge } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
   classifyBridgeRequestMethod,
   classifySharedTurnOutcome,
   recordSharedTurnAttempt,
   type SharedTurnRuntimeKind,
-} from "@/lib/services/shared-runtime/shared-turn-observability";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-turn-observability";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
-} from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context } from "hono";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "POST, OPTIONS";
 

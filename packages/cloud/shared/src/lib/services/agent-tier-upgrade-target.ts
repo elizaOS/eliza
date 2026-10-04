@@ -82,8 +82,8 @@ import {
   personalDedicatedInventoryFingerprint,
   personalDedicatedStateDisposition,
 } from "./personal-dedicated-adoption-provenance";
+import { provisioningJobService } from "./provisioning-job-queue";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
 
 /**
  * Statuses under which an existing migration target still owns the upgrade.

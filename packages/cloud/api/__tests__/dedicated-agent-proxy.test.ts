@@ -14,19 +14,22 @@ import {
   test,
 } from "bun:test";
 import { runInNewContext } from "node:vm";
+import * as provisioningJobsActual from "@elizaos/cloud-shared/agents";
+import { hasDbCacheContext } from "@elizaos/cloud-shared/db/client";
+import * as agentSandboxesActual from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import {
+  AuthenticationError,
+  ForbiddenError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import * as authActual from "@elizaos/cloud-shared/lib/auth";
+import { mobileApiKeyIngressRateLimitKey } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import * as cloudBindingsActual from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import * as billingGateActual from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import * as pairingTokenActual from "@elizaos/cloud-shared/lib/services/pairing-token";
+import type { ProvisioningWorkerHealth } from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import * as workerHealthActual from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import * as loggerActual from "@elizaos/cloud-shared/lib/utils/logger";
 import { Hono } from "hono";
-import { hasDbCacheContext } from "@/db/client";
-import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
-import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
-import * as authActual from "@/lib/auth";
-import { mobileApiKeyIngressRateLimitKey } from "@/lib/auth/mobile-api-key";
-import * as cloudBindingsActual from "@/lib/runtime/cloud-bindings";
-import * as billingGateActual from "@/lib/services/agent-billing-gate";
-import * as pairingTokenActual from "@/lib/services/pairing-token";
-import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
-import type { ProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
-import * as workerHealthActual from "@/lib/services/provisioning-worker-health";
-import * as loggerActual from "@/lib/utils/logger";
 
 let authResult:
   | { user: { id: string; organization_id: string } }
@@ -70,11 +73,11 @@ const sandboxDbCacheContexts: boolean[] = [];
 const warnCalls: Array<{ message: string; context: unknown }> = [];
 const errorCalls: Array<{ message: string; context: unknown }> = [];
 
-mock.module("@/lib/runtime/cloud-bindings", () => ({
+mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
   runWithCloudBindingsAsync: (_b: unknown, fn: () => Promise<unknown>) => fn(),
 }));
-mock.module("@/lib/auth", () => ({
+mock.module("@elizaos/cloud-shared/lib/auth", () => ({
   ...authActual,
   requireAuthOrApiKeyWithOrg: async (request: Request) => {
     authRequests.push(request);
@@ -85,7 +88,7 @@ mock.module("@/lib/auth", () => ({
     return authResult;
   },
 }));
-mock.module("@/db/repositories/agent-sandboxes", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
   agentSandboxesRepository: {
     ...agentSandboxesActual.agentSandboxesRepository,
@@ -97,7 +100,7 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
     },
   },
 }));
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   ...provisioningJobsActual,
   provisioningJobService: {
     ...provisioningJobsActual.provisioningJobService,
@@ -116,15 +119,18 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
     },
   },
 }));
-mock.module("@/lib/services/provisioning-worker-health", () => ({
-  ...workerHealthActual,
-  checkProvisioningWorkerHealth: async () => workerHealthResult,
-}));
-mock.module("@/lib/services/agent-billing-gate", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/services/provisioning-worker-health",
+  () => ({
+    ...workerHealthActual,
+    checkProvisioningWorkerHealth: async () => workerHealthResult,
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/agent-billing-gate", () => ({
   ...billingGateActual,
   checkAgentCreditGate: async () => creditGateResult,
 }));
-mock.module("@/lib/services/pairing-token", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/pairing-token", () => ({
   ...pairingTokenActual,
   getPairingTokenService: () => ({
     claimBrowserToken: async (
@@ -137,7 +143,7 @@ mock.module("@/lib/services/pairing-token", () => ({
     },
   }),
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
@@ -168,17 +174,29 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 }) as typeof fetch;
 afterAll(() => {
   globalThis.fetch = originalFetch;
-  mock.module("@/lib/runtime/cloud-bindings", () => cloudBindingsActual);
-  mock.module("@/lib/auth", () => authActual);
-  mock.module("@/db/repositories/agent-sandboxes", () => agentSandboxesActual);
-  mock.module("@/lib/services/agent-billing-gate", () => billingGateActual);
-  mock.module("@/lib/services/pairing-token", () => pairingTokenActual);
-  mock.module("@/lib/services/provisioning-jobs", () => provisioningJobsActual);
   mock.module(
-    "@/lib/services/provisioning-worker-health",
+    "@elizaos/cloud-shared/lib/runtime/cloud-bindings",
+    () => cloudBindingsActual,
+  );
+  mock.module("@elizaos/cloud-shared/lib/auth", () => authActual);
+  mock.module(
+    "@elizaos/cloud-shared/db/repositories/agent-sandboxes",
+    () => agentSandboxesActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/agent-billing-gate",
+    () => billingGateActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/pairing-token",
+    () => pairingTokenActual,
+  );
+  mock.module("@elizaos/cloud-shared/agents", () => provisioningJobsActual);
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/provisioning-worker-health",
     () => workerHealthActual,
   );
-  mock.module("@/lib/utils/logger", () => loggerActual);
+  mock.module("@elizaos/cloud-shared/lib/utils/logger", () => loggerActual);
 });
 
 const {

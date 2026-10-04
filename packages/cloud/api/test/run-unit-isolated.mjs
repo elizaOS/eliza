@@ -5,14 +5,14 @@
  * WHY: bun evaluates every test file's top-level `mock.module` at collection
  * time in a single shared process, and those overrides are process-global with
  * no per-file teardown. Files that stub overlapping modules with different
- * shapes (e.g. one mocks `@/db/helpers` to `{ dbRead }`, another needs the real
+ * shapes (e.g. one mocks `@elizaos/cloud-shared/db/helpers` to `{ dbRead }`, another needs the real
  * surface) cross-contaminate, producing order-dependent flakes. Process-per-file
  * gives each test total isolation — there is no shared module-mock state to
  * leak — which fixes the whole class, current and future, without having to
  * keep 10+ unrelated test files' mocks in manual lockstep.
  *
  * Serial on purpose: avoids any shared-resource contention (ports, temp dirs)
- * between concurrent bun processes. The unit suite is small; correctness first.
+ * between concurrent bun processes.
  *
  * Usage:
  *   node test/run-unit-isolated.mjs            # every unit test file in this package

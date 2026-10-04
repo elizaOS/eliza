@@ -3,13 +3,16 @@
  * Audit history for service pricing changes. Requires admin role.
  */
 
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { servicePricingRepository } from "@elizaos/cloud-shared/db/repositories";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  parseClampedLimit,
+  parseClampedOffset,
+} from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { servicePricingRepository } from "@/db/repositories";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

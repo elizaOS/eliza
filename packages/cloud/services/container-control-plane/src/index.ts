@@ -42,9 +42,9 @@ import {
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { resolvePersonalDedicatedTrafficAccess } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
-import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { provisioningJobService } from "@elizaos/cloud-shared/node";
 import { type Context, Hono } from "hono";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;

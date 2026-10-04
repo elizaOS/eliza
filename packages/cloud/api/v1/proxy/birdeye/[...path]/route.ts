@@ -2,8 +2,8 @@
  * Legacy Birdeye proxy mount — redirects to `/api/v1/apis/birdeye/*` (308).
  */
 
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

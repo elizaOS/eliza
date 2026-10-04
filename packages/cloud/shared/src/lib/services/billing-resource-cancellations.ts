@@ -23,7 +23,7 @@ import {
   enqueueContainerUserStopInTx,
   lockContainerStopTargetInTx,
 } from "./container-stop-job-service";
-import { lockAgentSuspendTargetInTx, provisioningJobService } from "./provisioning-jobs";
+import { lockAgentSuspendTargetInTx, provisioningJobService } from "./provisioning-job-queue";
 
 export type BillingCancellationDisposition = "accepted" | "same_key_replay" | "same_command";
 

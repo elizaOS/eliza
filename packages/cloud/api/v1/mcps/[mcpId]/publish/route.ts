@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 mcps mcpid publish route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * MCP Publish/Unpublish API
@@ -10,9 +10,9 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * DELETE /api/v1/mcps/[mcpId]/publish - Unpublish MCP (back to draft)
  */
 
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { userMcpsService } from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 /**
  * POST /api/v1/mcps/[mcpId]/publish

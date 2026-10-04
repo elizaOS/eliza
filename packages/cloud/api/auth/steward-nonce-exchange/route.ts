@@ -22,26 +22,29 @@
  * first-party Eliza UI origins plus localhost in non-production.
  */
 
-import { type StewardSessionErrorCode } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
 import {
   browserOriginHost,
   checkElizaMutatingRequestOrigin,
   hasElizaNonSimpleRequestMarker,
   isPermittedElizaBrowserOrigin,
-} from "@/lib/auth/browser-origin-policy";
-import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+} from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
+import { cookieDomainForHost } from "@elizaos/cloud-shared/lib/auth/cookie-domain";
 import {
   STEWARD_AUTH_UPSTREAM_TIMEOUT_MS,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
-} from "@/lib/auth/steward-client";
-import { stewardCookieNames } from "@/lib/auth/steward-cookies";
-import { signStewardMutatingRequest } from "@/lib/steward/sign";
-import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/auth/steward-client";
+import { stewardCookieNames } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
+import { signStewardMutatingRequest } from "@elizaos/cloud-shared/lib/steward/sign";
+import {
+  describeSyncError,
+  syncUserFromSteward,
+} from "@elizaos/cloud-shared/lib/steward-sync";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StewardSessionErrorCode } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 function checkOrigin(

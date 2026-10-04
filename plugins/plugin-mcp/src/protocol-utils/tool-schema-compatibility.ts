@@ -114,7 +114,7 @@ export abstract class McpSchemaCompatibility<
   TModelInfo,
   TConstraints extends object = Record<string, unknown>,
 > {
-  protected modelInfo: TModelInfo;
+  protected readonly modelInfo: TModelInfo;
   constructor(modelInfo: TModelInfo) {
     this.modelInfo = modelInfo;
   }

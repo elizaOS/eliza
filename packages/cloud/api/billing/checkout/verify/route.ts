@@ -1,7 +1,7 @@
 import {
   projectLegacyStripeCheckoutReceipt,
   projectStripeCheckoutReceipt,
-} from "@/lib/services/stripe-checkout-receipt";
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-receipt";
 /**
  * POST /api/billing/checkout/verify
  *
@@ -12,33 +12,33 @@ import {
  */
 
 import { createHmac } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { Hono } from "hono";
-import type Stripe from "stripe";
-import { z } from "zod";
-import { dbRead } from "@/db/helpers";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import {
   ForbiddenError,
   failureResponse,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { safeFetch } from "@/lib/security/safe-fetch";
-import { invoicesService } from "@/lib/services/invoices";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
+import { invoicesService } from "@elizaos/cloud-shared/lib/services/invoices";
 import {
   StripeCheckoutAuthorityError,
   stripeCheckoutOrdersService,
-} from "@/lib/services/stripe-checkout-orders";
-import { usersService } from "@/lib/services/users";
-import { requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { eq } from "drizzle-orm";
+import { Hono } from "hono";
+import type Stripe from "stripe";
+import { z } from "zod";
 
 const VerifyBody = z.object({
   session_id: z.string().min(1),

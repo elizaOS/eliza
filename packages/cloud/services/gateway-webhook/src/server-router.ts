@@ -7,7 +7,7 @@ import {
   refreshGatewayActivity,
   resolveGatewayAgentServer,
   wakeGatewayServer,
-} from "@elizaos/cloud-services-common/gateway-routing";
+} from "@elizaos/cloud-services-common/node";
 import {
   executeGatewayForwardAttempts,
   type GatewayTargetResult,

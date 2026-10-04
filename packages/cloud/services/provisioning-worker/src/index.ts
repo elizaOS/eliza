@@ -23,18 +23,18 @@ import {
 import { resolveDatabaseUrl } from "@elizaos/cloud-shared/db/database-url";
 import type { AppOrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler";
 import type { OrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/docker-node-workloads";
+import { usesLocalDockerSandboxProvider } from "@elizaos/cloud-shared/lib/services/sandbox-provider";
 import type {
   HeartbeatResult,
   ProcessingResult,
   ProvisioningRecoverySummary,
   RecoveryResult,
-} from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
-import { usesLocalDockerSandboxProvider } from "@elizaos/cloud-shared/lib/services/sandbox-provider";
+} from "@elizaos/cloud-shared/node";
 
 type WorkerLogger =
   typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
 type WorkerService =
-  typeof import("@elizaos/cloud-shared/lib/services/provisioning-jobs").provisioningJobService;
+  typeof import("@elizaos/cloud-shared/node").provisioningJobService;
 type WorkerNodeManager =
   typeof import("@elizaos/cloud-shared/lib/services/docker-node-manager").dockerNodeManager;
 type WorkerNodeAutoscaler =
@@ -308,7 +308,7 @@ export function __setDepsForTests(deps: WorkerDeps | null): void {
 async function loadDeps(): Promise<WorkerDeps> {
   if (!depsPromise) {
     depsPromise = Promise.all([
-      import("@elizaos/cloud-shared/lib/services/provisioning-jobs"),
+      import("@elizaos/cloud-shared/node"),
       import("@elizaos/cloud-shared/lib/utils/logger"),
       import("@elizaos/cloud-shared/lib/services/docker-node-manager"),
       import("@elizaos/cloud-shared/lib/services/containers/node-autoscaler"),

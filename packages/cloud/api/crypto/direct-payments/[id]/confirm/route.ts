@@ -4,18 +4,18 @@
  * transaction and crediting the authenticated user's organization.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { cryptoPaymentsRepository } from "@elizaos/cloud-shared/db/repositories/crypto-payments";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { directWalletPaymentsService } from "@/lib/services/direct-wallet-payments";
-import { logger, redact } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { directWalletPaymentsService } from "@elizaos/cloud-shared/lib/services/direct-wallet-payments";
+import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const evmTxHashRegex = /^0x[a-fA-F0-9]{64}$/;
 const solanaTxHashRegex = /^[1-9A-HJ-NP-Za-km-z]{87,88}$/;

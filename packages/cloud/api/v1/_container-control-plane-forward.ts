@@ -1,6 +1,9 @@
 // Handles v1 cloud API v1 container control plane forward route traffic with route-local auth expectations.
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AuthedUser } from "@/types/cloud-worker-env";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const CONTROL_PLANE_URL_KEYS = [
   "CONTAINER_CONTROL_PLANE_URL",

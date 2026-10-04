@@ -66,7 +66,7 @@ const FUNDED = AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(6);
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
-let ProvisioningJobService: typeof import("../provisioning-jobs").ProvisioningJobService;
+let ProvisioningJobService: typeof import("@elizaos/cloud-shared/node").ProvisioningJobService;
 let AgentFundingRetentionService: typeof import("../agent-funding-retention").AgentFundingRetentionService;
 
 let sequence = 0;
@@ -77,7 +77,7 @@ function unique(prefix: string): string {
 
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
-  ({ ProvisioningJobService } = await import("../provisioning-jobs"));
+  ({ ProvisioningJobService } = await import("@elizaos/cloud-shared/node"));
   ({ AgentFundingRetentionService } = await import("../agent-funding-retention"));
   const schema = {
     organizations,

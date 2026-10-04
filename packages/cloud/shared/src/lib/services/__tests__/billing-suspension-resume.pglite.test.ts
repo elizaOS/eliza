@@ -56,7 +56,7 @@ const OWNER_ID = "10000000-0000-4000-8000-000000000042";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
-let ProvisioningJobService: typeof import("../provisioning-jobs").ProvisioningJobService;
+let ProvisioningJobService: typeof import("@elizaos/cloud-shared/node").ProvisioningJobService;
 let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
 
 let sequence = 0;
@@ -67,7 +67,7 @@ function unique(prefix: string): string {
 
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
-  ({ ProvisioningJobService } = await import("../provisioning-jobs"));
+  ({ ProvisioningJobService } = await import("@elizaos/cloud-shared/node"));
   ({ ElizaSandboxService } = await import("../eliza-sandbox"));
   const schema = {
     organizations,
