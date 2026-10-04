@@ -196,3 +196,6 @@ operator identity and the existing measurement-policy store factory. Rotation
 uses the canonical database lease and retains previous/next recovery files before
 changing encrypted SQLite records; it refuses to overwrite prior recovery files.
 The helper never enrolls participants or returns plaintext operator credentials.
+After validating the new key against retained data and backups, the operator
+must retire the private recovery files explicitly. Until then they retain old
+key material and block another rotation; rotation alone does not remove it.
