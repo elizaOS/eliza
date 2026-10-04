@@ -3,6 +3,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, isNull } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import { organizationEntitlements } from "../schemas/organization-entitlements";
 import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
@@ -23,38 +24,43 @@ function reject(reason: string): never {
 }
 
 export async function readOrganizationPlanChangeSource(input: OrganizationSubscriptionSourceInput) {
-  return writeTransaction(async (tx) => {
-    const locked = await lockOrganizationSubscriptionManager(tx, input, reject);
-    const source = await lockCurrentOrganizationSubscription(tx, input, locked, reject);
-    if (source.cancel_at_period_end) reject("scheduled_cancellation_requires_resolution");
-    const [pending] = await tx
-      .select({ id: billingSubscriptionCommands.id })
-      .from(billingSubscriptionCommands)
-      .where(
-        and(
-          isNull(billingSubscriptionCommands.billing_scope_id),
-          isNull(billingSubscriptionCommands.app_id),
-          eq(billingSubscriptionCommands.organization_id, input.organizationId),
-          inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
-        ),
-      )
-      .limit(1);
-    if (pending) reject("contradictory_command_pending");
-    const [projection] = await tx
-      .select()
-      .from(organizationEntitlements)
-      .where(
-        and(
-          isNull(organizationEntitlements.billing_scope_id),
-          eq(organizationEntitlements.organization_id, input.organizationId),
-        ),
-      );
-    if (
-      !projection ||
-      projection.source_subscription_id !== source.id ||
-      projection.source_subscription_revision !== source.lifecycle_revision
+  return writeTransaction((tx) => lockOrganizationPlanChangeSource(tx, input));
+}
+
+export async function lockOrganizationPlanChangeSource(
+  tx: DbTransaction,
+  input: OrganizationSubscriptionSourceInput,
+) {
+  const locked = await lockOrganizationSubscriptionManager(tx, input, reject);
+  const source = await lockCurrentOrganizationSubscription(tx, input, locked, reject);
+  if (source.cancel_at_period_end) reject("scheduled_cancellation_requires_resolution");
+  const [pending] = await tx
+    .select({ id: billingSubscriptionCommands.id })
+    .from(billingSubscriptionCommands)
+    .where(
+      and(
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        isNull(billingSubscriptionCommands.app_id),
+        eq(billingSubscriptionCommands.organization_id, input.organizationId),
+        inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
+      ),
     )
-      reject("projection_unavailable");
-    return { source, organizationCustomerId: locked.organization.customer };
-  });
+    .limit(1);
+  if (pending) reject("contradictory_command_pending");
+  const [projection] = await tx
+    .select()
+    .from(organizationEntitlements)
+    .where(
+      and(
+        isNull(organizationEntitlements.billing_scope_id),
+        eq(organizationEntitlements.organization_id, input.organizationId),
+      ),
+    );
+  if (
+    !projection ||
+    projection.source_subscription_id !== source.id ||
+    projection.source_subscription_revision !== source.lifecycle_revision
+  )
+    reject("projection_unavailable");
+  return { source, organizationCustomerId: locked.organization.customer };
 }
