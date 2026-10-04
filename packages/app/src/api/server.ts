@@ -90,6 +90,12 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
+import {
+  closeStandaloneKokoro,
+  handleStandaloneKokoroRoute,
+  stopStandaloneKokoro,
+  warmStandaloneKokoro,
+} from "./standalone-kokoro-routes";
 import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
 export {
@@ -764,6 +770,11 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // (app must not statically import plugin packages). This replaces the
     // former inline hardwired block that enumerated the four plugin handlers
     // directly in the dispatcher body (#12089 item 5).
+    id: "standalone-kokoro",
+    handler: ({ req, res, state }) =>
+      handleStandaloneKokoroRoute(req, res, state),
+  },
+  {
     id: "standalone-whisper",
     handler: ({ req, res, state }) =>
       handleStandaloneWhisperRoute(req, res, state),
@@ -1106,11 +1117,15 @@ export async function startApiServer(
   }
 
   const callerOptions = args[0];
+  let speechHostStarted = false;
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
     onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+      if (compatState.current !== activeRuntime)
+        stopStandaloneKokoro(compatState);
       compatState.current = activeRuntime;
+      if (speechHostStarted) warmStandaloneKokoro(compatState);
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
     },
@@ -1228,16 +1243,21 @@ export async function startApiServer(
   compatState.runtimeOperations = server.runtimeOperations;
   compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
+  speechHostStarted = true;
+  warmStandaloneKokoro(compatState);
+
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
   ) => void;
 
   server.updateRuntime = (runtime: AgentRuntime) => {
+    if (compatState.current !== runtime) stopStandaloneKokoro(compatState);
     compatState.current = runtime;
     clearCompatRuntimeRestart(compatState);
     // Make the runtime immediately visible to upstream routes so hot swaps do
     // not briefly return 503s while compat setup finishes in the background.
     originalUpdateRuntime(runtime);
+    warmStandaloneKokoro(compatState);
 
     // Continue repairing SQL compatibility asynchronously without blocking
     // the runtime from becoming available to unrelated routes.
@@ -1259,5 +1279,10 @@ export async function startApiServer(
     })();
   };
 
+  const originalClose = server.close.bind(server);
+  server.close = async () => {
+    closeStandaloneKokoro(compatState);
+    await originalClose();
+  };
   return server;
 }

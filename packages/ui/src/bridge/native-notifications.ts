@@ -12,6 +12,7 @@ import { logger } from "../logger.ts";
 import {
   isSafeDeepLink,
   navigateDeepLink,
+  readNotificationChatTarget,
 } from "../state/notifications/navigate-deep-link";
 import { getNativePlugin } from "./native-plugins";
 
@@ -22,6 +23,8 @@ export interface NativeNotificationRequest {
   body?: string;
   /** App route / URL to open on tap. */
   deepLink?: string;
+  /** Canonical, read-only chat destination from the notification producer. */
+  data?: Record<string, unknown>;
   /** Drives the delivery loudness (Android channel, web silence). */
   priority: NotificationPriority;
   /**
@@ -69,7 +72,7 @@ interface LocalNotificationActionPerformed {
 
 export interface LocalNotificationTapRoutingDeps {
   getPlugin: () => LocalNotificationsPluginLike;
-  navigate: (deepLink: string) => void;
+  navigate: (deepLink: string, data?: unknown) => void;
 }
 
 interface ElizaIntentPluginLike extends Record<string, unknown> {
@@ -204,7 +207,11 @@ export function initLocalNotificationTapRouting(
             { src: "local-notification-tap" },
             "[local-notification-tap] routed native notification action",
           );
-          deps.navigate(deepLink);
+          if (
+            readNotificationChatTarget(action.notification?.extra) === undefined
+          )
+            deps.navigate(deepLink);
+          else deps.navigate(deepLink, action.notification?.extra);
         }
       }),
     )
@@ -315,7 +322,9 @@ async function tryLocalNotifications(
         // exact-alarm settings screen even though no future alarm is needed.
         isExactNotification: false,
         ...(channel.channelId ? { channelId: channel.channelId } : {}),
-        ...(safeDeepLink ? { extra: { deepLink: safeDeepLink } } : {}),
+        ...(safeDeepLink
+          ? { extra: { ...req.data, deepLink: safeDeepLink } }
+          : {}),
       },
     ],
   });
@@ -384,7 +393,7 @@ export function showWebNotification(req: NativeNotificationRequest): boolean {
           // Scheme-checked: a producer-supplied deepLink must never reach a raw
           // top-window navigation (javascript: → XSS, arbitrary https → open
           // redirect). navigateDeepLink drops anything but app routes / http(s).
-          navigateDeepLink(deepLink);
+          void navigateDeepLink(deepLink, req.data);
         } catch {
           // error-policy:J6 best-effort tap navigation; the app is already
           // focused and the dashboard notification center still lists it.

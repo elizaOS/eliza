@@ -35,6 +35,28 @@ export async function decodeRequestJson(source: {
 }
 
 /**
+ * Decode a JSON body whose route contract permits the body to be omitted.
+ * Empty and whitespace-only bodies become an empty object; a non-empty body
+ * must still be valid JSON and never falls through to route defaults.
+ */
+export async function decodeOptionalRequestJson(source: {
+  text(): Promise<string>;
+}): Promise<RequestJsonDecodeResult> {
+  const text = await source.text();
+  if (typeof text !== "string") {
+    throw new TypeError("Request body decoder returned a non-string value");
+  }
+  if (text.trim().length === 0) return { ok: true, value: {} };
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    // error-policy:J3 malformed non-empty JSON is explicit invalid request input.
+    return { ok: false };
+  }
+}
+
+/**
  * Parse a response body as JSON, preserving empty or malformed payloads as
  * failures for the caller to handle at the service boundary.
  */
