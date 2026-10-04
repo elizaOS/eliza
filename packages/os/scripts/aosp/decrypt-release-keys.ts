@@ -59,13 +59,14 @@ export function decrypt({
   const fingerprints = JSON.parse(
     fs.readFileSync(path.join(input, "fingerprints.json"), "utf8"),
   );
+  const known = new Set<string>();
   for (const entry of fingerprints.keys) {
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(entry?.name ?? ""))
       throw new Error(`fingerprints.json has an invalid key name`);
+    known.add(entry.name);
   }
   const selected = only === undefined ? null : new Set(only.split(","));
   // A misspelled or empty --only name must not "succeed" by decrypting nothing.
-  const known = new Set(fingerprints.keys.map((entry) => entry.name));
   for (const name of selected ?? [])
     if (!known.has(name))
       throw new Error(
