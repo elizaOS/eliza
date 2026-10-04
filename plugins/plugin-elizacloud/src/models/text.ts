@@ -145,8 +145,7 @@ export function resolveStreamingEnabled(): boolean {
 /**
  * Combine the runtime's abort signal with the client-side timeout into one
  * signal for `requestRaw`. A stream is long-lived, so it should abort on EITHER
- * a caller cancel OR the timeout — `requestRaw` honors only a single signal, so
- * merge them here.
+ * a caller cancel OR the timeout.
  */
 export function buildStreamAbortSignal(
   abortSignal: AbortSignal | undefined,
@@ -617,7 +616,9 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export async function requestNativeWithWarmingRetry(
   doRequest: () => Promise<Response>,
-  label: string
+  label: string,
+  /** The caller's cancellation signal; it also ends a warming backoff sleep. */
+  signal?: AbortSignal
 ): Promise<{ response: Response; bodyText: string }> {
   const state: WarmingRetryState = { attempt: 0 };
   for (;;) {
@@ -638,7 +639,7 @@ export async function requestNativeWithWarmingRetry(
     logger.warn(
       `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
     );
-    await sleepMs(delayMs);
+    await sleepMs(delayMs, signal);
   }
 }
 
@@ -1400,9 +1401,11 @@ async function generateTextWithModel(
         headers: responsesHeaders,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
+        ...(params.signal ? { signal: params.signal } : {}),
       });
     },
-    "responses"
+    "responses",
+    params.signal
   );
   let data: ResponsesApiResponse = {};
   if (responseText) {
@@ -1523,9 +1526,11 @@ export async function generateNativeChatCompletion(
         headers,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
+        ...(params.signal ? { signal: params.signal } : {}),
       });
     },
-    "chat/completions"
+    "chat/completions",
+    params.signal
   );
   let data: ChatCompletionsResponse = {};
   if (responseText) {
