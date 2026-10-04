@@ -11,9 +11,17 @@ export async function installOrganizationUpgradeTestSchema(
   for (const name of [
     "0511_organization_plan_change_quotes",
     "0512_organization_upgrade_dispatch",
+    "0513_organization_upgrade_live_lease",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}.sql`, import.meta.url), "utf8");
-    for (const q of migration.split("--> statement-breakpoint")) if (q.trim()) await execute(q);
+    for (const q of migration.split("--> statement-breakpoint"))
+      if (q.trim())
+        await execute(
+          q.replace(
+            "ADD COLUMN organization_upgrade_dispatch_state",
+            "ADD COLUMN IF NOT EXISTS organization_upgrade_dispatch_state",
+          ),
+        );
   }
 }
 export async function seedOrganizationUpgradeTestAccount(

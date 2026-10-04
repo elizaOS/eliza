@@ -120,6 +120,7 @@ export async function prepareOrganizationUpgrade(
         subscription_id: quote.subscription_id,
         expected_subscription_revision: quote.subscription_revision,
         kind: "upgrade",
+        organization_upgrade_dispatch_state: "ready",
         target_plan_key: quote.target_plan_key,
         idempotency_key: input.idempotencyKey,
         provider_idempotency_key: `organization-upgrade:${id}`,

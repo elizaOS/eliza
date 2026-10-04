@@ -18,7 +18,12 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./address-input": {
+      "eliza-source": "./src/address-input.ts",
+      "types": "./dist/esm/address-input.d.ts",
+      "import": "./dist/esm/address-input.js"
+    }
   },
   "unpkg": "dist/plugin.js",
   "files": [

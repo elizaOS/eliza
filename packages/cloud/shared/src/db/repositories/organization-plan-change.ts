@@ -2,7 +2,7 @@
  * This is not command admission, provider mutation or allowance publication.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import { organizationEntitlements } from "../schemas/organization-entitlements";
@@ -30,6 +30,7 @@ export async function readOrganizationPlanChangeSource(input: OrganizationSubscr
 export async function lockOrganizationPlanChangeSource(
   tx: DbTransaction,
   input: OrganizationSubscriptionSourceInput,
+  originalCommandId?: string,
 ) {
   const locked = await lockOrganizationSubscriptionManager(tx, input, reject);
   const source = await lockCurrentOrganizationSubscription(tx, input, locked, reject);
@@ -43,6 +44,7 @@ export async function lockOrganizationPlanChangeSource(
         isNull(billingSubscriptionCommands.app_id),
         eq(billingSubscriptionCommands.organization_id, input.organizationId),
         inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
+        originalCommandId ? ne(billingSubscriptionCommands.id, originalCommandId) : undefined,
       ),
     )
     .limit(1);

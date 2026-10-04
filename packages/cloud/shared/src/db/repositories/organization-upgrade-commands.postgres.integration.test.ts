@@ -12,6 +12,7 @@ const schema = `upgrade_${randomUUID().replaceAll("-", "_")}`;
 let db: Client;
 let commands: typeof import("./organization-upgrade-commands");
 let quotes: typeof import("./organization-upgrade-quotes");
+let execution: typeof import("./organization-upgrade-execution");
 let close: typeof import("../client").closeDatabaseConnectionsForTests;
 async function seed() {
   const f = await seedOrganizationUpgradeTestAccount((text, values) => db.query(text, values));
@@ -55,6 +56,7 @@ async function count(organizationId: string) {
     process.env.LOCAL_PG_POOL_MAX = "4";
     commands = await import("./organization-upgrade-commands");
     quotes = await import("./organization-upgrade-quotes");
+    execution = await import("./organization-upgrade-execution");
     ({ closeDatabaseConnectionsForTests: close } = await import("../client"));
   }, 120000);
   afterAll(async () => {
@@ -293,7 +295,21 @@ async function count(organizationId: string) {
   });
   test("legacy command cannot gain unstarted provenance or dispatch without its quote", async () => {
     const f = await seed();
-    const original = await commands.prepareOrganizationUpgrade(f.confirm);
+    const original = { command: { id: randomUUID() } };
+    await db.query(
+      `INSERT INTO billing_subscription_commands
+      (id,organization_id,requested_by_user_id,subscription_id,expected_subscription_revision,kind,target_plan_key,idempotency_key,provider_idempotency_key,request_digest)
+      VALUES($1,$2,$3,$4,1,'upgrade','pro_monthly',$5,$6,$7)`,
+      [
+        original.command.id,
+        f.input.organizationId,
+        f.input.actorId,
+        f.input.subscriptionId,
+        randomUUID(),
+        randomUUID(),
+        "c".repeat(64),
+      ],
+    );
     await expect(
       db.query(
         `UPDATE billing_subscription_commands SET organization_upgrade_dispatch_state='ready' WHERE id=$1`,
@@ -358,6 +374,29 @@ async function count(organizationId: string) {
       ).rows[0].organization_upgrade_dispatch_state,
     ).toBe("ready");
   });
+  test("dispatch cannot revive an expired lease in the same write", async () => {
+    const f = await dispatchCandidate();
+    await leaseCandidate(f.commandId);
+    await db.query(
+      `UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`,
+      [f.commandId],
+    );
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands SET organization_upgrade_dispatch_state='started',
+        lease_expires_at=clock_timestamp()+interval '1 minute' WHERE id=$1`,
+        [f.commandId],
+      ),
+    ).rejects.toThrow();
+    expect(
+      (
+        await db.query(
+          `SELECT organization_upgrade_dispatch_state FROM billing_subscription_commands WHERE id=$1`,
+          [f.commandId],
+        )
+      ).rows[0].organization_upgrade_dispatch_state,
+    ).toBe("ready");
+  });
   test("a consumed quote must still be live when the first dispatch starts", async () => {
     const f = await dispatchCandidate(2000);
     await leaseCandidate(f.commandId);
@@ -377,5 +416,206 @@ async function count(organizationId: string) {
         )
       ).rows[0].organization_upgrade_dispatch_state,
     ).toBe("ready");
+  });
+  async function executionCandidate() {
+    const f = await seed();
+    const admitted = await commands.prepareOrganizationUpgrade(f.confirm);
+    return {
+      ...f,
+      identity: {
+        organizationId: f.input.organizationId,
+        actorId: f.input.actorId,
+        commandId: admitted.command.id,
+      },
+    };
+  }
+  test("only one concurrent execution lease can dispatch; recovery never dispatches twice", async () => {
+    const f = await executionCandidate();
+    const attempts = await Promise.all([
+      execution.claimOrganizationUpgrade(f.identity),
+      execution.claimOrganizationUpgrade(f.identity),
+    ]);
+    expect(attempts.filter(Boolean)).toHaveLength(1);
+    const claim = attempts.find(Boolean)!;
+    expect(claim.canDispatch).toBe(true);
+    const source = await execution.readOrganizationUpgradeDispatchSource(f.identity, claim);
+    expect(source.source.id).toBe(f.input.subscriptionId);
+    expect(source.review).toEqual(f.review);
+    await execution.markOrganizationUpgradeDispatch(f.identity, claim);
+    await expect(execution.markOrganizationUpgradeDispatch(f.identity, claim)).rejects.toThrow();
+    await execution.releaseOrganizationUpgrade(f.identity, claim);
+    const recovery = (await execution.claimOrganizationUpgrade(f.identity))!;
+    expect(recovery.canDispatch).toBe(false);
+    await expect(execution.markOrganizationUpgradeDispatch(f.identity, recovery)).rejects.toThrow();
+    await expect(
+      execution.failOrganizationUpgradeBeforeDispatch(f.identity, recovery),
+    ).rejects.toThrow();
+  });
+  test("a replacement lease fences old dispatch, release and failure callbacks", async () => {
+    const f = await executionCandidate();
+    const old = (await execution.claimOrganizationUpgrade(f.identity))!;
+    await db.query(
+      `UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`,
+      [f.identity.commandId],
+    );
+    const fresh = (await execution.claimOrganizationUpgrade(f.identity))!;
+    expect(fresh.command.execution_generation).toBe(old.command.execution_generation + 1);
+    await expect(execution.markOrganizationUpgradeDispatch(f.identity, old)).rejects.toThrow();
+    await expect(execution.releaseOrganizationUpgrade(f.identity, old)).rejects.toThrow();
+    await expect(
+      execution.failOrganizationUpgradeBeforeDispatch(f.identity, old),
+    ).rejects.toThrow();
+    await execution.markOrganizationUpgradeDispatch(f.identity, fresh);
+  });
+  test("manager revocation after claim prevents dispatch", async () => {
+    const f = await executionCandidate();
+    const claim = (await execution.claimOrganizationUpgrade(f.identity))!;
+    await db.query(`UPDATE users SET role='member' WHERE id=$1`, [f.input.actorId]);
+    await expect(execution.markOrganizationUpgradeDispatch(f.identity, claim)).rejects.toThrow();
+    expect(
+      (
+        await db.query(
+          `SELECT organization_upgrade_dispatch_state FROM billing_subscription_commands WHERE id=$1`,
+          [f.identity.commandId],
+        )
+      ).rows[0].organization_upgrade_dispatch_state,
+    ).toBe("ready");
+  });
+  test("changed customer blocks dispatch but a ready lease can retire the command", async () => {
+    const f = await executionCandidate();
+    const claim = (await execution.claimOrganizationUpgrade(f.identity))!;
+    await db.query(`UPDATE organizations SET stripe_customer_id='cus_changed' WHERE id=$1`, [
+      f.input.organizationId,
+    ]);
+    await expect(execution.markOrganizationUpgradeDispatch(f.identity, claim)).rejects.toThrow();
+    await execution.failOrganizationUpgradeBeforeDispatch(f.identity, claim);
+    expect(
+      (
+        await db.query(`SELECT status FROM billing_subscription_commands WHERE id=$1`, [
+          f.identity.commandId,
+        ])
+      ).rows[0].status,
+    ).toBe("FAILED");
+  });
+  test("expired unclaimed review is superseded and releases admission for a fresh quote", async () => {
+    const f = await seed();
+    const expiry = new Date(Date.now() + 2000);
+    const quote = await quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      review: { ...f.review, expiresAt: expiry.toISOString() },
+    });
+    const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
+    await Bun.sleep(Math.max(0, expiry.getTime() - Date.now()) + 50);
+    expect(
+      await execution.claimOrganizationUpgrade({
+        organizationId: f.input.organizationId,
+        actorId: f.input.actorId,
+        commandId: admitted.command.id,
+      }),
+    ).toBeNull();
+    expect(
+      (
+        await db.query(`SELECT status FROM billing_subscription_commands WHERE id=$1`, [
+          admitted.command.id,
+        ])
+      ).rows[0].status,
+    ).toBe("SUPERSEDED");
+    const fresh = await quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      review: f.review,
+    });
+    expect(fresh.id).not.toBe(quote.id);
+  });
+  test("a released unstarted lease can expire without trapping the organization", async () => {
+    const f = await seed();
+    const expiry = new Date(Date.now() + 2000);
+    const quote = await quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      review: { ...f.review, expiresAt: expiry.toISOString() },
+    });
+    const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
+    const identity = {
+      organizationId: f.input.organizationId,
+      actorId: f.input.actorId,
+      commandId: admitted.command.id,
+    };
+    const claim = (await execution.claimOrganizationUpgrade(identity))!;
+    await execution.releaseOrganizationUpgrade(identity, claim);
+    await Bun.sleep(Math.max(0, expiry.getTime() - Date.now()) + 50);
+    expect(await execution.claimOrganizationUpgrade(identity)).toBeNull();
+    expect(
+      (
+        await db.query(
+          `SELECT status,organization_upgrade_dispatch_state FROM billing_subscription_commands WHERE id=$1`,
+          [identity.commandId],
+        )
+      ).rows[0],
+    ).toEqual({ status: "FAILED", organization_upgrade_dispatch_state: "ready" });
+    expect(
+      (
+        await quotes.saveOrganizationUpgradeQuote({
+          identity: f.input,
+          captured: f.captured,
+          review: f.review,
+        })
+      ).id,
+    ).not.toBe(quote.id);
+  });
+  test("a claim cannot be used for a different command or actor", async () => {
+    const a = await executionCandidate(),
+      b = await executionCandidate();
+    const claim = (await execution.claimOrganizationUpgrade(a.identity))!;
+    await expect(execution.markOrganizationUpgradeDispatch(b.identity, claim)).rejects.toThrow();
+    await expect(
+      execution.markOrganizationUpgradeDispatch({ ...a.identity, actorId: b.input.actorId }, claim),
+    ).rejects.toThrow();
+    await execution.markOrganizationUpgradeDispatch(a.identity, claim);
+  });
+  test("another pending intent remains a dispatch conflict", async () => {
+    const f = await executionCandidate();
+    const claim = (await execution.claimOrganizationUpgrade(f.identity))!;
+    await db.query(
+      `INSERT INTO billing_subscription_commands
+      (id,organization_id,requested_by_user_id,subscription_id,expected_subscription_revision,kind,idempotency_key,provider_idempotency_key,request_digest)
+      VALUES($1,$2,$3,$4,1,'cancel',$5,$6,$7)`,
+      [
+        randomUUID(),
+        f.input.organizationId,
+        f.input.actorId,
+        f.input.subscriptionId,
+        randomUUID(),
+        randomUUID(),
+        "d".repeat(64),
+      ],
+    );
+    await expect(execution.markOrganizationUpgradeDispatch(f.identity, claim)).rejects.toThrow();
+  });
+  test("review expiry cannot retire an already dispatched uncertain effect", async () => {
+    const f = await seed();
+    const expiry = new Date(Date.now() + 2000);
+    const quote = await quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      review: { ...f.review, expiresAt: expiry.toISOString() },
+    });
+    const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
+    const identity = {
+      organizationId: f.input.organizationId,
+      actorId: f.input.actorId,
+      commandId: admitted.command.id,
+    };
+    const claim = (await execution.claimOrganizationUpgrade(identity))!;
+    await execution.markOrganizationUpgradeDispatch(identity, claim);
+    await execution.releaseOrganizationUpgrade(identity, claim);
+    await Bun.sleep(Math.max(0, expiry.getTime() - Date.now()) + 50);
+    const recovery = (await execution.claimOrganizationUpgrade(identity))!;
+    expect(recovery.canDispatch).toBe(false);
+    expect(recovery.command.status).toBe("OUTCOME_UNKNOWN");
+    await expect(
+      execution.failOrganizationUpgradeBeforeDispatch(identity, recovery),
+    ).rejects.toThrow();
   });
 });
