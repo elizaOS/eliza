@@ -398,7 +398,7 @@ test("publication rejects unsigned, revoked, ineligible, mislabeled and orphan a
     version: "1.0.0",
     channel: "canary",
     tag: "v1.0.0",
-    repository: "elizaOS/os",
+    repository: "elizaOS/eliza",
     policy: f.policy,
   };
   assert.throws(() => generateUpdateManifest(args), /no signed/);
@@ -1143,7 +1143,7 @@ test("archive verification rejects a correctly signed ZIP containing different i
         version: "1.0.0",
         channel: "canary",
         tag: "v1.0.0",
-        repository: "elizaOS/os",
+        repository: "elizaOS/eliza",
         policy: f.policy,
       }),
     /archive content verification failed/,
@@ -1191,7 +1191,7 @@ test("scoped lab authorization never grants production installation or publicati
         version: "1.0.0",
         channel: "canary",
         tag: "v1.0.0",
-        repository: "elizaOS/os",
+        repository: "elizaOS/eliza",
         policy: f.policy,
       }),
     /lab experiments cannot/,

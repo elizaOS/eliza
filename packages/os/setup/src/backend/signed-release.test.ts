@@ -56,7 +56,7 @@ function description(): SignedReleaseDescription {
 }
 
 function discovery(bytes: string) {
-  const base = "https://github.com/elizaOS/os/releases/download/v1/";
+  const base = "https://github.com/elizaOS/eliza/releases/download/v1/";
   const names = [
     "android-release-manifest-grizzly.json",
     "boot.img",
@@ -66,7 +66,7 @@ function discovery(bytes: string) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      if (url === "https://api.github.com/repos/elizaOS/os/releases") {
+      if (url === "https://api.github.com/repos/elizaOS/eliza/releases") {
         return new Response(
           JSON.stringify([
             {

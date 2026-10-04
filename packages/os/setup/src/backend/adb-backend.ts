@@ -522,7 +522,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
 
   async listBuilds(): Promise<AospBuild[]> {
     const response = await fetch(
-      "https://api.github.com/repos/elizaOS/os/releases",
+      "https://api.github.com/repos/elizaOS/eliza/releases",
       {
         headers: {
           Accept: "application/vnd.github+json",
