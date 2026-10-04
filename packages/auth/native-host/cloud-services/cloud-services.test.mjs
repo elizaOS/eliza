@@ -292,3 +292,80 @@ test("private credential storage serializes writes and clear, and refuses symlin
     await rm(root, { recursive: true, force: true });
   }
 });
+for (const checkoutPath of [
+  "/cloud/account/checkout",
+  "/cloud/account/checkout/confirm",
+]) {
+  for (const disconnectPath of ["/cloud/logout", "/cloud/native/cancel"]) {
+    test(`billing authorization retains its account epoch (${checkoutPath}, ${disconnectPath})`, async () => {
+      let releaseAuthority;
+      let authorityStarted;
+      const started = new Promise((resolve) => {
+        authorityStarted = resolve;
+      });
+      const held = new Promise((resolve) => {
+        releaseAuthority = resolve;
+      });
+      let upstreamCalls = 0;
+      const cancellations = [];
+      const routes = createCloudRoutes({
+        hostPolicy: {
+          ...policy,
+          createNativeCloudAuth: () => ({
+            billingAuthority: async () => {
+              authorityStarted();
+              await held;
+              return {
+                token: "fixture-billing-authority",
+                expiresAt: new Date(Date.now() + 60000).toISOString(),
+              };
+            },
+            cancel: async (options) => {
+              cancellations.push(options);
+              return { status: "cancelled" };
+            },
+          }),
+        },
+        pendingCredentialStore: { read: async () => null },
+        speechVoice: { voiceId: "voice", modelId: "model" },
+        fetchImpl: async () => {
+          upstreamCalls++;
+          return Response.json({ data: { status: "completed" } });
+        },
+      });
+      const server = http.createServer((req, res) =>
+        routes(req, res, new URL(req.url, "http://localhost")),
+      );
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const post = (path, input) =>
+        fetch(base + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+      try {
+        const pending = post(
+          checkoutPath,
+          checkoutPath.endsWith("/confirm")
+            ? { sessionId: "cs_test_fixture" }
+            : { planKey: "annual_team", presentation: "embedded" },
+        );
+        await started;
+        const disconnected = await post(disconnectPath, {});
+        assert.equal(disconnected.status, 200);
+        assert.deepEqual(cancellations, [{ disconnect: true }]);
+        releaseAuthority();
+        const result = await pending;
+        assert.equal(result.status, 409);
+        assert.match((await result.json()).error, /accountSessionChanged/);
+        assert.equal(upstreamCalls, 0);
+      } finally {
+        releaseAuthority();
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      }
+    });
+  }
+}

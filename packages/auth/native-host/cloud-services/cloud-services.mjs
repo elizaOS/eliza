@@ -294,8 +294,9 @@ export function createCloudRoutes({
     }
   }
   /** The enrollment host's short-lived billing session; its expiry may be an ISO string or epoch ms. */
-  async function currentBillingAuthority() {
+  async function currentBillingAuthority(epoch) {
     const authority = await nativeAuth?.billingAuthority?.();
+    current(epoch);
     if (
       !authority ||
       typeof authority.token !== "string" ||
@@ -452,7 +453,8 @@ export function createCloudRoutes({
           !["embedded", "shared"].includes(input.presentation)
         )
           throw fail(message("chooseAPlanToContinue"));
-        const authority = await currentBillingAuthority();
+        const epoch = generation;
+        const authority = await currentBillingAuthority(epoch);
         if (!authority) {
           send(res, 428, {
             error: message("confirmItSYouBeforePaying"),
@@ -474,6 +476,7 @@ export function createCloudRoutes({
             },
             key: authority.token,
             signal,
+            authorityGeneration: epoch,
           }),
         );
         send(
@@ -494,7 +497,8 @@ export function createCloudRoutes({
           !CHECKOUT_SESSION_ID.test(input.sessionId)
         )
           throw fail(message("invalidCheckoutSession"));
-        const authority = await currentBillingAuthority();
+        const epoch = generation;
+        const authority = await currentBillingAuthority(epoch);
         if (!authority) {
           send(res, 428, {
             error: message("confirmItSYouBeforePaying"),
@@ -508,6 +512,7 @@ export function createCloudRoutes({
             json: { sessionId: input.sessionId },
             key: authority.token,
             signal,
+            authorityGeneration: epoch,
           }),
         );
         send(res, 200, { status: "submitted" });
