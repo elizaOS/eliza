@@ -62,3 +62,11 @@ bundle for PGlite. Hosts supply exact directory exclusions and package the
 returned inventory plus assets. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
+
+
+`ReconciliationScheduler` persists local package-readback jobs without network,
+charging or idle constraints. Hosts supply distinct job IDs and the declared
+service. `ReconciliationJobService` owns bounded workers and cancellation/late
+completion fencing through `JobRunRegistry`; hosts bind the readback operation.
+Neither component initiates an installation. The consumer must qualify actual
+Android job dispatch and reboot persistence alongside its install/recovery tests.
