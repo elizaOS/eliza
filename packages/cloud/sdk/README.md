@@ -66,7 +66,7 @@ redispatch. Server-side pending exclusion and billing authority remain decisive.
 
 Native account-factor transport exposes POST `/cloud/account/methods`,
 `/methods/unlink`, `/methods/phone/start`, `/methods/phone/verify`, and
-`/cloud/account/security/{status,start,verify}` (method suffixes are relative to
+`/cloud/account/security/{status,start,verify,enroll/start,enroll/verify}` (method suffixes are relative to
 `/cloud/account`). The composed Auth host owns input validation, recent MFA,
 private session replacement, collision protection and cancellation. These routes
 are unavailable to service-only hosts. They do not manage Gmail consent.
