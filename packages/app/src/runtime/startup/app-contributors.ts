@@ -18,6 +18,7 @@ import {
   logger,
 } from "@elizaos/core";
 import { formatErrorWithStack } from "@elizaos/core/protocol";
+import { drainAppRoutePluginLoaders } from "@elizaos/host";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   type AppRoutePluginRegistryEntry,

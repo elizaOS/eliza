@@ -1,4 +1,4 @@
-import { getCodingAgentSelectorBridge } from "@elizaos/core";
+import { getCodingAgentSelectorBridge } from "@elizaos/core/protocol";
 /**
  * Live multi-account E2E — runs against the operator's REAL linked accounts.
  *

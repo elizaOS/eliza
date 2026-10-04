@@ -122,8 +122,8 @@
 		"ws": "^8.21.3",
 		"yaml": "^2.8.2",
 		"@elizaos/auth": "workspace:*",
-		"@elizaos/contracts": "workspace:*",
-		"zod": "^4.4.3"
+		"zod": "^4.4.3",
+		"@elizaos/contracts": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*"

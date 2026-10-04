@@ -109,6 +109,7 @@ describe("renderer runtime boundary", () => {
   });
 
   it.each([
+    'export { applyHostProcessGuards } from "@elizaos/host";',
     'export { getLlama } from "node-llama-cpp";',
     'export { pgTable } from "drizzle-orm/pg-core";',
     'export { createManager } from "@elizaos/auth/vault";',

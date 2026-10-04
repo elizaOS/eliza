@@ -1,13 +1,11 @@
-/** Builds a real AgentRuntime backed by PGLite and optional live plugins. */
+/** App host composition over the shared SQL runtime and draining lifecycle. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
+import { flushTrajectoryWrites } from "@elizaos/agent/runtime/trajectory-storage";
 import {
-  AgentRuntime,
-  createCharacter,
-  logger,
+  type AgentRuntime,
+  ElizaError,
   OPTIMIZED_PROMPT_SERVICE,
   type Plugin,
 } from "@elizaos/core";
@@ -16,25 +14,12 @@ import {
   installHttpPluginLifecycle,
 } from "@elizaos/host/protocol";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import {
-  createTestPgliteDataDir,
-  isInMemoryPgliteDataDir,
-} from "@elizaos/testing";
-import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
-
-const helperDir = path.dirname(fileURLToPath(import.meta.url));
-// Vite 7's import-analysis resolves string-literal dynamic imports at transform
-// time even inside branches that never run, throwing "Failed to resolve entry"
-// for the optional connector plugins below whose dist isn't built in the unit
-// Plugin Tests lane — which fails collection of every real-db spec that imports
-// this helper, even ones that never opt into those plugins. Route the specifier
-// through a variable so the analyzer leaves it as a pure runtime import; the
-// call sites are already config-gated and wrapped in try/catch.
-function importOptionalPlugin(
-  specifier: string,
-): Promise<Record<string, unknown>> {
-  return import(/* @vite-ignore */ specifier);
-}
+  type LiveProviderConfig,
+  type LiveProviderName,
+  selectLiveProvider,
+} from "./live-provider.ts";
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
@@ -62,132 +47,7 @@ export interface RealTestRuntimeResult {
   providerConfig: LiveProviderConfig | null;
   /** Stops the runtime and removes the temp PGLite directory. */
   cleanup: () => Promise<void>;
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-function isPlugin(value: unknown): value is Plugin {
-  return isRecord(value) && typeof value.name === "string";
-}
-function getPendingTrajectoryWrites(service: unknown): Promise<void>[] {
-  if (!isRecord(service)) {
-    return [];
-  }
-  const { writeQueues } = service;
-  if (!(writeQueues instanceof Map)) {
-    return [];
-  }
-  return Array.from(writeQueues.values()).filter(
-    (pending): pending is Promise<void> => pending instanceof Promise,
-  );
-}
-function extractPlugin(
-  moduleExports: unknown,
-  exportNames: readonly string[],
-): Plugin | null {
-  if (isPlugin(moduleExports)) {
-    return moduleExports;
-  }
-  if (!isRecord(moduleExports)) {
-    return null;
-  }
-  for (const exportName of exportNames) {
-    const candidate = moduleExports[exportName];
-    if (isPlugin(candidate)) {
-      return candidate;
-    }
-    if (isRecord(candidate) && isPlugin(candidate.default)) {
-      return candidate.default;
-    }
-  }
-  for (const candidate of Object.values(moduleExports)) {
-    if (isPlugin(candidate)) {
-      return candidate;
-    }
-    if (isRecord(candidate) && isPlugin(candidate.default)) {
-      return candidate.default;
-    }
-  }
-  return null;
-}
-async function importPluginSql(): Promise<Plugin> {
-  try {
-    const { default: pluginSql } = await import("@elizaos/plugin-sql");
-    return pluginSql as Plugin;
-  } catch (packageError) {
-    const fallbackPath = path.resolve(
-      helperDir,
-      "../../../../plugins/plugin-sql/src/index.ts",
-    );
-    try {
-      const { default: pluginSql } = await import(
-        pathToFileURL(fallbackPath).href
-      );
-      return pluginSql as Plugin;
-    } catch (fallbackError) {
-      const packageMessage =
-        packageError instanceof Error
-          ? packageError.message
-          : String(packageError);
-      const fallbackMessage =
-        fallbackError instanceof Error
-          ? fallbackError.message
-          : String(fallbackError);
-      throw new Error(
-        `Failed to import @elizaos/plugin-sql. Package import: ${packageMessage}; fallback ${fallbackPath}: ${fallbackMessage}`,
-      );
-    }
-  }
-}
-function suppressWindowDuringNodeRuntime(): () => void {
-  if (typeof process === "undefined") {
-    return () => {};
-  }
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
-  if (!descriptor?.configurable) {
-    return () => {};
-  }
-  Reflect.deleteProperty(globalThis, "window");
-  return () => {
-    Object.defineProperty(globalThis, "window", descriptor);
-  };
-}
-function applyRuntimeSettings(
-  runtime: AgentRuntime,
-  settings: Record<string, string>,
-): void {
-  for (const [key, value] of Object.entries(settings)) {
-    runtime.setSetting(
-      key,
-      value,
-      /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
-    );
-  }
-}
-async function flushPendingTrajectoryWrites(
-  runtime: AgentRuntime,
-): Promise<void> {
-  try {
-    const { flushTrajectoryWrites } = await import(
-      "../../../agent/src/runtime/trajectory-storage"
-    );
-    await flushTrajectoryWrites(runtime);
-  } catch {
-    // Some test runtimes do not register this helper.
-  }
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const pending = runtime
-      .getServicesByType("trajectories")
-      .flatMap((service) => getPendingTrajectoryWrites(service));
-    if (pending.length === 0) {
-      return;
-    }
-    await Promise.allSettled(pending);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-}
-function hasConfiguredHostsPath(value: string | undefined): value is string {
-  return typeof value === "string" && value.trim().length > 0;
+  deliveries: Array<{ target: unknown; content: unknown }>;
 }
 function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
   const apiKey =
@@ -254,339 +114,154 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     env,
   };
 }
-/** Creates a fully initialized runtime for integration tests. */
+
+let windowOwners = 0;
+let savedWindow: PropertyDescriptor | undefined;
+function ownNodeWindow(): () => void {
+  if (windowOwners === 0) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+    if (!descriptor?.configurable) return () => {};
+    savedWindow = descriptor;
+    Reflect.deleteProperty(globalThis, "window");
+  }
+  windowOwners++;
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    if (--windowOwners === 0 && savedWindow) {
+      if (!Object.hasOwn(globalThis, "window"))
+        Object.defineProperty(globalThis, "window", savedWindow);
+      savedWindow = undefined;
+    }
+  };
+}
+async function loadPlugin(specifier: string): Promise<Plugin> {
+  const exports = await import(/* @vite-ignore */ specifier);
+  const plugin = exports.default ?? exports.elizaPlugin;
+  if (!plugin || typeof plugin.name !== "string")
+    throw new ElizaError(`No plugin exported by ${specifier}`, {
+      code: "APP_TEST_PLUGIN_INVALID",
+    });
+  return plugin;
+}
 export async function createRealTestRuntime(
-  options?: RealTestRuntimeOptions,
+  options: RealTestRuntimeOptions = {},
 ): Promise<RealTestRuntimeResult> {
-  const pgliteDir =
-    options?.pgliteDir ?? createTestPgliteDataDir("eliza-real-test-");
-  const removePgliteDirOnCleanup =
-    options?.removePgliteDirOnCleanup ??
-    (options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
-  const restoreWindow = suppressWindowDuringNodeRuntime();
-  let selfControlTempDir: string | null = null;
-  const prevPgliteDir = process.env.PGLITE_DATA_DIR;
-  const prevWebsiteBlockerHostsPath =
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
-  const prevSelfControlHostsPath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
-  process.env.PGLITE_DATA_DIR = pgliteDir;
-  if (
-    !hasConfiguredHostsPath(process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH) &&
-    !hasConfiguredHostsPath(process.env.SELFCONTROL_HOSTS_FILE_PATH)
-  ) {
-    selfControlTempDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "eliza-real-selfcontrol-"),
-    );
-    const testHostsFilePath = path.join(selfControlTempDir, "hosts");
-    fs.mkdirSync(path.dirname(testHostsFilePath), { recursive: true });
-    if (!fs.existsSync(testHostsFilePath)) {
-      fs.writeFileSync(testHostsFilePath, "127.0.0.1 localhost\n", "utf8");
-    }
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = testHostsFilePath;
-    process.env.SELFCONTROL_HOSTS_FILE_PATH = testHostsFilePath;
+  const providerConfig = options.withLLM
+    ? (selectLiveProvider(options.preferredProvider) ??
+      (!options.preferredProvider
+        ? createCerebrasProviderConfigFromEnv()
+        : null))
+    : null;
+  if (options.withLLM && !providerConfig)
+    throw new ElizaError("The requested live provider is not configured", {
+      code: "APP_TEST_PROVIDER_UNAVAILABLE",
+    });
+  const plugins: Plugin[] = [createAssistantPlugin()];
+  if (providerConfig)
+    plugins.push(await loadPlugin(providerConfig.pluginPackage));
+  for (const [enabled, token, specifier] of [
+    [
+      options.withDiscord,
+      process.env.DISCORD_BOT_TOKEN,
+      "@elizaos/plugin-discord",
+    ],
+    [
+      options.withTelegram,
+      process.env.TELEGRAM_BOT_TOKEN,
+      "@elizaos/plugin-telegram",
+    ],
+  ] as const) {
+    if (enabled && token?.trim()) plugins.push(await loadPlugin(specifier));
   }
-  // Apply local embedding defaults so PGLite vector search works
-  if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
-    process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
-  }
-  if (!process.env.EMBEDDING_DIMENSION?.trim()) {
-    process.env.EMBEDDING_DIMENSION = "384";
-  }
+  plugins.push(...(options.plugins ?? []));
+  const configuredHosts =
+    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH?.trim() ||
+    process.env.SELFCONTROL_HOSTS_FILE_PATH?.trim();
+  const hostsRoot = configuredHosts
+    ? undefined
+    : fs.mkdtempSync(path.join(os.tmpdir(), "eliza-test-hosts-"));
+  const hostsFile =
+    configuredHosts ?? (hostsRoot ? path.join(hostsRoot, "hosts") : undefined);
+  if (!hostsFile)
+    throw new ElizaError("Missing app fixture hosts path", {
+      code: "APP_TEST_HOSTS_PATH_MISSING",
+    });
+  let fixture: Awaited<ReturnType<typeof createTestRuntime>> | undefined;
+  const restoreWindow = ownNodeWindow();
+  let closing: Promise<void> | undefined;
+  const cleanup = () =>
+    (closing ??= (async () => {
+      const failures: unknown[] = [];
+      for (const dispose of [
+        () => fixture?.cleanup(),
+        restoreWindow,
+        () => {
+          if (hostsRoot) fs.rmSync(hostsRoot, { recursive: true, force: true });
+        },
+      ]) {
+        try {
+          await dispose();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (failures.length)
+        throw new AggregateError(failures, "App fixture cleanup failed");
+    })());
   try {
-    const character = createCharacter({
-      name: options?.characterName ?? "TestAgent",
+    if (hostsRoot) fs.writeFileSync(hostsFile, "127.0.0.1 localhost\n", "utf8");
+    fixture = await createTestRuntime({
+      characterName: options.characterName,
+      pgliteDir: options.pgliteDir,
+      removePgliteDirOnCleanup: options.removePgliteDirOnCleanup,
+      embeddingDimensions: 384,
+      plugins,
+      settings: {
+        ...providerConfig?.env,
+        WEBSITE_BLOCKER_HOSTS_FILE_PATH: hostsFile,
+        SELFCONTROL_HOSTS_FILE_PATH: hostsFile,
+      },
+      configureRuntime: (runtime) => {
+        installHttpPluginLifecycle(runtime);
+      },
+      flushTrajectoryWrites,
     });
-    const runtime = new AgentRuntime({
-      character,
-      plugins: [createAssistantPlugin()],
-      logLevel: "warn",
-      enableAutonomy: false,
-    });
-    installHttpPluginLifecycle(runtime);
-    // Always register plugin-sql for PGLite database.
-    await runtime.registerPlugin(await importPluginSql());
-    // Register LLM plugin if requested
-    let providerName: LiveProviderName | null = null;
-    let providerConfig: LiveProviderConfig | null = null;
-    if (options?.withLLM) {
-      const { selectLiveProvider } = await import("./live-provider.ts");
-      providerConfig = selectLiveProvider(options.preferredProvider);
-      if (!providerConfig && options.preferredProvider) {
-        providerConfig = selectLiveProvider();
-      }
-      providerConfig ??= createCerebrasProviderConfigFromEnv();
-      if (providerConfig) {
-        providerName = providerConfig.name;
-        const COMPETING_KEYS_BY_PROVIDER: Record<string, readonly string[]> = {
-          cerebras: [
-            "ANTHROPIC_API_KEY",
-            "GOOGLE_GENERATIVE_AI_API_KEY",
-            "GOOGLE_API_KEY",
-            "GROQ_API_KEY",
-            "OPENROUTER_API_KEY",
-          ],
-          openai: [
-            "ANTHROPIC_API_KEY",
-            "GOOGLE_GENERATIVE_AI_API_KEY",
-            "GOOGLE_API_KEY",
-            "GROQ_API_KEY",
-            "OPENROUTER_API_KEY",
-            "CEREBRAS_API_KEY",
-          ],
-          anthropic: [
-            "GOOGLE_GENERATIVE_AI_API_KEY",
-            "GOOGLE_API_KEY",
-            "GROQ_API_KEY",
-            "OPENROUTER_API_KEY",
-            "CEREBRAS_API_KEY",
-          ],
-          google: [
-            "ANTHROPIC_API_KEY",
-            "GROQ_API_KEY",
-            "OPENROUTER_API_KEY",
-            "CEREBRAS_API_KEY",
-          ],
-          groq: [
-            "ANTHROPIC_API_KEY",
-            "GOOGLE_GENERATIVE_AI_API_KEY",
-            "GOOGLE_API_KEY",
-            "OPENROUTER_API_KEY",
-            "CEREBRAS_API_KEY",
-          ],
-          openrouter: [
-            "ANTHROPIC_API_KEY",
-            "GOOGLE_GENERATIVE_AI_API_KEY",
-            "GOOGLE_API_KEY",
-            "GROQ_API_KEY",
-            "CEREBRAS_API_KEY",
-          ],
-        };
-        for (const competingKey of COMPETING_KEYS_BY_PROVIDER[providerName] ??
-          []) {
-          delete process.env[competingKey];
-        }
-        for (const [key, value] of Object.entries(providerConfig.env)) {
-          process.env[key] = value;
-        }
-        applyRuntimeSettings(runtime, providerConfig.env);
-        try {
-          const pluginModule = await import(providerConfig.pluginPackage);
-          const plugin = extractPlugin(pluginModule, [
-            "default",
-            "elizaPlugin",
-          ]);
-          if (plugin) {
-            await runtime.registerPlugin(plugin);
-            logger.info(
-              `[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
-            );
-          } else {
-            logger.warn(
-              `[real-runtime] Loaded ${providerConfig.pluginPackage} but could not find a plugin export`,
-            );
-          }
-        } catch (err) {
-          logger.warn(
-            `[real-runtime] Failed to register LLM plugin ${providerConfig.pluginPackage}: ${err}`,
-          );
-          providerName = null;
-          providerConfig = null;
-        }
-      }
-    }
-    if (
-      options?.withLLM &&
-      !providerConfig &&
-      process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS !== "1"
-    ) {
-      try {
-        const { default: localEmbeddingPlugin } = await importOptionalPlugin(
-          "@elizaos/plugin-local-inference",
-        );
-        await configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
-        await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
-        logger.info(
-          "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
-        );
-      } catch (err) {
-        logger.warn(
-          `[real-runtime] Failed to register local embedding plugin: ${err}`,
-        );
-      }
-    }
-    // Register Discord plugin if requested and token available
-    if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
-      try {
-        const { default: discordPlugin } = await importOptionalPlugin(
-          "@elizaos/plugin-discord",
-        );
-        await runtime.registerPlugin(discordPlugin as Plugin);
-        logger.info("[real-runtime] Registered Discord plugin");
-      } catch (err) {
-        logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
-      }
-    }
-    // Register Telegram plugin if requested and token available
-    if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
-      try {
-        const { default: telegramPlugin } = await importOptionalPlugin(
-          "@elizaos/plugin-telegram",
-        );
-        await runtime.registerPlugin(telegramPlugin as Plugin);
-        logger.info("[real-runtime] Registered Telegram plugin");
-      } catch (err) {
-        logger.warn(
-          `[real-runtime] Failed to register Telegram plugin: ${err}`,
-        );
-      }
-    }
-    // Register any additional plugins
-    for (const plugin of options?.plugins ?? []) {
-      await runtime.registerPlugin(plugin);
-    }
-    await runtime.initialize();
-    // Boot barrier: services register asynchronously. `registerPlugin` fires a
-    // fire-and-forget `_ensureServiceStarted` for each declared service that
-    // awaits `initPromise` before running the service's `start()`, and some
-    // starts do real async work (e.g. @elizaos/plugin-scheduling's
-    // ScheduledTaskRunnerService runs the durable-scheduling table migration
-    // added in #16574). `runtime.initialize()` can resolve one or more
-    // microtasks BEFORE those starts finish registering. Production never
-    // observes this because every caller reaches a service only after boot
-    // settles; tests, however, synchronously call e.g.
-    // `getScheduledTaskRunner(...)` immediately after this helper returns and
-    // intermittently hit "<service> is not registered". Await the load promise
-    // for every service declared by the caller-provided plugins so the harness
-    // hands back a runtime whose declared services are live, exactly as
-    // production boots them. Failures are non-fatal: a service that fails to
-    // start surfaces at the call site with its real error, and services that
-    // are intentionally optional in a given test stay best-effort.
-    for (const plugin of options?.plugins ?? []) {
-      for (const service of plugin.services ?? []) {
-        const serviceType = (
-          service as unknown as {
-            serviceType?: string;
-          }
-        ).serviceType;
-        if (!serviceType) continue;
-        try {
-          await runtime.getServiceLoadPromise(serviceType);
-        } catch (err) {
-          logger.debug(
-            `[real-runtime] declared service '${serviceType}' from ${plugin.name} did not start during boot barrier: ${err}`,
-          );
-        }
-      }
-    }
-    // Eagerly start the OptimizedPromptService so the planner-loop's
-    // synchronous `runtime.getService('optimized_prompt')` call hits an
-    // already-instantiated service. Without this the service is registered
-    // lazy (via basicServices) and the first N planner calls fall back to
-    // the baseline template before lazy start completes.
-    try {
-      const { OptimizedPromptService } = await import(
-        "@elizaos/plugin-assistant"
-      );
-      const existing = runtime.getService(OPTIMIZED_PROMPT_SERVICE);
-      if (!existing) {
-        const optimized = await OptimizedPromptService.start(runtime);
-        const services = (
-          runtime as unknown as {
-            services: Map<string, unknown[]>;
-          }
-        ).services;
-        const list = services.get(OPTIMIZED_PROMPT_SERVICE) ?? [];
-        list.push(optimized);
-        services.set(OPTIMIZED_PROMPT_SERVICE, list);
-      }
-    } catch (err) {
-      logger.warn(
-        `[real-runtime] OptimizedPromptService eager start failed: ${err}`,
-      );
-    }
+    const { runtime } = fixture;
+    for (const plugin of options.plugins ?? [])
+      for (const service of plugin.services ?? [])
+        await runtime.getServiceLoadPromise(service.serviceType);
+    runtime.getService(OPTIMIZED_PROMPT_SERVICE);
+    await runtime.getServiceLoadPromise(OPTIMIZED_PROMPT_SERVICE);
+    // This host's in-process delivery transport records complete fixture messages.
+    const deliveries: Array<{ target: unknown; content: unknown }> = [];
     runtime.registerSendHandler(
       "client_chat",
-      async (_rt, _target, _content) => {
-        // Benchmarks and integration tests do not have a real in-app transport.
-        // Register a no-op handler so inbox digests and proactive reminders can
-        // exercise their normal delivery path without crashing the runtime.
+      async (_runtime, target, content) => {
+        deliveries.push({
+          target: structuredClone(target),
+          content: structuredClone(content),
+        });
       },
     );
-    const cleanup = async () => {
-      try {
-        await flushPendingTrajectoryWrites(runtime);
-      } catch (err) {
-        logger.debug(`[real-runtime] trajectory flush error: ${err}`);
-      }
-      try {
-        await runtime.stop();
-      } catch (err) {
-        logger.debug(`[real-runtime] runtime.stop() error: ${err}`);
-      }
-      try {
-        await flushPendingTrajectoryWrites(runtime);
-      } catch (err) {
-        logger.debug(`[real-runtime] post-stop trajectory flush error: ${err}`);
-      }
-      try {
-        await runtime.close();
-      } catch (err) {
-        logger.debug(`[real-runtime] runtime.close() error: ${err}`);
-      }
-      // Restore previous env
-      if (prevPgliteDir !== undefined) {
-        process.env.PGLITE_DATA_DIR = prevPgliteDir;
-      } else {
-        delete process.env.PGLITE_DATA_DIR;
-      }
-      if (prevWebsiteBlockerHostsPath !== undefined) {
-        process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH =
-          prevWebsiteBlockerHostsPath;
-      } else {
-        delete process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
-      }
-      if (prevSelfControlHostsPath !== undefined) {
-        process.env.SELFCONTROL_HOSTS_FILE_PATH = prevSelfControlHostsPath;
-      } else {
-        delete process.env.SELFCONTROL_HOSTS_FILE_PATH;
-      }
-      restoreWindow();
-      if (removePgliteDirOnCleanup) {
-        try {
-          fs.rmSync(pgliteDir, { recursive: true, force: true });
-        } catch {
-          // ignore cleanup errors
-        }
-      }
-      if (selfControlTempDir) {
-        try {
-          fs.rmSync(selfControlTempDir, { recursive: true, force: true });
-        } catch {
-          // ignore cleanup errors
-        }
-      }
+    return {
+      runtime,
+      pgliteDir: fixture.pgliteDir,
+      providerName: providerConfig?.name ?? null,
+      providerConfig,
+      deliveries,
+      cleanup,
     };
-    return { runtime, pgliteDir, providerName, providerConfig, cleanup };
   } catch (error) {
-    if (prevPgliteDir !== undefined) {
-      process.env.PGLITE_DATA_DIR = prevPgliteDir;
-    } else {
-      delete process.env.PGLITE_DATA_DIR;
-    }
-    restoreWindow();
-    if (removePgliteDirOnCleanup) {
-      try {
-        fs.rmSync(pgliteDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
-      }
-    }
-    if (selfControlTempDir) {
-      try {
-        fs.rmSync(selfControlTempDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
-      }
+    // error-policy:J6 Preserve startup failures together with complete rollback failures.
+    try {
+      await cleanup();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "App fixture initialization and rollback failed",
+      );
     }
     throw error;
   }

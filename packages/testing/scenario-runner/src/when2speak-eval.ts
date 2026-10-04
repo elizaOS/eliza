@@ -22,7 +22,7 @@ import {
   messageChallengesPriorAgentReply,
   runV5MessageRuntimeStage1,
 } from "@elizaos/plugin-assistant";
-import type { LiveProviderName } from "@elizaos/testing";
+import type { LiveProviderName } from "../../src/live-provider.ts";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 
 export type TimingLabel = "SPEAK" | "SILENT";

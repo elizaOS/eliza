@@ -11,7 +11,7 @@ import {
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { type LinkedAccountUsage } from "@elizaos/contracts";
+import type { LinkedAccountUsage } from "@elizaos/contracts";
 import type {
   AccountPoolBrokerAccountSnapshot,
   AccountPoolBrokerFailoverSnapshot,

@@ -150,9 +150,12 @@ jobs:
           python-version: "3.14.6"
       - name: Prepare pinned GEPA producer dependencies
         if: matrix.partition == 'remaining'
-        run: bun run --cwd packages/testing gepa:setup
+        run: bun run --cwd packages/benchmarks gepa:setup
       - name: Server tests
         run: bun run test:server
+      - name: Pinned GEPA integration tests
+        if: matrix.partition == 'remaining'
+        run: bun run --cwd packages/benchmarks test:gepa
   tests_auth_integration:
     name: Login browser and PostgreSQL integration
     needs: preflight

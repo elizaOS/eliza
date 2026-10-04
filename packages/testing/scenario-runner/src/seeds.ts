@@ -6,9 +6,11 @@
  * stores so scenarios start from a known, deterministic world. Consumed by the
  * executor between setup and the first turn.
  */
+
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import { createMessageMemory, MemoryType, stringToUuid } from "@elizaos/core";
-import type { ScenarioContext, ScenarioSeedStep } from "@elizaos/testing";
+import { GMAIL_FIXTURE_MESSAGE_IDS } from "../../scripts/mocks/google-gmail-fixtures.ts";
+import type { ScenarioContext, ScenarioSeedStep } from "../schema/index.ts";
 import { isLoopbackUrl } from "./utils.js";
 
 const SEED_REQUEST_TIMEOUT_MS = 30_000;
@@ -207,37 +209,11 @@ type LifeOpsRepositoryModule = {
   LifeOpsRepository: LifeOpsRepositoryConstructor;
 };
 
-// Loaded lazily so this module can be built without pulling app-lifeops into the
-// scenario-runner rootDir (app-lifeops is only available at runtime).
+// Domain operations stay with their owner; the runner interprets scenario seeds.
 async function loadLifeOps() {
-  const defaultsSpecifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/defaults.ts",
-    import.meta.url,
-  ).href;
-  const engineSpecifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/engine.ts",
-    import.meta.url,
-  ).href;
-  const repositorySpecifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts",
-    import.meta.url,
-  ).href;
-  const [
-    { resolveDefaultWindowPolicy },
-    { materializeDefinitionOccurrences },
-    repo,
-  ]: [LifeOpsDefaultsModule, LifeOpsEngineModule, LifeOpsRepositoryModule] =
-    await Promise.all([
-      import(defaultsSpecifier),
-      import(engineSpecifier),
-      import(repositorySpecifier),
-    ]);
-  return {
-    resolveDefaultWindowPolicy,
-    materializeDefinitionOccurrences,
-    createLifeOpsTaskDefinition: repo.createLifeOpsTaskDefinition,
-    LifeOpsRepository: repo.LifeOpsRepository,
-  };
+  return import("@elizaos/plugin-personal-assistant/lifeops/index") as Promise<
+    LifeOpsDefaultsModule & LifeOpsEngineModule & LifeOpsRepositoryModule
+  >;
 }
 
 type TodoSeed = {
@@ -589,11 +565,9 @@ type ConnectorRegistryModule = {
 };
 
 async function loadConnectorRegistry(): Promise<ConnectorRegistryModule> {
-  const specifier = new URL(
-    "../../../../plugins/plugin-personal-assistant/src/lifeops/connectors/registry.ts",
-    import.meta.url,
-  ).href;
-  return import(specifier) as Promise<ConnectorRegistryModule>;
+  return import(
+    "@elizaos/plugin-personal-assistant/lifeops/connectors/index"
+  ) as Promise<ConnectorRegistryModule>;
 }
 
 type RelationshipsServiceLike = {
@@ -1397,10 +1371,7 @@ async function seedDeviceIntentMemory(
   const { LifeOpsRepository } = await loadLifeOps();
   await LifeOpsRepository.bootstrapSchema(runtime);
   const { executeRawSql, sqlText } = (await import(
-    new URL(
-      "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts",
-      import.meta.url,
-    ).href
+    "@elizaos/plugin-personal-assistant/lifeops/index"
   )) as {
     executeRawSql: (
       runtime: AgentRuntime,
@@ -2559,26 +2530,6 @@ async function writeDurableFact(
   return undefined;
 }
 
-const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
-  default: ["msg-finance", "msg-sarah", "msg-newsletter"],
-  "unread-inbox.eml": ["msg-finance", "msg-sarah"],
-  "sarah-product-brief.eml": ["msg-sarah"],
-  "high-priority-client.eml": ["msg-sarah"],
-  "alice-recent.eml": ["msg-sarah"],
-  "followup-14-days-ago.eml": [
-    "msg-unresponded-inbound",
-    "msg-unresponded-sent",
-  ],
-  // Forwarded-email prompt-injection trap (comms-flood pack, #12283 D1); the
-  // message body carries a fake wire-transfer "owner instruction" the model
-  // must flag, never execute.
-  "injection-fake-wire-instruction": ["msg-injection-wire"],
-};
-
-interface GmailFixtureManifestResponse {
-  fixtures?: Record<string, readonly string[]>;
-}
-
 function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {
   const explicit = readNonEmptyString(seed.fixture);
   const multiple = readStringArray(seed.fixtures);
@@ -2705,17 +2656,32 @@ async function gmailFixtureMessageIds(
   baseUrl: string,
 ): Promise<Record<string, readonly string[]>> {
   const response = await seedFetch(`${baseUrl}/__mock/google/gmail/fixtures`);
-  if (!response.ok) {
-    return GMAIL_FIXTURE_MESSAGE_IDS;
-  }
-  const manifest = (await response.json()) as GmailFixtureManifestResponse;
-  return manifest.fixtures ?? GMAIL_FIXTURE_MESSAGE_IDS;
+  // Legacy static Mockoon exports omit this optional discovery endpoint.
+  if (response.status === 404) return GMAIL_FIXTURE_MESSAGE_IDS;
+  if (!response.ok)
+    throw new Error(
+      `Gmail fixture manifest failed with HTTP ${response.status}`,
+    );
+  const manifest: unknown = await response.json();
+  const fixtures = readOptionalRecord(readOptionalRecord(manifest)?.fixtures);
+  if (
+    !fixtures ||
+    Object.values(fixtures).some(
+      (ids) => !Array.isArray(ids) || ids.some((id) => typeof id !== "string"),
+    )
+  )
+    throw new Error("Malformed Gmail fixture manifest");
+  return fixtures as Record<string, readonly string[]>;
 }
 
 async function seedGmailInbox(
+  ctx: ScenarioContext,
   seed: GmailInboxSeed,
 ): Promise<string | undefined> {
-  const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
+  const runtime = requireRuntime(ctx);
+  const baseUrl = runtime.getSetting("ELIZA_MOCK_GOOGLE_BASE");
+  const leasedWorld =
+    runtime.getSetting("ELIZA_SYNTHETIC_WORLD_LEASED") === "1";
   if (typeof baseUrl !== "string" || !isLoopbackUrl(baseUrl)) {
     return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
@@ -2725,7 +2691,9 @@ async function seedGmailInbox(
     return faultInjection;
   }
 
-  await clearGmailMockFault(mockBaseUrl);
+  if (leasedWorld && faultInjection)
+    return "Leased-world Gmail faults must be installed through synthetic control";
+  if (!leasedWorld) await clearGmailMockFault(mockBaseUrl);
 
   const fixtureMessageIds = await gmailFixtureMessageIds(mockBaseUrl);
   const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
@@ -2746,7 +2714,7 @@ async function seedGmailInbox(
     }
   }
 
-  if (seed.clearLedger !== false) {
+  if (!leasedWorld && seed.clearLedger !== false) {
     await clearGmailMockLedger(mockBaseUrl);
   }
 
@@ -2968,7 +2936,7 @@ export async function applyScenarioSeedStep(
   seed: ScenarioSeedStep,
 ): Promise<string | undefined> {
   if (!seed || typeof seed !== "object") {
-    return undefined;
+    return "Invalid scenario seed: expected a seed object";
   }
 
   if (seed.type === "todo") {
@@ -2981,7 +2949,7 @@ export async function applyScenarioSeedStep(
     return seedMemory(ctx, seed as MemorySeed);
   }
   if (seed.type === "gmailInbox") {
-    return seedGmailInbox(seed as GmailInboxSeed);
+    return seedGmailInbox(ctx, seed as GmailInboxSeed);
   }
   if (
     seed.type === "connectorStatus" ||
@@ -2991,5 +2959,5 @@ export async function applyScenarioSeedStep(
     return seedConnector(ctx, seed as ConnectorSeed);
   }
 
-  return undefined;
+  return `Unsupported scenario seed type: ${String(seed.type)}`;
 }

@@ -13,7 +13,7 @@ import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import type {
   ScenarioDefinition,
   ScenarioExecutionProfile,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 
 const MEETINGS_PLUGIN_PACKAGE = "@elizaos/plugin-meetings";
 const MEETINGS_TEST_SUPPORT_PACKAGE = "@elizaos/plugin-meetings/test-support";

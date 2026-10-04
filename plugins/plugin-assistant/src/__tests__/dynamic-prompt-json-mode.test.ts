@@ -6,7 +6,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   disposeAssistantReasoning,

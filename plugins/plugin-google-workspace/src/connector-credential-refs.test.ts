@@ -15,7 +15,7 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,

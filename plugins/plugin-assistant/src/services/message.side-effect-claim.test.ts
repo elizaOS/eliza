@@ -25,7 +25,10 @@ import {
   runResponseHandlerEvaluators,
   stringToUuid,
 } from "@elizaos/core";
-import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
+import {
+  createTestRuntime,
+  type TestRuntimeResult,
+} from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";

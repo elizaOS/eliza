@@ -44,12 +44,11 @@ import type {
   CodingAgentSelectorBridge,
   CodingProviderAvailability,
 } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import {
-  logger,
-  resolveStateDir,
+  ElizaError,
   setCodingAgentSelectorBridge,
-} from "@elizaos/core";
-import { ElizaError } from "@elizaos/core/protocol";
+} from "@elizaos/core/protocol";
 import {
   type AccountStoragePolicy,
   createRuntimeAccountStoragePolicy,

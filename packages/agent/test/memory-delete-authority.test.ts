@@ -9,7 +9,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, expect, it } from "vitest";
 import { memoryAction } from "../src/actions/memories.ts";
 

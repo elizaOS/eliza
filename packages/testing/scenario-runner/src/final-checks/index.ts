@@ -5,12 +5,12 @@
  */
 
 import { createHash } from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
-} from "@elizaos/testing";
+} from "../../schema/index.ts";
 import type {
   FinalCheckReport,
   FinalCheckStatus,
@@ -20,6 +20,8 @@ import type {
 import { isLoopbackUrl, toRecord } from "../utils.js";
 
 export type FinalCheckRuntime = {
+  getMemories?: IAgentRuntime["getMemories"];
+  getSetting?: IAgentRuntime["getSetting"];
   getService?: (name: string) => unknown;
   getServicesByType?: (name: string) => unknown;
 };
@@ -32,6 +34,11 @@ const MODEL_CALL_OCCURRED_POLL_INTERVAL_MS = 50;
 export interface FinalCheckHandlerContext {
   runtime: FinalCheckRuntime;
   ctx: ScenarioContext;
+  /** Host-owned API/store readback covering the rejected actions; empty means observed no effects. */
+  observeRejectedEffects?: (
+    actionNames: readonly string[],
+    ctx: ScenarioContext,
+  ) => Promise<readonly string[]>;
   trustedEvidence?: ScenarioEvidenceReport;
   scenarioStartedAtIso?: string;
   scenarioEndedAtIso?: string;
@@ -184,7 +191,7 @@ async function settleTrajectoryWrites(
   service: TrajectoryServiceLike,
 ): Promise<void> {
   if (service.writeQueues instanceof Map && service.writeQueues.size > 0) {
-    await Promise.allSettled(
+    await Promise.all(
       [...service.writeQueues.values()]
         .filter(isPromiseLike)
         .map((pending) => Promise.resolve(pending)),
@@ -201,7 +208,7 @@ async function flushListedTrajectoryWrites(
   if (typeof service.flushWriteQueue !== "function" || ids.length === 0) {
     return;
   }
-  await Promise.allSettled(ids.map((id) => service.flushWriteQueue?.(id)));
+  await Promise.all(ids.map((id) => service.flushWriteQueue?.(id)));
 }
 
 function supportsAsyncTrajectoryFlush(service: TrajectoryServiceLike): boolean {
@@ -232,13 +239,30 @@ async function collectMatchingModelCalls(
 ): Promise<MatchingModelCallSearch> {
   await settleTrajectoryWrites(service);
 
-  const list = await service.listTrajectories({
-    limit: Math.max(25, options.requiredCount * 5),
-    ...(options.scenarioId ? { scenarioId: options.scenarioId } : {}),
-  });
-  const ids = (list.trajectories ?? [])
-    .map((entry) => entry.id ?? entry.trajectoryId)
-    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const list = await service.listTrajectories({
+      limit: pageSize,
+      offset,
+      ...(options.scenarioId ? { scenarioId: options.scenarioId } : {}),
+    });
+    if (!Array.isArray(list.trajectories))
+      throw new Error("Trajectory reader returned no trajectory list");
+    for (const entry of list.trajectories) {
+      const id = entry.id ?? entry.trajectoryId;
+      if (typeof id !== "string" || !id)
+        throw new Error("Trajectory reader returned a missing ID");
+      if (seen.has(id))
+        throw new Error(
+          "Trajectory pagination repeated an ID; cannot prove complete model-call coverage",
+        );
+      seen.add(id);
+      ids.push(id);
+    }
+    if (list.trajectories.length < pageSize) break;
+  }
   await flushListedTrajectoryWrites(service, ids);
 
   const matchingCalls: TrajectoryLlmCallLike[] = [];
@@ -890,26 +914,38 @@ type GmailMockRequest = {
   createdAt?: string;
 };
 
-async function readGmailMockRequests(): Promise<GmailMockRequest[]> {
-  const base = process.env.ELIZA_MOCK_GOOGLE_BASE;
-  if (!isLoopbackUrl(base)) {
+async function readGmailMockRequests(
+  runtime: FinalCheckRuntime,
+): Promise<GmailMockRequest[]> {
+  const base =
+    runtime.getSetting?.("ELIZA_MOCK_GOOGLE_BASE") ??
+    process.env.ELIZA_MOCK_GOOGLE_BASE;
+  if (typeof base !== "string" || !isLoopbackUrl(base)) {
     throw new Error(
       "ELIZA_MOCK_GOOGLE_BASE must be a loopback URL for Gmail ledger checks",
     );
   }
-  const response = await fetch(`${base}/__mock/requests`);
+  const response = await fetch(`${base}/__mock/requests`, {
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!response.ok) {
     throw new Error(
       `Gmail mock request ledger returned HTTP ${response.status}`,
     );
   }
   const body = (await response.json()) as { requests?: unknown };
-  return Array.isArray(body.requests)
-    ? body.requests.filter(
-        (entry): entry is GmailMockRequest =>
-          Boolean(entry) && typeof entry === "object",
-      )
-    : [];
+  if (
+    !Array.isArray(body.requests) ||
+    body.requests.some(
+      (entry) =>
+        !entry ||
+        typeof entry !== "object" ||
+        typeof entry.method !== "string" ||
+        typeof entry.path !== "string",
+    )
+  )
+    throw new Error("Malformed Gmail mock request ledger");
+  return body.requests;
 }
 
 function gmailRequestMatches(
@@ -1536,47 +1572,75 @@ registerFinalCheckHandler("memoryWriteOccurred", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler("memoryExists", (check, { ctx }) => {
+registerFinalCheckHandler("memoryExists", async (check, { ctx, runtime }) => {
   const { table, content, minCount, expected } = check as {
     table?: string | string[];
     content?: unknown;
     minCount?: number;
     expected?: boolean;
   };
-  const tables = table === undefined ? [] : toArray(table);
-  const writes = ctx.memoryWrites ?? [];
-  const matched = writes.filter((write) => {
-    if (tables.length > 0 && !tables.includes(write.table)) {
-      return false;
-    }
-    if (content === undefined) {
-      return true;
-    }
-    return matchesContentMatcher(write.content, content);
-  });
-  const wantPresent = expected ?? true;
-  const wantCount = typeof minCount === "number" ? minCount : 1;
-  if (wantPresent) {
-    if (matched.length < wantCount) {
-      return {
-        status: "failed",
-        detail: `expected ${wantCount} matching memory write(s), saw ${matched.length} of ${writes.length} total`,
-      };
-    }
+  if (!runtime.getMemories) {
     return {
-      status: "passed",
-      detail: `${matched.length} matching memory write(s)`,
+      status: "skipped",
+      detail: "dependency missing: persisted memory reader",
     };
   }
-  if (matched.length > 0) {
+  const rooms = [
+    ...new Set(
+      [ctx.primaryRoomId, ...Object.values(ctx.roomIds ?? {})].filter(
+        (id): id is string => Boolean(id),
+      ),
+    ),
+  ];
+  if (!rooms.length)
     return {
       status: "failed",
-      detail: `expected no matching memory write, saw ${matched.length}`,
+      detail: "memoryExists requires scenario room scope",
     };
+  const tables = table === undefined ? ["messages"] : toArray(table);
+  let matched = 0;
+  for (const tableName of tables) {
+    for (const roomId of rooms) {
+      let cursor: { createdAt: number; id: UUID } | undefined;
+      while (true) {
+        const memories = await runtime.getMemories({
+          tableName,
+          roomId: roomId as UUID,
+          limit: 100,
+          cursor,
+          orderBy: "createdAt",
+          orderDirection: "asc",
+          includeEmbedding: false,
+        });
+        for (const memory of memories) {
+          if (
+            content === undefined ||
+            matchesContentMatcher(memory.content, content)
+          )
+            matched++;
+        }
+        if (memories.length < 100) break;
+        const last = memories.at(-1);
+        if (
+          !last?.id ||
+          typeof last.createdAt !== "number" ||
+          (cursor?.id === last.id && cursor.createdAt === last.createdAt)
+        ) {
+          return {
+            status: "failed",
+            detail: "persisted memory scan could not advance safely",
+          };
+        }
+        cursor = { id: last.id, createdAt: last.createdAt };
+      }
+    }
   }
+  const wantPresent = expected ?? true;
+  const wantCount = minCount ?? 1;
+  const passed = wantPresent ? matched >= wantCount : matched === 0;
   return {
-    status: "passed",
-    detail: "no matching memory write observed",
+    status: passed ? "passed" : "failed",
+    detail: `persisted matching memories: ${matched}; expected ${wantPresent ? `at least ${wantCount}` : "none"}`,
   };
 });
 
@@ -1901,11 +1965,33 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
 registerFinalCheckHandler("clarificationRequested", (check, { ctx }) => {
   const { expected } = check as { expected?: boolean };
   const expectedValue = expected ?? true;
-  const anyClarify = ctx.actionsCalled.some(
-    (a) =>
-      /clarif/i.test(a.actionName) ||
-      (typeof a.result?.text === "string" && /clarif/i.test(a.result.text)),
-  );
+  const clarificationActions = new Set([
+    "ASK_CLARIFY",
+    "ASK_FOR_CLARIFICATION",
+    "REQUEST_CLARIFICATION",
+  ]);
+  const anyClarify = ctx.actionsCalled.some((action) => {
+    if (action.error) return false;
+    if (
+      clarificationActions.has(action.actionName) &&
+      action.result?.success === true
+    )
+      return true;
+    return [
+      action.result?.data,
+      action.result?.values,
+      action.result?.raw,
+    ].some((value) => {
+      const record = toRecord(value);
+      return (
+        record?.clarification === true ||
+        (typeof record?.clarification === "string" &&
+          record.clarification.trim().length > 0) ||
+        record?.needsClarification === true ||
+        record?.status === "needs_clarification"
+      );
+    });
+  });
   if (anyClarify === expectedValue) {
     return {
       status: "passed",
@@ -1936,40 +2022,80 @@ registerFinalCheckHandler("interventionRequestExists", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler("noSideEffectOnReject", (check, { ctx }) => {
-  const { actionName } = check as { actionName: string | string[] };
-  const matchingActions = ctx.actionsCalled.filter((action) =>
-    matchesActionName(action.actionName, actionName),
-  );
-  const rejected = matchingActions.some((action) => {
-    const params = toRecord(action.parameters);
-    return params?.confirmed === false;
-  });
-  if (!rejected) {
+registerFinalCheckHandler(
+  "noSideEffectOnReject",
+  async (check, { ctx, observeRejectedEffects }) => {
+    const { actionName } = check as { actionName: string | string[] };
+    const matchingActions = ctx.actionsCalled.filter((action) =>
+      matchesActionName(action.actionName, actionName),
+    );
+    const rejected =
+      matchingActions.some((action) =>
+        [action.result?.data, action.result?.values, action.result?.raw].some(
+          (value) => {
+            const result = toRecord(value);
+            return (
+              result?.cancelled === true ||
+              result?.rejected === true ||
+              result?.status === "cancelled" ||
+              result?.status === "rejected"
+            );
+          },
+        ),
+      ) ||
+      (ctx.approvalRequests ?? []).some(
+        (request) =>
+          request.state === "rejected" &&
+          matchesActionName(request.actionName, actionName),
+      );
+    if (!rejected) {
+      return {
+        status: "failed",
+        detail: `no rejected action found for [${toArray(actionName).join(",")}]`,
+      };
+    }
+    const completed = matchingActions.some(
+      (action) =>
+        hasBrowserTaskCompletedValue(action.result?.data) ||
+        hasBrowserTaskCompletedValue(action.result?.raw),
+    );
+    const artifacts = matchingActions.some((action) =>
+      actionArtifactsPresent(action),
+    );
+    if (completed || artifacts) {
+      return {
+        status: "failed",
+        detail:
+          "reject path still produced a completion or artifact side effect",
+      };
+    }
+    if (!observeRejectedEffects)
+      return {
+        status: "failed",
+        detail:
+          "noSideEffectOnReject requires an independent API or store observer; empty action artifacts cannot prove no effects",
+      };
+    const effects = await observeRejectedEffects(toArray(actionName), ctx);
+    if (
+      !Array.isArray(effects) ||
+      effects.some((effect) => typeof effect !== "string")
+    )
+      return {
+        status: "failed",
+        detail: "reject effect observer returned invalid evidence",
+      };
+    if (effects.length)
+      return {
+        status: "failed",
+        detail: `reject path produced observed effects: ${effects.join(", ")}`,
+      };
     return {
-      status: "failed",
-      detail: `no rejected action found for [${toArray(actionName).join(",")}]`,
+      status: "passed",
+      detail:
+        "independent observer found no effects for the rejected action scope",
     };
-  }
-  const completed = matchingActions.some(
-    (action) =>
-      hasBrowserTaskCompletedValue(action.result?.data) ||
-      hasBrowserTaskCompletedValue(action.result?.raw),
-  );
-  const artifacts = matchingActions.some((action) =>
-    actionArtifactsPresent(action),
-  );
-  if (completed || artifacts) {
-    return {
-      status: "failed",
-      detail: "reject path still produced a completion or artifact side effect",
-    };
-  }
-  return {
-    status: "passed",
-    detail: "reject path produced no completion or artifact side effects",
-  };
-});
+  },
+);
 
 registerFinalCheckHandler("browserTaskCompleted", (check, { ctx }) => {
   const { expected } = check as { expected?: boolean };
@@ -2188,7 +2314,7 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler("gmailMockRequest", async (check) => {
+registerFinalCheckHandler("gmailMockRequest", async (check, { runtime }) => {
   const { method, path, body, expected, minCount } = check as {
     method?: string | string[];
     path?: string | string[];
@@ -2196,7 +2322,7 @@ registerFinalCheckHandler("gmailMockRequest", async (check) => {
     expected?: boolean;
     minCount?: number;
   };
-  const requests = await readGmailMockRequests();
+  const requests = await readGmailMockRequests(runtime);
   const matched = requests.filter((entry) =>
     gmailRequestMatches(entry, { method, path, body }),
   );
@@ -2226,32 +2352,35 @@ registerFinalCheckHandler("gmailMockRequest", async (check) => {
   };
 });
 
-registerFinalCheckHandler("gmailDraftCreated", async (check, { ctx }) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
-  const ledgerHit = requests.some((entry) =>
-    gmailRequestMatches(entry, {
-      method: "POST",
-      path: "/gmail/v1/users/me/drafts",
-    }),
-  );
-  const actionHit = ctx.actionsCalled.some((action) =>
-    hasGmailDraftData(action),
-  );
-  const any = ledgerHit || actionHit;
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailDraftCreated=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected gmailDraftCreated=${want}, saw ${any}`,
-  };
-});
+registerFinalCheckHandler(
+  "gmailDraftCreated",
+  async (check, { ctx, runtime }) => {
+    const { expected } = check as { expected?: boolean };
+    const requests = await readGmailMockRequests(runtime);
+    const ledgerHit = requests.some((entry) =>
+      gmailRequestMatches(entry, {
+        method: "POST",
+        path: "/gmail/v1/users/me/drafts",
+      }),
+    );
+    const actionHit = ctx.actionsCalled.some((action) =>
+      hasGmailDraftData(action),
+    );
+    const any = ledgerHit || actionHit;
+    const want = expected ?? true;
+    if (any === want) {
+      return { status: "passed", detail: `gmailDraftCreated=${want}` };
+    }
+    return {
+      status: "failed",
+      detail: `expected gmailDraftCreated=${want}, saw ${any}`,
+    };
+  },
+);
 
-registerFinalCheckHandler("gmailDraftDeleted", async (check) => {
+registerFinalCheckHandler("gmailDraftDeleted", async (check, { runtime }) => {
   const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
+  const requests = await readGmailMockRequests(runtime);
   const any = requests.some(
     (entry) =>
       String(entry.method ?? "").toUpperCase() === "DELETE" &&
@@ -2267,9 +2396,9 @@ registerFinalCheckHandler("gmailDraftDeleted", async (check) => {
   };
 });
 
-registerFinalCheckHandler("gmailMessageSent", async (check) => {
+registerFinalCheckHandler("gmailMessageSent", async (check, { runtime }) => {
   const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
+  const requests = await readGmailMockRequests(runtime);
   const any = requests.some((entry) =>
     gmailRequestMatches(entry, {
       method: "POST",
@@ -2286,12 +2415,12 @@ registerFinalCheckHandler("gmailMessageSent", async (check) => {
   };
 });
 
-registerFinalCheckHandler("gmailBatchModify", async (check) => {
+registerFinalCheckHandler("gmailBatchModify", async (check, { runtime }) => {
   const { expected, body } = check as {
     expected?: boolean;
     body?: Record<string, unknown>;
   };
-  const requests = await readGmailMockRequests();
+  const requests = await readGmailMockRequests(runtime);
   const any = requests.some((entry) =>
     gmailRequestMatches(entry, {
       method: "POST",
@@ -2309,7 +2438,7 @@ registerFinalCheckHandler("gmailBatchModify", async (check) => {
   };
 });
 
-registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
+registerFinalCheckHandler("gmailApproval", async (check, { ctx, runtime }) => {
   const { state } = check as {
     state: "pending" | "confirmed" | "canceled" | "cancelled";
   };
@@ -2334,7 +2463,7 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       : { status: "failed", detail: "no pending Gmail approval observed" };
   }
   if (state === "confirmed") {
-    const requests = await readGmailMockRequests();
+    const requests = await readGmailMockRequests(runtime);
     const sendHit = requests.some((entry) =>
       gmailRequestMatches(entry, {
         method: "POST",

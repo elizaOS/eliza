@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import type { BrowserService } from "@elizaos/plugin-browser";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { nativeDeviceBrowserStatusRoute } from "../../../plugins/plugin-browser/src/routes/native-device.ts";
 import { startApiServer } from "../src/api/server.ts";

@@ -452,20 +452,26 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     silo: "walkthrough-reports",
     source: "walkthrough",
     producedBy: "walkthrough capture lanes",
-    roots: [{ label: "repo", dir: "reports/walkthrough" }],
+    roots: [
+      { label: "current", dir: "test-results/walkthrough" },
+      { label: "repo", dir: "reports/walkthrough" },
+    ],
   },
   {
     silo: "live-test-runs",
     source: "live-test-runs",
     producedBy: "packages/scripts/run-live-test-with-artifacts.ts",
-    roots: [{ label: "repo", dir: "reports/live-test-runs" }],
+    roots: [
+      { label: "current", dir: "test-results/live-test-runs" },
+      { label: "repo", dir: "reports/live-test-runs" },
+    ],
   },
   {
     silo: "scenario-runner",
     source: "scenario-runner",
     producedBy: "packages/testing/scenario-runner/bin/eliza-scenarios",
     lane: "scenario",
-    roots: [{ label: "repo", dir: "reports/scenarios" }],
+    roots: [{ label: "repo", dir: "test-results/scenario-runner" }],
   },
   {
     silo: "cloud-stability",
@@ -479,14 +485,20 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     source: "group-chat-timing",
     producedBy: "packages/testing/scenario-runner eval:when2speak",
     lane: "evaluation",
-    roots: [{ label: "repo", dir: "reports/group-chat-timing" }],
+    roots: [
+      { label: "current", dir: "test-results/group-chat-timing" },
+      { label: "repo", dir: "reports/group-chat-timing" },
+    ],
   },
   {
     silo: "content-context",
     source: "content-context",
     producedBy: "progressive content corpus, scenario, and benchmark lanes",
     lane: "content-context",
-    roots: [{ label: "repo", dir: "reports/content-context" }],
+    roots: [
+      { label: "current", dir: "test-results/content-context" },
+      { label: "repo", dir: "reports/content-context" },
+    ],
   },
 ];
 

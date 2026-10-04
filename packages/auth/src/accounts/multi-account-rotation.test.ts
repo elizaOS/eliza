@@ -1,4 +1,4 @@
-import { getCodingAgentSelectorBridge } from "@elizaos/core";
+import { getCodingAgentSelectorBridge } from "@elizaos/core/protocol";
 /**
  * Real-path multi-account E2E — issue #10696.
  *

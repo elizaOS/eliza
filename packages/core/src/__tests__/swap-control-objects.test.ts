@@ -7,7 +7,7 @@
  * The dispatcher cases drive a real AgentRuntime + SQLiteDatabaseAdapter with a
  * registered model handler that records exactly what a provider would receive.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { RegexEntityRecognizer } from "../security/entity-recognizer.ts";
 import { PseudonymSession } from "../security/pii-pseudonymizer.ts";

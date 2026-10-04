@@ -1,3 +1,4 @@
+import { ElizaError } from "@elizaos/core";
 /**
  * Coordinates idempotent synthetic commands over a lease-fenced transaction
  * and a storage-neutral compare-and-set journal repository.
@@ -9,7 +10,6 @@ import {
   type SyntheticEnvironmentLeaseAuthority,
   type SyntheticEnvironmentLeaseStore,
 } from "@elizaos/contracts";
-import { ElizaError } from "@elizaos/core";
 import type {
   SyntheticCommandJournalExpected,
   SyntheticCommandJournalIdentity,
