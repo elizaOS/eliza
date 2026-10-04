@@ -251,7 +251,15 @@ log "Smoke test: qemu-riscv64 bun <script.js>"
 SMOKE_DIR="$(mktemp -d /tmp/bun-riscv64-smoke.XXXXXX)"
 trap 'remove_path_recursive "$SMOKE_DIR"' EXIT
 SMOKE_JS="$SMOKE_DIR/entrypoint.js"
-printf '%s\n' 'console.log("bun-riscv64-script-ok", process.arch);' > "$SMOKE_JS"
+cat > "$SMOKE_JS" <<'JS'
+import assert from "node:assert/strict";
+import { runInNewContext } from "node:vm";
+assert.equal(runInNewContext("answer + 1", { answer: 41 }), 42);
+assert.throws(() => runInNewContext('eval("1")', {}, {
+  contextCodeGeneration: { strings: false, wasm: false },
+}), /Code generation from strings disallowed/);
+console.log("bun-riscv64-script-ok", process.arch);
+JS
 QEMU_SCRIPT_OUT="$(qemu-riscv64 -L /sysroot "$BUN_BIN" "$SMOKE_JS" 2>&1)" || \
     die "qemu-riscv64 bun script entrypoint failed: $QEMU_SCRIPT_OUT"
 case "$QEMU_SCRIPT_OUT" in

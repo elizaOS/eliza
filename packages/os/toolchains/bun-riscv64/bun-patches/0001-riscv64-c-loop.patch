@@ -956,6 +956,44 @@ index 9c165c1..8665928 100644
      bool m_enabled { false };
  };
  
+diff --git a/src/jsc/bindings/NodeVM.cpp b/src/jsc/bindings/NodeVM.cpp
+index fafc332..c3e25ff 100644
+--- a/src/jsc/bindings/NodeVM.cpp
++++ b/src/jsc/bindings/NodeVM.cpp
+@@ -979,6 +979,7 @@ const JSC::GlobalObjectMethodTable& NodeVMGlobalObject::globalObjectMethodTable(
+     return table;
+ }
+ 
++#if ENABLE(WEBASSEMBLY)
+ JSC_DEFINE_HOST_FUNCTION(jsNodeVmWasmDisallowed, (JSC::JSGlobalObject * globalObject, JSC::CallFrame*))
+ {
+     VM& vm = globalObject->vm();
+@@ -1000,6 +1001,8 @@ JSC_DEFINE_HOST_FUNCTION(jsNodeVmWasmCompileDisallowed, (JSC::JSGlobalObject * g
+     RELEASE_AND_RETURN(scope, JSValue::encode(JSC::JSPromise::rejectedPromise(globalObject, error)));
+ }
+ 
++#endif
++
+ void NodeVMGlobalObject::finishCreation(JSC::VM& vm)
+ {
+     auto scope = DECLARE_THROW_SCOPE(vm);
+@@ -1027,6 +1030,7 @@ void NodeVMGlobalObject::finishCreation(JSC::VM& vm)
+     }
+ 
+     setEvalEnabled(m_contextOptions.allowStrings, "Code generation from strings disallowed for this context"_s);
++#if ENABLE(WEBASSEMBLY)
+     setWebAssemblyEnabled(m_contextOptions.allowWasm, "Wasm code generation disallowed by embedder"_s);
+ 
+     if (!m_contextOptions.allowWasm) {
+@@ -1075,6 +1079,8 @@ void NodeVMGlobalObject::finishCreation(JSC::VM& vm)
+         }
+     }
+ 
++#endif
++
+     // Delete the internal Loader property from the VM global object.
+     // This is exposed by JSC when exposeInternalModuleLoader() is true,
+     // but it should not be visible in node:vm contexts.
 diff --git a/src/jsc/bindings/NodeVMScript.cpp b/src/jsc/bindings/NodeVMScript.cpp
 index 6f8303a..e210b15 100644
 --- a/src/jsc/bindings/NodeVMScript.cpp
