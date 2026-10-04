@@ -1,59 +1,74 @@
-/** Internal read-only reconciliation; no provider update or session-derived dispatch. */
+/** Leases the complete read-only recovery attempt, including missing receipt search. */
 import { ElizaError } from "@elizaos/core";
-import {
-  claimOrganizationUpgradePaidReconciliation,
-  finalizePaidOrganizationUpgrade,
-} from "../../db/repositories/organization-upgrade-finalization";
+import { finalizePaidOrganizationUpgrade } from "../../db/repositories/organization-upgrade-finalization";
 import { recordOrganizationUpgradeInvoiceOrigin } from "../../db/repositories/organization-upgrade-invoice-origins";
+import { claimOrganizationUpgradeObservation } from "../../db/repositories/organization-upgrade-observation-lease";
 import { readOrganizationUpgradeRecoveryContext } from "../../db/repositories/organization-upgrade-recovery-context";
 import { releaseOrganizationUpgradeRecovery } from "../../db/repositories/organization-upgrade-recovery-release";
 import { requireStripe } from "../stripe";
 import { findOriginalUpgradeInvoiceEvent } from "./organization-upgrade-invoice-search";
+import { createOrganizationUpgradeReadBudget } from "./organization-upgrade-read-budget";
 import { observeOriginalUpgradeInvoiceState } from "./organization-upgrade-recovery-state";
-export async function reconcileOriginalOrganizationUpgrade(input: {
-  organizationId: string;
-  commandId: string;
-}) {
-  const context = await readOrganizationUpgradeRecoveryContext(input);
-  if (context.command.status === "APPLIED")
-    return { status: "applied" as const, command: context.command };
-  const stripe = requireStripe();
-  if (!context.origin) {
-    const found = await findOriginalUpgradeInvoiceEvent({
-      reader: stripe.events,
-      originalRequest: context.originalRequest,
-      observedAt: new Date(),
-    });
-    await recordOrganizationUpgradeInvoiceOrigin({
-      ...input,
-      evidence: { kind: "invoice_created_event", raw: found.raw },
-    });
+export async function reconcileOriginalOrganizationUpgrade(
+  input: {
+    organizationId: string;
+    commandId: string;
+  },
+  budgetMs = 20_000,
+) {
+  const budget = createOrganizationUpgradeReadBudget(budgetMs);
+  const claim = await claimOrganizationUpgradeObservation(input);
+  if (!claim) {
+    const context = await readOrganizationUpgradeRecoveryContext(input);
+    if (context.command.status === "APPLIED")
+      return { status: "applied" as const, command: context.command };
+    return { status: "pending" as const, reason: "reconciliation_claim_unavailable" };
   }
-  const claim = await claimOrganizationUpgradePaidReconciliation(input);
-  if (!claim) return { status: "pending" as const, reason: "reconciliation_claim_unavailable" };
   const identity = {
     ...input,
     leaseToken: claim.command.lease_token!,
     executionGeneration: claim.command.execution_generation,
   };
-  const options = { apiVersion: context.binding.apiVersion };
   let result;
   try {
-    const rawInvoice = await stripe.invoices.retrieve(claim.origin.invoice_id, {}, options);
+    const context = await readOrganizationUpgradeRecoveryContext(input);
+    const stripe = requireStripe();
+    let origin = context.origin;
+    if (!origin) {
+      const found = await findOriginalUpgradeInvoiceEvent({
+        reader: stripe.events,
+        originalRequest: context.originalRequest,
+        observedAt: new Date(),
+        budget,
+      });
+      origin = (
+        await recordOrganizationUpgradeInvoiceOrigin({
+          ...input,
+          evidence: { kind: "invoice_created_event", raw: found.raw },
+        })
+      ).receipt;
+    }
+    const rawInvoice = await stripe.invoices.retrieve(
+      origin.invoice_id,
+      {},
+      budget.requestOptions(),
+    );
+    budget.remainingMs();
     const state = observeOriginalUpgradeInvoiceState({
       raw: rawInvoice,
-      invoiceId: claim.origin.invoice_id,
-      customerId: claim.origin.customer_id,
-      subscriptionId: claim.origin.subscription_id,
-      livemode: claim.origin.livemode,
+      invoiceId: origin.invoice_id,
+      customerId: origin.customer_id,
+      subscriptionId: origin.subscription_id,
+      livemode: origin.livemode,
     });
     if (state !== "paid_candidate") result = { status: "pending" as const, reason: state };
     else {
       const rawSubscription = await stripe.subscriptions.retrieve(
-        claim.origin.subscription_id,
+        origin.subscription_id,
         {},
-        options,
+        budget.requestOptions(),
       );
+      budget.remainingMs();
       const finalized = await finalizePaidOrganizationUpgrade({
         ...identity,
         rawInvoice,

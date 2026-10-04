@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { findOriginalUpgradeInvoiceEvent as find } from "./organization-upgrade-invoice-search";
+import { createOrganizationUpgradeReadBudget } from "./organization-upgrade-read-budget";
 
 const observedAt = new Date("2026-10-04T12:00:00Z");
 const start = Math.floor(observedAt.getTime() / 1000) - 30;
@@ -53,7 +54,7 @@ test("finds only original attribution across the complete fixed-window pages", a
       created: { gte: start, lte: start + 30 },
       starting_after: "evt_unrelated",
     },
-    { apiVersion: "2024-11-20.acacia" },
+    { apiVersion: "2024-11-20.acacia", timeout: 10_000, maxNetworkRetries: 0 },
   ]);
 });
 test("an early match cannot hide a conflicting later invoice", async () => {
@@ -118,4 +119,25 @@ test("search budget exhaustion retains uncertainty despite an early match", asyn
   const r = reader(pages);
   await expect(find({ reader: r, originalRequest, observedAt })).rejects.toThrow();
   expect(r.list).toHaveBeenCalledTimes(100);
+});
+
+test("late complete page cannot authorize an origin after the shared deadline", async () => {
+  let clock = 0;
+  const budget = createOrganizationUpgradeReadBudget(100, () => clock);
+  const r = {
+    list: mock(async () => {
+      clock = 101;
+      return page([event()]);
+    }),
+  };
+  await expect(find({ reader: r, originalRequest, observedAt, budget })).rejects.toThrow();
+  expect(r.list).toHaveBeenCalledTimes(1);
+});
+test("exhausted budget makes no additional provider request", async () => {
+  let clock = 0;
+  const budget = createOrganizationUpgradeReadBudget(100, () => clock);
+  clock = 100;
+  const r = reader([page([event()])]);
+  await expect(find({ reader: r, originalRequest, observedAt, budget })).rejects.toThrow();
+  expect(r.list).not.toHaveBeenCalled();
 });
