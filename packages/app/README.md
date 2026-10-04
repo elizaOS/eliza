@@ -203,7 +203,11 @@ qualification, not installed service, HOME-role, AOSP or device acceptance.
 Shared local speech sources and reproducible runtime/model tooling are documented
 in [local speech](scripts/local-speech/README.md). The source-export resolver in
 `scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
-for independent Bun hosts; consumers retain their source pin, credentials and policy.
+for independent Bun hosts; consumers retain their source pin, credentials and policy. `scripts/lib/immutable-workspace-source.mjs`
+authenticates prepared workspace files against an exact commit, including ignored
+files and Git stat-cache bypasses. Hosts declare their generated metadata/output
+paths; declared Turbo outputs and dependency directories are allowed, while
+tracked source bytes remain immutable. Git submodules require separate admission.
 
 Consumer hosts can use `native-host/task-runtime-gateway.mjs` for authenticated
 SQLite task lifecycles and explicit domain-route extensions. Document/canvas
