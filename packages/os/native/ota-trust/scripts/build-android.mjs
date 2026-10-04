@@ -55,7 +55,6 @@ export function buildAndroidTrust({
     cwd: source,
     env: buildEnv,
     encoding: "utf8",
-    timeout: 30000,
   }).trim();
   if (version !== `go${go}`)
     throw new Error(`Android trust build requires Go ${go}; got ${version}`);
@@ -74,7 +73,6 @@ export function buildAndroidTrust({
         cwd: source,
         env: buildEnv,
         stdio: "inherit",
-        timeout: 600000,
       });
     run([
       "build",
