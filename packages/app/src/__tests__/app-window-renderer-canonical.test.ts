@@ -1,26 +1,23 @@
 /**
- * Regression: `@elizaos/app` must expose the canonical `AppWindowRenderer`
- * from `@elizaos/ui`, not a divergent app-local fork that shadows it.
+ * Regression: The public UI entry and lazy loader expose the same AppWindowRenderer.
  */
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { AppWindowRenderer as CanonicalAppWindowRenderer } from "../../../ui/src/components/apps/AppWindowRenderer";
 
 describe("AppWindowRenderer exports", () => {
-  it("desktop-shell re-exports the ui canonical component", async () => {
-    // test/setup.ts mocks the desktop-shell entry; load the real module.
-    const shell =
-      await vi.importActual<typeof import("../desktop-shell")>(
-        "../desktop-shell",
-      );
-    expect(shell.AppWindowRenderer).toBe(CanonicalAppWindowRenderer);
+  it("public UI entry exposes the canonical component", async () => {
+    const ui = await import("@elizaos/ui");
+    expect(ui.AppWindowRenderer).toBe(CanonicalAppWindowRenderer);
   }, 300_000);
 
-  it("browser barrel resolves to the ui canonical component", async () => {
-    const browser = await import("../browser");
-    expect(browser.AppWindowRenderer).toBe(CanonicalAppWindowRenderer);
+  it("lazy loader resolves to the canonical component", async () => {
+    const { loadAppWindowRenderer } = await import("@elizaos/ui");
+    expect((await loadAppWindowRenderer()).AppWindowRenderer).toBe(
+      CanonicalAppWindowRenderer,
+    );
   }, 300_000);
 
   it("does not keep an app-local renderer fork", () => {

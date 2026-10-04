@@ -1972,7 +1972,7 @@ type ShellContentProps = {
   setCustomActionsEditorOpen: (open: boolean) => void;
   setCustomActionsPanelOpen: (open: boolean) => void;
   setEditingAction: (
-    action: import("@elizaos/core/contracts/config").CustomActionDef | null,
+    action: import("@elizaos/contracts").CustomActionDef | null,
   ) => void;
   settingsInitialSection: string | null;
   settingsNavigatePayload: unknown;
@@ -3085,7 +3085,7 @@ function AppContent() {
     };
   }, [scopeLifetime]);
   const [editingAction, setEditingAction] = useState<
-    import("@elizaos/core/contracts/config").CustomActionDef | null
+    import("@elizaos/contracts").CustomActionDef | null
   >(null);
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
   const isChat = tab === "chat";
