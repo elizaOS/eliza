@@ -1,9 +1,9 @@
-import { createTestVault, type TestVault } from "../src/testing/index";
 /**
  * Tests per-key profile and routing resolution against encrypted temp vaults.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createTestVault, type TestVault } from "../src/testing/index";
 import { profileStorageKey, setEntryMeta } from "../src/vault/inventory.js";
 import { createManager } from "../src/vault/manager.js";
 import {

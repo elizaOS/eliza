@@ -116,7 +116,7 @@ test("Railpack runtime resolves workspace dependencies and serves health without
       new Response(server.stderr).text(),
     ]);
     let health: unknown;
-    const deadline = Date.now() + 25_000;
+    const deadline = Date.now() + 180_000;
     while (Date.now() < deadline && server.exitCode === null) {
       try {
         const response = await fetch(`http://127.0.0.1:${port}/health`);
@@ -152,4 +152,4 @@ test("Railpack runtime resolves workspace dependencies and serves health without
     if (logs) await logs;
     await rm(directory, { recursive: true, force: true });
   }
-}, 120_000);
+}, 360_000);

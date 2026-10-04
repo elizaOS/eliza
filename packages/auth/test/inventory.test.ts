@@ -1,9 +1,9 @@
-import { createTestVault, type TestVault } from "../src/testing/index";
 /**
  * Tests inventory categorization, metadata profiles, and UI-safe listings.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createTestVault, type TestVault } from "../src/testing/index";
 import {
   categorizeKey,
   inferProviderId,

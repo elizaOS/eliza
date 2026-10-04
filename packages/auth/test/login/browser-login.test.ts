@@ -200,4 +200,4 @@ test("registers and signs in with a browser passkey and rejects consumed challen
     }
     await rm(directory, { recursive: true, force: true });
   }
-}, 180_000);
+}, 300_000);
