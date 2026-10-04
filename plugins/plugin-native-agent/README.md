@@ -85,7 +85,8 @@ IPC, process death and observation providers in their packaged applications.
 `WebViewHealthObserver` tracks one host Activity/WebView on the main thread and
 serves deadline-bound observations off the main thread. Hosts supply a trusted
 HTTPS origin and a read-only JavaScript expression returning a boolean; product
-DOM/content policy stays in that expression. Resume/pause/destroy transitions,
+DOM/content policy stays in that expression. The shared wrapper guards the DOM
+origin and supplies `visible(element)` for ancestor CSS and viewport checks. Resume/pause/destroy transitions,
 renderer replacement, URL changes and late callbacks fence results. It never
 launches an Activity, navigates a WebView or declares an update healthy. Hosts
 must qualify their actual Activity lifecycle and expression in instrumentation.

@@ -15,7 +15,7 @@ public final class WebViewHealthObserver {
  public WebViewHealthObserver(String trustedOrigin,String observationScript) {
   origin=Uri.parse(trustedOrigin==null?"":trustedOrigin);
   if(!"https".equals(origin.getScheme())||origin.getHost()==null||origin.getUserInfo()!=null||!"".equals(origin.getPath())||origin.getQuery()!=null||origin.getFragment()!=null||observationScript==null||observationScript.trim().isEmpty())throw new IllegalArgumentException("Explicit HTTPS origin and host observation script required");
-  script=observationScript;
+  script="(()=>{if(location.origin!=="+JSONObject.quote(trustedOrigin)+")return false;const visible=e=>{if(!e)return false;for(let n=e;n;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse'||Number(s.opacity)===0)return false;}const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth;};return ("+observationScript+");})()";
  }
  private static void requireMain(){if(Looper.myLooper()!=Looper.getMainLooper())throw new IllegalStateException("Lifecycle observation requires main thread");}
  private WeakReference<WebView> renderer=new WeakReference<>(null);
