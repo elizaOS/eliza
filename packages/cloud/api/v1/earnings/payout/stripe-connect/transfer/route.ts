@@ -175,6 +175,7 @@ async function handleTransfer(c: AppContext) {
           refund_of: idempotency_key,
         },
         dedupeBySourceId: true,
+        reversesRedemption: true,
       });
       logger.error("[StripeConnect] transfer rejected; balance restored", {
         userId: user_id,

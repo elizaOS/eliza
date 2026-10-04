@@ -117,6 +117,34 @@ beforeEach(() => {
 });
 
 describe("useDataLoaders — conversation message prefetch cache", () => {
+  it("places a later-arriving same-millisecond message by UUID order", async () => {
+    const sharedAt = 1_700_000_000_000;
+    const lower = {
+      ...userMsg("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+      timestamp: sharedAt,
+    };
+    const upper = {
+      ...userMsg("BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB"),
+      timestamp: sharedAt,
+    };
+    mocks.client.getConversationMessages.mockResolvedValue({
+      messages: [upper],
+    });
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    act(() => {
+      result.current.applyConversationMessageStream("conv-a", [lower], []);
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([lower.id, upper.id]);
+  });
+
   it("keeps a relayed ephemeral final reply through history refresh, then honors its streamed removal", async () => {
     const persisted = { ...userMsg("server-user"), timestamp: 5 };
     mocks.client.getConversationMessages.mockResolvedValue({

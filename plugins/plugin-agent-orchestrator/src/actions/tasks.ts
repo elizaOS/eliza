@@ -48,7 +48,10 @@ import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
-import { normalizeRepositoryInput } from "../services/repo-input.js";
+import {
+  extractRepositoryUrlFromText,
+  normalizeRepositoryInput,
+} from "../services/repo-input.js";
 import {
   runDurableTask,
   type SmithersDurableRunLink,
@@ -3634,11 +3637,9 @@ async function runProvisionWorkspace(
 
   let repo = paramRepo ?? content.repo;
   if (!repo && content.text) {
-    const urlMatch = content.text.match(
-      /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
-    );
-    if (urlMatch) {
-      repo = urlMatch[0];
+    const urlInText = extractRepositoryUrlFromText(content.text);
+    if (urlInText) {
+      repo = urlInText;
     }
   }
 

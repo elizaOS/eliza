@@ -153,3 +153,11 @@ Shared local speech sources and reproducible runtime/model tooling are documente
 in [local speech](scripts/local-speech/README.md). The source-export resolver in
 `scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
 for independent Bun hosts; consumers retain their source pin, credentials and policy.
+
+Consumer hosts can use `native-host/task-runtime-gateway.mjs` for authenticated
+SQLite task lifecycles and explicit domain-route extensions. Document/canvas
+bundling and verified ARM64 packaging live in `native-host/build-document-runtime.mjs`
+and `native-host/android-documents.mjs`; consumers supply reviewed source identity,
+canvas version and locked package records. Run `bun run test:consumer-host` here.
+The renderer gateway and Cloud services remain owned by `packages/agent/native-host`
+and `packages/auth/native-host`; these build helpers do not provide device acceptance.

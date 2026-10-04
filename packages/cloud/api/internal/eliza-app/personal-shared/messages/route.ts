@@ -34,6 +34,7 @@ import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbo
 import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { repairPersonalConversation } from "@/lib/services/personal-conversation-repair";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import {
   type PersonalDedicatedFallback,
@@ -1834,45 +1835,15 @@ app.post("/", async (c) => {
             namespace: worker.namespace,
           },
         );
-        const importableHistory = history.filter(
-          (
-            message,
-          ): message is typeof message & {
-            role: "user" | "assistant";
-          } => message.role === "user" || message.role === "assistant",
-        );
-        const importMessages = importableHistory.flatMap((message) =>
-          message.id
-            ? [
-                {
-                  sourceId: message.id,
-                  role: message.role,
-                  text: message.content,
-                  ...(typeof message.createdAt === "number"
-                    ? { timestamp: message.createdAt }
-                    : {}),
-                },
-              ]
-            : [],
-        );
-        let receipt =
-          importMessages.length === importableHistory.length
-            ? await elizaSandboxService.importCanonicalConversation(
-                dedicated.id,
-                account.organizationId,
-                conversationId,
-                importMessages,
-              )
-            : null;
-        if (!receipt && importMessages.length > 0) {
-          receipt = await elizaSandboxService.importCanonicalConversation(
+        const repaired = await repairPersonalConversation(history, (messages) =>
+          elizaSandboxService.importCanonicalConversation(
             dedicated.id,
             account.organizationId,
             conversationId,
-            [],
-          );
-        }
-        if (receipt) {
+            messages,
+          ),
+        );
+        if (repaired) {
           response = await elizaSandboxService.bridge(
             dedicated.id,
             account.organizationId,

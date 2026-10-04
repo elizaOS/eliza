@@ -20,6 +20,7 @@ import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDeploymentsService } from "@/lib/services/app-deployments";
 import { appsService } from "@/lib/services/apps";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { DeployBodySchema } from "./schema";
@@ -81,9 +82,11 @@ app.post("/", async (c) => {
       );
     }
 
-    // Body is fully optional — accept an empty/absent body as `{}`.
-    const rawBody: unknown = await c.req.json().catch(() => ({}));
-    const parsed = DeployBodySchema.safeParse(rawBody);
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = DeployBodySchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

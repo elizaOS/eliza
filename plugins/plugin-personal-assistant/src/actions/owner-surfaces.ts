@@ -18,9 +18,9 @@ import type {
 } from "@elizaos/core";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
+import { enqueueSignatureRequest } from "./document.js";
 import { createOwnerHealthAction, runHealthHandler } from "./health.js";
 import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
 import { TASK_CREATE_PLAN_PARAMETER } from "./lib/task-create-plan-parameter.js";
@@ -676,43 +676,31 @@ async function enqueueDocumentSignatureApproval(args: {
     readStringParam(args.options, "documentName") ??
     readStringParam(args.options, "document_name") ??
     (/nda/i.test(text) ? "NDA" : "Document for signature");
-  const documentId =
-    readStringParam(args.options, "documentId") ??
-    readStringParam(args.options, "document_id") ??
-    `signature-${String(args.message.id ?? Date.now())}`;
   const signatureUrl =
     readStringParam(args.options, "signatureUrl") ??
     readStringParam(args.options, "signature_url") ??
     firstUrl(text) ??
-    "pending-signature-url";
+    undefined;
   const deadline =
     readStringParam(args.options, "deadline") ?? defaultSignatureDeadline(text);
-  const subjectUserId =
-    typeof args.message.entityId === "string"
-      ? args.message.entityId
-      : String(args.runtime.agentId);
-
-  const queue = createApprovalQueue(args.runtime, {
-    agentId: args.runtime.agentId,
-  });
-  const request = await queue.enqueue({
-    requestedBy: "PERSONAL_ASSISTANT",
-    subjectUserId,
-    action: "sign_document",
-    payload: {
-      action: "sign_document",
-      documentId,
-      documentName,
-      signatureUrl,
+  // The OWNER_DOCUMENTS signature path creates the DocumentRequest that
+  // RESOLVE_REQUEST dispatches on approval; an approval row without it could
+  // only fail with DOCUMENT_REQUEST_NOT_FOUND once the owner approved. This
+  // surface does not resolve the counterparty, so the request names none.
+  const { documentRequest, approvalRequestId } = await enqueueSignatureRequest(
+    args.runtime,
+    args.message,
+    {
+      documentTitle: documentName,
       deadline,
+      signatureUrl,
+      requestedBy: "PERSONAL_ASSISTANT",
+      reason:
+        typeof params.reason === "string" && params.reason.trim().length > 0
+          ? params.reason.trim()
+          : `Initiate signing flow for ${documentName}`,
     },
-    channel: "internal",
-    reason:
-      typeof params.reason === "string" && params.reason.trim().length > 0
-        ? params.reason.trim()
-        : `Initiate signing flow for ${documentName}`,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
+  );
 
   const responseText = `Queued the ${documentName} signing flow for approval before anything is sent.`;
   await args.callback?.({
@@ -726,7 +714,8 @@ async function enqueueDocumentSignatureApproval(args: {
     data: {
       actionName: "PERSONAL_ASSISTANT",
       action: "sign_document",
-      approvalRequestId: request.id,
+      approvalRequestId,
+      documentRequestId: documentRequest.id,
     },
   };
 }

@@ -161,4 +161,27 @@ describe("catalog app windows", () => {
     expect(await screen.findByText("Catalog launch failed")).toBeTruthy();
     expect(screen.queryByTitle("Catalog window")).toBeNull();
   });
+
+  it("reports a launch URL that could not be opened instead of claiming success", async () => {
+    // No viewer, and a launch URL the navigation allowlist refuses, so
+    // openExternalUrl resolves false and nothing opens.
+    const result = launchResult("external-run", {
+      url: "https://viewer.example.test/app",
+    });
+    vi.spyOn(client, "launchApp").mockResolvedValue({
+      ...result,
+      viewer: null,
+      launchUrl: "javascript:alert(1)",
+      run: result.run ? { ...result.run, viewer: null } : null,
+    });
+    render(<AppWindowRenderer slug="window-catalog-fixture" />);
+    expect(
+      await screen.findByText("Could not launch Catalog window"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Could not open this app in your browser/),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText(/opened in your browser/)).toBeNull();
+  });
 });

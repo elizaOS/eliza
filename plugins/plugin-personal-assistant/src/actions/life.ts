@@ -26,12 +26,15 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
   ElizaError,
   extractUserText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveActionArgs,
+  resolveCalendarTimeZone,
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
@@ -1071,7 +1074,10 @@ async function resolveDefinition(
  * ficus" reminders rendered as two identical lines with no times — an
  * unanswerable question). */
 function definitionDisambiguationLabel(entry: LifeOpsDefinitionRecord): string {
-  const when = summarizeCadence(entry.definition.cadence)?.trim();
+  const when = summarizeCadence(
+    entry.definition.cadence,
+    entry.definition.timezone,
+  )?.trim();
   return when && when.length > 0
     ? `${entry.definition.title} — ${when}`
     : entry.definition.title;
@@ -1088,7 +1094,9 @@ function resolveDuplicateByTimeHint(
 ): LifeOpsDefinitionRecord | null {
   const normalizedOwner = ownerText.toLowerCase().replace(/\s+/g, " ");
   const hits = candidates.filter((entry) => {
-    const summary = summarizeCadence(entry.definition.cadence) ?? "";
+    const summary =
+      summarizeCadence(entry.definition.cadence, entry.definition.timezone) ??
+      "";
     const clockTokens =
       summary.toLowerCase().match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/g) ?? [];
     return clockTokens.some((token) => {
@@ -1610,7 +1618,21 @@ async function resolveOccurrenceWithIntentFallback(args: {
   return resolveOccurrence(args.service, fallbackTarget, args.domain);
 }
 
-function summarizeCadence(cadence: LifeOpsCadence): string {
+function explicitCadenceTimeZone(
+  timeZone: string | undefined,
+): string | undefined {
+  if (typeof timeZone !== "string") return undefined;
+  const trimmed = timeZone.trim();
+  if (!trimmed) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: trimmed }).format(0);
+    return trimmed;
+  } catch {
+    return undefined;
+  }
+}
+
+function summarizeCadence(cadence: LifeOpsCadence, timeZone?: string): string {
   const cadenceWindows = Array.isArray(
     (cadence as { windows?: unknown }).windows,
   )
@@ -1625,7 +1647,8 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
       return "no due date";
     case "once": {
       const dueAt = new Date(cadence.dueAt);
-      if (Number.isNaN(dueAt.getTime())) {
+      const zone = explicitCadenceTimeZone(timeZone);
+      if (Number.isNaN(dueAt.getTime()) || !zone) {
         return "once";
       }
       return `once on ${dueAt.toLocaleString(undefined, {
@@ -1633,7 +1656,7 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
-        timeZone: resolveDefaultTimeZone(),
+        timeZone: zone,
       })}`;
     }
     case "daily":
@@ -1995,9 +2018,14 @@ async function runLifeConnectedQueryInner(args: {
         data: toActionData(next),
       };
     }
+    // "Today" is the owner's calendar day, resolved by the shared fail-closed
+    // calendar zone owner so an unreadable or invalid zone is never replaced
+    // by the host's.
+    const now = new Date();
+    const { timeZone } = await resolveCalendarTimeZone(runtime, now);
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
-      ...dayRange(0),
-      timeZone: resolveDefaultTimeZone(),
+      ...dayRange(0, timeZone, now),
+      timeZone,
     });
     const fallback =
       feed.events.length === 0
@@ -2028,6 +2056,20 @@ async function runLifeConnectedQueryInner(args: {
       data: toActionData(feed),
     };
   } catch (err) {
+    if (err instanceof CalendarTimeZoneError) {
+      // error-policy:J4 the owner's zone is unreadable or invalid; answering
+      // for another zone's day would be a wrong answer reported as success.
+      return {
+        success: false,
+        text:
+          err.code !== CALENDAR_TIME_ZONE_INVALID
+            ? "I can't read your time zone right now, so I can't tell which day is today for you. Please try again shortly."
+            : err.context?.source === "owner"
+              ? "I can't tell what day it is for you: your saved time zone isn't valid. Tell me your time zone and I'll check your calendar."
+              : "I can't tell what day it is for you: the agent's configured time zone isn't valid. Ask the operator to fix the TIMEZONE setting, or tell me your time zone.",
+        data: { actionName, operation: queryOperation, error: err.code },
+      };
+    }
     if (err instanceof LifeOpsServiceError) {
       return {
         success: false,
@@ -5388,7 +5430,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}.`
             : "";
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence, definitionDraft.request.timezone)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -5451,7 +5493,7 @@ async function runLifeOperationHandlerInner(
           : undefined;
       if (duplicateOf) {
         await clearDeferredLifeDraftCache(runtime, message);
-        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence)} — nothing new was created.`;
+        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence, duplicateOf.definition.timezone)} — nothing new was created.`;
         return {
           success: true as const,
           text: alreadyText,
@@ -5539,7 +5581,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}`
             : "";
-      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}${leadPhrase}.`;
+      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence, created.definition.timezone)}${leadPhrase}.`;
       const savedText = await renderLifeActionReply({
         runtime,
         message,
@@ -6793,7 +6835,10 @@ async function runLifeOperationHandlerInner(
         id: record.definition.id,
         title: record.definition.title,
         status: record.definition.status,
-        cadence: summarizeCadence(record.definition.cadence),
+        cadence: summarizeCadence(
+          record.definition.cadence,
+          record.definition.timezone,
+        ),
         kind: record.definition.kind,
       }));
       const fallback = [

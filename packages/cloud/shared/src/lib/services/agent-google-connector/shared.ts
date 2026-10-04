@@ -551,14 +551,22 @@ export async function disconnectManagedGoogleConnection(args: {
   connectionId?: string | null;
 }): Promise<void> {
   const connections = await getScopedGoogleConnections(args);
-  const activeConnection =
-    (args.connectionId
-      ? connections.find((connection) => connection.id === args.connectionId)
-      : getPreferredActiveConnection(connections, args.userId, args.side)) ??
-    connections[0] ??
+  let activeConnection: Awaited<ReturnType<typeof getScopedGoogleConnections>>[number] | null =
     null;
-  if (!activeConnection) {
-    return;
+  if (args.connectionId) {
+    activeConnection =
+      connections.find((connection) => connection.id === args.connectionId) ?? null;
+    if (!activeConnection) {
+      // An explicit id names one connection; revoking whatever happens to be
+      // listed first instead would disconnect an unrelated account.
+      fail(404, "Google connection not found.");
+    }
+  } else {
+    activeConnection =
+      getPreferredActiveConnection(connections, args.userId, args.side) ?? connections[0] ?? null;
+    if (!activeConnection) {
+      return;
+    }
   }
   await managedGoogleConnectorDeps.oauthService.revokeConnection({
     organizationId: args.organizationId,
