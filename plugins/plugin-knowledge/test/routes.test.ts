@@ -635,7 +635,7 @@ describe("document routes", () => {
 
   it.each(
     (["single", "bulk"] as const).flatMap((uploadKind) =>
-      (["note.mdx", "Notes.Mdx"] as const).map(
+      (["note.mdx", "Notes.Mdx", "notes.md", "README.MD"] as const).map(
         (filename) => [uploadKind, filename] as const,
       ),
     ),
