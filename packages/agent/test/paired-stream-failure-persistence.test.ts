@@ -26,6 +26,7 @@ it.each([
   "session revoked",
   "session revoked in storage",
   "unpaired disconnect",
+  "owner-paired disconnect",
 ] as const)(
   "handles %s through real HTTP, cancellation, and persistence",
   async (failure) => {
@@ -56,14 +57,17 @@ it.each([
     const release = Promise.withResolvers<void>();
     const observedAbort = Promise.withResolvers<void>();
     let calls = 0;
+    let abortedAfterDisconnect = false;
     try {
       await runtime.initialize();
       const store = authStoreForRuntime(runtime);
       if (!store) throw new Error("Missing auth store");
       const identityId = randomUUID();
+      // Operator-code pairing binds the device's machine session to the owner
+      // identity, so its requests authenticate as an OWNER session.
       await store.createIdentity({
         id: identityId,
-        kind: "machine",
+        kind: failure === "owner-paired disconnect" ? "owner" : "machine",
         displayName: "Paired phone",
         createdAt: Date.now(),
       });
@@ -93,7 +97,10 @@ it.each([
         calls++;
         started.resolve();
         await release.promise;
-        if (failure !== "provider failure") {
+        if (failure === "owner-paired disconnect") {
+          abortedAfterDisconnect =
+            params.signal instanceof AbortSignal && params.signal.aborted;
+        } else if (failure !== "provider failure") {
           const signal = params.signal;
           if (!(signal instanceof AbortSignal))
             throw new Error("Missing generation cancellation signal");
@@ -226,6 +233,8 @@ it.each([
         },
         { timeout: 15_000, interval: 50 },
       );
+      // A paired device's turn outlives its socket, owner-paired included.
+      expect(abortedAfterDisconnect).toBe(false);
       const callsBeforeReplay = calls;
       const replay = await fetch(
         `${origin}/api/conversations/${conversation.id}/messages/stream`,
