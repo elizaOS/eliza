@@ -9,7 +9,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/cloud-services-common": "workspace:*"
   },
   "scripts": {
     "sms-gateway:continue": "node ./continue-sms-gateway-work.ts",

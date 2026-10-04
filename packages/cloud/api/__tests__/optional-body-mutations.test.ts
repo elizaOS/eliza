@@ -3,8 +3,8 @@
  * Hono handlers, with deterministic authentication and mutation ledgers.
  */
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const USER = { id: "user-1", organization_id: "org-1" };
 const AGENT = {
@@ -29,14 +29,14 @@ const calls = {
   claimAffiliate: [] as unknown[],
 };
 
-mock.module("@/lib/auth/service-key-hono-worker", () => ({
+mock.module("@elizaos/cloud-shared/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey: async () => {},
 }));
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => USER,
   requireUserWithOrg: async () => USER,
 }));
-mock.module("@/db/repositories", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories", () => ({
   participantsRepository: {
     findRoomsByEntityId: async () => ["room-1"],
   },
@@ -52,13 +52,13 @@ mock.module("@/db/repositories", () => ({
     listByUser: async () => [],
   },
 }));
-mock.module("@/lib/services/anonymous-sessions", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/anonymous-sessions", () => ({
   anonymousSessionsService: {
     getByToken: async () => null,
     markConverted: async () => {},
   },
 }));
-mock.module("@/lib/services/characters/characters", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/characters/characters", () => ({
   charactersService: {
     claimAffiliateCharacter: async (...input: unknown[]) => {
       calls.claimAffiliate.push(input);
@@ -66,7 +66,7 @@ mock.module("@/lib/services/characters/characters", () => ({
     },
   },
 }));
-mock.module("@/lib/services/users", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/users", () => ({
   usersService: {
     getById: async () => ({
       id: AFFILIATE_OWNER_ID,
@@ -84,22 +84,25 @@ mock.module("../internal/_auth", () => ({
     service: "gateway-discord",
   }),
 }));
-mock.module("@/lib/auth/app-key-scope", () => ({
+mock.module("@elizaos/cloud-shared/lib/auth/app-key-scope", () => ({
   isAppKeyOutOfScope: async () => false,
 }));
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  RateLimitPresets: { STANDARD: {} },
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
-    next(),
-}));
-mock.module("@/lib/services/eliza-sandbox", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    RateLimitPresets: { STANDARD: {} },
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+      next(),
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: {
     getAgentById: async () => AGENT,
     getAgentForWrite: async () => AGENT,
   },
 }));
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   provisioningJobService: {
     enqueueAgentSuspendOnce: async (input: unknown) => {
       calls.suspend.push(input);
@@ -114,12 +117,12 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
 mock.module("@/api-app/lib/apps-deploy-gate", () => ({
   appsDeployOrganizationDecision: () => ({ allowed: true }),
 }));
-mock.module("@/db/repositories/containers", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/containers", () => ({
   containersRepository: {
     checkQuota: async () => ({ allowed: true }),
   },
 }));
-mock.module("@/lib/services/apps", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/apps", () => ({
   appsService: {
     getById: async () => ({
       id: "app-1",
@@ -127,7 +130,7 @@ mock.module("@/lib/services/apps", () => ({
     }),
   },
 }));
-mock.module("@/lib/services/app-deployments", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/app-deployments", () => ({
   appDeploymentsService: {
     createDeployment: async (input: unknown) => {
       calls.deploy.push(input);
@@ -139,7 +142,7 @@ mock.module("@/lib/services/app-deployments", () => ({
     },
   },
 }));
-mock.module("@/lib/services/advertising", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/advertising", () => ({
   advertisingService: {
     duplicateCampaign: async (...input: unknown[]) => {
       calls.duplicate.push(input);
@@ -173,10 +176,10 @@ mock.module("@/lib/services/advertising", () => ({
     },
   },
 }));
-mock.module("@/db/repositories/approval-requests", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/approval-requests", () => ({
   approvalRequestsRepository: {},
 }));
-mock.module("@/lib/services/approval-requests", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/approval-requests", () => ({
   createApprovalRequestsService: () => ({
     cancel: async (...input: unknown[]) => {
       calls.approvalCancel.push(input);
@@ -184,13 +187,13 @@ mock.module("@/lib/services/approval-requests", () => ({
     },
   }),
 }));
-mock.module("@/lib/services/approval-callback-bus", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/approval-callback-bus", () => ({
   approvalCallbackBus: { publish: async () => {} },
 }));
-mock.module("@/db/repositories/secret-ballots", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/secret-ballots", () => ({
   secretBallotsRepository: {},
 }));
-mock.module("@/lib/services/secret-ballots", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/secret-ballots", () => ({
   createSecretBallotsService: () => ({
     cancel: async (input: unknown) => {
       calls.ballotCancel.push(input);
@@ -198,7 +201,7 @@ mock.module("@/lib/services/secret-ballots", () => ({
     },
   }),
 }));
-mock.module("@/lib/services/oauth-intents-default", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/oauth-intents-default", () => ({
   getOAuthIntentsService: () => ({
     cancel: async (...input: unknown[]) => {
       calls.oauthCancel.push(input);
@@ -206,29 +209,35 @@ mock.module("@/lib/services/oauth-intents-default", () => ({
     },
   }),
 }));
-mock.module("@/lib/services/oauth-intents", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/oauth-intents", () => ({
   redactOAuthIntentForPublic: (value: unknown) => value,
 }));
-mock.module("@/lib/services/payment-requests-default", () => ({
-  getPaymentRequestsService: () => ({
-    cancel: async (...input: unknown[]) => {
-      calls.paymentCancel.push(input);
-      return { id: "payment-1", status: "canceled" };
-    },
+mock.module(
+  "@elizaos/cloud-shared/lib/services/payment-requests-default",
+  () => ({
+    getPaymentRequestsService: () => ({
+      cancel: async (...input: unknown[]) => {
+        calls.paymentCancel.push(input);
+        return { id: "payment-1", status: "canceled" };
+      },
+    }),
   }),
-}));
-mock.module("@/lib/services/payment-requests", () => ({
+);
+mock.module("@elizaos/cloud-shared/lib/services/payment-requests", () => ({
   toPaymentRequestDto: (value: unknown) => value,
 }));
-mock.module("@/db/repositories/discord-connections", () => ({
-  discordConnectionsRepository: {
-    clearPodAssignments: async (podName: string) => {
-      calls.gatewayShutdown.push(podName);
-      return 1;
+mock.module(
+  "@elizaos/cloud-shared/db/repositories/discord-connections",
+  () => ({
+    discordConnectionsRepository: {
+      clearPodAssignments: async (podName: string) => {
+        calls.gatewayShutdown.push(podName);
+        return 1;
+      },
     },
-  },
-}));
-mock.module("@/lib/utils/logger", () => ({
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
 

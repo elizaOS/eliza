@@ -20,6 +20,7 @@ export default defineConfig({
       "src/accounts/**/*.test.ts",
       "src/vault/**/*.test.ts",
       "src/kms/**/*.test.ts",
+      "src/providers/**/*.test.ts",
       "test/*.test.ts",
     ],
     hookTimeout: 60_000,

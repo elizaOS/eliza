@@ -28,7 +28,7 @@ import {
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveProviderCredentialMulti } from "./credential-resolver.js";
 

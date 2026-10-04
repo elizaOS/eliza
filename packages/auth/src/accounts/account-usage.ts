@@ -18,7 +18,7 @@ import path from "node:path";
 import type { LinkedAccountUsage } from "@elizaos/core/contracts/service-routing";
 import { ElizaError } from "@elizaos/core/errors";
 import { resolveStateDir } from "@elizaos/core/utils/state-dir";
-import { fetchCodexUsage } from "../auth/codex-usage.js";
+import { fetchCodexUsage } from "../providers/codex-usage.ts";
 /**
  * Snapshot returned by the provider usage probes. Mirrors
  * {@link LinkedAccountUsage} but without `refreshedAt` being optional —
@@ -270,7 +270,7 @@ export async function pollAnthropicUsage(
 }
 /**
  * Probe Codex / ChatGPT's usage endpoint via the canonical client
- * (`../auth/codex-usage.js` — shared with the agent's inline Test probe).
+ * (`../providers/codex-usage.ts` — shared with the agent's inline Test probe).
  * The primary window is the 5h session; the secondary window is the 7-day
  * limit and maps to `weeklyPct` (same shape Anthropic exposes). Throws the
  * client's typed `ElizaError` on any transport/HTTP/parse/shape failure.

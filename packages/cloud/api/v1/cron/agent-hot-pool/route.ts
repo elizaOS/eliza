@@ -1,6 +1,10 @@
 // Handles v1 cloud API v1 cron agent hot pool route traffic with route-local auth expectations.
+
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Agent hot-pool cron handler.
@@ -10,7 +14,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * agent image on healthy nodes with spare capacity.
  */
 
-import { verifyCronSecret } from "@/lib/auth/cron";
+import { verifyCronSecret } from "@elizaos/cloud-shared/lib/auth/cron";
 import { cronSupersededByDaemon } from "../../_container-control-plane-forward";
 
 async function handleAgentHotPool(c: AppContext, env?: AppEnv["Bindings"]) {

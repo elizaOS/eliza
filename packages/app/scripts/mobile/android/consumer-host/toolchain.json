@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "gradle": "8.13",
+  "gradleSha256": "20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78",
+  "wrapperSha256": "7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172",
+  "androidGradlePlugin": "8.13.0",
+  "kotlin": "2.2.20",
+  "java": 21,
+  "versions": {
+    "androidxActivityVersion": "1.10.1",
+    "androidxAppCompatVersion": "1.7.1",
+    "androidxCoordinatorLayoutVersion": "1.3.0",
+    "androidxCoreVersion": "1.16.0",
+    "androidxFragmentVersion": "1.8.9",
+    "coreSplashScreenVersion": "1.2.0",
+    "androidxWebkitVersion": "1.14.0",
+    "junitVersion": "4.13.2",
+    "androidxJunitVersion": "1.3.0",
+    "androidxEspressoCoreVersion": "3.7.0",
+    "cordovaAndroidVersion": "14.0.1"
+  }
+}

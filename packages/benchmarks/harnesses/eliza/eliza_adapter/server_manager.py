@@ -21,14 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 # This benchmarks repo root; the canonical bench server lives at
-# suites/lifeops-bench/runner/src/server.ts since the monorepo extraction.
+# harnesses/eliza/runner/src/server.ts since the monorepo extraction.
 _BENCHMARKS_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _find_repo_root() -> Path | None:
     """Locate an elizaOS monorepo checkout carrying a legacy benchmark server.
 
-    The canonical server now lives in this repo (suites/lifeops-bench/runner);
+    The canonical server now lives in this repo (harnesses/eliza/runner);
     an eliza checkout is only consulted for older layouts that still bundle it
     (`packages/lifeops-bench`, `packages/app-core`, `packages/eliza`). Set
     ELIZA_MONOREPO_ROOT to force a checkout; returns None when none is found.
@@ -117,7 +117,13 @@ def _server_command(server_script: Path) -> list[str]:
     if forced:
         return [*shlex.split(forced), str(server_script)]
     if shutil.which("bun"):
-        return ["bun", "run", "--conditions=eliza-source", "--no-env-file", str(server_script)]
+        return [
+            "bun",
+            "run",
+            "--conditions=eliza-source",
+            "--no-env-file",
+            str(server_script),
+        ]
     node = _resolve_node()
     if node:
         major = _node_major(node)
@@ -330,9 +336,18 @@ class ElizaServerManager:
         # A monorepo checkout that still bundles the server wins (its workspace
         # node_modules are known-good); the in-repo runner is the canonical
         # fallback and requires `bun install` in its directory.
-        runner_dir = _BENCHMARKS_ROOT / "suites" / "lifeops-bench" / "runner"
+        runner_dir = _BENCHMARKS_ROOT / "harnesses" / "eliza" / "runner"
         candidates: list[tuple[Path, Path]] = []
         if self.repo_root is not None:
+            canonical = (
+                self.repo_root
+                / "packages"
+                / "benchmarks"
+                / "harnesses"
+                / "eliza"
+                / "runner"
+            )
+            candidates.append((canonical / "src" / "cli.ts", canonical))
             candidates.extend(
                 [
                     (
@@ -363,7 +378,7 @@ class ElizaServerManager:
                     ),
                 ]
             )
-        candidates.append((runner_dir / "src" / "server.ts", runner_dir))
+        candidates.append((runner_dir / "src" / "cli.ts", runner_dir))
         server_script: Path | None = None
         cwd: Path | None = None
         for script, script_cwd in candidates:

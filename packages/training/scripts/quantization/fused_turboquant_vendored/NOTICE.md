@@ -27,12 +27,12 @@ the LICENSE and noting modifications. We do.
 Per Apache 2.0 §4(b), the changes made on top of upstream `0.1.0` are:
 
 * **Internal imports rewritten from `fused_turboquant.X` to
-  `quantization.fused_turboquant_vendored.X`** across every `.py` file in
+  `eliza_training.quantization.fused_turboquant_vendored.X`** across every `.py` file in
   this tree (`__init__.py`, `core/*`, `hf/*`, `kernels/*`, `cache/*`,
   `benchmark/*`, `vllm_plugin/*`). This makes the package self-contained
   inside the workspace's `scripts/` directory; callers reach it as
-  `from quantization.fused_turboquant_vendored.hf import patch_model`
-  with `scripts/` on `sys.path`. No behavioral change.
+  `from eliza_training.quantization.fused_turboquant_vendored.hf import patch_model`
+  through the installed namespace. No behavioral change.
 
 * **`hf/fused_cache.py` — gated-attention support.** The upstream
   `make_fused_attention_forward` assumes a vanilla `q_proj` of shape
@@ -101,7 +101,7 @@ Per Apache 2.0 §4(b), the changes made on top of upstream `0.1.0` are:
 
 | File | Change |
 |------|--------|
-| `__init__.py` | Import rewrite (`fused_turboquant.X` → `quantization.fused_turboquant_vendored.X`) |
+| `__init__.py` | Import rewrite (`fused_turboquant.X` → `eliza_training.quantization.fused_turboquant_vendored.X`) |
 | `core/quantizer.py`, `core/hadamard.py` | Import rewrite |
 | `hf/__init__.py` | Import rewrite |
 | `hf/fused_cache.py` | Import rewrite; gated-attention support: new `_detect_attn_output_gate`, gated branch in `make_fused_attention_forward`, expanded `KNOWN_COMPATIBLE` |

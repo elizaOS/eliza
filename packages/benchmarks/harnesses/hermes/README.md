@@ -4,7 +4,12 @@ Bridge adapter connecting the elizaOS benchmark suite to [hermes-agent](https://
 
 ## Development
 
-Use a Python environment matching `pyproject.toml` and install the required dependencies.
+Use Python 3.11+ and install the shared support package with this harness
+from the repository root:
+
+```bash
+python -m pip install ./packages/benchmarks ./packages/benchmarks/harnesses/hermes
+```
 
 No compilation or wheel build is required to run this suite from source.
 

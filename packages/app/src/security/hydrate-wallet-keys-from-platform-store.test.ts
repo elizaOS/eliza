@@ -11,11 +11,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  createTestVault,
-  type TestVault,
-  type Vault,
-} from "@elizaos/auth/vault";
+import { createTestVault, type TestVault } from "@elizaos/auth/testing";
+import type { Vault } from "@elizaos/auth/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetSharedVaultForTesting } from "../services/vault-mirror";
 import * as hydrateModule from "./hydrate-wallet-keys-from-platform-store.ts";

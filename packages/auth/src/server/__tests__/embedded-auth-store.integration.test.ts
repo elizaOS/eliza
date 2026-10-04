@@ -1,11 +1,11 @@
 /** Exercises atomic auth-state publication and expiry against real embedded PostgreSQL. */
 import { expect, test } from "bun:test";
-import { createDatabaseAuthSql } from "../auth/src/auth-sql";
-import { checkDatabaseAuthRateLimit } from "../auth/src/database-rate-limit";
-import { DatabaseRevocationStore } from "../auth/src/database-revocation";
-import { PostgresBackend } from "../auth/src/store-backends";
-import { closeDb, setPGLiteOverride } from "../db/src/client";
-import { createPGLiteDb } from "../db/src/pglite";
+import { createDatabaseAuthSql } from "../auth/auth-sql";
+import { checkDatabaseAuthRateLimit } from "../auth/database-rate-limit";
+import { DatabaseRevocationStore } from "../auth/database-revocation";
+import { PostgresBackend } from "../auth/store-backends";
+import { closeDb, setPGLiteOverride } from "../db/client";
+import { createPGLiteDb } from "../db/pglite";
 
 test("embedded auth publication has one winner and never commits expired partial state", async () => {
   const database = await createPGLiteDb("memory://");

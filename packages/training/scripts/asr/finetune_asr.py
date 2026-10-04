@@ -91,10 +91,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parents[3]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT.parent))
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     IncompleteGenerationError,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
@@ -573,9 +571,8 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
     try:
         import jiwer  # type: ignore  # noqa: PLC0415
-    except ImportError:
-        jiwer = None  # type: ignore
-        log.warning("jiwer not installed; WER will be estimated via character count")
+    except ImportError as exc:
+        raise RuntimeError("ASR evaluation requires jiwer; install the ASR dependencies") from exc
 
     data_dir = Path(args.data_dir).resolve() if args.data_dir else None
     if data_dir is None:
@@ -606,7 +603,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
     # Optimizer (APOLLO-Mini per repo policy).
     try:
-        from training.optimizer import build_apollo_mini_optimizer  # type: ignore  # noqa: PLC0415
+        from eliza_training.training.optimizer import build_apollo_mini_optimizer  # type: ignore  # noqa: PLC0415
         optimizer = build_apollo_mini_optimizer(
             model.parameters(),
             lr=cfg["learning_rate"],
@@ -813,6 +810,10 @@ def _evaluate_wer(
     jiwer: Any,
 ) -> float:
     """Evaluate WER against val records. Returns WER ∈ [0, +∞)."""
+    if jiwer is None:
+        raise RuntimeError("ASR evaluation requires jiwer")
+    if not records:
+        raise ValueError("ASR evaluation requires non-empty validation records")
     import torch  # noqa: PLC0415
 
     references: list[str] = []
@@ -848,18 +849,9 @@ def _evaluate_wer(
         except IncompleteGenerationError:
             raise
         except Exception as exc:
-            log.warning("eval failed for %s: %s", rec["id"], exc)
+            raise RuntimeError(f"ASR evaluation failed for {rec['id']}") from exc
 
-    if not references:
-        return 1.0
-
-    if jiwer is not None:
-        return float(jiwer.wer(references, hypotheses))
-
-    # Fallback: character error rate approximation.
-    total_chars = sum(len(r) for r in references)
-    errors = sum(abs(len(r) - len(h)) for r, h in zip(references, hypotheses))
-    return errors / max(1, total_chars)
+    return float(jiwer.wer(references, hypotheses))
 
 
 def _estimate_rtf(model: Any, processor: Any, records: list[dict[str, Any]], cfg: dict[str, Any], device: str) -> float:

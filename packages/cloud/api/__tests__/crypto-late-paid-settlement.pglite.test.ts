@@ -22,19 +22,27 @@ process.env.NODE_ENV = "test";
 setDefaultTimeout(60_000);
 
 const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@/db/client");
-const { organizations } = await import("@/db/schemas/organizations");
-const { users } = await import("@/db/schemas/users");
-const { creditTransactions } = await import("@/db/schemas/credit-transactions");
-const { cryptoPayments } = await import("@/db/schemas/crypto-payments");
-const { invoices } = await import("@/db/schemas/invoices");
+  await import("@elizaos/cloud-shared/db/client");
+const { organizations } = await import(
+  "@elizaos/cloud-shared/db/schemas/organizations"
+);
+const { users } = await import("@elizaos/cloud-shared/db/schemas/users");
+const { creditTransactions } = await import(
+  "@elizaos/cloud-shared/db/schemas/credit-transactions"
+);
+const { cryptoPayments } = await import(
+  "@elizaos/cloud-shared/db/schemas/crypto-payments"
+);
+const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
 const { referralCodes, referralSignups } = await import(
-  "@/db/schemas/referrals"
+  "@elizaos/cloud-shared/db/schemas/referrals"
 );
 const { cryptoPaymentsService } = await import(
-  "@/lib/services/crypto-payments"
+  "@elizaos/cloud-shared/lib/services/crypto-payments"
 );
-const { oxaPayService } = await import("@/lib/services/oxapay");
+const { oxaPayService } = await import(
+  "@elizaos/cloud-shared/lib/services/oxapay"
+);
 
 const pg = () => getPgliteClientForTests();
 

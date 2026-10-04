@@ -143,7 +143,7 @@ async function child() {
   await mkdir(workdir, { mode: 0o700 });
   phase = "import-account-storage";
   const { createRuntimeAccountStoragePolicy, saveAccount, loadAccount } =
-    await import("@elizaos/auth/auth/account-storage");
+    await import("@elizaos/auth/auth");
   phase = "import-account-pool";
   const { getDefaultAccountPool } = await import("@elizaos/auth/accounts");
   phase = "import-core";

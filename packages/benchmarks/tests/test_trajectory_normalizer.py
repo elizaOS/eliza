@@ -20,7 +20,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from lib.trajectory_normalizer import (  # noqa: E402
+from benchmarks.lib.trajectory_normalizer import (  # noqa: E402
     CanonicalEntry,
     align_by_step,
     cli,
@@ -331,7 +331,12 @@ def test_write_canonical_jsonl_roundtrips(tmp_path: Path) -> None:
             response={
                 "text": "x",
                 "toolCalls": [
-                    {"name": "f", "arguments": {"deep": {"k": [1, 2]}}, "id": "i", "result": None}
+                    {
+                        "name": "f",
+                        "arguments": {"deep": {"k": [1, 2]}},
+                        "id": "i",
+                        "result": None,
+                    }
                 ],
             },
             agent_id="hermes",

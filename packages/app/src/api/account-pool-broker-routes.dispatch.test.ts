@@ -26,7 +26,7 @@ import { resetDefaultAccountPoolAfterCredentialReset } from "@elizaos/auth/accou
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetAccountPoolBrokerRoutesForTests } from "./account-pool-broker-routes.js";
 import type { CompatRuntimeState } from "./compat-route-shared";

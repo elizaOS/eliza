@@ -17,21 +17,29 @@ process.env.NODE_ENV = "test";
 setDefaultTimeout(60_000);
 
 const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@/db/client");
-const { organizations } = await import("@/db/schemas/organizations");
-const { users } = await import("@/db/schemas/users");
-const { creditPacks } = await import("@/db/schemas/credit-packs");
-const { creditTransactions } = await import("@/db/schemas/credit-transactions");
+  await import("@elizaos/cloud-shared/db/client");
+const { organizations } = await import(
+  "@elizaos/cloud-shared/db/schemas/organizations"
+);
+const { users } = await import("@elizaos/cloud-shared/db/schemas/users");
+const { creditPacks } = await import(
+  "@elizaos/cloud-shared/db/schemas/credit-packs"
+);
+const { creditTransactions } = await import(
+  "@elizaos/cloud-shared/db/schemas/credit-transactions"
+);
 const { stripeCheckoutOrders } = await import(
-  "@/db/schemas/stripe-checkout-orders"
+  "@elizaos/cloud-shared/db/schemas/stripe-checkout-orders"
 );
 const { organizationPaymentReversalHolds } = await import(
-  "@/db/schemas/organization-payment-reversal-holds"
+  "@elizaos/cloud-shared/db/schemas/organization-payment-reversal-holds"
 );
 const { billingHoldService, BillingHoldActiveError } = await import(
-  "@/lib/services/billing-hold"
+  "@elizaos/cloud-shared/lib/services/billing-hold"
 );
-const { creditsService } = await import("@/lib/services/credits");
+const { creditsService } = await import(
+  "@elizaos/cloud-shared/lib/services/credits"
+);
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
 const pg = () => getPgliteClientForTests();

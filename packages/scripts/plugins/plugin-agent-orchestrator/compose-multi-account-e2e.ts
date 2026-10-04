@@ -36,7 +36,7 @@ import { getDefaultAccountPool } from "@elizaos/auth/accounts";
 import {
   createRuntimeAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { AcpService } from "../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.ts";
 
 const FAR_FUTURE = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;

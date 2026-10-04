@@ -17,7 +17,6 @@
  * timeout forms and `--conditions` compose with both execution paths.
  */
 
-import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -27,6 +26,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import { runCommandWithWatchdog } from "../../../scripts/test-cloud-run.ts";
 import {
   buildMainPassArgs,
   buildQuarantinePassArgs,
@@ -194,87 +195,39 @@ function appendCapped(buffer, chunk) {
     : combined;
 }
 
-function killTree(child) {
-  if (process.platform === "win32" && typeof child.pid === "number") {
-    // taskkill /t reaches bun even when the spawn went through a cmd.exe shell.
-    const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
-      stdio: "ignore",
-    });
-    killer.on("error", () => child.kill("SIGKILL"));
-  } else {
-    child.kill("SIGKILL");
-  }
-}
-
-/**
- * Run one `bun test` child. Output streams through to the parent stdio live
- * and a bounded tail is captured for classification/crash reports.
- *
- * `inherit` (optional) hands the parent stdio straight to the child (no
- * capture) — used by the quarantine-off path for exact legacy behavior.
- * `onOutput` (optional) sees every raw chunk (main-pass exclusion scan).
- * `timeoutMs` (optional) arms a wall-clock watchdog; on expiry the child tree
- * is killed and the result carries `watchdogFired: true`.
- */
-function runBunTest(testArgs, { inherit, onOutput, timeoutMs } = {}) {
+/** Stream output while the shared supervisor owns deadlines, signals and descendants. */
+async function runBunTest(testArgs, { inherit, onOutput, timeoutMs } = {}) {
   const { bin, prefixArgs, useShell } = resolveBunCommand(process.env);
   const argv = [...prefixArgs, "test", ...testArgs];
   if (useShell) assertShellSafe([bin, ...argv]);
-
-  return new Promise((resolve, reject) => {
-    const stdio = inherit ? "inherit" : ["ignore", "pipe", "pipe"];
-    // In shell mode, pass ONE pre-joined command line (every token was just
-    // validated quote-free) — spawn(cmd, args, {shell:true}) concatenates
-    // unescaped anyway and node 24 warns about it (DEP0190).
-    const child = useShell
-      ? spawn([bin, ...argv].join(" "), {
-          cwd: packageDir,
-          env: process.env,
-          stdio,
-          shell: true,
-        })
-      : spawn(bin, argv, {
-          cwd: packageDir,
-          env: process.env,
-          stdio,
-        });
-
-    let output = "";
-    let watchdogFired = false;
-    let watchdog;
-    if (timeoutMs !== undefined) {
-      watchdog = setTimeout(() => {
-        watchdogFired = true;
-        console.error(
-          `[run-bun-tests] watchdog: child exceeded ${timeoutMs}ms wall clock (wedged process — the #15785 crash wedged for ~64 minutes); killing process tree pid=${child.pid}`,
-        );
-        killTree(child);
-      }, timeoutMs);
-      watchdog.unref?.();
-    }
-
-    const consume = (stream, sink) => {
-      stream.on("data", (chunk) => {
-        const text = chunk.toString();
-        sink.write(chunk);
-        output = appendCapped(output, text);
-        onOutput?.(text);
-      });
-    };
+  let output = "";
+  const consume = (sink) => (text) => {
+    sink.write(text);
     if (!inherit) {
-      consume(child.stdout, process.stdout);
-      consume(child.stderr, process.stderr);
+      output = appendCapped(output, text);
+      onOutput?.(text);
     }
-
-    child.on("error", (error) => {
-      if (watchdog) clearTimeout(watchdog);
-      reject(error);
-    });
-    child.on("close", (status, signal) => {
-      if (watchdog) clearTimeout(watchdog);
-      resolve({ status, signal, output, watchdogFired });
-    });
+  };
+  const result = await runCommandWithWatchdog(bin, argv, {
+    cwd: packageDir,
+    env: process.env,
+    shell: useShell,
+    timeoutMs,
+    writeOut: consume(process.stdout),
+    writeErr: consume(process.stderr),
+    onTimeout: () =>
+      console.error(
+        "[run-bun-tests] watchdog: child exceeded wall-clock deadline; terminating owned process tree",
+      ),
   });
+  if (result.error) throw result.error;
+  if (result.terminationError) throw result.terminationError;
+  return {
+    status: result.status,
+    signal: result.parentSignal ?? result.signal,
+    output,
+    watchdogFired: result.timedOut,
+  };
 }
 
 function resolveQuarantinedSuites(env) {
@@ -299,7 +252,7 @@ function resolveQuarantinedSuites(env) {
 function writeCrashCapture({ attempt, maxAttempts, args, result, reason }) {
   const dir =
     process.env.ELIZA_PGLITE_CRASH_DIR ??
-    path.join(repoRoot, ".tmp", "bun-pglite-crash");
+    testOutputPath("cloud-shared-crashes");
   mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const file = path.join(

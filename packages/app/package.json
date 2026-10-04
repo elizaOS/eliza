@@ -9,14 +9,14 @@
     "typecheck": "bun run typecheck:host && bun run typecheck:renderer && bun run typecheck:consumer-build",
     "check:source-artifacts": "node scripts/check-source-artifacts.ts",
     "test": "bun run test:renderer && bun run test:host",
-    "test:script-suites": "python3 scripts/local-speech/test-runner.py && node scripts/run-script-tests.ts && bun test ./src/runtime/mobile-auth-composition.integration.test.ts ./src/runtime/mobile-workflow-process-host.integration.test.ts",
+    "test:script-suites": "bun run test:consumer-host && python3 scripts/local-speech/test-runner.py && node scripts/run-script-tests.ts && bun test ./src/runtime/mobile-auth-composition.integration.test.ts ./src/runtime/mobile-workflow-process-host.integration.test.ts",
     "test:auth": "node ../scripts/run-vitest.ts run --config vitest.host.config.ts --no-file-parallelism src/api/auth src/api/auth-bootstrap-routes src/services/auth-store src/services/auth-record-store src/cli/program/register.auth",
     "test:local-provisioning": "node scripts/run-node-tsx.ts scripts/check-real-local-provisioning.ts",
     "test:local-chat": "node scripts/run-node-tsx.ts scripts/check-real-local-chat.ts",
     "test:local-reset": "node scripts/run-node-tsx.ts scripts/check-real-local-reset.ts",
     "serve:local-agent:e2e": "node scripts/run-node-tsx.ts scripts/serve-real-local-agent.ts",
     "lint": "bunx @biomejs/biome check --write src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
-    "lint:check": "bunx @biomejs/biome check src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
+    "lint:check": "bunx @biomejs/biome check native-host src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-auth.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
     "format": "bunx @biomejs/biome format --write src scripts",
     "format:check": "bunx @biomejs/biome format src scripts",
     "build:dist": "node ../scripts/with-package-build-lock.ts packages/app -- bun run build:dist:unlocked",
@@ -207,7 +207,8 @@
     "typecheck:host": "tsc --noEmit -p tsconfig.host.json",
     "test:tts:standalone": "bun --no-install --conditions=eliza-source scripts/qualify-standalone-kokoro.ts",
     "build:consumer-tasks": "node scripts/build-consumer-task-runtime.mjs",
-    "typecheck:consumer-build": "tsc --noEmit -p scripts/tsconfig.consumer-build.json"
+    "typecheck:consumer-build": "tsc --noEmit -p scripts/tsconfig.consumer-build.json",
+    "test:consumer-host": "node --test native-host/*.test.mjs"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
@@ -322,7 +323,8 @@
     "util": "^0.12.5",
     "ws": "^8.21.3",
     "zod": "^4.6.5",
-    "use-sync-external-store": "1.7.0"
+    "use-sync-external-store": "1.7.0",
+    "tar": "7.5.22"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
@@ -536,7 +538,8 @@
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js",
       "default": "./dist/browser.js"
-    }
+    },
+    "./native-host/*": "./native-host/*.mjs"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -547,7 +550,10 @@
   "license": "MIT",
   "files": [
     "dist",
-    "web-dist"
+    "web-dist",
+    "native-host/*.mjs",
+    "native-host/*.patch",
+    "!native-host/*.test.mjs"
   ],
   "description": "Eliza application host, renderer, and native platform tooling.",
   "publishConfig": {

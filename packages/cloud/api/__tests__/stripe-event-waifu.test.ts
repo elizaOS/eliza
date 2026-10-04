@@ -1,6 +1,6 @@
 /** Exercises the Stripe queue callback for agent credit top-ups. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 
 const agentId = "123e4567-e89b-12d3-a456-426614174000";
 const paymentIntentId = "pi_agent_topup";
@@ -62,22 +62,28 @@ const dbRead = {
 
 // The migrated Stripe consumer suite owns terminal reconciliation; these credit/queue
 // contracts exercise retry behavior when that separate collaborator is unavailable.
-mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
-  reconcileStripeScheduledCancellationLifecycle: async () => {
-    throw new Error(
-      "Scheduled subscription lifecycle unavailable in legacy fixture",
-    );
-  },
-}));
-mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
-  reconcileStripeTerminalLifecycle: async () => {
-    throw new Error(
-      "Terminal reconciliation unavailable in this credit/queue fixture",
-    );
-  },
-}));
-mock.module("@/db/helpers", () => ({ dbRead }));
-mock.module("@/lib/services/billing-hold", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-scheduled-cancellation-lifecycle",
+  () => ({
+    reconcileStripeScheduledCancellationLifecycle: async () => {
+      throw new Error(
+        "Scheduled subscription lifecycle unavailable in legacy fixture",
+      );
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-terminal-lifecycle",
+  () => ({
+    reconcileStripeTerminalLifecycle: async () => {
+      throw new Error(
+        "Terminal reconciliation unavailable in this credit/queue fixture",
+      );
+    },
+  }),
+);
+mock.module("@elizaos/cloud-shared/db/helpers", () => ({ dbRead }));
+mock.module("@elizaos/cloud-shared/lib/services/billing-hold", () => ({
   billingHoldService: {
     settleOutstandingShortfalls: async () => ({
       appliedUsd: "0.000000",
@@ -88,20 +94,20 @@ mock.module("@/lib/services/billing-hold", () => ({
     getState: async () => ({ status: "clear" }),
   },
 }));
-mock.module("@/db/repositories/organizations", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/organizations", () => ({
   organizationsRepository: {
     findById: mock(async () => ({ name: "Agent Org" })),
   },
 }));
-mock.module("@/db/repositories/users", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/users", () => ({
   usersRepository: {
     findById: mock(async () => ({ name: "Agent User" })),
   },
 }));
-mock.module("@/lib/security/safe-fetch", () => ({
+mock.module("@elizaos/cloud-shared/lib/security/safe-fetch", () => ({
   safeFetch: webhookFetch,
 }));
-mock.module("@/lib/services/auto-top-up", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/auto-top-up", () => ({
   autoTopUpService: {
     reconcileSucceededPaymentIntent: mock(async () => ({
       disposition: "settled",
@@ -109,27 +115,27 @@ mock.module("@/lib/services/auto-top-up", () => ({
     })),
   },
 }));
-mock.module("@/lib/services/credits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   creditsService: {
     getTransactionByStripePaymentIntent,
     addCredits,
   },
 }));
-mock.module("@/lib/services/discord", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/discord", () => ({
   discordService: {
     logPaymentReceived: mock(async () => undefined),
   },
 }));
-mock.module("@/lib/services/invoices", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/invoices", () => ({
   invoicesService: {
     getByStripeInvoiceId,
     create: createInvoice,
   },
 }));
-mock.module("@/lib/services/org-rate-limits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   CONTAINER_BACKED_TARGET_REJECTION_REASON:
     containerBackedTargetRejectionReason,
   provisioningJobService: {
@@ -137,20 +143,23 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
     triggerImmediate,
   },
 }));
-mock.module("@/lib/services/redeemable-earnings", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/redeemable-earnings", () => ({
   redeemableEarningsService: {
     addEarnings: mock(async () => undefined),
   },
 }));
-mock.module("@/lib/services/referrals", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/referrals", () => ({
   referralsService: {
     calculateRevenueSplits,
   },
 }));
-mock.module("@/lib/services/stripe-checkout-orders", () => ({
-  stripeCheckoutOrdersService: { settleLegacy },
-}));
-mock.module("@/lib/stripe", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-checkout-orders",
+  () => ({
+    stripeCheckoutOrdersService: { settleLegacy },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
   requireStripe: () => ({}),
 }));
 

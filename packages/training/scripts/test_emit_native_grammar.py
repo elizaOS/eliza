@@ -23,8 +23,8 @@ from __future__ import annotations
 import json
 import re
 
-from scripts.emit_native_grammar import build_native_envelope_gbnf
-from scripts.lib.native_record import native_tool_call_record
+from eliza_training.emit_native_grammar import build_native_envelope_gbnf
+from eliza_training.lib.native_record import native_tool_call_record
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ def test_with_args_constrains_arg_keys_and_enums() -> None:
 
 
 def test_action_docs_parser_extracts_names(tmp_path) -> None:
-    from scripts.emit_native_grammar import _from_action_docs_ts
+    from eliza_training.emit_native_grammar import _from_action_docs_ts
 
     ts = tmp_path / "action-docs.ts"
     ts.write_text(
@@ -323,7 +323,7 @@ def test_action_docs_parser_extracts_names(tmp_path) -> None:
 
 
 def test_catalog_json_parser(tmp_path) -> None:
-    from scripts.emit_native_grammar import _from_catalog_json
+    from eliza_training.emit_native_grammar import _from_catalog_json
 
     cat = tmp_path / "catalog.json"
     cat.write_text(

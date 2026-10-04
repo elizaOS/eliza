@@ -4,7 +4,7 @@
  */
 
 import { logger } from "@elizaos/core/logger";
-import { generatePKCE } from "./pkce.ts";
+import { generatePKCE } from "../../../contracts/index.ts";
 
 function isNodeLikeRuntime(): boolean {
   return (

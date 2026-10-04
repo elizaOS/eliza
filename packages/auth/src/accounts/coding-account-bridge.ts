@@ -59,7 +59,7 @@ import {
   getAccessToken,
   saveCredentials,
 } from "../auth/credentials.js";
-import { probeDirectApiKey } from "../auth/direct-api-probe.js";
+import { probeDirectApiKey } from "../providers/direct-api-probe.ts";
 import { accountRefreshMutex } from "../auth/refresh-mutex.js";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,

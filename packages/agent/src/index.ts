@@ -8,59 +8,7 @@
  * than `export *` to dodge duplicate-symbol (TS2308) collisions and to keep
  * heavy plugins lazy-loaded — read the inline notes before widening any of them.
  */
-import type {
-  AgentCloudBillingRouteHandler,
-  AgentCloudCompatRouteHandler,
-  AgentCloudRouteHandler,
-} from "./api/cloud-route-contracts.ts";
 
-export {
-  DEFAULT_MAX_BODY_BYTES,
-  readJsonBody,
-  readRequestBody,
-  readRequestBodyBuffer,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/core";
-export interface CloudConfigLike {
-  apiKey?: string | null;
-  baseUrl?: string | null;
-  [key: string]: unknown;
-}
-type CloudUrlValidator = (value: string) => Promise<string | null>;
-type ElizaCloudRoutesModule = {
-  handleCloudBillingRoute: AgentCloudBillingRouteHandler;
-  handleCloudCompatRoute: AgentCloudCompatRouteHandler;
-  handleCloudRoute: AgentCloudRouteHandler;
-  validateCloudBaseUrl: CloudUrlValidator;
-};
-async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
-  return import(
-    "@elizaos/plugin-elizacloud"
-  ) as Promise<ElizaCloudRoutesModule>;
-}
-export const handleCloudBillingRoute: AgentCloudBillingRouteHandler = async (
-  ...args
-) => {
-  const { handleCloudBillingRoute } = await loadElizaCloudRoutes();
-  return handleCloudBillingRoute(...args);
-};
-export const handleCloudCompatRoute: AgentCloudCompatRouteHandler = async (
-  ...args
-) => {
-  const { handleCloudCompatRoute } = await loadElizaCloudRoutes();
-  return handleCloudCompatRoute(...args);
-};
-export const handleCloudRoute: AgentCloudRouteHandler = async (...args) => {
-  const { handleCloudRoute } = await loadElizaCloudRoutes();
-  return handleCloudRoute(...args);
-};
-export async function validateCloudBaseUrl(
-  value: string,
-): Promise<string | null> {
-  const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
-  return validateCloudBaseUrl(value);
-}
 export * from "@elizaos/auth/auth";
 export type {
   CustomActionDef,
@@ -70,8 +18,6 @@ export type {
   ReleaseChannel,
   RolesConfig,
 } from "@elizaos/core";
-// Config contract types are exported from core above; the host config module
-// supplies its own runtime functions.
 export {
   type AppUiExtensionConfig,
   type AwarenessContributor,
@@ -82,6 +28,7 @@ export {
   collectKeywordTermMatches,
   createIntegrationTelemetrySpan,
   DEFAULT_CACHE_TTL_MS,
+  DEFAULT_MAX_BODY_BYTES,
   defaultIntegrationSeverityPolicy,
   hasRoleAccess,
   type IntegrationBoundary,
@@ -110,6 +57,9 @@ export {
   type RestartHandler,
   type RuntimeExecutionMode,
   type RuntimeExecutionModeSource,
+  readJsonBody,
+  readRequestBody,
+  readRequestBodyBuffer,
   requestRestart,
   resolveFallbackOwnerEntityId,
   resolveLocalExecutionMode,
@@ -118,14 +68,40 @@ export {
   SELF_STATUS_SCHEMA_VERSION,
   SUMMARY_CHAR_LIMIT,
   SUMMARY_TOTAL_CHAR_LIMIT,
+  sendJson,
+  sendJsonError,
   setRestartHandler,
   shouldUseSandboxExecution,
   textIncludesKeywordTerm,
 } from "@elizaos/core";
 export {
+  ambiguousMemoryUserFacingText,
+  type ContextSignalKey,
+  type ContextSignalStrength,
+  getContextSignalTerms,
+  hasContextSignal,
+  hasContextSignalSync,
+  hasContextSignalSyncForKey,
+  hasSelectedActionContext,
+  hasSelectedContextOrSignalSync,
+  inferMemorySubaction,
+  MAX_MEMORY_ACTION_RESULT_CHARS,
+  MAX_MEMORY_PAGE_ITEMS,
+  memoryAction,
+  memoryUserFacingLine,
+  messageText,
+  type ResolvedContextSignalSpec,
+  resolveContextSignalSpec,
+} from "@elizaos/plugin-assistant";
+export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+export {
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "@elizaos/plugin-wallet/transactions";
 export {
   connectAccountAction,
   messageWantsAccountConnect,
@@ -136,33 +112,10 @@ export {
   registerEntitySearchCategory,
 } from "./actions/contact.ts";
 export {
-  hasContextSignal,
-  hasContextSignalSync,
-  hasContextSignalSyncForKey,
-  hasSelectedActionContext,
-  hasSelectedContextOrSignalSync,
-  messageText,
-} from "./actions/context-signal.ts";
-export {
-  type ContextSignalKey,
-  type ContextSignalStrength,
-  getContextSignalTerms,
-  type ResolvedContextSignalSpec,
-  resolveContextSignalSpec,
-} from "./actions/context-signal-lexicon.ts";
-export {
   databaseAction,
   registerVectorSearchCategory,
 } from "./actions/database.ts";
 export { logsAction } from "./actions/logs.ts";
-export {
-  ambiguousMemoryUserFacingText,
-  inferMemorySubaction,
-  MAX_MEMORY_ACTION_RESULT_CHARS,
-  MAX_MEMORY_PAGE_ITEMS,
-  memoryAction,
-  memoryUserFacingLine,
-} from "./actions/memories.ts";
 export { pageDelegateAction } from "./actions/page-action-groups.ts";
 export { pluginAction } from "./actions/plugin.ts";
 export { runtimeAction } from "./actions/runtime.ts";
@@ -186,12 +139,24 @@ export {
   TRIGGER_OPS,
   triggerAction,
 } from "./actions/trigger.ts";
+export {
+  type CloudConfigLike,
+  handleCloudBillingRoute,
+  handleCloudCompatRoute,
+  handleCloudRoute,
+  validateCloudBaseUrl,
+} from "./api/cloud-routes.ts";
 export * from "./api/config-env.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export * from "./api/conversation-metadata.ts";
+export type { captureEarlyLogs } from "./api/early-logs.ts";
 export * from "./api/index.ts";
 export { setOwnerContact } from "./api/owner-contact-helpers.ts";
 export {
+  AGENT_EVENT_ALLOWED_STREAMS,
+  CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  discoverInstalledPlugins,
+  discoverPluginsFromManifest,
   findPrimaryEnvKey,
   isBlockedEnvKey,
   readBundledPluginPackageMetadata,
@@ -225,45 +190,15 @@ export {
   type RuntimeRouteModeRule,
 } from "./api/runtime-mode/route-mode-guard.ts";
 export * from "./api/runtime-mode/runtime-mode.ts";
+export { startApiServer } from "./api/server.ts";
+// Remaining host-state helpers are exported directly from their owner.
 export {
-  AGENT_EVENT_ALLOWED_STREAMS,
-  CONFIG_WRITE_ALLOWED_TOP_KEYS,
-  type ConversationMeta,
-  type captureEarlyLogs,
   cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
-  discoverInstalledPlugins,
-  discoverPluginsFromManifest,
-  ensureApiTokenForBindHost,
-  extractAuthToken,
-  fetchWithTimeoutGuard,
-  injectApiBaseIntoHtml,
-  isAllowedHost,
-  isAuthorized,
-  isSafeResetStateDir,
-  normalizeWsClientId,
-  type PluginConfigMutationRejection,
-  persistConversationRoomTitle,
-  resolveCorsOrigin,
-  resolveMcpServersRejection,
-  resolveMcpTerminalAuthorizationRejection,
-  resolvePluginConfigMutationRejections,
-  resolveTerminalRunClientId,
-  resolveTerminalRunRejection,
-  resolveWalletExportRejection,
-  resolveWebSocketUpgradeRejection,
-  routeAutonomyTextToUser,
-  startApiServer,
-  streamResponseBodyWithByteLimit,
-} from "./api/server.ts";
-// `server-helpers.ts` exposes auth/conversation/wallet helpers that the
-// canonical `server.ts` already re-exports for backwards compat. Re-exporting
-// the entire file would clash with those re-exports, so only surface helpers
-// that aren't visible through `server.ts`.
-export {
   type DeletedConversationsStateFile,
+  decodePathComponent,
   getAgentEventSvc,
   initializeOGCodeInState,
+  persistConversationRoomTitle,
   persistDeletedConversationIdsToState,
   readDeletedConversationIdsFromState,
   readOGCodeFromState,
@@ -273,22 +208,43 @@ export {
 // Loopback-trust + token helpers. These come from the canonical
 // `./api/server-helpers-auth.js` (the same module the live server uses), not a
 // divergent copy. `isLoopbackBindHost` lives in `@elizaos/core`; the
-// `PluginConfigMutationRejection` type is exported through `./api/server.js`.
+// Mutation rejection types are exported from their owning helper module.
 export {
+  ensureApiTokenForBindHost,
+  extractAuthToken,
   getConfiguredApiToken,
+  isAllowedHost,
+  isAuthorized,
   isCredentialedCorsOrigin,
   isTrustedLocalRequest,
+  normalizeWsClientId,
+  resolveCorsOrigin,
+  resolveTerminalRunClientId,
+  resolveTerminalRunRejection,
+  resolveWebSocketUpgradeRejection,
   tokenMatches,
 } from "./api/server-helpers-auth.ts";
-// `server-types.ts` is the canonical source for conversation/server type
-// shapes. `server.ts` already re-exports the bulk of these (see line ~520
-// over there); the additional exports below cover names that aren't already
-// re-exported through `./api/server.js`.
+export { isSafeResetStateDir } from "./api/server-helpers-config.ts";
+export {
+  fetchWithTimeoutGuard,
+  streamResponseBodyWithByteLimit,
+} from "./api/server-helpers-fetch.ts";
+export {
+  resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
+} from "./api/server-helpers-mcp.ts";
+export {
+  type PluginConfigMutationRejection,
+  resolvePluginConfigMutationRejections,
+} from "./api/server-helpers-plugin.ts";
+export { routeAutonomyTextToUser } from "./api/server-helpers-swarm.ts";
+export { resolveWalletExportRejection } from "./api/server-helpers-wallet.ts";
 export type {
   AgentAutomationMode,
   ChatAttachmentWithData,
   ConnectorRouteHandler,
   ConversationAutomationType,
+  ConversationMeta,
   ConversationMetadata,
   ConversationScope,
   PluginEntry,
@@ -296,11 +252,7 @@ export type {
   StreamEventType,
   TradePermissionMode,
 } from "./api/server-types.ts";
-export {
-  normalizeJsonRpcUrl,
-  probeJsonRpcEndpoint,
-  TxService,
-} from "./api/tx-service.ts";
+export { injectApiBaseIntoHtml } from "./api/static-file-server.ts";
 export { getWalletAddresses, initStewardWalletCache } from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/workbench-helpers.ts";
@@ -509,18 +461,7 @@ export type {
   ToolOutput,
 } from "./runtime/tool-call-cache/types.ts";
 export * from "./runtime/trajectory-internals.ts";
-export {
-  computeBySource,
-  extractInsightsFromResponse,
-  extractRows,
-  flushObservationBuffer,
-  pushChatExchange,
-  readOrchestratorTrajectoryContext,
-  shouldEnableTrajectoryLoggingByDefault,
-  shouldRunObservationExtraction,
-} from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-query.ts";
-export { loadPersistedTrajectoryRows } from "./runtime/trajectory-query.ts";
 export {
   DEFAULT_GET_STEPS_LIMIT,
   getSteps,
@@ -555,7 +496,6 @@ export {
   type RequiredRole,
 } from "./security/access.ts";
 export {
-  __resetAuditFeedForTests,
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
   type AuditEntry,
@@ -589,75 +529,7 @@ export {
   protectedTeeEnvironment,
 } from "./security/protected-profile.ts";
 export * from "./services/agent-backup.ts";
-export {
-  AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS,
-  type AgentBackupDatabaseComponent,
-  type AgentBackupFileEntry,
-  type AgentBackupFileEnvelope,
-  type AgentBackupFileSet,
-  type AgentBackupManifest,
-  type AgentBackupPgliteDump,
-  type AgentBackupPostgresDump,
-  type AgentBackupPostgresTable,
-  type AgentBackupStateData,
-  type AgentBackupV2CaptureComponentSource,
-  AgentBackupV2CaptureError,
-  type AgentBackupV2CaptureRuntime,
-  type AgentBackupV2CaptureSourceChunk,
-  AgentSnapshotBudgetExceededError,
-  type CreateAgentBackupV2CaptureOptions,
-  createAgentBackupV2Capture,
-  createAgentSnapshot,
-  createDefaultAgentBackupV2CaptureSources,
-  createLocalAgentBackup,
-  fetchAgentScopedRowsBatched,
-  type LocalAgentBackupMetadata,
-  listLocalAgentBackups,
-  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
-  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
-  type PglitePhysicalPreflight,
-  preflightPglitePhysicalDirectory,
-  purgeAdmittedRetiredLocalAgentBackups,
-  type RetiredLocalAgentBackup,
-  recoverInterruptedLocalBackupRestores,
-  resolveAgentBackupAvailableMemoryBytes,
-  restoreAgentSnapshot,
-  restoreLocalAgentBackup,
-  reviewRetiredLocalAgentBackups,
-  SnapshotBudget,
-  type SnapshotReservation,
-  type StreamAgentBackupV2CaptureOptions,
-  sha256AgentBackupV2CaptureChunk,
-  streamAgentBackupV2Capture,
-  withReviewedRetiredLocalAgentBackups,
-} from "./services/agent-backup.ts";
 export * from "./services/agent-export.ts";
-export {
-  AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
-  AGENT_EXPORT_FAILED,
-  type AgentExportComponentDigest,
-  AgentExportError,
-  type AgentExportManifest,
-  type AgentExportOptions,
-  type AgentExportPayload,
-  buildExportManifest,
-  canonicalize,
-  collectReferencedMediaFileNames,
-  digestCollection,
-  type ExportSizeEstimate,
-  estimateExportSize,
-  exportAgent,
-  type ImportResult,
-  importAgent,
-  MANIFEST_COLLECTIONS,
-  MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
-  MAX_AGENT_EXPORT_CANONICALIZE_NODES,
-  type ManifestCollection,
-  type ManifestMismatch,
-  type ManifestVerification,
-  restoreMedia,
-  verifyExportManifest,
-} from "./services/agent-export.ts";
 export {
   gatePluginSessionForHostedApp,
   hasActiveAppRunForCanonicalName,

@@ -3,7 +3,7 @@
 
 For task_types that contain a `thought:` block (reply, agent_trace, tool_call,
 mcp_tool_call), extract the thought string, compress it via
-`scripts.lib.caveman.compress`, and write back.
+`eliza_training.lib.caveman.compress`, and write back.
 
 Keeps the original alongside in
 `data/intermediate/caveman_thoughts.jsonl` keyed by line index, so we have a
@@ -22,9 +22,8 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.caveman import compress, compression_ratio  # noqa: E402
+from eliza_training.lib.caveman import compress, compression_ratio  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "final" / "train_deslopped.jsonl"

@@ -10,15 +10,12 @@ Coverage:
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.publish import publish_eliza1_all as P  # noqa: E402
+from eliza_training.publish import publish_eliza1_all as P  # noqa: E402
 
 
 def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
@@ -61,6 +58,18 @@ def test_sft_weights_status_pending_without_final(monkeypatch, tmp_path):
     out = P._sft_weights_status()
     assert out.status == "pending"
     assert out.repo == P.MODEL_REPO_ID
+
+
+def test_passing_local_gate_is_not_an_upload_receipt(monkeypatch, tmp_path):
+    run = tmp_path / "checkpoints" / "eliza-1-2b-apollo-fullcorpus-test"
+    (run / "final").mkdir(parents=True)
+    (run / "gate_report.json").write_text('{"passed": true}')
+    monkeypatch.setattr(P, "TRAINING_ROOT", tmp_path)
+
+    outcome = P._sft_weights_status()
+
+    assert outcome.status == "pending"
+    assert "have not been published" in outcome.detail
 
 
 def test_bundle_tiers_cover_release_size_matrix():
