@@ -1,4 +1,8 @@
 /** Public UI APIs. Internal modules import their owning files directly. */
+// The direct-cloud host map ElizaClient reads. Hosts that register an extra
+// direct-cloud base must reach this same module instance (a workspace source
+// alias of plugin-browser would load a second, unread copy).
+export { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 export { useAgentElement } from "./agent-surface/useAgentElement.js";
 export { completeAndroidCloudSignIn } from "./android-cloud/android-cloud-auth.js";
 export { shouldAcknowledgeAndroidCloudCallback } from "./android-cloud/android-cloud-client.js";
