@@ -45,6 +45,7 @@ const reminderArgs = {
 };
 const plannerToolNames = [
   `${ownerRemindersAction.name}_CREATE`,
+  "OWNER_GOALS",
   "DISCOVER_ACTIONS",
   ...CORE_PLANNER_TERMINALS.map((tool) => tool.name),
 ];
@@ -370,7 +371,7 @@ const definition = scenario({
             shouldRespond: "RESPOND",
             contexts: ["tasks"],
             intents: ["create reminder"],
-            replyText: "I’ll schedule that reminder.",
+            replyText: "I’ll preview that reminder for you to confirm.",
             replyEffectStatus: "pending",
             candidateActionNames: ["OWNER_REMINDERS"],
             facts: [],
@@ -415,9 +416,21 @@ const definition = scenario({
             },
           ],
           finishReason: "tool-calls",
-          thought: "Create the requested owner reminder.",
-          messageToUser: "I scheduled the reminder.",
+          thought: "Preview the requested owner reminder without saving it.",
+          messageToUser: "I prepared the reminder preview.",
           completed: true,
+        },
+        cardinality: 1,
+      },
+      {
+        name: "cloud-reminder-preview-reply",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "Scenario: preview_definition" },
+          toolNames: [],
+        },
+        response: {
+          text: "I can save this reminder for January 2, 2099 at 9 AM UTC. Confirm and I’ll save it.",
         },
         cardinality: 1,
       },
