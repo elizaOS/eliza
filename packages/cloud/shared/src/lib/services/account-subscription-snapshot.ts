@@ -1,4 +1,5 @@
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION } from "./subscription-funding-policy";
 
 /** Projects a coherent organization-only subscription read without provider identifiers, guessed charges or app-subscriber policy. */
 
@@ -137,6 +138,16 @@ export function buildOrganizationSubscriptionSnapshot(
       dunningStartedAt: subscription.dunning_started_at?.toISOString() ?? null,
       cancellationNotice: buildCancellationNotice(primary, observedAt),
       cancellationControl: buildCancellationControl(subscription, observedAt, authority),
+      fundingPolicy: {
+        status: "available",
+        source: "subscription-funding-operation-taxonomy",
+        observedAt,
+        value: {
+          schemaVersion: 1,
+          operationClasses: { ...SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION },
+          requiresRequestEligibility: true,
+        },
+      },
       allowance,
     },
   };
