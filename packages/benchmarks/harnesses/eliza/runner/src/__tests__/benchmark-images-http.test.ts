@@ -6,15 +6,17 @@ import { describe, expect, it } from "vitest";
 import { testOutputPath } from "../../../../../../scripts/lib/test-output.ts";
 
 const exec = promisify(execFile);
-const startupSeconds = Number(
-  process.env.ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S ?? 90,
-);
-if (!Number.isFinite(startupSeconds) || startupSeconds <= 0) {
-  throw new Error(
-    "ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S must be finite and positive",
-  );
+function timeoutSeconds(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be finite and positive`);
+  }
+  return value;
 }
-const fixtureTimeoutMs = (startupSeconds + 25) * 1000;
+const startupSeconds = timeoutSeconds("ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S", 90);
+const requestSeconds = timeoutSeconds("ELIZA_BENCH_TEST_REQUEST_TIMEOUT_S", 30);
+// Include the full startup/request budgets and the fixture's process cleanup.
+const fixtureTimeoutMs = (startupSeconds + requestSeconds + 15) * 1000;
 const fixture = path.join(import.meta.dirname, "fixtures/vision-http.py");
 const serverEntry = path.resolve(import.meta.dirname, "../cli.ts");
 

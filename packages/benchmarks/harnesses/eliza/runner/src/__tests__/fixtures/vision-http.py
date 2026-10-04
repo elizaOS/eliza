@@ -23,9 +23,16 @@ def interrupted(_signum, _frame):
 
 signal.signal(signal.SIGTERM, interrupted)
 
-startup_timeout = float(os.environ.get("ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S", "90"))
-if not math.isfinite(startup_timeout) or startup_timeout <= 0:
-    raise ValueError("ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S must be finite and positive")
+
+def timeout_seconds(name, fallback):
+    value = float(os.environ.get(name, fallback))
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
+    return value
+
+
+startup_timeout = timeout_seconds("ELIZA_BENCH_TEST_STARTUP_TIMEOUT_S", "90")
+request_timeout = timeout_seconds("ELIZA_BENCH_TEST_REQUEST_TIMEOUT_S", "30")
 root = Path(os.environ["BENCHMARK_VISION_TEST_OUTPUT"])
 root.mkdir(parents=True, exist_ok=True)
 server_entry = Path(os.environ["BENCHMARK_VISION_SERVER_ENTRY"])
@@ -239,7 +246,7 @@ with (
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=request_timeout) as response:
                 status, body = response.status, response.read().decode()
         except urllib.error.HTTPError as error:
             status, body = error.code, error.read().decode()
