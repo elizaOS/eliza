@@ -99,10 +99,13 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   const record = asRecord(value);
   if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
   const color = normalizeHexColor(record.color);
-  const imageUrl =
+  const storedImageUrl =
     typeof record.imageUrl === "string" && record.imageUrl.length > 0
       ? record.imageUrl
       : undefined;
+  // Preserve saved selections after the bundled wallpaper was recompressed.
+  const imageUrl =
+    storedImageUrl === "/bg-sunset.jpg" ? "/bg-sunset.webp" : storedImageUrl;
   // Image mode without a usable source is meaningless — fall back to the shader.
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };

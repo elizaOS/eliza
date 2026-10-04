@@ -35,6 +35,24 @@ afterEach(() => {
 });
 
 describe("useDisplayPreferences — background history + undo", () => {
+  it.each([
+    ["/bg-sunset.jpg", "/bg-sunset.webp"],
+    ["/bg-sunset.webp", "/bg-sunset.webp"],
+    ["https://example.com/user.jpg", "https://example.com/user.jpg"],
+    ["/api/media/user.jpg", "/api/media/user.jpg"],
+  ])("restores saved wallpaper %s as %s", (storedUrl, expectedUrl) => {
+    localStorage.setItem(
+      "eliza:ui-background",
+      JSON.stringify({ mode: "image", color: "#059669", imageUrl: storedUrl }),
+    );
+    const { result } = renderHook(() => useDisplayPreferences());
+    expect(result.current.state.backgroundConfig).toEqual({
+      mode: "image",
+      color: "#059669",
+      imageUrl: expectedUrl,
+    });
+  });
+
   it("starts on the boot default (Ember Night sunset wallpaper) with nothing to undo", () => {
     const { result } = renderHook(() => useDisplayPreferences());
     expect(result.current.state.backgroundConfig).toEqual(
