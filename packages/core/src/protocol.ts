@@ -567,6 +567,10 @@ export {
 	openPermissionSettings,
 } from "./utils/permission-deep-links.js";
 export {
+	getMacPermissionDeepLink,
+	openPermissionSettings,
+} from "./utils/permission-deep-links.js";
+export {
 	hasReasoningResidue,
 	stripReasoningPrefixes,
 } from "./utils/reasoning-tags.ts";
