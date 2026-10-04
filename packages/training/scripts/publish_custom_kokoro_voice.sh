@@ -166,8 +166,7 @@ if [ -x "$APPEND_HELPER" ] || command -v python3 >/dev/null; then
     --min-bundle "0.0.0" \
     --changelog-entry "$CHANGELOG_ENTRY" \
     --append-changelog \
-    "${EXTRA_FLAGS[@]}" \
-    || echo "WARNING: append_voice_model_version.py failed; review manually." >&2
+    "${EXTRA_FLAGS[@]}"
 fi
 
 cat <<EOF

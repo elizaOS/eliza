@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[1]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts import test_inagent_eliza as inagent  # noqa: E402
-from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
+from eliza_training import verify_inagent_eliza as inagent  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 
 
 def test_inagent_default_tiers_match_active_eliza1_matrix() -> None:

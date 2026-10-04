@@ -1,5 +1,5 @@
 import torch
-from qjl_kernel import quantization
+from . import quantization
 
 def cuda_quantized_bmm_dynamic(group_size: int,
                                fA: torch.FloatTensor,
