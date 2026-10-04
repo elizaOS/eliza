@@ -270,10 +270,6 @@ const runtimeBundleNodeModulesPath = path.join(
 const useMacIconsetBuild = isTruthyEnv(
 	process.env.ELIZA_ELECTROBUN_USE_ICONSET,
 );
-const repoPluginsJsonPath = path.relative(
-	electrobunDir,
-	path.join(repoRoot, "plugins.json"),
-);
 const repoPackageJsonPath = path.relative(
 	electrobunDir,
 	path.join(repoRoot, "package.json"),
@@ -485,9 +481,6 @@ export function resolveElectrobunCopyMap({
 		if (fs.existsSync(runtimeBundleNodeModulesPath)) {
 			copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
 		}
-		if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
-			copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
-		}
 		copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
 	}
 	Object.assign(
@@ -602,7 +595,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 	});
 	// Note: All paths relative to electrobun.config.ts location
 	// (eliza/packages/app/platforms/electrobun/)
-	// ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
+	// ../../../../../ goes to eliza repo root where dist/ and package.json exist
 	return {
 		app: {
 			name: appName,

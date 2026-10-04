@@ -6,10 +6,6 @@
  *
  * Designed to be invoked from any elizaOS-based fork:
  *   node eliza/packages/app/scripts/build-native-plugins.ts
- *
- * Forks that previously used `pkg.eliza.platforms` should rename to
- * `pkg.elizaos.platforms`, or wrap this script with a 1-line preprocessor
- * that mirrors the field before invocation.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -118,7 +114,6 @@ function logVerbose(message) {
 export async function buildNativePlugins({
   force = false,
   sourceRuntime = false,
-  hostFilter = shouldBuildPluginForHost,
 } = {}) {
   const pluginsDir = NATIVE_PLUGINS_ROOT;
   const pluginNames = CAPACITOR_PLUGIN_NAMES;
@@ -142,7 +137,7 @@ export async function buildNativePlugins({
         logVerbose(`[plugin:${name}] skipping — no build script declared`);
         return false;
       }
-      if (hostFilter(pkg, process.platform)) {
+      if (shouldBuildPluginForHost(pkg, process.platform)) {
         return true;
       }
       const platforms = pkg?.elizaos?.platforms;
@@ -187,5 +182,7 @@ const isDirectRun =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(scriptFile);
 
 if (isDirectRun) {
-  await buildNativePlugins();
+  await buildNativePlugins({
+    sourceRuntime: process.env.ELIZA_DEV_SOURCE === "1",
+  });
 }

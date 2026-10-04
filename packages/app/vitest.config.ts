@@ -47,16 +47,6 @@ export default defineConfig({
     ...baseConfig.resolve,
     alias: [
       {
-        // Entrypoint tests exercise the shipped iOS bridge import in source mode;
-        // the changed-test lane intentionally builds core only, so they cannot
-        // depend on a pre-existing app dist directory.
-        find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
-        replacement: path.join(
-          here,
-          "src/renderer/transports/ios-local-agent-transport.ts",
-        ),
-      },
-      {
         // main.tsx imports "@elizaos/ui/styles"; the ui package otherwise
         // resolves to its built dist, whose externalized styles.js makes Node
         // load raw .css. Aliasing to source keeps the stylesheet inside vite's

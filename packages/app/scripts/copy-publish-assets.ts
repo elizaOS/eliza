@@ -65,7 +65,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/ffi-stub/ffi-stub.c",
   "scripts/ffi-stub/ffi.h",
   "scripts/ffi-stub/tts-stream-ffi-smoke.ts",
-  "scripts/generate-plugin-index.ts",
   "scripts/generate-static-asset-manifest.ts",
   "scripts/i18n-dynamic-keys.json",
   "scripts/ios-xcframework/README.md",

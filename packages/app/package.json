@@ -145,7 +145,7 @@
     "capture:android-emu": "node scripts/capture-android-emu.ts",
     "capture:macos-desktop": "node scripts/capture-macos-desktop.ts",
     "test:watch": "node ../scripts/run-vitest.ts --config vitest.config.ts",
-    "plugin:build": "bun scripts/plugin-build.ts",
+    "plugin:build": "bun scripts/build-native-plugins.ts",
     "build:ios": "node ../../packages/app/scripts/run-mobile-build.ts ios",
     "build:ios:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0 ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS Simulator' ELIZA_IOS_BUILD_SDK=iphonesimulator node ../../packages/app/scripts/run-mobile-build.ts ios",
     "build:ios:cloud:device": "ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0 ELIZA_IOS_CODE_SIGNING_ALLOWED=YES ELIZA_IOS_ALLOW_PROVISIONING_UPDATES=1 ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS' ELIZA_IOS_BUILD_SDK=iphoneos node ../../packages/app/scripts/run-mobile-build.ts ios",
