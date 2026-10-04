@@ -134,6 +134,7 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
     ]),
     {
       deploySha: SHA,
+      probeCase: "qwen-3.8-27b@none@512",
       outputDir: join(process.cwd(), "artifacts/cert"),
       acknowledgedContractDigest: "",
       runAuth: true,
@@ -554,4 +555,50 @@ test("trace API denial survives private cleanup without retaining upstream secre
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("explicit probe controls retain the selected reasoning policy and token budget", async () => {
+  const { buildOpenAiRequestBody, parseProbeCase } = await import(
+    "./chat-latency.ts"
+  );
+  const defaults = parseCertificationArgs([
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+  ]);
+  const body = buildOpenAiRequestBody(
+    parseProbeCase(defaults.probeCase),
+    "synthetic proof",
+    "synthetic-cache-key",
+  );
+  assert.equal(Reflect.get(body, "reasoning_effort"), "none");
+  assert.equal(body.max_tokens, 512);
+  const selected = parseCertificationArgs([
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+    "--probe-case",
+    "qwen-3.8-27b@high@4096",
+  ]);
+  const selectedBody = buildOpenAiRequestBody(
+    parseProbeCase(selected.probeCase),
+    "synthetic proof",
+    "synthetic-cache-key",
+  );
+  assert.equal(Reflect.get(selectedBody, "reasoning_effort"), "high");
+  assert.equal(selectedBody.max_tokens, 4096);
+  assert.throws(
+    () =>
+      parseCertificationArgs([
+        "--deploy-sha",
+        SHA,
+        "--output-dir",
+        "artifacts/cert",
+        "--probe-case",
+        "qwen-3.8-27b@none@invalid",
+      ]),
+    /max_tokens/,
+  );
 });

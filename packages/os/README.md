@@ -62,3 +62,10 @@ The retained release tools use canonical JSON fixtures mirrored from
 [`elizaOS/os` at `735afc708eb3`](https://github.com/elizaOS/os/tree/735afc708eb3e7a76050c0c918c916bb5545b0bf/packages/os/release).
 Preserve hashed policy metadata verbatim; its historical proving command is
 part of the signed digest, not a current script entrypoint.
+
+`native/ota-publisher` contains the provisioned OTA publisher's durable version
+allocator, metadata transaction journal, rollback floors and strict descriptor
+parser. Hosts supply verified authorization, immutable storage and atomic timestamp
+CAS ports; the core has no default signer or publication destination. Run
+`bun run --cwd packages/os test:ota-publisher` for concurrency and real process-death
+recovery contracts. These tests do not authorize or perform production publication.
