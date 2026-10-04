@@ -2024,7 +2024,10 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	setSetting(key: string, value: string | boolean | null, secret = false) {
-		if (secret) {
+		const shadowedBySecret =
+			this.character.secrets !== undefined &&
+			Object.hasOwn(this.character.secrets, key);
+		if (secret || shadowedBySecret) {
 			const nestedSecrets =
 				this.character.settings &&
 				typeof this.character.settings.secrets === "object" &&
