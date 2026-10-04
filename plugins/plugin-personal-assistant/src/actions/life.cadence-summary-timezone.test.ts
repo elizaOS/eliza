@@ -220,8 +220,8 @@ describe("cadence summaries use the definition timezone (#33155)", () => {
     });
     expect(result.success).toBe(true);
     const text = String(result.text);
-    expect(text).toContain("once on Aug 20, 9:00 AM");
-    expect(text).toContain("once on Aug 20, 4:00 PM");
+    expect(text).toContain("once on Aug 20 at 9:00 AM");
+    expect(text).toContain("once on Aug 20 at 4:00 PM");
     expect(text).not.toContain("11:00");
     expect(text).not.toContain("6:00");
   });
