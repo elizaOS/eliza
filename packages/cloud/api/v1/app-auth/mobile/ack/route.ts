@@ -35,7 +35,10 @@ app.post("/", async (c) => {
         "Invalid mobile credential acknowledgement",
       );
     }
-    const { registration } = await requireRegisteredMobileApp(c);
+    const { registration } = await requireRegisteredMobileApp(
+      c,
+      parsed.data.clientId,
+    );
     const result = await acknowledgeMobileAppAuthCredential({
       registration,
       binding: {

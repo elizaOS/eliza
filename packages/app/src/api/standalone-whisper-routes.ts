@@ -36,6 +36,8 @@ class VoiceFailure extends Error {
 }
 async function configuration() {
   if (process.env.ELIZA_WHISPER_ENABLED !== "1") return null;
+  const backend = process.env.ELIZA_WHISPER_BACKEND ?? "cpu";
+  if (backend !== "cpu" && backend !== "auto") return null;
   const binary = process.env.ELIZA_WHISPER_BINARY,
     model = process.env.ELIZA_WHISPER_MODEL,
     binarySha = process.env.ELIZA_WHISPER_BINARY_SHA256;
@@ -66,7 +68,7 @@ async function configuration() {
       createHash("sha256").update(modelData).digest("hex") !== MODEL_SHA
     )
       return null;
-    return { binary, model, binarySha, modelSha: MODEL_SHA };
+    return { binary, model, binarySha, modelSha: MODEL_SHA, backend };
   } catch {
     return null;
   }
@@ -164,7 +166,7 @@ async function decode(
           "en",
           "-t",
           "4",
-          "-ng",
+          ...(config.backend === "cpu" ? ["-ng"] : []),
           "-nt",
           "-np",
           "-otxt",
@@ -247,6 +249,7 @@ export async function handleStandaloneWhisperRoute(
       ready: !!config,
       provider: PROVIDER,
       model: "tiny.en",
+      backend: config?.backend ?? null,
       language: "en",
       format: "pcm16-wav",
       sampleRate: 16000,

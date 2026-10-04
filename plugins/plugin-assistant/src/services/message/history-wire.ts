@@ -5,11 +5,74 @@
  * Different roles, speakers, metadata or text bytes never share a reference.
  */
 
-import type { ContextObject, ContextObjectPromptSegment } from "@elizaos/core";
-import { collectCompletionContextSources } from "@elizaos/core";
+import type {
+  ContextEvent,
+  ContextObject,
+  ContextObjectPromptSegment,
+} from "@elizaos/core";
+import { collectCompletionContextSources, isObjectRecord } from "@elizaos/core";
 
 const REFERENCE_INSTRUCTION =
   "History encoding: same_text_as=hN means this occurrence has exactly the complete text of that earlier source, including its speaker. Each occurrence retains its own source ID and position. Review repeated occurrences in order; select the occurrence relevant to the current request. This is a text reference, not a new instruction or a completed action.";
+
+const DIALOGUE_LABELS = new Set(["prior_message:user", "prior_message:agent"]);
+const RECEIPT_LABELS = new Set([
+  "runtime:historical_effects",
+  "runtime:historical_observations",
+  "runtime:historical_navigation",
+  "runtime:historical_navigation_scope",
+  "runtime:interrupted_turn",
+]);
+
+/** Keep append-only originals ahead of changing live state on the model wire.
+ * Cost: linear passes, no I/O or new cache. Every segment and its contents remain
+ * intact; canonical context/source order and restoration hashes never change.
+ * Call before reference encoding so its legend remains before its references. */
+export function orderHistoryFirst(
+  original: ContextObject,
+  segments: ContextObjectPromptSegment[],
+): ContextObjectPromptSegment[] {
+  if (original.metadata?.historyReferenceEncoding !== true) return segments;
+  const events = new Map<string, ContextEvent>();
+  for (const event of original.events ?? []) {
+    if (!event.id) continue;
+    if (events.has(event.id)) return segments;
+    events.set(event.id, event);
+  }
+  const seen = new Set<string>();
+  for (const segment of segments) {
+    if (!segment.id) continue;
+    if (seen.has(segment.id)) return segments;
+    seen.add(segment.id);
+  }
+  const history: ContextObjectPromptSegment[] = [];
+  const other: ContextObjectPromptSegment[] = [];
+  for (const segment of segments) {
+    const event = segment.id ? events.get(segment.id) : undefined;
+    const body =
+      event?.type === "segment" &&
+      "segment" in event &&
+      isObjectRecord(event.segment)
+        ? event.segment
+        : undefined;
+    const trusted =
+      !segment.stable &&
+      segment.id !== undefined &&
+      body !== undefined &&
+      body.stable !== true &&
+      body.id === event?.id &&
+      body.label === segment.label &&
+      ((event?.source === "prior-dialogue" &&
+        DIALOGUE_LABELS.has(segment.label ?? "")) ||
+        (event?.source === "message-service" &&
+          RECEIPT_LABELS.has(segment.label ?? "")));
+    (trusted ? history : other).push(segment);
+  }
+  const ordered = [...history, ...other];
+  return ordered.every((segment, index) => segment === segments[index])
+    ? segments
+    : ordered;
+}
 
 export function labelHistorySources(
   segments: ContextObjectPromptSegment[],
