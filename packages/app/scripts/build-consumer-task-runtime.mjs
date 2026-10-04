@@ -116,7 +116,7 @@ export function buildTaskRuntime(
       }
       fs.writeFileSync(
         path.join(browserSource, "provenance.json"),
-        JSON.stringify({ ...spec, files }, null, 2) + "\n",
+        `${JSON.stringify({ ...spec, files }, null, 2)}\n`,
       );
     }
     return provenance;
