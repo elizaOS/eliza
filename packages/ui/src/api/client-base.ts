@@ -32,7 +32,7 @@ import {
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
@@ -63,7 +63,6 @@ import {
 import { mergeStreamingText } from "../utils/streaming-text.js";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
 import { lastActivityHeadersForUrl } from "./auth/user-activity";
-import { ApiError, isCloudAgentGoneError } from "./client-types";
 import type {
   AccountConnectRequest,
   ChatActionResultSummary,
@@ -77,6 +76,7 @@ import type {
   WebSocketConnectionState,
   WsEventHandler,
 } from "./client-types-core";
+import { ApiError, isCloudAgentGoneError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import {

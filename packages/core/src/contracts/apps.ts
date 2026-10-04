@@ -170,17 +170,8 @@ export interface RegistryAppInfo {
 	uiExtension?: AppUiExtensionConfig;
 	viewer?: Omit<AppViewerConfig, "authMessage">;
 	session?: AppSessionConfig;
-	/**
-	 * If true, the app is a developer-tooling surface and is hidden from the
-	 * main UI unless Developer Mode is enabled in Settings. Equivalent to
-	 * `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category. Supersedes `developerOnly` when set:
-	 * `system`/`release` always show; `developer`/`preview` follow Settings
-	 * toggles. See `ViewKind` in `@elizaos/core`.
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Controls whether the app appears in the user-facing app store/catalog.

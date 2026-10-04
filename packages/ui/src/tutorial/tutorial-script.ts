@@ -7,9 +7,6 @@
  * A "Next" choice always remains as the manual fallback, so a step can never
  * strand the user on a detection that doesn't fire on their device.
  *
- * The old spotlight tour collapses into five conversational turns here. Chat
- * is one continuous thread, so the tutorial teaches messaging, voice, and
- * navigation without inventing reset or conversation-switching concepts.
  */
 
 export type TutorialStepId =

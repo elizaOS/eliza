@@ -104,25 +104,8 @@ export interface ResolvedSurfaceManifest {
 	capabilities: ReadonlySet<SurfaceCapability>;
 }
 
-/**
- * The sparse per-view fields the resolver reads. A view registration
- * (`ViewDeclaration`, `PluginAppNavTab`, `AppShellPageRegistration`, and the
- * `ViewRegistryEntry` transport DTO) carries an optional `surface` manifest plus
- * the legacy `backgroundPolicy` / `headerPolicy` fields that predate it. The
- * manifest wins when present; the legacy fields are the fallback so existing
- * declarations keep resolving to the same policy.
- */
+/** Declared surface policies and capability grants. */
 export interface SurfaceManifestBearer {
 	/** The declared manifest. Preferred source for every surface field. */
 	surface?: SurfaceManifest;
-	/**
-	 * Legacy standalone background policy, predating {@link surface}. Used only
-	 * when `surface.background` is absent.
-	 */
-	backgroundPolicy?: AppShellBackgroundPolicy;
-	/**
-	 * Legacy standalone header policy, predating {@link surface}. Used only when
-	 * `surface.header` is absent.
-	 */
-	headerPolicy?: ViewHeaderPolicy;
 }

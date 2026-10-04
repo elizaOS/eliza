@@ -17,7 +17,7 @@
  * testable without a real ServiceWorker/PushManager.
  */
 
-import { getBootConfig } from "../../config/boot-config";
+import { getBootConfig } from "../../config/boot-config-store";
 
 declare const __ELIZA_WEB_PUSH__: boolean | undefined;
 

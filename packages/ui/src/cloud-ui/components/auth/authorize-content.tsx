@@ -28,12 +28,12 @@ import {
 } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { LoginForm } from "../../../login/components/LoginForm";
 import { useAuth } from "../../../login/hooks/useAuth";
 import { DiscordIcon, GoogleIcon } from "../../../login/icons/index";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
-import { CornerBrackets } from "../primitives";
 import {
   buildAppAuthorizeCancelRedirect,
   buildAppAuthorizeCompletionRedirect,

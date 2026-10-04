@@ -19,8 +19,9 @@ vi.mock("../shell/CloudI18nProvider", () => ({
 }));
 
 vi.mock("./ApiKeysSurface", async () => {
-  const { useSetPageHeader } =
-    await vi.importActual<typeof import("../../cloud-ui")>("../../cloud-ui");
+  const { useSetPageHeader } = await vi.importActual<
+    typeof import("../../cloud-ui/components/layout/page-header-context.hooks")
+  >("../../cloud-ui/components/layout/page-header-context.hooks");
   return {
     ApiKeysSurface: () => {
       useSetPageHeader({ title: "API Keys" });

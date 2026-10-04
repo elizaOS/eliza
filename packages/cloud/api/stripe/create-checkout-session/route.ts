@@ -295,7 +295,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     const cancelUrl = hardwareSku
       ? `${baseUrl}/checkout/cancel?sku=${hardwareSku}`
       : returnUrl === "settings"
-        ? `${baseUrl}/cloud/settings?tab=billing`
+        ? `${baseUrl}/cloud/billing`
         : `${baseUrl}/cloud/billing?canceled=true`;
 
     const requestDigest = creditQuote

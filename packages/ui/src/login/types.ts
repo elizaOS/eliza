@@ -604,12 +604,11 @@ export interface LoginFormProps {
   onGuestDeleted?: (
     result: import("@elizaos/auth").LoginGuestDeleteResult,
   ) => void;
-  showSIWE?: boolean;
   /**
    * First-class wallet sign-in (SIWE / SIWS).
    *
    * - `true`  - render both EVM and Solana wallet panels (subject to provider feature-detect).
-   * - `false` (default) - hide both. Backwards-compatible.
+   * - `false` (default) - hide both.
    * - `{ evm: true }` - only EVM.
    * - `{ solana: true }` - only Solana.
    *

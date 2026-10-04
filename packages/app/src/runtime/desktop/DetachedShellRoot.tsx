@@ -210,7 +210,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
           </DetachedLazyBoundary>
         </DetachedWorkspaceView>
       );
-    case "triggers":
+    case "automations":
       return (
         <DetachedWorkspaceView chatScope="page-automations">
           <DetachedLazyBoundary>

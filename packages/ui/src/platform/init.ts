@@ -2,7 +2,7 @@
 import { Capacitor } from "@capacitor/core";
 import { userAgentHasElizaOSMarker } from "@elizaos/core/protocol";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,

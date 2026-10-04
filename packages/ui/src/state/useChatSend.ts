@@ -72,11 +72,10 @@ import {
 } from "./chat-send-failures";
 import { buildChatViewMetadata } from "./chat-view-routing";
 import {
-  applyStreamingTextModification,
   formatSearchBullet,
   mergeStreamingText,
   shouldApplyFinalStreamText,
-} from "./internal";
+} from "./parsers";
 import {
   clearPendingChatTurn,
   listPendingChatTurns,
@@ -90,6 +89,7 @@ import type { LoadConversationMessagesResult } from "./types";
 import type { ConversationMessageStateMutation } from "./useDataLoaders";
 import { useStreamingChatBuffer } from "./useStreamingChatBuffer";
 import type { StreamingTextModification } from "./useStreamingText";
+import { applyStreamingTextModification } from "./useStreamingText";
 
 // ── Types ────────────────────────────────────────────────────────────
 const CHAT_SEND_IDENTITY_OVERRIDE = Symbol("chat-send-identity-override");

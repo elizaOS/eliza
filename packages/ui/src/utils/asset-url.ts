@@ -8,7 +8,7 @@
  */
 
 import { getElizaApiBase } from "@elizaos/host/protocol";
-import { getBootConfig } from "../config/boot-config.js";
+import { getBootConfig } from "../config/boot-config-store";
 
 type AssetUrlResolveOptions = {
   currentUrl?: string;

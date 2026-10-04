@@ -141,7 +141,7 @@ app.post("/", async (c) => {
             error: "Insufficient credits",
             requiredCredits: tunnelAuthKeyCostUsd,
             currentBalance: debit.newBalance,
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
             billing: tunnelBilling(tunnelAuthKeyCostUsd, false),
           },
           402,

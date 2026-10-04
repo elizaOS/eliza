@@ -223,7 +223,7 @@ describe("useAvailableViews", () => {
       const { ShellViewAgentSurface } = await import(
         "../components/views/ShellViewAgentSurface"
       );
-      const { AgentButton } = await import("../agent-surface");
+      const { AgentButton } = await import("../agent-surface/components");
       const { dispatchViewInteract } = await import(
         "../components/views/view-interact-registry"
       );
@@ -322,7 +322,8 @@ describe("useAvailableViews", () => {
       const { ShellViewAgentSurface } = await import(
         "../components/views/ShellViewAgentSurface"
       );
-      const { AgentButton, getViewRegistry } = await import("../agent-surface");
+      const { AgentButton } = await import("../agent-surface/components");
+      const { getViewRegistry } = await import("../agent-surface/registry");
       getFrontendPlatform.mockReturnValue(platform);
       const NativeCalendar = () => (
         <AgentButton agentId="native-save">Save</AgentButton>

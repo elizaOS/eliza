@@ -9,9 +9,11 @@ import type {
   ActiveModelState,
   AgentModelSlot,
   CatalogModel,
+  DeviceBridgeStatus,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  LocalInferenceRegistration,
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
@@ -24,10 +26,6 @@ import type {
   RoutingPreferences,
 } from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
 import { ElizaClient } from "./client-base";
-import type {
-  DeviceBridgeStatus,
-  PublicRegistration,
-} from "./local-inference-response-types";
 
 let localInferenceHubRequest: Promise<ModelHubSnapshot> | null = null;
 /** Stable classification for an invalid hardware section in the hub response. */
@@ -135,11 +133,11 @@ export type {
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  LocalInferenceRegistration,
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
   ProviderStatus,
-  PublicRegistration,
   RoutingPolicy,
   RoutingPreferences,
   VerifyResult,
@@ -274,7 +272,7 @@ declare module "./client-base.js" {
     }>;
     verifyLocalInferenceModel(id: string): Promise<VerifyResult>;
     getLocalInferenceRouting(): Promise<{
-      registrations: PublicRegistration[];
+      registrations: LocalInferenceRegistration[];
       preferences: RoutingPreferences;
     }>;
     setLocalInferencePreferredProvider(

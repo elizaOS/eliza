@@ -37,7 +37,7 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
@@ -58,11 +58,6 @@ import {
   normalizeConnectorAccountsListResponse,
 } from "./client-agent-connector-accounts";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
-import {
-  ApiError,
-  mapAcpSessionsToCodingAgentSessions,
-  mapTaskThreadsToCodingAgentSessions,
-} from "./client-types";
 import type { CharacterHistoryResponse } from "./client-types-character";
 import type {
   CodingAgentAddAgentInput,
@@ -92,6 +87,10 @@ import type {
   ProjectSummary,
   RawAcpSession,
 } from "./client-types-cloud";
+import {
+  mapAcpSessionsToCodingAgentSessions,
+  mapTaskThreadsToCodingAgentSessions,
+} from "./client-types-cloud";
 import type {
   AppConfigResponse,
   CharacterData,
@@ -110,6 +109,7 @@ import {
   type AgentEventsResponse,
   type AgentSelfStatusSnapshot,
   type AgentStatus,
+  ApiError,
   type CreateTriggerRequest,
   isApiError,
   type LaunchSnapshot,

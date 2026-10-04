@@ -13,6 +13,12 @@
 import { Capacitor } from "@capacitor/core";
 import type { PluginAppNavTab } from "@elizaos/core";
 import {
+  AgentButton,
+  DEFAULT_BOOT_CONFIG,
+  getViewRegistry,
+  setBootConfig,
+} from "@elizaos/ui";
+import {
   act,
   cleanup,
   fireEvent,
@@ -23,10 +29,6 @@ import {
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  AgentButton,
-  getViewRegistry,
-} from "../../../ui/src/agent-surface/index";
-import {
   listAppShellPages,
   registerAppShellPage,
 } from "../../../ui/src/app-shell-registry";
@@ -35,10 +37,6 @@ import {
   ViewBackButton,
 } from "../../../ui/src/components/shared/ViewHeader";
 import { invokeViewInteract } from "../../../ui/src/components/views/view-interact-registry";
-import {
-  DEFAULT_BOOT_CONFIG,
-  setBootConfig,
-} from "../../../ui/src/config/boot-config";
 import { DEFAULT_BRANDING } from "../../../ui/src/config/branding-base";
 import { BrandingContext } from "../../../ui/src/config/branding-react.hooks";
 import {
@@ -283,7 +281,7 @@ const sharedCanvasView = {
   viewType: "gui" as const,
   // Sharing the Home/Launcher wallpaper is grant-gated (#13452): the surface
   // manifest must declare `background: "shared"` AND the `wallpaper`
-  // capability. A bare `backgroundPolicy: "shared"` resolves to opaque by
+  // capability. A surface without a wallpaper grant resolves to opaque by
   // design (no view opts into the wallpaper by accident).
   surface: {
     background: "shared" as const,
@@ -444,8 +442,6 @@ function getAppValue() {
     setState: vi.fn(),
     setTab: appState.setTab,
     setUiLanguage: vi.fn(),
-    setUiTheme: vi.fn(),
-    setUiThemeMode: vi.fn(),
     startupCoordinator: {
       phase: appState.startupPhase,
       isShellPaintable: [
@@ -468,7 +464,6 @@ function getAppValue() {
     uiLanguage: "en",
     uiShellMode: "default",
     uiTheme: "light",
-    uiThemeMode: "system",
   };
 }
 function useAppValue() {

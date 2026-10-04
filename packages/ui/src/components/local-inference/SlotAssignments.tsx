@@ -8,7 +8,8 @@ import type {
 import { isVerifiedCuratedEliza1Download } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../api/client";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {

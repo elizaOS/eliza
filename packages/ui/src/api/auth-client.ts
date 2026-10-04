@@ -9,6 +9,7 @@
  */
 
 import type { RoleGateRole } from "@elizaos/core";
+import { ROLE_RANK } from "@elizaos/core/protocol";
 import { getElizaApiToken } from "@elizaos/host/protocol";
 import {
   clearStoredStewardToken,
@@ -19,7 +20,7 @@ import {
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { isNative } from "../platform/init";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
 import {
@@ -59,15 +60,8 @@ export interface AuthAccessInfo {
   mode: "local" | "session" | "remote" | "bearer";
   passwordConfigured: boolean;
   ownerConfigured: boolean;
-  /**
-   * Server-resolved boundary role (#9948). The `/api/auth/me` route computes
-   * this from the same trust + token signals as `resolveBoundaryRole`, so the
-   * UI's `useRole`/`RoleGate` can gate on the authoritative tier instead of
-   * inferring from `mode`. Optional for back-compat with older backends. Typed
-   * as the canonical {@link RoleGateRole} (#12087 Item 28) so the accepted tier
-   * set has one source of truth in `@elizaos/core`.
-   */
-  role?: RoleGateRole;
+  /** Authoritative role returned by the authenticated server boundary. */
+  role: RoleGateRole;
 }
 // ── Success / failure discriminated unions ────────────────────────────────────
 export type AuthSetupResult =
@@ -206,6 +200,7 @@ async function resolvePairingFallback(
     reason: "remote_auth_required",
     access: {
       mode: "remote",
+      role: "GUEST",
       passwordConfigured: true,
       ownerConfigured: false,
     },
@@ -450,6 +445,7 @@ export async function authMe(): Promise<AuthMeResult> {
         reason: "remote_auth_required",
         access: {
           mode: "remote",
+          role: "GUEST",
           passwordConfigured: false,
           ownerConfigured: true,
         },
@@ -461,6 +457,7 @@ export async function authMe(): Promise<AuthMeResult> {
       session: { id: "cloud", kind: "machine", expiresAt: null },
       access: {
         mode: "session",
+        role: "USER",
         passwordConfigured: true,
         ownerConfigured: true,
       },
@@ -490,15 +487,13 @@ export async function authMe(): Promise<AuthMeResult> {
     if (!requestIsCurrent()) return { ok: false, status: 503 };
     if (viaRpc) {
       if (viaRpc.identity && viaRpc.session) {
+        if (!viaRpc.access || !Object.hasOwn(ROLE_RANK, viaRpc.access.role))
+          return { ok: false, status: 503 };
         return {
           ok: true,
           identity: viaRpc.identity,
           session: viaRpc.session,
-          access: viaRpc.access ?? {
-            mode: "session",
-            passwordConfigured: true,
-            ownerConfigured: true,
-          },
+          access: viaRpc.access,
         };
       }
       if (viaRpc.unauthorized) {
@@ -537,15 +532,13 @@ export async function authMe(): Promise<AuthMeResult> {
       access?: AuthAccessInfo;
     };
     if (!requestIsCurrent()) return { ok: false, status: 503 };
+    if (!body.access || !Object.hasOwn(ROLE_RANK, body.access.role))
+      return { ok: false, status: 503 };
     return {
       ok: true,
       identity: body.identity,
       session: body.session,
-      access: body.access ?? {
-        mode: "session",
-        passwordConfigured: true,
-        ownerConfigured: true,
-      },
+      access: body.access,
     };
   }
   if (res.status === 401) {

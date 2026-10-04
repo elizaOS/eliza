@@ -21,7 +21,7 @@ import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../lib/utils";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
 

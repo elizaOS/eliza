@@ -7,14 +7,7 @@ export {
   runAbortableRequest,
 } from "./api/abortable-request.js";
 export { supportsFullAppShellRoutes } from "./api/app-shell-capabilities.js";
-export {
-  ApiError,
-  client,
-  ElizaClient,
-  isApiError,
-  isCloudAgentGoneError,
-  isRateLimitedError,
-} from "./api/client.js";
+export { client, ElizaClient } from "./api/client.js";
 export {
   cloudTokenSecsRemaining,
   type DedicatedAdoptionConfirmationQuote,
@@ -71,6 +64,12 @@ export type {
   LaunchSnapshot,
   ScheduledTaskView,
   StreamEventEnvelope,
+} from "./api/client-types-core.js";
+export {
+  ApiError,
+  isApiError,
+  isCloudAgentGoneError,
+  isRateLimitedError,
 } from "./api/client-types-core.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {
@@ -169,7 +168,6 @@ export {
   isImmersiveWallpaperRoute,
   resolveBuiltinBackgroundPolicy,
   resolveBuiltinRoutedViewManifest,
-  resolveBuiltinTabId,
 } from "./builtin-tab-registry.js";
 export type { ServerTask } from "./chat/coding-agent-session-state.js";
 export {
@@ -868,7 +866,6 @@ export {
   resolveBuiltinRouteDescriptor,
   resolveDefaultLandingTab,
   resolveInitialTabForPath,
-  resolveLegacyBuiltinRoute,
   shouldUseHashNavigation,
   TAB_PATHS,
   type Tab,
@@ -908,6 +905,7 @@ export {
   type IosRuntimeMode,
   resolveCloudApiBase,
   resolveIosRuntimeConfig,
+  resolveMobileApiConnection,
 } from "./platform/ios-runtime.js";
 export { isCapacitorNativeRuntime } from "./platform/native-probe.js";
 export {
@@ -1110,7 +1108,7 @@ export {
   parseStreamEventEnvelopeEvent,
 } from "./state/parsers.js";
 export {
-  applyUiTheme,
+  applyAppTheme,
   clearPersistedActiveServer,
   createPersistedActiveServer,
   hydratePersistedFirstRunCompleteFromNativeStore,
@@ -1118,9 +1116,7 @@ export {
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
   loadUiLanguage,
-  loadUiThemeMode,
   type PersistedActiveServer,
-  resolveUiTheme,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "./state/persistence.js";
@@ -1328,7 +1324,7 @@ export {
   loadTriggersView,
   loadVaultPageView,
   loadViewInteractRegistry,
-  loadVoice,
+  loadVoiceBootstrap,
   loadWebAppsStudio,
 } from "./view-loaders.js";
 export { emitViewEvent } from "./views/view-event-bus.js";

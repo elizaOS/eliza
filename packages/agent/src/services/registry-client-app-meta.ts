@@ -143,7 +143,7 @@ export function mergeAppMeta(
     uiExtension: patch.uiExtension ?? base.uiExtension,
     viewer: mergeViewer(base.viewer, patch.viewer),
     session: mergeSession(base.session, patch.session),
-    developerOnly: patch.developerOnly ?? base.developerOnly,
+    viewKind: patch.viewKind ?? base.viewKind,
     visibleInAppStore: patch.visibleInAppStore ?? base.visibleInAppStore,
     mainTab: patch.mainTab ?? base.mainTab,
     catalogSection: patch.catalogSection ?? base.catalogSection,

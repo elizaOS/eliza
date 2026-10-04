@@ -253,8 +253,7 @@ interface BuiltinSectionDefinition {
   bodyClassName?: string;
   /** Compact navigation weight; secondary rows stay one disclosure away. */
   prominence?: SettingsSectionProminence;
-  /** Hide unless Developer Mode is on. */
-  developerOnly?: boolean;
+  viewKind?: import("@elizaos/core").ViewKind;
   /** Hide on the cloud mobile build (no host machine). */
   hideOnCloud?: boolean;
   /** Show only in the standard Android Cloud/Play build. */
@@ -355,7 +354,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     labelKey: "settings.sections.capabilities.label",
     titleKey: "common.capabilities",
     // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
+    viewKind: "developer",
     Component: CapabilitiesSection,
   },
   {
@@ -368,7 +367,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     hue: "accent",
     labelKey: "settings.sections.apps.label",
     // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
+    viewKind: "developer",
     Component: AppsManagementSection,
   },
   {
@@ -418,7 +417,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     labelKey: "settings.sections.background.label",
     // Consolidated into the Appearance section for MVP; the standalone tab is
     // hidden but kept registered so the `/background` deep-link still resolves.
-    developerOnly: true,
+    viewKind: "developer",
     // Chrome-light so the live wallpaper shows through while choices apply.
     Component: BackgroundSettingsSection,
   },
@@ -443,7 +442,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     hue: "slate",
     labelKey: "settings.sections.runtime.label",
     // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
+    viewKind: "developer",
     Component: RuntimeSettingsSection,
   },
   {
@@ -458,7 +457,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     bodyClassName: "p-4 sm:p-5",
     // Hidden for MVP — default to Eliza Cloud RPC. Kept registered so the route
     // still resolves and it can be re-surfaced later.
-    developerOnly: true,
+    viewKind: "developer",
     Component: WalletRpcSection,
   },
   {
@@ -471,7 +470,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     hue: "slate",
     labelKey: "settings.sections.updates.label",
     // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
+    viewKind: "developer",
     Component: ReleaseCenterView,
   },
   {
@@ -523,7 +522,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     labelKey: "settings.sections.apppermissions.label",
     // Folded into the combined Permissions subview for the everyday hub;
     // registered-but-hidden so the deep-link/agent address still resolves.
-    developerOnly: true,
+    viewKind: "developer",
     Component: AppPermissionsSection,
   },
   {
@@ -539,7 +538,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     // "Sessions & Privacy" section covers real account security on cloud.
     hideOnCloud: true,
     // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
+    viewKind: "developer",
     Component: SecuritySettingsSection,
   },
 
@@ -579,7 +578,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     order: 1.55,
     // Hidden for MVP — agent management renders inside the single "Eliza
     // Cloud" tab (CloudOverviewSection). Deep-link still resolves.
-    developerOnly: true,
+    viewKind: "developer",
     cloudOnly: true,
     Component: CloudAgentsSection,
   },
@@ -609,7 +608,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     order: 3.5,
     // Hidden for MVP until the expanded pairing and remote-target surface has
     // explicit product authority. Its deep link remains registered.
-    developerOnly: true,
+    viewKind: "developer",
     Component: DevicesRuntimesContainer,
   },
 ] as const;
@@ -637,7 +636,7 @@ function toSettingsSectionDef(
     defaultTitle: sectionDefaultTitle(def),
     bodyClassName: def.bodyClassName,
     prominence: def.prominence,
-    developerOnly: def.developerOnly,
+    viewKind: def.viewKind,
     hideOnCloud: def.hideOnCloud,
     androidCloudOnly: def.androidCloudOnly,
     hideOnManagedCloud: def.hideOnManagedCloud,
@@ -717,17 +716,6 @@ export function assertMetaCatalogParity(): void {
 }
 
 assertMetaCatalogParity();
-
-/**
- * The built-in local sections that are part of the pinned QA catalog, in
- * display order. Derived from the canonical definitions (catalog subset).
- * Retained as a named export for backward compatibility; runtime consumers read
- * the live registry via {@link getAllSettingsSections}.
- */
-export const SETTINGS_SECTIONS: SettingsSectionDef[] =
-  BUILTIN_SECTION_DEFINITIONS.filter(isCatalogSection).map((def, index) =>
-    toSettingsSectionDef(def, index),
-  );
 
 // The Cloud group must exist before its member sections register into it.
 registerSettingsGroup({

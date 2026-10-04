@@ -37,7 +37,7 @@ import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-hando
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
 import {
   isAndroid,

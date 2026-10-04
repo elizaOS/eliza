@@ -1,15 +1,5 @@
-/**
- * Types and defaults for persisted UI preferences — theme mode (light/dark/
- * system), shell mode, and the app background config (shader uniforms, image).
- * Owned by useDisplayPreferences; persisted to localStorage.
- */
+/** Shared appearance types and persisted background preferences. */
 export type UiTheme = "light" | "dark";
-/**
- * User-selectable theme mode. `system` follows the OS `prefers-color-scheme`
- * and resolves to a concrete {@link UiTheme} at apply time. This is the
- * default for new users.
- */
-export type UiThemeMode = "light" | "dark" | "system";
 export type UiShellMode = "native";
 
 import {

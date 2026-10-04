@@ -147,7 +147,6 @@ export {
   parseMeetingStatusEvent,
   parseMeetingTranscriptEvent,
 } from "./client-meetings";
-export * from "./client-types";
 export type { AgentRequestTransport } from "./transport";
 export type {
   AllPermissionsState,

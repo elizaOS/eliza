@@ -43,8 +43,6 @@ export {
 } from "./lib/apps";
 export {
   APPLICATIONS_DETAIL_ROUTE_PATH,
-  APPLICATIONS_LEGACY_DETAIL_ROUTE_PATH,
-  APPLICATIONS_LEGACY_LIST_ROUTE_PATH,
   APPLICATIONS_LIST_ROUTE_PATH,
 } from "./register-moved-routes";
 

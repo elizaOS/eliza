@@ -14,11 +14,11 @@ import {
 
 import { useEffect } from "react";
 
-const MAIN_SURFACE_TABS = new Set<Tab>(["chat", "plugins", "triggers"]);
+const MAIN_SURFACE_TABS = new Set<Tab>(["chat", "plugins", "automations"]);
 const MAIN_NAVIGATION_TABS = new Set<Tab>([
   "chat",
   "plugins",
-  "triggers",
+  "automations",
   "settings",
 ]);
 

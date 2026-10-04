@@ -6,14 +6,15 @@
  * home-time-widget visibility persistence. Real hook under jsdom + real
  * `localStorage`.
  */
+
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MAX_BACKGROUND_HISTORY } from "./background-history";
 import {
   loadBackgroundConfig,
   loadBackgroundHistory,
   loadBackgroundRedo,
   loadHomeTimeWidgetHidden,
-  MAX_BACKGROUND_HISTORY,
   MAX_BACKGROUND_HISTORY_DATA_URLS,
   normalizeBackgroundHistory,
   saveHomeTimeWidgetHidden,

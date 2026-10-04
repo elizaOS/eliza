@@ -87,16 +87,6 @@ type SubscriptionAddMode =
   | "unavailable"
   | "none";
 
-// The static provider catalog + its types now live in their own module so
-// presentational pieces can import them without a circular dependency on this
-// dialog. Re-exported here for backward compatibility.
-export {
-  ACCOUNT_PROVIDER_OPTIONS,
-  type AccountProviderCategory,
-  type AccountProviderOption,
-  getAccountProviderOption,
-} from "./account-provider-options";
-
 function getSubscriptionAddMode(
   providerId: LinkedAccountProviderId,
 ): SubscriptionAddMode {
