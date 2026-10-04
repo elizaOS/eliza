@@ -133,6 +133,28 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
         parent: { ...original, content: projection.content },
         segments: projection.segments,
       });
+      const sameRoomNeighbor = {
+        ...message("same-room neighbor 🙂\n".repeat(8_000)),
+        id: "71000000-0000-4000-8000-000000000005" as UUID,
+      };
+      const otherRoomId = "71000000-0000-4000-8000-000000000006" as UUID;
+      await adapter.createRoomParticipants([ENTITY_ID], otherRoomId);
+      const otherRoomNeighbor = {
+        ...message("other-room neighbor 🙂\n".repeat(8_000)),
+        id: "71000000-0000-4000-8000-000000000007" as UUID,
+        roomId: otherRoomId,
+      };
+      const neighbors = [sameRoomNeighbor, otherRoomNeighbor].map((parent) => ({
+        parent,
+        projection: buildMessageContentProjection(parent),
+      }));
+      for (const neighbor of neighbors) {
+        await adapter.publishMessageContentSegments({
+          mode: "create",
+          parent: { ...neighbor.parent, content: neighbor.projection.content },
+          segments: neighbor.projection.segments,
+        });
+      }
       const segmentIds = projection.segments.map(
         (segment) => segment.id as UUID,
       );
@@ -147,6 +169,17 @@ describe("SQLiteDatabaseAdapter message content segments", () => {
 
       expect(await adapter.getMemoriesByIds([MESSAGE_ID])).toEqual([]);
       expect(await adapter.getMemoriesByIds(segmentIds)).toEqual([]);
+      for (const neighbor of neighbors) {
+        const ids = [
+          neighbor.parent.id,
+          ...neighbor.projection.segments.map((segment) => segment.id as UUID),
+        ];
+        const shouldSurvive =
+          method === "deleteMemories" || neighbor.parent.roomId !== ROOM_ID;
+        expect(await adapter.getMemoriesByIds(ids)).toHaveLength(
+          shouldSurvive ? ids.length : 0,
+        );
+      }
     },
   );
 });
