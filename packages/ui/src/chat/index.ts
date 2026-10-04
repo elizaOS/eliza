@@ -3,8 +3,10 @@
  */
 
 import type { EnabledViewKinds } from "@elizaos/core";
-import { MESSAGE_SOURCE_CODING_AGENT } from "@elizaos/core/types/message-source";
-import { isViewVisible } from "@elizaos/core/views/view-kind";
+import {
+  isViewVisible,
+  MESSAGE_SOURCE_CODING_AGENT,
+} from "@elizaos/core/protocol";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import type {

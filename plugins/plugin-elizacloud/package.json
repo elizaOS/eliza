@@ -129,6 +129,8 @@
     "@ai-sdk/provider-utils": "5.0.5",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "1.8.0",
     "@opentelemetry/api": "1.9.1",
@@ -136,6 +138,7 @@
     "@scure/bip39": "1.6.0",
     "abitype": "1.2.4",
     "ai": "^6.0.30",
+    "drizzle-orm": "0.45.2",
     "isows": "1.0.7",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
@@ -143,8 +146,7 @@
     "undici": "8.10.2",
     "viem": "^2.56.9",
     "ws": "8.21.3",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "drizzle-orm": "0.45.2"
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

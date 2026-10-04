@@ -1,6 +1,7 @@
 /** Binds definition creation previews and durable claims to one scoped operation. */
+
+import type { LifeOpsOwnership } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { LifeOpsOwnership } from "../contracts/index.js";
 
 export const DEFINITION_CREATION_OPERATION = "lifeops.definition.create";
 

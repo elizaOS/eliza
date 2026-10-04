@@ -23,7 +23,7 @@
  * stage as failed with the structured cause message.
  */
 
-import { elizaSourceUrl } from "./eliza-repo.ts";
+import { importElizaPackage } from "./eliza-repo.ts";
 import type { OcrCoordResult } from "./types.ts";
 
 interface RealOcrInput {
@@ -74,9 +74,9 @@ interface PluginVisionOcrCoordsModule {
 export async function discoverOcrProvider(): Promise<DiscoverOcrResult> {
   let module: PluginVisionOcrCoordsModule;
   try {
-    module = (await import(
-      elizaSourceUrl("plugins/plugin-vision/src/ocr-with-coords.ts")
-    )) as PluginVisionOcrCoordsModule;
+    module = await importElizaPackage<PluginVisionOcrCoordsModule>(
+      "@elizaos/plugin-vision",
+    );
   } catch (err) {
     return {
       provider: null,

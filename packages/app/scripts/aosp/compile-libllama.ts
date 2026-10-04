@@ -1,179 +1,11 @@
 #!/usr/bin/env node
-// eliza/packages/app/scripts/aosp/compile-libllama.ts —
-// cross-compile llama.cpp into a musl-linked libllama.so for the
-// AOSP-bound privileged-system-app APK shipped by an elizaOS host or
-// any white-label fork built on it.
-//
-// Why musl, not the regular Android NDK toolchain:
-//   AOSP system-app builds ship a self-contained bun-on-Android
-//   process (see scripts/spike-android-agent/bootstrap.sh +
-//   eliza/packages/app/scripts/lib/stage-android-agent.ts).
-//   That process loads bun-linux-{x64,aarch64}-musl from inside the
-//   APK, runs through ld-musl-{x86_64,aarch64}.so.1 (the Alpine musl
-//   loader), and links libstdc++.so.6 / libgcc_s.so.1 from Alpine
-//   v3.21. It is not bionic. NDK clang produces bionic-linked ELFs
-//   that depend on libc.so / libdl.so symbols the musl loader doesn't
-//   expose, so dlopen() of an NDK-compiled libllama.so inside the bun
-//   process fails with "undefined symbol" the moment libllama touches
-//   a libc primitive.
-//
-//   Requirement: libllama.so MUST be a musl-linked shared object whose
-//   external dependencies are limited to ld-musl, libstdc++.so.6, and
-//   libgcc_s.so.1 — all three of which the APK already ships per ABI.
-//
-// Toolchain choice:
-//   We use `zig cc --target={aarch64,x86_64}-linux-musl` for cross-compilation.
-//   Zig bundles a complete musl libc, libc++, and cross-toolchain for both
-//   architectures, which avoids the (otherwise multi-step) work of building
-//   a musl-cross-make toolchain on the build host. Bun itself uses zig for
-//   its musl Android targets, so the resulting ABI matches what bun expects
-//   when it dlopen()s libllama.so via bun:ffi at runtime.
-//
-//   Arm64/aarch64-musl is pinned to zig 0.13.x. Earlier versions ship older
-//   libc++ headers that miss <bit> / <span> shims llama.cpp's CMake feature
-//   checks rely on, and newer host toolchains have regressed this lane (zig
-//   0.16's lld SIGSEGVs the aarch64-linux-musl link). Keep that target on the
-//   tested 0.13 line until the upstream linker crash is cleared.
-//
-// llama.cpp pin (matches the fork the runtime loads via
-// plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts):
-//   fork:   https://github.com/elizaOS/llama.cpp
-//   tag:    v1.0.0-eliza           (the kernel-complete v0.4.0-eliza tree,
-//                                   re-tagged on the elizaOS org rename)
-//   commit: 08032d57e15574f2a7ca19fc3f29510c8673d590
-//
-//   This tree adds the W4-B CUDA QJL + PolarQuant Q4 + TBQ3_TCQ kernels
-//   on top of the earlier eliza-lineage tags. The CUDA paths only matter
-//   for the linux-x64-cuda host target (the AOSP arm64 path stays
-//   CPU-only), but the pin is shared so both AOSP and host build paths
-//   land on identical kernel sources. A rebase onto a newer upstream is a
-//   deferred effort — see docs/porting/upstream-rebase-plan.md.
-//
-//   v0.2.0-eliza (subset of this pin) added MTP speculative decoding
-//   CLI surface (--spec-type mtp, --spec-draft-n-min/max, n_drafted_total
-//   / n_drafted_accepted_total Prometheus counters) on top of v0.1.0-eliza.
-//
-// Why this fork (not stock ggml-org/llama.cpp b8198):
-//   The Eliza fork composes four techniques onto upstream b8198:
-//
-//     - TBQ3_0 (slot 43) + TBQ4_0 (slot 44) — 3-bit / 4-bit TurboQuant V-cache.
-//       Cherry-picked from apothic/llama.cpp-1bit-turboquant @ b2b5273.
-//       block_tbq3_0 packs 32 floats into 14 bytes vs 64 bytes for fp16
-//       (4–4.6× reduction). KV cache is the dominant memory consumer on
-//       long contexts on phones, so this is the difference between
-//       "Eliza-1 loads but OOMs after 1k tokens" and "Eliza-1 loads and chats".
-//     - QJL1_256 (slot 46) — 1-bit JL-transform K-cache (256 sketch dims,
-//       34 bytes/block). From W1-A's QJL series.
-//     - Q4_POLAR (slot 47) — 4-bit PolarQuant weight quantization. From
-//       W1-B's Polar series. Bumped from upstream slot 45 to 47 because
-//       slot 46 is now QJL.
-//     - Metal kernel sources (.metal) for TBQ3_0/TBQ4_0/TBQ3_TCQ/QJL/Polar
-//       under ggml/src/ggml-metal/eliza-kernels/. Source-only landing —
-//       dispatcher wiring is the next agent's job.
-//
-//   The CPU implementations of all four techniques (NEON for arm64, AVX2
-//   for x86_64, scalar fallback) are baked into the fork at
-//   ggml/src/ggml-cpu/qjl/* and ggml/src/ggml-cpu/quants-polar.c. Mobile
-//   is CPU-only via the bun:ffi musl path, so these are what makes the
-//   fork useful on phones at all.
-//
-//   The fork is based on llama.cpp b8198 (much newer than the prior b4500
-//   pin), so it inherits the post-2024 sampler-chain API
-//   (`llama_sampler_chain_init`, `llama_sampler_init_greedy`, etc.) and the
-//   renamed model/vocab API (`llama_model_load_from_file`,
-//   `llama_init_from_model`, `llama_model_get_vocab`, `llama_vocab_eos`,
-//   `llama_vocab_is_eog`) the adapter binds against. One drift versus
-//   b4500: `llama_context_params.flash_attn` (bool) → `flash_attn_type`
-//   (enum). The shim no longer exposes a `set_flash_attn` setter (the
-//   adapter never called it anyway).
-//
-// Output (per ABI):
-//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libllama.so
-//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libggml.so
-//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
-//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/libggml-base.so
-//   packages/app/platforms/android/app/src/main/assets/agent/{abi}/llama-server          (MTP spec-decode HTTP server)
-//   (with --target *-fused: libelizainference.so — the fused FFI lib)
-//
-// libllama.so has NEEDED entries on the entire libggml family (see
-// `readelf -d`); the dynamic linker resolves them from the per-ABI asset
-// dir via the LD_LIBRARY_PATH ElizaAgentService.java sets at process
-// launch. ABIs: arm64-v8a (real phones), x86_64 (cuttlefish + emulators),
-// and riscv64 (cf_riscv64_phone + future riscv64 hardware).
-//
-// libllama.so + the libggml*.so family are NOT loaded directly by any TS
-// adapter anymore — the runtime loads the fused libelizainference.so. But
-// the fused lib `target_link_libraries(elizainference PUBLIC llama)` against
-// the SHARED libllama.so, so libllama.so + libggml*.so remain runtime
-// DT_NEEDED dependencies of libelizainference.so and MUST keep building +
-// staging. The old bun:ffi struct-by-value shims (libeliza-llama-shim.so +
-// libeliza-llama-speculative-shim.so), consumed by the now-deleted
-// aosp-llama-adapter.ts, have been retired from this builder.
-//
-// Approximate build cost on a modern Linux x86_64 builder (16 cores, NVMe):
-//   - llama.cpp clone:    ~30 s, ~150 MB working tree.
-//   - per-ABI configure:  ~10 s.
-//   - per-ABI compile:    ~2-3 minutes.
-//   - per-ABI strip:      <1 s.
-//   - libllama.so size:   ~5-10 MB stripped per ABI (varies with zig
-//                         baseline ISA selection).
-//
-// Idempotent: cached clone + cached build dirs skip rework. Bumping the
-// pinned tag in LLAMA_CPP_TAG / LLAMA_CPP_COMMIT busts the cache.
-//
-// CI portability:
-//   The script self-bootstraps everything it needs. On a clean machine with
-//   only `zig` and `cmake` on PATH, it:
-//     1. Writes per-ABI `zig-cc` / `zig-cxx` driver scripts to
-//        ${cacheDir}/zig-driver/{abi}/. CMake invokes its CMAKE_C_COMPILER as
-//        a single binary with whatever args it wants; if we passed `zig` with
-//        --target=... in CMAKE_C_FLAGS, zig parses `--target=...` as an
-//        unknown top-level subcommand and fails its compiler probe. The
-//        driver scripts shim `zig cc --target=<triple>` so cmake sees a
-//        regular cc-style compiler.
-//     2. Patches `ggml/src/ggml.c` so `<execinfo.h>` is only included on glibc
-//        Linux. Upstream b3490 includes it under a bare `__linux__` guard;
-//        musl libc does not provide that header, and the include explodes the
-//        compile. The current pin (b4500+) already gates the include on
-//        `__GLIBC__`, so the patch detects this and no-ops. On older pins
-//        the patch rewrites the include guard.
-//     3. Strips libllama.so / libggml.so out-of-place. zig 0.13's
-//        `zig objcopy --strip-all <src> <dst>` truncates dst to 0 before
-//        reading src when src == dst; the in-place pattern leaves an empty
-//        file. We strip to `<file>.stripped` and rename.
-//     4. Co-copies the entire libggml*.so family alongside libllama.so.
-//        On b4500 libllama.so has NEEDED entries for libggml.so,
-//        libggml-cpu.so, and libggml-base.so; the dynamic linker resolves
-//        all three from the same dir at runtime via the LD_LIBRARY_PATH
-//        ElizaAgentService.java sets. Without the co-copy, dlopen fails
-//        with "libggml-base.so: cannot open shared object file" (or
-//        whichever NEEDED sibling is missing).
-//     5. Configures cmake with `-DCMAKE_SKIP_BUILD_RPATH=TRUE` so the
-//        resulting .so files don't bake an absolute RUNPATH to the
-//        build-host cache dir. Without this, every shipped APK leaks
-//        `/home/<builder>/.cache/...` as a hardcoded RUNPATH and the
-//        runtime dynamic linker tries (and fails) to look there before
-//        falling back to LD_LIBRARY_PATH.
-//
-// Failure mode:
-//   If zig is missing, this script exits with code 1 and prints the exact
-//   install command. We never silently skip — an APK that ships without
-//   libllama.so but with ELIZA_LOCAL_LLAMA=1 would fail at first inference
-//   call (Commandment 8: don't hide broken pipelines behind fallbacks).
-//
-// Repo-root resolution:
-//   The script defaults `--assets-dir` to the first app shell found under
-//   `<repoRoot>/packages/app`, `<repoRoot>/apps/app`, or
-//   `<repoRoot>/eliza/packages/app` that has an Android project (its own
-//   `android/`, else the canonical `platforms/android`), then appends
-//   `app/src/main/assets/agent`. `--cache-dir` defaults to
-//   `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
-//   `<repoRoot>` is derived from this script's location: walk up from
-//   `eliza/packages/app/scripts/aosp/` to the host repo root by
-//   default, but when the parent host repo invokes this via the
-//   `eliza/` submodule the same algorithm finds the host repo root
-//   (it stops at the first ancestor that has a `package.json`).
-
+/**
+ * Builds the pinned llama.cpp fork for musl-linked Android and fused host targets.
+ * Android's embedded Bun uses musl, so NDK/bionic libraries cannot be substituted.
+ * Zig ABI and linker-version policy lives in zig-toolchain.ts; fork pins below
+ * are authoritative. Artifact checks enforce architecture, SONAME and required
+ * fused symbols before packaging.
+ */
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -198,6 +30,13 @@ import {
   prepareAndroidVulkanSource,
   readPinnedNativeRevision,
 } from "./vulkan-source-contract.ts";
+import {
+  ABI_TARGETS,
+  assertZigPinForTargets,
+  ensureZigDrivers,
+  probeZig,
+  zigTriplesForAbis,
+} from "./zig-toolchain.ts";
 
 export {
   compareSemver,
@@ -247,7 +86,6 @@ export const LLAMA_CPP_TAG = "v1.2.0-eliza";
 // `verify-fused-symbols` gate enforces the marker is present post-build.
 export const LLAMA_CPP_COMMIT = "32a7911dced6230ce544c43a6399f5bd721cab90";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
-export const MIN_ZIG_VERSION = "0.13.0";
 export const AARCH64_MUSL_ZIG_MIN_VERSION = "0.13.0";
 export const AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE = "0.14.0";
 // Floor for the RVV-on riscv64 build. Zig 0.13's bundled LLVM rejects the
@@ -262,31 +100,6 @@ export const AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE = "0.14.0";
 // q5_1/q8_0/q8_1/q4_K/q5_K/q6_K/q8_K/iq*/tq1_0/tq2_0/mxfp4 in
 // ggml/src/ggml-cpu/arch/riscv/quants.c) light up.
 export const MIN_ZIG_RVV_VERSION = "0.14.0";
-
-// Pinned zig series (MAJOR.MINOR) for the aarch64/x86_64 `*-linux-musl`
-// cross-link that produces the Android/cuttlefish + fused (libelizainference)
-// libs. zig 0.16 bundles an LLVM whose `lld` SIGSEGVs while linking the
-// aarch64-linux-musl shared object — a host-toolchain regression that aborts
-// the link with no actionable diagnostic (it looks like an OOM / random crash,
-// not a config error). zig 0.13.x links these targets cleanly, so we pin the
-// series rather than only enforcing a floor: a newer-is-fine `>=` check would
-// silently route an operator's `brew install zig` (0.16) straight into the
-// SIGSEGV. This is intentionally a series pin, not an exact-patch pin — any
-// 0.13.x patch release links fine. The riscv64 RVV path keeps its own
-// MIN_ZIG_RVV_VERSION floor (it needs 0.14+ for the RVV ISA string) and is a
-// distinct musl triple, so it is exempt from this pin (see
-// `assertZigPinForTargets`). An operator who has independently verified their
-// zig's lld links aarch64-linux-musl can override with
-// ELIZA_ALLOW_UNPINNED_ZIG=1, but the default refuses the broken toolchain.
-export const PINNED_ZIG_SERIES_FOR_MUSL_LINK = "0.13";
-// zig triples whose lld link is covered by the 0.13.x pin above. riscv64 is
-// deliberately absent: its RVV build path requires 0.14+ and is gated by
-// MIN_ZIG_RVV_VERSION instead.
-export const PINNED_ZIG_LINK_TRIPLES = Object.freeze([
-  "aarch64-linux-musl",
-  "x86_64-linux-musl",
-]);
-export const ALLOW_UNPINNED_ZIG_ENV = "ELIZA_ALLOW_UNPINNED_ZIG";
 
 // The in-repo submodule checkout of the fork.
 // `repoRoot` resolves to the repo root that contains a top-level package.json.
@@ -308,51 +121,6 @@ export function llamaCppSubmodulePresent() {
   } catch {
     return false;
   }
-}
-
-export const ABI_TARGETS = [
-  {
-    androidAbi: "arm64-v8a",
-    zigTarget: "aarch64-linux-musl",
-    cmakeProcessor: "aarch64",
-  },
-  {
-    androidAbi: "x86_64",
-    zigTarget: "x86_64-linux-musl",
-    cmakeProcessor: "x86_64",
-  },
-  {
-    androidAbi: "riscv64",
-    zigTarget: "riscv64-linux-musl",
-    cmakeProcessor: "riscv64",
-  },
-];
-
-/**
- * Map a list of Android ABI directory names (`arm64-v8a` | `x86_64` |
- * `riscv64`) to the distinct zig cross-link triples (`zigTarget`) they build
- * through. Used to decide which targets the zig-series pin applies to. Throws
- * on an unknown ABI rather than silently dropping it.
- *
- * Exported for tests.
- *
- * @param {readonly string[]} abis
- * @returns {string[]}
- */
-export function zigTriplesForAbis(abis) {
-  const triples = new Set();
-  for (const abi of abis) {
-    const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
-    if (!target) {
-      throw new Error(
-        `[compile-libllama] unknown Android ABI ${abi}; expected one of ${ABI_TARGETS.map(
-          (t) => t.androidAbi,
-        ).join(", ")}.`,
-      );
-    }
-    triples.add(target.zigTarget);
-  }
-  return [...triples];
 }
 
 // `*-fused` android targets that are wired to real AOSP artifacts.
@@ -804,131 +572,6 @@ export function parseArgs(argv) {
 }
 
 /**
- * Probe the build host for a usable zig toolchain. Returns the absolute path
- * to the zig binary on success, or throws an Error with an install hint
- * tailored to the host OS. We require zig >= MIN_ZIG_VERSION because earlier
- * versions are missing libc++ headers llama.cpp's CMake checks rely on.
- *
- * Exported for unit tests.
- */
-export function probeZig({
-  spawn = spawnSync,
-  platform = process.platform,
-} = {}) {
-  const probe = spawn("zig", ["version"], {
-    stdio: ["ignore", "pipe", "pipe"],
-    encoding: "utf8",
-  });
-  if (probe.error || probe.status !== 0) {
-    const installHint =
-      platform === "darwin"
-        ? "brew install zig"
-        : platform === "linux"
-          ? "snap install zig --classic --beta\n  or download a tarball from https://ziglang.org/download/ and put `zig` on PATH"
-          : "see https://ziglang.org/download/";
-    throw new Error(
-      `[compile-libllama] zig is required to cross-compile libllama.so for the AOSP build, but was not found on PATH.\n` +
-        `Install zig >= ${MIN_ZIG_VERSION} and re-run:\n  ${installHint}\n` +
-        `(zig is what we use to produce musl-linked binaries that match the bun-on-Android runtime ABI; ` +
-        `the regular Android NDK clang produces bionic-linked binaries that the musl loader cannot dlopen.)`,
-    );
-  }
-  const version = probe.stdout.trim();
-  if (compareSemver(version, MIN_ZIG_VERSION) < 0) {
-    throw new Error(
-      `[compile-libllama] zig ${version} is too old; need >= ${MIN_ZIG_VERSION}.\n` +
-        `Earlier zig releases ship libc++ headers that miss the <bit>/<span> shims llama.cpp ` +
-        `feature-checks during configure. Upgrade zig and re-run.`,
-    );
-  }
-  return version;
-}
-
-/**
- * Extract the MAJOR.MINOR series from a zig version string. `0.13.0` -> `0.13`,
- * `0.13.0-dev.46+abc` -> `0.13`. Returns `null` for an unparseable input so
- * callers can decide how to treat a missing/garbage version.
- *
- * Exported for tests.
- *
- * @param {string} version
- * @returns {string | null}
- */
-export function zigSeries(version) {
-  if (typeof version !== "string") return null;
-  const parts = version
-    .replace(/^v/, "")
-    .split(/[-+]/)[0]
-    .split(".")
-    .map((n) => Number.parseInt(n, 10));
-  if (
-    parts.length < 2 ||
-    !Number.isFinite(parts[0]) ||
-    !Number.isFinite(parts[1])
-  ) {
-    return null;
-  }
-  return `${parts[0]}.${parts[1]}`;
-}
-
-/**
- * Enforce the zig-series pin (PINNED_ZIG_SERIES_FOR_MUSL_LINK) for any requested
- * target whose link goes through one of PINNED_ZIG_LINK_TRIPLES (the
- * aarch64/x86_64 `*-linux-musl` Android / fused libs). zig 0.16's bundled lld
- * SIGSEGVs that link, so a plain `>=` floor is not enough — we must reject a
- * newer-but-broken toolchain too. riscv64-only target sets are exempt (their
- * RVV path needs 0.14+, gated separately by MIN_ZIG_RVV_VERSION).
- *
- * Pure + deterministic: takes the detected version + the resolved triple list +
- * env, throws on a pin violation, returns nothing on success. No side effects.
- *
- * Exported for tests.
- *
- * @param {object} params
- * @param {string} params.version    zig version string from probeZig().
- * @param {readonly string[]} params.zigTriples  the `zigTarget` triples the run
- *   will cross-link (e.g. ["aarch64-linux-musl"]).
- * @param {NodeJS.ProcessEnv} [params.env]
- */
-export function assertZigPinForTargets({
-  version,
-  zigTriples,
-  env = process.env,
-}) {
-  const pinnedTriples = zigTriples.filter((t) =>
-    PINNED_ZIG_LINK_TRIPLES.includes(t),
-  );
-  if (pinnedTriples.length === 0) {
-    // No pinned-link triple in this run (e.g. riscv64-only) — nothing to pin.
-    return;
-  }
-  if (env[ALLOW_UNPINNED_ZIG_ENV] === "1") {
-    console.warn(
-      `[compile-libllama] ${ALLOW_UNPINNED_ZIG_ENV}=1 set; skipping the zig ` +
-        `${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x pin for ${pinnedTriples.join(", ")} ` +
-        `(zig ${version}). Only safe if you have verified this zig's lld links ` +
-        `aarch64-linux-musl without SIGSEGV.`,
-    );
-    return;
-  }
-  const series = zigSeries(version);
-  if (series !== PINNED_ZIG_SERIES_FOR_MUSL_LINK) {
-    throw new Error(
-      `[compile-libllama] zig ${version} (series ${series ?? "unknown"}) is not ` +
-        `the pinned zig ${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x required to link ` +
-        `${pinnedTriples.join(", ")}.\n` +
-        `zig 0.16's bundled lld SIGSEGVs the aarch64-linux-musl link, aborting ` +
-        `the fused/Android build with no actionable diagnostic; zig 0.13.x links ` +
-        `it cleanly. Install zig ${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x and re-run:\n` +
-        `  download the 0.13.x tarball from https://ziglang.org/download/ and put ` +
-        `\`zig\` on PATH (the package-manager \`zig\` is frequently 0.16).\n` +
-        `If you have independently verified your zig's lld links ` +
-        `aarch64-linux-musl, override with ${ALLOW_UNPINNED_ZIG_ENV}=1.`,
-    );
-  }
-}
-
-/**
  * Decide the riscv64 build plan based on the detected Zig version + env knobs.
  * Pure: takes the version string + env, returns a structured plan. No side
  * effects.
@@ -1305,168 +948,6 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
   log(
     `[compile-libllama] Patched ggml/src/ggml.c to gate <execinfo.h> on __GLIBC__ (musl compatibility).`,
   );
-}
-
-/**
- * Write per-ABI `zig-cc` / `zig-cxx` driver scripts under
- * `${cacheDir}/zig-driver/${abi}/` and return their absolute paths.
- *
- * Why we need a driver instead of `-DCMAKE_C_COMPILER=zig` plus
- * `--target=...` in CMAKE_C_FLAGS:
- *   CMake invokes its CMAKE_C_COMPILER as a single binary, e.g.
- *     `zig --target=aarch64-linux-musl -c -o test.o test.c`
- *   zig parses `--target=aarch64-linux-musl` as an unknown top-level
- *   subcommand and bails before it even sees `-c`. The compiler probe
- *   fails and configure aborts. The fix is to wrap zig in a tiny driver
- *   that always front-prepends the `cc` / `c++` subcommand and the
- *   `--target=` flag, so cmake's invocation pattern just works.
- *
- * Driver scripts are written fresh on every run (they're cheap and
- * stateless), so a stale cache from an older script version doesn't
- * leak into a new one.
- *
- * Exported for unit testing.
- */
-export function ensureZigDrivers({
-  cacheDir,
-  abi,
-  zigBin = "zig",
-  riscv64MarchPassthrough = false,
-}) {
-  const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
-  if (!target) {
-    throw new Error(`[compile-libllama] Unknown ABI: ${abi}`);
-  }
-  const driverDir = path.join(cacheDir, "zig-driver", abi);
-  fs.mkdirSync(driverDir, { recursive: true });
-  const ccPath = path.join(driverDir, "zig-cc");
-  const cxxPath = path.join(driverDir, "zig-cxx");
-
-  // riscv64 needs an extra arg-filtering step on Zig 0.13. The vendored
-  // llama.cpp's ggml-cpu CMakeLists hardcodes `-march=rv64gc -mabi=lp64d`
-  // (and adds extension suffixes when GGML_RVV / GGML_RV_ZFH / etc. are ON).
-  // Zig 0.13's bundled LLVM doesn't accept `-march=rv64gc` as a GCC-style
-  // ISA string — it tries to translate it to `-mcpu=` and bails with
-  // "unknown CPU: 'rv64gc'". The triple `riscv64-linux-musl` already
-  // selects the rv64gc/lp64d baseline as Zig's triple-derived CPU, so
-  // stripping these flags is byte-for-byte equivalent to the intended
-  // build when RVV is OFF.
-  //
-  // On Zig 0.14+ (`riscv64MarchPassthrough=true`) we leave every
-  // `-march=` / `-mabi=` flag alone: Zig 0.14's LLVM accepts the
-  // GCC-style ISA string with the full `_zfh_zvfh_zicbop_zihintpause`
-  // extension suffix, which is exactly what flips the RVV intrinsic
-  // codepaths on in ggml/src/ggml-cpu/arch/riscv/quants.c.
-  //
-  // Filter logic: walk the argv via the POSIX `set --` idiom (no eval —
-  // CMake escapes embedded quotes in -DGGML_VERSION=\"0.12.0\", and a
-  // naive `eval exec "..."` collapses them and the C preprocessor sees
-  // `0.12.0` as a malformed numeric literal). Each non-stripped arg is
-  // re-pushed onto $@ in place; the final `exec "$zig" cc ... "$@"`
-  // forwards the whole array with every quote and space preserved.
-  const riscv64ArgFilter =
-    abi === "riscv64" && !riscv64MarchPassthrough
-      ? "_n=$#\n" +
-        "i=0\n" +
-        "while [ $i -lt $_n ]; do\n" +
-        "  arg=$1\n" +
-        "  shift\n" +
-        "  i=$((i+1))\n" +
-        '  case "$arg" in\n' +
-        "    -march=rv64gc|-march=rv64gc_*) ;;\n" +
-        "    -mabi=lp64d|-mabi=lp64) ;;\n" +
-        '    *) set -- "$@" "$arg" ;;\n' +
-        "  esac\n" +
-        "done\n"
-      : null;
-
-  // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
-  // `-march=armv8.2-a+dotprod+fp16` (from GGML_CPU_ARM_ARCH). Zig 0.13's
-  // bundled LLVM rejects that for the aarch64 target — it tries to translate
-  // `armv8.2-a` to a `-mcpu=` value and dies with "unknown CPU: 'armv8.2'"
-  // (the same class of breakage the riscv64 filter handles). Zig instead
-  // speaks `-mcpu=<cpu>+<feature>` with its OWN feature names. Rewrite the
-  // GCC `-march=armv8.x-a+...` into the equivalent zig `-mcpu=generic+...`:
-  // dotprod→dotprod, i8mm→i8mm, fp16→fullfp16. This sets exactly the same
-  // __ARM_FEATURE_DOTPROD / __ARM_FEATURE_MATMUL_INT8 /
-  // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC macros (verified), so the live QJL
-  // NEON-dotprod / i8mm / fp16 kernel bodies survive preprocessing and the
-  // ggml ARM-feature configure probes pass. Any other `-march=` is passed
-  // through untouched (there shouldn't be one for arm64).
-  const arm64ArgFilter =
-    abi === "arm64-v8a"
-      ? "_n=$#\n" +
-        "i=0\n" +
-        "while [ $i -lt $_n ]; do\n" +
-        "  arg=$1\n" +
-        "  shift\n" +
-        "  i=$((i+1))\n" +
-        '  case "$arg" in\n' +
-        "    -march=armv8.*-a+*)\n" +
-        '      _feats=""\n' +
-        `      case "$arg" in *+dotprod*) _feats="\${_feats}+dotprod" ;; esac\n` +
-        `      case "$arg" in *+i8mm*) _feats="\${_feats}+i8mm" ;; esac\n` +
-        `      case "$arg" in *+fp16*) _feats="\${_feats}+fullfp16" ;; esac\n` +
-        `      set -- "$@" "-mcpu=generic\${_feats}" ;;\n` +
-        '    *) set -- "$@" "$arg" ;;\n' +
-        "  esac\n" +
-        "done\n"
-      : null;
-
-  const argFilter = riscv64ArgFilter ?? arm64ArgFilter;
-  const exec =
-    argFilter !== null
-      ? (subcmd) =>
-          argFilter +
-          `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`
-      : (subcmd) =>
-          `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`;
-
-  // Quote zigBin so a path with spaces still works. The driver runs under
-  // /bin/sh which is POSIX-portable across Linux, macOS, Alpine.
-  const ccBody =
-    "#!/bin/sh\n" +
-    "# Auto-generated by eliza/packages/app/scripts/aosp/compile-libllama.ts.\n" +
-    "# Do not edit — regenerated on every build.\n" +
-    exec("cc");
-  const cxxBody =
-    "#!/bin/sh\n" +
-    "# Auto-generated by eliza/packages/app/scripts/aosp/compile-libllama.ts.\n" +
-    "# Do not edit — regenerated on every build.\n" +
-    exec("c++");
-  fs.writeFileSync(ccPath, ccBody, "utf8");
-  fs.writeFileSync(cxxPath, cxxBody, "utf8");
-  fs.chmodSync(ccPath, 0o755);
-  fs.chmodSync(cxxPath, 0o755);
-
-  // CMake archives the cross-compiled ELF `.o` files with CMAKE_AR/CMAKE_RANLIB.
-  // Its default is the host toolchain's `ar`/`ranlib` — on a macOS build host
-  // that is cctools `/usr/bin/ar`, which cannot read aarch64-linux ELF objects:
-  // it warns "not a mach-o file" and writes an EMPTY 96-byte archive. libllama.a
-  // / libggml*.a then contain zero objects, and the fused libelizainference.so
-  // links with every `llama_*` symbol left undefined — text inference silently
-  // absent (caught only downstream by verify-fused-symbols). zig bundles
-  // llvm-ar/llvm-ranlib, which archive ELF objects on any host, so route
-  // CMAKE_AR/RANLIB through `zig ar` / `zig ranlib`. Archiving is object-format
-  // agnostic, so these shims need neither `--target` nor the `-march` rewrite.
-  const arPath = path.join(driverDir, "zig-ar");
-  const ranlibPath = path.join(driverDir, "zig-ranlib");
-  const arBody =
-    "#!/bin/sh\n" +
-    "# Auto-generated by eliza/packages/app/scripts/aosp/compile-libllama.ts.\n" +
-    "# Do not edit — regenerated on every build.\n" +
-    `exec "${zigBin}" ar "$@"\n`;
-  const ranlibBody =
-    "#!/bin/sh\n" +
-    "# Auto-generated by eliza/packages/app/scripts/aosp/compile-libllama.ts.\n" +
-    "# Do not edit — regenerated on every build.\n" +
-    `exec "${zigBin}" ranlib "$@"\n`;
-  fs.writeFileSync(arPath, arBody, "utf8");
-  fs.writeFileSync(ranlibPath, ranlibBody, "utf8");
-  fs.chmodSync(arPath, 0o755);
-  fs.chmodSync(ranlibPath, 0o755);
-
-  return { ccPath, cxxPath, arPath, ranlibPath };
 }
 
 /**

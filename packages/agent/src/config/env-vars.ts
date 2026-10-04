@@ -10,7 +10,7 @@
  * dangerous prefix families).
  */
 
-import type { ElizaConfig } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { isBlockedEnvKey } from "./blocked-env-keys.ts";
 
 /**

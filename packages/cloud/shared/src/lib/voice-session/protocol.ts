@@ -11,7 +11,7 @@
  * consumes these typed events.
  */
 
-import { parseVoiceUiContext, type VoiceUiContext } from "@elizaos/core/voice";
+import { parseVoiceUiContext, type VoiceUiContext } from "@elizaos/host/protocol";
 
 export const VOICE_SESSION_PROTOCOL_VERSION = 1;
 

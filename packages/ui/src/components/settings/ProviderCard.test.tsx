@@ -10,7 +10,7 @@ import { Cloud, Cpu } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProviderCard } from "./ProviderCard";
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: undefined, agentProps: {} }),
 }));
 

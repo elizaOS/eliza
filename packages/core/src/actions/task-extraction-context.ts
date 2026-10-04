@@ -8,6 +8,8 @@ import {
 } from "../runtime/completion-context";
 import { hashStableJson } from "../runtime/context-hash";
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
+import { compactHistoricalReceiptSegments } from "../runtime/historical-receipt-wire";
+import { projectDeferredProviders } from "../runtime/provider-context";
 import type { ContextObject } from "../types/context-object";
 import type { Memory } from "../types/memory";
 import type { State } from "../types/state";
@@ -100,7 +102,8 @@ export function readTaskExtractionContext(
 		// Keep the trusted canonical prefix on the model's system surface once,
 		// rather than flattening it into user context and adding it again at dispatch.
 		// Originals, style directions, other instructions, providers and receipts
-		// remain intact; this is not a text-based deduplication of dialogue.
+		// stay intact in the bound source. Only an authorized provider-owned notice
+		// may defer its body below; this is not text-based dialogue deduplication.
 		const system = binding.original.staticPrefix?.systemPrompt?.content;
 		// A different live persona/role must retain the existing full context;
 		// never replace the dispatcher's current authority with a stale prefix.
@@ -120,9 +123,16 @@ export function readTaskExtractionContext(
 						}
 					: context,
 			);
-		const rendered = render(binding.projected);
+		// Reuse the planner's authorized, provider-owned deferred view. Standing
+		// constraints stay in its notice; loaded/unknown providers stay complete.
+		// The unchanged original remains the full pre-effect restoration source.
+		const rendered = render(
+			projectDeferredProviders(binding.projected).context,
+		);
 		return {
-			text: rendered.promptSegments.map(segmentBlock).join("\n\n"),
+			text: compactHistoricalReceiptSegments(rendered.promptSegments)
+				.map(segmentBlock)
+				.join("\n\n"),
 			originalText: render(binding.original)
 				.promptSegments.map(segmentBlock)
 				.join("\n\n"),

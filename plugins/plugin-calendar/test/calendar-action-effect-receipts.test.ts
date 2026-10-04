@@ -4,6 +4,10 @@
  * retain their exact receipt-bound callback. No live model or calendar runs.
  */
 
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+} from "@elizaos/contracts";
 import {
   type Action,
   type Content,
@@ -12,10 +16,6 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,

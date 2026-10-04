@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Covers `createCoreSecurityHooksPlugin`: that its `init` registers both core
  * message-path security pipeline hooks (incoming-message-security and

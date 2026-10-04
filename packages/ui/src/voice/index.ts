@@ -9,7 +9,7 @@ export {
   sanitizeApiKey,
   VOICE_PROVIDERS,
   type VoicePreset,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 export {
   type AecLoopControl,
   type AecLoopResult,
@@ -114,7 +114,7 @@ export {
 export {
   EXPECTED_PHRASE,
   KNOWN_PHRASE_WAV_DATA_URL,
-} from "./voice-selftest/fixtures/known-phrase";
+} from "./voice-selftest/known-phrase";
 export {
   runVoiceSelfTest,
   type StageStatus,

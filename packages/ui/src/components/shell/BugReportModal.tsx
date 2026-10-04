@@ -8,16 +8,16 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../api";
-import { isElectrobunRuntime } from "../../bridge";
+import { client } from "../../api/client";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useBranding } from "../../config/branding";
-import { useBugReport } from "../../hooks";
+import { useBugReport } from "../../hooks/useBugReport.hooks";
 import { logger } from "../../logger.ts";
-import { type useApp, useAppSelector } from "../../state";
-import { openExternalUrl } from "../../utils";
+import { useAppSelector } from "../../state/app-store";
+import type { useApp } from "../../state/useApp";
 import {
   createDesktopBugReportBundle,
   type DesktopBugReportDiagnostics,
@@ -25,6 +25,7 @@ import {
   loadDesktopBugReportDiagnostics,
   openDesktopLogsFolder,
 } from "../../utils/desktop-bug-report";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

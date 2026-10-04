@@ -3,7 +3,7 @@
  * seam for tests and stories.
  */
 
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import type { PermissionId } from "@elizaos/core/protocol";
 import {
   AudioLines,
   Bell,

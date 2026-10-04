@@ -15,8 +15,8 @@ import {
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
   type AgentBackupCaptureV2Request,
-} from "@elizaos/core/contracts/agent-backup-capture-v2";
-import { type AgentBackupManifestV3 } from "@elizaos/core/contracts/agent-backup-manifest-v3";
+  type AgentBackupManifestV3,
+} from "@elizaos/contracts";
 import {
   type AgentBackupOperationClaim,
   heartbeatAgentBackupOperation,

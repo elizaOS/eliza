@@ -8,6 +8,7 @@
  * Gated to the owner role and to the screen_time / tasks / health contexts.
  */
 
+import type { LifeOpsActivitySignal } from "@elizaos/contracts";
 import type {
   IAgentRuntime,
   Memory,
@@ -26,7 +27,6 @@ import {
 import { resolveCurrentBucket } from "../activity-profile/analyzer.js";
 import { PROACTIVE_TASK_TAGS } from "../activity-profile/proactive-worker.js";
 import { readProfileFromMetadata } from "../activity-profile/service.js";
-import type { LifeOpsActivitySignal } from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {

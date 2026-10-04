@@ -1,16 +1,15 @@
 /**
  * Checks that kernel and host plugin fields have explicit remote-capability
- * classifications and that endpoint conformance covers the published RPC wire.
+ * classifications and that live-report requirements cover the published RPC wire.
+ * This is a schema audit; execution evidence comes from validated RPC receipts.
  */
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 const pluginFile = "packages/core/src/types/plugin.ts";
-const capabilityFile = "packages/core/src/capabilities/index.ts";
+const capabilityFile = "packages/core/src/capabilities/protocol.ts";
 const conformanceFile =
   "packages/agent/scripts/lib/remote-capability-endpoint-conformance.ts";
-const fixtureServerFile =
-  "packages/agent/scripts/capability-router-fixture-server.ts";
 const liveReportValidatorFile =
   "packages/agent/scripts/validate-capability-router-live-reports.ts";
 
@@ -83,7 +82,7 @@ const remoteManifestKeys = new Set(
 );
 const pluginKeys = [
   ...readInterfaceMembers(pluginFile, "Plugin"),
-  ...readInterfaceMembers("packages/core/src/api/http-plugin.ts", "HttpPlugin"),
+  ...readInterfaceMembers("packages/host/src/api/http-plugin.ts", "HttpPlugin"),
 ];
 const failures: string[] = [];
 
@@ -125,8 +124,6 @@ const pluginRpcMethods = readStringUnionMembers(
 const conformanceRequiredMethods = pluginRpcMethods.filter(
   (method) => method !== "plugin.modules.list",
 );
-const conformanceSource = readFileSync(conformanceFile, "utf8");
-const fixtureServerSource = readFileSync(fixtureServerFile, "utf8");
 const conformanceSurfaces = readStringUnionMembers(
   conformanceFile,
   "RemoteCapabilityEndpointConformanceSurface",
@@ -159,20 +156,7 @@ compareSets(
   Object.keys(liveReportValidatorRpcMethodRecord),
 );
 
-for (const method of pluginRpcMethods) {
-  if (!fixtureServerSource.includes(`case "${method}"`)) {
-    failures.push(
-      `RuntimeBrokerCapabilityMethod.${method} is missing a capability-router-fixture-server case.`,
-    );
-  }
-}
-
 for (const method of conformanceRequiredMethods) {
-  if (!conformanceSource.includes(`"${method}"`)) {
-    failures.push(
-      `RuntimeBrokerCapabilityMethod.${method} is not exercised by remote capability endpoint conformance.`,
-    );
-  }
   if (!liveReportValidatorRpcMethods.has(method)) {
     failures.push(
       `RuntimeBrokerCapabilityMethod.${method} is not required by live report validation.`,

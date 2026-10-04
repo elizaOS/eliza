@@ -15,7 +15,7 @@
  * to import the cloud handlers directly.
  */
 import type http from "node:http";
-import { getRuntimeRouteHostContext } from "@elizaos/core/api/runtime-route-context";
+import { getRuntimeRouteHostContext } from "@elizaos/host/protocol";
 import { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
 import { handleCloudRoute } from "./routes/cloud-routes";
 import { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
@@ -27,8 +27,8 @@ import { sendJson } from "./lib/http";
 import { type CloudBillingRouteState } from "./routes/cloud-billing-routes";
 import { type CloudRouteState } from "./routes/cloud-routes";
 import { type ElizaConfig } from "./lib/config-like";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { type Route } from "@elizaos/core/api/http-plugin";
+import { type HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { type Route } from "@elizaos/host/protocol";
 import { type XRelayRouteState } from "./routes/x-relay-routes";
 type AnyRuntime = Parameters<typeof handleCloudStatusRoutes>[0]["runtime"];
 function getHostContext(runtime: unknown) {

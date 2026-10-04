@@ -1,22 +1,24 @@
 /** App-owned Android background composition; no renderer or foreground activity is required. */
 
-import { randomUUID } from "node:crypto";
-import { connect } from "node:net";
 import { join } from "node:path";
+import {
+  parseRemoteBrowserCommandPayload,
+  REMOTE_AGENT_RESPONSE_LIMIT_BYTES,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
   resolveStateDir,
   Service,
 } from "@elizaos/core";
-import type { HttpPlugin, Route } from "@elizaos/core/api/http-plugin";
-import { resolveAliasedEnvValue } from "@elizaos/core/config/boot-config-store";
-import { REMOTE_AGENT_RESPONSE_LIMIT_BYTES } from "@elizaos/core/contracts/remote-agent-request";
-import { parseRemoteBrowserCommandPayload } from "@elizaos/core/contracts/remote-control";
+import type { HttpPlugin, Route } from "@elizaos/host/protocol";
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
+import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
 import { LoopbackRemoteTargetExecutor } from "../platforms/electrobun/src/remote-target-executor";
 import { RemoteTargetDesktopService } from "../platforms/electrobun/src/remote-target-rpc";
 import type { RemoteTargetCommandExecutor } from "../platforms/electrobun/src/remote-target-runner";
 import { JsonFileRemoteTargetStateStore } from "../platforms/electrobun/src/remote-target-store";
+import type { RemoteTargetFetch } from "../platforms/electrobun/src/remote-target-transport";
 import { RemoteTargetVault } from "../platforms/electrobun/src/remote-target-vault";
 import { createAndroidPlatformSecureStore } from "./security/secure-store-android";
 
@@ -64,149 +66,92 @@ export function createMobileBrowserExecutor(
   };
 }
 
-export function createAndroidAgentExecutor(
-  input = {
-    apiToken: resolveAliasedEnvValue("ELIZA_API_TOKEN") ?? "",
-    socketName: process.env.ELIZA_LOCAL_AGENT_SOCKET,
-  },
-): RemoteTargetCommandExecutor {
-  const { apiToken, socketName } = input;
-  if (!socketName || !/^[a-zA-Z0-9_.-]+$/.test(socketName))
-    throw new ElizaError(
-      "The Android app's local agent socket is unavailable.",
-      { code: "REMOTE_LOCAL_SOCKET_UNAVAILABLE" },
+export async function createAndroidAgentFetch(
+  runtime: IAgentRuntime,
+): Promise<RemoteTargetFetch> {
+  // Lazy import follows Android bridge composition and avoids an eager agent/app cycle.
+  const kernel = await import("@elizaos/agent");
+  return async (url, init) => {
+    if (init?.signal?.aborted) throw init.signal.reason;
+    const parsed = new URL(String(url));
+    // LoopbackRemoteTargetExecutor retains its canonical route/action allowlist,
+    // execution correlation, response cap and uncertain-effect timeout handling.
+    const dispatched = dispatchBufferedRequest(
+      runtime,
+      kernel.dispatchApiRoute,
+      {
+        path: parsed.pathname + parsed.search,
+        method: init?.method,
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        body: init?.body,
+      },
+      {
+        fullApiKernel: true,
+        configFileExists: kernel.configFileExists,
+        loadElizaConfig: kernel.loadElizaConfig,
+        saveElizaConfig: kernel.saveElizaConfig,
+        hasPersistedFirstRunState: kernel.hasPersistedFirstRunState,
+      },
     );
-  return new LoopbackRemoteTargetExecutor({
-    apiBase: "http://127.0.0.1",
-    apiToken,
-    fetchImpl: (url, init) =>
-      new Promise((resolve, reject) => {
-        if (init?.signal?.aborted) {
-          reject(init.signal.reason);
-          return;
-        }
-        const id = randomUUID();
-        const parsed = new URL(String(url));
-        const socket = connect({ path: `\0${socketName}` });
-        let pending = Buffer.alloc(0);
+    const response = await new Promise<Awaited<typeof dispatched>>(
+      (resolve, reject) => {
         let settled = false;
-        const finish = (error?: Error, response?: Response) => {
+        const finish = (error: unknown, value?: Awaited<typeof dispatched>) => {
           if (settled) return;
           settled = true;
           init?.signal?.removeEventListener("abort", abort);
-          socket.destroy();
-          if (error) reject(error);
-          else if (response) resolve(response);
-          else
-            reject(
-              new ElizaError("Native agent receipt is missing.", {
-                code: "REMOTE_NATIVE_RECEIPT_INVALID",
-              }),
-            );
+          if (error !== undefined) reject(error);
+          else if (value !== undefined) resolve(value);
+          else reject(new Error("Native dispatch returned no response"));
         };
         const abort = () =>
           finish(
-            new ElizaError(
-              "Native agent request was cancelled; its effect may already have started.",
-              { code: "REMOTE_NATIVE_CANCELLED" },
-            ),
+            init?.signal?.reason ??
+              new Error("Native dispatch cancelled; outcome uncertain"),
           );
         init?.signal?.addEventListener("abort", abort, { once: true });
-        socket.once("error", (error) => finish(error));
-        socket.once("close", () =>
-          finish(
-            new ElizaError("Native agent disconnected before its receipt.", {
-              code: "REMOTE_NATIVE_DISCONNECTED",
-            }),
-          ),
+        if (init?.signal?.aborted) abort();
+        // Attach both handlers even after abort: late dispatch completion cannot
+        // become an unhandled rejection or cause a second dispatch.
+        dispatched.then(
+          (value) => finish(undefined, value),
+          (error) => finish(error),
         );
-        socket.once("connect", () =>
-          socket.write(
-            JSON.stringify({
-              id,
-              method: "http_request",
-              payload: {
-                path: parsed.pathname + parsed.search,
-                method: init?.method,
-                headers: Object.fromEntries(
-                  new Headers(init?.headers).entries(),
-                ),
-                body: init?.body,
-              },
-            }) + "\n",
-          ),
-        );
-        socket.on("data", (chunk) => {
-          pending = Buffer.concat([
-            pending,
-            typeof chunk === "string" ? Buffer.from(chunk) : chunk,
-          ]);
-          if (pending.length > 4 * 1024 * 1024) {
-            finish(
-              new ElizaError(
-                "Native agent response exceeds the frame limit; no partial response is returned.",
-                { code: "REMOTE_NATIVE_RESPONSE_TOO_LARGE" },
-              ),
-            );
-            return;
-          }
-          const newline = pending.indexOf(10);
-          if (newline < 0) return;
-          try {
-            const frame = JSON.parse(
-              new TextDecoder("utf-8", { fatal: true }).decode(
-                pending.subarray(0, newline),
-              ),
-            );
-            if (
-              frame.id !== id ||
-              frame.ok !== true ||
-              !frame.result ||
-              typeof frame.result !== "object"
-            )
-              throw new Error("Invalid native agent receipt");
-            const result = frame.result;
-            if (
-              !Number.isInteger(result.status) ||
-              result.status < 200 ||
-              result.status > 599 ||
-              !result.headers ||
-              typeof result.headers !== "object" ||
-              Object.values(result.headers).some(
-                (value) => typeof value !== "string",
-              )
-            )
-              throw new Error("Invalid native agent response");
-            let bytes: Uint8Array<ArrayBuffer>;
-            if (
-              result.bodyEncoding === "base64" &&
-              typeof result.bodyBase64 === "string"
-            ) {
-              const decoded = Buffer.from(result.bodyBase64, "base64");
-              if (decoded.toString("base64") !== result.bodyBase64)
-                throw new Error("Invalid native body encoding");
-              bytes = decoded;
-            } else if (typeof result.body === "string")
-              bytes = new TextEncoder().encode(result.body);
-            else throw new Error("Missing native response body");
-            finish(
-              undefined,
-              new Response(
-                [204, 205, 304].includes(result.status) ? null : bytes,
-                { status: result.status, headers: result.headers },
-              ),
-            );
-          } catch {
-            // error-policy:J1 Reject malformed native receipts without exposing response data or retrying effects.
-            finish(
-              new ElizaError(
-                "Native agent returned an invalid response receipt.",
-                { code: "REMOTE_NATIVE_RECEIPT_INVALID" },
-              ),
-            );
-          }
-        });
-      }),
+      },
+    );
+    // Dispatch may have committed an effect; an abort never triggers replay.
+    if (init?.signal?.aborted) throw init.signal.reason;
+    if (
+      response.bodyBase64.length >
+      Math.ceil(REMOTE_AGENT_RESPONSE_LIMIT_BYTES / 3) * 4
+    )
+      throw new ElizaError(
+        "Native agent encoded response exceeds the canonical limit.",
+        { code: "REMOTE_NATIVE_RESPONSE_TOO_LARGE" },
+      );
+    const bytes = Buffer.from(response.bodyBase64, "base64");
+    if (
+      bytes.length > REMOTE_AGENT_RESPONSE_LIMIT_BYTES ||
+      bytes.toString("base64") !== response.bodyBase64
+    )
+      throw new ElizaError(
+        "Native agent response exceeds the canonical limit.",
+        { code: "REMOTE_NATIVE_RESPONSE_TOO_LARGE" },
+      );
+    return new Response(
+      [204, 205, 304].includes(response.status) ? null : bytes,
+      { status: response.status, headers: response.headers },
+    );
+  };
+}
+
+export async function createAndroidAgentExecutor(
+  runtime: IAgentRuntime,
+): Promise<RemoteTargetCommandExecutor> {
+  return new LoopbackRemoteTargetExecutor({
+    apiBase: "http://127.0.0.1",
+    apiToken: resolveAliasedEnvValue("ELIZA_API_TOKEN") ?? "",
+    fetchImpl: await createAndroidAgentFetch(runtime),
   });
 }
 
@@ -239,7 +184,10 @@ export class MobileRemoteTargetService extends Service {
   ): Promise<MobileRemoteTargetService> {
     const service = new MobileRemoteTargetService(runtime);
     await service.target.configureBackgroundExecutor(
-      createMobileBrowserExecutor(runtime, createAndroidAgentExecutor()),
+      createMobileBrowserExecutor(
+        runtime,
+        await createAndroidAgentExecutor(runtime),
+      ),
     );
     try {
       await service.target.resumeEligibleBackground();

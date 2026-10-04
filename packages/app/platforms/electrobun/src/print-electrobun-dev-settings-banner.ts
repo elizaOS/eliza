@@ -8,7 +8,7 @@ import {
 import {
 	firstWinningEnvString,
 	resolveDesktopApiPortPreference,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { resolveMainWindowPartition } from "./main-window-session";
 

@@ -4,7 +4,7 @@
  * makes an undeclared operation or an unimplemented declaration a type error.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import {
   Contacts,
   type CreateContactOptions,

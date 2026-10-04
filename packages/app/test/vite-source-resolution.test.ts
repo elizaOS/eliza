@@ -246,45 +246,14 @@ describe("workspace package resolution", () => {
     expect(buildConfig.resolve?.conditions).toBeUndefined();
   });
 
-  test("resolves the Cloud SDK redemption contract from workspace source in production builds", async () => {
-    const buildConfig = await resolveAppViteConfig("build");
-    const server = await createServer({
-      configFile: false,
-      root: appRoot,
-      logLevel: "silent",
-      optimizeDeps: { noDiscovery: true },
-      resolve: { alias: buildConfig.resolve?.alias },
-      server: { middlewareMode: true },
-    });
-
-    try {
-      const resolved =
-        await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/cloud-sdk/redemption-contract",
-          path.resolve(
-            appRoot,
-            "../cloud/shared/src/types/redemption-contract.ts",
-          ),
-        );
-      expect(resolved?.id).toBe(
-        normalizePath(
-          path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
-        ),
-      );
-    } finally {
-      await server.close();
-    }
-  });
-
   test.each(["serve", "build"] as const)(
-    "resolves Cloud shared wildcard exports from workspace source while %s config resolves",
+    "resolves the Cloud SDK redemption contract from workspace source with %s aliases",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
-
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/cloud-shared/types/redemption-contract",
+            "@elizaos/cloud-sdk/redemption-contract",
             path.resolve(
               appRoot,
               "../ui/src/cloud/monetization/earnings/CreatorEarningsStatement.tsx",
@@ -292,10 +261,7 @@ describe("workspace package resolution", () => {
           );
         expect(resolved?.id).toBe(
           normalizePath(
-            path.resolve(
-              appRoot,
-              "../cloud/shared/src/types/redemption-contract.ts",
-            ),
+            path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
           ),
         );
       } finally {
@@ -303,23 +269,6 @@ describe("workspace package resolution", () => {
       }
     },
   );
-
-  test("resolves the canonical UI terminal palette from workspace source while serving", async () => {
-    const { server } = await createAppResolutionServer("serve");
-
-    try {
-      const resolved =
-        await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/ui/terminal/palette",
-          path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
-        );
-      expect(resolved?.id).toBe(
-        normalizePath(path.resolve(appRoot, "../ui/src/terminal/palette.ts")),
-      );
-    } finally {
-      await server.close();
-    }
-  });
 
   test("keeps browser conditional exports on their browser entry", async () => {
     const { server } = await createAppResolutionServer("serve");
@@ -343,16 +292,11 @@ describe("workspace package resolution", () => {
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core/views/view-interact-protocol",
+            "@elizaos/core/protocol",
             path.join(appRoot, "src/main.tsx"),
           );
         expect(resolved?.id).toBe(
-          normalizePath(
-            path.resolve(
-              appRoot,
-              "../core/src/views/view-interact-protocol.ts",
-            ),
-          ),
+          normalizePath(path.resolve(appRoot, "../core/src/protocol.ts")),
         );
         for (const runtimeImport of [
           "@elizaos/core",

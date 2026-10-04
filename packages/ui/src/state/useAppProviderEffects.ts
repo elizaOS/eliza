@@ -4,7 +4,8 @@
  * greeting. Kept out of the provider body so the render stays declarative.
  */
 import { type RefObject, useEffect, useRef, useSyncExternalStore } from "react";
-import { type ConversationMessage, client } from "../api";
+import { client } from "../api/client";
+import type { ConversationMessage } from "../api/client-types-chat";
 import {
   getAppShellPageRegistrySnapshot,
   subscribeAppShellPages,
@@ -18,7 +19,7 @@ import {
   tabFromPath,
 } from "../navigation";
 import { shellHistory } from "../surface-realm-channel";
-import type { AppState } from "./internal";
+import type { AppState } from "./types";
 
 function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   try {

@@ -30,7 +30,6 @@ reviewer reads to decide what to merge.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
 import shutil
@@ -42,12 +41,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("kokoro.package")
 
 
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
 
 
 def _copy_if_present(src: Path, dst: Path) -> bool:

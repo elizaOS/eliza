@@ -6,12 +6,12 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarSummary,
-} from "@elizaos/core/contracts/calendar";
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+} from "@elizaos/contracts";
 import { CalendarServiceError } from "./errors.js";
 
 export const ELIZA_CALENDAR_PROVIDER = "eliza" as const;

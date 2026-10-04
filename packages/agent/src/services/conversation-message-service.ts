@@ -5,6 +5,7 @@
  */
 import {
   type AgentRuntime,
+  compareMemoryIds,
   ElizaError,
   type Memory,
   type UUID,
@@ -101,7 +102,8 @@ function cursorFollows(
 ): boolean {
   return (
     next.createdAt > previous.createdAt ||
-    (next.createdAt === previous.createdAt && next.id > previous.id)
+    (next.createdAt === previous.createdAt &&
+      compareMemoryIds(next.id, previous.id) > 0)
   );
 }
 

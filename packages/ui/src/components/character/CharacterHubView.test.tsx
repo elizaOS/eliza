@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { updateCharacter } = vi.hoisted(() => ({ updateCharacter: vi.fn() }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (selector: (s: unknown) => unknown) =>
     selector({
       setActionNotice: vi.fn(),

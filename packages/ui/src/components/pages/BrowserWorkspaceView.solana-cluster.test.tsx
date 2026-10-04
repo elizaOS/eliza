@@ -92,13 +92,13 @@ vi.mock("../../utils/asset-url.js", async (importOriginal) => ({
   resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
 }));
 
-vi.mock("../../utils", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../utils")>()),
+vi.mock("../../utils/openExternalUrl", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/openExternalUrl")>()),
   openExternalUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../state", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../state")>();
+vi.mock("../../state/app-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../state/app-store")>();
   const state = {
     getStewardPending: async () =>
       Array.from(
@@ -130,8 +130,8 @@ vi.mock("../../state", async (importOriginal) => {
   };
 });
 
-vi.mock("../../api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../api")>();
+vi.mock("../../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/client")>();
   return {
     ...actual,
     client: {
@@ -158,7 +158,7 @@ vi.mock("../../api", async (importOriginal) => {
   };
 });
 
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
 import { resolveBrowserWorkspaceSolanaCluster } from "./browser-workspace-wallet";
 

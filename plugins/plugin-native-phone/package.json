@@ -30,6 +30,12 @@
       "types": "./dist/bridge.d.ts",
       "import": "./dist/bridge.js",
       "default": "./dist/bridge.js"
+    },
+    "./companion": {
+      "eliza-source": "./src/companion/index.ts",
+      "types": "./dist/companion/index.d.ts",
+      "import": "./dist/companion/index.js",
+      "default": "./dist/companion/index.js"
     }
   },
   "scripts": {

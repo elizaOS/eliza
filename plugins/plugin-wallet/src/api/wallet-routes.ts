@@ -7,17 +7,6 @@
 // `server.ts` is the single wiring site that constructs the context.
 import crypto from "node:crypto";
 import type http from "node:http";
-import { type AgentRuntime, type ElizaConfig, logger } from "@elizaos/core";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
-import { normalizeWalletRpcSelections } from "@elizaos/core/contracts/wallet";
-import {
-  PostWalletGenerateRequestSchema,
-  PostWalletImportRequestSchema,
-  PostWalletPrimaryRequestSchema,
-} from "@elizaos/core/contracts/wallet-routes";
 import type {
   WalletBalancesResponse,
   WalletChain,
@@ -32,7 +21,19 @@ import type {
   WalletRpcChain,
   WalletRpcSelections,
   WalletSource,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import {
+  normalizeWalletRpcSelections,
+  PostWalletGenerateRequestSchema,
+  PostWalletImportRequestSchema,
+  PostWalletPrimaryRequestSchema,
+} from "@elizaos/contracts";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import type {
+  ElizaConfig,
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/host/protocol";
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 // Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.
 // Defined structurally here so this plugin module stays free of
@@ -664,7 +665,7 @@ function resolveBrowserSolanaMessageBytes(
   }
   const message = normalizeBrowserString(body.message);
   if (!message) {
-    throw new Error("message or messageBase64 is required.");
+    throw new BrowserWalletInputError("message or messageBase64 is required.");
   }
   return Buffer.from(message, "utf8");
 }
@@ -724,10 +725,11 @@ async function signLocalBrowserSolanaMessage(
 }
 /**
  * A browser-wallet HTTP request sent data that fails input validation
- * (malformed cluster, missing transaction payload). The route translates
- * this to a 400 response — a client error the caller must fix — while
- * signer, key, and network failures keep the 503 signer-unavailable
- * status so clients do not retry a payload that can never be valid.
+ * (malformed cluster, missing transaction payload, missing sign-message
+ * payload). The route translates this to a 400 response — a client error
+ * the caller must fix — while signer, key, and network failures keep the
+ * 503 signer-unavailable status so clients do not retry a payload that can
+ * never be valid.
  */
 class BrowserWalletInputError extends Error {
   constructor(message: string) {
@@ -1385,6 +1387,12 @@ export async function handleWalletRoutes(
           await signLocalBrowserSolanaMessage(body, deriveSolanaAddress),
         );
       } catch (err) {
+        // Invalid request input is a client error, not a signer outage:
+        // replying 503 would invite clients to retry an unusable payload.
+        if (err instanceof BrowserWalletInputError) {
+          error(res, err.message, 400);
+          return true;
+        }
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
       return true;

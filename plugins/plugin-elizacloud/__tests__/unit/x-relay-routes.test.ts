@@ -1,5 +1,5 @@
 import { PassThrough } from "node:stream";
-import type { Route } from "@elizaos/core/api/http-plugin";
+import type { Route } from "@elizaos/host/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { elizaCloudRoutePlugin } from "../../src/plugin";
 import { handleXRelayRoute } from "../../src/routes/x-relay-routes";

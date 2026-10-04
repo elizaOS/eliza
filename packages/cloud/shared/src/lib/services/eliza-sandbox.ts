@@ -927,7 +927,7 @@ export class ElizaSandboxService {
       return row;
     });
     if (updated?.claimed_at && updated.warm_claim_credential_state === "pending") {
-      const { provisioningJobService } = await import("./provisioning-jobs");
+      const { provisioningJobService } = await import("./provisioning-job-queue");
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: updated.id,
         organizationId: updated.organization_id,
@@ -2809,7 +2809,7 @@ export class ElizaSandboxService {
       error_message: `${DB_LIVENESS_RESTART_MARKER} count=${nextCount} at=${new Date(now).toISOString()} reason=${reason}`,
     });
     if (!updated) return;
-    const { provisioningJobService } = await import("./provisioning-jobs");
+    const { provisioningJobService } = await import("./provisioning-job-queue");
     const result = await provisioningJobService.enqueueAgentRestartOnce({
       agentId: rec.id,
       organizationId: rec.organization_id,

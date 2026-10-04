@@ -4,7 +4,7 @@
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import {
   act,
   cleanup,
@@ -61,7 +61,7 @@ const {
   getHubMock: vi.fn(),
   startDownloadMock: vi.fn(),
 }));
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: {
     onReconnect: vi.fn(() => () => {}),
     getBaseUrl: getBaseUrlMock,

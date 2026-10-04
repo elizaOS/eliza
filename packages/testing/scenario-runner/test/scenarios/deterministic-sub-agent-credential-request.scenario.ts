@@ -16,7 +16,7 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import { getHttpRuntime } from "@elizaos/host/protocol";
 import {
   type ScenarioContext,
   type ScenarioTurnExecution,

@@ -1,5 +1,5 @@
+import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { expect, it } from "vitest";
-import type { LifeOpsTaskDefinition } from "../contracts/index.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
 import { createLifeOpsTaskDefinition } from "./repository.js";
 

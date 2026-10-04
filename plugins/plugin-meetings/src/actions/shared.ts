@@ -21,7 +21,7 @@ import {
   type MeetingSession,
   type ParsedMeetingUrl,
   parseMeetingUrl,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
 import type { MeetingService } from "../service.js";
 
 /**

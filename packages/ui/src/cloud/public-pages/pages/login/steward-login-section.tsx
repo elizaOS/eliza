@@ -17,13 +17,15 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import type {
-  LoginAuthResult,
-  LoginMfaRequiredResult,
-  LoginProviders,
-  LoginTelegramLoginPayload,
+import {
+  LoginApiError,
+  LoginAuth,
+  type LoginAuthResult,
+  type LoginMfaRequiredResult,
+  type LoginProviders,
+  type LoginTelegramLoginPayload,
 } from "@elizaos/auth";
-import { LoginApiError, LoginAuth } from "@elizaos/auth";
+
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
   clearStoredStewardToken,
@@ -31,9 +33,11 @@ import {
   hasStewardAuthedCookie,
   peekStewardOAuthState,
   readStoredStewardToken,
+  type StewardOAuthProvider,
   StewardSessionError,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
+
 import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {
@@ -56,7 +60,7 @@ import {
   DiscordIcon,
   TelegramIcon,
 } from "../../../../cloud-ui/components/icons";
-import { Alert, AlertDescription } from "../../../../components/primitives";
+import { Alert, AlertDescription } from "../../../../components/ui/alert";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import {
@@ -96,7 +100,6 @@ import {
   buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkcePair,
-  type StewardOAuthProvider,
   storeStewardPkceVerifier,
 } from "../../lib/steward-oauth-url";
 import {
@@ -726,6 +729,11 @@ export default function StewardLoginSection() {
   const [completingCallback, setCompletingCallback] = useState<boolean>(() =>
     PLAYWRIGHT_TEST_AUTH_ENABLED ? false : hasStewardOAuthCallbackInUrl(),
   );
+  // Capture ownership before the callback effect removes the URL fragment.
+  // Neither passive recovery nor StrictMode's effect replay may replace this
+  // explicitly selected identity with a previously stored Cloud session.
+  const callbackOwnsSessionRef = useRef(completingCallback);
+  const callbackHandledRef = useRef(false);
   const [providersLoaded, setProvidersLoaded] = useState(
     () =>
       PLAYWRIGHT_TEST_AUTH_ENABLED ||
@@ -944,6 +952,8 @@ export default function StewardLoginSection() {
   }, [PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
+    if (callbackHandledRef.current) return;
+    callbackHandledRef.current = true;
     const code = consumeStewardCodeFromQuery();
     if (code) {
       // The OAuth `state` echo must exactly match the value stashed at
@@ -1057,7 +1067,7 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (searchParams.get("switchAccount") === "1") return;
-    if (searchParams.get("code")) {
+    if (callbackOwnsSessionRef.current || searchParams.get("code")) {
       setSessionRecoveryComplete(true);
       return;
     }

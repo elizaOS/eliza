@@ -10,7 +10,7 @@ import {
   getEmbeddingVectorSpace,
   ModelType,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { prepareBgeEmbeddingInput } from "./model-catalog/bge-input.js";

@@ -13,7 +13,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedAppValue } from "../../state/app-store";
-import type { AppContextValue } from "../../state/internal";
+import type { AppContextValue } from "../../state/types";
 import { TasksEventsPanel } from "./TasksEventsPanel";
 
 const WIDGETS_WIDTH_KEY = "eliza:chat:widgets-bar:width";

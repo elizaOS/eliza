@@ -4,6 +4,14 @@
  * travel-buffer computation, so the calendar handler receives those capabilities
  * through this typed dependency object instead of importing LifeOps internals.
  */
+
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarAllDayRange,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarRecurrenceScope,
+} from "@elizaos/contracts";
 import type {
   GenerateTextParams,
   GroundedActionReply,
@@ -11,13 +19,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type LifeOpsCalendarAllDayRange,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarRecurrenceScope,
-} from "@elizaos/core/contracts/calendar";
 
 /**
  * Arguments for a single LLM call routed through the host's model runner.

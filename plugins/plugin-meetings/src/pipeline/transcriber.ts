@@ -12,9 +12,9 @@
  * `ModelType.TRANSCRIPTION` contract, without importing another plugin.
  */
 
-import { type Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
-import { validateAsrWordTimings } from "@elizaos/core/transcripts";
+import { validateAsrWordTimings } from "@elizaos/core/protocol";
 export interface AsrTranscribeOptions {
   /** BCP-47 language hint; auto-detect when absent. */
   language?: string;

@@ -7,15 +7,15 @@
  * resetting an active quota window. The object never queries Postgres or Redis.
  */
 
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { isAffiliateBillingAttribution } from "@/lib/services/affiliate-billing-attribution";
-import type { InferenceBalanceFence } from "@/lib/services/credits";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { isAffiliateBillingAttribution } from "@elizaos/cloud-shared/lib/services/affiliate-billing-attribution";
+import type { InferenceBalanceFence } from "@elizaos/cloud-shared/lib/services/credits";
 import type {
   InferenceAdmissionRecoveryContext,
   InferenceAdmissionRecoveryResult,
-} from "@/lib/services/inference-admission-recovery";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/inference-admission-recovery";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 interface ActiveLeaseTiming {
   estimatedCostUsd: number;
@@ -2107,8 +2107,10 @@ export class InferenceAdmissionGate {
           { runWithDbCacheAsync },
           { recoverExpiredInferenceAdmissionLease },
         ] = await Promise.all([
-          import("@/db/client"),
-          import("@/lib/services/inference-admission-recovery"),
+          import("@elizaos/cloud-shared/db/client"),
+          import(
+            "@elizaos/cloud-shared/lib/services/inference-admission-recovery"
+          ),
         ]);
         const inferenceBalanceFence: InferenceBalanceFence = {
           // Alarm recovery charges the exact active estimate, so the existing

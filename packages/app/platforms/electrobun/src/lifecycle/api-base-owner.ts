@@ -18,9 +18,11 @@
  *
  * This module owns:
  *   - the *current* API base + token (module singleton)
- *   - the HTML inject snippet for the static server
+ *   - the HTML inject snippet for the static server (base only — never the
+ *     token, so served documents stay credential-free, #33034)
  *   - the per-window push (delegates to the existing
- *     `pushApiBaseToRenderer` RPC plumbing in `../api-base.ts`)
+ *     `pushApiBaseToRenderer` RPC plumbing in `../api-base.ts`) — the only
+ *     path that carries the token to the webview
  *
  * Callers say `setCurrent(base, token)` to update, then either inject
  * via `injectIntoHtml(html)` (production static server) or push via
@@ -127,15 +129,21 @@ export function getCurrent(): Readonly<ApiBaseSnapshot> {
 }
 
 /**
- * Inject the current API base + token into HTML before the first
- * renderer JS runs. Returns the HTML unchanged if no base is set yet.
+ * Inject the current API base into HTML before the first renderer JS runs.
+ * Returns the HTML unchanged if no base is set yet.
  *
- * Sets the typed boot config (the single source of truth for both the API base
- * and token):
+ * Sets the typed boot config (the single source of truth for the API base):
  *   - `window.__ELIZAOS_APP_BOOT_CONFIG__` / `__ELIZA_APP_BOOT_CONFIG__`
  *     plus the `Symbol.for("elizaos.app.boot-config")` slot (the typed boot
  *     config — the single source of truth for the API base that the appClient,
  *     every transport, and the native web shims read)
+ *
+ * The OWNER bearer token is deliberately NOT injected here: the static server
+ * is reachable by any local process and its documents must stay credential-free
+ * even if a response body ever leaks cross-origin (elizaOS/eliza#33034). The
+ * token reaches the webview only through the typed Electrobun RPC bridge —
+ * `pushToWindow` on `dom-ready` and at every `notifyChange` site — which the
+ * renderer's client already tolerates arriving after first paint.
  *
  * Without the boot-config keys, the same renderer loaded via a regular
  * browser at the static-server's origin falls back to `pageOrigin` for
@@ -171,8 +179,7 @@ export function injectIntoHtml(html: string): string {
 	let apiBaseInject = "";
 	if (current.base) {
 		const baseLiteral = safeJsonForHtml(current.base);
-		const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
-		const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+		const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
 		// Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
 		// before any renderer JS runs, so the renderer's cloud-only branding
 		// (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only

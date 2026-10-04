@@ -7,8 +7,8 @@
  *     personal_baseline_sufficient.
  */
 
+import type { LifeOpsActivitySignal } from "@elizaos/contracts";
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
-import { type LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
 import type {
   GateEvaluationContext,
   ScheduledTask,

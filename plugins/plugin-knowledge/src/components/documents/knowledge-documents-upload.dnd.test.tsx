@@ -41,7 +41,8 @@ const clientMock = vi.hoisted(() => ({
   getTranscript: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/state", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useApp: () => appMock.value,
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
@@ -52,11 +53,14 @@ vi.mock("@elizaos/ui/state", () => ({
     bindingMock.value = binding;
   },
 }));
-vi.mock("@elizaos/ui/api/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/ui/api/client")>()),
-  client: clientMock,
-}));
-vi.mock("@elizaos/ui/utils/desktop-dialogs", () => ({
+vi.mock(
+  "../../../../../packages/ui/src/api/client",
+  async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: clientMock,
+  }),
+);
+vi.mock("../../../../../packages/ui/src/utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
 }));
 
@@ -401,6 +405,29 @@ describe("KnowledgeDocumentsView — root file drop drives the real upload path"
       filename: "notes.txt",
       scope: "user-private",
     });
+  });
+
+  it("uploads uppercase markdown with an empty MIME type as decoded text", async () => {
+    const { root } = await renderView();
+    const markdown = "# owner notes";
+    const file = new File([markdown], "README.MD") as DocumentUploadFile;
+
+    fireEvent.drop(root, { dataTransfer: makeDataTransfer([file]) });
+
+    await waitFor(() =>
+      expect(clientMock.uploadDocumentsBulk).toHaveBeenCalledTimes(1),
+    );
+    const payload = clientMock.uploadDocumentsBulk.mock.calls[0][0] as {
+      documents: Array<{ content: string; filename: string }>;
+    };
+    expect(payload.documents).toHaveLength(1);
+    expect(payload.documents[0]).toMatchObject({
+      content: markdown,
+      filename: "README.MD",
+    });
+    expect(payload.documents[0]?.content).not.toBe(
+      Buffer.from(markdown, "utf8").toString("base64"),
+    );
   });
 
   it("batches multiple dropped files into one bulk upload request", async () => {

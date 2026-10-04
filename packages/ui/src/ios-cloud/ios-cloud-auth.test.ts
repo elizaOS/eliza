@@ -76,7 +76,7 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
   },
 }));
 
-import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import {
   hasIosNativeCloudCredential,
   IosCloudAuthError,

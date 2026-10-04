@@ -4,11 +4,13 @@
  */
 
 import {
+  hasConfiguredApiKey,
+  PREMADE_VOICES,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-} from "@elizaos/core/character-presets";
-import { hasConfiguredApiKey, PREMADE_VOICES } from "@elizaos/core/voice";
-import type { VoiceConfig } from "../api/client";
+} from "@elizaos/host/protocol";
+
+import type { VoiceConfig } from "../api/client-types-config";
 import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
@@ -132,8 +134,9 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
   const shouldUpdatePresetVoice =
     selectedCharacterVoice.voiceId !== currentVoiceId &&
     (!currentVoiceId ||
-      currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
-      currentVoiceId === legacyVoiceId);
+      (!isExplicitElevenLabsChoice(storedVoiceConfig) &&
+        (currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
+          currentVoiceId === legacyVoiceId)));
   if (!releaseLegacyProvider && !shouldUpdatePresetVoice) {
     return storedVoiceConfig;
   }

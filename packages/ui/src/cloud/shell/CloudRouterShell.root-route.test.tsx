@@ -13,8 +13,8 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { registerPublicCloudSurfaces } from "../../../../app/src/renderer/cloud-registration";
 import { resetPrivateCloudRegistrationForTests } from "../private-cloud-registration";
-import { registerPublicCloudSurfaces } from "../register-public";
 import { CloudRouterShell } from "./CloudRouterShell";
 
 let mounts = 0;

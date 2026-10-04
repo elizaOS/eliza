@@ -14,7 +14,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,

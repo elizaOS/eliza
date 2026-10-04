@@ -45,13 +45,13 @@
  * - No need to maintain exhaustive type lists
  */
 
-import { type JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/core";
 import {
   isSafeUntrustedRegexPattern,
   MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
   MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   matchesSafeUntrustedRegexPattern,
-} from "@elizaos/core/config/config-catalog";
+} from "@elizaos/host/protocol";
 import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { strictEmailValid } from "./email";
 import type { ControlType, FormControl, TypeHandler } from "./types";

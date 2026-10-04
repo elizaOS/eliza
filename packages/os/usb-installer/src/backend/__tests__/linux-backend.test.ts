@@ -513,3 +513,23 @@ it.runIf(process.platform === "linux")(
     }
   },
 );
+
+it.each([MacOsUsbInstallerBackend, WindowsUsbInstallerBackend])(
+  "does not advertise canonical raw writes on an unsupported host (%s)",
+  async (Backend) => {
+    const backend = new Backend();
+    vi.spyOn(backend, "listRemovableDrives").mockResolvedValue([plan.drive]);
+    vi.spyOn(backend, "listImages").mockResolvedValue([plan.image]);
+    const pending = await backend.createWritePlan(plan.request);
+    expect(pending.privilegedWriteImplemented).toBe(false);
+    expect(pending.steps.every((step) => step.status === "blocked")).toBe(true);
+    const preview = await backend.createWritePlan({
+      ...plan.request,
+      dryRun: true,
+    });
+    expect(preview.privilegedWriteImplemented).toBe(false);
+    expect(preview.steps.every((step) => step.status === "complete")).toBe(
+      true,
+    );
+  },
+);

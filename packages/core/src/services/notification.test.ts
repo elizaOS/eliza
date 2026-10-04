@@ -3,7 +3,7 @@
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import {
 	afterAll,
 	beforeAll,

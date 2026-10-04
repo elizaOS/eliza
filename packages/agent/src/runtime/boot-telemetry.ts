@@ -12,7 +12,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { isDevApiWatchEnabled, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { isDevApiWatchEnabled } from "@elizaos/host/protocol";
 
 import { resolveStateDir } from "../config/paths.ts";
 import type { BootSummary } from "./boot-timer.ts";

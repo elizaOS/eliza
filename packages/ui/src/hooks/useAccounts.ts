@@ -12,15 +12,15 @@
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import type {
   AccountRefreshUsageResult,
   AccountStrategy,
   AccountsListResponse,
   AccountTestResult,
-} from "../api/client-agent";
+} from "../api/client-agent-accounts";
 import { logger } from "../logger.ts";
 import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";

@@ -2,7 +2,8 @@
  * Resolves bundled VRM avatar assets from boot config — count, slug lookup, and
  * asset URLs — with a fallback slug when none are declared.
  */
-import { type BundledVrmAsset, getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config";
+import type { BundledVrmAsset } from "../config/boot-config-store";
 import { resolveAppAssetUrl } from "../utils/asset-url.js";
 import type { UiTheme } from "./ui-preferences";
 

@@ -4,8 +4,8 @@
  */
 
 import { useEffect, useState } from "react";
-import type { StartupPhase } from "../../state";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
+import type { StartupPhase } from "../../state/types";
 
 const PHASE_META: Record<
   StartupPhase,

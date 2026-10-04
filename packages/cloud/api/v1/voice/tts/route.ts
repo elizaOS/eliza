@@ -1,9 +1,34 @@
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { CUSTOM_VOICE_TTS_MARKUP } from "@elizaos/cloud-shared/lib/pricing-constants";
 import {
-  FIRST_SENTENCE_SNIP_VERSION,
-  firstSentenceSnip,
-} from "@elizaos/core/voice/first-sentence-snip";
+  type BillingContext,
+  billFlatUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { calculateTTSCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
+import {
+  type CreditReservation,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
+import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
+import {
+  fingerprintCloudVoiceSettings,
+  getCloudFirstLineCacheService,
+  shouldBypassCloudFirstLineCache,
+} from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { FIRST_SENTENCE_SNIP_VERSION, firstSentenceSnip } from "@elizaos/voice";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -13,28 +38,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
-import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
-import { calculateTTSCostFromCatalog } from "@/lib/services/ai-pricing";
-import { contentSafetyService } from "@/lib/services/content-safety";
-import {
-  type CreditReservation,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
-import { recordCustomVoiceUsage } from "@/lib/services/tts-custom-voice-usage";
-import {
-  fingerprintCloudVoiceSettings,
-  getCloudFirstLineCacheService,
-  shouldBypassCloudFirstLineCache,
-} from "@/lib/services/tts-first-line-cache";
-import { usageService } from "@/lib/services/usage";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import { type AppContext, type AppEnv } from "@/types/cloud-worker-env";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,

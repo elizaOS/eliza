@@ -30,7 +30,8 @@ vi.mock("./mobile-local-inference-gate", () => ({
 vi.mock("@elizaos/core", () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
-vi.mock("@elizaos/core/runtime-env", () => ({
+vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@elizaos/host/protocol")>()),
 	isMobilePlatform: () => isMobilePlatform(),
 }));
 function makeFakeRuntime(): AgentRuntime {

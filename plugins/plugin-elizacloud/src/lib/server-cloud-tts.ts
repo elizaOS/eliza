@@ -21,10 +21,10 @@ import { resolveCloudSttCandidateUrls } from "../cloud-config/server-cloud-tts.j
 import { resolveCloudTimeoutMs } from "../utils/config";
 import { resolveCloudTtsCandidateUrls } from "../cloud-config/server-cloud-tts.js";
 import { resolveElizaCloudTtsVoiceId } from "../cloud-config/server-cloud-tts.js";
-import { sanitizeSpeechText } from "@elizaos/core/spoken-text";
+import { sanitizeSpeechText } from "@elizaos/core/protocol";
 import { shouldRetryCloudTtsUpstream } from "../cloud-config/server-cloud-tts.js";
-import { ttsDebug } from "@elizaos/core/utils/tts-debug";
-import { ttsDebugTextPreview } from "@elizaos/core/utils/tts-debug";
+import { ttsDebug } from "@elizaos/core";
+import { ttsDebugTextPreview } from "@elizaos/core";
 import { warmingRetryWaitSeconds } from "../utils/warming";
 /** Abort a proxy hop when set; `0` on the env key opts out (same as the SDK). */
 function cloudProxyAbortSignal(envKey: string): AbortSignal | undefined {

@@ -13,16 +13,16 @@
  * suites can exercise authed surfaces against a mock stack.
  */
 import { Capacitor } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import {
   LocalStewardAuthContext,
-  type LocalStewardAuthValue,
   tokenIsExpired,
 } from "../shell/StewardProvider";
+import type { LocalStewardAuthValue } from "../shell/StewardProviderShared";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";
 export type StewardSessionUser = {

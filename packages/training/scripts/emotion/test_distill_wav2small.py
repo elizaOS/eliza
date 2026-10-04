@@ -24,7 +24,7 @@ import pathlib
 import tempfile
 import unittest
 
-from packages.training.scripts.emotion import distill_wav2small as dw
+from eliza_training.emotion import distill_wav2small as dw
 
 
 class StageAudioTests(unittest.TestCase):

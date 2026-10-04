@@ -457,8 +457,7 @@ def main() -> int:
         )
 
     # Analytic KV bytes per token across the whole model.
-    sys.path.insert(0, str(ROOT / "scripts" / "quantization"))
-    from qjl_apply import kv_bytes_per_token_analytic  # type: ignore  # noqa: E402
+    from eliza_training.quantization.qjl_apply import kv_bytes_per_token_analytic  # type: ignore  # noqa: E402
 
     base_bpt, quant_bpt = kv_bytes_per_token_analytic(
         model.config,

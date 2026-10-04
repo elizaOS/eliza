@@ -63,6 +63,7 @@ import { createLogger } from "./logger";
 import type { FetchLike } from "./media/fetch";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
+import { runPluginMigrations } from "./provisioning";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { resolveActionGateFailure } from "./runtime/action-gate";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
@@ -245,7 +246,6 @@ import type { Task, TaskWorker } from "./types/task.js";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
-import { isExactTrueEnvFlag } from "./utils/env";
 import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
@@ -369,6 +369,17 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 // One process-lifetime context avoids per-runtime async-hook registrations.
 // Its immutable stores retain nested runtimes only for the originating async chain.
 const errorReportScopes = new AsyncLocalStorage<ReadonlySet<AgentRuntime>>();
+
+/**
+ * Egress swap master switches may come from the host process environment.
+ * `getSetting` reads only character/runtime settings, and hosts forward
+ * environment keys into settings through allowlists that reject any key
+ * containing "SECRET", so without this fallback a host could never enable the
+ * secret swap. An explicit runtime setting still wins.
+ */
+function swapEnvSetting(key: string): string | undefined {
+	return typeof process === "undefined" ? undefined : process.env?.[key];
+}
 
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
@@ -806,7 +817,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isSecretSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
@@ -853,7 +866,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isPiiSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(PII_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
@@ -1935,69 +1950,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async runPluginMigrations(): Promise<void> {
-		if (!this.adapter) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"Database adapter not found, skipping plugin migrations",
-			);
-			return;
-		}
-
-		if (typeof this.adapter.runPluginMigrations !== "function") {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"Database adapter does not support plugin migrations",
-			);
-			return;
-		}
-
-		const pluginsWithSchemas = this.plugins
-			.filter((p) => p.schema)
-			.map((p) => {
-				const schema = p.schema || {};
-				const normalizedSchema: Record<string, JsonValue> = {};
-				for (const [key, value] of Object.entries(schema)) {
-					if (
-						typeof value === "string" ||
-						typeof value === "number" ||
-						typeof value === "boolean" ||
-						value === null ||
-						(typeof value === "object" && value !== null)
-					) {
-						normalizedSchema[key] = value as JsonValue;
-					}
-				}
-				return { name: p.name, schema: normalizedSchema };
-			});
-
-		if (pluginsWithSchemas.length === 0) {
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId },
-				"No plugins with schemas, skipping migrations",
-			);
-			return;
-		}
-
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, count: pluginsWithSchemas.length },
-			"Found plugins with schemas",
-		);
-
-		const isProduction = process.env.NODE_ENV === "production";
-		const forceDestructive = isExactTrueEnvFlag(
-			process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
-		);
-
-		await this.adapter.runPluginMigrations(pluginsWithSchemas, {
-			verbose: !isProduction,
-			force: forceDestructive,
-			dryRun: false,
-		});
-
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId },
-			"Plugin migrations completed",
-		);
+		await runPluginMigrations(this);
 	}
 
 	async getConnection(): Promise<object> {
@@ -2009,7 +1962,10 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	setSetting(key: string, value: string | boolean | null, secret = false) {
-		if (secret) {
+		const shadowedBySecret =
+			this.character.secrets !== undefined &&
+			Object.hasOwn(this.character.secrets, key);
+		if (secret || shadowedBySecret) {
 			const nestedSecrets =
 				this.character.settings &&
 				typeof this.character.settings.secrets === "object" &&
@@ -2817,7 +2773,7 @@ export class AgentRuntime implements IAgentRuntime {
 									);
 								}
 							: options?.callback;
-					await settleActionHandler({
+					const settled = await settleActionHandler({
 						runtime: this,
 						action,
 						callback: protectedCallback,
@@ -2852,6 +2808,18 @@ export class AgentRuntime implements IAgentRuntime {
 							);
 						},
 					});
+					// A handler that RETURNS { success: false } must be reported as
+					// failed, not completed. settleActionHandler normalizes that
+					// result, but the mode loop previously discarded it, so only a
+					// thrown handler flipped `success`. Honor the explicit result —
+					// never fabricate success (AGENTS.md: "never fabricate success").
+					if (settled.success === false) {
+						success = false;
+						errorMsg =
+							settled.error instanceof Error
+								? settled.error.message
+								: (settled.error ?? settled.text ?? errorMsg);
+					}
 					if (action.disclosureGate?.require === "owner_exclusive") {
 						const disclosure = await revalidateOwnerExclusiveDisclosure(
 							this,
@@ -4466,11 +4434,15 @@ export class AgentRuntime implements IAgentRuntime {
 		// deleted after the grace window — "transcripts" rows anchor retained
 		// recordings via the audioUrl inside content.transcript (#14751). It also
 		// bounds clearAllAgentMemories: an unlisted partition survives a wipe.
+		// document_fragments are the searchable chunks of documents; leaving
+		// them off this list kept deleted-document text and any media they
+		// reference after a wipe.
 		const tables = [
 			"memories",
 			"messages",
 			"facts",
 			"documents",
+			"document_fragments",
 			"transcripts",
 		];
 		const allMemories: Memory[] = [];
@@ -4797,7 +4769,7 @@ export class AgentRuntime implements IAgentRuntime {
 		worldId,
 	}: Room): Promise<UUID> {
 		if (!worldId) throw new Error("worldId is required");
-		const res = await this.adapter.createRooms([
+		const res = await this.createRooms([
 			{
 				id,
 				name,
@@ -4809,15 +4781,15 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 		]);
 		if (!res.length) throw new Error("Failed to create room");
-		// Bust a possibly-memoized null from a pre-creation lookup.
-		this.roomReadMemo.invalidate(res[0]);
-		if (id) this.roomReadMemo.invalidate(id);
 		return res[0];
 	}
 
 	async createRooms(rooms: Room[]): Promise<UUID[]> {
 		const ids = await this.adapter.createRooms(rooms);
 		for (const roomId of ids) this.roomReadMemo.invalidate(roomId);
+		for (const room of rooms) {
+			if (room.id) this.roomReadMemo.invalidate(room.id);
+		}
 		return ids;
 	}
 	async upsertRooms(rooms: Room[]): Promise<void> {
@@ -4948,8 +4920,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async createTask(task: Task): Promise<UUID> {
-		const ids = await this.adapter.createTasks([task]);
-		this._markLocalTasksDirty();
+		const ids = await this.createTasks([task]);
 		return ids[0];
 	}
 
@@ -4984,13 +4955,11 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
-		await this.adapter.updateTasks([{ id, task }]);
-		this._markLocalTasksDirty();
+		await this.updateTasks([{ id, task }]);
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
-		await this.adapter.deleteTasks([id]);
-		this._markLocalTasksDirty();
+		await this.deleteTasks([id]);
 	}
 
 	async log(params: {

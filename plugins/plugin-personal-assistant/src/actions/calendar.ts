@@ -13,6 +13,11 @@
 
 import { createHash } from "node:crypto";
 import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarProvider,
+} from "@elizaos/contracts";
+import type {
   Action,
   ActionExample,
   ActionParameterSchema,
@@ -34,11 +39,6 @@ import {
   stableStringify,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarProvider,
-} from "@elizaos/core/contracts/calendar";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,

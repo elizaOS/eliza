@@ -83,10 +83,7 @@ function isAutonomyService(value: unknown): value is AutonomyServiceLike {
 }
 
 function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
-  // Older autonomy plugins registered a lowercase service type. Keep this
-  // lookup until those independently versioned plugins reach the typed key.
-  const service =
-    runtime.getService(AUTONOMY_SERVICE_TYPE) ?? runtime.getService("autonomy");
+  const service = runtime.getService(AUTONOMY_SERVICE_TYPE);
   return isAutonomyService(service) ? service : null;
 }
 

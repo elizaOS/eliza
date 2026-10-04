@@ -4,7 +4,7 @@
  * exists. Pure function; no model or filesystem access.
  */
 import { describe, expect, it } from "vitest";
-import { type InstalledModel } from "@elizaos/core/contracts/local-inference";
+import { type InstalledModel } from "@elizaos/contracts";
 import { buildRecommendedAssignments } from "../src/services/assignments.ts";
 
 function makeModel(overrides: Partial<InstalledModel> & { id: string }): InstalledModel {

@@ -5,14 +5,14 @@
  * the persisted receipt and never sends a second provider mutation.
  */
 import { createHash } from "node:crypto";
-import { type IAgentRuntime, Service, stableStringify } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsCalendarEventResponse,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventCancellationResult,
-} from "@elizaos/core/contracts/calendar";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import { type IAgentRuntime, Service, stableStringify } from "@elizaos/core";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   type CalendarOwnerMutationGateway,

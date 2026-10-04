@@ -5,13 +5,6 @@
  * @vitest-environment jsdom
  */
 
-import { ApiError } from "@elizaos/ui/api/client-types-core";
-import { createNavigateViewHandler } from "@elizaos/ui/app-navigate-view";
-import {
-  dispatchNavigateViewEvent,
-  NAVIGATE_VIEW_EVENT,
-} from "@elizaos/ui/events";
-import { getActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import {
   act,
   cleanup,
@@ -21,13 +14,21 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../../../packages/ui/src/api/client-types-core";
+import { createNavigateViewHandler } from "../../../../packages/ui/src/app-navigate-view";
+import {
+  dispatchNavigateViewEvent,
+  NAVIGATE_VIEW_EVENT,
+} from "../../../../packages/ui/src/events/index";
+import { getActiveAgentAuthority } from "../../../../packages/ui/src/hooks/useActiveAgentAuthority";
 import type { NotesSnapshot, StickyNote } from "../types.js";
 import { parseNoteContent } from "../validation.js";
 import type { NotesState } from "./useNotesState.js";
 
 const stateHook = vi.hoisted(() => vi.fn());
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: (definition: { id: string }) => ({
     ref: { current: null },
     agentProps: { "data-agent-id": definition.id },
@@ -35,8 +36,8 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
 }));
 
 vi.mock(
-  "@elizaos/ui/components/shared/ViewHeader",
-  () => import("../../../../packages/ui/src/components/shared/ViewHeader.tsx"),
+  "../../../../packages/ui/src/components/shared/ViewHeader",
+  () => import("../../../../packages/ui/src/components/shared/ViewHeader"),
 );
 
 vi.mock("./useNotesState.js", () => ({

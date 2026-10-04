@@ -5,7 +5,7 @@
  * checkout-selected TypeScript module.
  */
 
-import { type ScenarioDefinition, scenario } from "@elizaos/testing";
+import { type ScenarioDefinition, scenario } from "../../schema/index.ts";
 import providerCanaryDefinitionCatalog from "../../schema/provider-canary-definitions.json" with {
   type: "json",
 };

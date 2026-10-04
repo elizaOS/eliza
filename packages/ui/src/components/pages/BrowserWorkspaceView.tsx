@@ -1,6 +1,7 @@
 /** Renders the browser workspace with tab switching, navigation, and native or desktop page surfaces. */
 
 import { Capacitor } from "@capacitor/core";
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,12 +14,12 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import {
-  type BrowserWorkspaceSnapshot,
-  type BrowserWorkspaceTab,
-  client,
-} from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+} from "../../api/browser-contracts";
+import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
@@ -26,21 +27,21 @@ import {
   usesOwnedChromiumBrowser,
 } from "../../bridge/system-browser";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
-import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
+import { NAVIGATE_VIEW_EVENT } from "../../events";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { usesAndroidLp3SharedBrowserStorage } from "../../platform/android-runtime";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
-import { openExternalUrl } from "../../utils";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry.js";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";

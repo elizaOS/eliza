@@ -82,16 +82,14 @@ vi.mock(
   },
 );
 
-vi.mock("../../utils", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../utils")>();
-  return {
-    ...actual,
-    openExternalUrl: openExternalHarness.openExternalUrl,
-  };
+vi.mock("../../utils/openExternalUrl", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../utils/openExternalUrl")>();
+  return { ...actual, openExternalUrl: openExternalHarness.openExternalUrl };
 });
 
-vi.mock("../../state", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../state")>();
+vi.mock("../../state/app-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../state/app-store")>();
   const state = {
     getStewardPending: async () => [],
     getStewardStatus: async () => null,
@@ -119,8 +117,8 @@ vi.mock("../../state", async (importOriginal) => {
   };
 });
 
-vi.mock("../../api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../api")>();
+vi.mock("../../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/client")>();
   return {
     ...actual,
     client: {
@@ -158,7 +156,7 @@ vi.mock("../../api", async (importOriginal) => {
   };
 });
 
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { NAVIGATE_VIEW_EVENT } from "../../events";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
 

@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
-import { PERSONAL_SHARED_NO_RESPONSE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
+import { PERSONAL_SHARED_NO_RESPONSE_REPLY } from "@elizaos/cloud-services-common/transport";
 import { blooioAdapter } from "../src/adapters/blooio";
 import { telegramAdapter } from "../src/adapters/telegram";
 import type { GatewayRedis } from "../src/redis";

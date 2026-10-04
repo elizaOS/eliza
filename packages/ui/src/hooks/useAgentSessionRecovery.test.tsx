@@ -51,7 +51,7 @@ vi.mock("../state/active-server-credential", () => ({
   persistActiveServerCredential: (token: string) =>
     mockPersistActiveServerCredential(token),
 }));
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: { setToken: (token: string) => mockSetAgentToken(token) },
 }));
 vi.mock("../state/cloud-session-refresh-for-repair", () => ({

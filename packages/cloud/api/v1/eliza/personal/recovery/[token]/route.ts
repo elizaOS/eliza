@@ -7,14 +7,14 @@
  * billing lifecycle. Invalid and expired links are typed refusals.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   PersonalFallbackRecoveryLinkError,
   resolvePersonalFallbackRecoveryLink,
-} from "@/lib/services/personal-fallback-recovery-link";
-import { getAppUrl } from "@/lib/utils/app-url";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/personal-fallback-recovery-link";
+import { getAppUrl } from "@elizaos/cloud-shared/lib/utils/app-url";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

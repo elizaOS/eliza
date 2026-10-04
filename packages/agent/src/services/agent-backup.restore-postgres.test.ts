@@ -7,7 +7,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { AGENT_BACKUP_CANONICAL_JSON, stableJsonString } from "@elizaos/core";
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  canonicalJsonString,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const pgState = vi.hoisted(() => ({
@@ -68,7 +71,7 @@ function dump(): AgentBackupPostgresDump {
     },
   ];
   const sha256 = createHash("sha256")
-    .update(stableJsonString(tables, AGENT_BACKUP_CANONICAL_JSON))
+    .update(canonicalJsonString(tables, AGENT_BACKUP_CANONICAL_JSON))
     .digest("hex");
   return { kind: "postgres-rows", tables, sha256 };
 }

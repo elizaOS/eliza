@@ -9,7 +9,8 @@
 import { Puzzle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "../../../bridge/toast";
-import { DashboardPageContainer, useSetPageHeader } from "../../../cloud-ui";
+import { DashboardPageContainer } from "../../../cloud-ui/components/layout/dashboard-page";
+import { useSetPageHeader } from "../../../cloud-ui/components/layout/page-header-context.hooks";
 import {
   SettingsGroup,
   SettingsRow,

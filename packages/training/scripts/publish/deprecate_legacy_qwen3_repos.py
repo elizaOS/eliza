@@ -8,7 +8,7 @@ deprecated and point at the active Eliza-1 replacement bundles.
 This script only updates the README.md on each repo; it does NOT delete or
 transform any artifact. Run it once per token-bearing environment::
 
-    HF_TOKEN=hf_... python -m scripts.publish.deprecate_legacy_qwen3_repos
+    HF_TOKEN=hf_... python -m eliza_training.publish.deprecate_legacy_qwen3_repos
 
 Dry-run by default; pass ``--apply`` to actually upload.
 

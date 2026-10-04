@@ -1,5 +1,6 @@
 /** Enforces effect-grounded replies and trusted audience admission at every message egress boundary. */
 
+import { isValidTimeZone } from "@elizaos/contracts";
 import type {
   Action,
   ActionResult,
@@ -23,7 +24,6 @@ import {
   getUserMessageText,
   hashString,
   isObjectRecord as isRecord,
-  isValidTimeZone,
   mergeEffectReceipts,
   ownerExclusiveDisclosureWasUsed,
   PRIVACY_DENIED_TEXT,

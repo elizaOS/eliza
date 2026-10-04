@@ -14,23 +14,23 @@
  * `/api/.well-known` public prefix.
  */
 
-import { Hono } from "hono";
 import {
   isOidcClientRegistryConfigured,
   listOidcClients,
-} from "@/lib/oidc/clients";
+} from "@elizaos/cloud-shared/lib/oidc/clients";
 import {
   describeOidcConfigFailure,
   isOidcEnabled,
   resolveOidcConfig,
-} from "@/lib/oidc/config";
+} from "@elizaos/cloud-shared/lib/oidc/config";
 import {
   getOidcSigningAlgorithms,
   isOidcSigningConfigured,
-} from "@/lib/oidc/keys";
-import { buildOidcDiscoveryDocument } from "@/lib/oidc/metadata";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/oidc/keys";
+import { buildOidcDiscoveryDocument } from "@elizaos/cloud-shared/lib/oidc/metadata";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

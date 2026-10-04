@@ -1,12 +1,12 @@
 /** Restricted renderer transport. Observation/proposal/result payloads never come
  * from this API. Hosts supply authentication and trusted goal authorization.
  */
-import { ElizaError } from "@elizaos/core/errors";
 import {
+  ElizaError,
   type InteractiveTask,
   sameTaskOwner,
   type TaskOwner,
-} from "@elizaos/core/messaging/interactive-task";
+} from "@elizaos/core/protocol";
 import type {
   AuthorizedTaskGoal,
   InteractiveTaskRuntime,

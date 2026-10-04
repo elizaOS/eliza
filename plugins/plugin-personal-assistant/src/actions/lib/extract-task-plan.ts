@@ -11,24 +11,24 @@
  * language so life.ts can stay on an LLM-driven extraction path.
  */
 
+import {
+  LIFEOPS_REMINDER_INTENSITIES,
+  type LifeOpsReminderIntensity,
+} from "@elizaos/contracts";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
   ElizaError,
   getTrajectoryContext,
   ModelType,
+  normalizeKeywordMatchText,
   parseJsonModelRecord,
   readTaskExtractionContext,
   recentConversationTexts,
   runExtractorPipeline,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { normalizeKeywordMatchText } from "@elizaos/core/i18n/keyword-matching";
-import { textStatesExplicitRecurrence } from "@elizaos/core/i18n/recurrence-markers";
-import {
-  LIFEOPS_REMINDER_INTENSITIES,
-  type LifeOpsReminderIntensity,
-} from "../../contracts/index.js";
+import { textStatesExplicitRecurrence } from "@elizaos/core/protocol";
 import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
 import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
@@ -227,7 +227,7 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     `- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise ${unknownRequestKind}`,
     "- title: short name for the task (2-5 words)",
     "- description: brief description if the user provided context",
-    "- nativeProjection: in_app_only when the owner explicitly requests in-app-only delivery or no native app; apple_reminders when explicitly requesting Apple Reminders. Otherwise omit it. This is destination intent, not a permission grant. Do not infer it from quoted reminder content.",
+    `- nativeProjection: in_app_only when the owner explicitly requests in-app-only delivery or no native app; apple_reminders when explicitly requesting Apple Reminders. Otherwise ${nativeTool ? "use null for mode=create; omission is allowed only for mode=respond" : "omit it"}. This is destination intent, not a permission grant. Do not infer it from quoted reminder content.`,
     '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "count_per_day", "interval"',
     UNDATED_TODO_EXTRACTION_GUIDANCE,
     '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
@@ -256,7 +256,9 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     '- dueInDays: for "once" tasks, whole days from today when the user uses relative day words ("today" -> 0, "tomorrow" -> 1, "day after tomorrow" -> 2)',
     '- dueWeekday: for "once" tasks, the weekday number (0=Sun, 1=Mon, ..., 6=Sat) when the user names a weekday ("Friday" -> 5, "next Tuesday" -> 2)',
     '- dueInMinutes: for "once" tasks, minutes from now for offsets ("in 2 hours" -> 120, "in 45 minutes" -> 45)',
-    `  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four ${unknownField} for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.`,
+    nativeTool
+      ? '  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Use null for each inapplicable selector, including all four for recurring or clock-only tasks. If timing cannot be established, use mode="respond" rather than guessing.'
+      : `  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four ${unknownField} for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.`,
     '- multiStep: true when the user asks to be reminded about MORE THAN ONE distinct task or milestone in this request (e.g. "set reminders for outline, rough draft, and final proofread"), false when it is a single task ("remind me to pay the electric bill on the 28th")',
     "Use recent conversation only to resolve short follow-ups. Do not emit requestKind='alarm' or requestKind='reminder' unless the current request or recent conversation explicitly supports it.",
     "If the user has not actually specified the todo/habit yet, choose mode='respond' and ask a concise clarifying question instead of inventing a task.",
@@ -545,7 +547,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
     const first = await runExtractorPipeline({
       runtime,
       ...(managed.system !== undefined ? { system: managed.system } : {}),
-      prompt: `${prompt}\n\nHistory was selected by the request-bound planner review. Current provider constraints and receipts remain complete. If a constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
+      prompt: `${prompt}\n\nTask-create context is bound to this request. Selected history and provider-owned reference notices preserve standing constraints; current receipts stay complete. If any provider detail, constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
       parser: parsePlan,
     });
     if (first.parsed) return first.parsed;

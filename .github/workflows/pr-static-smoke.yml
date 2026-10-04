@@ -29,6 +29,11 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
+  secret-scan:
+    uses: ./.github/workflows/gitleaks.yml
+    with:
+      base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
   source-smoke:
     name: Source checks
     runs-on: ubuntu-24.04
@@ -102,6 +107,9 @@ jobs:
             -config-file .github/actionlint.yaml \
             "${workflows[@]}"
 
+      - name: Verify OSWorld uses configured authentication
+        run: python3 -m unittest discover -s packages/benchmarks/suites/OSWorld/tests -p test_vllm_auth.py -v
+
       - uses: ./.github/actions/setup-bun-workspace
         with:
           publish-bun-install-cache: "true"
@@ -129,6 +137,9 @@ jobs:
           bun test
           packages/cloud/scripts/shared/messaging-gateway-preflight.test.ts
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
+      - name: Test native Cloud billing and service boundaries
+        run: bun run --cwd packages/cloud/sdk test:native-host
+
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -431,6 +442,7 @@ jobs:
     name: All Tests Passed
     if: always()
     needs:
+      - secret-scan
       - source-smoke
       - billing-payment-replay-e2e
       - subscription-authority-postgres
@@ -439,6 +451,7 @@ jobs:
       - name: Require every admission lane
         env:
           RESULTS: >-
+            secret-scan=${{ needs.secret-scan.result }}
             source-smoke=${{ needs.source-smoke.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}

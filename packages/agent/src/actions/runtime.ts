@@ -20,19 +20,21 @@ import {
   type Action,
   type ActionResult,
   type AwarenessRegistry,
-  createSelfApiRequestHeaders,
   getValidationKeywordTerms,
   type HandlerOptions,
   type IAgentRuntime,
-  isSelfEditEnabled,
   logger,
   type Memory,
-  requireRestartHandler,
   textIncludesKeywordTerm,
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import { isSelfEditEnabled } from "@elizaos/host";
+import {
+  createSelfApiRequestHeaders,
+  requireRestartHandler,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 const RUNTIME_OPS = [
   "status",
@@ -268,9 +270,30 @@ function describeActionsOp(
 }
 
 interface ReloadConfigResponse {
-  reloaded?: boolean;
-  applied?: string[];
-  requiresRestart?: string[];
+  reloaded: true;
+  applied: string[];
+  requiresRestart: string[];
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
+}
+
+/** The reload route answers `{ reloaded: true, applied, requiresRestart }`; anything else is not an acknowledgement. */
+function isReloadConfigAcknowledgement(
+  value: unknown,
+): value is ReloadConfigResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    record.reloaded === true &&
+    isStringArray(record.applied) &&
+    isStringArray(record.requiresRestart)
+  );
 }
 
 async function reloadConfigOp(): Promise<ActionResult> {
@@ -297,9 +320,19 @@ async function reloadConfigOp(): Promise<ActionResult> {
       }
       return fail("reload_config", `Config reload failed: ${detail}`);
     }
-    const data = (await resp.json()) as ReloadConfigResponse;
-    const applied = data.applied ?? [];
-    const requiresRestart = data.requiresRestart ?? [];
+    const data: unknown = await resp.json();
+    if (!isReloadConfigAcknowledgement(data)) {
+      // A 2xx without the route's acknowledgement proves no reload happened;
+      // reporting "No hot-reloadable fields changed." would claim one did.
+      logger.warn(
+        `[runtime] reload_config response did not acknowledge the reload (${resp.status}).`,
+      );
+      return fail(
+        "reload_config",
+        `Config reload failed: the server did not acknowledge the reload (HTTP ${resp.status}).`,
+      );
+    }
+    const { applied, requiresRestart } = data;
     const lines = [
       applied.length
         ? `Applied: ${applied.join(", ")}`

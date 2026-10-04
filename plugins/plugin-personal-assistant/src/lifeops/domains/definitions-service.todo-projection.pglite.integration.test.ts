@@ -1,6 +1,6 @@
+import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
-import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
 import { buildNativeAppleReminderMetadata } from "../apple-reminders.js";
 import { createLifeOpsReminderAttempt } from "../repository.js";
 import { LifeOpsService } from "../service.js";
@@ -80,10 +80,6 @@ it("excludes owner reminders from todos without changing their stored occurrence
     expect(
       buildReminderBody({
         title: edited.title,
-        scheduledFor: dueAt,
-        dueAt,
-        channel: "in_app",
-        lifecycle: "plan",
       }),
     ).toContain("Updated notification message");
     await service.updateDefinition(reminder.definition.id, {

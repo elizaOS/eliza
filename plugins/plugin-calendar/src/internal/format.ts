@@ -7,7 +7,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 import {
   addDaysToLocalDate,
   getTimeZoneOffsetMinutes,
@@ -173,9 +173,38 @@ export function formatCalendarFeed(
 export function formatNextEventContext(
   context: LifeOpsNextCalendarEventContext,
 ): string {
+  return !context.event && context.readScope?.exhaustive === false
+    ? `No upcoming event was found in the checked connected calendar window from ${context.readScope.timeMin} to ${context.readScope.timeMax}. Its end is exclusive. Checked connected sources: ${context.calendarSources ? JSON.stringify(context.calendarSources.map((source) => source.summary)) : "(not reported)"}. This bounded, non-exhaustive search does not establish that the calendar is clear. Report absence only in these checked sources and this window; do not generalize to other calendars or events outside these bounds.`
+    : formatNextEventContextForUser(context);
+}
+
+/** Human-facing snapshot copy, kept separate from model grounding instructions. */
+export function formatNextEventContextForUser(
+  context: LifeOpsNextCalendarEventContext,
+): string {
   if (!context.event) {
     if (context.readScope?.exhaustive === false) {
-      return "No upcoming event was found in the checked calendar window. Its end is exclusive. This bounded search does not establish that the calendar is clear.";
+      const start = new Date(context.readScope.timeMin);
+      const end = new Date(context.readScope.timeMax);
+      const sources =
+        context.calendarSources
+          ?.map((source) => source.summary)
+          .filter(Boolean)
+          .join(", ") || "the checked Calendar sources";
+      if (
+        Number.isFinite(start.getTime()) &&
+        Number.isFinite(end.getTime()) &&
+        start < end
+      ) {
+        const zone = context.timeReference?.timeZone ?? "UTC";
+        const date = {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        } as const;
+        return `No upcoming event was found in ${sources} from ${formatCalendarDatePart(start, zone, date)} to before ${formatCalendarDatePart(end, zone, date)}.`;
+      }
+      return `No upcoming event was found in ${sources} within the checked dates.`;
     }
     return "No upcoming event was found in the checked calendar window.";
   }

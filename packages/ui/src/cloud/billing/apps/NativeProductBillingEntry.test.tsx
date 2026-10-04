@@ -11,7 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const boundary = vi.hoisted(() => ({ status: vi.fn() }));
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: { getCloudStatus: boundary.status },
 }));
 

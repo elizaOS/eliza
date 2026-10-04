@@ -1,4 +1,5 @@
-import { getHttpRuntime, type IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { getHttpRuntime } from "@elizaos/host/protocol";
 import { describe, expect, it } from "vitest";
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
 

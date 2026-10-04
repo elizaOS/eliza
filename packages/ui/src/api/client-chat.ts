@@ -1,22 +1,32 @@
+import {
+  ElizaClient,
+  invokeLocalDesktopRpc as invokeLocalDesktopChatRpc,
+} from "./client-base";
+
 /**
  * Chat domain methods — chat, conversations, documents, memory, MCP,
  * share ingest, workbench, trajectories, database.
  */
 
-import type { DatabaseProviderType } from "@elizaos/core/contracts/config";
-import type { PostInboxMessageRequest } from "@elizaos/core/contracts/inbox-routes";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import type {
-  AccountConnectRequest,
-  ApiError,
-  ChatActionResultSummary,
   ChatFailureKind,
   ChatTerminalFailure,
-  ChatTokenUsage,
   ChatToolCallEvent,
   ChatTurnStatus,
-  ConnectionTestResult,
+  DatabaseProviderType,
+  PostInboxMessageRequest,
+  PostWorkbenchVfsPromoteToCloudRequest,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
+} from "@elizaos/contracts";
+import type {
+  AccountConnectRequest,
+  ChatActionResultSummary,
+  ChatTokenUsage,
   ContentBlock,
   ContextInspectorResponse,
   Conversation,
@@ -24,10 +34,7 @@ import type {
   ConversationGreeting,
   ConversationMessage,
   ConversationMessageSearchResponse,
-  ConversationMetadata,
   CreateConversationOptions,
-  DatabaseConfigResponse,
-  DatabaseStatus,
   DocumentBulkUploadResult,
   DocumentDetail,
   DocumentFacetCountsResponse,
@@ -51,25 +58,19 @@ import type {
   MemoryRememberResponse,
   MemorySearchResponse,
   MemoryStatsResponse,
-  PostWorkbenchVfsPromoteToCloudRequest,
-  PromoteVfsToCloudContainerRequest,
-  PromoteVfsToCloudContainerResponse,
-  QueryResult,
   QuickContextResponse,
-  RequestCodingAgentContainerRequest,
-  RequestCodingAgentContainerResponse,
   ShareIngestItem,
   ShareIngestPayload,
-  SyncCloudCodingContainerRequest,
-  SyncCloudCodingContainerResponse,
-  TableInfo,
-  TableRowsResponse,
+} from "./client-types-chat";
+import type {
   TrajectoryConfig,
   TrajectoryDetailResult,
   TrajectoryExportOptions,
   TrajectoryListOptions,
   TrajectoryListResult,
   TrajectoryStats,
+} from "./client-types-cloud";
+import type {
   WorkbenchLoadedVfsPlugin,
   WorkbenchOverview,
   WorkbenchTask,
@@ -80,9 +81,17 @@ import type {
   WorkbenchVfsProject,
   WorkbenchVfsQuota,
   WorkbenchVfsSnapshot,
-} from "./client-types";
-import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
-import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
+} from "./client-types-config";
+import type {
+  ApiError,
+  ConnectionTestResult,
+  ConversationMetadata,
+  DatabaseConfigResponse,
+  DatabaseStatus,
+  QueryResult,
+  TableInfo,
+  TableRowsResponse,
+} from "./client-types-core";
 
 type DocumentListOptions = {
   limit?: number;
@@ -285,7 +294,7 @@ function buildTrajectoryParams(
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     sendChatRest(
       text: string,
@@ -340,13 +349,15 @@ declare module "./client-base" {
          */
         around?: string;
         /**
-         * When set, load one page STRICTLY OLDER than this createdAt cursor for
-         * the infinite upward scroll (#13532) — the client passes the createdAt
-         * of its current oldest message and prepends the returned page. Forces
-         * the HTTP path (the desktop-bridge RPC only serves the recent window)
-         * and makes the response carry `hasMore`.
+         * When set, load one page strictly older than this createdAt cursor for
+         * the infinite upward scroll (#13532). Pair it with `beforeId` so
+         * messages that share that millisecond are not skipped. Forces the HTTP
+         * path (the desktop-bridge RPC only serves the recent window) and makes
+         * the response carry `hasMore`.
          */
         before?: number;
+        /** Id of the oldest message already held, paired with `before`. */
+        beforeId?: string;
         /** Older-page size for the `before` cursor path. Server-clamped. */
         limit?: number;
       },
@@ -1154,23 +1165,7 @@ function withConversationListDefaults<
   }
   return response;
 }
-async function invokeLocalDesktopChatRpc<T>(
-  baseUrl: string,
-  options: {
-    rpcMethod: string;
-    ipcChannel: string;
-    params?: unknown;
-  },
-): Promise<T | null> {
-  if (
-    !isDesktopLocalApiBaseUrl(baseUrl) ||
-    isDesktopExternalApiBaseUrl(baseUrl) ||
-    isRemoteRelayRestAdapterBase(baseUrl)
-  ) {
-    return null;
-  }
-  return invokeDesktopBridgeRequest<T>(options);
-}
+
 ElizaClient.prototype.listConversations = async function (
   this: ElizaClient,
   options,
@@ -1266,6 +1261,7 @@ ElizaClient.prototype.getConversationMessages = async function (
     query = `?around=${encodeURIComponent(options.around)}`;
   } else if (options?.before !== undefined) {
     const params = new URLSearchParams({ before: String(options.before) });
+    if (options.beforeId) params.set("beforeId", options.beforeId);
     if (options.limit !== undefined) {
       params.set("limit", String(options.limit));
     }

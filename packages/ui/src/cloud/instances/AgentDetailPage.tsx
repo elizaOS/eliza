@@ -7,13 +7,13 @@ import {
   formatHourlyRate,
   formatMonthlyEstimate,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import {
-  Badge,
-  DashboardErrorState,
-  DashboardLoadingState,
-} from "@elizaos/ui/cloud-ui";
 import { AlertCircle, ArrowLeft, Cloud } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import {
+  DashboardErrorState,
+  DashboardLoadingState,
+} from "../../cloud-ui/components/dashboard/route-placeholders";
+import { Badge } from "../../components/ui/badge";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";

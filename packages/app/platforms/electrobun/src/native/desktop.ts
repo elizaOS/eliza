@@ -27,7 +27,7 @@ import path from "node:path";
 import {
 	clearWorkspaceFolderConfig,
 	writeWorkspaceFolderConfig,
-} from "@elizaos/core";
+} from "@elizaos/host";
 import Electrobun, {
 	type ApplicationMenuItemConfig,
 	BrowserView,

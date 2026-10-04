@@ -13,8 +13,8 @@ import {
   AGENT_BACKUP_RESTORE_V3_MATERIALIZER_LIMITS,
   type AgentBackupRestoreV3MaterializerRequest,
   AgentBackupRestoreV3MaterializerRequestSchema,
-  ElizaError,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { candidateFsCanonicalJson } from "./agent-backup-restore-v3-candidate-fs-json";
 
 // Covers the canonical receipt's 8192 bounded source-object descriptors, not

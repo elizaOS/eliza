@@ -243,6 +243,15 @@ export interface PushActionPerformed {
  * absent on web/desktop bundles (the accessor returns `{}` there).
  */
 export interface PushNotificationsPluginLike extends NativePlugin {
+  /** Present only on builds with the app-owned cold reminder receiver. */
+  getReminderDataCapabilities?: () => Promise<{
+    reminderDataNotifications: boolean;
+    reminderChannelSelection?: boolean;
+  }>;
+  resolveReminderChannel?: (request: {
+    priority: "urgent" | "high" | "normal" | "low";
+    ownerType: "occurrence" | "calendar_event";
+  }) => Promise<{ channelId: string; blocked: boolean }>;
   checkPermissions?: () => Promise<PushNotificationPermissionStatus>;
   requestPermissions?: () => Promise<PushNotificationPermissionStatus>;
   register?: () => Promise<void>;

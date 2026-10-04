@@ -7,21 +7,21 @@
  * panel to Local so first paint matches the provider actually serving.
  */
 
+import { asRecord } from "@elizaos/core/protocol";
 import {
   normalizeSubscriptionProviderSelectionId,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
-import { asRecord } from "@elizaos/core/type-guards";
+  type SubscriptionProviderSelectionId,
+} from "@elizaos/host/protocol";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { useBranding } from "../../config/branding";
 import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import {
   getFirstRunProviderOption,
   isSubscriptionProviderSelectionId,
-  type SubscriptionProviderSelectionId,
 } from "../../providers";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { shellHistory, shellLocalStorage } from "../../surface-realm-channel";
 export type ProviderPanelId = "__cloud__" | "__local__" | string;
 const PROVIDER_PANEL_STORAGE_KEY = "eliza.settings.ai-model.panel";
