@@ -106,7 +106,7 @@ export function TaskChoice({
   const unavailable = pending || busy || expired || widget.state !== "pending";
   const showOptions = !explainUnavailable || widget.state === "pending";
   return (
-    <fieldset aria-busy={pending || busy}>
+    <fieldset>
       <legend>
         {widget.block.prompt || messages?.choose || "Choose an option"}
       </legend>
@@ -115,11 +115,13 @@ export function TaskChoice({
           {messages?.failed ?? "The choice could not be sent. Try again."}
         </p>
       )}
+      {/* Live notices stay outside the options' busy state. */}
       {showOptions &&
         widget.block.options.map((option) => (
           <button
             key={option.value}
             type="button"
+            aria-busy={pending || busy}
             disabled={!explainUnavailable && unavailable}
             aria-disabled={explainUnavailable && unavailable ? true : undefined}
             onClick={() => void choose(option.value)}

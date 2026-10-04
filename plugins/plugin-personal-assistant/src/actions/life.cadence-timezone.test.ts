@@ -16,7 +16,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import * as assistant from "@elizaos/plugin-assistant";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runLifeOperationHandler } from "./life.js";
 
 const OWNER_ZONE = "America/Los_Angeles";
@@ -193,5 +193,61 @@ describe("one-time cadence summaries use the definition timezone", () => {
     );
     expect(result.success).toBe(true);
     expect(serviceState.deletedIds).toEqual(["owner-4pm"]);
+  });
+
+  describe("on a 24-hour host locale", () => {
+    let hostLocale: { mockRestore(): void } | undefined;
+    beforeEach(() => {
+      // Simulate a de-DE host: an unspecified locale formats `9:00` with no
+      // am/pm (and German month names), as on en-GB or de-DE servers.
+      const hostFormat = Date.prototype.toLocaleString;
+      hostLocale = vi
+        .spyOn(Date.prototype, "toLocaleString")
+        .mockImplementation(function (
+          this: Date,
+          locales?: Intl.LocalesArgument,
+          options?: Intl.DateTimeFormatOptions,
+        ) {
+          return hostFormat.call(this, locales ?? "de-DE", options);
+        });
+    });
+    afterEach(() => hostLocale?.mockRestore());
+
+    it("still summarizes reminders with am/pm clock times", async () => {
+      const result = await runLifeOperationHandler(
+        makeRuntime(),
+        makeMessage("what reminders do I have"),
+        undefined,
+        {
+          parameters: {
+            subaction: "review",
+            intent: "what reminders do I have",
+            ownerSurface: "OWNER_REMINDERS",
+          },
+        } as HandlerOptions,
+      );
+      const text = String(result.text);
+      expect(text).toContain("9:00 AM");
+      expect(text).toContain("4:00 PM");
+    });
+
+    it("still deletes the 4pm duplicate the owner named", async () => {
+      const text = "delete the Call dentist reminder at 4pm";
+      const result = await runLifeOperationHandler(
+        makeRuntime(),
+        makeMessage(text),
+        undefined,
+        {
+          parameters: {
+            subaction: "delete",
+            intent: text,
+            ownerSurface: "OWNER_REMINDERS",
+            target: "Call dentist",
+          },
+        } as HandlerOptions,
+      );
+      expect(result.success).toBe(true);
+      expect(serviceState.deletedIds).toEqual(["owner-4pm"]);
+    });
   });
 });

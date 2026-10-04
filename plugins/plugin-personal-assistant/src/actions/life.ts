@@ -1653,7 +1653,9 @@ function summarizeCadence(cadence: LifeOpsCadence, timeZone?: string): string {
       if (Number.isNaN(dueAt.getTime()) || !zone) {
         return "once";
       }
-      return `once on ${dueAt.toLocaleString(undefined, {
+      // English prose whose am/pm clock tokens resolveDuplicateByTimeHint
+      // reads back, so it must not follow a 24-hour host locale.
+      return `once on ${dueAt.toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",
