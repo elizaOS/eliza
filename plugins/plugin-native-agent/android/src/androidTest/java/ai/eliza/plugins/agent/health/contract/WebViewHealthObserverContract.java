@@ -59,7 +59,6 @@ public final class WebViewHealthObserverContract {
   WebViewHealthObserver observer=new WebViewHealthObserver("https://localhost","true");
   ExecutorService worker=Executors.newFixedThreadPool(2);
   onMain(()->{owner[0]=new Activity();views[0]=new DeferredView(context);views[1]=new DeferredView(context);
-   for(boolean destroy:new boolean[]{false,true}){try{if(destroy)observer.destroy(null);else observer.pause(null);throw new AssertionError("Null lifecycle owner accepted");}catch(IllegalArgumentException expected){}}
    observer.resume(owner[0],views[0]);});
   try {
    Call old=issue(worker,observer,views[0],5000);
@@ -84,6 +83,7 @@ public final class WebViewHealthObserverContract {
    Call destroyed=issue(worker,observer,views[1],5000);onMain(()->observer.destroy(owner[0]));rejected(destroyed.result);
    onMain(()->destroyed.callback.onReceiveValue("true"));
    check("absent".equals(observer.read(SystemClock.elapsedRealtime()+5000).getString("activityState")),"Late callback revived destroyed owner");
+   onMain(()->{for(boolean destroy:new boolean[]{false,true}){try{if(destroy)observer.destroy(null);else observer.pause(null);throw new AssertionError("Null lifecycle owner accepted");}catch(IllegalArgumentException expected){}}});
   }finally{worker.shutdownNow();onMain(()->{observer.destroy(owner[0]);for(DeferredView view:views)if(view!=null)view.destroy();});}
  }
 
