@@ -2,6 +2,21 @@ import { type ChildProcess, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 /** One initialized host voice worker. Cancellation destroys its native context. */
+/**
+ * Bun arguments for the speech worker. A source checkout resolves the worker
+ * to its `.ts` file, which needs the `eliza-source` condition to load
+ * workspace sources. A packaged build resolves the bundled `.js` worker, which
+ * must resolve its external dependencies from their built `dist` files, so the
+ * condition is not passed there.
+ */
+export function speechWorkerArgs(workerPath: string): string[] {
+  return [
+    "--no-install",
+    ...(workerPath.endsWith(".ts") ? ["--conditions=eliza-source"] : []),
+    workerPath,
+  ];
+}
+
 export class StandaloneKokoroService {
   private child?: ChildProcess;
   private boot?: Promise<void>;
@@ -50,15 +65,13 @@ export class StandaloneKokoroService {
     );
     const child = spawn(
       process.execPath,
-      [
-        "--no-install",
-        "--conditions=eliza-source",
+      speechWorkerArgs(
         fileURLToPath(
           import.meta.resolve(
             "@elizaos/plugin-local-inference/host-tts-worker",
           ),
         ),
-      ],
+      ),
       { env, stdio: ["pipe", "ignore", "ignore", "pipe"] },
     );
     this.child = child;

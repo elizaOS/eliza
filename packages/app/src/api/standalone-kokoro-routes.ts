@@ -49,7 +49,9 @@ export function warmStandaloneKokoro(state: CompatRuntimeState): void {
   const host = hostFor(state);
   void Promise.all([
     host.service.initialize(),
-    import("@elizaos/plugin-local-inference/routes/local-inference-tts-route"),
+    // The built `./routes` entry re-exports the TTS route module; the deep
+    // `routes/local-inference-tts-route` path only exists in source.
+    import("@elizaos/plugin-local-inference/routes"),
   ]).catch(() => {
     if (!host.stopped)
       console.warn(
@@ -205,7 +207,7 @@ export async function handleStandaloneKokoroRoute(
       return true;
     }
     const { sanitizeLocalInferenceSpeechText } = await import(
-      "@elizaos/plugin-local-inference/routes/local-inference-tts-route"
+      "@elizaos/plugin-local-inference/routes"
     );
     const text = sanitizeLocalInferenceSpeechText(input.text);
     if (!text) {
