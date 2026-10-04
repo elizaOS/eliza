@@ -10,6 +10,7 @@
 			],
 			"@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"],
 			"@elizaos/core/protocol": ["../../packages/core/dist/protocol"]
-		}
+		},
+		"outDir": "./dist"
 	}
 }
