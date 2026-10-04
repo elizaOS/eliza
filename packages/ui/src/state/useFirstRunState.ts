@@ -10,18 +10,19 @@
  * The deleted wizard's 35+ step/connector/feature fields died with it (#12178).
  */
 
-import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import type { FirstRunOptions } from "@elizaos/host/protocol";
+import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import { useReducer, useRef } from "react";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";
-import { activeServerKindToFirstRunRuntimeTarget } from "../first-run/runtime-target";
-import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
+import {
+  activeServerKindToFirstRunRuntimeTarget,
+  type FirstRunRuntimeTarget,
+} from "../first-run/runtime-target";
 import { isOnboardingReplayRequested } from "../platform/onboarding-replay";
 import {
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
 } from "./persistence";
-
 // ── Remote connection state ────────────────────────────────────────────
 export interface RemoteConnectionState {
   status: "idle" | "connecting" | "connected" | "error";

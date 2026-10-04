@@ -185,9 +185,9 @@ export const ShellOverlayOpen: StoryObj = {
         importPath:
           'import { AssistantOverlay, ChatSurface } from "@elizaos/ui"',
         description:
-          "AssistantOverlay is a fixed dialog container. Inside the catalog tile we render it relative-positioned so it sits within the surface card.",
+          "AssistantOverlay is a fixed dialog container. The catalog constrains each overlay to its theme tile.",
         render: () => (
-          <div className="relative h-[60vh] w-full overflow-hidden rounded-2xl border border-border/40 bg-card/40">
+          <div className="relative h-[60vh] w-full overflow-hidden rounded-2xl border border-border/40 bg-card/40 [&_.shell-assistant-overlay-positioner]:absolute [&_.shell-assistant-overlay-positioner]:inset-0 [&_.shell-assistant-overlay-positioner]:size-full [&_.shell-assistant-overlay-positioner]:translate-none">
             <AssistantOverlay phase="summoned" onClose={noop}>
               <ChatSurface
                 messages={sampleMessages}

@@ -3,6 +3,8 @@
  * Update*, Extension*, Workbench*, Character*, Voice*, Skill*. One
  * slice of the ElizaClient type surface, re-exported through client-types.ts.
  */
+
+import type { ConfigUiHint, ReleaseChannel } from "@elizaos/contracts";
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,

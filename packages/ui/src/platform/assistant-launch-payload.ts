@@ -2,8 +2,8 @@ import {
   ASSISTANT_LAUNCH_PARAM_KEYS,
   ASSISTANT_LAUNCH_SOURCES,
   ASSISTANT_LAUNCH_TEXT_KEYS,
-} from "@elizaos/core/protocol";
-import type { AssistantLaunchPayload } from "@elizaos/core/protocol";
+  type AssistantLaunchPayload,
+} from "@elizaos/contracts";
 
 export interface AssistantLaunchPayloadClaimOptions {
   allowedRoutes?: readonly string[];

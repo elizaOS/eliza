@@ -16,8 +16,8 @@
  * plugin just provides the backend capabilities it consumes.
  */
 
-import type { AppRunSummary, RegistryAppInfo } from "@elizaos/core/protocol";
 import type { TranslateFn } from "@elizaos/contracts";
+import type { AppRunSummary, RegistryAppInfo } from "@elizaos/core/protocol";
 import {
   Activity,
   AlertTriangle,

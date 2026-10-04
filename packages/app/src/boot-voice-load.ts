@@ -1,4 +1,5 @@
 import { loadVoice } from "@elizaos/ui";
+import { cachedDynamicImport } from "./app-module-cache";
 /**
  * Single-flight loader for the lazy `@elizaos/ui/voice` chunk on the boot
  * path. main() kicks the download off before the storage-bridge hydration
@@ -11,8 +12,6 @@ import { loadVoice } from "@elizaos/ui";
  * index.html pointing at a purged hash during a redeploy) must never gate
  * mounting the app — callers skip the voice wiring and boot on.
  */
-
-import { cachedDynamicImport } from "./app-module-cache";
 
 export type VoiceModule = Awaited<ReturnType<typeof loadVoice>>;
 

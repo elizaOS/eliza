@@ -1,29 +1,5 @@
 import { getHostRequestTransport } from "../../api/host-transport";
 import { nativeJsonRequestData as nativeRequestData } from "../../api/native-http-codec";
-import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { CSRF_HEADER_NAME } from "@elizaos/auth";
-import { getElizaApiToken } from "@elizaos/host/protocol";
-import {
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core/protocol";
-import {
-  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
-  resolveDirectCloudAuthApiBase,
-  STAGING_DIRECT_CLOUD_API_BASE_URL,
-} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
-import {
-  clearStoredStewardToken,
-  readStoredStewardToken,
-} from "@elizaos/plugin-elizacloud/steward-session-client";
-import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { getBootConfig } from "../../config/boot-config";
-import { logger } from "../../logger.ts";
-import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
-import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
-import { decodeJwtPayload } from "./jwt";
-
 /**
  * Typed fetch wrapper for the cloud surfaces hosted inside the Eliza app.
  * Every `/api/*` call routed through here gets a single place that:
@@ -49,6 +25,31 @@ import { decodeJwtPayload } from "./jwt";
  *   const me = await api<MeResponse>("/api/users/me");
  *   await api("/api/v1/apps/123", { method: "DELETE" });
  */
+
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { CSRF_HEADER_NAME } from "@elizaos/auth";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/protocol";
+import { getElizaApiToken } from "@elizaos/host/protocol";
+
+import {
+  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
+  resolveDirectCloudAuthApiBase,
+  STAGING_DIRECT_CLOUD_API_BASE_URL,
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
+import { logger } from "../../logger.ts";
+import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
+import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
+import { decodeJwtPayload } from "./jwt";
 
 // The single Eliza Cloud API host the native/Electrobun transport is allowed to
 // reach cross-origin. Kept deliberately narrow: only this exact host relaxes the

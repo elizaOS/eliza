@@ -6,23 +6,23 @@
  * agent restart, surfaces saving/success state, and exposes the
  * derived modelValues used by the cloud-tier ConfigRenderer.
  */
-import type { FirstRunOptions, ModelOption } from "@elizaos/host/protocol";
 import {
-  resolveServiceRoutingInConfig,
   buildElizaCloudServiceRoute,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  type FirstRunOptions,
+  type ModelOption,
   normalizeServiceRoutingConfig,
+  resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import { useTimeout } from "../../hooks/useTimeout";
 import {
   buildCloudModelSchema,
+  type CloudModelSchema,
   DEFAULT_ACTION_PLANNER_MODEL,
   DEFAULT_RESPONSE_HANDLER_MODEL,
 } from "./cloud-model-schema";
-import type { CloudModelSchema } from "./cloud-model-schema";
-
 export interface CloudModelConfig {
   modelOptions: FirstRunOptions["models"] | null;
   setModelOptions: (options: FirstRunOptions["models"]) => void;

@@ -2,7 +2,7 @@
  * Typed constants for eliza:* custom events dispatched across the app.
  *
  * The cross-platform event names and detail payloads live in
- * `@elizaos/core/events` (the single source of truth, also consumed by the
+ * `@elizaos/core/protocol` (the single source of truth, also consumed by the
  * server). This module owns DOM event dispatch and adds UI-only events with no
  * server producer (focus-connector, voice-control, tutorial chat-control, and
  * the shared→dedicated cloud-agent handoff phases). The `Eliza*EventName` unions

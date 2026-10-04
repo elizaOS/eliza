@@ -4,10 +4,7 @@
  * iOS, Android, or Electrobun reducer result after that host round-trip.
  */
 
-import type {
-  TranscriptItem,
-  TranscriptViewModel,
-} from "@elizaos/core/protocol";
+import type { TranscriptItem, TranscriptViewModel } from "@elizaos/contracts";
 import { ChevronDown } from "lucide-react";
 import {
   type ReactNode,

@@ -5,15 +5,6 @@
  */
 
 import type {
-  AppRunSummary,
-  AppSessionState,
-  AppViewerAuthMessage,
-  UiLanguage,
-} from "@elizaos/core/protocol";
-import type {
-  ReleaseChannel,
-  DropStatus,
-  MintResult,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -22,6 +13,9 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
+  DropStatus,
+  MintResult,
+  ReleaseChannel,
   StewardBalanceResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
@@ -40,6 +34,12 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 } from "@elizaos/contracts";
+import type {
+  AppRunSummary,
+  AppSessionState,
+  AppViewerAuthMessage,
+  UiLanguage,
+} from "@elizaos/core/protocol";
 import type { FirstRunOptions } from "@elizaos/host/protocol";
 import type { Dispatch, SetStateAction } from "react";
 import type { TriggerRunRecord } from "../api/client";

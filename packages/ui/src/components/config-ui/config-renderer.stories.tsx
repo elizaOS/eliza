@@ -4,8 +4,8 @@
  * empty case. Uses the default registry so real field renderers mount.
  */
 
-import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import type { ConfigUiHint } from "@elizaos/contracts";
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { ConfigRenderer } from "./config-renderer";

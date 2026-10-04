@@ -13,7 +13,6 @@
  */
 import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-
 import {
   toWellFormedUnicode,
   truncateWellFormed,

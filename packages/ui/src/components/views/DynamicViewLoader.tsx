@@ -7,15 +7,12 @@ import {
   ElizaError,
   HOST_EXTERNAL_RUNTIME_PARAM,
   HOST_EXTERNAL_SPECIFIERS_PARAM,
+  type HostExternalBundleFactory,
+  type HostModuleImporter,
   resolveSurfaceManifest,
 } from "@elizaos/core/protocol";
-import type {
-  HostExternalBundleFactory,
-  HostModuleImporter,
-} from "@elizaos/core/protocol";
-import { resolveAppBranding } from "@elizaos/host/protocol";
-import type { ComponentType } from "react";
 import {
+  type ComponentType,
   memo,
   useCallback,
   useEffect,
@@ -25,59 +22,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { AgentElementOverlay } from "../../agent-surface/AgentElementOverlay";
-import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
-import {
-  handleAgentSurfaceCapability,
-  isAgentSurfaceCapability,
-} from "../../agent-surface/capabilities";
-import { AgentSurfaceElementReporter } from "../../agent-surface/element-reporter";
-import {
-  getViewRegistry,
-  setNativeFieldValue as setNativeInputValue,
-} from "../../agent-surface/registry";
-import type { ViewAgentRegistry } from "../../agent-surface/registry";
-import {
-  isSensitiveAgentElement,
-  SENSITIVE_AGENT_ELEMENT_REASON,
-} from "../../agent-surface/sensitive";
-import { client } from "../../api/client";
-import {
-  registeredHostExternalSpecifiers,
-  resolveRegisteredHostExternalImporter,
-} from "../../app-shell-registry";
-import type {
-  EvictReason,
-  ModuleCacheTelemetryEvent,
-} from "../../cache-telemetry";
-import { emitModuleCacheTelemetry } from "../../cache-telemetry";
-import { APP_PAUSE_EVENT } from "../../events";
-import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
-import { SpatialSurface } from "../../spatial/dom";
-import {
-  HEAP_PRESSURE_EVENT,
-  isUnderMemoryPressure,
-  planModuleCacheEvictions,
-} from "../../state/bounded-view-lru";
-import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
-import {
-  getActiveSurfaceRealmScope,
-  SurfaceRealmDeniedError,
-  subscribeActiveSurfaceRealmScope,
-} from "../../surface-realm-broker";
-import type { SurfaceRealmScope } from "../../surface-realm-broker";
-import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
-import { ErrorBoundary } from "../ui/error-boundary";
-import { SandboxedViewFrame } from "./SandboxedViewFrame";
-import {
-  navigateToViews,
-  ViewErrorState,
-  ViewLoadingSkeleton,
-  ViewRestrictedState,
-} from "./ViewStatusStates";
-import { brokerViewInteract } from "./view-capability-broker";
-import { registerViewInteractHandler } from "./view-interact-registry";
-
 /**
  * DynamicViewLoader — loads a view bundle from a remote URL at runtime.
  *
@@ -98,6 +42,59 @@ import { registerViewInteractHandler } from "./view-interact-registry";
  * click-element, fill-input) are handled by the loader itself even when the
  * module has no interact export.
  */
+import { AgentElementOverlay } from "../../agent-surface/AgentElementOverlay";
+import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
+import {
+  handleAgentSurfaceCapability,
+  isAgentSurfaceCapability,
+} from "../../agent-surface/capabilities";
+import { AgentSurfaceElementReporter } from "../../agent-surface/element-reporter";
+import {
+  getViewRegistry,
+  setNativeFieldValue as setNativeInputValue,
+  type ViewAgentRegistry,
+} from "../../agent-surface/registry";
+import {
+  isSensitiveAgentElement,
+  SENSITIVE_AGENT_ELEMENT_REASON,
+} from "../../agent-surface/sensitive";
+
+import { client } from "../../api/client";
+import {
+  registeredHostExternalSpecifiers,
+  resolveRegisteredHostExternalImporter,
+} from "../../app-shell-registry";
+import {
+  type EvictReason,
+  emitModuleCacheTelemetry,
+  type ModuleCacheTelemetryEvent,
+} from "../../cache-telemetry";
+import { APP_PAUSE_EVENT } from "../../events";
+import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
+import { SpatialSurface } from "../../spatial/dom";
+import {
+  HEAP_PRESSURE_EVENT,
+  isUnderMemoryPressure,
+  planModuleCacheEvictions,
+} from "../../state/bounded-view-lru";
+import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
+import {
+  getActiveSurfaceRealmScope,
+  SurfaceRealmDeniedError,
+  type SurfaceRealmScope,
+  subscribeActiveSurfaceRealmScope,
+} from "../../surface-realm-broker";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import { ErrorBoundary } from "../ui/error-boundary";
+import { SandboxedViewFrame } from "./SandboxedViewFrame";
+import {
+  navigateToViews,
+  ViewErrorState,
+  ViewLoadingSkeleton,
+  ViewRestrictedState,
+} from "./ViewStatusStates";
+import { brokerViewInteract } from "./view-capability-broker";
+import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
   component: ComponentType<Record<string, unknown>>;

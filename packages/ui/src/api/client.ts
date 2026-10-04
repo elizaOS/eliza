@@ -10,27 +10,6 @@
  * client-cloud, client-skills, client-computeruse, client-imessage.
  */
 
-import "./client-agent";
-import "./client-accounts";
-import "./client-approvals";
-import "./client-automations";
-import "./client-background";
-import "./client-browser-workspace";
-import "./client-chat";
-import "./client-cloud";
-import "./client-computeruse";
-import "./client-files";
-import "./client-imessage";
-import "./client-local-inference";
-import "./client-meetings";
-import "./client-notifications";
-import "./client-scheduled-tasks";
-import "./client-voice-models";
-import "./client-workflow";
-import "./client-skills";
-import "./client-transcripts";
-import "./client-vault";
-import "./client-wallet";
 import type {
   AudioGenConfig,
   AudioGenProvider,
@@ -65,6 +44,11 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -76,11 +60,6 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-  VerificationResult,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
 } from "@elizaos/contracts";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
@@ -117,8 +96,7 @@ import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
 } from "./browser-contracts";
-import { ElizaClient as _ElizaClient } from "./client-base";
-import type { ElizaClient } from "./client-base";
+import { ElizaClient as _ElizaClient, type ElizaClient } from "./client-base";
 import type {
   StewardApprovalActionResponse,
   StewardHistoryResponse,
@@ -262,7 +240,27 @@ export {
 // Domain method augmentations (declaration merging + prototype assignment)
 // These import ElizaClient from client-base directly, avoiding circular deps.
 // ---------------------------------------------------------------------------
-
+import "./client-agent";
+import "./client-accounts";
+import "./client-approvals";
+import "./client-automations";
+import "./client-background";
+import "./client-browser-workspace";
+import "./client-chat";
+import "./client-cloud";
+import "./client-computeruse";
+import "./client-files";
+import "./client-imessage";
+import "./client-local-inference";
+import "./client-meetings";
+import "./client-notifications";
+import "./client-scheduled-tasks";
+import "./client-voice-models";
+import "./client-workflow";
+import "./client-skills";
+import "./client-transcripts";
+import "./client-vault";
+import "./client-wallet";
 // ---------------------------------------------------------------------------
 // Singleton
 // ---------------------------------------------------------------------------

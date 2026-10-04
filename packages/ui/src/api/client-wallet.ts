@@ -1,3 +1,8 @@
+import type {
+  DropStatus,
+  MintResult,
+  VerificationResult,
+} from "@elizaos/contracts";
 /**
  * Wallet domain methods — wallet addresses/balances, BSC trading, steward,
  * trading profile, registry (ERC-8004), drop/mint, whitelist, twitter verify.

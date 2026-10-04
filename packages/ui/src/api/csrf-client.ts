@@ -1,15 +1,4 @@
 import { getHostRequestTransport } from "./host-transport";
-import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
-import { getElizaApiToken } from "@elizaos/host/protocol";
-import { getBootConfig } from "../config/boot-config";
-import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
-import { resolveApiUrl } from "../utils/asset-url.js";
-import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
-import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
-import { lastActivityHeadersForUrl } from "./auth/user-activity";
-import { defaultFetchTimeoutMs } from "./request-timeout";
-import type { AgentRequestContext } from "./transport";
-import { fetchAgentTransport } from "./transport";
 
 /**
  * Authenticated fetch helper for dashboard API requests.
@@ -25,6 +14,17 @@ import { fetchAgentTransport } from "./transport";
  * are bearer-only: parent-domain browser cookies and their CSRF mirror are
  * omitted at the client before the Worker enforces the same boundary.
  */
+
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
+import { getElizaApiToken } from "@elizaos/host/protocol";
+import { getBootConfig } from "../config/boot-config";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
+import { resolveApiUrl } from "../utils/asset-url.js";
+import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
+import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
+import { lastActivityHeadersForUrl } from "./auth/user-activity";
+import { defaultFetchTimeoutMs } from "./request-timeout";
+import { type AgentRequestContext, fetchAgentTransport } from "./transport";
 
 export { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
 

@@ -2,20 +2,26 @@ import {
   ElizaClient,
   invokeLocalDesktopRpc as invokeLocalDesktopChatRpc,
 } from "./client-base";
+
+/**
+ * Chat domain methods — chat, conversations, documents, memory, MCP,
+ * share ingest, workbench, trajectories, database.
+ */
+
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
   ChatToolCallEvent,
   ChatTurnStatus,
+  DatabaseProviderType,
+  PostInboxMessageRequest,
+  PostWorkbenchVfsPromoteToCloudRequest,
   PromoteVfsToCloudContainerRequest,
   PromoteVfsToCloudContainerResponse,
   RequestCodingAgentContainerRequest,
   RequestCodingAgentContainerResponse,
   SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerResponse,
-  DatabaseProviderType,
-  PostInboxMessageRequest,
-  PostWorkbenchVfsPromoteToCloudRequest,
 } from "@elizaos/contracts";
 import type {
   AccountConnectRequest,
@@ -86,11 +92,6 @@ import type {
   TableInfo,
   TableRowsResponse,
 } from "./client-types-core";
-
-/**
- * Chat domain methods — chat, conversations, documents, memory, MCP,
- * share ingest, workbench, trajectories, database.
- */
 
 type DocumentListOptions = {
   limit?: number;

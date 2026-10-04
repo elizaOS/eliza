@@ -38,7 +38,8 @@
 		"@napi-rs/keyring": "^1.1.6",
 		"bonjour-service": "1.4.2",
 		"electrobun": "^1.18.1",
-		"@elizaos/contracts": "workspace:*"
+		"@elizaos/contracts": "workspace:*",
+		"@elizaos/voice": "workspace:*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",

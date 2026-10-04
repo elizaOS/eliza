@@ -1,3 +1,4 @@
+import { getStylePresets } from "@elizaos/host/protocol";
 import type { AuthCallbackDeepLinkOutcome } from "./native-smoke";
 // FIRST side-effect: repair the same-origin WebSocket base for the plain-web
 // served bundle before the `client` singleton can dial its socket. The dev
@@ -29,6 +30,7 @@ import {
   ElizaClient,
   ErrorBoundary,
   exchangeRemoteAgentPairing,
+  FIRST_RUN_CLOUD_LOGIN_ACTION,
   getBootConfig,
   getChatOverlayHotkey,
   getPushToTalkAccelerator,
@@ -95,6 +97,7 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
+  tryHandleFirstRunAction,
   upsertAndActivateAgentProfile,
 } from "@elizaos/ui";
 import { installAndroidNativeAgentFetchBridge } from "./renderer/transports/android-native-agent-transport";
@@ -153,8 +156,8 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
+
 import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
-import { getStylePresets } from "@elizaos/host/protocol";
 import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";

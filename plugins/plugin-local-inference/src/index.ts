@@ -48,7 +48,6 @@ export {
 	relocateEntities,
 } from "./pii/llm-recognizer.js";
 export { LocalPiiRecognizerService } from "./pii/service.js";
-export * from "./protocol.js";
 export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,

@@ -6,10 +6,10 @@
  * warnings/errors flow in as props and surface inline.
  */
 
-import type { PluginParamDef } from "@elizaos/core/protocol";
-import { API_KEY_PREFIX_HINTS } from "@elizaos/host/protocol";
-import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import type { ConfigUiHint } from "@elizaos/contracts";
+import type { PluginParamDef } from "@elizaos/core/protocol";
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
+import { API_KEY_PREFIX_HINTS } from "@elizaos/host/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";

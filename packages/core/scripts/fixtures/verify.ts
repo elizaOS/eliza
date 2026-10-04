@@ -12,7 +12,10 @@ import {
 	provisionAgent,
 	stringToUuid,
 } from "@elizaos/core";
+import { wordErrorRate } from "@elizaos/voice";
 import { SQLiteDatabaseAdapter } from "./adapter.mjs";
+
+assert.equal(wordErrorRate("published voice", "published voice"), 0);
 
 const failure = new ElizaError("packed consumer failure", {
 	code: "PACKED_ERROR",

@@ -5,13 +5,14 @@
  * notifications) whose true grant state the OS layer can't see. Exposes
  * `useDesktopPermissionsState` to the settings UI.
  */
-import type {
-  AllPermissionsState,
-  PermissionId,
-  PermissionState,
-  PermissionStatus,
+import {
+  type AllPermissionsState,
+  PERMISSION_IDS,
+  type PermissionId,
+  type PermissionState,
+  type PermissionStatus,
 } from "@elizaos/core/protocol";
-import { PERMISSION_IDS } from "@elizaos/core/protocol";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import {

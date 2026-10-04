@@ -5,11 +5,10 @@
  * desktop notifications, and full-reset flows.
  */
 
-import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import type { FirstRunOptions } from "@elizaos/host/protocol";
+import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import type { MutableRefObject } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import { client } from "../api/client";
 import type {
   Conversation,
@@ -43,8 +42,11 @@ import {
   loadPersistedActiveServer,
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
-import type { AppState, LifecycleAction } from "./types";
-import { shouldAwaitAgentReadiness } from "./types";
+import {
+  type AppState,
+  type LifecycleAction,
+  shouldAwaitAgentReadiness,
+} from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
 const RESET_LOG_PREFIX = "[eliza][reset]";

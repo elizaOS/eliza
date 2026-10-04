@@ -5,12 +5,13 @@
  * a connection-status indicator. Auth-payload delivery is delegated to
  * `EmbeddedAppViewer` when `shouldUseEmbeddedAppViewer` selects it.
  */
-import type {
-  AppRunSummary,
-  AppSessionControlAction,
-  AppSessionState,
+import {
+  type AppRunSummary,
+  type AppSessionControlAction,
+  type AppSessionState,
+  packageNameToAppRouteSlug,
 } from "@elizaos/core/protocol";
-import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
+
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
@@ -39,8 +40,7 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Progress } from "../ui/progress";
-import { StatusBadge } from "../ui/status-badge";
-import type { StatusTone } from "../ui/status-badge";
+import { StatusBadge, type StatusTone } from "../ui/status-badge";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,

@@ -6,8 +6,16 @@ import type {
   RegistryAppInfo,
 } from "@elizaos/core/protocol";
 import { formatError } from "@elizaos/core/protocol";
-import type { ComponentType, JSX } from "react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentType,
+  type JSX,
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api/client";
 import {
   appShellAgentSurfaceDescriptor,

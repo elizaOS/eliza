@@ -16,8 +16,9 @@
  * - `confirmAction`   — confirmDesktopAction utility, used by handleExportKeys
  */
 
-import type { DropStatus, MintResult } from "@elizaos/contracts";
 import type {
+  DropStatus,
+  MintResult,
   WalletAddresses,
   WalletBalancesResponse,
   WalletChainKind,

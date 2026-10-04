@@ -27,15 +27,14 @@
  */
 
 import {
+  type BuildVoiceTurnSignalContext,
+  buildVoiceTurnSignal,
   EchoReferenceBuffer,
   NlmsEchoCanceller,
   platformPlaybackDelaySamples,
-} from "@elizaos/plugin-local-inference/protocol";
-import type {
-  BuildVoiceTurnSignalContext,
-  VoiceTurnSignal,
-  VoiceTurnSpeakerAttribution,
-} from "@elizaos/plugin-local-inference/protocol";
+  type VoiceTurnSignal,
+  type VoiceTurnSpeakerAttribution,
+} from "@elizaos/voice";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
@@ -44,7 +43,6 @@ import type {
   TalkModePluginLike,
 } from "../bridge/native-plugins";
 import { logger } from "../logger.ts";
-import { buildVoiceTurnSignal } from "./voice-turn-signal";
 
 /** Max audioFrames buffered before a pipeline feed is forced (≈ 1 s @ 20 ms). */
 const MAX_BATCH_FRAMES = 49;

@@ -12,10 +12,10 @@
  * stable `commandId` so the authority can retain its terminal outcome.
  */
 
-import type { OsIntent, TranscriptSegment } from "@elizaos/core/protocol";
-import { decodeOsIntent } from "@elizaos/core/protocol";
+import type { OsIntent } from "@elizaos/contracts";
+import { decodeOsIntent } from "@elizaos/contracts";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 import type { ImageAttachment } from "../../../api/client-types-chat";
-
 /**
  * Bumped only on a breaking change to the envelope/command/snapshot shapes.
  * The native authority rejects a renderer whose version differs rather than

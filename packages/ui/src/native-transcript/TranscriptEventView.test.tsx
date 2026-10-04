@@ -5,7 +5,7 @@
 // transport state via data attributes, all from structural fields. Real jsdom
 // render via @testing-library; the parser + CodeBlock are the production ones.
 
-import type { TranscriptEvent } from "@elizaos/core/protocol";
+import type { TranscriptEvent } from "@elizaos/contracts";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { TranscriptEventView } from "./TranscriptEventView";

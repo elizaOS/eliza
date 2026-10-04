@@ -7,12 +7,18 @@ import {
   SheetGrabber,
   SoftButton,
 } from "./chat-overlay-controls";
+
+/**
+ * Renders the chat overlay that keeps the composer and transcript
+ * available across views.
+ */
+
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import {
   MAX_CHAT_MEDIA_RAW_BYTES,
   transcriptPlainText,
   validateUuid,
 } from "@elizaos/core/protocol";
-import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import {
   AudioLines,
   FileText,
@@ -29,6 +35,8 @@ import {
 import {
   AnimatePresence,
   animate,
+  type MotionStyle,
+  type MotionValue,
   motion,
   useMotionTemplate,
   useMotionValue,
@@ -36,7 +44,6 @@ import {
   useReducedMotion,
   useTransform,
 } from "motion/react";
-import type { MotionStyle, MotionValue } from "motion/react";
 import * as React from "react";
 import { client } from "../../api/client";
 import type {
@@ -45,14 +52,12 @@ import type {
 } from "../../api/client-types-chat";
 import { useComposerKeydown, useComposerPaste } from "../../chat/composer-core";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
-import type {
-  BackIntentEventDetail,
-  ChatPrefillEventDetail,
-} from "../../events";
 import {
+  type BackIntentEventDetail,
   CHAT_CLOSE_EVENT,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
+  type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
   isNavigateViewRequestPending,
   listenForNavigateViewRequests,
@@ -81,8 +86,10 @@ import {
 } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { logger } from "../../logger.ts";
-import { OS_INTENT_COMPOSER_PREFILL_EVENT } from "../../os-intent/host";
-import type { OsIntentComposerPrefillDetail } from "../../os-intent/host";
+import {
+  OS_INTENT_COMPOSER_PREFILL_EVENT,
+  type OsIntentComposerPrefillDetail,
+} from "../../os-intent/host";
 import {
   isAndroid,
   isIOS,
@@ -187,16 +194,13 @@ import {
   highlightSearchMatches,
   highlightSearchMessage,
 } from "./search-match-highlight";
-import { filterRenderableShellMessages } from "./shell-state";
-import type { ShellMessage } from "./shell-state";
-import type { PullGestureBinding } from "./use-pull-gesture";
-import { usePullGesture } from "./use-pull-gesture";
+import {
+  filterRenderableShellMessages,
+  type ShellMessage,
+} from "./shell-state";
+import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ShellController } from "./useShellController";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
-/**
- * Renders the chat overlay that keeps the composer and transcript
- * available across views.
- */
 
 type ChatSheetMotionStyle = MotionStyle & {
   "--chat-composer-background"?: string | MotionValue<string>;

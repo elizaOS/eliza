@@ -6,8 +6,8 @@
  * Value changes flow back out through `onParamChange`.
  */
 
-import type { PluginParamDef } from "@elizaos/core/protocol";
 import type { ConfigUiHint } from "@elizaos/contracts";
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo } from "../../api/client-types-config";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";

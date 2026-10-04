@@ -9,6 +9,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
 } from "@elizaos/host/protocol";
+
 import type { VoiceConfig } from "../api/client-types-config";
 import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";

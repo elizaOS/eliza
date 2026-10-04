@@ -5,8 +5,8 @@
  */
 
 import type { ChatTurnStatus } from "@elizaos/contracts";
-import type { FirstRunOptions } from "@elizaos/host/protocol";
 import type { UiLanguage } from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
 import {
   AppBootContext,
   AppContext,

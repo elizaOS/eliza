@@ -7,8 +7,8 @@
  * the component stays readable.
  */
 
-import type { JsonSchemaObject, FirstRunOptions } from "@elizaos/host/protocol";
 import type { ConfigUiHint } from "@elizaos/contracts";
+import type { FirstRunOptions, JsonSchemaObject } from "@elizaos/host/protocol";
 
 export const DEFAULT_RESPONSE_HANDLER_MODEL = "__DEFAULT_RESPONSE_HANDLER__";
 export const DEFAULT_ACTION_PLANNER_MODEL = "__DEFAULT_ACTION_PLANNER__";

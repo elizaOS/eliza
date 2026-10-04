@@ -17,8 +17,8 @@ import type {
   TranscriptEvent,
   TranscriptItem,
   TranscriptViewModel,
-} from "@elizaos/core/protocol";
-import { reduceTranscriptEvents } from "@elizaos/core/protocol";
+} from "@elizaos/contracts";
+import { reduceTranscriptEvents } from "@elizaos/contracts";
 import { type ReactNode, useMemo } from "react";
 import { parseSegments } from "../components/chat/message-parser-helpers";
 import { Alert } from "../components/ui/alert";

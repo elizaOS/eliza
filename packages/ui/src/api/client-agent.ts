@@ -1,11 +1,15 @@
-import "./client-agent-accounts";
-import "./client-agent-consumer-keys";
 import {
   ElizaClient,
   invokeLocalDesktopRpc as invokeLocalDesktopAgentRpc,
   isRemoteRelayRestAdapterBase,
 } from "./client-base";
 import { findSseEventBreak } from "./transport";
+
+/**
+ * Agent domain methods — lifecycle, auth, config, connectors, triggers,
+ * plugins, streaming, logs, character, permissions, updates.
+ */
+
 import type { TriggerLastStatus, TriggerRunRecord } from "@elizaos/core";
 import type {
   AllPermissionsState,
@@ -22,34 +26,31 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/host/protocol";
+
 import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc";
-import type {
-  AppBlockerInstalledApp,
-  AppBlockerPermissionResult,
-  AppBlockerStatusResult,
-  WebsiteBlockerPermissionResult,
-  WebsiteBlockerStatusResult,
-} from "../bridge/native-plugins";
 import {
+  type AppBlockerInstalledApp,
+  type AppBlockerPermissionResult,
+  type AppBlockerStatusResult,
   getAppBlockerPlugin,
   getWebsiteBlockerPlugin,
+  type WebsiteBlockerPermissionResult,
+  type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
 import { getBootConfig } from "../config/boot-config";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
-import type {
-  ConnectorAccountActionResult,
-  ConnectorAccountAuditEventsQuery,
-  ConnectorAccountAuditEventsResponse,
-  ConnectorAccountCreateInput,
-  ConnectorAccountOAuthStartInput,
-  ConnectorAccountRecord,
-  ConnectorAccountsListResponse,
-  ConnectorAccountUpdateInput,
-} from "./client-agent-connector-accounts";
 import {
+  type ConnectorAccountActionResult,
+  type ConnectorAccountAuditEventsQuery,
+  type ConnectorAccountAuditEventsResponse,
+  type ConnectorAccountCreateInput,
+  type ConnectorAccountOAuthStartInput,
+  type ConnectorAccountRecord,
+  type ConnectorAccountsListResponse,
+  type ConnectorAccountUpdateInput,
   connectorAccountAuditPath,
   connectorAccountOAuthPath,
   connectorAccountsPath,
@@ -103,33 +104,33 @@ import type {
   TriggerEventDispatchResponse,
   UpdateStatus,
 } from "./client-types-config";
-import type {
-  AgentAutomationMode,
-  AgentAutomationModeResponse,
-  AgentBootProgress,
-  AgentEventsResponse,
-  AgentSelfStatusSnapshot,
-  AgentStatus,
-  CreateTriggerRequest,
-  LaunchSnapshot,
-  LogsFilter,
-  LogsResponse,
-  ModelCatalog,
-  ModelsConfigResponse,
-  ModelsConfigWriteRequest,
-  ModelsConfigWriteResult,
-  ProviderModelRecord,
-  RuntimeDebugSnapshot,
-  SecurityAuditFilter,
-  SecurityAuditResponse,
-  SecurityAuditStreamEvent,
-  TradePermissionMode,
-  TradePermissionModeResponse,
-  TriggerHealthSnapshot,
-  TriggerSummary,
-  UpdateTriggerRequest,
+import {
+  type AgentAutomationMode,
+  type AgentAutomationModeResponse,
+  type AgentBootProgress,
+  type AgentEventsResponse,
+  type AgentSelfStatusSnapshot,
+  type AgentStatus,
+  type CreateTriggerRequest,
+  isApiError,
+  type LaunchSnapshot,
+  type LogsFilter,
+  type LogsResponse,
+  type ModelCatalog,
+  type ModelsConfigResponse,
+  type ModelsConfigWriteRequest,
+  type ModelsConfigWriteResult,
+  type ProviderModelRecord,
+  type RuntimeDebugSnapshot,
+  type SecurityAuditFilter,
+  type SecurityAuditResponse,
+  type SecurityAuditStreamEvent,
+  type TradePermissionMode,
+  type TradePermissionModeResponse,
+  type TriggerHealthSnapshot,
+  type TriggerSummary,
+  type UpdateTriggerRequest,
 } from "./client-types-core";
-import { isApiError } from "./client-types-core";
 import type {
   ExperienceGraphResponse,
   ExperienceListQuery,
@@ -152,13 +153,11 @@ import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { waitForFirstRunActivation } from "./first-run-activation";
 import { hostAgentLifecycleForUrl } from "./host-transport";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
-
-/**
- * Agent domain methods — lifecycle, auth, config, connectors, triggers,
- * plugins, streaming, logs, character, permissions, updates.
- */
+import "./client-agent-accounts";
 
 export * from "./client-agent-accounts";
+
+import "./client-agent-consumer-keys";
 
 export {
   CONNECTOR_SERVER_ROLE_TO_UI_ROLE,

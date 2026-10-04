@@ -5,20 +5,20 @@
 
 import type {
   AppPermissionsView,
-  PutAppPermissionsRequest,
   CustomActionDef,
+  PutAppPermissionsRequest,
 } from "@elizaos/contracts";
-import type {
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunSummary,
-  AppSessionActionResult,
-  AppSessionControlAction,
-  AppSessionState,
-  AppStopResult,
-  RegistryAppInfo,
+import {
+  type AppLaunchResult,
+  type AppRunActionResult,
+  type AppRunSummary,
+  type AppSessionActionResult,
+  type AppSessionControlAction,
+  type AppSessionState,
+  type AppStopResult,
+  packageNameToAppRouteSlug,
+  type RegistryAppInfo,
 } from "@elizaos/core/protocol";
-import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
 import { ElizaClient } from "./client-base";
 import type { InstalledAppInfo } from "./client-types-cloud";
 import type {
@@ -30,7 +30,6 @@ import type {
   SkillInfo,
   SkillScanReportSummary,
 } from "./client-types-config";
-
 export type AppRunSteeringDisposition =
   | "accepted"
   | "queued"

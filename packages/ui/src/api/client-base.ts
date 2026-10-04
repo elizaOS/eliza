@@ -1,19 +1,25 @@
 import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
+/**
+ * ElizaClient class — core infrastructure only.
+ *
+ * Separated from client.ts so domain augmentation files can import the class
+ * without circular dependency issues.
+ */
+import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
 import {
   DELTA_STREAM_PROTOCOL,
-  SHELL_NAVIGATE_VIEW_WS_EVENT,
-  isInferenceTraceId,
   extractAssistantReplyText,
+  isInferenceTraceId,
+  type NetworkStatusChangeDetail,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/core/protocol";
-import type {
-  ChatFailureKind,
-  ChatTerminalFailure,
-  ChatToolCallEvent,
-  ChatTurnStatus,
-} from "@elizaos/contracts";
-import { parseChatTerminalFailure } from "@elizaos/contracts";
-import type { NetworkStatusChangeDetail } from "@elizaos/core/protocol";
 import {
   clearElizaApiBase,
   getElizaApiBase,
@@ -77,15 +83,11 @@ import {
   isHostInProcessAgentBase,
 } from "./host-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
-import type { AgentRequestTransport } from "./transport";
-import { fetchAgentTransport, findSseEventBreak } from "./transport";
-
-/**
- * ElizaClient class — core infrastructure only.
- *
- * Separated from client.ts so domain augmentation files can import the class
- * without circular dependency issues.
- */
+import {
+  type AgentRequestTransport,
+  fetchAgentTransport,
+  findSseEventBreak,
+} from "./transport";
 
 // ---------------------------------------------------------------------------
 // Constants

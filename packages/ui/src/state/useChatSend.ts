@@ -6,12 +6,8 @@
  */
 
 import type { ChatTurnStatus } from "@elizaos/contracts";
-import {
-  asObjectRecord as asRecord,
-  MESSAGE_SOURCE_CLIENT_CHAT,
-} from "@elizaos/core/protocol";
-import type { MutableRefObject } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { asRecord, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/protocol";
+import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
 import {
@@ -28,8 +24,10 @@ import type {
 } from "../api/client-types-chat";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import { describeCreditGateError } from "../api/credit-gate-error";
-import { describePersonalRouteRefusal } from "../api/personal-fallback";
-import type { PersonalRouteRefusal } from "../api/personal-fallback";
+import {
+  describePersonalRouteRefusal,
+  type PersonalRouteRefusal,
+} from "../api/personal-fallback";
 import {
   consumePendingCapabilityIntent,
   findCapabilityHandoff,
@@ -43,8 +41,11 @@ import {
 } from "../completed-action-navigation";
 import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
 import { dispatchDoorDashHumanHandoff } from "../doordash-human-handoff";
-import { CLOUD_HANDOFF_PHASE_EVENT, dispatchChatPrefill } from "../events";
-import type { CloudHandoffPhaseDetail } from "../events";
+import {
+  CLOUD_HANDOFF_PHASE_EVENT,
+  type CloudHandoffPhaseDetail,
+  dispatchChatPrefill,
+} from "../events";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
@@ -54,8 +55,10 @@ import {
 } from "../view-action-handoff";
 import { emitViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
-import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
-import { clearChatDraft } from "./ChatComposerContext.hooks";
+import {
+  type ChatReplyTarget,
+  clearChatDraft,
+} from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   buildSendFailureNotice,

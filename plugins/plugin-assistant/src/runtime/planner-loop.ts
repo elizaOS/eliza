@@ -18,6 +18,7 @@ import type {
   ContextObjectTool,
   EffectReceipt,
   EvaluatorOutput,
+  ModelInputBudget,
   PlannerLoopParams,
   PlannerLoopResult,
   PlannerRuntime,
@@ -73,7 +74,6 @@ import {
   isProviderContextOverflowError,
   isProviderContextOverflowFailure,
   type JSONSchema,
-  type ModelInputBudget,
   ModelType,
   mergeChainingLoopConfig,
   modelProviderErrorDetail,
@@ -4228,7 +4228,7 @@ async function dispatchPlannerModelCall(params: {
         )
           return tool;
         const schema = tool.parameters;
-        if (!schema || schema.type !== "object") return tool;
+        if (schema?.type !== "object") return tool;
         if (schema.properties?.[ACTION_CONTEXT_ARG] !== undefined)
           throw new ElizaError(
             "Action declares reserved planner source metadata",

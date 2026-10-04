@@ -29,6 +29,7 @@ import {
   useMemo,
   useState,
 } from "react";
+
 import { useAppSelector } from "../../state/app-store";
 import { resolveAppAssetUrl } from "../../utils/asset-url";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
@@ -70,10 +71,9 @@ import { ConfigFieldErrors } from "./config-control-primitives";
 import {
   evaluateUiVisibility,
   runValidation,
+  type SupportedUiComponentType,
   sanitizeLinkHref,
 } from "./ui-renderer.helpers";
-import type { SupportedUiComponentType } from "./ui-renderer.helpers";
-
 export interface UiActionDispatchMetadata {
   /** Resolved params safe to persist in chat or another durable history. */
   historySafeParams: Record<string, unknown>;

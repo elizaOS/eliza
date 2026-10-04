@@ -6,10 +6,9 @@
  */
 
 import type { ChatTurnStatus } from "@elizaos/contracts";
-import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/protocol";
-import type { MutableRefObject } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import { client } from "../api/client";
 import type {
   Conversation,
@@ -22,12 +21,13 @@ import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { isIOS, isNative } from "../platform/init";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
-import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import {
+  type ChatReplyTarget,
   clearChatDraft,
   readChatDraft,
   writeChatDraft,
 } from "./ChatComposerContext.hooks";
+
 import {
   isConversationRecord,
   isReservedLegacyChatTitle,
@@ -41,12 +41,13 @@ import {
   shouldKeepConversationMessage,
 } from "./internal";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
-import type {
-  AppState,
-  LifecycleAction,
-  LoadConversationMessagesResult,
+import {
+  type AppState,
+  deriveAgentReady,
+  type LifecycleAction,
+  type LoadConversationMessagesResult,
 } from "./types";
-import { deriveAgentReady } from "./types";
+
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
 import type { ConversationMessageStateMutation } from "./useDataLoaders";

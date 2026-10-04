@@ -11,7 +11,7 @@ import {
 	type TranscriptReducerState,
 	type TranscriptViewModel,
 	toViewModel,
-} from "@elizaos/core/protocol";
+} from "@elizaos/contracts";
 import { logger } from "./logger";
 
 let reducerState: TranscriptReducerState = initialReducerState();

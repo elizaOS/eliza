@@ -6,11 +6,6 @@
  * character language sync, loadWorkbench, loadUpdateStatus,
  */
 
-import {
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetByName,
-} from "@elizaos/host/protocol";
-import type { StylePreset } from "@elizaos/host/protocol";
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -26,8 +21,18 @@ import type {
   WalletTradingProfileWindow,
 } from "@elizaos/contracts";
 import type { UiLanguage } from "@elizaos/core/protocol";
-import type { RefObject } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { StylePreset } from "@elizaos/host/protocol";
+import {
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetByName,
+} from "@elizaos/host/protocol";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
 import type {
@@ -47,8 +52,8 @@ import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import { logger } from "../logger.ts";
 import { normalizeOwnerName } from "../utils/owner-name.js";
-import type { AutonomyRunHealthMap } from "./autonomy";
 import {
+  type AutonomyRunHealthMap,
   buildAutonomyGapReplayRequests,
   hasPendingAutonomyGaps,
   markPendingAutonomyGapsPartial,

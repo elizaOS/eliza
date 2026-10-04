@@ -8,9 +8,10 @@
 import {
   dispatchOpenNotificationCenter,
   subscribeDesktopBridgeEvent,
+  type Tab,
   useApp,
 } from "@elizaos/ui";
-import type { Tab } from "@elizaos/ui";
+
 import { useEffect } from "react";
 
 const MAIN_SURFACE_TABS = new Set<Tab>(["chat", "plugins", "triggers"]);

@@ -9,12 +9,13 @@
  * ordered under a single numeric `sortKey`.
  */
 
-import { normalizeConnectorSource } from "@elizaos/core/protocol";
 import type { TranslateFn } from "@elizaos/contracts";
+import { normalizeConnectorSource } from "@elizaos/core/protocol";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
 import { isMainChatConversation } from "../../state/chat-conversation-guards";
 import { getChatSourceMeta } from "../composites/chat/chat-source.helpers";
+
 import {
   formatRelativeTime,
   getLocalizedConversationTitle,

@@ -5,7 +5,7 @@
  */
 
 import type { UiLanguage } from "@elizaos/core/protocol";
-import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
+import { asRecord } from "@elizaos/core/protocol";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalHostAgentBootError } from "../api/host-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";
@@ -25,20 +25,20 @@ import {
 } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
-import type { ContinuousChatModeValue } from "./continuous-chat-mode";
-import { resolveContinuousChatMode } from "./continuous-chat-mode";
-import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
-import type {
-  BackgroundConfig,
-  UiShellMode,
-  UiTheme,
-  UiThemeMode,
-} from "./ui-preferences";
 import {
+  type ContinuousChatModeValue,
+  resolveContinuousChatMode,
+} from "./continuous-chat-mode";
+import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
+import {
+  type BackgroundConfig,
   DEFAULT_ACCENT_ID,
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_CONFIG,
   normalizeAccentId,
+  type UiShellMode,
+  type UiTheme,
+  type UiThemeMode,
 } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
 

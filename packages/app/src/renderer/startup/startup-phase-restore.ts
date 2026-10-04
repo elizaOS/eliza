@@ -1,10 +1,16 @@
 import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+/**
+ * Restores a persisted runtime target and its credential before startup probes
+ * begin. Cloud control-plane sessions and agent-local paired sessions remain
+ * separate even when both are represented by a cloud runtime profile.
+ */
+
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
-import type { FirstRunOptions } from "@elizaos/host/protocol";
 import type { UiLanguage } from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { getElizaApiBase, getElizaApiToken } from "@elizaos/host/protocol";
 import {
   clearStoredStewardToken,
@@ -26,6 +32,7 @@ import {
   cloudTokenSecsRemaining,
   dedicatedCloudAgentIdFromBase,
   detectExistingFirstRunConnection,
+  type ExistingFirstRunProbeResult,
   getBackendStartupTimeoutMs,
   getBootConfig,
   hydratePersistedFirstRunCompleteFromNativeStore,
@@ -54,26 +61,18 @@ import {
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
   normalizeCloudApiKeyToken,
+  type PersistedActiveServer,
   primeAuthStatusProbe,
   readPersistedMobileRuntimeMode,
   refreshCloudStewardSession,
   resolveCloudEnvironmentBase,
   runStartupProbeWithTimeout,
   STARTUP_TIMING_POLICY,
+  type StartupEvent,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
   wasForceFreshResetApplied,
 } from "@elizaos/ui";
-import type {
-  ExistingFirstRunProbeResult,
-  PersistedActiveServer,
-  StartupEvent,
-} from "@elizaos/ui";
-/**
- * Restores a persisted runtime target and its credential before startup probes
- * begin. Cloud control-plane sessions and agent-local paired sessions remain
- * separate even when both are represented by a cloud runtime profile.
- */
 
 const DESKTOP_RESTORE_RPC_TIMEOUT_MS =
   STARTUP_TIMING_POLICY.desktopRestoreRpcTimeoutMs;

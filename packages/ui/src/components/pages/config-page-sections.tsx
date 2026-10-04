@@ -5,12 +5,12 @@
  * `RpcSectionConfigMap`, translate-fn aliases) are exported for the parent view.
  */
 
-import type { JsonSchemaObject } from "@elizaos/host/protocol";
-import { normalizeFirstRunProviderId } from "@elizaos/host/protocol";
 import type {
   TranslateFn as AppTranslateFn,
   ConfigUiHint,
 } from "@elizaos/contracts";
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
+import { normalizeFirstRunProviderId } from "@elizaos/host/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
@@ -19,7 +19,6 @@ import { useAppSelector } from "../../state/app-store";
 import { SettingsSwitchRow } from "../settings/settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "../settings/settings-layout";
 import { Button } from "../ui/button";
-
 /* ── Types ─────────────────────────────────────────────────────────── */
 export type RpcProviderOption<T extends string> = {
   id: T;

@@ -1,3 +1,4 @@
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 /**
  * The single stateful engine behind the shell's chat + voice surface, exposed as
  * the `ShellController` returned by `useShellController`. It drives the shell
@@ -15,11 +16,11 @@
  */
 
 import type { ChatTurnStatus } from "@elizaos/contracts";
-import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/core/protocol";
-import type {
-  VoiceSettingsApplyPayload,
-  TranscriptSegment,
+import {
+  VOICE_SETTINGS_APPLY_EVENT,
+  type VoiceSettingsApplyPayload,
 } from "@elizaos/core/protocol";
+import { buildVoiceTurnSignal, shouldRespondToVoiceTurn } from "@elizaos/voice";
 import * as React from "react";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
@@ -30,15 +31,15 @@ import {
   APP_RESUME_EVENT,
   dispatchNavigateViewEvent,
   VOICE_CONTROL_EVENT,
+  type VoiceControlEventDetail,
 } from "../../events";
-import type { VoiceControlEventDetail } from "../../events";
 import { revalidateAuthStatus } from "../../hooks/useAuthStatus";
 import { useRealtimeVoiceMint } from "../../hooks/useRealtimeVoiceMint";
 import {
   isRealtimeVoiceFlagEnabled,
+  type RealtimeVoiceStartOutcome,
   useRealtimeVoiceSession,
 } from "../../hooks/useRealtimeVoiceSession";
-import type { RealtimeVoiceStartOutcome } from "../../hooks/useRealtimeVoiceSession";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { dispatchConversationResync } from "../../state/AppContext.hooks";
@@ -54,17 +55,16 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
-import type { AppContextValue } from "../../state/types";
-import { deriveAgentReady } from "../../state/types";
+import { type AppContextValue, deriveAgentReady } from "../../state/types";
+
 import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
-import type { MicrophonePermissionState } from "../../voice/local-asr-capture";
 import {
+  type MicrophonePermissionState,
   queryMicrophonePermission,
   requestDesktopMicrophoneAccess,
 } from "../../voice/local-asr-capture";
-import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
   isTranscriptionExitPhrase,
@@ -72,33 +72,29 @@ import {
   stripExitPhrase,
 } from "../../voice/transcription-exit";
 import { useWakeListenWindow } from "../../voice/useWakeListenWindow";
-import { createVoiceCapture } from "../../voice/voice-capture-factory";
-import type {
-  VoiceCaptureBackend,
-  VoiceCaptureHandle,
-  VoiceCaptureState,
+import {
+  createVoiceCapture,
+  type VoiceCaptureBackend,
+  type VoiceCaptureHandle,
+  type VoiceCaptureState,
 } from "../../voice/voice-capture-factory";
-import { VOICE_CONTINUOUS_MODES } from "../../voice/voice-chat-types";
-import type {
-  VoiceContinuousMode,
-  VoiceContinuousStatus,
-  VoiceTtsError,
+import {
+  VOICE_CONTINUOUS_MODES,
+  type VoiceContinuousMode,
+  type VoiceContinuousStatus,
+  type VoiceTtsError,
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
-import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import {
   buildConversationNav,
+  type ConversationNav,
+  type ConversationNavDirection,
   resolveAdjacentConversationId,
 } from "./conversation-nav";
-import type {
-  ConversationNav,
-  ConversationNavDirection,
-} from "./conversation-nav";
-import { deriveShellPhase } from "./shell-auth-gate";
-import type { ShellAuthGate } from "./shell-auth-gate";
+import { deriveShellPhase, type ShellAuthGate } from "./shell-auth-gate";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellAuthGate } from "./useShellAuthGate";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";

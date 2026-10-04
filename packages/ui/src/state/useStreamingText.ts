@@ -26,12 +26,12 @@
  * stay as direct `setConversationMessages` calls.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
   ChatToolCallEvent,
 } from "@elizaos/contracts";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AccountConnectRequest,
@@ -39,7 +39,6 @@ import type {
 } from "../api/client-types-chat";
 import { mergeChatToolEvent } from "../components/tool-events/chat-tool-events";
 import { mergeStreamingText } from "./parsers";
-
 export type StreamingTextSetter = Dispatch<
   SetStateAction<ConversationMessage[]>
 >;

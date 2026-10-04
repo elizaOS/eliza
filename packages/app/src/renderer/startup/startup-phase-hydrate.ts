@@ -1,5 +1,29 @@
+import { loadViewInteractRegistry } from "@elizaos/ui";
+
+/**
+ * Coordinates side effects for the hydrating and ready startup phases.
+ * It binds persistent transport, navigation, wallet, and recovery listeners
+ * after the shell can paint, then releases them when the phase is torn down.
+ */
+
+import type { WalletAddresses } from "@elizaos/contracts";
 import {
-  loadViewInteractRegistry,
+  isRuntimeManagementOperation,
+  type RuntimeManagementRequest,
+  type RuntimeManagementResult,
+} from "@elizaos/contracts";
+import {
+  type AppEmoteEventDetail,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  normalizeShellNavigateViewPayload,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+} from "@elizaos/core/protocol";
+import {
+  type ActionTone,
+  type AgentStatus,
+  type CodingAgentSession,
+  type Conversation,
+  type ConversationMessage,
   client,
   dispatchAppEmoteEvent,
   dispatchCompletedActionNavigation,
@@ -10,6 +34,7 @@ import {
   getWindowNavigationPath,
   isRouteRootPath,
   isTransientOptionalFetchFailure,
+  type LoadConversationMessagesResult,
   loadAgentProfileRegistry,
   loadAvatarIndex,
   logger,
@@ -22,40 +47,14 @@ import {
   recoverMissedCurrentView,
   resolveAgentProfileByQuery,
   resolveDefaultLandingTab,
+  type StartupEvent,
+  type StreamEventEnvelope,
   shouldUseHashNavigation,
   supportsFullAppShellRoutes,
   switchRuntimeNonDestructive,
+  type Tab,
   tabFromPath,
 } from "@elizaos/ui";
-import { isRuntimeManagementOperation } from "@elizaos/contracts";
-import type {
-  RuntimeManagementRequest,
-  RuntimeManagementResult,
-  WalletAddresses,
-} from "@elizaos/contracts";
-import type { AppEmoteEventDetail } from "@elizaos/core/protocol";
-import {
-  normalizeShellNavigateViewPayload,
-  SHELL_NAVIGATE_VIEW_WS_EVENT,
-  MESSAGE_SOURCE_CLIENT_CHAT,
-} from "@elizaos/core/protocol";
-import type {
-  ActionTone,
-  AgentStatus,
-  CodingAgentSession,
-  Conversation,
-  ConversationMessage,
-  LoadConversationMessagesResult,
-  StartupEvent,
-  StreamEventEnvelope,
-  Tab,
-} from "@elizaos/ui";
-/**
- * Coordinates side effects for the hydrating and ready startup phases.
- * It binds persistent transport, navigation, wallet, and recovery listeners
- * after the shell can paint, then releases them when the phase is torn down.
- */
-
 export interface HydratingDeps {
   setStartupError: (v: null) => void;
   setFirstRunLoading: (v: boolean) => void;

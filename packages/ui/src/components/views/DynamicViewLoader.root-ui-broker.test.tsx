@@ -4,6 +4,7 @@
 // View bundles receive navigation and storage wrappers bound to the importing
 // view's scope. Host bootstrap and raw privileged channels remain private.
 import "./view-public-api";
+
 import { resolveSurfaceManifest } from "@elizaos/core/protocol";
 import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

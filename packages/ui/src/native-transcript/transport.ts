@@ -4,19 +4,19 @@
  * the same versioned envelope to Capacitor or Electrobun native hosts.
  */
 
-import type {
-  AgentTextEvent,
-  CancelEvent,
-  ReconnectEvent,
-  SttFinalEvent,
-  SttPartialEvent,
-  ToolStateEvent,
-  TranscriptErrorEvent,
-  TranscriptEvent,
-  TranscriptEventStream,
-  TtsAudioEvent,
-} from "@elizaos/core/protocol";
-import { NATIVE_TRANSCRIPT_SCHEMA } from "@elizaos/core/protocol";
+import {
+  type AgentTextEvent,
+  type CancelEvent,
+  NATIVE_TRANSCRIPT_SCHEMA,
+  type ReconnectEvent,
+  type SttFinalEvent,
+  type SttPartialEvent,
+  type ToolStateEvent,
+  type TranscriptErrorEvent,
+  type TranscriptEvent,
+  type TranscriptEventStream,
+  type TtsAudioEvent,
+} from "@elizaos/contracts";
 import {
   applyRendererTranscriptEvents,
   resetNativeTranscriptStoreForTests,

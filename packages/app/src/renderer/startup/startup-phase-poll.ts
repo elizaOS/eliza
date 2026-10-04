@@ -1,5 +1,22 @@
+import { isCapacitorNativeRuntime as isCapacitorNative } from "@elizaos/ui";
+
+/**
+ * startup-phase-poll.ts
+ *
+ * Side-effect logic for the "polling-backend" startup phase.
+ * Polls the backend until it responds, then dispatches BACKEND_REACHED
+ * or an appropriate error/auth event.
+ */
+
+import type { UiLanguage } from "@elizaos/core/protocol";
 import {
-  isCapacitorNativeRuntime as isCapacitorNative,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import { getStylePresets } from "@elizaos/host/protocol";
+import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   asApiLikeError,
   buildStaticFirstRunOptions,
@@ -9,6 +26,7 @@ import {
   dedicatedCloudAgentIdFromBase,
   deriveFirstRunResumeFieldsFromConfig,
   describeStoppedDedicatedCloudAgent,
+  type FirstRunRuntimeTarget,
   formatStartupErrorDetail,
   getBackendStartupTimeoutMs,
   getBootConfig,
@@ -28,31 +46,20 @@ import {
   MOBILE_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
+  type PlatformPolicy,
   persistMobileRuntimeMode,
+  type RuntimeTarget,
   readMobileRuntimeBuildTruth,
   readPersistedMobileRuntimeMode,
   resolveCloudEnvironmentBase,
   resumePendingCloudHandoff,
   runStartupProbe,
   STARTUP_TIMING_POLICY,
+  type StartupErrorState,
+  type StartupEvent,
   savePersistedActiveServer,
   supportsFullAppShellRoutes,
   unwrapStartupProbe,
-} from "@elizaos/ui";
-import { getStylePresets } from "@elizaos/host/protocol";
-import type { FirstRunOptions } from "@elizaos/host/protocol";
-import type { UiLanguage } from "@elizaos/core/protocol";
-import {
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core/protocol";
-import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
-import type {
-  FirstRunRuntimeTarget,
-  PlatformPolicy,
-  RuntimeTarget,
-  StartupErrorState,
-  StartupEvent,
 } from "@elizaos/ui";
 import {
   getAndroidLocalAgentBootStateForUrl,
@@ -65,13 +72,6 @@ import {
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../transports/ios-local-agent-transport";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
-/**
- * startup-phase-poll.ts
- *
- * Side-effect logic for the "polling-backend" startup phase.
- * Polls the backend until it responds, then dispatches BACKEND_REACHED
- * or an appropriate error/auth event.
- */
 
 /**
  * Default Capacitor-native consecutive-failure budget: after this long without

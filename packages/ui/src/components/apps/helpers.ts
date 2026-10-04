@@ -13,14 +13,14 @@ import {
   isViewVisible,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
+  type RegistryAppInfo,
 } from "@elizaos/core/protocol";
-import type { RegistryAppInfo } from "@elizaos/core/protocol";
+
 import { getBootConfig } from "../../config/boot-config-store";
 import {
   getInternalToolAppCatalogOrder,
   isInternalToolApp,
 } from "./internal-tool-apps";
-
 export const DEFAULT_VIEWER_SANDBOX =
   "allow-scripts allow-same-origin allow-popups";
 export const CATEGORY_LABELS: Record<string, string> = {

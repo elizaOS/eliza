@@ -2,12 +2,12 @@
  * Story group for feature surfaces (local-inference, runs, downloads) with representative state.
  */
 
-import type { AppRunSummary, RegistryAppInfo } from "@elizaos/core/protocol";
 import type {
   ActiveModelState,
   DownloadJob,
   InstalledModel,
 } from "@elizaos/contracts";
+import type { AppRunSummary, RegistryAppInfo } from "@elizaos/core/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { AppIdentityTile } from "../../components/apps/app-identity.tsx";

@@ -4,10 +4,8 @@
  * authoritative; loading, empty, and failed reads render as distinct states.
  */
 
-import type {
-  SubscriptionProviderSelectionId,
-  LinkedAccountProviderId,
-} from "@elizaos/host/protocol";
+import type { LinkedAccountProviderId } from "@elizaos/contracts";
+import type { SubscriptionProviderSelectionId } from "@elizaos/host/protocol";
 import { AlertTriangle, ChevronRight, Plus, RotateCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type {
@@ -22,9 +20,9 @@ import { Skeleton } from "../ui/skeleton";
 import { AddAccountDialog } from "./AddAccountDialog";
 import {
   ACCOUNT_PROVIDER_OPTIONS,
+  type AccountProviderOption,
   getAccountProviderOption,
 } from "./account-provider-options";
-import type { AccountProviderOption } from "./account-provider-options";
 import { ConsumerKeyPanel } from "./ConsumerKeyPanel";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 import { readSubscriptionOAuth } from "./subscription-oauth-state";

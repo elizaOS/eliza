@@ -23,7 +23,8 @@
       ],
       "@elizaos/cloud-sdk/cloud-setup-session/*": [
         "../cloud/sdk/src/cloud-setup-session/*"
-      ]
+      ],
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],
