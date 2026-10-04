@@ -5,9 +5,9 @@ import * as path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createZstdCompress } from "node:zlib";
+import { artifactSignaturePayload } from "@elizaos/os/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  createArtifactSignaturePayload,
   type RawImageTarget,
   writeVerifiedRawImage,
 } from "../raw-image-pipeline";
@@ -107,7 +107,7 @@ async function fixture() {
   };
   const signature = sign(
     null,
-    createArtifactSignaturePayload(image),
+    artifactSignaturePayload(image),
     keyPair.privateKey,
   );
   const fetcher = async (input: string | URL | Request) => {

@@ -4,9 +4,9 @@ import { spawn } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { zstdCompressSync } from "node:zlib";
+import { artifactSignaturePayload } from "@elizaos/os/contracts";
 import { writeCanonicalRawImageToLinuxDevice } from "../src/backend/linux-backend";
 import {
-  createArtifactSignaturePayload,
   type RawImageWriteReceipt,
   writeVerifiedRawImage,
 } from "../src/backend/raw-image-pipeline";
@@ -77,7 +77,7 @@ const image: ElizaOsImage = {
   format: "raw.zst",
 };
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-const signature = sign(null, createArtifactSignaturePayload(image), privateKey);
+const signature = sign(null, artifactSignaturePayload(image), privateKey);
 const children: ReturnType<typeof spawn>[] = [];
 const start: typeof spawn = ((
   command: string,

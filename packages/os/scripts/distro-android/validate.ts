@@ -943,17 +943,7 @@ export function validateApk(apkPath, brand) {
   console.log(`[distro-android:validate] APK checks passed with ${aapt}.`);
 }
 
-/**
- * Verify that the brand-declared AOSP device tree files exist in the
- * imported AOSP checkout. This is the non-Cuttlefish counterpart to the
- * implicit "aosp_cf.mk lives at a known path" assumption baked into the
- * legacy validator. For fused-SoC brands (e.g. OpenAgent E1) the chip
- * team's device tree must be rsynced into the AOSP checkout (see the
- * chip's `import-aosp-device.sh`) before validate.ts is run with
- * `--aosp-root`. If the brand config does not declare
- * `aospDeviceTreePaths`, validation returns because the Cuttlefish path is
- * implicit.
- */
+/** Verify brand-declared device trees in the imported AOSP checkout. */
 export function validateAospDeviceTreePaths(aospRoot, brand) {
   const paths = brand.aospDeviceTreePaths;
   if (!Array.isArray(paths) || paths.length === 0) return;

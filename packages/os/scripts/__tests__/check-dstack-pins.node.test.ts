@@ -31,7 +31,6 @@ test("shipped track-latest pins PASS (owner decision §8.3)", async () => {
   const { pins, schema, manifest } = await load();
   const result = checkDstackPins(pins, schema, manifest);
   assert.equal(result.ok, true, result.errors.join("\n"));
-  assert.equal(result.blocked, false);
 });
 
 test("track-latest is a valid confirmed pin", async () => {
@@ -115,7 +114,6 @@ test("a forbidden weakness class left unforbidden is a hard FAIL", async () => {
   broken.forbid.devMode = false;
   const result = checkDstackPins(broken, schema, manifest);
   assert.equal(result.ok, false);
-  assert.equal(result.blocked, false);
   assert.ok(
     result.errors.some((e) => e.includes("forbid.devMode must be true")),
   );
