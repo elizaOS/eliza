@@ -5129,6 +5129,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/subscriptions/portal/route.ts",
   },
+  "POST /api/v1/subscriptions/upgrade/review": {
+    method: "POST",
+    path: "/api/v1/subscriptions/upgrade/review",
+    methodName: "postApiV1SubscriptionsUpgradeReview",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/subscriptions/upgrade/review/route.ts",
+  },
   "POST /api/v1/telegram/connect": {
     method: "POST",
     path: "/api/v1/telegram/connect",

@@ -654,6 +654,7 @@
     "./types/cloud-api": "./src/types/cloud-api.ts",
     "./types/cloud-worker-env": "./src/types/cloud-worker-env.ts",
     "./types/stripe-queue-message": "./src/types/stripe-queue-message.ts",
+    "./lib/services/organization-upgrade-preview": "./src/lib/services/organization-upgrade-preview.ts",
     "./lib/services/subscription-renewal-review": "./src/lib/services/subscription-renewal-review.ts"
   },
   "scripts": {
