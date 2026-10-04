@@ -9,11 +9,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React, { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as raw from "./components/MessagesView.tsx";
+import * as dynamic from "./components/messages-view-bundle.ts";
+import * as ui from "./ui.ts";
 
 const registration = vi.hoisted(() => ({ register: vi.fn() }));
 
-vi.mock("@elizaos/ui", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+vi.mock("@elizaos/ui", () => ({
   registerAppShellPage: registration.register,
   isElizaOS: () => true,
   PluginPageFrame: ({
@@ -63,12 +65,7 @@ describe("Messages host-view ABI", () => {
     const registrationCall = registration.register.mock.calls[0]?.[0];
     expect(registrationCall).toBeDefined();
 
-    const [signed, ui, dynamic, raw] = await Promise.all([
-      registrationCall.loader(),
-      import("./ui.ts"),
-      import("./components/messages-view-bundle.ts"),
-      import("./components/MessagesView.tsx"),
-    ]);
+    const signed = await registrationCall.loader();
 
     expect(signed.default).toBe(ui.MessagesView);
     expect(dynamic.MessagesView).toBe(raw.MessagesView);

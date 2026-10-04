@@ -100,10 +100,15 @@ function fixture(override = {}) {
     clearActive: async () => {
       active = null;
     },
-    activate: async (value, guard) => {
-      guard();
-      active = value;
-    },
+    activate: override.activate
+      ? (value, guard) =>
+          override.activate(value, guard, (next) => {
+            active = next;
+          })
+      : async (value, guard) => {
+          guard();
+          active = value;
+        },
     beforeStart: async () => {
       active = null;
     },
@@ -1026,4 +1031,37 @@ test("account verification retains personal purpose through MFA", async () => {
     "authorized",
   );
   assert.ok(await f.auth.billingAuthority());
+});
+
+test("cancelling while the host activates the key leaves no revoked key active", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  let reached;
+  const activating = new Promise((resolve) => {
+    reached = resolve;
+  });
+  const f = fixture({
+    // A host that checks the guard, then persists the key asynchronously.
+    activate: async (value, guard, setActive) => {
+      guard();
+      reached();
+      await gate;
+      setActive(value);
+    },
+  });
+  const begun = await start(f);
+  const verifying = verify(f, begun);
+  await activating;
+  const cancelling = f.auth.cancel();
+  release();
+  await assert.rejects(verifying);
+  assert.deepEqual(await cancelling, { status: "cancelled" });
+  // Cancel revoked the key in Cloud; it must not stay the active credential.
+  assert.equal(f.state.active, null);
+  assert.equal(
+    f.calls.filter((call) => call.path.endsWith("/api-keys/current")).length,
+    1,
+  );
 });

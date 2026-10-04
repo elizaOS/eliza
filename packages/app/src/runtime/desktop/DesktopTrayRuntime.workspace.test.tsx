@@ -44,10 +44,16 @@ vi.mock("../../../../ui/src/bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => true,
 }));
 
-vi.mock("../../../../ui/src/utils/desktop-workspace", () => ({
-  openDesktopWorkspaceWindow: bridge.openDesktopWorkspaceWindow,
-  openDesktopSettingsWindow: bridge.openDesktopSettingsWindow,
-}));
+vi.mock(
+  "../../../../ui/src/utils/desktop-workspace",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../../ui/src/utils/desktop-workspace")
+    >()),
+    openDesktopWorkspaceWindow: bridge.openDesktopWorkspaceWindow,
+    openDesktopSettingsWindow: bridge.openDesktopSettingsWindow,
+  }),
+);
 
 vi.mock("../../../../ui/src/state/useApp", () => ({ useApp: () => store }));
 

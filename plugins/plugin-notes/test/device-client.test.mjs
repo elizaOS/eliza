@@ -212,3 +212,56 @@ test("a genuine external change during a consistency read still fences queued ed
   assert.equal(writes, before);
   assert.deepEqual(JSON.parse(saved.currentRaw).records, [external]);
 });
+test("a host update to other daily fields after an interrupted migration does not lock Notes", async () => {
+  const storage = memory();
+  const dailyNote = {
+    id: "daily",
+    kind: "text",
+    title: "Today",
+    body: "Daily",
+  };
+  storage.setItem(
+    config.daily,
+    JSON.stringify({ notes: [dailyNote], receipts: ["r1"] }),
+  );
+  let saved = null,
+    lose = true;
+  const vault = {
+    read: async () => structuredClone(saved),
+    compareExchange: async (_key, expected, value) => {
+      assert.deepEqual(saved, expected);
+      saved = structuredClone(value);
+      if (lose) {
+        lose = false;
+        throw Error("lost response");
+      }
+      return { status: "saved" };
+    },
+  };
+  // The encrypted write lands but its acknowledgement is lost: open stops
+  // before cleanup and the plaintext daily notes are still there.
+  await assert.rejects(
+    SecureNotesStore.open(config, vault, storage),
+    NotesCommitUncertain,
+  );
+  // Meanwhile the host updates another field of its daily record.
+  storage.setItem(
+    config.daily,
+    JSON.stringify({ notes: [dailyNote], receipts: ["r1", "r2"] }),
+  );
+  await SecureNotesStore.open(config, vault, storage);
+  // The migrated notes are cleared; the host's other fields are kept.
+  assert.deepEqual(JSON.parse(storage.getItem(config.daily)), {
+    notes: [],
+    receipts: ["r1", "r2"],
+  });
+  // A daily record whose notes changed since migration is still refused.
+  storage.setItem(
+    config.daily,
+    JSON.stringify({ notes: [{ ...dailyNote, body: "Edited" }], receipts: [] }),
+  );
+  await assert.rejects(
+    SecureNotesStore.open(config, vault, storage),
+    /Legacy Notes changed during migration/,
+  );
+});
