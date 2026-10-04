@@ -655,7 +655,8 @@
     "./lib/worker/same-origin-forward": "./src/lib/worker/same-origin-forward.ts",
     "./types/cloud-api": "./src/types/cloud-api.ts",
     "./types/cloud-worker-env": "./src/types/cloud-worker-env.ts",
-    "./types/stripe-queue-message": "./src/types/stripe-queue-message.ts"
+    "./types/stripe-queue-message": "./src/types/stripe-queue-message.ts",
+    "./lib/services/subscription-renewal-review": "./src/lib/services/subscription-renewal-review.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",
