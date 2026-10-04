@@ -34,12 +34,19 @@ test("observes the existing HTTP quote and retains only actual economic terms wi
   try {
     const url = new URL(path, `http://127.0.0.1:${address.port}`).href;
     const audit = createCloudLiveNetworkAudit();
-    audit.observeRequest("GET", url);
+    const requestIdentity = {};
+    audit.observeRequest("GET", url, undefined, requestIdentity);
     const response = await fetch(url);
-    audit.observeResponse("GET", url, response.status, {
-      contentType: response.headers.get("content-type"),
-      read: async () => new Uint8Array(await response.arrayBuffer()),
-    });
+    audit.observeResponse(
+      "GET",
+      url,
+      response.status,
+      {
+        contentType: response.headers.get("content-type"),
+        read: async () => new Uint8Array(await response.arrayBuffer()),
+      },
+      requestIdentity,
+    );
     const snapshot = await audit.snapshot();
     expect(snapshot.dedicatedQuoteTerms).toEqual({
       hourlyRateUsd: 0.01,
@@ -55,7 +62,7 @@ test("observes the existing HTTP quote and retains only actual economic terms wi
     expect(requests).toBe(1);
     const receipt = JSON.stringify(snapshot);
     expect(receipt).not.toContain("private-");
-    audit.observeRequest("GET", url);
+    audit.observeRequest("GET", url, undefined, {});
     expect((await audit.snapshot()).dedicatedQuoteTerms).toBeNull();
   } finally {
     await new Promise<void>((resolve, reject) =>
@@ -71,14 +78,116 @@ test("missing or malformed financial fields do not produce an invented quote", a
     { ...data, quoteId: "" },
   ]) {
     const audit = createCloudLiveNetworkAudit();
-    audit.observeRequest("GET", `https://staging.invalid${path}`);
-    audit.observeResponse("GET", `https://staging.invalid${path}`, 200, {
-      contentType: "application/json",
-      read: async () =>
-        new TextEncoder().encode(
-          JSON.stringify({ success: true, data: altered }),
-        ),
-    });
+    const requestIdentity = {};
+    audit.observeRequest(
+      "GET",
+      `https://staging.invalid${path}`,
+      undefined,
+      requestIdentity,
+    );
+    audit.observeResponse(
+      "GET",
+      `https://staging.invalid${path}`,
+      200,
+      {
+        contentType: "application/json",
+        read: async () =>
+          new TextEncoder().encode(
+            JSON.stringify({ success: true, data: altered }),
+          ),
+      },
+      requestIdentity,
+    );
     expect((await audit.snapshot()).dedicatedQuoteTerms).toBeNull();
   }
 });
+
+for (const delayed of ["headers", "body"] as const) {
+  test(`an older quote with delayed ${delayed} cannot replace the current request receipt`, async () => {
+    let requests = 0;
+    let olderResponse: import("node:http").ServerResponse | undefined;
+    let firstRequestSeen!: () => void;
+    const firstRequest = new Promise<void>((resolve) => {
+      firstRequestSeen = resolve;
+    });
+    const quote = (balanceUsd: number) => ({
+      success: true,
+      data: { ...data, quoteId: `private-quote-${balanceUsd}`, balanceUsd },
+    });
+    const server = createServer((_request, response) => {
+      response.setHeader("content-type", "application/json");
+      if (++requests === 1) {
+        olderResponse = response;
+        if (delayed === "body") response.flushHeaders();
+        firstRequestSeen();
+      } else response.end(JSON.stringify(quote(9)));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("HTTP fixture did not bind");
+    const url = new URL(path, `http://127.0.0.1:${address.port}`).href;
+    const audit = createCloudLiveNetworkAudit();
+    const olderRequest = {};
+    const currentRequest = {};
+    const observe = (response: Response, identity: object) => {
+      audit.observeResponse(
+        "GET",
+        url,
+        response.status,
+        {
+          contentType: response.headers.get("content-type"),
+          read: async () => new Uint8Array(await response.arrayBuffer()),
+        },
+        identity,
+      );
+    };
+    try {
+      audit.observeRequest("GET", url, undefined, olderRequest);
+      const older = fetch(url);
+      await firstRequest;
+      if (delayed === "body") observe(await older, olderRequest);
+      audit.observeRequest("GET", url, undefined, currentRequest);
+      const current = await fetch(url);
+      let currentBodySeen!: () => void;
+      const currentBody = new Promise<void>((resolve) => {
+        currentBodySeen = resolve;
+      });
+      audit.observeResponse(
+        "GET",
+        url,
+        current.status,
+        {
+          contentType: current.headers.get("content-type"),
+          read: async () => {
+            const bytes = new Uint8Array(await current.arrayBuffer());
+            currentBodySeen();
+            return bytes;
+          },
+        },
+        currentRequest,
+      );
+      await currentBody;
+      // Finish the current inspection before releasing the older HTTP response.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      olderResponse?.end(JSON.stringify(quote(7)));
+      if (delayed === "headers") observe(await older, olderRequest);
+      const snapshot = await audit.snapshot();
+      expect(snapshot.dedicatedQuoteTerms?.balanceUsd).toBe(9);
+      expect(snapshot.decodedDedicatedQuoteResponseCount).toBe(2);
+      expect(snapshot.dedicatedActivationPostRequestCount).toBe(0);
+      expect(requests).toBe(2);
+      expect(
+        (await audit.latestDedicatedActivationApprovalBinding())?.quoteId,
+      ).toBe("private-quote-9");
+      expect(JSON.stringify(snapshot)).not.toContain("private-");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+}

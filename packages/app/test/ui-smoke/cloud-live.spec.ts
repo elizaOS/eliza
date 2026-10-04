@@ -466,7 +466,12 @@ function installNetworkAudit(context: BrowserContext) {
   const audit = createCloudLiveNetworkAudit();
   const chatCorrelation = createCloudLiveChatCorrelationCapture();
   context.on("request", (request) => {
-    audit.observeRequest(request.method(), request.url(), request.postData());
+    audit.observeRequest(
+      request.method(),
+      request.url(),
+      request.postData(),
+      request,
+    );
   });
   context.on("response", (response) => {
     const responseHeaders = response.headers();
@@ -496,6 +501,7 @@ function installNetworkAudit(context: BrowserContext) {
           return bytes.byteLength <= maxBytes ? bytes : null;
         },
       },
+      response.request(),
     );
   });
   context.on("requestfailed", (request) => {

@@ -1344,12 +1344,14 @@ export interface CloudLiveNetworkAudit {
     method: string,
     rawUrl: string,
     postData?: string | null,
+    requestIdentity?: object,
   ): void;
   observeResponse(
     method: string,
     rawUrl: string,
     status: number,
     responseBody?: CloudLiveBoundedResponseBody,
+    requestIdentity?: object,
   ): void;
   observeRequestFailure(
     method: string,
@@ -1386,6 +1388,8 @@ export function createCloudLiveNetworkAudit(
   let decodedDedicatedPersonalIdentityResponseCount = 0;
   let uninspectablePersonalIdentityResponseBodyCount = 0;
   let dedicatedQuoteTerms: CloudLiveDedicatedQuoteTerms | null = null;
+  // Keep the originating network object private; header and body arrival can reorder.
+  let latestDedicatedQuoteRequest: object | undefined;
   let dedicatedAdoptionQuoteGetRequestCount = 0;
   let successfulDedicatedAdoptionQuoteGetResponseCount = 0;
   let clientErrorDedicatedAdoptionQuoteGetResponseCount = 0;
@@ -1506,7 +1510,7 @@ export function createCloudLiveNetworkAudit(
   };
 
   return {
-    observeRequest(method, rawUrl, postData) {
+    observeRequest(method, rawUrl, postData, requestIdentity) {
       if (classifyForbiddenAgentMutation(method, rawUrl)) {
         forbiddenAgentMutationCount += 1;
       }
@@ -1527,7 +1531,10 @@ export function createCloudLiveNetworkAudit(
       const dedicatedRequest = dedicatedControlPlaneRequest(method, rawUrl);
       if (dedicatedRequest)
         dedicatedControlPlane[dedicatedRequest].request += 1;
-      if (dedicatedRequest === "quote") dedicatedQuoteTerms = null;
+      if (dedicatedRequest === "quote") {
+        dedicatedQuoteTerms = null;
+        latestDedicatedQuoteRequest = requestIdentity;
+      }
       const adoptionRequest = dedicatedAdoptionRequest(method, rawUrl);
       if (adoptionRequest === "quote") {
         dedicatedAdoptionQuoteGetRequestCount += 1;
@@ -1552,7 +1559,7 @@ export function createCloudLiveNetworkAudit(
       );
       if (lifecycleBinding) dedicatedLifecycleRequests.push(lifecycleBinding);
     },
-    observeResponse(method, rawUrl, status, responseBody) {
+    observeResponse(method, rawUrl, status, responseBody, requestIdentity) {
       const chatScope = chatSendScope(method, rawUrl);
       if (chatScope) {
         if (status >= 200 && status < 300) {
@@ -1667,7 +1674,11 @@ export function createCloudLiveNetworkAudit(
             counters.bodyCompleted += 1;
             if (!inspection.parsed) return;
             counters.parsed += 1;
-            if (dedicatedRequest === "quote")
+            if (
+              dedicatedRequest === "quote" &&
+              requestIdentity !== undefined &&
+              requestIdentity === latestDedicatedQuoteRequest
+            )
               dedicatedQuoteTerms = inspection.quoteTerms ?? null;
             if (inspection.decoded) counters.decoded += 1;
             if (inspection.pending) counters.pendingDecoded += 1;
@@ -1677,6 +1688,8 @@ export function createCloudLiveNetworkAudit(
             }
             if (
               dedicatedRequest === "quote" &&
+              (requestIdentity === undefined ||
+                requestIdentity === latestDedicatedQuoteRequest) &&
               sourceAgentId &&
               inspection.quoteId
             ) {
