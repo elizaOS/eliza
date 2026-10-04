@@ -1,5 +1,9 @@
+import {
+  createMockEffectCapture,
+  createRemoteMockEffectCapture,
+} from "./effect-observation.ts";
 import { createScenarioRuntimeLifecycle } from "./runtime-lifecycle.ts";
-import { syntheticWorldSettings } from "./synthetic-world-settings.ts";
+import { parseSyntheticWorldConfiguration } from "./synthetic-world-settings.ts";
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
  * (no SQL mocks) and registers either the first available live LLM provider
@@ -138,6 +142,7 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
 }
 
 export interface RuntimeFactoryResult {
+  captureActionEffects?: import("./interceptor.ts").ActionEffectCapture;
   runtime: AgentRuntime;
   pgliteDir: string;
   skillsDir?: string | null;
@@ -955,9 +960,10 @@ export async function createScenarioRuntime(
   try {
     const requestedSyntheticPolicy = parseSyntheticRuntimePolicy();
     const worldEndpoints = process.env.ELIZA_SCENARIO_WORLD_ENDPOINTS;
-    const worldSettings = worldEndpoints
-      ? syntheticWorldSettings(JSON.parse(worldEndpoints))
+    const worldConfiguration = worldEndpoints
+      ? parseSyntheticWorldConfiguration(worldEndpoints)
       : undefined;
+    const worldSettings = worldConfiguration?.settings;
     const executionProfile =
       options?.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
     if (executionProfile === "provider-qualified") {
@@ -1529,6 +1535,11 @@ export async function createScenarioRuntime(
 
     return {
       runtime,
+      captureActionEffects: mockedEnvironment
+        ? createMockEffectCapture(mockedEnvironment.mocks)
+        : worldConfiguration
+          ? createRemoteMockEffectCapture(worldConfiguration.endpoints)
+          : undefined,
       pgliteDir,
       skillsDir: scenarioSkillsRoot ?? prevSkillsDir ?? null,
       hostsFilePath:

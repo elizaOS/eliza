@@ -6,6 +6,7 @@
  * fresh client is created per call; the auth client itself is cached upstream in
  * the resolver. Honors `ELIZA_MOCK_GOOGLE_BASE` to point at a local mock server.
  */
+import { ElizaError } from "@elizaos/core";
 import {
   type calendar_v3,
   type docs_v1,
@@ -32,12 +33,17 @@ function googleRootUrlOverride(configured?: string): string | undefined {
   if (!raw) return undefined;
   try {
     const url = new URL(raw);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
+      throw new Error("Expected a credential-free HTTP endpoint");
     if (!url.pathname.endsWith("/")) {
       url.pathname = `${url.pathname}/`;
     }
     return url.toString();
-  } catch {
-    return raw.endsWith("/") ? raw : `${raw}/`;
+  } catch (cause) {
+    throw new ElizaError("Invalid Google API endpoint", {
+      code: "GOOGLE_MOCK_ENDPOINT_INVALID",
+      cause,
+    });
   }
 }
 

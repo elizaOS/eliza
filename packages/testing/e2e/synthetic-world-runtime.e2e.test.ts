@@ -3,7 +3,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  trackPostDeliveryTask,
+} from "@elizaos/core";
 import { GitHubService, issueOpAction } from "@elizaos/plugin-github";
 import { Octokit } from "@octokit/rest";
 import { createSyntheticTestRuntime } from "../src/synthetic-runtime.ts";
@@ -239,3 +243,131 @@ test("the scenario executor carries a complete two-service journey and world evi
     await rm(directory, { recursive: true, force: true });
   }
 }, 180_000);
+
+test.each(["none", "immediate", "deferred"] as const)(
+  "the full executor independently checks rejected API effects (leaked=%s)",
+  async (leaked) => {
+    const { runSyntheticScenario } = await import(
+      "../scenario-runner/src/synthetic-scenario.ts"
+    );
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "synthetic-rejection-"),
+    );
+    const leaseStore = new SqliteSyntheticEnvironmentLeaseStore(
+      path.join(directory, "lease.sqlite"),
+    );
+    try {
+      const result = await runSyntheticScenario({
+        world: {
+          leaseStore,
+          manifest: {
+            version: 1,
+            namespace: "rejection",
+            manifestId: "rejection-v1",
+            domains: { slack: {} },
+          },
+        },
+        runtime: (world) => ({
+          plugins: [
+            {
+              name: "rejection-transport",
+              description:
+                "Actual HTTP effects independently observed around each action",
+              actions: [
+                {
+                  name: "SEND_REVIEW_MESSAGE",
+                  description: "Exercise approval gating",
+                  similes: [],
+                  examples: [],
+                  validate: async () => true,
+                  handler: async (_runtime, _message, _state, options) => {
+                    const confirmed = options?.confirmed === true;
+                    const write = async () => {
+                      const response = await fetch(
+                        `${world.endpoints.slack}/api/chat.postMessage`,
+                        {
+                          method: "POST",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({
+                            channel: "C001",
+                            text: confirmed ? "approved" : "leaked",
+                          }),
+                          signal: world.signal,
+                        },
+                      );
+                      if (!response.ok)
+                        throw new Error(
+                          `Slack request failed: ${response.status}`,
+                        );
+                      await response.arrayBuffer();
+                    };
+                    if (confirmed || leaked === "immediate") await write();
+                    else if (leaked === "deferred") {
+                      void trackPostDeliveryTask(
+                        _runtime,
+                        "deferred-api-write",
+                        async () => {
+                          await new Promise((resolve) =>
+                            setTimeout(resolve, 25),
+                          );
+                          await write();
+                        },
+                      );
+                    }
+                    return {
+                      success: true,
+                      data: confirmed
+                        ? { completed: true }
+                        : { cancelled: true },
+                    };
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+        scenario: {
+          id: "synthetic.rejection",
+          title: "Observe rejected effects",
+          domain: "synthetic-world",
+          lane: "pr-deterministic",
+          turns: [
+            {
+              kind: "action",
+              name: "reject",
+              actionName: "SEND_REVIEW_MESSAGE",
+              options: { confirmed: false },
+            },
+            {
+              kind: "action",
+              name: "approve",
+              actionName: "SEND_REVIEW_MESSAGE",
+              options: { confirmed: true },
+            },
+          ],
+          finalChecks: [
+            { type: "noSideEffectOnReject", actionName: "SEND_REVIEW_MESSAGE" },
+          ],
+        },
+        executor: {
+          providerName: "deterministic",
+          minJudgeScore: 0.7,
+          turnTimeoutMs: 30_000,
+        },
+      });
+      expect(result.report.status).toBe(
+        leaked !== "none" ? "failed" : "passed",
+      );
+      expect(result.report.finalChecks[0]?.status).toBe(
+        leaked !== "none" ? "failed" : "passed",
+      );
+      expect(result.worldEvidence.requests).toHaveLength(
+        leaked !== "none" ? 2 : 1,
+      );
+    } finally {
+      leaseStore.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  180_000,
+);
