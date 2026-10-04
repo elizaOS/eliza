@@ -575,7 +575,9 @@ export class SubscriptionAuthorityRepository {
         subscriptionId: verified.source.id,
         expectedRevision: verified.source.lifecycle_revision,
         source: "reconciliation",
-        observation: "authoritative_provider_retrieval",
+        observation: verified.historicalEvidence
+          ? "authenticated_historical_target_with_live_compatibility"
+          : "authoritative_provider_retrieval",
         values: {
           ...verified.target.values,
           last_provider_event_id: null,
@@ -615,7 +617,11 @@ export class SubscriptionAuthorityRepository {
 
   private async advanceWithProvenance(
     tx: DbTransaction,
-    input: AdvanceSubscriptionInput,
+    input:
+      | AdvanceSubscriptionInput
+      | (Omit<AdvanceSubscriptionInput, "observation"> & {
+          observation: "authenticated_historical_target_with_live_compatibility";
+        }),
     provenance:
       | { kind: "provider_event" }
       | {
@@ -626,6 +632,13 @@ export class SubscriptionAuthorityRepository {
         }
       | { kind: "reconciliation"; identity: ReconciliationIdentity },
   ): Promise<SubscriptionMutationResult> {
+    if (
+      input.observation === "authenticated_historical_target_with_live_compatibility" &&
+      provenance.kind !== "paid_upgrade"
+    )
+      conflict("Historical target evidence is restricted to original paid upgrade settlement", {
+        subscriptionId: input.subscriptionId,
+      });
     const [organization] = await tx
       .select({
         id: organizations.id,
