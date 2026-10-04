@@ -70,3 +70,10 @@ Native account-factor transport exposes POST `/cloud/account/methods`,
 `/cloud/account`). The composed Auth host owns input validation, recent MFA,
 private session replacement, collision protection and cancellation. These routes
 are unavailable to service-only hosts. They do not manage Gmail consent.
+
+
+`createOrganizationSubscriptionUpgradeQuote` sends a current manager's catalog
+intent to the organization upgrade review endpoint. The returned quote separates
+due-now terms from a recurring estimate and expires after at most 60 seconds.
+It does not authorize or execute a charge; the internal provider identities and
+persistence digests are not part of the public DTO.

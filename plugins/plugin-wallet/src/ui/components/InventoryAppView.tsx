@@ -9,6 +9,7 @@
  * {@link InventoryView} renders it as the real-DOM child of its `Escape` hatch.
  * This is the DOM-only dashboard reached only through that wrapper.
  */
+
 import type {
   WalletBalancesResponse,
   WalletConfigStatus,

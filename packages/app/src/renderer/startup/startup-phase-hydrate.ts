@@ -7,6 +7,7 @@ import { loadViewInteractRegistry } from "@elizaos/ui";
  */
 
 import type { WalletAddresses } from "@elizaos/contracts";
+
 import {
   isRuntimeManagementOperation,
   type RuntimeManagementRequest,

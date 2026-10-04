@@ -34,6 +34,7 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 } from "@elizaos/contracts";
+
 import type {
   AppRunSummary,
   AppSessionState,

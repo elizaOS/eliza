@@ -56,6 +56,46 @@ export interface OrganizationSubscriptionReviewedUndoRequest
   expectedRenewalTermsDigest: string;
 }
 
+/** Server-observed estimate; saving it creates no charge or subscription command. */
+export interface OrganizationSubscriptionUpgradeReviewDto {
+  kind: "upgrade_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  sourcePlanKey: "plus_monthly" | "pro_monthly";
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  prorationDate: number;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  targetBaseAmountCents: number;
+  targetAllowanceUsd: string;
+  additionalAllowanceUsd: string;
+  dueNow: OrganizationSubscriptionUpgradeInvoiceDto;
+  recurringEstimate: OrganizationSubscriptionUpgradeInvoiceDto;
+  observedAt: string;
+  expiresAt: string;
+}
+export interface OrganizationSubscriptionUpgradeInvoiceDto {
+  amountDueCents: number;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  startingBalanceCents: number;
+}
+export interface OrganizationSubscriptionUpgradeQuoteRequest {
+  subscriptionId: string;
+  expectedSubscriptionRevision: number;
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+}
+export interface OrganizationSubscriptionUpgradeQuoteDto {
+  quoteId: string;
+  review: OrganizationSubscriptionUpgradeReviewDto;
+}
+export type OrganizationSubscriptionUpgradeQuoteResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradeQuoteDto>;
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;

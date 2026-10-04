@@ -3368,6 +3368,27 @@
       "when": 1796083200128,
       "tag": "0510_subscription_renewal_review_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 481,
+      "version": "7",
+      "when": 1796083200129,
+      "tag": "0511_organization_plan_change_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 482,
+      "version": "7",
+      "when": 1796083200130,
+      "tag": "0512_organization_upgrade_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 483,
+      "version": "7",
+      "when": 1796083200131,
+      "tag": "0513_organization_upgrade_live_lease",
+      "breakpoints": true
     }
   ]
 }

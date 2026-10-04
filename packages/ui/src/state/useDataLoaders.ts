@@ -22,6 +22,7 @@ import type {
 } from "@elizaos/contracts";
 import type { UiLanguage } from "@elizaos/core/protocol";
 import type { StylePreset } from "@elizaos/host/protocol";
+
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,

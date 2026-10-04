@@ -32,6 +32,12 @@ The plugin owns the Chromium native-messaging AIDL definitions. Host apps use
 the library classes and must not compile duplicate copies of those definitions.
 Eliza retains its existing service component as a thin subclass of this relay.
 
+`parseBrowserAddressInput` (also exported as `./address-input` without bridge
+registration) classifies address-bar text as an HTTP(S) URL, search text, or a
+rejection reason. Hosts supply the inferred protocol and own aliases, search
+providers, upgrades and error copy. Parsing performs no network request and is
+not an SSRF, reputation, browser ownership or navigation-authorization check.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

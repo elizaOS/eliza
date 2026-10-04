@@ -6,6 +6,11 @@
 // last non-hidden value is restored when the mode toggles back. jsdom; state
 // barrel stubbed.
 
+// @vitest-environment jsdom
+// Renders the real PluginConfigForm to cover the modeToggle `configUiHint`:
+// the backing field is hidden while the hidden-mode value is active and its
+// last non-hidden value is restored when the mode toggles back. jsdom; state
+// barrel stubbed.
 import type { PluginParamDef } from "@elizaos/core/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

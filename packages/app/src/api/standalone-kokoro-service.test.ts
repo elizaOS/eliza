@@ -129,6 +129,20 @@ describe("standalone Kokoro cold initialization", () => {
   });
 });
 
+describe("standalone Kokoro worker command", () => {
+  it("passes the source condition only to a source worker", () => {
+    expect(speechWorkerArgs("/repo/plugins/x/src/host-tts-worker.ts")).toEqual([
+      "--no-install",
+      "--conditions=eliza-source",
+      "/repo/plugins/x/src/host-tts-worker.ts",
+    ]);
+    // A packaged build ships only the bundled worker; it resolves its
+    // dependencies from their built files.
+    expect(
+      speechWorkerArgs("/app/node_modules/x/dist/host-tts-worker.js"),
+    ).toEqual(["--no-install", "/app/node_modules/x/dist/host-tts-worker.js"]);
+  });
+});
 /** Controlled subprocess/HTTP proof; native speech qualification is separate. */
 const { spawn: spawnProcess } =
   await vi.importActual<typeof import("node:child_process")>(
@@ -296,18 +310,3 @@ for (const mode of ["slow", "pipe-end", "malformed", "cancel-http"]) {
     }
   });
 }
-
-describe("standalone Kokoro worker command", () => {
-  it("passes the source condition only to a source worker", () => {
-    expect(speechWorkerArgs("/repo/plugins/x/src/host-tts-worker.ts")).toEqual([
-      "--no-install",
-      "--conditions=eliza-source",
-      "/repo/plugins/x/src/host-tts-worker.ts",
-    ]);
-    // A packaged build ships only the bundled worker; it resolves its
-    // dependencies from their built files.
-    expect(
-      speechWorkerArgs("/app/node_modules/x/dist/host-tts-worker.js"),
-    ).toEqual(["--no-install", "/app/node_modules/x/dist/host-tts-worker.js"]);
-  });
-});

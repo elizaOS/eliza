@@ -168,8 +168,17 @@ function sanitizeSpeechPunctuation(input: string): string {
 	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !"). Twin of
 	// The browser and Node hosts now share this implementation.
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
-	text = text.replace(/\s{0,32}([,;:，；：])\s{0,32}/g, "$1 ");
-	text = text.replace(/\s{0,32}([.!?。！？])\s{0,32}/g, "$1 ");
+	// A mark inside a number (`3.14`, `1,299`, `10:30`) is part of one spoken
+	// token: spacing it makes TTS read "3. 14" as a sentence break and two
+	// numbers, so the spacing rules skip it.
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)))\s{0,32}([,;:，；：])\s{0,32}/g,
+		"$1 ",
+	);
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)))\s{0,32}([.!?。！？])\s{0,32}/g,
+		"$1 ",
+	);
 	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
 	// later language-aware stage can read "№4" instead of a stripped "4".
 	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");

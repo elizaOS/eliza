@@ -26,7 +26,6 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/host/protocol";
-
 import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc";
 import {
   type AppBlockerInstalledApp,

@@ -6,6 +6,8 @@
  * service).
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarEvent,
   ListLifeOpsCalendarsResponse,

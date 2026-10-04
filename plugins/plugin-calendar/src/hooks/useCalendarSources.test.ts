@@ -5,6 +5,8 @@
  * client, including stale-list and overlapping-write races across accounts.
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarSummary,
   SetLifeOpsCalendarIncludedResponse,
