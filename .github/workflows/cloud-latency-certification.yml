@@ -17,6 +17,11 @@ on:
         required: false
         default: ""
         type: string
+      probe_case:
+        description: Synthetic probe model@reasoning_effort@max_tokens; default matches interactive Qwen controls
+        required: false
+        default: "qwen-3.8-27b@none@512"
+        type: string
       run_auth:
         description: Also run protected inference-auth hit, miss, non-standing guards, and sanitized Worker Tail proof.
         required: true
@@ -75,6 +80,7 @@ jobs:
       NODE_VERSION: "24.15.0"
       EXPECTED_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
       ACKNOWLEDGED_CONTRACT_DIGEST: ${{ inputs.acknowledged_contract_digest }}
+      PROBE_CASE: ${{ inputs.probe_case }}
       RUN_AUTH: ${{ inputs.run_auth }}
       RUN_SUSPENDED: ${{ inputs.run_suspended }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -149,6 +155,7 @@ jobs:
           args=(
             --deploy-sha "$EXPECTED_DEPLOY_SHA"
             --output-dir "$output_dir"
+            --probe-case "$PROBE_CASE"
             --acknowledged-contract-digest "$ACKNOWLEDGED_CONTRACT_DIGEST"
           )
           if [[ "$RUN_AUTH" == "true" ]]; then
