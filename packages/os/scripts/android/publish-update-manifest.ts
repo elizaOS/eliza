@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 /** Publish only authenticated exact-target contracts; never infer hardware from filenames. */
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   loadPolicy,
