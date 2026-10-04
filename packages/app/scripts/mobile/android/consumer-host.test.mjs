@@ -178,3 +178,36 @@ test("toolchain is hash pinned and optional runtime preserves exact native bytes
     JSON.stringify('host "literal" $value'),
   );
 });
+
+test("a symlinked checkout root uses canonical ownership without admitting descendant symlinks", (t) => {
+  const { options, generate } = setup(t);
+  const actual = options.consumerRoot,
+    alias = `${actual}-alias`;
+  fs.symlinkSync(actual, alias, "junction");
+  t.after(() => fs.unlinkSync(alias));
+  options.consumerRoot = alias;
+  options.output = path.join(alias, "android");
+  assert.equal(generate().directory, path.join(actual, "android"));
+  options.output = path.join(actual, "android");
+  generate();
+  options.output = path.join(alias, "../escape");
+  assert.throws(generate, /inside the consumer/);
+});
+
+test("changing dependency selectors are refused before generating any files", (t) => {
+  for (const version of [
+    "latest.release",
+    "latest.integration",
+    "1.0-SNAPSHOT",
+  ]) {
+    const { options, generate } = setup(t);
+    options.profile.dependencies = [
+      {
+        configuration: "implementation",
+        coordinate: `example:library:${version}`,
+      },
+    ];
+    assert.throws(generate, /fixed coordinate/);
+    assert.equal(fs.existsSync(options.output), false);
+  }
+});

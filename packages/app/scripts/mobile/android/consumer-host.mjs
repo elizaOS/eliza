@@ -68,11 +68,18 @@ export function generateAndroidConsumerHost({
   profile,
   runtimeDirectory,
 }) {
+  const requestedConsumerRoot = path.resolve(consumerRoot);
   consumerRoot = fs.realpathSync(consumerRoot);
   upstreamRoot = fs.realpathSync(upstreamRoot);
   const roots = { consumer: consumerRoot, upstream: upstreamRoot };
   if (dependencyRoot) roots.dependencies = fs.realpathSync(dependencyRoot);
   output = path.resolve(output);
+  if (inside(requestedConsumerRoot, output)) {
+    output = path.resolve(
+      consumerRoot,
+      path.relative(requestedConsumerRoot, output),
+    );
+  }
   requireValue(
     inside(consumerRoot, output) &&
       output !== consumerRoot &&
@@ -101,6 +108,10 @@ export function generateAndroidConsumerHost({
   requireValue(
     typeof identity.appName === "string" &&
       identity.appName.trim() &&
+      [...identity.appName].every(
+        (character) =>
+          character.codePointAt(0) >= 32 && character.codePointAt(0) !== 127,
+      ) &&
       typeof identity.version === "string" &&
       identity.version.length > 0 &&
       Number.isSafeInteger(identity.versionCode) &&
@@ -190,6 +201,17 @@ export function generateAndroidConsumerHost({
         fs.readFileSync(input(flavor.manifest, "file")),
       );
   }
+  // Android escaping follows XML decoding; quotes preserve whitespace and apostrophes.
+  // https://developer.android.com/guide/topics/resources/string-resource#escaping_quotes
+  const label = `"${identity.appName.replace(/[\\"@?]/g, (character) => `\\${character}`)}"`;
+  const xmlLabel = label
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+  add(
+    "app/src/main/res/values/eliza_consumer_identity.xml",
+    `<resources><string name="app_name" formatted="false">${xmlLabel}</string></resources>\n`,
+  );
   add(
     "app/src/main/AndroidManifest.xml",
     fs.readFileSync(input(profile.manifest, "file")),
@@ -238,6 +260,9 @@ export function generateAndroidConsumerHost({
       ].includes(dependency.configuration) &&
         /^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+$/.test(
           dependency.coordinate,
+        ) &&
+        !/^latest(?:\.|$)|-SNAPSHOT$/i.test(
+          dependency.coordinate.split(":")[2],
         ),
       "Android dependency requires a fixed coordinate",
     );

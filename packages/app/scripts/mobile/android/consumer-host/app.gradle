@@ -11,7 +11,6 @@ android {
   targetSdk rootProject.ext.targetSdkVersion
   versionCode identity.versionCode
   versionName identity.version
-  resValue 'string', 'app_name', identity.appName
   manifestPlaceholders = profile.manifestPlaceholders
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
   profile.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }

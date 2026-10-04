@@ -35,6 +35,8 @@ try {
       consumerRoot,
       `example.consumer.${brand}`,
     );
+    fixture.identity.appName =
+      brand === "first" ? '@Independent\'s "One"' : "?Deux & Café %s %s";
     generateAndroidConsumerHost({
       consumerRoot,
       upstreamRoot,
@@ -81,6 +83,10 @@ try {
         const badging = execFileSync(aapt, ["dump", "badging", apk], {
           encoding: "utf8",
         });
+        assert.equal(
+          /^application-label:'(.*)'$/m.exec(badging)?.[1],
+          fixture.identity.appName,
+        );
         const manifest = execFileSync(
           aapt,
           ["dump", "xmltree", apk, "AndroidManifest.xml"],
