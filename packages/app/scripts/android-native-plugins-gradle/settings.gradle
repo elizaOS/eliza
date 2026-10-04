@@ -30,3 +30,12 @@ new File(repoRoot, 'plugins').listFiles().sort { it.name }.each { pluginDir ->
 
 include ':native-block-target'
 include ':native-gateway-host'
+
+// Cold reminder projection is tested against the installed community FCM transport.
+def pushDir = providers.exec {
+    workingDir repoRoot
+    commandLine 'node', '--print', "require('node:path').dirname(require.resolve('@capacitor/push-notifications/package.json', { paths: ['./packages/app'] }))"
+}.standardOutput.asText.get().trim()
+include ':capacitor-push-notifications'
+project(':capacitor-push-notifications').projectDir = new File(pushDir, 'android')
+include ':native-reminder-push-tests'

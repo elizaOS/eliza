@@ -7,7 +7,10 @@ Import from `@elizaos/core`, including first-party catalog access and curated-ap
 registration. Hosts explicitly supply database adapters, model providers,
 and `@elizaos/plugin-assistant` for conversational behavior. The root entrypoint is the Node runtime. Explicit leaf exports provide wire
 contracts and pure utilities without loading that runtime. Core does not own host
-route tables or install assistant behavior implicitly. Runtime settings are per-agent and do not implicitly read process.env.
+route tables or install assistant behavior implicitly. Runtime settings are per-agent and do not implicitly read process.env. The secret
+and PII swap master switches explicitly accept `ELIZA_SECRET_SWAP_ENABLED` and
+`ELIZA_PII_SWAP_ENABLED` from the host environment when their per-agent settings
+are absent; explicit per-agent values take precedence.
 
 The root also exports route DTOs, Markdown, and LifeOps helpers. Use
 `KnowledgeGraphEntity` / `KnowledgeGraphRelationship` for graph records and

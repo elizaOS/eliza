@@ -110,6 +110,8 @@ export {
   normalizeCalendarDateOnly,
   normalizeCalendarTimeZone,
   resolveCalendarEventRange,
+  resolveCalendarWindow,
+  resolveNextCalendarEventWindow,
 } from "./internal/calendar-normalize.js";
 export {
   ELIZA_CALENDAR_ACCOUNT_ID,

@@ -633,13 +633,19 @@ describe("document routes", () => {
     },
   );
 
-  it.each(["single", "bulk"] as const)(
-    "routes an omitted or fallback-MIME .mdx document as text/markdown in %s upload",
-    async (uploadKind) => {
+  it.each(
+    (["single", "bulk"] as const).flatMap((uploadKind) =>
+      (["note.mdx", "Notes.Mdx"] as const).map(
+        (filename) => [uploadKind, filename] as const,
+      ),
+    ),
+  )(
+    "%s upload of %s with omitted or fallback MIME is stored as text/markdown",
+    async (uploadKind, filename) => {
       const content = "# Compatibility note";
       const document = {
         content,
-        filename: "note.mdx",
+        filename,
         ...(uploadKind === "bulk"
           ? { contentType: "application/octet-stream" }
           : {}),

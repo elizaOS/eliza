@@ -3210,6 +3210,14 @@ function AppContent() {
     // acknowledged once its navigation genuinely landed (see events/index.ts).
     const handleNavigateView = (event: Event): boolean => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      // The overlay owns notification chat application, including asynchronous anchors.
+      if (
+        detail?.viewId === "chat" &&
+        detail.payload &&
+        typeof detail.payload === "object" &&
+        (detail.payload as { kind?: unknown }).kind === "notification-chat"
+      )
+        return false;
       if (
         detail?.subview &&
         (detail.viewId === "settings" || detail.viewPath === "/settings")

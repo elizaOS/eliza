@@ -1094,6 +1094,9 @@ export class DefinitionsDomain {
     request: SnoozeLifeOpsOccurrenceRequest,
     now = new Date(),
   ): Promise<LifeOpsOccurrenceView> {
+    if (!Number.isFinite(now.getTime())) {
+      fail(400, "snooze time must be a valid date");
+    }
     const { occurrence, definition } = await this.deps.getFreshOccurrence(
       occurrenceId,
       now,
@@ -1108,9 +1111,31 @@ export class DefinitionsDomain {
     ) {
       fail(409, `occurrence cannot be snoozed from state ${occurrence.state}`);
     }
-    const snoozedUntil = computeSnoozedUntil(definition, request, now);
+    // A duration postpones the current eligible time, including an existing
+    // snooze. Named wall-clock presets still resolve from now, not that anchor.
+    const eligibleTimes = [
+      now.getTime(),
+      Date.parse(occurrence.relevanceStartAt),
+      occurrence.snoozedUntil === null
+        ? now.getTime()
+        : Date.parse(occurrence.snoozedUntil),
+    ];
+    if (eligibleTimes.some((time) => !Number.isFinite(time))) {
+      fail(400, "occurrence eligibility time must be a valid date");
+    }
+    const eligibleAt = new Date(Math.max(...eligibleTimes));
+    const absolutePreset =
+      request.preset === "tonight" || request.preset === "tomorrow_morning";
+    const snoozedUntil = computeSnoozedUntil(
+      definition,
+      request,
+      absolutePreset ? now : eligibleAt,
+    );
     if (snoozedUntil.getTime() <= now.getTime()) {
       fail(400, "snoozedUntil must be in the future");
+    }
+    if (snoozedUntil.getTime() < eligibleAt.getTime()) {
+      fail(400, "snooze preset would deliver before the current eligible time");
     }
     const updatedOccurrence: LifeOpsOccurrence = {
       ...occurrence,

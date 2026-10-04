@@ -13,6 +13,76 @@ const settled = {
 
 describe("settled navigation reply recovery", () => {
   it.each([
+    {
+      nativeText:
+        "It\u00e2\u0080\u0099s early evening. Your inbox is unavailable.",
+      expectedPlans: 2,
+    },
+    { nativeText: "Your inbox is unavailable.", expectedPlans: 1 },
+  ])(
+    "preserves valid canonical text and recovers invalid native text without another rescue: %j",
+    async ({ nativeText, expectedPlans }) => {
+      const cleanReply =
+        "Your inbox is unavailable. Two reminders were due earlier today.";
+      const nativeResult = {
+        success: true,
+        verifiedUserFacing: true,
+        userFacingText: nativeText,
+        text: nativeText,
+        turnComplete: true,
+        data: { actionName: "BRIEF", sourceErrors: { inbox: "unavailable" } },
+      };
+      let plans = 0;
+      const execute = vi.fn(async () => nativeResult);
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: true,
+        messageToUser: "",
+      }));
+      const result = await runPlannerLoop({
+        context,
+        tools: [{ name: "BRIEF" }],
+        runtime: {
+          useModel: async (_type, params) => {
+            plans++;
+            if (plans === 1)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    id: "brief",
+                    name: "BRIEF",
+                    arguments: { eliza_turn_scope: "final" },
+                  },
+                ],
+              };
+            if (plans > 2)
+              throw new Error(
+                "Clean forced synthesis must not require a rescue model call",
+              );
+            // The forced finish still sees the complete original tool result.
+            expect(JSON.stringify(params.messages)).toContain(nativeText);
+            return JSON.stringify({
+              completed: true,
+              toolCalls: [],
+              messageToUser: cleanReply,
+            });
+          },
+        },
+        executeToolCall: execute,
+        evaluate,
+      });
+      expect(plans).toBe(expectedPlans);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(expectedPlans === 1 ? 0 : 1);
+      expect(result.finalMessage).toBe(
+        expectedPlans === 1 ? nativeText : cleanReply,
+      );
+      expect(result.trajectory.steps[0].result).toEqual(nativeResult);
+      expect(result.trajectory.steps[0].toolCall?.name).toBe("BRIEF");
+    },
+  );
+  it.each([
     { preToolProse: false, deferred: true, verified: true, expectedPlans: 1 },
     { preToolProse: true, deferred: true, verified: true, expectedPlans: 1 },
     { preToolProse: true, deferred: true, verified: false, expectedPlans: 1 },

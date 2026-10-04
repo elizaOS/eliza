@@ -140,6 +140,53 @@ function failAuditWrites() {
 
 describe("transactional API-key audit", () => {
   test(
+    "standard credential self-revocation retains an exact-secret retry receipt",
+    async () => {
+      const { apiKey, plainKey } = await createKey(createTransactionalAudit());
+      const other = await createKey(createTransactionalAudit());
+      const first =
+        await apiKeysService.revokePresentedStandardCredential(plainKey);
+      expect(first?.receipt.credentialId).toBe(apiKey.id);
+      expect(first?.revokedNow).toBe(true);
+      const retry =
+        await apiKeysService.revokePresentedStandardCredential(plainKey);
+      expect(retry?.receipt).toEqual(first?.receipt);
+      expect(retry?.revokedNow).toBe(false);
+      expect(
+        await apiKeysService.revokePresentedStandardCredential(
+          "eliza_" + "0".repeat(64),
+        ),
+      ).toBeNull();
+      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      const row = await apiKeysRepository.findByIdConsistent(apiKey.id);
+      expect(row?.is_active).toBe(false);
+      expect(row?.key_ciphertext).toBeNull();
+      expect(
+        (await apiKeysRepository.findByIdConsistent(other.apiKey.id))
+          ?.is_active,
+      ).toBe(true);
+    },
+    PGLITE_TIMEOUT_MS,
+  );
+
+  test(
+    "standard credential self-revocation rolls back when durable audit fails",
+    async () => {
+      const { apiKey, plainKey } = await createKey(createTransactionalAudit());
+      await expect(
+        apiKeysService.revokePresentedStandardCredential(plainKey, async () => {
+          throw new Error("audit unavailable");
+        }),
+      ).rejects.toThrow("audit unavailable");
+      const { apiKeysRepository } = await import("@/db/repositories/api-keys");
+      expect(
+        (await apiKeysRepository.findByIdConsistent(apiKey.id))?.is_active,
+      ).toBe(true);
+    },
+    PGLITE_TIMEOUT_MS,
+  );
+
+  test(
     "two rotations that read the same key consume it only once",
     async () => {
       const { apiKey: original } = await createKey(createTransactionalAudit());

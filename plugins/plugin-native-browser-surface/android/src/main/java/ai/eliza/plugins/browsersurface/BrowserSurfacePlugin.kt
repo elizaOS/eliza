@@ -44,6 +44,11 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.security.MessageDigest
 import java.util.UUID
 import org.json.JSONObject
@@ -92,6 +97,164 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
+    private var helperEntry: BrowserHelperEntry? = null
+    private fun entry(): BrowserHelperEntry = helperEntry ?: BrowserHelperEntry(activity, bridge.webView,
+        { notifyListeners("browserHelperReturned", JSObject().apply { put("presentation", "full-screen") }) },
+        { notifyListeners("browserHelperReturnFailed", JSObject().apply { put("code", "BROWSER_ENTRY_UNAVAILABLE") }) },
+        {
+            notifyListeners("browserHelperWindowClosed", JSObject().apply { put("reason", "permission-revoked") })
+            dockScope.launch {
+                try { BrowserDockController.setVisible(activity, true) }
+                catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (error: RuntimeException) {
+                    // error-policy:J1 A changed split cannot be recreated by replaying navigation.
+                    notifyListeners("browserHelperReturnFailed", JSObject().apply { put("code", "BROWSER_DOCK_RESTORE_UNAVAILABLE") })
+                }
+            }
+        }
+    ).also { helperEntry = it }
+
+    @PluginMethod
+    fun getBrowserHelperEntryState(call: PluginCall) {
+        activity.runOnUiThread { call.resolve(entry().state()) }
+    }
+
+    @PluginMethod
+    fun requestBrowserHelperEntryPermission(call: PluginCall) {
+        activity.runOnUiThread {
+            try {
+                activity.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:" + activity.packageName)))
+                call.resolve(JSObject().apply { put("status", "dispatched") })
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 Managed devices may omit the permission screen.
+                call.reject("Android overlay settings are unavailable.", "BROWSER_ENTRY_SETTINGS_UNAVAILABLE", error)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun hideBrowserDockWithEntry(call: PluginCall) {
+        val label = call.getString("label") ?: "Helper"
+        val description = call.getString("description") ?: "Return to helper"
+        dockScope.launch {
+            try {
+                val control = entry()
+                control.showEntry(label, description)
+                BrowserDockController.setVisible(activity, false)
+                control.removeFullScreen()
+                call.resolve(JSObject().apply { put("status", "requested") })
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: RuntimeException) {
+                // error-policy:J1 Never hide the host when a return control cannot be installed.
+                helperEntry?.removeEntry()
+                call.reject("The helper could not be hidden with a return control.",
+                    (error as? BrowserLaunchException)?.code ?: "BROWSER_ENTRY_UNAVAILABLE", error)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun restoreBrowserDockFromEntry(call: PluginCall) {
+        dockScope.launch {
+            try {
+                BrowserDockController.setVisible(activity, true)
+                helperEntry?.removeFullScreen()
+                helperEntry?.removeEntry()
+                call.resolve(JSObject().apply { put("status", "requested") })
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: RuntimeException) {
+                // error-policy:J1 Leave full-screen help visible if its browser split cannot return.
+                call.reject("The browser split could not be restored.",
+                    (error as? BrowserLaunchException)?.code ?: "BROWSER_DOCK_RESIZE_UNAVAILABLE", error)
+            }
+        }
+    }
+
+    private val dockScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    override fun handleOnResume() {
+        super.handleOnResume()
+        helperEntry?.reconcilePermission()
+    }
+
+    override fun handleOnDestroy() {
+        dockScope.cancel()
+        helperEntry?.destroy()
+        helperEntry = null
+        BrowserDockController.release(activity)
+        super.handleOnDestroy()
+    }
+
+    @PluginMethod
+    fun setBrowserDockVisible(call: PluginCall) {
+        val visible = call.getBoolean("visible") ?: run { call.reject("Visibility is required.", "BROWSER_DOCK_VISIBILITY_INVALID"); return }
+        dockScope.launch {
+            try {
+                BrowserDockController.setVisible(activity, visible)
+                call.resolve(JSObject().apply { put("status", "requested") })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Unsupported or changed sessions must not navigate as a fallback.
+                call.reject(error.message, error.code, error)
+            } catch (error: UnsupportedOperationException) {
+                // error-policy:J1 Runtime extension support may differ from advertised capability.
+                call.reject("Android cannot resize this split.", "BROWSER_DOCK_RESIZE_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Keep Android's cross-application window boundary intact.
+                call.reject("Android denied resizing this split.", "BROWSER_DOCK_RESIZE_DENIED", error)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun getBrowserDockState(call: PluginCall) {
+        activity.runOnUiThread { call.resolve(BrowserDockController.state(activity)) }
+    }
+
+    @PluginMethod
+    fun openDockedBrowser(call: PluginCall) {
+        val url = call.getString("url") ?: run { call.reject("URL is required.", "BROWSER_URL_INVALID"); return }
+        val width = call.getInt("panelWidthDp", 400) ?: 400
+        activity.runOnUiThread {
+            try {
+                BrowserDockController.open(activity, url, width)
+                helperEntry?.release()
+                notifyListeners("browserHelperWindowClosed", JSObject().apply { put("reason", "website-opened") })
+                call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME); put("status", "dispatched") })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Host support, identity or size can prevent docking.
+                call.reject(error.message, error.code, error)
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 Installation can change between validation and dispatch.
+                call.reject("Chromium is unavailable.", "BROWSER_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Never broaden permissions to force a dock.
+                call.reject("Android prevented browser docking.", "BROWSER_LAUNCH_DENIED", error)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun presentBrowser(call: PluginCall) {
+        activity.runOnUiThread {
+            try {
+                BrowserDockController.present(activity)
+                call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME) })
+            } catch (error: BrowserLaunchException) {
+                // error-policy:J1 Presentation is denied when provisioned identity is unavailable.
+                call.reject(error.message, error.code, error)
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 The verified activity may disappear before dispatch.
+                call.reject("Chromium is unavailable.", "BROWSER_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Never broaden permissions to force foreground presentation.
+                call.reject("Android prevented browser presentation.", "BROWSER_LAUNCH_DENIED", error)
+            }
+        }
+    }
+
     @PluginMethod
     fun openBrowser(call: PluginCall) {
         val url = call.getString("url") ?: run {

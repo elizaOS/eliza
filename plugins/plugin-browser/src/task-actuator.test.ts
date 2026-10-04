@@ -19,6 +19,7 @@ function setup(
   guideTask?: NonNullable<
     ConstructorParameters<typeof NativeTaskActuator>[0]["target"]["guideTask"]
   >,
+  reconcile?: ConstructorParameters<typeof NativeTaskActuator>[0]["reconcile"],
 ) {
   let task = createInteractiveTask({
     id: "task",
@@ -36,6 +37,7 @@ function setup(
     now: Date.now(),
   });
   const protectedKinds: Array<string | undefined> = [];
+  const targetCounts: number[] = [];
   let sequence = 0,
     effects = 0,
     bindings = 0;
@@ -50,6 +52,7 @@ function setup(
   };
   const actuator = new NativeTaskActuator({
     getTask: () => task,
+    reconcile,
     nextBindingRevision: () => ++bindings,
     policy: () => ({
       tabId: "1",
@@ -64,13 +67,16 @@ function setup(
     }),
     target: {
       guideTask: guideTask || (async () => ({ visible: false })),
-      bindTask: async (binding) => ({
-        bound: true,
-        tabId: binding.tabId,
-        taskId: binding.taskId,
-        epoch: binding.epoch,
-        bindingRevision: binding.bindingRevision,
-      }),
+      bindTask: async (binding) => {
+        targetCounts.push(binding.targets.length);
+        return {
+          bound: true,
+          tabId: binding.tabId,
+          taskId: binding.taskId,
+          epoch: binding.epoch,
+          bindingRevision: binding.bindingRevision,
+        };
+      },
       execute: async (command, options) => {
         expect(options?.taskContext?.taskId).toBe(task.id);
         expect(options?.taskContext?.epoch).toBe(task.epoch);
@@ -147,6 +153,7 @@ function setup(
   return {
     actuator,
     protectedKinds,
+    targetCounts,
     prepare,
     transition,
     get task() {
@@ -335,4 +342,52 @@ it("rejects malformed protected values before effects", async () => {
     }),
   ).rejects.toMatchObject({ code: "TASK_ACTION_DENIED" });
   expect(f.effects).toBe(0);
+});
+
+it("reconciles through a fresh read-only binding without dispatch or reusable observation", async () => {
+  let reads = 0;
+  const f = setup(
+    "browser.click",
+    undefined,
+    undefined,
+    async (_task, _proposal, snapshot) => {
+      reads++;
+      expect(snapshot.text).toBe("effects:0");
+      return { status: "failed", evidenceRef: "fresh-readback" };
+    },
+  );
+  const proposal = await f.prepare();
+  f.transition({ type: "pause" });
+  const result = await f.actuator.reconcile(proposal, {
+    owner,
+    signal: new AbortController().signal,
+    isCurrent: () => true,
+  });
+  expect(result).toEqual({ status: "failed", evidenceRef: "fresh-readback" });
+  expect(f.targetCounts).toEqual([1, 0]);
+  expect(f.effects).toBe(0);
+  expect(reads).toBe(1);
+  expect(() => f.actuator.readObservation("task", owner)).toThrow();
+  expect(f.task.status).toBe("paused");
+  expect(f.task.operations[0].status).toBe("unknown");
+});
+
+it("rejects stale readback before binding or interpreting a snapshot", async () => {
+  let reads = 0;
+  const f = setup("browser.click", undefined, undefined, async () => {
+    reads++;
+    return { status: "unknown" };
+  });
+  const proposal = await f.prepare();
+  f.transition({ type: "pause" });
+  await expect(
+    f.actuator.reconcile(proposal, {
+      owner,
+      signal: new AbortController().signal,
+      isCurrent: () => false,
+    }),
+  ).rejects.toThrow();
+  expect(f.targetCounts).toEqual([1]);
+  expect(f.effects).toBe(0);
+  expect(reads).toBe(0);
 });

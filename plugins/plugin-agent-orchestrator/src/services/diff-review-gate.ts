@@ -213,7 +213,12 @@ const SECRET_PATTERNS: readonly RegExp[] = compileSecretPatterns();
 
 function compileSecretPatterns(): RegExp[] {
   const compiled: RegExp[] = [];
-  for (const raw of getDefaultRedactPatterns()) {
+  // Runtime logs intentionally mask values such as password=anything. Source
+  // diffs instead require literal assignment syntax; comparisons and property
+  // reads are code, not leaked credentials. Keep independent value-shape scans.
+  for (const raw of getDefaultRedactPatterns({
+    includeNamedAssignments: false,
+  })) {
     // Match core's redaction parser: a `/pattern/flags` literal keeps its flags
     // (forcing `g`), otherwise the raw source compiles with `gi`. We add `m` so
     // matching works line-by-line. Literal patterns deliberately preserve their
@@ -482,25 +487,25 @@ function matchesSecret(line: string): boolean {
  * material and must remain reviewable; quoted literals and dotenv-style scalar
  * assignments are the pre-write boundary's unambiguous secret-bearing forms.
  */
+function isSensitiveAssignmentKey(key: string): boolean {
+  // The runtime assignment scanner also treats bare seed fields as credentials.
+  return isSensitiveKeyName(key) || key.toLowerCase() === "seed";
+}
+
 function hasSensitiveLiteralAssignment(line: string): boolean {
   const quotedKey = /(["'])([^"'\\\r\n]+)\1\s*[:=]\s*(?=["'`])/g;
   for (const match of line.matchAll(quotedKey)) {
-    if (isSensitiveKeyName(match[2])) return true;
+    if (isSensitiveAssignmentKey(match[2])) return true;
   }
 
-  // Indentation is valid for both object fields and member assignments. For
-  // members, classify the assigned property, not its path: `this.maxTokens`
-  // must retain core's metadata exemption while `this.apiKey` stays sensitive.
-  const objectKey =
-    /(?:^|[,{])\s*(?:[A-Za-z_$][A-Za-z0-9_$]*\.)*([A-Za-z_$][A-Za-z0-9_$-]*)\s*[:=]\s*(?=["'`])/g;
-  for (const match of line.matchAll(objectKey)) {
-    if (isSensitiveKeyName(match[1])) return true;
-  }
-
-  const declaredKey =
-    /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?=["'`])/g;
-  for (const match of line.matchAll(declaredKey)) {
-    if (isSensitiveKeyName(match[1])) return true;
+  // Literal assignments can occur inside expressions, call arguments or JSX,
+  // not just at the start of an object/line. Classify the complete assigned
+  // property name so maxTokens retains its metadata exemption. Requiring a
+  // quoted RHS excludes property reads, equality and arrow expressions.
+  const literalKey =
+    /(?<![A-Za-z0-9_$-])([A-Za-z_$][A-Za-z0-9_$-]*)\s*[:=]\s*(?=["'`])/g;
+  for (const match of line.matchAll(literalKey)) {
+    if (isSensitiveAssignmentKey(match[1])) return true;
   }
 
   // Dotenv names are not member-access paths, and `==`, `===`, and `=>` are
@@ -508,7 +513,7 @@ function hasSensitiveLiteralAssignment(line: string): boolean {
   const dotenvKey =
     /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*=(?![=>])\s*\S+/;
   const dotenvMatch = dotenvKey.exec(line);
-  return dotenvMatch ? isSensitiveKeyName(dotenvMatch[1]) : false;
+  return dotenvMatch ? isSensitiveAssignmentKey(dotenvMatch[1]) : false;
 }
 
 /**

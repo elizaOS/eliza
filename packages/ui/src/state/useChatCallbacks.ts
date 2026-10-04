@@ -1558,7 +1558,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   );
 
   const handleSelectConversation = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { onRejected: () => void }) => {
       const selectionEpoch = ++conversationHydrationEpochRef.current;
       // Read the LIVE active id from the ref, not the closure: callers can hold
       // a stale `handleSelectConversation` captured before another navigation
@@ -1675,6 +1675,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       if (conversationHydrationEpochRef.current !== selectionEpoch) return;
       if (loaded.ok === true) return;
       const loadedMessage = loaded.message;
+      if (loaded.status === 404 || loaded.status === 403) options?.onRejected();
 
       if (loaded.ok === false && loaded.status === 404) {
         const refreshed = await loadConversations();

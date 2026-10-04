@@ -75,6 +75,7 @@ import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,
   navigateDeepLink,
+  readNotificationChatTarget,
 } from "../../state/notifications/navigate-deep-link";
 import {
   removeNotification,
@@ -2367,7 +2368,16 @@ export function NotificationsHomeCenter({
       // event acts on it AND removes it. State-backed pending actions above
       // remain until their canonical request resolves.
       if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-        navigateDeepLink(n.deepLink);
+        const applied =
+          readNotificationChatTarget(n.data) === undefined
+            ? navigateDeepLink(n.deepLink)
+            : navigateDeepLink(n.deepLink, n.data);
+        if (applied) {
+          void applied.then((accepted) => {
+            if (accepted) void removeNotification(n.id);
+          });
+          return;
+        }
       }
       void removeNotification(n.id);
     },

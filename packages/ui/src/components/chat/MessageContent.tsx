@@ -1356,6 +1356,8 @@ export function MessageContent({
   const inlineWidgetCtx = useInlineWidgetContext(
     sendActionMessage,
     setChatInput,
+    message.id,
+    message.role === "assistant" ? message.source : undefined,
   );
   const handleOpenSettings = useCallback(() => {
     setTab?.("settings");
