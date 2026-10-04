@@ -292,9 +292,26 @@ test("private credential storage serializes writes and clear, and refuses symlin
     await rm(root, { recursive: true, force: true });
   }
 });
-for (const checkoutPath of [
-  "/cloud/account/checkout",
-  "/cloud/account/checkout/confirm",
+for (const [checkoutPath, requestBody] of [
+  [
+    "/cloud/account/checkout",
+    { planKey: "annual_team", presentation: "embedded" },
+  ],
+  ["/cloud/account/checkout/confirm", { sessionId: "cs_test_fixture" }],
+  ["/cloud/account/portal", {}],
+  [
+    "/cloud/account/subscription/renewal-review",
+    { subscriptionId: "11111111-1111-4111-8111-111111111111", revision: 3 },
+  ],
+  [
+    "/cloud/account/subscription/undo",
+    {
+      subscriptionId: "11111111-1111-4111-8111-111111111111",
+      revision: 3,
+      expectedRenewalTermsDigest: "a".repeat(64),
+    },
+  ],
+  ["/cloud/account/subscription/pending", {}],
 ]) {
   for (const disconnectPath of ["/cloud/logout", "/cloud/native/cancel"]) {
     test(`billing authorization retains its account epoch (${checkoutPath}, ${disconnectPath})`, async () => {
@@ -346,12 +363,7 @@ for (const checkoutPath of [
           body: JSON.stringify(input),
         });
       try {
-        const pending = post(
-          checkoutPath,
-          checkoutPath.endsWith("/confirm")
-            ? { sessionId: "cs_test_fixture" }
-            : { planKey: "annual_team", presentation: "embedded" },
-        );
+        const pending = post(checkoutPath, requestBody);
         await started;
         const disconnected = await post(disconnectPath, {});
         assert.equal(disconnected.status, 200);
