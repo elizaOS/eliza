@@ -3,10 +3,10 @@
  * available across views.
  */
 
-import { validateUuid } from "@elizaos/core";
 import {
   MAX_CHAT_MEDIA_RAW_BYTES,
   transcriptPlainText,
+  validateUuid,
 } from "@elizaos/core/protocol";
 import {
   AudioLines,

@@ -8,12 +8,12 @@
  * permission-card.helpers.
  */
 
-import { openPermissionSettings } from "@elizaos/core";
 import type {
   IPermissionsRegistry,
   PermissionId,
   PermissionState,
 } from "@elizaos/core/protocol";
+import { openPermissionSettings } from "@elizaos/core/protocol";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useBranding } from "../../../config/branding";

@@ -327,7 +327,9 @@ function importPersonalAssistant() {
 
 function importAppPhone() {
   return cachedDynamicImport("@elizaos/plugin-native-phone", async () => {
-    const { PhoneCompanionApp } = await import("@elizaos/plugin-native-phone");
+    const { PhoneCompanionApp } = await import(
+      "@elizaos/plugin-native-phone/ui"
+    );
     return { PhoneCompanionApp };
   });
 }
