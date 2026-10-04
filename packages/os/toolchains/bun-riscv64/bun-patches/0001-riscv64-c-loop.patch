@@ -387,6 +387,38 @@ index 3ac4e52..dd87b3f 100644
  } else {
      "unknown"
  };
+diff --git a/src/bun_core/debug.rs b/src/bun_core/debug.rs
+index 9ff90f1..3e3c4cb 100644
+--- a/src/bun_core/debug.rs
++++ b/src/bun_core/debug.rs
+@@ -48,7 +48,16 @@ pub fn frame_address() -> usize {
+         };
+         fp
+     }
+-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++    #[cfg(target_arch = "riscv64")]
++    {
++        let fp: usize;
++        // SAFETY: reading s0 is side-effect-free; frame pointers are enabled.
++        unsafe {
++            core::arch::asm!("mv {}, s0", out(reg) fp, options(nomem, nostack, preserves_flags))
++        };
++        fp
++    }
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64")))]
+     {
+         // Approximate with a stack local's addr on arches
+         // without an asm! mapping yet. fp-walk will fail its alignment sanity
+@@ -278,7 +287,8 @@ impl StackIterator {
+     }
+ }
+ 
+-pub(crate) const PC_OFFSET: usize = StackIterator::PC_OFFSET;
++pub(crate) const PC_OFFSET: isize =
++    StackIterator::PC_OFFSET as isize - StackIterator::FP_OFFSET as isize;
+ 
+ /// Capture the current thread's call stack.
+ ///
 diff --git a/src/bun_core/env.rs b/src/bun_core/env.rs
 index 9f4c52e..f68ac11 100644
 --- a/src/bun_core/env.rs
@@ -432,6 +464,50 @@ index 9f4c52e..f68ac11 100644
  } else {
      panic!("Please add your architecture to the Architecture enum")
  };
+diff --git a/src/bun_core/lib.rs b/src/bun_core/lib.rs
+index c5b8d48..8516d39 100644
+--- a/src/bun_core/lib.rs
++++ b/src/bun_core/lib.rs
+@@ -2940,14 +2940,14 @@ pub fn return_address() -> usize {
+     if cfg!(miri) {
+         return 0;
+     }
+-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
++    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64"))]
+     {
+         let fp = debug::frame_address();
+         // SAFETY: `fp` is this function's own valid frame pointer; the
+         // return-address slot at `[fp + PC_OFFSET]` is always mapped.
+-        unsafe { *((fp + debug::PC_OFFSET) as *const usize) }
++        unsafe { *(fp.wrapping_add_signed(debug::PC_OFFSET) as *const usize) }
+     }
+-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64")))]
+     {
+         // No frame-pointer asm! mapping for this arch; capture_current treats 0
+         // as "no trim".
+diff --git a/src/bun_core/util.rs b/src/bun_core/util.rs
+index 2800651..a968ab9 100644
+--- a/src/bun_core/util.rs
++++ b/src/bun_core/util.rs
+@@ -2314,7 +2314,16 @@ impl StackCheck {
+             };
+             sp
+         }
+-        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++        #[cfg(target_arch = "riscv64")]
++        {
++            let sp: usize;
++            // SAFETY: reading sp is side-effect-free.
++            unsafe {
++                core::arch::asm!("mv {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags))
++            };
++            sp
++        }
++        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64")))]
+         {
+             let probe = 0u8;
+             core::ptr::from_ref::<u8>(&probe) as usize
 diff --git a/src/crash_handler/CPUFeatures.rs b/src/crash_handler/CPUFeatures.rs
 index 5736ea9..b83c785 100644
 --- a/src/crash_handler/CPUFeatures.rs
