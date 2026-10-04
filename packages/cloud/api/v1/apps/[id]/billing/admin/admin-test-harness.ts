@@ -137,17 +137,6 @@ export async function setupAdminTest() {
     "0514_organization_upgrade_quote_binding",
   ])
     await migrate(tag);
-  // App-only fixtures need the shared command column, not organization upgrade guards.
-  const upgradeDispatch = await readFile(
-    new URL(
-      "../../db/migrations/0512_organization_upgrade_dispatch.sql",
-      import.meta.resolve(
-        "@elizaos/cloud-shared/lib/services/generic-billing-runtime",
-      ),
-    ),
-    "utf8",
-  );
-  await db.query(upgradeDispatch.split("--> statement-breakpoint")[0]!);
   await db.query(
     "INSERT INTO organizations(id,name,slug,credit_balance) VALUES($1,'Developer','developer',42),($2,'Other','other',0)",
     [ids.org, ids.otherOrg],

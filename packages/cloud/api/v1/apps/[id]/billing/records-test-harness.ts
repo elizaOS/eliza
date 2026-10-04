@@ -146,17 +146,6 @@ export async function setupRecordsTest() {
       if (statement.trim())
         await db.query(statement.replaceAll('"public".', ""));
   }
-  // App-only fixtures need the shared command column, not organization upgrade guards.
-  const upgradeDispatch = await readFile(
-    new URL(
-      "../../db/migrations/0512_organization_upgrade_dispatch.sql",
-      import.meta.resolve(
-        "@elizaos/cloud-shared/lib/services/generic-billing-runtime",
-      ),
-    ),
-    "utf8",
-  );
-  await db.query(upgradeDispatch.split("--> statement-breakpoint")[0]!);
   await db.query(
     "INSERT INTO organizations(id,name,slug,stripe_customer_id) VALUES($1,'Developer','records-developer','cus_infrastructure')",
     [org],
