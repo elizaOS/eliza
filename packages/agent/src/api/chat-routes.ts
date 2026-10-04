@@ -19,6 +19,7 @@ import {
   type ChatTurnStatus,
   type Content,
   createMessageMemory,
+  DELTA_STREAM_PROTOCOL,
   type EffectReceipt,
   ElizaError,
   EventType,
@@ -74,12 +75,10 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
-
 import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
-import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {

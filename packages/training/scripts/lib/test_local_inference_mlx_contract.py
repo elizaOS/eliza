@@ -55,7 +55,6 @@ def install_mlx_stub(monkeypatch, segments, final_reason):
 
     def stream_generate(model, tokenizer, prompt=None, max_tokens=256, sampler=None, **kw):
         del prompt, max_tokens, sampler, kw
-        wrapped = tokenizer if isinstance(tokenizer, FakeTokenizerWrapper) else FakeTokenizerWrapper(tokenizer)
         for tok in segments:
             yield SimpleNamespace(
                 text=chr(tok % 256),
@@ -175,3 +174,11 @@ class TestMlxAuthoritativeFinishReason:
         gen = make_generator(local_module, tokenizer)
         gen.generate_messages([{"role": "user", "content": "hi"}])
         assert captured["ids"] == [104, 105]
+
+
+def test_completed_mlx_response_restores_assistant_prefix(local_module, monkeypatch):
+    tokenizer = FakeTokenizer()
+    tokenizer.chat_template = None
+    install_mlx_stub(monkeypatch, [104, 105], final_reason="stop")
+    gen = make_generator(local_module, tokenizer)
+    assert gen.generate_messages([{"role": "user", "content": "hello"}], assistant_prefix="Action: ") == "Action: hi"

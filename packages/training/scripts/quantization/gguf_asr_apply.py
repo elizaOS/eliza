@@ -39,10 +39,8 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
-from _common import (  # noqa: E402
+from eliza_training.quantization._common import (  # noqa: E402
     DEFAULT_LLAMA_CPP_DIR,
     find_llama_convert_script,
     find_llama_quantize_binary,
@@ -70,7 +68,7 @@ _VENDOR_HINT = llama_cpp_vendor_hint()
 def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
     """Locate convert_hf_to_gguf.py.
 
-    Resolution order matches gguf-q4_k_m_apply.py: explicit ``--llama-cpp-dir``,
+    Resolution order matches the GGUF profile runner: explicit ``--llama-cpp-dir``,
     ``$LLAMA_CPP_DIR``, in-repo fork submodule, then PATH.
     """
     return find_llama_convert_script(llama_cpp_dir)

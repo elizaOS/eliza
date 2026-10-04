@@ -27,6 +27,7 @@ import {
   type Platform as PermissionPlatform,
   type PermissionState,
   type PermissionStatus,
+  type Prober,
 } from "@elizaos/core";
 
 export const PLATFORM: PermissionPlatform =
@@ -406,4 +407,48 @@ export async function openPrivacyPane(pane: string): Promise<void> {
   } catch {
     // Best-effort only; failures leave the caller on the existing settings path.
   }
+}
+
+/** Shared EventKit/Contacts transport; each grant keeps its own native API and TCC identity. */
+export function createNativePrivacyProber(options: {
+  id: PermissionId;
+  service: string;
+  pane: string;
+  check: (native: NativePermissionsLib) => number;
+  request: (native: NativePermissionsLib) => number;
+  requestFullAccess?: boolean;
+}): Prober {
+  function fromNative(value: number): PermissionState {
+    const status = mapNativePrivacyAuthStatus(value);
+    return buildState(options.id, status, {
+      canRequest:
+        status === "not-determined" ||
+        (options.requestFullAccess === true && value === 4),
+      restrictedReason: status === "restricted" ? "os_policy" : undefined,
+    });
+  }
+  const prober: Prober = {
+    id: options.id,
+    async check() {
+      if (!IS_DARWIN) return platformUnsupportedState(options.id);
+      const native = await getNativeDylib();
+      if (native) return fromNative(options.check(native));
+      const status = await queryTccStatus(options.service, resolveBundleId());
+      return buildState(options.id, status ?? "not-determined", {
+        canRequest: status === null,
+      });
+    },
+    async request() {
+      if (!IS_DARWIN) return platformUnsupportedState(options.id);
+      const native = await getNativeDylib();
+      if (native)
+        return {
+          ...fromNative(options.request(native)),
+          lastRequested: Date.now(),
+        };
+      await openPrivacyPane(options.pane);
+      return { ...(await prober.check()), lastRequested: Date.now() };
+    },
+  };
+  return prober;
 }

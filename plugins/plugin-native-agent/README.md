@@ -63,6 +63,13 @@ returned inventory plus assets. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
 
+`NativeStorageDiagnostic` runs a disposable SQLite write/close/reopen/integrity
+probe in a dedicated no-backup namespace on API 26+. Hosts supply the namespace,
+absolute elapsed-time deadline, database-byte budget and cleanup entry limit.
+A private no-follow file lock fences orphan cleanup; unknown entries, links and
+foreign ownership reject before deletion. It never opens application databases
+or declares an update healthy. Android tests cover readback, orphan cleanup,
+expired/invalid policy and unsafe files while preserving an external sentinel.
 
 `ReconciliationScheduler` persists local package-readback jobs without network,
 charging or idle constraints. Hosts supply distinct job IDs and the declared
@@ -81,3 +88,34 @@ supports standalone/launcher distributions and fixed runtime/UI observation stat
 reports never mark a journal healthy or authorize recovery. The Android contract
 checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
 IPC, process death and observation providers in their packaged applications.
+
+`WebViewHealthObserver` tracks one host Activity/WebView on the main thread and
+serves deadline-bound observations off the main thread. Hosts supply a trusted
+HTTPS origin and a read-only JavaScript expression returning a boolean; product
+DOM/content policy stays in that expression. The shared wrapper guards the DOM
+origin and supplies `visible(element)` for ancestor CSS and viewport checks. Resume/pause/destroy transitions,
+renderer replacement, URL changes and late callbacks fence results. It never
+launches an Activity, navigates a WebView or declares an update healthy. Hosts
+must qualify their actual Activity lifecycle and expression in instrumentation.
+
+`NativeProcessSupervisor` owns a host's direct child processes, bounded readiness,
+restart budget, per-launch cleanup and generation fences. Hosts supply commands,
+credentials, readiness probes and timing policy. Cancelled or retired scopes refuse
+late spawns and readiness; a group death retires every child before restarting.
+Probes must release their own resources when interrupted; a daemon probe that ignores
+interruption cannot publish readiness after its deadline. Detached processes and
+process descendants require the host's existing ownership protocol. The canonical
+Android service shares the direct-child termination helper while retaining its
+detached-agent policy. Portable real-process tests run in `test:native-host`;
+`NativeProcessSupervisorInstrumentedTest` checks the primitive with app-domain
+processes on Android. Neither suite establishes full agent or foreground-service lifetime.
+
+`InstallerResultReceiver` shares the asynchronous PackageInstaller callback and
+journal reconciliation. Hosts declare a non-exported component and supply its
+explicit callback action, target package, journal and executor. Rejected worker
+submission finishes the broadcast and leaves durable reconciliation to the host.
+Transaction, immutable/framework session and optional package identity must match;
+success/failure hints never substitute for installed-identity and live-session
+readback, and user-action intents are never launched. The Android contract uses
+real PackageInstaller sessions; hosts must also qualify actual installation,
+callback delivery, process death and cached recovery with their signed fixtures.

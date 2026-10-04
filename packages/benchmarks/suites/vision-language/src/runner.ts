@@ -23,6 +23,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import { ChartQaAdapter, predictChartQa } from "./adapters/chartqa_adapter.ts";
 import { DocVqaAdapter, predictDocVqa } from "./adapters/docvqa_adapter.ts";
 import { OSWorldAdapter, predictOSWorld } from "./adapters/osworld_adapter.ts";
@@ -541,7 +542,7 @@ function reportPath(
 ): string {
   if (override) return override;
   const date = new Date().toISOString().slice(0, 10);
-  return join(PACKAGE_ROOT, "results", `${tier}-${benchmark}-${date}.json`);
+  return testOutputPath("vision-language", `${tier}-${benchmark}-${date}.json`);
 }
 
 function writeReport(report: BenchReport, override?: string): string {

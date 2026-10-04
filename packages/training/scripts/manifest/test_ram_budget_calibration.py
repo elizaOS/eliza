@@ -15,17 +15,14 @@ measured peak so `thirtyTurnOk` is achievable on the bench host.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 # packages/training/scripts/manifest/test_ram_budget_calibration.py → packages/training
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import stage_local_eliza1_bundle as stage_local  # noqa: E402
-from scripts.manifest import stage_real_eliza1_bundle as stage_real  # noqa: E402
-from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
+from eliza_training.manifest import stage_local_eliza1_bundle as stage_local  # noqa: E402
+from eliza_training.manifest import stage_real_eliza1_bundle as stage_real  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 
 # Measured server peak RSS (MB) from the 2026-05-11 e2e voice-loop bench.
 # Source: packages/inference/verify/bench_results/e2e_loop_2026-05-11.json

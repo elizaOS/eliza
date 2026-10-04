@@ -18,9 +18,9 @@ from typing import Any, List, Optional, Tuple, Type
 import torch
 import torch.nn.functional as F
 
-from quantization.fused_turboquant_vendored.core.hadamard import randomized_hadamard
-from quantization.fused_turboquant_vendored.core.quantizer import CompressedTensor, TurboQuantMSE
-from quantization.fused_turboquant_vendored.vllm_plugin.cache_ops import (
+from eliza_training.quantization.fused_turboquant_vendored.core.hadamard import randomized_hadamard
+from eliza_training.quantization.fused_turboquant_vendored.core.quantizer import CompressedTensor, TurboQuantMSE
+from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.cache_ops import (
     gather_compressed_kv_batched,
 )
 
@@ -348,7 +348,7 @@ class FusedTurboQuantImpl(_AttentionImplBase):
             5. Gather + decompress V
             6. attn_weights @ V
         """
-        from quantization.fused_turboquant_vendored.kernels.triton_attention import fused_qk_scores_rht
+        from eliza_training.quantization.fused_turboquant_vendored.kernels.triton_attention import fused_qk_scores_rht
 
         batch_size = query.shape[0]  # decode: 1 token per sequence
         block_tables = attn_metadata.block_tables

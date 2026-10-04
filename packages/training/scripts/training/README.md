@@ -6,7 +6,8 @@ This directory is part of `packages/training`.
 
 Use a Python environment matching `pyproject.toml` and install the required dependencies.
 
-No standalone wheel build is configured; run the Python sources directly.
+Install the training package with `uv sync --extra train`; modules use the
+`eliza_training.training` namespace.
 
 Test from `packages/training`:
 

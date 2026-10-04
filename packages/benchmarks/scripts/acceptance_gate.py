@@ -23,6 +23,8 @@ cohort coordinator about when the forwarder is required.
 
 from __future__ import annotations
 
+from benchmarks.orchestrator.result_store import result_store_root
+
 import argparse
 import json
 import os
@@ -49,7 +51,7 @@ PACKAGE_ROOT = _THIS_FILE.parent.parent
 # ``workspace_root`` the orchestrator CLI derives for itself, so ambient-env
 # resolution here matches what the spawned runs will resolve.
 PACKAGES_ROOT = PACKAGE_ROOT.parent
-DB_PATH = PACKAGE_ROOT / "benchmark_results" / "orchestrator.sqlite"
+DB_PATH = result_store_root(PACKAGE_ROOT) / "orchestrator.sqlite"
 
 CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 CEREBRAS_DEFAULT_MODEL = "gemma-4-31b"
@@ -79,6 +81,7 @@ def _resolve_api_key() -> tuple[str, str | None]:
         if value:
             return value, var
     return "", None
+
 
 DEFAULT_BENCHMARK_FALLBACK = "bfcl"
 DEFAULT_BENCHMARK_PRIMARY = "hermes_tblite"
@@ -337,10 +340,7 @@ def _step_provider_forwarder() -> GateStepResult:
             upstream_base_url=target[0],
             upstream_api_key=target[1],
             evidence_dir=(
-                PACKAGE_ROOT
-                / "benchmark_results"
-                / run_group_id
-                / "provider-forwarder"
+                result_store_root(PACKAGE_ROOT) / run_group_id / "provider-forwarder"
             ),
         )
         _PROVIDER_FORWARDER = forwarder
@@ -513,19 +513,21 @@ def _run_subprocess_with_timeout(
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=os.name == "posix",
-        creationflags=(
-            subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-        ),
+        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0),
     )
     try:
         stdout, stderr = process.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
         _terminate_process_tree(process)
         stdout, stderr = process.communicate()
-        return -1, stdout or "", (
-            f"process timed out after {timeout_s:g}s\n"
-            f"stdout so far:\n{(stdout or '')[-2000:]}\n"
-            f"stderr so far:\n{(stderr or '')[-2000:]}"
+        return (
+            -1,
+            stdout or "",
+            (
+                f"process timed out after {timeout_s:g}s\n"
+                f"stdout so far:\n{(stdout or '')[-2000:]}\n"
+                f"stderr so far:\n{(stderr or '')[-2000:]}"
+            ),
         )
     return process.returncode, stdout or "", stderr or ""
 
@@ -657,19 +659,26 @@ def _step_precheck(
             # Imported lazily so the script can still be imported in test
             # environments that don't have benchmarks on sys.path.
             sys.path.insert(0, str(PACKAGE_ROOT))
-            from lib.agent_install import manifest_path, read_manifest, verify_install
+            from benchmarks.lib.agent_install import (
+                manifest_path,
+                read_manifest,
+                verify_install,
+            )
         except ImportError as exc:
             return GateStepResult(
                 step_id="PRECHECK",
                 passed=False,
                 duration_ms=_now_ms() - start,
                 details=details,
-                error=f"could not import lib.agent_install: {exc}",
+                error=f"could not import benchmarks.lib.agent_install: {exc}",
             )
         manifests: dict[str, Any] = {}
         for agent_id in ("openclaw", "hermes"):
             mpath = manifest_path(agent_id)
-            manifests[agent_id] = {"manifest_path": str(mpath), "exists": mpath.is_file()}
+            manifests[agent_id] = {
+                "manifest_path": str(mpath),
+                "exists": mpath.is_file(),
+            }
             if not mpath.is_file():
                 failures.append(f"manifest missing for {agent_id} at {mpath}")
                 continue
@@ -680,7 +689,9 @@ def _step_precheck(
             manifests[agent_id]["verify_passed"] = ok
             manifests[agent_id]["verify_detail"] = detail
             if not ok:
-                failures.append(f"verify_install({agent_id}) failed: {detail.splitlines()[0] if detail else ''}")
+                failures.append(
+                    f"verify_install({agent_id}) failed: {detail.splitlines()[0] if detail else ''}"
+                )
         details["manifests"] = manifests
     else:
         details["install_check_skipped"] = True
@@ -762,6 +773,7 @@ def _make_adapter_client(agent: str):
     sys.path.insert(0, str(PACKAGE_ROOT / "harnesses" / "hermes"))
     if agent == "eliza":
         from eliza_adapter.server_manager import ElizaServerManager
+
         global _ELIZA_SERVER_MANAGER
         if _ELIZA_SERVER_MANAGER is None:
             _ELIZA_SERVER_MANAGER = ElizaServerManager()
@@ -769,9 +781,11 @@ def _make_adapter_client(agent: str):
         return _ELIZA_SERVER_MANAGER.client
     if agent == "openclaw":
         from openclaw_adapter.client import OpenClawClient
+
         return OpenClawClient()
     if agent == "hermes":
         from hermes_adapter.client import HermesClient
+
         return HermesClient()
     raise ValueError(f"unknown agent {agent!r}")
 
@@ -899,7 +913,11 @@ def _step_sanity_benchmark(
         step_id="SANITY_BENCHMARK",
         passed=not failures,
         duration_ms=_now_ms() - start,
-        details={"benchmark_id": benchmark_id, "max_tasks": max_tasks, "agents": per_agent},
+        details={
+            "benchmark_id": benchmark_id,
+            "max_tasks": max_tasks,
+            "agents": per_agent,
+        },
         error="; ".join(failures) if failures else None,
     )
 
@@ -981,11 +999,14 @@ def _step_lift_over_random(
 ) -> GateStepResult:
     start = _now_ms()
     sys.path.insert(0, str(PACKAGE_ROOT))
-    from lib.random_baseline import BENCHMARK_STRATEGIES, is_better_than_random
+    from benchmarks.lib.random_baseline import (
+        BENCHMARK_STRATEGIES,
+        is_better_than_random,
+    )
 
     strategy = BENCHMARK_STRATEGIES.get(benchmark_id)
     is_meaningful = bool(strategy and strategy.is_meaningful)
-    random_score = (random_step.details.get("score") if random_step else None)
+    random_score = random_step.details.get("score") if random_step else None
     agents_detail = sanity_step.details.get("agents", {}) if sanity_step.details else {}
 
     per_agent: dict[str, Any] = {}
@@ -1058,10 +1079,12 @@ def _step_trajectory_normalization(
         # Search for trajectory.canonical.jsonl anywhere under the run's
         # output directory tree (the runner places it under
         # ``benchmark_results/<run_group_id>/<bench>__<id>/<run_id>/...``).
-        bench_results = PACKAGE_ROOT / "benchmark_results"
+        bench_results = result_store_root(PACKAGE_ROOT)
         matches = list(bench_results.glob(f"**/{run_id}/**/trajectory.canonical.jsonl"))
         if not matches:
-            matches = list(bench_results.glob(f"**/{run_id}/trajectory.canonical.jsonl"))
+            matches = list(
+                bench_results.glob(f"**/{run_id}/trajectory.canonical.jsonl")
+            )
         entry["candidate_paths"] = [str(p) for p in matches[:5]]
         if not matches:
             entry["passed"] = False
@@ -1102,7 +1125,11 @@ def _step_trajectory_normalization(
         step_id="TRAJECTORY_NORMALIZATION",
         passed=passed,
         duration_ms=_now_ms() - start,
-        details={"benchmark_id": benchmark_id, "agents": per_agent, "warnings": warnings},
+        details={
+            "benchmark_id": benchmark_id,
+            "agents": per_agent,
+            "warnings": warnings,
+        },
         error="; ".join(error_parts) if error_parts else None,
     )
 
@@ -1370,8 +1397,7 @@ def _print_summary(report: GateReport) -> None:
     failed = sum(
         1
         for step in report.steps
-        if not step.passed
-        and not (step.details and step.details.get("skipped"))
+        if not step.passed and not (step.details and step.details.get("skipped"))
     )
     skipped = sum(
         1 for step in report.steps if step.details and step.details.get("skipped")
@@ -1409,8 +1435,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-random", action="store_true")
     parser.add_argument("--skip-install-check", action="store_true")
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--strict", action="store_true",
-                        help="Treat missing trajectory.canonical.jsonl as a hard failure (default: warn-only)")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat missing trajectory.canonical.jsonl as a hard failure (default: warn-only)",
+    )
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--score-floor", type=float, default=DEFAULT_SCORE_FLOOR)
     return parser
