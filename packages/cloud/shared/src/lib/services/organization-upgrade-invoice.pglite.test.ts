@@ -85,7 +85,7 @@ async function fixture() {
     source,
     review,
     observedAt: new Date(),
-    binding: { sourcePriceId: "price_plus", targetPriceId: "price_pro", livemode: false },
+    binding: f.providerBinding,
   };
 }
 test("original paid proration yields scoped observation without changing allowance", async () => {
