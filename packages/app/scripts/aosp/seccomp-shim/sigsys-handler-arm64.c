@@ -146,8 +146,11 @@ static void handle_sigsys(int sig, siginfo_t *info, void *ctx_v) {
   r[0] = (unsigned long)ret;
 }
 
+#include "preserve-sigsys.h"
+
 __attribute__((constructor))
 static void install_sigsys_handler(void) {
+  resolve_sigaction();
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_sigaction = handle_sigsys;

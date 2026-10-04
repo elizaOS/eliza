@@ -35,12 +35,15 @@
     "build:riscv64-artifacts": "bash scripts/build-riscv64-artifacts.sh",
     "check:riscv64-artifacts": "bash scripts/check-riscv64-artifacts.sh",
     "build:browser": "node --conditions=eliza-source browser/scripts/build.mjs",
-    "test:browser": "node --conditions=eliza-source --test browser/src/*.test.mjs browser/scripts/*.test.mjs",
+    "test:browser": "node --conditions=eliza-source --test browser/src/*.test.mjs browser/scripts/*.test.mjs && node --test browser/protection/*.test.mjs",
     "test:browser:page": "node --conditions=eliza-source browser/scripts/test-page-freshness.mjs",
     "typecheck:browser": "tsc --noEmit -p browser/tsconfig.json",
     "lint:browser": "bunx @biomejs/biome check browser",
     "test:browser:guidance": "node --conditions=eliza-source browser/scripts/test-page-guidance.mjs",
-    "test:browser:task-guidance": "node --conditions=eliza-source browser/scripts/test-task-guidance.mjs"
+    "test:browser:task-guidance": "node --conditions=eliza-source browser/scripts/test-task-guidance.mjs",
+    "test:ota-trust": "cd native/ota-trust && go test -race ./... && go vet ./...",
+    "test:browser:protection": "node --test browser/protection/*.test.mjs",
+    "test:browser:protection:network": "node browser/protection/test-network.mjs"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",

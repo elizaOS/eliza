@@ -89,6 +89,11 @@ function harness(args: {
       threadId: "thread-message-1",
       labelIds: ["DRAFT"],
     })),
+    sendGmailReply: vi.fn(async () => ({
+      messageId: "sent-1",
+      threadId: "thread-message-1",
+      labelIds: ["SENT"],
+    })),
     modifyGmailMessages: vi.fn(
       async ({ messageIds }: { messageIds: string[] }) => ({
         operation: "trash",
@@ -649,7 +654,29 @@ describe("LifeOps Gmail provider draft", () => {
         accountId: "account-1",
         threadId: "thread-message-1",
         inReplyTo: "<provider-message@example.com>",
-        references: "<earlier-message@example.com>",
+        references:
+          "<earlier-message@example.com> <provider-message@example.com>",
+      }),
+    );
+  });
+
+  it("sends a reply through sendGmailReply with threadId and RFC headers", async () => {
+    const { domain, google } = harness({});
+
+    await domain.sendGmailReply(new URL("http://127.0.0.1/"), {
+      messageId: "message-1",
+      bodyText: "Tomorrow works.",
+      confirmSend: true,
+    });
+
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-1",
+        to: ["sender@example.com"],
+        threadId: "thread-message-1",
+        inReplyTo: "<provider-message@example.com>",
+        references:
+          "<earlier-message@example.com> <provider-message@example.com>",
       }),
     );
   });
@@ -665,7 +692,7 @@ describe("LifeOps Gmail reply send subject", () => {
       confirmSend: true,
     });
 
-    expect(google.sendEmail).toHaveBeenCalledWith(
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
       expect.objectContaining({
         subject: "Re: Review",
       }),
@@ -694,7 +721,7 @@ describe("LifeOps Gmail reply send subject", () => {
       confirmSend: true,
     });
 
-    expect(google.sendEmail).toHaveBeenCalledWith(
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
       expect.objectContaining({
         subject: "Re: Quarterly review",
       }),

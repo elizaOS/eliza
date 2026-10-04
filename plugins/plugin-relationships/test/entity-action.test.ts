@@ -20,8 +20,8 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { type Entity } from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
+import type { Entity } from "@elizaos/core/knowledge-graph/entity-types";
+import type { Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -98,7 +98,22 @@ function makeStores(): FakeStores {
       upsert: vi.fn(async (input: Record<string, unknown>) =>
         makeRelationship(input as Partial<Relationship>),
       ),
-      list: vi.fn(async () => [makeRelationship()]),
+      // Filters like the real store, so an edge between other entities is
+      // never mistaken for the one being restated.
+      list: vi.fn(
+        async (filter?: {
+          fromEntityId?: string;
+          toEntityId?: string;
+          type?: string;
+        }) =>
+          [makeRelationship()].filter(
+            (edge) =>
+              (!filter?.fromEntityId ||
+                edge.fromEntityId === filter.fromEntityId) &&
+              (!filter?.toEntityId || edge.toEntityId === filter.toEntityId) &&
+              (!filter?.type || edge.type === filter.type),
+          ),
+      ),
     },
   };
 }
@@ -314,6 +329,21 @@ describe("KNOWLEDGE_GRAPH action", () => {
         type: "manages",
         source: "user_chat",
         confidence: 1,
+      }),
+    );
+  });
+
+  it("set_relationship restating an active edge updates it in place", async () => {
+    await call({
+      op: "set_relationship",
+      toEntityId: "ent_1",
+      relationshipType: "manages",
+      evidence: "said again",
+    });
+    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relationshipId: "rel_1",
+        evidence: ["user_chat", "said again"],
       }),
     );
   });

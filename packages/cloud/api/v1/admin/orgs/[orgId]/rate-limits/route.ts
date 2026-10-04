@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Admin endpoint for per-organization rate limit overrides.
@@ -36,11 +36,11 @@ function validateOrgId(orgId: string): Response | null {
 }
 
 async function __hono_GET(
-  request: Request,
+  c: AppContext,
   context: RouteContext<{ orgId: string }>,
 ) {
   const authResult = await requireAdminWithResponse(
-    request,
+    c,
     "[Admin] Org rate limits auth error",
   );
   if (authResult instanceof Response) return authResult;
@@ -76,11 +76,11 @@ const PatchSchema = z.object({
 });
 
 async function __hono_PATCH(
-  request: Request,
+  c: AppContext,
   context: RouteContext<{ orgId: string }>,
 ) {
   const authResult = await requireAdminWithResponse(
-    request,
+    c,
     "[Admin] Org rate limits auth error",
   );
   if (authResult instanceof Response) return authResult;
@@ -91,7 +91,7 @@ async function __hono_PATCH(
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await c.req.json();
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -165,11 +165,11 @@ async function __hono_PATCH(
 }
 
 async function __hono_DELETE(
-  request: Request,
+  c: AppContext,
   context: RouteContext<{ orgId: string }>,
 ) {
   const authResult = await requireAdminWithResponse(
-    request,
+    c,
     "[Admin] Org rate limits auth error",
   );
   if (authResult instanceof Response) return authResult;
@@ -199,17 +199,17 @@ async function __hono_DELETE(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
+  __hono_GET(c, {
     params: Promise.resolve({ orgId: c.req.param("orgId")! }),
   }),
 );
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, {
+  __hono_PATCH(c, {
     params: Promise.resolve({ orgId: c.req.param("orgId")! }),
   }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, {
+  __hono_DELETE(c, {
     params: Promise.resolve({ orgId: c.req.param("orgId")! }),
   }),
 );

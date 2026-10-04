@@ -1758,6 +1758,10 @@ export class DocumentService extends Service {
         code: "DOCUMENT_ENCODING_INVALID",
       });
 
+    const requestedOwner =
+      options.audience === "chat"
+        ? undefined
+        : this.resolveDocumentScopeOwner(options, agentId);
     const contentBasedId = generateContentBasedId(options.content, agentId, {
       literalText: !binaryInput,
       includeFilename: options.originalFilename,
@@ -1766,7 +1770,11 @@ export class DocumentService extends Service {
         ? {
             namespace: `chat:${options.roomId.toLowerCase()}:${options.entityId.toLowerCase()}`,
           }
-        : {}),
+        : requestedOwner?.scopedEntityId
+          ? {
+              namespace: `${requestedOwner.documentScope}:${requestedOwner.scopedEntityId.toLowerCase()}`,
+            }
+          : {}),
     }) as UUID;
 
     logger.info(
@@ -1843,6 +1851,19 @@ export class DocumentService extends Service {
         const fragmentCount =
           await this.getDocumentFragmentCount(contentBasedId);
         if (snapshot.ingestionState !== "failed" && fragmentCount > 0) {
+          if (
+            requestedOwner &&
+            (snapshot.scope !== requestedOwner.documentScope ||
+              snapshot.scopedToEntityId !== requestedOwner.scopedEntityId)
+          ) {
+            throw new ElizaError(
+              "A document with this content already exists with different visibility",
+              {
+                code: "DOCUMENT_SCOPE_CONFLICT",
+                context: { documentId: contentBasedId },
+              },
+            );
+          }
           logger.info(
             `"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
           );
@@ -1864,6 +1885,39 @@ export class DocumentService extends Service {
       ...options,
       clientDocumentId: contentBasedId,
     });
+  }
+
+  private resolveDocumentScopeOwner(
+    options: Pick<
+      AddDocumentOptions,
+      "scope" | "entityId" | "scopedToEntityId"
+    >,
+    agentId: UUID,
+  ): {
+    documentScope: ReturnType<typeof resolveWriteDocumentScope>;
+    targetEntityId: UUID;
+    scopedEntityId: UUID | undefined;
+  } {
+    const documentScope = resolveWriteDocumentScope({
+      scope: options.scope,
+      entityId: options.entityId,
+      agentId,
+    });
+    const targetEntityId =
+      documentScope === "user-private"
+        ? (options.scopedToEntityId ?? options.entityId)
+        : documentScope === "owner-private"
+          ? ((this.runtime.getSetting("ELIZA_ADMIN_ENTITY_ID") as
+              | UUID
+              | undefined) ??
+            options.entityId ??
+            agentId)
+          : agentId;
+    return {
+      documentScope,
+      targetEntityId,
+      scopedEntityId: documentScope === "global" ? undefined : targetEntityId,
+    };
   }
 
   private async processDocument({
@@ -1965,23 +2019,11 @@ export class DocumentService extends Service {
         );
       }
 
-      const documentScope = resolveWriteDocumentScope({
-        scope,
-        entityId,
-        agentId,
-      });
-      const targetEntityId =
-        documentScope === "user-private"
-          ? (scopedToEntityId ?? entityId)
-          : documentScope === "owner-private"
-            ? ((this.runtime.getSetting("ELIZA_ADMIN_ENTITY_ID") as
-                | UUID
-                | undefined) ??
-              entityId ??
-              agentId)
-            : agentId;
-      const scopedEntityId =
-        documentScope === "global" ? undefined : targetEntityId;
+      const { documentScope, targetEntityId, scopedEntityId } =
+        this.resolveDocumentScopeOwner(
+          { scope, entityId, scopedToEntityId },
+          agentId,
+        );
       const ingestionAttemptId = this.runtime.createRunId();
       const scopedMetadata = {
         ...metadata,

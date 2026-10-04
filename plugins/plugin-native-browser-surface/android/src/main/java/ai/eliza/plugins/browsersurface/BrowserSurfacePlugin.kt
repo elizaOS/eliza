@@ -97,10 +97,93 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
+    private var helperEntry: BrowserHelperEntry? = null
+    private fun entry(): BrowserHelperEntry = helperEntry ?: BrowserHelperEntry(activity, bridge.webView,
+        { notifyListeners("browserHelperReturned", JSObject().apply { put("presentation", "full-screen") }) },
+        { notifyListeners("browserHelperReturnFailed", JSObject().apply { put("code", "BROWSER_ENTRY_UNAVAILABLE") }) },
+        {
+            notifyListeners("browserHelperWindowClosed", JSObject().apply { put("reason", "permission-revoked") })
+            dockScope.launch {
+                try { BrowserDockController.setVisible(activity, true) }
+                catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (error: RuntimeException) {
+                    // error-policy:J1 A changed split cannot be recreated by replaying navigation.
+                    notifyListeners("browserHelperReturnFailed", JSObject().apply { put("code", "BROWSER_DOCK_RESTORE_UNAVAILABLE") })
+                }
+            }
+        }
+    ).also { helperEntry = it }
+
+    @PluginMethod
+    fun getBrowserHelperEntryState(call: PluginCall) {
+        activity.runOnUiThread { call.resolve(entry().state()) }
+    }
+
+    @PluginMethod
+    fun requestBrowserHelperEntryPermission(call: PluginCall) {
+        activity.runOnUiThread {
+            try {
+                activity.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:" + activity.packageName)))
+                call.resolve(JSObject().apply { put("status", "dispatched") })
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 Managed devices may omit the permission screen.
+                call.reject("Android overlay settings are unavailable.", "BROWSER_ENTRY_SETTINGS_UNAVAILABLE", error)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun hideBrowserDockWithEntry(call: PluginCall) {
+        val label = call.getString("label") ?: "Helper"
+        val description = call.getString("description") ?: "Return to helper"
+        dockScope.launch {
+            try {
+                val control = entry()
+                control.showEntry(label, description)
+                BrowserDockController.setVisible(activity, false)
+                control.removeFullScreen()
+                call.resolve(JSObject().apply { put("status", "requested") })
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: RuntimeException) {
+                // error-policy:J1 Never hide the host when a return control cannot be installed.
+                helperEntry?.removeEntry()
+                call.reject("The helper could not be hidden with a return control.",
+                    (error as? BrowserLaunchException)?.code ?: "BROWSER_ENTRY_UNAVAILABLE", error)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun restoreBrowserDockFromEntry(call: PluginCall) {
+        dockScope.launch {
+            try {
+                BrowserDockController.setVisible(activity, true)
+                helperEntry?.removeFullScreen()
+                helperEntry?.removeEntry()
+                call.resolve(JSObject().apply { put("status", "requested") })
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: RuntimeException) {
+                // error-policy:J1 Leave full-screen help visible if its browser split cannot return.
+                call.reject("The browser split could not be restored.",
+                    (error as? BrowserLaunchException)?.code ?: "BROWSER_DOCK_RESIZE_UNAVAILABLE", error)
+            }
+        }
+    }
+
     private val dockScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    override fun handleOnResume() {
+        super.handleOnResume()
+        helperEntry?.reconcilePermission()
+    }
 
     override fun handleOnDestroy() {
         dockScope.cancel()
+        helperEntry?.destroy()
+        helperEntry = null
         BrowserDockController.release(activity)
         super.handleOnDestroy()
     }
@@ -137,6 +220,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             try {
                 BrowserDockController.open(activity, url, width)
+                helperEntry?.release()
+                notifyListeners("browserHelperWindowClosed", JSObject().apply { put("reason", "website-opened") })
                 call.resolve(JSObject().apply { put("packageName", ChromiumBrowserLauncher.PACKAGE_NAME); put("status", "dispatched") })
             } catch (error: BrowserLaunchException) {
                 // error-policy:J1 Host support, identity or size can prevent docking.
