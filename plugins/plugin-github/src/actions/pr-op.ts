@@ -113,13 +113,14 @@ async function runList(
   const repo = requireString(options, "repo");
   const prs: PRSummary[] = [];
 
-  if (repo) {
-    const parts = splitRepo(repo);
-    if (!parts) {
-      const err = `Invalid repo "${repo}" — expected "owner/name"`;
-      await callback?.({ text: err });
-      return { success: false, error: err };
-    }
+  const parts = repo ? splitRepo(repo) : null;
+  if (repo && !parts) {
+    const err = `Invalid repo "${repo}" — expected "owner/name"`;
+    await callback?.({ text: err });
+    return { success: false, error: err };
+  }
+
+  if (repo && parts && !author) {
     const resp = await resolved.client.pulls.list({
       owner: parts.owner,
       repo: parts.name,
@@ -127,11 +128,6 @@ async function runList(
       per_page: 100,
     });
     for (const pr of resp.data) {
-      // GitHub logins are case-insensitive; compare case-insensitively so
-      // this branch matches the `author:` search qualifier's semantics.
-      if (author && pr.user?.login?.toLowerCase() !== author.toLowerCase()) {
-        continue;
-      }
       prs.push({
         repo,
         number: pr.number,
@@ -142,9 +138,13 @@ async function runList(
       });
     }
   } else {
+    // An author filter runs server-side through search (with a `repo:`
+    // qualifier when scoped): filtering one REST page client-side missed every
+    // matching PR beyond the newest 100.
     const q = [
       "is:pr",
       state === "all" ? "" : `is:${state}`,
+      parts ? `repo:${parts.owner}/${parts.name}` : "",
       author ? `author:${author}` : "",
     ]
       .filter(Boolean)

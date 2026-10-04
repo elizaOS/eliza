@@ -6,6 +6,8 @@
  * ICS subscription create/remove against a spied calendar client.
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,

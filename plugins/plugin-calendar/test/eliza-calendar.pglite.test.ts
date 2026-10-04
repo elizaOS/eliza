@@ -134,6 +134,7 @@ beforeAll(async () => {
     initPromise: Promise.resolve(),
     getCache: async () => undefined,
     setCache: async () => undefined,
+    getSetting: () => undefined,
     getService: (serviceType: string) =>
       serviceType === CalendarService.serviceType ? service : null,
     reportError: async () => {},
@@ -1555,6 +1556,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       };
       const scopedRuntime = {
         ...runtime,
+        getSetting: () => undefined,
         getService: (name: string) =>
           name === "google" ? google : runtime.getService(name),
       } as unknown as IAgentRuntime;
@@ -1738,6 +1740,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     };
     const recoveryRuntime = {
       ...runtime,
+      getSetting: () => undefined,
       getService: (name: string) =>
         name === "google" ? google : runtime.getService(name),
     } as unknown as IAgentRuntime;

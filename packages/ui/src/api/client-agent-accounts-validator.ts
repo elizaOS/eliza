@@ -10,14 +10,15 @@ import {
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core/protocol";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
+import {
   LINKED_ACCOUNT_ACCOUNT_SOURCES,
   LINKED_ACCOUNT_HEALTH_STATES,
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-} from "@elizaos/contracts";
-import { ElizaError } from "@elizaos/core/protocol";
-import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
-
+} from "@elizaos/host/protocol";
 import type { AccountsListResponse } from "./client-agent-accounts";
 /** Stable classification for malformed account inventory responses. */
 export const ACCOUNTS_RESPONSE_INVALID_CODE = "ACCOUNTS_RESPONSE_INVALID";

@@ -116,7 +116,7 @@ const stubBarrels = {
   name: "stub-state-api-barrels",
   setup(b) {
     b.onResolve({ filter: /^(\.\.\/)+state$/ }, () => ({
-      path: join(here, "settings-fixture-state-stub.ts"),
+      path: join(here, "settings-fixture-state-stub.cts"),
     }));
     b.onResolve({ filter: /^(\.\.\/)+api$/ }, () => ({
       path: "settings-api-stub",

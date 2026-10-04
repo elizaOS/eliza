@@ -19,8 +19,6 @@ import {
   DEFAULT_BACKGROUND_CONFIG,
 } from "../../../state/ui-preferences";
 
-declare const module: { exports: unknown };
-
 const t = createTranslator("en", appNameInterpolationVars(DEFAULT_BRANDING));
 
 const fixtureState: Record<string, unknown> = {

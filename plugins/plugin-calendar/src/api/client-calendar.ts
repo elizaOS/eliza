@@ -121,7 +121,7 @@ export interface CalendarClientMethods {
 
 // The `/api/meetings` client (requestMeetingBot / listMeetings / getMeeting /
 // stopMeeting) is canonical in `@elizaos/ui` (packages/ui/src/api/client-meetings.ts)
-// and already installed on this same prototype via the `@elizaos/ui/api`
+// and already installed on this same prototype via the `@elizaos/ui`
 // side-effect import. Do NOT re-declare meeting join/list methods here — call
 // the ui client's `requestMeetingBot` / `listMeetings` directly.
 

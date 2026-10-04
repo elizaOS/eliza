@@ -113,7 +113,7 @@
     "llama-cpp-capacitor": "^0.1.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "@capacitor/core": "^8.5.0"
+    "@capacitor/core": "^8.4.0"
   },
   "peerDependenciesMeta": {
     "@capacitor/app": {

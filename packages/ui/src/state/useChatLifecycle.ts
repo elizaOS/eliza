@@ -6,6 +6,7 @@
  */
 
 import type { FirstRunOptions } from "@elizaos/host/protocol";
+
 import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";

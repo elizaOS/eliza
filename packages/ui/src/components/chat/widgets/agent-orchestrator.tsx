@@ -17,6 +17,7 @@
  */
 
 import type { TranslateFn } from "@elizaos/contracts";
+
 import type { AppRunSummary, RegistryAppInfo } from "@elizaos/core/protocol";
 import {
   Activity,

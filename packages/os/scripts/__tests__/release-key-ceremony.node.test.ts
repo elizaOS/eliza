@@ -260,6 +260,24 @@ test("test-key ceremony produces encrypted keys that decrypt to matching public 
       () => decrypt({ input: out, output: plainDir, passphraseFile: pass }),
       /already exists/,
     );
+    // --only selects exact key names; a typo or empty name decrypts nothing
+    // and must fail instead of reporting "Decrypted 0 keys".
+    for (const only of ["releasekey,platfrom", "", "releasekey,"]) {
+      const rejected = path.join(tmp, `plain-only-${only.length}`);
+      assert.throws(
+        () =>
+          decrypt({ input: out, output: rejected, passphraseFile: pass, only }),
+        /--only names a key/,
+      );
+      assert.equal(fs.existsSync(rejected), false, `${only}: nothing written`);
+    }
+    const subset = decrypt({
+      input: out,
+      output: path.join(tmp, "plain-subset"),
+      passphraseFile: pass,
+      only: "releasekey,platform",
+    });
+    assert.deepEqual([...subset.written].sort(), ["platform", "releasekey"]);
     const wrongPass = path.join(tmp, "wrong");
     fs.writeFileSync(wrongPass, "definitely not the right passphrase", {
       mode: 0o600,

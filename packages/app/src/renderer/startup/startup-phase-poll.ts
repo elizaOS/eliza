@@ -14,6 +14,7 @@ import {
   truncateWellFormed,
 } from "@elizaos/core/protocol";
 import type { FirstRunOptions } from "@elizaos/host/protocol";
+
 import { getStylePresets } from "@elizaos/host/protocol";
 import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import {

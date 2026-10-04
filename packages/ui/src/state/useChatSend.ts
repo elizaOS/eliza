@@ -6,7 +6,10 @@
  */
 
 import type { ChatTurnStatus } from "@elizaos/contracts";
-import { asRecord, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/protocol";
+import {
+  asObjectRecord as asRecord,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+} from "@elizaos/core/protocol";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { client } from "../api/client";

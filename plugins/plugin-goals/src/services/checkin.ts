@@ -168,7 +168,11 @@ export function checkinTriggersForGoal(
         warnCadence(goal.id, "once cadence has no parseable dueAt");
         return [];
       }
-      return [{ slotKey: "once", trigger: { kind: "once", atIso: dueAt } }];
+      // Keyed by instant: moving the date needs a new task, because a once
+      // task that has already fired can't be re-armed by an edit.
+      return [
+        { slotKey: `once:${dueAt}`, trigger: { kind: "once", atIso: dueAt } },
+      ];
     }
     case "daily": {
       const hours = windowHoursOf(cadence.windows, goal.id);
@@ -430,12 +434,23 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     );
     const existing = await this.listGoalTasks(runner, goal.id);
     const desiredKeys = new Set(desired.map((input) => input.idempotencyKey));
+    // A task already holding a desired once instant covers it under any key
+    // (including the older unkeyed `once` slot): live, it is kept; finished,
+    // that check-in already ran; dismissed, the owner turned it off.
+    const desiredOnceTriggers = new Set(
+      desired
+        .filter((input) => input.trigger.kind === "once")
+        .map((input) => JSON.stringify(input.trigger)),
+    );
+    const holdsDesiredOnce = (task: ScheduledTask): boolean =>
+      desiredOnceTriggers.has(JSON.stringify(task.trigger));
 
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
       if (task.idempotencyKey && desiredKeys.has(task.idempotencyKey)) {
         continue;
       }
+      if (holdsDesiredOnce(task)) continue;
       if (TERMINAL_TASK_STATUSES.has(task.state.status)) continue;
       await runner.apply(task.taskId, "dismiss", {
         reason: GOAL_CHECKIN_SYNC_DISMISS_REASON,
@@ -450,7 +465,13 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
         (task) => task.idempotencyKey === input.idempotencyKey,
       );
       if (!current) {
-        scheduled.push(await runner.schedule(input));
+        const covered =
+          input.trigger.kind === "once" &&
+          existing.some(
+            (task) =>
+              JSON.stringify(task.trigger) === JSON.stringify(input.trigger),
+          );
+        if (!covered) scheduled.push(await runner.schedule(input));
         continue;
       }
       // A dismissed slot is a deliberate off-switch (owner or sync); never

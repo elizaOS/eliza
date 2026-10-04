@@ -10,6 +10,7 @@
  */
 
 import type { TranslateFn } from "@elizaos/contracts";
+
 import { normalizeConnectorSource } from "@elizaos/core/protocol";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";

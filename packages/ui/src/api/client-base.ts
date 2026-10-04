@@ -5,6 +5,7 @@ import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
  * Separated from client.ts so domain augmentation files can import the class
  * without circular dependency issues.
  */
+
 import {
   type ChatFailureKind,
   type ChatTerminalFailure,
@@ -12,11 +13,11 @@ import {
   type ChatTurnStatus,
   parseChatTerminalFailure,
 } from "@elizaos/contracts";
+import type { NetworkStatusChangeDetail } from "@elizaos/core/protocol";
 import {
   DELTA_STREAM_PROTOCOL,
   extractAssistantReplyText,
   isInferenceTraceId,
-  type NetworkStatusChangeDetail,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/core/protocol";

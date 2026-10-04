@@ -31,6 +31,7 @@ import type {
   ChatTerminalFailure,
   ChatToolCallEvent,
 } from "@elizaos/contracts";
+
 import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import type { Dispatch, SetStateAction } from "react";
 import type {
