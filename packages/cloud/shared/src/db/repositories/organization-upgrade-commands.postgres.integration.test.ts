@@ -212,4 +212,170 @@ async function count(organizationId: string) {
       await holder.end();
     }
   });
+  async function dispatchCandidate(expiryMs?: number) {
+    const f = await seed();
+    if (expiryMs !== undefined) {
+      f.quote = await quotes.saveOrganizationUpgradeQuote({
+        identity: f.input,
+        captured: f.captured,
+        review: { ...f.review, expiresAt: new Date(Date.now() + expiryMs).toISOString() },
+      });
+    }
+    const commandId = randomUUID();
+    await db.query(
+      `INSERT INTO billing_subscription_commands
+      (id,organization_id,requested_by_user_id,subscription_id,expected_subscription_revision,
+       kind,target_plan_key,idempotency_key,provider_idempotency_key,request_digest,
+       organization_upgrade_dispatch_state)
+      VALUES($1,$2,$3,$4,1,'upgrade','pro_monthly',$5,$6,$7,'ready')`,
+      [
+        commandId,
+        f.input.organizationId,
+        f.input.actorId,
+        f.input.subscriptionId,
+        randomUUID(),
+        randomUUID(),
+        "a".repeat(64),
+      ],
+    );
+    await db.query(
+      `UPDATE organization_plan_change_quotes SET consumed_by_command_id=$1,
+      consumed_at=clock_timestamp() WHERE id=$2`,
+      [commandId, f.quote.id],
+    );
+    return { ...f, commandId };
+  }
+  async function leaseCandidate(commandId: string) {
+    await db.query(
+      `UPDATE billing_subscription_commands SET status='OUTCOME_UNKNOWN',
+      execution_generation=execution_generation+1,state_revision=state_revision+1,
+      provider_started_at=COALESCE(provider_started_at,clock_timestamp()),
+      lease_token=$2,lease_expires_at=clock_timestamp()+interval '1 minute' WHERE id=$1`,
+      [commandId, randomUUID()],
+    );
+  }
+  test("dispatch requires a previously acquired live lease and cannot reset after recovery", async () => {
+    const f = await dispatchCandidate();
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands
+      SET organization_upgrade_dispatch_state='started' WHERE id=$1`,
+        [f.commandId],
+      ),
+    ).rejects.toThrow();
+    await leaseCandidate(f.commandId);
+    await db.query(
+      `UPDATE billing_subscription_commands
+      SET organization_upgrade_dispatch_state='started' WHERE id=$1`,
+      [f.commandId],
+    );
+    await db.query(
+      `UPDATE billing_subscription_commands SET lease_token=NULL,lease_expires_at=NULL WHERE id=$1`,
+      [f.commandId],
+    );
+    await leaseCandidate(f.commandId);
+    for (const value of ["ready", null]) {
+      await expect(
+        db.query(
+          `UPDATE billing_subscription_commands SET organization_upgrade_dispatch_state=$2 WHERE id=$1`,
+          [f.commandId, value],
+        ),
+      ).rejects.toThrow();
+    }
+    const row = (
+      await db.query(
+        `SELECT organization_upgrade_dispatch_state,execution_generation FROM billing_subscription_commands WHERE id=$1`,
+        [f.commandId],
+      )
+    ).rows[0];
+    expect(row.organization_upgrade_dispatch_state).toBe("started");
+    expect(Number(row.execution_generation)).toBe(2);
+  });
+  test("legacy command cannot gain unstarted provenance or dispatch without its quote", async () => {
+    const f = await seed();
+    const original = await commands.prepareOrganizationUpgrade(f.confirm);
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands SET organization_upgrade_dispatch_state='ready' WHERE id=$1`,
+        [original.command.id],
+      ),
+    ).rejects.toThrow();
+    const orphan = await dispatchCandidate();
+    // A new command has no consumed quote, even when its organization and plan match.
+    const id = randomUUID();
+    await db.query(
+      `INSERT INTO billing_subscription_commands
+      (id,organization_id,requested_by_user_id,subscription_id,expected_subscription_revision,kind,target_plan_key,idempotency_key,provider_idempotency_key,request_digest,organization_upgrade_dispatch_state)
+      VALUES($1,$2,$3,$4,1,'upgrade','pro_monthly',$5,$6,$7,'ready')`,
+      [
+        id,
+        orphan.input.organizationId,
+        orphan.input.actorId,
+        orphan.input.subscriptionId,
+        randomUUID(),
+        randomUUID(),
+        "b".repeat(64),
+      ],
+    );
+    await leaseCandidate(id);
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands SET organization_upgrade_dispatch_state='started' WHERE id=$1`,
+        [id],
+      ),
+    ).rejects.toThrow();
+  });
+  test("expired dispatch lease cannot cross the provider boundary", async () => {
+    const f = await dispatchCandidate();
+    await leaseCandidate(f.commandId);
+    await db.query(
+      `UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`,
+      [f.commandId],
+    );
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands SET organization_upgrade_dispatch_state='started' WHERE id=$1`,
+        [f.commandId],
+      ),
+    ).rejects.toThrow();
+  });
+  test("dispatch cannot replace the lease in the same write", async () => {
+    const f = await dispatchCandidate();
+    await leaseCandidate(f.commandId);
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands
+      SET organization_upgrade_dispatch_state='started',lease_token=$2 WHERE id=$1`,
+        [f.commandId, randomUUID()],
+      ),
+    ).rejects.toThrow();
+    expect(
+      (
+        await db.query(
+          `SELECT organization_upgrade_dispatch_state FROM billing_subscription_commands WHERE id=$1`,
+          [f.commandId],
+        )
+      ).rows[0].organization_upgrade_dispatch_state,
+    ).toBe("ready");
+  });
+  test("a consumed quote must still be live when the first dispatch starts", async () => {
+    const f = await dispatchCandidate(2000);
+    await leaseCandidate(f.commandId);
+    await Bun.sleep(Math.max(0, f.quote.expires_at.getTime() - Date.now()) + 50);
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands
+      SET organization_upgrade_dispatch_state='started' WHERE id=$1`,
+        [f.commandId],
+      ),
+    ).rejects.toThrow();
+    expect(
+      (
+        await db.query(
+          `SELECT organization_upgrade_dispatch_state FROM billing_subscription_commands WHERE id=$1`,
+          [f.commandId],
+        )
+      ).rows[0].organization_upgrade_dispatch_state,
+    ).toBe("ready");
+  });
 });
