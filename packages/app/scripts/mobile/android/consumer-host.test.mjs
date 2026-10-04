@@ -181,7 +181,7 @@ test("toolchain is hash pinned and optional runtime preserves exact native bytes
 
 test("a symlinked checkout root uses canonical ownership without admitting descendant symlinks", (t) => {
   const { options, generate } = setup(t);
-  const actual = options.consumerRoot,
+  const actual = fs.realpathSync(options.consumerRoot),
     alias = `${actual}-alias`;
   fs.symlinkSync(actual, alias, "junction");
   t.after(() => fs.unlinkSync(alias));
@@ -222,4 +222,16 @@ test("a regular file cannot become a generated output directory", (t) => {
       /directory/.test(error.message),
   );
   assert.equal(fs.readFileSync(options.output, "utf8"), "user file");
+});
+
+test("missing declared input reports a typed failure without creating output", (t) => {
+  const { options, generate } = setup(t);
+  options.profile.manifest = { root: "consumer", path: "missing.xml" };
+  assert.throws(
+    generate,
+    (error) =>
+      error instanceof AndroidConsumerHostError &&
+      error.cause?.code === "ENOENT",
+  );
+  assert.equal(fs.existsSync(options.output), false);
 });

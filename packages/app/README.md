@@ -166,7 +166,8 @@ unowned-file collisions and symlink escapes are rejected. Generated ownership
 permits regeneration and removal of formerly selected generated files while
 preserving other build outputs. Hosts keep authored manifests/resources outside
 the generated project and supply already-verified optional runtime payloads. The
-generator owns the `app_name` string; host resources must not redefine it.
+generator owns the non-translatable `app_name` brand string; host resources must
+not redefine it. Other UI strings can use the host's localized resource directories.
 
 The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /
 JDK 21, independently of the full app's newer default wrapper. The distribution

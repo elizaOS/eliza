@@ -42,9 +42,14 @@ try {
     if (brand === "second") {
       runtimeDirectory = path.join(consumerRoot, "packaging-fixture");
       const main = path.join(runtimeDirectory, "android/app/src/main");
-      fs.mkdirSync(path.join(main, "assets/agent/arm64-v8a"), {
-        recursive: true,
-      });
+      for (const abi of ["arm64-v8a", "x86_64", "riscv64"]) {
+        const directory = path.join(main, "assets/agent", abi);
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(
+          path.join(directory, "excluded.bin"),
+          "must not enter APK assets",
+        );
+      }
       fs.mkdirSync(path.join(main, "jniLibs"), { recursive: true });
       fs.writeFileSync(
         path.join(main, "assets/agent/agent-bundle.js"),
@@ -53,10 +58,6 @@ try {
       fs.writeFileSync(
         path.join(main, "assets/agent-runtime.inventory"),
         "packaging qualification only\n",
-      );
-      fs.writeFileSync(
-        path.join(main, "assets/agent/arm64-v8a/excluded.bin"),
-        "must not enter APK assets",
       );
     }
     generateAndroidConsumerHost({
@@ -126,12 +127,12 @@ try {
           }).split("\n");
           assert.ok(entries.includes("assets/agent/agent-bundle.js"));
           assert.ok(entries.includes("assets/agent-runtime.inventory"));
-          assert.equal(
-            entries.some((entry) =>
-              entry.startsWith("assets/agent/arm64-v8a/"),
-            ),
-            false,
-          );
+          for (const abi of ["arm64-v8a", "x86_64", "riscv64"]) {
+            assert.equal(
+              entries.some((entry) => entry.startsWith(`assets/agent/${abi}/`)),
+              false,
+            );
+          }
         }
         const manifest = execFileSync(
           aapt,
