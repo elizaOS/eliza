@@ -1,10 +1,12 @@
 /** Provider-observed upgrade review through migrated authority and quote persistence. No live requests. */
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { upgradePaidObjects } from "../../db/repositories/organization-upgrade-paid-test-fixture";
 import { installOrganizationUpgradeTestSchema } from "../../db/repositories/organization-upgrade-test-fixture";
 import { seedCancellationTestAccount } from "../../db/repositories/subscription-cancellation-test-fixture";
+import { renewalPaidObjects } from "../../db/repositories/subscription-renewal-test-fixture";
 
 const url = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schema = `upgrade_dispatch_${randomUUID().replaceAll("-", "_")}`;
@@ -12,6 +14,7 @@ let db: Client;
 let afterWrite = async () => {};
 let writeFailure = false;
 let pending = false;
+let renewal: ReturnType<typeof renewalPaidObjects> | null = null;
 let objects: ReturnType<typeof upgradePaidObjects>;
 let dispatched = false;
 let originalKey = "";
@@ -162,6 +165,7 @@ mock.module("../stripe", () => ({
     invoices: {
       createPreview: preview,
       retrieve: async (id: string) => {
+        if (renewal?.invoice.id === id) return renewal.invoice;
         if (id !== objects.rawInvoice.id) throw new Error("Wrong invoice");
         return pending
           ? {
@@ -174,8 +178,11 @@ mock.module("../stripe", () => ({
           : objects.rawInvoice;
       },
     },
+    paymentIntents: { retrieve: async () => renewal?.paymentIntent },
+    charges: { retrieve: async () => renewal?.charge },
     prices: {
       retrieve: async (id: string) => ({
+        id,
         active: true,
         currency: "usd",
         currency_options: {},
@@ -193,7 +200,9 @@ mock.module("../stripe", () => ({
         livemode: false,
       }),
     },
-    products: { retrieve: async () => ({ active: true, deleted: false, livemode: false }) },
+    products: {
+      retrieve: async (id: string) => ({ id, active: true, deleted: false, livemode: false }),
+    },
   }),
 }));
 
@@ -202,6 +211,7 @@ let dispatch: typeof import("./organization-upgrade-dispatch").dispatchOrganizat
 async function seed(period?: { start: Date; end: Date }) {
   fixtureData = await seedCancellationTestAccount((q, v) => db.query(q, v), period);
   historicalTargetEvent = null;
+  renewal = null;
   afterTargetSearch = async () => {};
   dispatched = false;
   pending = false;
@@ -270,6 +280,13 @@ async function state(commandId: string) {
       await db.query(`CREATE SCHEMA ${schema}`);
       await db.query(`SET search_path TO ${schema},public`);
       await installOrganizationUpgradeTestSchema((q) => db.query(q));
+      const reconciliationMigration = await readFile(
+        new URL("../../db/migrations/0385_subscription_reconciliation.sql", import.meta.url),
+        "utf8",
+      );
+      for (const statement of reconciliationMigration.split("--> statement-breakpoint"))
+        if (statement.trim()) await db.query(statement);
+
       const target = new URL(url!);
       target.searchParams.set("options", `-c search_path=${schema},public`);
       process.env.DATABASE_URL = target.toString();
@@ -853,6 +870,288 @@ async function state(commandId: string) {
           )
         ).rows[0].n,
       ).toBe(0);
+    });
+
+    test("renewal delivery first settles the lost original upgrade then grants the new period once", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await seed({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      writeFailure = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      historicalTargetEvent = historicalEvent();
+      await expiredLease(f.identity.commandId);
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      renewal = renewalPaidObjects(
+        { ...fixtureData.source, plan_key: "pro_monthly" },
+        objects.rawSubscription,
+        { start: second + 5, end: second + 86405 },
+      );
+      objects.rawSubscription = renewal.subscription;
+      const { reconcileStripePaidRenewal: renew } = await import("./stripe-paid-renewal");
+      const event = {
+        id: `evt_renewal${f.identity.subscriptionId.replaceAll("-", "")}`,
+        object: "event",
+        type: "invoice.paid",
+        api_version: "2024-11-20.acacia",
+        created: second + 5,
+        livemode: false,
+        data: { object: renewal.invoice },
+      };
+      const message = {
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      } as Parameters<typeof renew>[0];
+      await renew(message);
+      expect((await state(f.identity.commandId)).status).toBe("APPLIED");
+      const rows = (
+        await db.query(
+          "SELECT plan_key, lifecycle_revision, current_period_start FROM billing_subscriptions WHERE id=$1",
+          [f.identity.subscriptionId],
+        )
+      ).rows;
+      expect(rows[0].plan_key).toBe("pro_monthly");
+      expect(rows[0].lifecycle_revision).toBe("3");
+      expect(rows[0].current_period_start.getTime()).toBe((second + 5) * 1000);
+      const balances = async () =>
+        (
+          await db.query(
+            "SELECT available_amount FROM subscription_allowance_periods WHERE organization_id=$1 ORDER BY period_start",
+            [f.identity.organizationId],
+          )
+        ).rows;
+      expect(await balances()).toEqual([
+        { available_amount: "0.000000" },
+        { available_amount: "90.000000" },
+      ]);
+      await renew(message);
+      expect(await balances()).toEqual([
+        { available_amount: "0.000000" },
+        { available_amount: "90.000000" },
+      ]);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    }, 15000);
+
+    test("applied renewal replay ignores a later unsettled upgrade", async () => {
+      const second = Math.floor(Date.now() / 1000);
+      const f = await seed({
+        start: new Date((second - 86400) * 1000),
+        end: new Date((second + 5) * 1000),
+      });
+      await expiredLease(f.identity.commandId);
+      await Bun.sleep(
+        Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+      );
+      renewal = renewalPaidObjects(fixtureData.source, fixtureData.provider, {
+        start: second + 5,
+        end: second + 86405,
+      });
+      objects.rawSubscription = renewal.subscription;
+      fixtureData.provider = renewal.subscription;
+      const { reconcileStripePaidRenewal: renew } = await import("./stripe-paid-renewal");
+      const event = {
+        id: `evt_replay${f.identity.subscriptionId.replaceAll("-", "")}`,
+        object: "event",
+        type: "invoice.paid",
+        api_version: "2024-11-20.acacia",
+        created: second + 5,
+        livemode: false,
+        data: { object: renewal.invoice },
+      };
+      const message = {
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      } as Parameters<typeof renew>[0];
+      await renew(message);
+      const { readOrganizationPlanChangeSource } = await import(
+        "../../db/repositories/organization-plan-change"
+      );
+      fixtureData.input = {
+        ...fixtureData.input,
+        expectedSubscriptionRevision: 2,
+        idempotencyKey: randomUUID(),
+      };
+      const captured = await readOrganizationPlanChangeSource(fixtureData.input);
+      fixtureData.source = captured.source;
+      fixtureData.provider = renewal.subscription;
+      const { createOrganizationUpgradeQuote } = await import("./organization-upgrade-preview");
+      const quote = await createOrganizationUpgradeQuote(
+        { ...fixtureData.input, targetPlanKey: "pro_monthly" },
+        async () => {},
+      );
+      objects = upgradePaidObjects({
+        ...fixtureData,
+        captured,
+        review: quote.review,
+        providerBinding: quote.provider_binding!,
+      });
+      const { prepareOrganizationUpgrade } = await import(
+        "../../db/repositories/organization-upgrade-commands"
+      );
+      const { claimOrganizationUpgrade } = await import(
+        "../../db/repositories/organization-upgrade-execution"
+      );
+      const { command } = await prepareOrganizationUpgrade({
+        ...fixtureData.input,
+        quoteId: quote.id,
+      });
+      originalKey = command.provider_idempotency_key;
+      const later = { ...fixtureData.input, commandId: command.id };
+      const claim = await claimOrganizationUpgrade(later);
+      if (!claim) throw new Error("Expected later upgrade claim");
+      pending = true;
+      await expect(dispatch(later, claim, async () => {})).rejects.toThrow();
+      expect((await state(later.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      const before = (
+        await db.query(
+          "SELECT count(*)::int n FROM subscription_allowance_periods WHERE organization_id=$1",
+          [later.organizationId],
+        )
+      ).rows[0].n;
+      await renew(message);
+      expect((await state(later.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM subscription_allowance_periods WHERE organization_id=$1",
+            [later.organizationId],
+          )
+        ).rows[0].n,
+      ).toBe(before);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    }, 15000);
+
+    for (const started of [true, false])
+      test(`renewal publication serializes against upgrade dispatch: started=${started}`, async () => {
+        const second = Math.floor(Date.now() / 1000);
+        const f = await seed({
+          start: new Date((second - 86400) * 1000),
+          end: new Date((second + 5) * 1000),
+        });
+        if (started) {
+          pending = true;
+          await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+        }
+        await Bun.sleep(
+          Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
+        );
+        const paid = renewalPaidObjects(fixtureData.source, fixtureData.provider, {
+          start: second + 5,
+          end: second + 86405,
+        });
+        const { subscriptionBillingOperationsRepository: operations } = await import(
+          "../../db/repositories/subscription-billing-operations"
+        );
+        const eventId = `evt_renewal${f.identity.subscriptionId.replaceAll("-", "")}`;
+        const created = new Date();
+        const receipt = await operations.recordEvent({
+          organizationId: f.identity.organizationId,
+          subscriptionId: f.identity.subscriptionId,
+          providerEventId: eventId,
+          eventType: "invoice.paid",
+          providerObjectType: "invoice",
+          providerObjectId: paid.invoice.id,
+          livemode: false,
+          eventCreatedAt: created,
+          payloadDigest: "a".repeat(64),
+          now: created,
+        });
+        const leaseToken = randomUUID();
+        expect(
+          await operations.claimEvent({
+            organizationId: f.identity.organizationId,
+            receiptId: receipt.value.id,
+            leaseToken,
+            leaseDurationMs: 60000,
+          }),
+        ).toBeTruthy();
+        const { finalizePaidRenewal } = await import(
+          "../../db/repositories/subscription-renewal-finalization"
+        );
+        const publication = finalizePaidRenewal({
+          ...paid,
+          organizationId: f.identity.organizationId,
+          subscriptionId: f.identity.subscriptionId,
+          invoiceId: paid.invoice.id,
+          receiptId: receipt.value.id,
+          leaseToken,
+          expectedSubscriptionRevision: 1,
+          expectedProjectionRevision: 1,
+          providerEventId: eventId,
+          eventCreatedAt: created,
+        });
+        if (started)
+          await expect(publication).rejects.toMatchObject({
+            code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+            context: { reason: "original_upgrade_unsettled" },
+          });
+        else {
+          expect((await publication).replayed).toBe(false);
+          await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+          expect(mutation).not.toHaveBeenCalled();
+        }
+        if (started) {
+          const { claimSubscriptionReconciliation, finalizeSubscriptionReconciliation } =
+            await import("../../db/repositories/subscription-reconciliation");
+          const scan = await claimSubscriptionReconciliation(f.identity);
+          if (!scan) throw new Error("Expected fresh reconciliation claim");
+          await expect(
+            finalizeSubscriptionReconciliation(scan, {
+              kind: "paid_renewal",
+              invoiceId: paid.invoice.id,
+              objects: paid,
+            }),
+          ).rejects.toMatchObject({
+            code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+            context: { reason: "original_upgrade_unsettled" },
+          });
+        }
+        expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+        expect(
+          (
+            await db.query("SELECT lifecycle_revision FROM billing_subscriptions WHERE id=$1", [
+              f.identity.subscriptionId,
+            ])
+          ).rows[0].lifecycle_revision,
+        ).toBe(started ? "1" : "2");
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM subscription_allowance_periods WHERE organization_id=$1",
+              [f.identity.organizationId],
+            )
+          ).rows[0].n,
+        ).toBe(started ? 1 : 2);
+      }, 10000);
+
+    test("renewal ordering retains an unpaid upgrade without new allowance", async () => {
+      const f = await seed();
+      pending = true;
+      await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
+      await expiredLease(f.identity.commandId);
+      const { reconcileOrganizationUpgradesBeforeRenewal: order } = await import(
+        "./organization-upgrade-renewal-ordering"
+      );
+      await expect(order(f.identity)).rejects.toThrow();
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int n FROM subscription_allowance_periods WHERE organization_id=$1",
+            [f.identity.organizationId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect(mutation).toHaveBeenCalledTimes(1);
     });
 
     test("expired observation lease retains historical evidence for a new claimant", async () => {
