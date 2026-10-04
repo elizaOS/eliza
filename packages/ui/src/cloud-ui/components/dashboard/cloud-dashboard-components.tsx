@@ -182,20 +182,8 @@ export function DashboardActionCardsSkeleton() {
   );
 }
 
-export function DashboardPageWrapper({
-  children,
-}: DashboardRoutePageWrapperProps) {
-  return <DashboardRoutePage title="Dashboard">{children}</DashboardRoutePage>;
-}
-
 export function AppsPageWrapper({ children }: DashboardRoutePageWrapperProps) {
   return <DashboardRoutePage title="My Apps">{children}</DashboardRoutePage>;
-}
-
-export function ContainersPageWrapper({
-  children,
-}: DashboardRoutePageWrapperProps) {
-  return <DashboardRoutePage title="Containers">{children}</DashboardRoutePage>;
 }
 
 export function ElizaAgentsPageWrapper({

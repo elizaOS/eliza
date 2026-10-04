@@ -240,11 +240,6 @@ export function __resetEnsuredChannelsForTests(): void {
   ensuredChannels.clear();
 }
 
-/** Test-only: permit an isolated listener registration in each test case. */
-export function __resetLocalNotificationTapRoutingForTests(): void {
-  localNotificationTapListenerPromise = null;
-}
-
 /**
  * `channelId`: the channel to schedule against (undefined off Android, where no
  * channel is needed). `unusable`: true only when a REQUIRED Android channel

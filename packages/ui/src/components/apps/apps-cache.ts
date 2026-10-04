@@ -54,11 +54,3 @@ export function writeAppsCache(apps: RegistryAppInfo[]): void {
     /* sandboxed storage — drop silently */
   }
 }
-export function clearAppsCache(): void {
-  if (typeof window === "undefined") return;
-  try {
-    shellLocalStorage.removeItem(CACHE_KEY);
-  } catch {
-    /* ignore */
-  }
-}

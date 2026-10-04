@@ -33,13 +33,6 @@ let resumeAttemptedThisSession = false;
  */
 const deadTargetRetryListeners = new Set<AbortController>();
 
-/** Test-only: allow a fresh resume attempt in the next call. */
-export function __resetResumeForTests(): void {
-  resumeAttemptedThisSession = false;
-  for (const ac of deadTargetRetryListeners) ac.abort();
-  deadTargetRetryListeners.clear();
-}
-
 /**
  * Verify the pending handoff's dedicated TARGET still exists before resuming.
  *

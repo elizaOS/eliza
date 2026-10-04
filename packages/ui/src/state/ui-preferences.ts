@@ -64,16 +64,7 @@ export const DEFAULT_BACKGROUND_COLOR = "#000000";
  * rather than a flat color wall.
  */
 export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
-/**
- * The shader-mode config for the black ember field: the fallback when an
- * image background is cleared or fails to load, and the base the color
- * swatches and the glsl fallback resolve to. (The boot default is the Ember
- * Night sunset wallpaper — see {@link DEFAULT_BACKGROUND_CONFIG}.)
- */
-export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
-  mode: "shader",
-  color: DEFAULT_BACKGROUND_COLOR,
-};
+
 /**
  * The curated "Ember Night" wallpaper is both the gallery tile and the
  * fresh-install background. Serving this code-free asset from the app origin
@@ -212,14 +203,7 @@ export const BACKGROUND_CATALOG: readonly BackgroundCatalogEntry[] =
       author: "curated",
     };
   });
-/**
- * The curated natural (image) catalog entries — the gallery leads with these.
- */
-export const CURATED_NATURAL_BACKGROUNDS: readonly BackgroundCatalogEntry[] =
-  BACKGROUND_CATALOG.filter((e) => e.kind === "image");
-/** The animated GLSL catalog entries, mirrored from the shader preset library. */
-export const GLSL_CATALOG_BACKGROUNDS: readonly BackgroundCatalogEntry[] =
-  BACKGROUND_CATALOG.filter((e) => e.kind === "glsl");
+
 /** The boot-default catalog id (re-exported from the shared index). */
 export const DEFAULT_BACKGROUND_CATALOG_ID =
   SHARED_DEFAULT_BACKGROUND_CATALOG_ID;

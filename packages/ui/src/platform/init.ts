@@ -115,17 +115,7 @@ export function canRunLocal(): boolean {
 export function canSelectLocalRuntime(): boolean {
   return canRunLocal() || isElizaOS();
 }
-/**
- * True when the platform might host a local agent that the UI can reach over
- * the app. Used to decide whether the local first-run option should run a
- * liveness probe before being shown. Desktop and dev mode
- * always qualify; Android qualifies because `ElizaAgentService` starts the
- * bundled loopback agent; iOS qualifies because the same route shape is
- * carried over in-process ITTP/Capacitor IPC, not a TCP listener.
- */
-export function canHostLocalAgent(): boolean {
-  return canRunLocal() || isAndroid || isIOS;
-}
+
 export function isWebPlatform(): boolean {
   return detected.platform === "web" && !isElectrobunRuntime();
 }

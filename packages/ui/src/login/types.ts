@@ -3,8 +3,6 @@ import type {
   AgentBalance,
   AgentIdentity,
   ChainFamily,
-  GlobalWalletApproveResult,
-  GlobalWalletConsentRequest,
   LoginClient,
   LoginProviders as LoginProvidersState,
   LoginTenantMembership,
@@ -23,12 +21,6 @@ import type {
 export type PolicyExposure = "visible" | "hidden" | "enforced";
 
 export type PolicyExposureConfig = Partial<Record<PolicyType, PolicyExposure>>;
-
-export interface EnforcedPolicyOverride {
-  type: PolicyType;
-  config: Record<string, unknown>;
-  allowTightening?: boolean;
-}
 
 export interface CustomizableField {
   path: string;
@@ -150,45 +142,6 @@ export interface AgentDashboardResponse {
   recentTransactions: TxRecord[];
 }
 
-export interface PaginatedTransactionsResponse {
-  transactions: TxRecord[];
-  pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-export interface SpendStats {
-  range: "24h" | "7d" | "30d" | "all";
-  totalSpent: string;
-  totalSpentFormatted: string;
-  txCount: number;
-  avgTxValue: string;
-  avgTxValueFormatted: string;
-  largestTx: { value: string; txHash: string; timestamp: string };
-  daily: Array<{
-    date: string;
-    spent: string;
-    spentFormatted: string;
-    txCount: number;
-  }>;
-  topDestinations: Array<{
-    address: string;
-    totalSent: string;
-    txCount: number;
-  }>;
-  budgetUsage?: {
-    dailyLimit: string;
-    dailyUsed: string;
-    dailyPercent: number;
-    weeklyLimit: string;
-    weeklyUsed: string;
-    weeklyPercent: number;
-  };
-}
-
 export interface ApprovalQueueEntry {
   id: string;
   agentId: string;
@@ -222,65 +175,6 @@ export interface LoginContextValue {
   tenantConfig: TenantControlPlaneConfig | null;
   isLoading: boolean;
   pollInterval: number;
-}
-
-export interface LoginGlobalWalletConsentProps {
-  /** Tenant app id in the form `tenant_id/client_id`. */
-  appId: string;
-  /** Exact app origin. Defaults to `window.location.origin` in browsers. */
-  origin?: string;
-  /** Optional redirect URI, validated against the tenant app client's allowlist. */
-  redirectUri?: string;
-  /** Requested global-wallet scopes. Defaults to `eth_accounts`. */
-  scopes?: string[];
-  /** Optional preloaded consent request for SSR or custom data loaders. */
-  initialRequest?: GlobalWalletConsentRequest;
-  onApproved?: (result: GlobalWalletApproveResult) => void;
-  onError?: (error: Error) => void;
-  className?: string;
-}
-
-// ─── Component Props ───
-
-export interface WalletOverviewProps {
-  chains?: ChainFamily[];
-  showQR?: boolean;
-  showCopy?: boolean;
-  className?: string;
-  onCopyAddress?: (address: string, chain: ChainFamily) => void;
-}
-
-export interface TransactionHistoryProps {
-  pageSize?: number;
-  statusFilter?: TxStatus[];
-  chainFilter?: number[];
-  showPolicyDetails?: boolean;
-  renderTransaction?: (tx: TxRecord) => React.ReactNode;
-  onTransactionClick?: (tx: TxRecord) => void;
-  className?: string;
-}
-
-export interface PolicyControlsProps {
-  showTemplates?: boolean;
-  onSave?: (policies: PolicyRule[]) => void;
-  readOnly?: boolean;
-  labels?: Partial<Record<PolicyType, string>>;
-  className?: string;
-}
-
-export interface ApprovalQueueProps {
-  refreshInterval?: number;
-  onResolve?: (txId: string, action: "approved" | "rejected") => void;
-  showPolicyReason?: boolean;
-  className?: string;
-}
-
-export interface SpendDashboardProps {
-  range?: "24h" | "7d" | "30d" | "all";
-  showBudgetUsage?: boolean;
-  showChart?: boolean;
-  showTopDestinations?: boolean;
-  className?: string;
 }
 
 export interface LoginLinkedAccountsProps {

@@ -331,16 +331,6 @@ class StreamingLinearResampler {
   }
 }
 
-export function resamplePcmTo16k(
-  pcm: Float32Array,
-  sourceSampleRate: number,
-): Float32Array {
-  return new StreamingLinearResampler(
-    sourceSampleRate,
-    TARGET_SAMPLE_RATE,
-  ).push(pcm);
-}
-
 function concatFloat32(
   a: Float32Array<ArrayBufferLike>,
   b: Float32Array<ArrayBufferLike>,

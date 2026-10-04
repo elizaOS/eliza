@@ -90,14 +90,7 @@ export interface TransientClientMediaInput {
     mimeType: string;
   };
 }
-/** Canonical client reference returned after media has been stored. */
-export interface StoredClientMediaReference {
-  id: string;
-  url: string;
-  mimeType?: string;
-  thumbnailUrl?: string;
-  transcriptId?: string;
-}
+
 /** Compatibility name for the transient chat-upload wire payload. */
 export interface ImageAttachment extends TransientClientMediaInput {
   /**

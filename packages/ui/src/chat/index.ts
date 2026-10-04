@@ -9,10 +9,7 @@ import {
 } from "@elizaos/core/protocol";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
-import type {
-  DesktopClickAuditItem,
-  DesktopWorkspaceSurface,
-} from "../utils/desktop-workspace";
+import type { DesktopWorkspaceSurface } from "../utils/desktop-workspace";
 import { DESKTOP_WORKSPACE_SURFACES } from "../utils/desktop-workspace";
 
 const ROUTINE_CODING_AGENT_RE =
@@ -153,44 +150,6 @@ export interface BuildCommandsArgs {
     options?: { browse?: string },
   ) => void;
 }
-
-export const DESKTOP_COMMAND_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
-  {
-    id: "desktop-open-workspace",
-    entryPoint: "command-palette",
-    label: "Open Desktop Workspace",
-    expectedAction: "Open the complete Eliza shell in a managed app window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-open-voice-controls",
-    entryPoint: "command-palette",
-    label: "Open Voice Controls",
-    expectedAction:
-      "Open a detached settings window focused on the voice section.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-focus-main-window",
-    entryPoint: "command-palette",
-    label: "Focus Main Window",
-    expectedAction: "Focus the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  ...DESKTOP_WORKSPACE_SURFACES.map(
-    (surface): DesktopClickAuditItem => ({
-      id: `desktop-command-${surface.id}`,
-      entryPoint: "command-palette",
-      label: `Open ${surface.label}`,
-      expectedAction: `Open the detached ${surface.id} surface from the command palette.`,
-      runtimeRequirement: "desktop",
-      coverage: "automated",
-    }),
-  ),
-] as const;
 
 export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
   const {

@@ -268,6 +268,17 @@ export async function seedAppStorage(
   overrides: Record<string, string> = {},
 ): Promise<void> {
   const storage = { ...DEFAULT_APP_STORAGE, ...overrides };
+  if (!("elizaos:agent-profiles" in storage)) {
+    const profile = {
+      createdAt: Date.now(),
+      ...JSON.parse(storage["elizaos:active-server"]),
+    };
+    storage["elizaos:agent-profiles"] = JSON.stringify({
+      version: 1,
+      activeProfileId: profile.id,
+      profiles: [profile],
+    });
+  }
   await page.addInitScript(
     ({ entries, seededKey }) => {
       try {

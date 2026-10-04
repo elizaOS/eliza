@@ -211,11 +211,7 @@ export function getConnectorPluginManagedAccountOption(
     null
   );
 }
-export function hasConnectorPluginManagedAccounts(
-  connectorId: string | undefined,
-): boolean {
-  return getConnectorPluginManagedAccountOption(connectorId) !== null;
-}
+
 export function connectorAccountManagementPanelPluginId(
   connectorId: string,
 ): string | null {

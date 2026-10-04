@@ -122,16 +122,6 @@ export async function getWebPushState(
   return "default";
 }
 
-/** Read the active subscription (or null). Never prompts. */
-export async function getWebPushSubscription(
-  deps: WebPushDeps = defaultWebPushDeps,
-): Promise<PushSubscription | null> {
-  if (!isWebPushSupported(deps)) return null;
-  const reg = await deps.getRegistration();
-  if (!reg) return null;
-  return reg.pushManager.getSubscription();
-}
-
 /**
  * Subscribe to web push. MUST be called from within an explicit user gesture
  * (iOS rejects otherwise). Requests notification permission if needed, then

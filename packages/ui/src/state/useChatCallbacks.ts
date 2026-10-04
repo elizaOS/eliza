@@ -1,3 +1,4 @@
+import type { ChatTurnUsage } from "./types";
 /**
  * Chat callbacks, one of the domain hooks AppContext composes.
  *
@@ -556,13 +557,7 @@ export interface UseChatCallbacksDeps {
   setChatFirstTokenReceived: (v: boolean) => void;
   /** Set/clear the live server-reported phase of the in-flight turn (#8813). */
   setServerTurnStatus: (status: ChatTurnStatus | null) => void;
-  setChatLastUsage: (v: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    model: string | undefined;
-    updatedAt: number;
-  }) => void;
+  setChatLastUsage: (v: ChatTurnUsage) => void;
   setChatPendingImages: (v: ImageAttachment[]) => void;
   setConversations: (
     v: Conversation[] | ((prev: Conversation[]) => Conversation[]),

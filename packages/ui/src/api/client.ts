@@ -74,7 +74,6 @@ import type {
   PermissionId,
   PermissionState,
   PermissionStatus,
-  SystemPermissionDefinition,
   SystemPermissionId,
 } from "@elizaos/core/protocol";
 import type {
@@ -134,14 +133,6 @@ export type {
   SendIMessageRequest,
   SendIMessageResponse,
 } from "./client-imessage";
-export type {
-  ActiveModelState,
-  CatalogModel,
-  DownloadJob,
-  HardwareProbe,
-  InstalledModel,
-  ModelHubSnapshot,
-} from "./client-local-inference";
 export type { ListMeetingsOptions } from "./client-meetings";
 export {
   parseMeetingStatusEvent,
@@ -211,7 +202,6 @@ export type {
   StylePreset,
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
-  SystemPermissionDefinition as PermissionDefinition,
   SystemPermissionId,
   VerificationResult,
   VideoConfig,

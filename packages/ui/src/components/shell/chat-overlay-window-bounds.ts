@@ -1,13 +1,3 @@
-/**
- * Keeps the desktop chat-overlay window inside the primary display work area
- * while serializing renderer-to-main bounds updates across rapid open/close
- * transitions.
- */
-import { useEffect, useMemo, useRef } from "react";
-
-import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-
 export interface ChatOverlayWindowBounds {
   x: number;
   y: number;
@@ -142,46 +132,4 @@ export function createChatOverlayWindowBoundsCoordinator(
     schedule,
     whenIdle: () => tail,
   };
-}
-
-/** Applies desktop overlay bounds whenever the shared shell opens or closes. */
-export function useChatOverlayWindowBounds(
-  overlayOpen: boolean,
-  onFailure: (error: unknown) => void,
-): void {
-  const onFailureRef = useRef(onFailure);
-  useEffect(() => {
-    onFailureRef.current = onFailure;
-  }, [onFailure]);
-
-  const coordinator = useMemo(
-    () =>
-      createChatOverlayWindowBoundsCoordinator({
-        getWindowBounds: () =>
-          invokeDesktopBridgeRequest<ChatOverlayWindowBounds>({
-            rpcMethod: "desktopGetWindowBounds",
-            ipcChannel: "desktop:getWindowBounds",
-          }),
-        getPrimaryDisplay: () =>
-          invokeDesktopBridgeRequest<ChatOverlayDisplayInfo>({
-            rpcMethod: "desktopGetPrimaryDisplay",
-            ipcChannel: "desktop:getPrimaryDisplay",
-          }),
-        setWindowBounds: async (bounds) => {
-          await invokeDesktopBridgeRequest<void>({
-            rpcMethod: "desktopSetWindowBounds",
-            ipcChannel: "desktop:setWindowBounds",
-            params: bounds,
-          });
-        },
-        onFailure: (error) => onFailureRef.current(error),
-      }),
-    [],
-  );
-
-  useEffect(() => {
-    if (!isElectrobunRuntime()) return undefined;
-    coordinator.schedule(overlayOpen);
-    return () => coordinator.cancel();
-  }, [coordinator, overlayOpen]);
 }

@@ -358,18 +358,7 @@ export async function authLoginPassword(params: {
         : `Unexpected error (${res.status})`,
   };
 }
-/**
- * POST /api/auth/logout — destroys the current session.
- */
-export async function authLogout(): Promise<AuthLogoutResult> {
-  try {
-    await fetchWithCsrf(`${authBase()}/api/auth/logout`, { method: "POST" });
-  } catch {
-    // Logout is best-effort; treat network errors as success from the
-    // client's perspective — the cookie may still clear on reconnect.
-  }
-  return { ok: true };
-}
+
 /**
  * GET /api/auth/me — returns the current identity + session, or 401.
  *

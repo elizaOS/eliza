@@ -15,7 +15,6 @@ import {
   type ServiceRouteConfig,
   type ServiceRoutingConfig,
 } from "@elizaos/host/protocol";
-import type { FirstRunRuntime } from "./first-run";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,
@@ -35,18 +34,7 @@ import {
  * draft carries: `elizacloud` ⇒ `cloud-inference`, `on-device` ⇒ `all-local`.
  */
 export type FirstRunDefaultProvider = "elizacloud" | "on-device" | null;
-export function defaultProviderForRuntime(
-  runtime: FirstRunRuntime,
-): FirstRunDefaultProvider {
-  switch (runtime) {
-    case "cloud":
-      return "elizacloud";
-    case "local":
-      return "on-device";
-    case "remote":
-      return null;
-  }
-}
+
 export interface BuildFirstRunConnectionArgs {
   firstRunRuntimeTarget?: FirstRunRuntimeTarget;
   firstRunCloudApiKey: string;

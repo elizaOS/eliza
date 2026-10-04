@@ -1,9 +1,4 @@
-/**
- * Chat state — consolidated via useReducer.
- *
- * Replaces 18+ individual useState hooks and 10 sync-to-ref/persistence
- * effects with a single reducer + inline persistence in setters.
- */
+/** Chat reducer, persisted preferences, and synchronous conversation refs. */
 
 import { useCallback, useReducer, useRef } from "react";
 import type {
@@ -25,30 +20,31 @@ import {
   saveChatVoiceMuted,
   saveCompanionMessageCutoffTs,
 } from "./persistence";
-import type { ChatTurnUsage } from "./types";
+import type { AppState, ChatTurnUsage } from "./types";
 
 // ── State shape ────────────────────────────────────────────────────────
 
-export interface ChatState {
-  chatInput: string;
-  chatSending: boolean;
-  chatFirstTokenReceived: boolean;
-  chatLastUsage: ChatTurnUsage | null;
-  chatAvatarVisible: boolean;
-  chatAgentVoiceMuted: boolean;
-  chatAvatarSpeaking: boolean;
-  conversations: Conversation[];
-  activeConversationId: string | null;
-  companionMessageCutoffTs: number;
-  conversationMessages: ConversationMessage[];
-  autonomousEvents: StreamEventEnvelope[];
-  autonomousLatestEventId: string | null;
-  autonomousRunHealthByRunId: import("./autonomy").AutonomyRunHealthMap;
-  ptySessions: CodingAgentSession[];
-  unreadConversations: Set<string>;
-  chatPendingImages: ImageAttachment[];
-  chatReplyTarget: ChatReplyTarget | null;
-}
+export type ChatState = Pick<
+  AppState,
+  | "chatInput"
+  | "chatSending"
+  | "chatFirstTokenReceived"
+  | "chatLastUsage"
+  | "chatAvatarVisible"
+  | "chatAgentVoiceMuted"
+  | "chatAvatarSpeaking"
+  | "conversations"
+  | "activeConversationId"
+  | "companionMessageCutoffTs"
+  | "conversationMessages"
+  | "autonomousEvents"
+  | "autonomousLatestEventId"
+  | "autonomousRunHealthByRunId"
+  | "ptySessions"
+  | "unreadConversations"
+  | "chatPendingImages"
+  | "chatReplyTarget"
+>;
 
 function createInitialChatState(): ChatState {
   return {
@@ -534,5 +530,3 @@ export function useChatState(): ChatStateHook {
     autonomousReplayInFlightRef,
   };
 }
-
-export type { ChatAction as ChatDispatchAction };

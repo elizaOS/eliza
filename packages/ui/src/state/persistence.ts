@@ -517,12 +517,7 @@ function normalizeUiShellMode(_mode: unknown): UiShellMode {
 }
 
 export { normalizeUiShellMode };
-export function loadUiShellMode(): UiShellMode {
-  return tryLocalStorage(
-    () => normalizeUiShellMode(localStorage.getItem(UI_SHELL_MODE_STORAGE_KEY)),
-    "native",
-  );
-}
+
 export function saveUiShellMode(mode: UiShellMode): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -708,37 +703,7 @@ export async function replaceServerFavoriteApps(
     return null;
   }
 }
-/**
- * Toggle a single app's favorite state on the server. Returns the updated
- * list, or `null` if the request failed (caller should keep optimistic UI
- * state). Local cache is updated on success.
- */
-export async function toggleServerFavoriteApp(
-  appName: string,
-  isFavorite: boolean,
-): Promise<string[] | null> {
-  try {
-    const resp = await fetchWithCsrf("/api/apps/favorites", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appName, isFavorite }),
-    });
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as {
-      favoriteApps?: unknown;
-    };
-    const sanitized = sanitizeFavoriteApps(data.favoriteApps);
-    saveFavoriteApps(sanitized);
-    return sanitized;
-  } catch (err) {
-    // error-policy:J4 `null` is the documented failure signal — the caller
-    // keeps its optimistic UI state; the warn keeps a broken route observable.
-    logger.warn(
-      `[persistence] failed to toggle server favorite app: ${describePersistenceError(err)}`,
-    );
-    return null;
-  }
-}
+
 /* ── Recent apps persistence ──────────────────────────────────────────── */
 const RECENT_APPS_KEY = "eliza:recent-apps";
 /** Cap on persisted recency list. Older entries are evicted. */

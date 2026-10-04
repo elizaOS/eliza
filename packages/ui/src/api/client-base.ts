@@ -743,24 +743,7 @@ export function onNetworkStatusChange(
 export function generateChatClientMessageId(): string {
   return ElizaClient.generateMessageId();
 }
-/** Test-only: reset the cached network state. */
-export function __resetNetworkStatusForTests(): void {
-  lastKnownNetworkConnected = true;
-  networkStatusListeners.clear();
-}
-/** Test-only: read the last bridged network status. */
-export function __getLastKnownNetworkConnected(): boolean {
-  return lastKnownNetworkConnected;
-}
-/**
- * The last bridged connectivity state (`true` = the device reports a usable
- * network). Public counterpart to the test-only reader so the send path can
- * tell "we're offline" (worth waiting for reconnect to auto-retry) from "we're
- * online but the server 503'd / was slow" (surface the manual affordance now).
- */
-export function isNetworkCurrentlyConnected(): boolean {
-  return lastKnownNetworkConnected;
-}
+
 // ---------------------------------------------------------------------------
 // Dedicated-agent resume (HTTP 202) handling
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import type { ChatTurnUsage } from "./types";
 /**
  * Chat send callbacks — message sending and streaming operations.
  *
@@ -436,13 +437,7 @@ export interface UseChatSendDeps {
   /** Set/clear the live server-reported phase of the in-flight turn (#8813).
    *  Fed by the chat-send SSE `onStatus`; cleared when the turn settles. */
   setServerTurnStatus: (status: ChatTurnStatus | null) => void;
-  setChatLastUsage: (v: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    model: string | undefined;
-    updatedAt: number;
-  }) => void;
+  setChatLastUsage: (v: ChatTurnUsage) => void;
   setChatPendingImages: (v: ImageAttachment[]) => void;
   setConversations: (
     v: Conversation[] | ((prev: Conversation[]) => Conversation[]),

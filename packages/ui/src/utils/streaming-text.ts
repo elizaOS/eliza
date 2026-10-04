@@ -202,24 +202,3 @@ export type StreamingUpdateResult = {
   nextText: string;
   emittedText: string;
 };
-
-export function resolveStreamingUpdate(
-  existing: string,
-  incoming: string,
-): StreamingUpdateResult {
-  const merged = mergeStreamingText(existing, incoming);
-
-  if (merged === existing) {
-    return { kind: "unchanged", nextText: existing, emittedText: "" };
-  }
-
-  if (merged.startsWith(existing)) {
-    return {
-      kind: "append",
-      nextText: merged,
-      emittedText: merged.slice(existing.length),
-    };
-  }
-
-  return { kind: "replace", nextText: merged, emittedText: merged };
-}

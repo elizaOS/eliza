@@ -464,17 +464,28 @@ test("lost provider response and duplicate webhook settle exactly once", async (
     await context.addInitScript(
       ({ runtimeAgentId, apiBase, apiKey }) => {
         window.localStorage.setItem("eliza:first-run-complete", "1");
+        const profile = {
+          id: `cloud:${runtimeAgentId}`,
+          kind: "cloud",
+          label: "Billing replay projection E2E shared runtime",
+          apiBase,
+          accessToken: apiKey,
+          cloudAgentId: runtimeAgentId,
+          cloudRuntimeAgentId: runtimeAgentId,
+          cloudRuntime: "shared",
+          createdAt: Date.now(),
+        };
+        window.localStorage.setItem(
+          "elizaos:agent-profiles",
+          JSON.stringify({
+            version: 1,
+            activeProfileId: profile.id,
+            profiles: [profile],
+          }),
+        );
         window.localStorage.setItem(
           "elizaos:active-server",
-          JSON.stringify({
-            id: `cloud:${runtimeAgentId}`,
-            kind: "cloud",
-            label: "Billing replay projection E2E shared runtime",
-            apiBase,
-            accessToken: apiKey,
-            cloudRuntimeAgentId: runtimeAgentId,
-            cloudRuntime: "shared",
-          }),
+          JSON.stringify(profile),
         );
       },
       {
