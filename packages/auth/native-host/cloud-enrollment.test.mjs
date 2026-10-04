@@ -713,3 +713,204 @@ test("billing MFA completes before authority and unknown billing operations are 
   assert.ok(await f.auth.billingAuthority());
   await assert.rejects(f.auth.handle("billing-anything", {}), { status: 410 });
 });
+
+test("account inventory stays inside the private enrollment session and unlink clears it", async () => {
+  const privateToken = [
+    "header",
+    Buffer.from(
+      JSON.stringify({
+        exp: Math.floor(Date.now() / 1000) + 900,
+        mfaVerifiedAt: Date.now(),
+      }),
+    ).toString("base64url"),
+    "signature",
+  ].join(".");
+  const f = billingFixture({
+    token: privateToken,
+    fetch: (path, _body, init) => {
+      if (path === "/user/me/accounts") {
+        assert.equal(init.headers.Authorization, `Bearer ${privateToken}`);
+        return Response.json({
+          ok: true,
+          data: {
+            accounts: [
+              {
+                id: "linked-google",
+                provider: "google",
+                providerAccountId: "private-subject",
+              },
+            ],
+            primaryLoginMethods: [
+              { provider: "email", providerAccountId: "relative@example.com" },
+            ],
+          },
+        });
+      }
+      if (path === "/user/me/accounts/google/private-subject") {
+        assert.equal(init.method, "DELETE");
+        assert.equal(init.headers.Authorization, `Bearer ${privateToken}`);
+        return Response.json({
+          ok: true,
+          data: { deleted: true, issuedBefore: Math.floor(Date.now() / 1000) },
+        });
+      }
+    },
+  });
+  await assert.rejects(f.auth.handle("account-methods"), { status: 428 });
+  await billingVerify(f, await billingStart(f));
+  const review = await f.auth.handle("account-methods");
+  assert.equal(review.securityCheckRequired, false);
+  assert.ok(!JSON.stringify(review).includes("private-subject"));
+  assert.deepEqual(
+    await f.auth.handle("account-unlink", {
+      reviewId: review.reviewId,
+      methodId: "linked-google",
+    }),
+    { status: "removed", reauthenticationRequired: true },
+  );
+  assert.equal(await f.auth.billingAuthority(), null);
+  assert.equal(f.writes.length, 0);
+});
+
+test("cancel during linked-account observation discards the result and never dispatches unlink", async () => {
+  let started, release;
+  const seen = new Promise((resolve) => {
+      started = resolve;
+    }),
+    held = new Promise((resolve) => {
+      release = resolve;
+    });
+  const f = billingFixture({
+    fetch: async (path) => {
+      if (path === "/user/me/accounts") {
+        started();
+        await held;
+        return Response.json({
+          ok: true,
+          data: {
+            accounts: [],
+            primaryLoginMethods: [
+              { provider: "email", providerAccountId: "relative@example.com" },
+            ],
+          },
+        });
+      }
+    },
+  });
+  await billingVerify(f, await billingStart(f));
+  const read = f.auth.handle("account-methods");
+  const rejected = assert.rejects(read, { status: 409 });
+  await seen;
+  await assert.rejects(f.auth.handle("account-methods"), { status: 409 });
+  const cancelled = f.auth.cancel();
+  release();
+  await rejected;
+  await cancelled;
+  assert.equal(await f.auth.billingAuthority(), null);
+  assert.equal(
+    f.calls.filter((call) => call.init.method === "DELETE").length,
+    0,
+  );
+});
+
+for (const mismatch of [false, true])
+  test(`account security replacement is private and account-bound: mismatch=${mismatch}`, async () => {
+    const replacement = [
+      "header",
+      Buffer.from(
+        JSON.stringify({
+          exp: Math.floor(Date.now() / 1000) + 900,
+          mfaVerifiedAt: Date.now(),
+        }),
+      ).toString("base64url"),
+      "replacement",
+    ].join(".");
+    const f = billingFixture({
+      fetch: (path, _body, init) => {
+        if (path === "/auth/mfa/totp/status")
+          return Response.json({ ok: true, enabled: true });
+        if (path === "/auth/mfa/totp/step-up")
+          return Response.json({ ok: true, token: replacement });
+        if (
+          path === "/api/v1/user" &&
+          init.headers.Authorization === `Bearer ${replacement}`
+        )
+          return Response.json({
+            success: true,
+            ...ACCOUNT,
+            ...(mismatch ? { id: "different-account" } : {}),
+          });
+      },
+    });
+    await billingVerify(f, await billingStart(f));
+    const step = await f.auth.handle("account-security-start", {
+      method: "totp",
+    });
+    const operation = f.auth.handle("account-security-verify", {
+      sessionId: step.sessionId,
+      code: "123456",
+    });
+    if (mismatch) {
+      await assert.rejects(operation, {
+        code: "account_verification_mismatch",
+      });
+      assert.equal(await f.auth.billingAuthority(), null);
+    } else {
+      const result = await operation;
+      assert.deepEqual(result, { status: "verified" });
+      assert.equal((await f.auth.billingAuthority()).token, replacement);
+      assert.ok(!JSON.stringify(result).includes(replacement));
+    }
+    assert.equal(f.writes.length, 0);
+  });
+test("cancellation during security token account verification cannot restore authority", async () => {
+  let started, release;
+  const seen = new Promise((resolve) => {
+      started = resolve;
+    }),
+    held = new Promise((resolve) => {
+      release = resolve;
+    });
+  const replacement = [
+    "header",
+    Buffer.from(
+      JSON.stringify({
+        exp: Math.floor(Date.now() / 1000) + 900,
+        mfaVerifiedAt: Date.now(),
+      }),
+    ).toString("base64url"),
+    "replacement",
+  ].join(".");
+  const f = billingFixture({
+    fetch: async (path, _body, init) => {
+      if (path === "/auth/mfa/totp/status")
+        return Response.json({ ok: true, enabled: true });
+      if (path === "/auth/mfa/totp/step-up")
+        return Response.json({ ok: true, token: replacement });
+      if (
+        path === "/api/v1/user" &&
+        init.headers.Authorization === `Bearer ${replacement}`
+      ) {
+        started();
+        await held;
+        return Response.json({ success: true, ...ACCOUNT });
+      }
+    },
+  });
+  await billingVerify(f, await billingStart(f));
+  const step = await f.auth.handle("account-security-start", {
+    method: "totp",
+  });
+  const operation = f.auth.handle("account-security-verify", {
+    sessionId: step.sessionId,
+    code: "123456",
+  });
+  const rejected = assert.rejects(operation, { status: 409 });
+  await seen;
+  const cancelled = f.auth.cancel();
+  release();
+  await rejected;
+  await cancelled;
+  assert.equal(await f.auth.billingAuthority(), null);
+  assert.equal(f.writes.length, 0);
+});
