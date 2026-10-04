@@ -1,10 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { NativeCloudServiceError } from "./errors.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
+import { projectRenewalReview } from "./subscription-review.mjs";
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
@@ -124,6 +125,103 @@ export function projectCheckout(data, presentation, forget) {
       : {}),
   };
 }
+/** Narrow management review; the server remains the mutation authority. */
+export function projectSubscriptionManagement(
+  envelope,
+  planKeys,
+  now = Date.now(),
+) {
+  const invalid = () => {
+    throw fail("Subscription management is unavailable", 502);
+  };
+  const v = envelope?.data?.v2;
+  const observed = Date.parse(v?.snapshotCompletedAt);
+  if (
+    envelope?.success !== true ||
+    !Number.isFinite(observed) ||
+    observed > now + 300000 ||
+    now - observed > 60000
+  )
+    return invalid();
+  const block = v.subscription;
+  if (
+    block?.status === "not_applicable" &&
+    block.reason === "no_organization_subscription"
+  )
+    return { status: "not_applicable", observedAt: v.snapshotCompletedAt };
+  if (block?.status !== "available") return invalid();
+  const sub = block.value,
+    control = sub?.cancellationControl;
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const blockers = [
+    "interactive_session_required",
+    "billing_account_ineligible",
+    "owner_or_admin_role_required",
+    "subscription_state_unsupported",
+  ];
+  const periodEnd = Date.parse(sub?.currentPeriodEnd);
+  if (
+    !sub ||
+    typeof sub.subscriptionId !== "string" ||
+    !uuid.test(sub.subscriptionId) ||
+    !planKeys.includes(sub.planKey) ||
+    ![
+      "pending",
+      "incomplete",
+      "active",
+      "grace",
+      "past_due",
+      "unpaid",
+      "canceled",
+      "incomplete_expired",
+    ].includes(sub.state) ||
+    !Number.isFinite(periodEnd) ||
+    typeof sub.cancelAtPeriodEnd !== "boolean" ||
+    !control ||
+    control.subscriptionId !== sub.subscriptionId ||
+    control.action !== (sub.cancelAtPeriodEnd ? "undo" : "cancel") ||
+    control.method !== "POST" ||
+    control.endpoint !==
+      `/api/v1/subscriptions/cancel${control.action === "undo" ? "/undo" : ""}` ||
+    !Number.isSafeInteger(control.expectedSubscriptionRevision) ||
+    control.expectedSubscriptionRevision <= 0 ||
+    !Array.isArray(control.blockers) ||
+    control.blockers.some((x) => !blockers.includes(x)) ||
+    new Set(control.blockers).size !== control.blockers.length ||
+    control.eligible !== (control.blockers.length === 0) ||
+    (control.eligible &&
+      (sub.state !== "active" ||
+        periodEnd <= now ||
+        sub.pendingPlanKey !== null ||
+        sub.dunningStartedAt !== null ||
+        sub.graceExpiresAt !== null))
+  )
+    return invalid();
+  return {
+    status: "available",
+    observedAt: v.snapshotCompletedAt,
+    expiresAt: new Date(
+      Math.min(
+        observed + 60000,
+        periodEnd > now ? periodEnd : observed + 60000,
+      ),
+    ).toISOString(),
+    subscription: {
+      id: sub.subscriptionId,
+      planKey: sub.planKey,
+      status: sub.state,
+      periodEnd: sub.currentPeriodEnd,
+      cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+    },
+    control: {
+      action: control.action,
+      revision: control.expectedSubscriptionRevision,
+      eligible: control.eligible,
+      blockers: [...control.blockers],
+    },
+  };
+}
 /** Narrow Cloud services for a locally owned agent. Never provisions a Cloud runtime. */
 export function createCloudRoutes({
   fetchImpl = fetch,
@@ -203,7 +301,9 @@ export function createCloudRoutes({
       } catch {
         throw fail(message("savedSignInNeedsAccountRecovery"), 409);
       }
-      if (saved.kind === "revocation")
+      // A JSON-null or primitive journal carries no revocation to apply; the
+      // per-request readers treat the same bytes as benign ("/cloud/status").
+      if (saved?.kind === "revocation")
         await mutateCredential(() => store.clear());
     }
   })();
@@ -217,7 +317,7 @@ export function createCloudRoutes({
       } catch {
         throw fail(message("savedSignInNeedsAccountRecovery"), 409);
       }
-      if (saved.kind === "revocation")
+      if (saved?.kind === "revocation")
         throw fail(message("finishDisconnectingBeforeUsingCloudServices"), 401);
     }
     return store.read();
@@ -323,8 +423,18 @@ export function createCloudRoutes({
     await credentialWrites;
     const pending = await pendingCredentialStore?.read();
     current(epoch);
-    if (pending && JSON.parse(pending).kind === "revocation")
-      return { state: "signed_out", disconnectPending: true };
+    if (pending) {
+      let saved;
+      try {
+        saved = JSON.parse(pending);
+      } catch {
+        // error-policy:J3 an unparseable saved sign-in is an explicit invalid
+        // state (account recovery), never a fake-valid default or an outage.
+        throw fail(message("savedSignInNeedsAccountRecovery"), 409);
+      }
+      if (saved?.kind === "revocation")
+        return { state: "signed_out", disconnectPending: true };
+    }
     const key = await usableCredential();
     current(epoch);
     if (!key) return { state: "signed_out" };
@@ -436,6 +546,27 @@ export function createCloudRoutes({
         });
         return true;
       }
+      // Auth owns sign-in factors; keep this transport separate from Google
+      // connector consent and never forward caller-supplied authority or URLs.
+      const accountMethods = {
+        "/cloud/account/methods": "account-methods",
+        "/cloud/account/methods/unlink": "account-unlink",
+        "/cloud/account/methods/phone/start": "account-phone-start",
+        "/cloud/account/methods/phone/verify": "account-phone-verify",
+        "/cloud/account/security/status": "account-security-status",
+        "/cloud/account/security/enroll/start": "account-security-enroll-start",
+        "/cloud/account/security/enroll/verify":
+          "account-security-enroll-verify",
+        "/cloud/account/security/start": "account-security-start",
+        "/cloud/account/security/verify": "account-security-verify",
+      };
+      if (method === "POST" && Object.hasOwn(accountMethods, path)) {
+        if (!nativeAuth?.handle)
+          throw fail("Sign-in management is unavailable", 503);
+        const input = await body(req, 4096);
+        send(res, 200, await nativeAuth.handle(accountMethods[path], input));
+        return true;
+      }
       // Billing uses a short-lived signed-in session held only by the native
       // enrollment host; the inference key is never sent to billing routes.
       const billingMatch = path.match(
@@ -455,6 +586,297 @@ export function createCloudRoutes({
           res,
           200,
           await nativeAuth.handle(`billing-${billingMatch[1]}`, input),
+        );
+        return true;
+      }
+      if (method === "POST" && path === "/cloud/account/portal") {
+        const input = await body(req, 4096);
+        if (Object.keys(input).length)
+          throw fail("Unexpected billing management fields");
+        const authorityGeneration = generation;
+        const authority = await currentBillingAuthority(authorityGeneration);
+        if (!authority) {
+          send(res, 428, {
+            error: message("confirmItSYouBeforePaying"),
+            code: "billing_verification_required",
+          });
+          return true;
+        }
+        const result = await parse(
+          await request("/api/v1/subscriptions/portal", {
+            method: "POST",
+            json: {},
+            key: authority.token,
+            authorityGeneration,
+            signal,
+          }),
+        );
+        current(authorityGeneration);
+        const value = result?.data ?? result;
+        let destination;
+        try {
+          destination = new URL(value?.url);
+        } catch {
+          throw fail("Invalid billing management address", 502);
+        }
+        if (
+          destination.origin !== "https://billing.stripe.com" ||
+          destination.username ||
+          destination.password ||
+          !destination.pathname.startsWith("/p/session/")
+        )
+          throw fail("Invalid billing management address", 502);
+        send(res, 200, { url: destination.href });
+        return true;
+      }
+      const lifecycle = path.match(
+        /^\/cloud\/account\/subscription\/(cancel|undo|status|pending|renewal-review)$/,
+      );
+      if (method === "POST" && lifecycle) {
+        const input = await body(req, 4096),
+          operation = lifecycle[1];
+        const uuid =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const isId = (value) => typeof value === "string" && uuid.test(value);
+        const mutation = operation === "cancel" || operation === "undo";
+        const reviewRead = operation === "renewal-review";
+        const fields = mutation
+          ? [
+              "subscriptionId",
+              "revision",
+              "retryOf",
+              ...(operation === "undo" ? ["expectedRenewalTermsDigest"] : []),
+            ]
+          : reviewRead
+            ? ["subscriptionId", "revision"]
+            : operation === "status"
+              ? ["action", "commandId"]
+              : ["cursor"];
+        if (
+          Object.keys(input).some((key) => !fields.includes(key)) ||
+          ((mutation || reviewRead) &&
+            (!isId(input.subscriptionId) ||
+              !Number.isSafeInteger(input.revision) ||
+              input.revision <= 0 ||
+              (input.retryOf !== undefined && !isId(input.retryOf)))) ||
+          (operation === "undo" &&
+            (typeof input.expectedRenewalTermsDigest !== "string" ||
+              !/^[a-f0-9]{64}$/.test(input.expectedRenewalTermsDigest))) ||
+          (operation === "status" &&
+            (!["cancel", "undo"].includes(input.action) ||
+              !isId(input.commandId))) ||
+          (operation === "pending" &&
+            input.cursor !== undefined &&
+            (typeof input.cursor !== "string" ||
+              !/^[A-Za-z0-9_-]{1,1024}$/.test(input.cursor)))
+        )
+          throw fail("Invalid subscription command");
+        const authorityGeneration = generation;
+        const authority = await currentBillingAuthority(authorityGeneration);
+        if (!authority) {
+          send(res, 428, {
+            error: message("confirmItSYouBeforePaying"),
+            code: "billing_verification_required",
+          });
+          return true;
+        }
+        const options = { key: authority.token, authorityGeneration, signal };
+        const revision = (value) =>
+          typeof value === "string" &&
+          /^[1-9][0-9]*$/.test(value) &&
+          Number.isSafeInteger(Number(value));
+        const project = (value) => {
+          if (
+            !value ||
+            !isId(value.commandId) ||
+            !isId(value.subscriptionId) ||
+            ![
+              "PREPARED",
+              "OUTCOME_UNKNOWN",
+              "APPLIED",
+              "FAILED",
+              "SUPERSEDED",
+            ].includes(value.status) ||
+            !revision(value.expectedSubscriptionRevision) ||
+            !(
+              value.resultSubscriptionRevision === null ||
+              revision(value.resultSubscriptionRevision)
+            )
+          )
+            throw fail("Subscription command status is unavailable", 502);
+          return {
+            commandId: value.commandId,
+            subscriptionId: value.subscriptionId,
+            status: value.status,
+            revision: value.expectedSubscriptionRevision,
+            resultRevision: value.resultSubscriptionRevision,
+          };
+        };
+        if (reviewRead) {
+          const result = await parse(
+            await request(
+              `/api/v1/subscriptions/cancel/undo/review?subscriptionId=${encodeURIComponent(input.subscriptionId)}&expectedSubscriptionRevision=${input.revision}`,
+              options,
+            ),
+          );
+          const review = projectRenewalReview(result?.data, hostPolicy);
+          if (
+            review.subscriptionId !== input.subscriptionId ||
+            review.expectedSubscriptionRevision !== String(input.revision)
+          )
+            throw fail("Subscription renewal review is unavailable", 502);
+          current(authorityGeneration);
+          send(res, 200, review);
+        } else if (mutation) {
+          const review = projectSubscriptionManagement(
+            await parse(await request("/api/v1/billing/limits", options)),
+            hostPolicy.planKeys,
+          );
+          if (
+            review.status !== "available" ||
+            !review.control.eligible ||
+            review.control.action !== operation ||
+            review.subscription.id !== input.subscriptionId ||
+            review.control.revision !== input.revision
+          )
+            throw fail(
+              "Your subscription changed. Review it again before continuing.",
+              409,
+            );
+          if (input.retryOf !== undefined) {
+            const previous = project(
+              (
+                await parse(
+                  await request(
+                    `/api/v1/subscriptions/cancel${operation === "undo" ? "/undo" : ""}/${input.retryOf}`,
+                    options,
+                  ),
+                )
+              )?.data,
+            );
+            if (
+              previous.commandId !== input.retryOf ||
+              previous.subscriptionId !== input.subscriptionId ||
+              previous.revision !== String(input.revision) ||
+              previous.status !== "FAILED"
+            )
+              throw fail(
+                "The previous change is not confirmed failed. Check its status before retrying.",
+                409,
+              );
+          }
+          // Stable across restarts, tokens and retries. The server revalidates the
+          // organization, actor and revision and owns durable command execution.
+          const idempotencyKey =
+            "native-lifecycle-v1-" +
+            createHash("sha256")
+              .update(
+                `${input.subscriptionId}:${input.revision}:${operation}${operation === "undo" ? ":terms:" + input.expectedRenewalTermsDigest : ""}${input.retryOf ? ":retry:" + input.retryOf : ""}`,
+              )
+              .digest("hex");
+          const result = await parse(
+            await request(
+              `/api/v1/subscriptions/cancel${operation === "undo" ? "/undo/confirm" : ""}`,
+              {
+                ...options,
+                method: "POST",
+                json: {
+                  subscriptionId: input.subscriptionId,
+                  expectedSubscriptionRevision: input.revision,
+                  idempotencyKey,
+                  ...(operation === "undo"
+                    ? {
+                        expectedRenewalTermsDigest:
+                          input.expectedRenewalTermsDigest,
+                      }
+                    : {}),
+                },
+              },
+            ),
+          );
+          const command = project(result?.data);
+          if (
+            command.subscriptionId !== input.subscriptionId ||
+            command.revision !== String(input.revision)
+          )
+            throw fail("Subscription command status is unavailable", 502);
+          current(authorityGeneration);
+          send(res, 200, command);
+        } else if (operation === "status") {
+          const result = await parse(
+            await request(
+              `/api/v1/subscriptions/cancel${input.action === "undo" ? "/undo" : ""}/${input.commandId}`,
+              options,
+            ),
+          );
+          const command = project(result?.data);
+          if (command.commandId !== input.commandId)
+            throw fail("Subscription command status is unavailable", 502);
+          current(authorityGeneration);
+          send(res, 200, command);
+        } else {
+          const result = await parse(
+            await request(
+              `/api/v1/subscriptions/commands?limit=20${input.cursor ? "&cursor=" + encodeURIComponent(input.cursor) : ""}`,
+              options,
+            ),
+          );
+          const page = result?.data;
+          if (
+            !page ||
+            !Number.isFinite(Date.parse(page.observedAt)) ||
+            !Array.isArray(page.items) ||
+            page.items.length > 20 ||
+            !(
+              page.nextCursor === null ||
+              (typeof page.nextCursor === "string" &&
+                /^[A-Za-z0-9_-]{1,1024}$/.test(page.nextCursor))
+            )
+          )
+            throw fail("Subscription recovery is unavailable", 502);
+          const items = page.items.map((item) => {
+            if (
+              !["cancel", "resume"].includes(item.kind) ||
+              !["PREPARED", "OUTCOME_UNKNOWN"].includes(item.status)
+            )
+              throw fail("Subscription recovery is unavailable", 502);
+            return {
+              ...project({ ...item, resultSubscriptionRevision: null }),
+              action: item.kind === "resume" ? "undo" : "cancel",
+            };
+          });
+          current(authorityGeneration);
+          send(res, 200, {
+            observedAt: page.observedAt,
+            items,
+            nextCursor: page.nextCursor,
+          });
+        }
+        return true;
+      }
+      if (method === "GET" && path === "/cloud/account/management") {
+        const authorityGeneration = generation;
+        const authority = await currentBillingAuthority(authorityGeneration);
+        if (!authority) {
+          send(res, 428, {
+            error: message("confirmItSYouBeforePaying"),
+            code: "billing_verification_required",
+          });
+          return true;
+        }
+        const result = await parse(
+          await request("/api/v1/billing/limits", {
+            method: "GET",
+            key: authority.token,
+            authorityGeneration,
+            signal,
+          }),
+        );
+        current(authorityGeneration);
+        send(
+          res,
+          200,
+          projectSubscriptionManagement(result, hostPolicy.planKeys),
         );
         return true;
       }

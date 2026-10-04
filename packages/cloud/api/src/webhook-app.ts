@@ -7,16 +7,16 @@
  * router or unrelated database, OAuth, audit, and product services.
  */
 
-import { Hono } from "hono";
-import { requestId } from "hono/request-id";
-import { secureHeaders } from "hono/secure-headers";
 import {
   getIpKey,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { httpTelemetryMiddleware } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { requestId } from "hono/request-id";
+import { secureHeaders } from "hono/secure-headers";
 import blooioWebhook from "../eliza-app/webhook/blooio/route";
 import discordWebhook from "../eliza-app/webhook/discord/route";
 import telegramWebhook from "../eliza-app/webhook/telegram/route";

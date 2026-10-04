@@ -14,7 +14,6 @@
         "../../plugins/plugin-wallet/dist/ui/index.d.ts"
       ],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
-      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "@elizaos/plugin-native-settings/register": [
         "../../plugins/plugin-native-settings/src/register.ts"
       ],

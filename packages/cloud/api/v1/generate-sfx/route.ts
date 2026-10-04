@@ -8,6 +8,37 @@
  * influence, no lyrics) and their own pricing family ("sfx").
  */
 
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getAudioProvider } from "@elizaos/cloud-shared/lib/providers/audio/registry";
+import type { GeneratedAudio } from "@elizaos/cloud-shared/lib/providers/audio/types";
+import {
+  type BillingContext,
+  billFlatUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { calculateSfxGenerationCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import {
+  getSupportedSfxModelDefinition,
+  SUPPORTED_SFX_MODEL_IDS,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import {
+  assertGeneratedMediaStorageHeadroom,
+  discardGeneratedMediaObject,
+  putGeneratedMediaObject,
+  type StoredGeneratedMedia,
+} from "@elizaos/cloud-shared/lib/storage/generated-media-storage";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppEnv,
+  Bindings,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -17,28 +48,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { getAudioProvider } from "@/lib/providers/audio/registry";
-import type { GeneratedAudio } from "@/lib/providers/audio/types";
-import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
-import { calculateSfxGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
-import {
-  getSupportedSfxModelDefinition,
-  SUPPORTED_SFX_MODEL_IDS,
-} from "@/lib/services/ai-pricing-definitions";
-import { contentSafetyService } from "@/lib/services/content-safety";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { generationsService } from "@/lib/services/generations";
-import {
-  assertGeneratedMediaStorageHeadroom,
-  discardGeneratedMediaObject,
-  putGeneratedMediaObject,
-  type StoredGeneratedMedia,
-} from "@/lib/storage/generated-media-storage";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 
 const DEFAULT_SFX_MODEL = "elevenlabs/sound_effects_v1";
 const MAX_PROMPT_LENGTH = 500;

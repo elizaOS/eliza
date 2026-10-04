@@ -14,7 +14,7 @@ import type {
   MobilePushTokenRecord,
 } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
-import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
 import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";

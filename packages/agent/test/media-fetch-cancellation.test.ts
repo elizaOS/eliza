@@ -4,14 +4,48 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { AgentRuntime, runWithStreamingContext } from "@elizaos/core";
 import { expect, it, vi } from "vitest";
 import { saveElizaConfig } from "../src/config/config.ts";
 import { fetchWithTimeout } from "../src/providers/media-provider.ts";
 import { AgentMediaGenerationService } from "../src/services/media-generation.ts";
 
+it("allows a caller-owned body to complete after the former shared deadline", async () => {
+  let release: (() => void) | undefined;
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.write('{"complete":');
+    release = () => res.end("true}");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("No port");
+  const controller = new AbortController();
+  try {
+    const response = await fetchWithTimeout(
+      `http://127.0.0.1:${address.port}`,
+      { signal: controller.signal },
+    );
+    const body = response.text().then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await delay(31_000);
+    release?.();
+    expect(await body).toEqual({ value: '{"complete":true}' });
+  } finally {
+    controller.abort();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections();
+    });
+  }
+}, 60_000);
+
 it.each(["deadline", "caller"])(
-  "cancels response body reads after headers (%s)",
+  "cancels a pending HTTP response (%s)",
   async (mode) => {
     const server = http.createServer((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
@@ -23,20 +57,28 @@ it.each(["deadline", "caller"])(
     if (!address || typeof address === "string") throw new Error("No port");
     try {
       const controller = new AbortController();
-      const response = await fetchWithTimeout(
+      const pending = fetchWithTimeout(
         `http://127.0.0.1:${address.port}`,
         { signal: controller.signal },
-        mode === "deadline" ? 250 : 10_000,
+        mode === "deadline" ? 250 : undefined,
       );
-      expect(response.status).toBe(200);
-      const body = response.text();
-      if (mode === "caller") controller.abort();
-      await expect(body).rejects.toThrow();
+      if (mode === "deadline") {
+        // The selected deadline covers both headers and the stalled body.
+        await expect(
+          pending.then((response) => response.text()),
+        ).rejects.toThrow();
+      } else {
+        const response = await pending;
+        expect(response.status).toBe(200);
+        const body = response.text();
+        controller.abort();
+        await expect(body).rejects.toThrow();
+      }
     } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeAllConnections();
+      });
     }
   },
 );
@@ -129,10 +171,10 @@ it.each(["success", "caller", "runtime"] as const)(
     } finally {
       await runtime.stop();
       vi.unstubAllEnvs();
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeAllConnections();
+      });
       fs.rmSync(directory, { recursive: true, force: true });
     }
   },

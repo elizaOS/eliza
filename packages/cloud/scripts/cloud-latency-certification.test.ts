@@ -1,9 +1,10 @@
 /**
  * Deterministic contract tests for exact-SHA latency evidence validation and
- * private raw Worker Tail lifecycle; no network or provider calls are made.
+ * private raw Worker Tail lifecycle; HTTP tests use only a local loopback server.
  */
 
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { existsSync } from "node:fs";
 import {
   mkdir,
@@ -14,16 +15,19 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
   extractBoundedChildFailure,
+  InferenceAuthPhaseFailure,
   parseCertificationArgs,
   requireAuthSecrets,
   requirePairedSecrets,
   requireTraceSecrets,
+  retainAuthFailure,
   runTraces,
   validateAuthEvidence,
   validatePairedEvidence,
@@ -32,7 +36,112 @@ import {
   withPrivateTraceDirectory,
 } from "./cloud-latency-certification.ts";
 
+import {
+  AuthProbeHttpStatusError,
+  probeAuthSample,
+} from "./inference-auth-latency.ts";
+
 const SHA = "a".repeat(40);
+
+test("actual HTTP auth denial retains only a closed phase and status receipt", async () => {
+  const privateKey = "fixture-key-must-not-be-retained";
+  const privateToken = "fixture-token-must-not-be-retained";
+  const privateBody = "private upstream response must not be retained";
+  const server = createServer((request, response) => {
+    assert.equal(request.url, "/api/v1/chat/completions");
+    assert.equal(request.headers["x-api-key"], privateKey);
+    response.writeHead(403, { "x-private-header": privateToken });
+    response.end(privateBody);
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const directory = await mkdtemp(join(tmpdir(), "auth-phase-receipt-"));
+  try {
+    let actualFailure: unknown;
+    try {
+      await probeAuthSample({
+        baseUrl: `http://127.0.0.1:${server.address().port}`,
+        apiKey: privateKey,
+        probeToken: privateToken,
+        deploySha: SHA,
+        phase: "prime",
+        sequence: 0,
+        timeoutMs: 5_000,
+      });
+    } catch (cause) {
+      actualFailure = cause;
+    }
+    assert.ok(actualFailure instanceof AuthProbeHttpStatusError);
+    const failure = new InferenceAuthPhaseFailure(
+      "tail_readiness",
+      actualFailure,
+    );
+    await retainAuthFailure(directory, failure);
+    const receipt = await readFile(
+      join(directory, "auth-failure.json"),
+      "utf8",
+    );
+    assert.deepEqual(JSON.parse(receipt), {
+      kind: "inference_auth_phase_failure",
+      phase: "tail_readiness",
+      category: "unexpected_http_status",
+      httpStatus: 403,
+    });
+    assert.equal(failure.cause, actualFailure);
+    for (const privateValue of [
+      privateKey,
+      privateToken,
+      privateBody,
+      actualFailure.message,
+    ]) {
+      assert.ok(!receipt.includes(privateValue));
+    }
+    assert.equal(
+      (await stat(join(directory, "auth-failure.json"))).mode & 0o777,
+      0o600,
+    );
+    await assert.rejects(() => retainAuthFailure(directory, failure), {
+      code: "EEXIST",
+    });
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("unknown and teardown failures retain causes privately without publishing them", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "auth-phase-receipt-"));
+  const original = new Error("private original request credentials");
+  const teardown = new Error("private Tail bytes");
+  const aggregate = new AggregateError([original, teardown]);
+  const failure = new InferenceAuthPhaseFailure("tail_teardown", aggregate);
+  try {
+    await retainAuthFailure(directory, failure);
+    const receipt = await readFile(
+      join(directory, "auth-failure.json"),
+      "utf8",
+    );
+    assert.deepEqual(JSON.parse(receipt), {
+      kind: "inference_auth_phase_failure",
+      phase: "tail_teardown",
+      category: "phase_failed",
+      httpStatus: null,
+    });
+    assert.deepEqual(failure.cause.errors, [original, teardown]);
+    assert.ok(!receipt.includes(original.message));
+    assert.ok(!receipt.includes(teardown.message));
+    await rm(join(directory, "auth-failure.json"));
+    await retainAuthFailure(directory, original);
+    assert.equal(
+      JSON.parse(await readFile(join(directory, "auth-failure.json"), "utf8"))
+        .phase,
+      "unknown",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("intentional targeted placement admits remote headers without relaxing proof or identity checks", () => {
   const policy = { mode: "targeted", region: "gcp:us-west2", deploySha: SHA };
@@ -60,6 +169,8 @@ test("intentional targeted placement admits remote headers without relaxing proo
     /placement policy/,
   );
   for (const change of [
+    { temperature: 1 },
+    { temperature: undefined },
     { proofMatched: false },
     { transportOk: false },
     { ci: { sha: "b".repeat(40), gatewayDeploySha: SHA } },
@@ -98,6 +209,7 @@ function pairedRecord(index, overrides = {}) {
     ok: true,
     transportOk: true,
     proofMatched: true,
+    temperature: 0,
     ci: { sha: SHA, gatewayDeploySha: SHA },
     headers: index % 2 === 0 ? {} : { "cf-placement": "local-ORD" },
     ...overrides,

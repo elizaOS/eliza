@@ -127,7 +127,8 @@ jobs:
           - partition: agent
             filter: ^@elizaos/agent \(packages/agent\)#test$
           - partition: remaining
-            filter: ^(?!@elizaos/agent \(packages/agent\)#test$)
+            # OS verification owns the Linux installer tests.
+            filter: ^(?!@elizaos/agent \(packages/agent\)#test$|@elizaos/linux-installer-plan )
     env:
       TEST_PACKAGE_FILTER: ${{ matrix.filter }}
       PGLITE_WASM_MODE: node
@@ -212,8 +213,8 @@ jobs:
       - name: Install browser for client integration tests
         run: bunx playwright install --with-deps chromium
       - name: Client tests
-        # The plugin matrix owns the same personal-assistant test command.
-        run: bun run test:client --filter='^(?!@elizaos/plugin-personal-assistant )'
+        # The plugin matrix owns personal-assistant; OS verification owns installers.
+        run: bun run test:client --filter='^(?!@elizaos/(?:plugin-personal-assistant|os|setup|os-usb-installer) )'
   tests_plugins:
     name: Plugin Tests (${{ matrix.shard }}/4)
     needs: preflight
@@ -286,6 +287,7 @@ jobs:
       - quality
       - tests
       - tests_server
+      - tests_auth_integration
       - tests_client
       - tests_plugins
       - preflight
@@ -307,6 +309,7 @@ jobs:
             quality=${{ needs.quality.result }}
             tests=${{ needs.tests.result }}
             tests_server=${{ needs.tests_server.result }}
+            tests_auth_integration=${{ needs.tests_auth_integration.result }}
             tests_client=${{ needs.tests_client.result }}
             tests_plugins=${{ needs.tests_plugins.result }}
             preflight=${{ needs.preflight.result }}

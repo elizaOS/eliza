@@ -1817,16 +1817,27 @@ export const identityEvaluator: Evaluator<
 };
 
 function renderSuccessPromptSegments({
+  runtime,
+  message,
   prepared,
   options,
   shared,
 }: {
+  runtime: IAgentRuntime;
+  message: Memory;
   prepared: SuccessPrepared;
   options: EvaluatorRunOptions;
   shared?: EvaluatorSharedPromptContext;
 }): PromptSegment[] {
   const actionResultsText = renderActionResultsForModel(
     prepared.actionResults,
+    {
+      postTurn: {
+        agentId: runtime.agentId,
+        message,
+        responses: options.responses ?? [],
+      },
+    },
   ).text;
   const actionResultsSection =
     shared?.actionResultsText === actionResultsText

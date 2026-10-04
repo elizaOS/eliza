@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { createNativeAccountMethods } from "./account-methods.mjs";
 
 const fail = (message, status = 400, code) =>
   Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
@@ -84,7 +85,8 @@ export function createNativeCloudAuth({
     throw new TypeError("Invalid application callback");
   binding = Object.freeze({ ...binding });
   const message = (key, fallback) => messages[key] ?? fallback;
-  let attempt = null,
+  let accountMethods,
+    attempt = null,
     billingAttempt = null,
     billing = null,
     busy = false,
@@ -96,10 +98,10 @@ export function createNativeCloudAuth({
     if (ticket !== epoch)
       throw fail(message("error1", "Sign-in cancelled. Start again."), 409);
   };
-  async function call(base, path, input, token, ticket) {
+  async function call(base, path, input, token, ticket, method) {
     check(ticket);
     const response = await fetchImpl(base + path, {
-      method: input === undefined ? "GET" : "POST",
+      method: method ?? (input === undefined ? "GET" : "POST"),
       redirect: "error",
       signal: AbortSignal.timeout(30000),
       headers: {
@@ -134,6 +136,15 @@ export function createNativeCloudAuth({
             "This sign-in needs an additional account check. Use account recovery or contact support.",
           ),
           403,
+        );
+      if (
+        response.status === 409 &&
+        (path.startsWith("/user/me/accounts") || path.startsWith("/auth/mfa/"))
+      )
+        throw fail(
+          "The account changed or this method cannot be linked. Review your sign-in methods again.",
+          409,
+          "account_method_conflict",
         );
       throw fail(
         message("error5", "Account service is unavailable. Please try again."),
@@ -183,6 +194,7 @@ export function createNativeCloudAuth({
     };
   }
   const clearBilling = () => {
+    accountMethods?.reset();
     billing = null;
     billingAttempt = null;
   };
@@ -461,6 +473,40 @@ export function createNativeCloudAuth({
       expiresAt: new Date(held.expiresAt).toISOString(),
     };
   }
+  async function replaceAccountAuthority(token, expectedToken, ticket) {
+    const held = await currentBilling();
+    check(ticket);
+    if (!held || held.token !== expectedToken)
+      throw fail("Account session changed", 409);
+    const active = await readActive();
+    check(ticket);
+    const original = await account(active, ticket),
+      replacement = await account(token, ticket);
+    const latest = await currentBilling();
+    check(ticket);
+    if (
+      !latest ||
+      latest.token !== expectedToken ||
+      original.id !== replacement.id ||
+      original.organizationId !== replacement.organizationId
+    ) {
+      clearBilling();
+      throw fail(
+        "Account security check did not match the connected account",
+        409,
+        "account_verification_mismatch",
+      );
+    }
+    if (!retainBilling(token, active))
+      throw fail("Account security check expired", 410);
+  }
+  accountMethods = createNativeAccountMethods({
+    getAuthority: currentBilling,
+    clearAuthority: clearBilling,
+    replaceAuthority: replaceAccountAuthority,
+    request: (path, input, token, method, ticket) =>
+      call(auth, path, input, token, ticket, method),
+  });
   async function finish(ticket, pending, session) {
     if (!validTime(pending.acknowledgeBy))
       throw fail(message("error9", "Sign-in expired. Start again."), 410);
@@ -738,6 +784,8 @@ export function createNativeCloudAuth({
       });
       const ticket = epoch;
       try {
+        if (typeof operation === "string" && operation.startsWith("account-"))
+          return await accountMethods.handle(operation, input, ticket);
         if (BILLING_OPERATIONS.includes(operation))
           return await billingOperation(operation, input, ticket);
         if (operation === "config") return await config(ticket);

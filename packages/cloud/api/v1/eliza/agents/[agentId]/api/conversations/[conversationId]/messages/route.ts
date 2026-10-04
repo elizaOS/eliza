@@ -4,24 +4,31 @@
  * Scope authorization and conversation execution are cache-only through the
  * shared Durable Object; cold hydration returns retryable unavailability.
  */
-import { Hono } from "hono";
-import { InsufficientCreditsError, RateLimitError } from "@/lib/api/errors";
+
+import {
+  InsufficientCreditsError,
+  RateLimitError,
+} from "@elizaos/cloud-shared/lib/api/errors";
 import {
   personalDirectChatRefusalResponse,
   resolveSharedSurfaceTarget,
-} from "@/lib/services/personal-direct-chat-route";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import { sharedTurnClientMessageId } from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import { sharedTurnClientMessageId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../../../_local-dedicated-proxy";
 
 /**

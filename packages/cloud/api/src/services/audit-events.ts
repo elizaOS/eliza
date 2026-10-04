@@ -7,9 +7,12 @@
  * rejects because this is a required compliance sink.
  */
 
+import { type DbTransaction, dbWrite } from "@elizaos/cloud-shared/db/client";
+import {
+  authEvents,
+  type NewAuthEventRow,
+} from "@elizaos/cloud-shared/db/schemas/auth-events";
 import type { AuditEvent, AuditSink } from "@/api-app/services/audit";
-import { type DbTransaction, dbWrite } from "@/db/client";
-import { authEvents, type NewAuthEventRow } from "@/db/schemas/auth-events";
 
 function toAuthEventRow(event: AuditEvent): NewAuthEventRow {
   return {

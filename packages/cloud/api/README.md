@@ -44,5 +44,16 @@ manager session and returns a no-store, 60-second renewal estimate for an eligib
 scheduled cancellation. The pinned provider invoice preview includes tax, discounts
 and customer balance; unsupported or incomplete previews fail closed. It creates
 no command, invoice or payment. `termsDigest` compares reviewed terms; it is not an
-authorization token or price lock. A consumer must bind and revalidate reviewed
-terms in its command flow before exposing reversal confirmation.
+authorization token or price lock. Use the confirmation route below to persist and revalidate reviewed terms
+before a reversal dispatch.
+
+`POST /api/v1/subscriptions/cancel/undo/confirm` requires the subscription ID,
+expected lifecycle revision, idempotency key and `expectedRenewalTermsDigest`
+from the review. It persists fresh matching terms with the durable command and
+revalidates them before dispatch. Reusing the same intent reads its recorded
+outcome; it never dispatches again. Changed terms before admission return 409;
+a rejection with a still-ready lease becomes FAILED, while a started dispatch
+retains OUTCOME_UNKNOWN until observation resolves it. Recovery fails expired
+prepared reviews without reconstructing a mutation. The existing undo/status
+APIs remain compatible; consumers needing reviewed confirmation use this route.
+Apply migration `0510_subscription_renewal_review_receipts` before deploying.

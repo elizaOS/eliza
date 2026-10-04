@@ -7,13 +7,13 @@
  * Requires admin role.
  */
 
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { usersRepository } from "@/db/repositories/users";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { parseClampedLimit } from "@/lib/utils/clamp-limit";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

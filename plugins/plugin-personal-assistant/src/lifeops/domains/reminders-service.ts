@@ -721,28 +721,12 @@ export function readLadderRungTitle(
 }
 
 export function buildReminderBody(args: {
-  timezone?: string;
   title: string;
-  scheduledFor: string;
-  dueAt: string | null;
-  channel: LifeOpsReminderStep["channel"];
-  lifecycle: ReminderAttemptLifecycle;
-  nearbyReminderTitles?: string[];
   derivedTarget?: Record<string, unknown> | null;
 }): string {
-  const focus = readLadderRungTitle(args.derivedTarget) ?? args.title;
-  const parts: string[] = [];
-  if (args.lifecycle === "escalation") {
-    parts.push(`Follow-up reminder: ${focus}`);
-  } else {
-    parts.push(`Reminder: ${focus}`);
-  }
-  if (args.dueAt) {
-    parts.push(
-      `Due: ${args.timezone ? new Date(args.dueAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.dueAt).toLocaleString()}`,
-    );
-  }
-  return parts.join("\n");
+  // Timing and delivery identity remain on the saved occurrence and receipts.
+  // The alert itself is the owner's message, including the current ladder rung.
+  return readLadderRungTitle(args.derivedTarget) ?? args.title;
 }
 
 // Stretch cadence + walk-out / weekend / late-evening rules live as
@@ -1676,13 +1660,7 @@ export class RemindersDomain {
     const reminderFocusTitle = rungTitle ?? args.title;
     const fallback = buildReminderBody({
       title: args.title,
-      scheduledFor: args.scheduledFor,
-      dueAt: args.dueAt,
-      channel: args.channel,
-      lifecycle: args.lifecycle,
-      nearbyReminderTitles: args.nearbyReminderTitles,
       derivedTarget: args.derivedTarget,
-      timezone: args.timezone,
     });
     if (typeof this.ctx.runtime.useModel !== "function") {
       return fallback;
@@ -4643,9 +4621,8 @@ export class RemindersDomain {
         args.bodyOverride === undefined;
       reminderBody = exactReminder
         ? buildReminderBody({
-            ...args,
-            dueAt: args.snoozedUntil ?? args.dueAt,
-            lifecycle,
+            title: args.title,
+            derivedTarget: args.derivedTarget,
           })
         : (args.bodyOverride ??
           (await this.renderReminderBody({
