@@ -60,6 +60,8 @@ test("intentional targeted placement admits remote headers without relaxing proo
     /placement policy/,
   );
   for (const change of [
+    { temperature: 1 },
+    { temperature: undefined },
     { proofMatched: false },
     { transportOk: false },
     { ci: { sha: "b".repeat(40), gatewayDeploySha: SHA } },
@@ -98,6 +100,7 @@ function pairedRecord(index, overrides = {}) {
     ok: true,
     transportOk: true,
     proofMatched: true,
+    temperature: 0,
     ci: { sha: SHA, gatewayDeploySha: SHA },
     headers: index % 2 === 0 ? {} : { "cf-placement": "local-ORD" },
     ...overrides,
