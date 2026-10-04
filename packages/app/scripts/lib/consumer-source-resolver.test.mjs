@@ -6,7 +6,9 @@ import { test } from "node:test";
 import { createConsumerSourceResolver } from "./consumer-source-resolver.mjs";
 
 test("external consumers resolve public source exports without admitting private or escaped files", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-source-consumer-"));
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "eliza-source-consumer-")),
+  );
   try {
     const pkg = path.join(root, "packages/core");
     fs.mkdirSync(path.join(pkg, "src"), { recursive: true });
