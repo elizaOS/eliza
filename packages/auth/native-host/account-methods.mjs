@@ -73,13 +73,18 @@ export function createNativeAccountMethods({
   clearAuthority,
   replaceAuthority,
   now = Date.now,
+  accountLinkRedirectUri,
 }) {
+  let oauthAttempt = null,
+    oauthEpoch = 0;
   let review = null,
     attempt = null,
     security = null,
     enrollment = null,
     resendAt = 0;
   const reset = () => {
+    oauthAttempt = null;
+    oauthEpoch++;
     review = null;
     attempt = null;
     security = null;
@@ -125,6 +130,185 @@ export function createNativeAccountMethods({
       const current = await authority();
       const send = (path, input, method) =>
         call(path, input, current, method, ticket);
+      if (operation === "account-google-cancel") {
+        fields(input, []);
+        oauthAttempt = null;
+        oauthEpoch++;
+        return { status: "cancelled" };
+      }
+      if (operation === "account-google-start") {
+        fields(input, []);
+        requireMfa(current);
+        let redirect;
+        try {
+          redirect = new URL(accountLinkRedirectUri);
+        } catch {}
+        if (
+          redirect?.protocol !== "https:" ||
+          redirect.username ||
+          redirect.password ||
+          redirect.search ||
+          redirect.hash
+        )
+          throw fail("Google sign-in linking is not configured", 503);
+        const generation = ++oauthEpoch;
+        oauthAttempt = null;
+        const verifier = randomBytes(32).toString("base64url");
+        const challenge = createHash("sha256")
+          .update(verifier)
+          .digest("base64url");
+        const response = await send(
+          "/user/me/accounts/oauth/google/challenge",
+          {
+            redirectUri: redirect.href,
+            codeChallenge: challenge,
+            codeChallengeMethod: "S256",
+          },
+        );
+        if (generation !== oauthEpoch)
+          throw fail("Google linking was cancelled", 409);
+        const data = response?.data;
+        let url;
+        try {
+          url = new URL(data?.authorizationUrl);
+        } catch {}
+        const params = url?.searchParams;
+        const required = {
+          state: data?.state,
+          redirect_uri: redirect.href,
+          code_challenge: challenge,
+          code_challenge_method: "S256",
+          response_type: "code",
+        };
+        const scopes = params?.get("scope")?.split(/ +/) ?? [];
+        if (
+          response?.ok !== true ||
+          !string(data?.state) ||
+          data.redirectUri !== redirect.href ||
+          !Number.isSafeInteger(data.expiresIn) ||
+          data.expiresIn <= 0 ||
+          data.expiresIn > 300 ||
+          !url ||
+          url.origin !== "https://accounts.google.com" ||
+          url.pathname !== "/o/oauth2/v2/auth" ||
+          url.username ||
+          url.password ||
+          url.hash ||
+          [...params.keys()].some(
+            (key) =>
+              ![...Object.keys(required), "client_id", "scope"].includes(key),
+          ) ||
+          !string(params.get("client_id")) ||
+          params.getAll("client_id").length !== 1 ||
+          Object.entries(required).some(
+            ([key, value]) =>
+              params.getAll(key).length !== 1 || params.get(key) !== value,
+          ) ||
+          scopes.length !== 3 ||
+          new Set(scopes).size !== 3 ||
+          scopes.some(
+            (scope) => !["openid", "email", "profile"].includes(scope),
+          ) ||
+          params.getAll("scope").length !== 1
+        )
+          throw fail(
+            "Google sign-in linking response could not be verified",
+            502,
+          );
+        const id = opaque(),
+          expiresAt = Math.min(
+            now() + data.expiresIn * 1000,
+            Date.parse(current.expiresAt),
+          );
+        oauthAttempt = {
+          id,
+          verifier,
+          state: data.state,
+          redirect: redirect.href,
+          expiresAt,
+          token: current.token,
+          generation,
+        };
+        return {
+          sessionId: id,
+          authorizationUrl: url.href,
+          expiresAt: new Date(expiresAt).toISOString(),
+        };
+      }
+      if (operation === "account-google-complete") {
+        fields(input, ["sessionId", "callbackUrl"]);
+        requireMfa(current);
+        const pending = oauthAttempt;
+        if (
+          !pending ||
+          pending.id !== input.sessionId ||
+          pending.token !== current.token ||
+          pending.expiresAt <= now()
+        ) {
+          oauthAttempt = null;
+          throw fail("Google linking expired. Start again", 410);
+        }
+        let callback;
+        try {
+          callback = new URL(input.callbackUrl);
+        } catch {}
+        const expected = new URL(pending.redirect);
+        if (
+          !callback ||
+          callback.origin !== expected.origin ||
+          callback.pathname !== expected.pathname ||
+          callback.username ||
+          callback.password ||
+          callback.hash ||
+          callback.searchParams.getAll("state").length !== 1 ||
+          callback.searchParams.get("state") !== pending.state
+        )
+          throw fail("Google linking return could not be verified", 400);
+        const params = callback.searchParams;
+        if (params.has("error")) {
+          if (params.getAll("error").length !== 1 || params.has("code"))
+            throw fail("Google linking return could not be verified", 400);
+          oauthAttempt = null;
+          return { status: "cancelled" };
+        }
+        const code = params.get("code");
+        if (
+          !code ||
+          code.length > 4096 ||
+          /[\p{Cc}\p{Cf}]/u.test(code) ||
+          params.getAll("code").length !== 1
+        )
+          throw fail("Google linking return could not be verified", 400);
+        // Consume before exchange: lost responses must never replay a provider code.
+        oauthAttempt = null;
+        review = null;
+        try {
+          const response = await send("/user/me/accounts/oauth/google/token", {
+            code,
+            state: pending.state,
+            redirectUri: pending.redirect,
+            codeVerifier: pending.verifier,
+          });
+          if (pending.generation !== oauthEpoch)
+            throw fail("Google linking outcome needs review", 502);
+          if (
+            response?.ok !== true ||
+            response.data?.account?.provider !== "google" ||
+            !string(response.data.account.id) ||
+            !string(response.data.account.providerAccountId)
+          )
+            throw fail("Google linking was not confirmed", 502);
+          return { status: "linked" };
+        } catch (error) {
+          if (![400, 401, 403, 409, 429].includes(error.status))
+            throw fail(
+              "Check your sign-in methods before trying again",
+              502,
+              "account_outcome_unknown",
+            );
+          throw error;
+        }
+      }
       if (operation === "account-methods") {
         fields(input, []);
         const data = inventory(await send("/user/me/accounts"));

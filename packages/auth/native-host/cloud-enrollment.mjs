@@ -51,6 +51,7 @@ export function createNativeCloudAuth({
   auth = "https://eliza.steward.fi",
   tenant = "elizacloud",
   binding,
+  accountLinkRedirectUri,
   appName,
   deviceName = appName,
   messages = {},
@@ -501,6 +502,7 @@ export function createNativeCloudAuth({
       throw fail("Account security check expired", 410);
   }
   accountMethods = createNativeAccountMethods({
+    accountLinkRedirectUri,
     getAuthority: currentBilling,
     clearAuthority: clearBilling,
     replaceAuthority: replaceAccountAuthority,

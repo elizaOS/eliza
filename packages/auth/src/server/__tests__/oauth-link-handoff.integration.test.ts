@@ -24,13 +24,11 @@ test("link challenge returns allowlisted Google authorization with host-owned PK
     const userId = "handoff-test-owner";
     const tenantId = `personal-${userId}`;
     const redirectUri = "https://eliza.app/link-callback";
-    await database.db
-      .insert(tenants)
-      .values({
-        id: tenantId,
-        name: "Synthetic test",
-        apiKeyHash: randomBytes(32).toString("hex"),
-      });
+    await database.db.insert(tenants).values({
+      id: tenantId,
+      name: "Synthetic test",
+      apiKeyHash: randomBytes(32).toString("hex"),
+    });
     await database.db
       .insert(tenantConfigs)
       .values({ tenantId, allowedRedirectUrls: [redirectUri] });

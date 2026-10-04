@@ -80,8 +80,8 @@ enrollment serialization and cancellation. For first SMS MFA setup, use `account
 factor-enrollment authority; enabled TOTP/SMS methods must use step-up instead.
 Confirmed enrollment clears revoked authority and requires reauthentication.
 Ambiguous enrollment verification also clears authority and must not replay.
-This does not enroll TOTP, link another email, or link Google OAuth; hosts must
-not advertise those capabilities through this adapter. Sign-in methods are separate from Gmail
+This does not enroll TOTP or link another email; hosts must not advertise those
+capabilities through this adapter. Sign-in methods are separate from Gmail
 consent and inference credentials.
 
 For OAuth account linking, the SDK challenge API accepts a host-owned S256
@@ -89,7 +89,14 @@ challenge and returns `authorizationUrl` from the configured provider. Keep the
 verifier private and supply it only to the account-link token exchange. Auth binds
 it to the single-use challenge before contacting the provider. The callback must
 be allowlisted by Auth and registered with the provider; this API does not supply
-native callback delivery. Existing native account adapters do not yet expose it.
+native callback delivery. Hosts that implement and qualify callback delivery may
+configure `accountLinkRedirectUri` on `createNativeCloudAuth`. The private adapter
+then supports `account-google-start` (no fields), `account-google-complete`
+(`sessionId`, `callbackUrl`) and `account-google-cancel` (no fields). It validates
+the Google destination, sign-in scopes, state, callback and account-bound expiry,
+keeps the verifier in memory, and consumes the attempt before exchange. Unknown
+outcomes require inventory observation. No link UI should be offered without a
+registered callback and native delivery. The default remains unconfigured.
 
 The protected App Live E2E workflow also offers an explicit staging credential
 fixture. It verifies single-use session PKCE, native credential acknowledgement,
