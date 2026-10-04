@@ -1,3 +1,7 @@
+import {
+  projectLegacyStripeCheckoutReceipt,
+  projectStripeCheckoutReceipt,
+} from "@/lib/services/stripe-checkout-receipt";
 /**
  * GET /api/v1/credits/verify?session_id=...
  * Verify a completed Stripe checkout session belongs to this org/user.
@@ -59,43 +63,17 @@ app.get("/", async (c) => {
     if (!paymentIntentId) {
       return c.json({ success: false, error: "No payment intent found" }, 400);
     }
-    const customerId =
-      typeof session.customer === "string"
-        ? session.customer
-        : (session.customer?.id ?? null);
     const orderId = metadata.checkout_order_id;
     const settlement = orderId
       ? await stripeCheckoutOrdersService.settle(
-          {
-            checkoutOrderId: orderId,
-            clientReferenceId: session.client_reference_id,
-            metadataOrderId: metadata.checkout_order_id ?? null,
-            checkoutSessionId: session.id,
-            paymentIntentId,
-            paymentStatus: session.payment_status,
-            amountTotal: session.amount_total,
-            currency: session.currency,
-            customerId,
-          },
+          projectStripeCheckoutReceipt(session, paymentIntentId, orderId),
           {
             callerOrganizationId: user.organization_id,
             callerUserId: user.id,
           },
         )
       : await stripeCheckoutOrdersService.settleLegacy(
-          {
-            checkoutSessionId: session.id,
-            paymentIntentId,
-            paymentStatus: session.payment_status,
-            amountTotal: session.amount_total,
-            currency: session.currency,
-            customerId,
-            organizationId: metadata.organization_id ?? null,
-            initiatedByUserId: metadata.user_id ?? null,
-            purchaseType: metadata.type ?? null,
-            creditPackId: metadata.credit_pack_id ?? null,
-            claimedCredits: metadata.credits ?? null,
-          },
+          projectLegacyStripeCheckoutReceipt(session, paymentIntentId),
           {
             callerOrganizationId: user.organization_id,
             callerUserId: user.id,

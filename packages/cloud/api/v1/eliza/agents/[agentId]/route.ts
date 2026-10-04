@@ -8,6 +8,12 @@
  * DELETE — delete sandbox + cleanup linked character.
  */
 
+import type {
+  AgentAdminDetailsDto,
+  AgentDetailDto,
+  AgentResponse,
+  AgentWalletStatus,
+} from "@elizaos/cloud-shared/types";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -23,12 +29,6 @@ import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { getStewardAgent } from "@/lib/services/steward-client";
-import type {
-  AgentAdminDetailsDto,
-  AgentDetailDto,
-  AgentResponse,
-  AgentWalletStatus,
-} from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

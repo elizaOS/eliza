@@ -32,7 +32,8 @@
     "lint:check": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "bun ../scripts/sdk/run-unit-tests.ts"
   },
   "exports": {
     ".": {
@@ -129,6 +130,24 @@
       "types": "./dist/app-auth.d.ts",
       "import": "./dist/app-auth.js",
       "default": "./dist/app-auth.js"
+    },
+    "./contracts": {
+      "eliza-source": "./src/contracts/index.ts",
+      "types": "./dist/contracts/index.d.ts",
+      "import": "./dist/contracts/index.js",
+      "default": "./dist/contracts/index.js"
+    },
+    "./testing": {
+      "eliza-source": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
+    "./cloud-setup-session/mock-service": {
+      "eliza-source": "./src/testing/mock-cloud-setup-session.ts",
+      "types": "./dist/testing/mock-cloud-setup-session.d.ts",
+      "import": "./dist/testing/mock-cloud-setup-session.js",
+      "default": "./dist/testing/mock-cloud-setup-session.js"
     }
   },
   "elizaos": {

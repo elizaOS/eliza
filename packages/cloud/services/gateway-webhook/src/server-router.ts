@@ -1,11 +1,6 @@
 /** Routes authenticated connector traffic to cloud identities and agent servers. */
 
 import {
-  executeGatewayForwardAttempts,
-  type GatewayTargetResult,
-  postGatewayTarget,
-} from "@elizaos/cloud-services-common/gateway-forward";
-import {
   type GatewayServerLookup,
   type GatewayWakeDependencies,
   observeGatewayWake,
@@ -13,6 +8,11 @@ import {
   resolveGatewayAgentServer,
   wakeGatewayServer,
 } from "@elizaos/cloud-services-common/gateway-routing";
+import {
+  executeGatewayForwardAttempts,
+  type GatewayTargetResult,
+  postGatewayTarget,
+} from "@elizaos/cloud-services-common/transport";
 import { reacquireAuthHeader } from "./auth";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";

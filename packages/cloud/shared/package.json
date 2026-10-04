@@ -8,16 +8,16 @@
     ".": "./src/index.ts",
     "./billing": "./src/billing/index.ts",
     "./db": "./src/db/index.ts",
-    "./db/*.ts": "./src/db/*.ts",
     "./db/*": "./src/db/*.ts",
     "./lib": "./src/lib/index.ts",
-    "./lib/*.ts": "./src/lib/*.ts",
     "./lib/*": "./src/lib/*.ts",
     "./types": "./src/types/index.ts",
-    "./types/*.ts": "./src/types/*.ts",
     "./types/*": "./src/types/*.ts",
     "./package.json": "./package.json",
-    "./hardware-catalog": "./src/hardware-catalog/index.ts"
+    "./hardware-catalog": "./src/hardware-catalog/index.ts",
+    "./lib/services/agent-google-connector": "./src/lib/services/agent-google-connector/index.ts",
+    "./agent-contracts": "./src/lib/services/provisioning-job-types.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

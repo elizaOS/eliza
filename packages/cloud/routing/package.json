@@ -17,7 +17,8 @@
     "lint": "bunx @biomejs/biome check --write --unsafe src",
     "lint:check": "bunx @biomejs/biome check src",
     "format": "bunx @biomejs/biome format --write src",
-    "format:check": "bunx @biomejs/biome format src"
+    "format:check": "bunx @biomejs/biome format src",
+    "test": "bun test src"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
@@ -39,7 +40,10 @@
   },
   "elizaos": {
     "scripts": {
-      "coreBuild": true
+      "coreBuild": true,
+      "testLanes": [
+        "server"
+      ]
     }
   }
 }

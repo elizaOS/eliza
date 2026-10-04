@@ -40,6 +40,7 @@
  * and identity-copy inputs before calling in.
  */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import { and, asc, desc, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
@@ -54,7 +55,6 @@ import {
   type PersonalDedicatedUpgradeAuthority,
   personalDedicatedUpgradeAuthorities,
 } from "../../db/schemas/personal-dedicated-upgrade-authorities";
-import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { parseGateCreditBalance } from "./agent-billing-gate";
 import { encryptAgentEnvVarsForStorage } from "./agent-env-crypto";

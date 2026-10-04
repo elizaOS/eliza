@@ -6,16 +6,6 @@
  */
 
 import {
-  extractIdentityLinkCode,
-  identityLinkReply,
-} from "@elizaos/cloud-services-common/identity-link-code";
-import {
-  personalSharedFailureReply,
-  personalSharedNoResponseFailure,
-  readPersonalSharedFailureMetadata,
-} from "@elizaos/cloud-services-common/personal-shared-failure";
-import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
-import {
   attestTelegramBotIdentity,
   parseTelegramWebhook,
   resolveTelegramVoiceNote,
@@ -35,6 +25,14 @@ import {
   type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
 } from "@elizaos/cloud-services-common/telegram-delivery";
+import {
+  executeResponseAttempts,
+  extractIdentityLinkCode,
+  identityLinkReply,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/transport";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,

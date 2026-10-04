@@ -3,6 +3,7 @@
  * objects pass the exact read-only provider preflight.
  */
 
+import type { SubscriptionPlansDto } from "@elizaos/cloud-shared/types";
 import { Hono } from "hono";
 import {
   RateLimitPresets,
@@ -14,7 +15,6 @@ import {
   getVerifiedSubscriptionPlans,
 } from "@/lib/services/subscription-catalog";
 import { requireStripe } from "@/lib/stripe";
-import type { SubscriptionPlansDto } from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

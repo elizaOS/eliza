@@ -1,3 +1,65 @@
+import type {
+  AgentDeleteJobData,
+  AgentDeleteJobResult,
+  AgentDowngradeJobData,
+  AgentDowngradeJobResult,
+  AgentLogsJobData,
+  AgentLogsJobResult,
+  AgentMessageJobData,
+  AgentMessageJobResult,
+  AgentProvisionJobData,
+  AgentProvisionJobResult,
+  AgentRestartJobData,
+  AgentRestartJobResult,
+  AgentResumeJobData,
+  AgentResumeJobResult,
+  AgentSleepJobData,
+  AgentSleepJobResult,
+  AgentSnapshotJobData,
+  AgentSnapshotJobResult,
+  AgentSuspendJobData,
+  AgentSuspendJobResult,
+  AgentUpgradeJobData,
+  AgentUpgradeJobResult,
+  AgentWakeJobData,
+  AgentWakeJobResult,
+  HeartbeatResult,
+  ProcessingResult,
+  RecoveryResult,
+  ScheduledBackupFleetReport,
+} from "./provisioning-job-types";
+
+export type {
+  AgentDeleteJobData,
+  AgentDeleteJobResult,
+  AgentDowngradeJobData,
+  AgentDowngradeJobResult,
+  AgentLogsJobData,
+  AgentLogsJobResult,
+  AgentMessageJobData,
+  AgentMessageJobResult,
+  AgentProvisionJobData,
+  AgentProvisionJobResult,
+  AgentRestartJobData,
+  AgentRestartJobResult,
+  AgentResumeJobData,
+  AgentResumeJobResult,
+  AgentSleepJobData,
+  AgentSleepJobResult,
+  AgentSnapshotJobData,
+  AgentSnapshotJobResult,
+  AgentSuspendJobData,
+  AgentSuspendJobResult,
+  AgentUpgradeJobData,
+  AgentUpgradeJobResult,
+  AgentWakeJobData,
+  AgentWakeJobResult,
+  HeartbeatResult,
+  ProcessingResult,
+  RecoveryResult,
+  ScheduledBackupFleetReport,
+} from "./provisioning-job-types";
+
 /**
  * Async Provisioning Job Service
  *
@@ -211,23 +273,6 @@ class RejectedAgentExecutionError extends ElizaError {
   }
 }
 
-/**
- * Phase 0 fleet measurement emitted by every scheduled-backup sweep (#15783):
- * of the running non-pool fleet, how many rows are route-less (no bridge or
- * the loopback sentinel), snapshot-incapable (image 404s POST /api/snapshot),
- * never backed up, or older than the staleness threshold — split out for
- * local-state agents, whose whole state lives on one node's disk.
- */
-export interface ScheduledBackupFleetReport {
-  running: number;
-  routeless: number;
-  snapshotUnsupported: number;
-  neverBackedUp: number;
-  staleBackup: number;
-  localState: number;
-  localStateStale: number;
-}
-
 const EMPTY_SCHEDULED_BACKUP_FLEET_REPORT: ScheduledBackupFleetReport = {
   running: 0,
   routeless: 0,
@@ -238,284 +283,9 @@ const EMPTY_SCHEDULED_BACKUP_FLEET_REPORT: ScheduledBackupFleetReport = {
   localStateStale: 0,
 };
 
-// ---------------------------------------------------------------------------
-// Job data shapes (hydrated from object storage when jobs.data is offloaded)
-// ---------------------------------------------------------------------------
-
-export interface AgentProvisionJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  agentName: string;
-  restoreDirective?:
-    | { kind: "from-backup"; backupId: string }
-    | { kind: "fresh-boot" }
-    | { kind: "reviewed-fresh-boot"; selectionId: string }
-    | {
-        kind: "from-reviewed-backup";
-        selectionId: string;
-        backupId: string;
-        expectedContentHash: string;
-        expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
-      };
-}
-
-export interface AgentDeleteJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  authorization?: DeleteAuthorization;
-  /** Explicit customer/operator acceptance that the current live delta may be lost. */
-  stateLossAcknowledged?: boolean;
-  /** First authenticated user who supplied the acknowledgement. */
-  stateLossAcknowledgedByUserId?: string;
-  /** Server timestamp for the first durable acknowledgement. */
-  stateLossAcknowledgedAt?: string;
-}
-
-export interface AgentSuspendJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  authorization: "user_request" | "billing_request";
-  /** Exact sandbox generation captured by the durable stop intent. */
-  lifecycleRevision?: number;
-}
-
 type PersistedAgentSuspendJobData = Omit<AgentSuspendJobData, "authorization"> & {
   authorization?: AgentSuspendJobData["authorization"];
 };
-
-export interface AgentResumeJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  /**
-   * Set only by billing-suspension reconciliation (#30702). Execution
-   * re-verifies that this exact provider-confirmed billing stop is still the
-   * agent's latest lifecycle decision and that the organization is funded.
-   */
-  automaticResume?: { stopIntentId: string };
-}
-
-export interface AgentSleepJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-}
-
-export interface AgentWakeJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  /**
-   * Explicit user-selected restore point (an older validated backup) — the
-   * escape hatch when the latest backup fails the wake integrity gate. Never
-   * set by default; mutually exclusive with `forceFreshBoot`.
-   */
-  restoreBackupId?: string;
-  /**
-   * Explicit user acceptance of data loss: wake into an empty container with
-   * no restore. Never set by default; mutually exclusive with `restoreBackupId`.
-   */
-  forceFreshBoot?: boolean;
-}
-
-export interface AgentRestartJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  /**
-   * Operator-acknowledged state loss (#18228): the pre-stop capture is waived
-   * when it fails, so the restart can free an agent whose snapshot transfer
-   * persistently fails. Never set by default; requires an explicit request.
-   */
-  stateLossAcknowledged?: boolean;
-}
-
-export interface AgentUpgradeJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  /** Configured image tag/ref that the reconciler resolved. */
-  dockerImage: string;
-  /** sha256 the agent is currently on (null if it predates digest tracking). */
-  fromDigest: string | null;
-  /** sha256 the reconciler resolved from the configured tag at enqueue time. */
-  toDigest: string;
-}
-
-export interface AgentDowngradeJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  /** Configured image tag/ref (must match the agent's `docker_image`). */
-  dockerImage: string;
-  /** sha256 the agent is currently on — the rollback precondition guard. */
-  fromDigest: string;
-}
-
-export interface AgentUpgradeJobResult {
-  oldNodeId: string;
-  oldContainerName: string;
-  newNodeId: string;
-  newContainerName: string;
-  newDigest: string;
-  durationMs: number;
-}
-
-export interface AgentDowngradeJobResult {
-  oldNodeId: string;
-  oldContainerName: string;
-  newNodeId: string;
-  newContainerName: string;
-  /** The `previous_image_digest` the agent was rolled back onto. */
-  newDigest: string;
-  durationMs: number;
-}
-
-export interface AgentLogsJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  tail: number;
-}
-
-export interface AgentMessageJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  text: string;
-  senderId?: string;
-  sessionId?: string;
-  roomId?: string;
-  /** Per-turn nonce so each chat message enqueues a fresh job (no dedupe). */
-  nonce: string;
-}
-
-export interface AgentSnapshotJobData {
-  agentId: string;
-  organizationId: string;
-  userId: string;
-  snapshotType: "manual" | "auto";
-}
-
-// ---------------------------------------------------------------------------
-// Job result shapes (stored in jobs.result JSONB)
-// ---------------------------------------------------------------------------
-
-export interface AgentProvisionJobResult {
-  cloudAgentId: string;
-  status: string;
-  bridgeUrl?: string;
-  healthUrl?: string;
-  error?: string;
-}
-
-export interface AgentDeleteJobResult {
-  cloudAgentId: string;
-  containerStopped: boolean;
-  rowDeleted: boolean;
-  /** The caller explicitly accepted loss of uncaptured state for this delete. */
-  stateLossAcknowledged?: true;
-  /** Durable actor provenance for the explicit acknowledgement, when known. */
-  stateLossAcknowledgedByUserId?: string;
-  /** Durable server timestamp for the explicit acknowledgement, when known. */
-  stateLossAcknowledgedAt?: string;
-  error?: string;
-  /** Free (attempt-preserving) requeues this delete has spent waiting for a
-   *  transient pre-deletion capture. Persisted on the job result because
-   *  `retryLaterWithoutIncrementingAttempts` deliberately leaves `attempts`
-   *  untouched, so this is the only record that bounds the loop. */
-  captureRetryCount?: number;
-}
-
-export interface AgentSuspendJobResult {
-  cloudAgentId: string;
-  containerStopped: boolean;
-  /** Backup proven or captured by the pre-suspend gate before the stop. */
-  backupId?: string;
-  /** Terminal success that intentionally made no provider mutation. */
-  skipped?: true;
-  /** Stable machine-readable explanation for a terminal no-op. */
-  reason?: "lifecycle_changed" | "stop_intent_superseded" | "billing_recovered";
-  error?: string;
-}
-
-export interface AgentResumeJobResult {
-  cloudAgentId: string;
-  containerStarted: boolean;
-  reprovisioned: boolean;
-  error?: string;
-  /** An automatic resume found its billing authority superseded or unfunded. */
-  skipped?: "authority_changed" | "unfunded";
-}
-
-export interface AgentSleepJobResult {
-  cloudAgentId: string;
-  containerRemoved: boolean;
-  backupId?: string;
-  error?: string;
-}
-
-export interface AgentWakeJobResult {
-  cloudAgentId: string;
-  reprovisioned: boolean;
-  restoredBackupId?: string;
-  /** True when the wake booted empty via the explicit `forceFreshBoot` opt-in. */
-  freshBoot?: boolean;
-  /** Structured wake-integrity-gate failure, surfaced to job pollers. */
-  integrityFailure?: WakeRestoreIntegrityFailure;
-  error?: string;
-}
-
-export interface AgentRestartJobResult {
-  cloudAgentId: string;
-  containerStopped: boolean;
-  containerStarted: boolean;
-  bridgeUrl?: string;
-  healthUrl?: string;
-  error?: string;
-}
-
-export interface AgentLogsJobResult {
-  cloudAgentId: string;
-  status: string;
-  tail: number;
-  logs?: string;
-  message?: string;
-  error?: string;
-}
-
-export interface AgentMessageJobResult {
-  cloudAgentId: string;
-  /** Reply text from the agent (empty when the agent produced no reply). */
-  text?: string;
-  /** Surfaced when the bridge could not produce a reply. */
-  reason?: string;
-  error?: string;
-}
-
-export interface AgentSnapshotJobResult {
-  cloudAgentId: string;
-  backupId?: string;
-  snapshotType?: string;
-  sizeBytes?: number;
-  createdAt?: string;
-  error?: string;
-  /** True when an auto snapshot was a terminal no-op (agent had no live state). */
-  skipped?: boolean;
-  /** Human-readable reason for a skip (e.g. "Sandbox is not running"). */
-  reason?: string;
-}
-
-function agentProvisionJobDataToRecord(data: AgentProvisionJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentProvisionJobResultToRecord(result: AgentProvisionJobResult): Record<string, unknown> {
-  return { ...result };
-}
 
 const REPLACEMENT_CLEANUP_ONLY_PREFIX = "Replacement cleanup is still pending: ";
 const REPLACEMENT_CLEANUP_CAUSE_SEPARATOR = "; replacement cleanup remains pending: ";
@@ -544,14 +314,6 @@ function preserveProvisionFailureAcrossCleanupRetry(
   )}`;
 }
 
-function agentDeleteJobDataToRecord(data: AgentDeleteJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentDeleteJobResultToRecord(result: AgentDeleteJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
 /**
  * Reads the free-requeue tally off a persisted agent_delete result. The stored
  * value is untrusted JSON, so anything that is not a non-negative integer reads
@@ -563,98 +325,8 @@ function readAgentDeleteCaptureRetryCount(result: unknown): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
-function agentSuspendJobDataToRecord(data: AgentSuspendJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentSuspendJobResultToRecord(result: AgentSuspendJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentResumeJobDataToRecord(data: AgentResumeJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentResumeJobResultToRecord(result: AgentResumeJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentSleepJobDataToRecord(data: AgentSleepJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentSleepJobResultToRecord(result: AgentSleepJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentWakeJobDataToRecord(data: AgentWakeJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentWakeJobResultToRecord(result: AgentWakeJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentRestartJobDataToRecord(data: AgentRestartJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentRestartJobResultToRecord(result: AgentRestartJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentUpgradeJobDataToRecord(data: AgentUpgradeJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentUpgradeJobResultToRecord(result: AgentUpgradeJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function adminCanaryImageJobDataToRecord(data: AdminCanaryImageJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function adminCanaryImageJobResultToRecord(
-  result: AdminCanaryImageJobResult,
-): Record<string, unknown> {
-  return { ...result };
-}
-
 function jobAuditTimestamp(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function agentDowngradeJobDataToRecord(data: AgentDowngradeJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentDowngradeJobResultToRecord(result: AgentDowngradeJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentLogsJobDataToRecord(data: AgentLogsJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentLogsJobResultToRecord(result: AgentLogsJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentMessageJobDataToRecord(data: AgentMessageJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentMessageJobResultToRecord(result: AgentMessageJobResult): Record<string, unknown> {
-  return { ...result };
-}
-
-function agentSnapshotJobDataToRecord(data: AgentSnapshotJobData): Record<string, unknown> {
-  return { ...data };
-}
-
-function agentSnapshotJobResultToRecord(result: AgentSnapshotJobResult): Record<string, unknown> {
-  return { ...result };
 }
 
 function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData {
@@ -2118,7 +1790,7 @@ export class ProvisioningJobService {
         agentName: params.agentName,
         ...(params.restoreDirective ? { restoreDirective: params.restoreDirective } : {}),
       },
-      toRecord: agentProvisionJobDataToRecord,
+      toRecord: jobRecord<AgentProvisionJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -2204,7 +1876,7 @@ export class ProvisioningJobService {
         authorization: params.authorization,
         ...requestedAuthority,
       },
-      toRecord: agentDeleteJobDataToRecord,
+      toRecord: jobRecord<AgentDeleteJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -2232,7 +1904,7 @@ export class ProvisioningJobService {
             const [upgraded] = await tx
               .update(jobs)
               .set({
-                data: agentDeleteJobDataToRecord({
+                data: jobRecord<AgentDeleteJobData>({
                   ...existingData,
                   ...requestedAuthority,
                 }),
@@ -2542,7 +2214,7 @@ export class ProvisioningJobService {
         authorization: params.authorization,
         lifecycleRevision: expectedLifecycleRevision,
       },
-      toRecord: agentSuspendJobDataToRecord,
+      toRecord: jobRecord<AgentSuspendJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -2801,7 +2473,7 @@ export class ProvisioningJobService {
         organizationId: params.organizationId,
         userId: params.userId,
       },
-      toRecord: agentResumeJobDataToRecord,
+      toRecord: jobRecord<AgentResumeJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -2853,7 +2525,7 @@ export class ProvisioningJobService {
         organizationId: params.organizationId,
         userId: params.userId,
       },
-      toRecord: agentSleepJobDataToRecord,
+      toRecord: jobRecord<AgentSleepJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -2910,7 +2582,7 @@ export class ProvisioningJobService {
         ...(params.restoreBackupId ? { restoreBackupId: params.restoreBackupId } : {}),
         ...(params.forceFreshBoot ? { forceFreshBoot: true } : {}),
       },
-      toRecord: agentWakeJobDataToRecord,
+      toRecord: jobRecord<AgentWakeJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -2999,7 +2671,7 @@ export class ProvisioningJobService {
         userId: params.userId,
         ...(params.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
       },
-      toRecord: agentRestartJobDataToRecord,
+      toRecord: jobRecord<AgentRestartJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -3059,7 +2731,7 @@ export class ProvisioningJobService {
             organizationId: candidate.organization_id,
             userId: candidate.user_id,
           },
-          toRecord: agentRestartJobDataToRecord,
+          toRecord: jobRecord<AgentRestartJobData>,
           agentId: candidate.id,
           organizationId: candidate.organization_id,
           userId: candidate.user_id,
@@ -3145,7 +2817,7 @@ export class ProvisioningJobService {
             organizationId: candidate.organization_id,
             userId: candidate.user_id,
           },
-          toRecord: agentRestartJobDataToRecord,
+          toRecord: jobRecord<AgentRestartJobData>,
           agentId: candidate.id,
           organizationId: candidate.organization_id,
           userId: candidate.user_id,
@@ -3308,7 +2980,7 @@ export class ProvisioningJobService {
           userId: candidate.userId,
           automaticResume: { stopIntentId: candidate.intentId },
         },
-        toRecord: agentResumeJobDataToRecord,
+        toRecord: jobRecord<AgentResumeJobData>,
         agentId: candidate.agentId,
         organizationId: candidate.organizationId,
         userId: candidate.userId,
@@ -3378,7 +3050,7 @@ export class ProvisioningJobService {
         fromDigest: params.fromDigest,
         toDigest: params.toDigest,
       },
-      toRecord: agentUpgradeJobDataToRecord,
+      toRecord: jobRecord<AgentUpgradeJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -3518,7 +3190,7 @@ export class ProvisioningJobService {
         const result = await this.enqueueLifecycleJobInTx<AdminCanaryImageJobData>(tx, {
           jobType: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
           jobData: data,
-          toRecord: adminCanaryImageJobDataToRecord,
+          toRecord: jobRecord<AdminCanaryImageJobData>,
           agentId: data.agentId,
           organizationId: data.organizationId,
           userId: data.actorUserId,
@@ -3659,7 +3331,7 @@ export class ProvisioningJobService {
         dockerImage: params.dockerImage,
         fromDigest: params.fromDigest,
       },
-      toRecord: agentDowngradeJobDataToRecord,
+      toRecord: jobRecord<AgentDowngradeJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -3702,7 +3374,7 @@ export class ProvisioningJobService {
         userId: params.userId,
         tail: params.tail,
       },
-      toRecord: agentLogsJobDataToRecord,
+      toRecord: jobRecord<AgentLogsJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -3745,7 +3417,7 @@ export class ProvisioningJobService {
         ...(params.roomId ? { roomId: params.roomId } : {}),
         nonce,
       },
-      toRecord: agentMessageJobDataToRecord,
+      toRecord: jobRecord<AgentMessageJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -3784,7 +3456,7 @@ export class ProvisioningJobService {
         userId: params.userId,
         snapshotType,
       },
-      toRecord: agentSnapshotJobDataToRecord,
+      toRecord: jobRecord<AgentSnapshotJobData>,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
@@ -4250,7 +3922,7 @@ export class ProvisioningJobService {
         job,
         "completed",
         {
-          result: agentDeleteJobResultToRecord(jobResult),
+          result: jobRecord<AgentDeleteJobResult>(jobResult),
           completed_at: new Date(),
           error: null,
           error_storage: "inline",
@@ -4829,7 +4501,7 @@ export class ProvisioningJobService {
           await tx
             .update(jobs)
             .set({
-              result: adminCanaryImageJobResultToRecord(result),
+              result: jobRecord<AdminCanaryImageJobResult>(result),
               result_storage: "inline",
               completed_at: finishedAt,
               updated_at: finishedAt,
@@ -5524,7 +5196,7 @@ export class ProvisioningJobService {
 
     if (!result.success) {
       await this.updateClaimedExecution(job, {
-        result: agentSuspendJobResultToRecord({
+        result: jobRecord<AgentSuspendJobResult>({
           cloudAgentId: data.agentId,
           containerStopped: result.containerStopped,
           error: result.error,
@@ -5541,7 +5213,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentSuspendJobResultToRecord(jobResult),
+      result: jobRecord<AgentSuspendJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -5580,7 +5252,7 @@ export class ProvisioningJobService {
         // The billing stop was superseded (user stop, deletion, newer
         // generation) or funding lapsed again. Report the no-op honestly.
         await this.settleClaimedExecution(job, "completed", {
-          result: agentResumeJobResultToRecord({
+          result: jobRecord<AgentResumeJobResult>({
             cloudAgentId: data.agentId,
             containerStarted: false,
             reprovisioned: false,
@@ -5602,7 +5274,7 @@ export class ProvisioningJobService {
 
     if (!result.success) {
       await this.updateClaimedExecution(job, {
-        result: agentResumeJobResultToRecord({
+        result: jobRecord<AgentResumeJobResult>({
           cloudAgentId: data.agentId,
           containerStarted: result.containerStarted,
           reprovisioned: result.reprovisioned,
@@ -5619,7 +5291,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentResumeJobResultToRecord(jobResult),
+      result: jobRecord<AgentResumeJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -5679,7 +5351,7 @@ export class ProvisioningJobService {
 
     if (!result.success) {
       await this.updateClaimedExecution(job, {
-        result: agentSleepJobResultToRecord({
+        result: jobRecord<AgentSleepJobResult>({
           cloudAgentId: data.agentId,
           containerRemoved: result.containerRemoved,
           backupId: result.backupId,
@@ -5696,7 +5368,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentSleepJobResultToRecord(jobResult),
+      result: jobRecord<AgentSleepJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -5736,7 +5408,7 @@ export class ProvisioningJobService {
 
     if (!result.success) {
       await this.updateClaimedExecution(job, {
-        result: agentWakeJobResultToRecord({
+        result: jobRecord<AgentWakeJobResult>({
           cloudAgentId: data.agentId,
           reprovisioned: result.reprovisioned,
           restoredBackupId: result.restoredBackupId,
@@ -5764,7 +5436,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentWakeJobResultToRecord(jobResult),
+      result: jobRecord<AgentWakeJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -5804,7 +5476,7 @@ export class ProvisioningJobService {
 
     if (!result.success) {
       const retrySnapshot = await this.updateClaimedExecution(job, {
-        result: agentRestartJobResultToRecord({
+        result: jobRecord<AgentRestartJobResult>({
           cloudAgentId: data.agentId,
           containerStopped: result.containerStopped,
           containerStarted: result.containerStarted,
@@ -5830,7 +5502,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentRestartJobResultToRecord(jobResult),
+      result: jobRecord<AgentRestartJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -5905,7 +5577,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentUpgradeJobResultToRecord(jobResult),
+      result: jobRecord<AgentUpgradeJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -6012,7 +5684,7 @@ export class ProvisioningJobService {
         .update(jobs)
         .set({
           status: "completed",
-          result: adminCanaryImageJobResultToRecord(completion),
+          result: jobRecord<AdminCanaryImageJobResult>(completion),
           result_storage: "inline",
           result_key: null,
           error: null,
@@ -6183,7 +5855,7 @@ export class ProvisioningJobService {
       const [updated] = await tx
         .update(jobs)
         .set({
-          result: adminCanaryImageJobResultToRecord(jobResult),
+          result: jobRecord<AdminCanaryImageJobResult>(jobResult),
           result_storage: "inline",
           result_key: null,
           error: null,
@@ -6387,7 +6059,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentDowngradeJobResultToRecord(jobResult),
+      result: jobRecord<AgentDowngradeJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -6430,7 +6102,7 @@ export class ProvisioningJobService {
 
     if (!result.success) {
       await this.updateClaimedExecution(job, {
-        result: agentLogsJobResultToRecord({
+        result: jobRecord<AgentLogsJobResult>({
           cloudAgentId: data.agentId,
           status: result.status,
           tail: data.tail,
@@ -6450,7 +6122,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentLogsJobResultToRecord(jobResult),
+      result: jobRecord<AgentLogsJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -6502,7 +6174,7 @@ export class ProvisioningJobService {
 
     if (response.error) {
       await this.updateClaimedExecution(job, {
-        result: agentMessageJobResultToRecord({
+        result: jobRecord<AgentMessageJobResult>({
           cloudAgentId: data.agentId,
           error: response.error.message,
         }),
@@ -6518,7 +6190,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentMessageJobResultToRecord(jobResult),
+      result: jobRecord<AgentMessageJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -6605,7 +6277,7 @@ export class ProvisioningJobService {
       (result.error === "Sandbox is not running" || result.error === SNAPSHOT_ENDPOINT_UNSUPPORTED)
     ) {
       await this.settleClaimedExecution(job, "completed", {
-        result: agentSnapshotJobResultToRecord({
+        result: jobRecord<AgentSnapshotJobResult>({
           cloudAgentId: data.agentId,
           skipped: true,
           reason: result.error,
@@ -6624,7 +6296,7 @@ export class ProvisioningJobService {
 
     if (!result.success) {
       const retrySnapshot = await this.updateClaimedExecution(job, {
-        result: agentSnapshotJobResultToRecord({
+        result: jobRecord<AgentSnapshotJobResult>({
           cloudAgentId: data.agentId,
           error: result.error,
         }),
@@ -6650,7 +6322,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentSnapshotJobResultToRecord(jobResult),
+      result: jobRecord<AgentSnapshotJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -6724,7 +6396,7 @@ export class ProvisioningJobService {
       // Persist a partial result and rethrow so the jobs runner counts an
       // attempt and retries (or marks failed on exhaustion).
       const retrySnapshot = await this.updateClaimedExecution(job, {
-        result: agentDeleteJobResultToRecord({
+        result: jobRecord<AgentDeleteJobResult>({
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
           rowDeleted: false,
@@ -6816,7 +6488,7 @@ export class ProvisioningJobService {
         provResult.error,
       );
       const retrySnapshot = await this.updateClaimedExecution(job, {
-        result: agentProvisionJobResultToRecord({
+        result: jobRecord<AgentProvisionJobResult>({
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
           error: provisionError,
@@ -6858,7 +6530,7 @@ export class ProvisioningJobService {
     };
 
     await this.settleClaimedExecution(job, "completed", {
-      result: agentProvisionJobResultToRecord(jobResult),
+      result: jobRecord<AgentProvisionJobResult>(jobResult),
       completed_at: new Date(),
     });
 
@@ -7303,35 +6975,6 @@ export class ProvisioningJobService {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface HeartbeatResult {
-  total: number;
-  succeeded: number;
-  failed: number;
-}
-
-export interface RecoveryResult {
-  /** disconnected always-on agents examined this cycle */
-  total: number;
-  /** flipped back to `running` because the bridge answered again */
-  recovered: number;
-  /** still unreachable → a re-provision job was enqueued */
-  reprovisioned: number;
-  /** recovery threw for this agent */
-  failed: number;
-}
-
-export interface ProcessingResult {
-  claimed: number;
-  succeeded: number;
-  retried: number;
-  failed: number;
-  errors: Array<{ jobId: string; error: string }>;
-}
-
 /** Find due agent-stop intents whose exact bound worker job is absent or terminal. */
 export async function listRecoverableAgentComputeStopIntents(now: Date, limit = 100) {
   if (!Number.isSafeInteger(limit) || limit <= 0) return [];
@@ -7629,3 +7272,8 @@ export async function rearmRecoverableAgentComputeStopIntentOnce(p: {
 
 // Singleton
 export const provisioningJobService = new ProvisioningJobService();
+
+/** Copy validated typed commands/results into the repository JSON record shape. */
+function jobRecord<T extends object>(value: T): Record<string, unknown> {
+  return { ...value };
+}

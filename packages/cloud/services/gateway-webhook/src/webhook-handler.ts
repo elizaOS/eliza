@@ -4,16 +4,6 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/cloud-services-common";
-import {
-  type PersonalSharedFailureMetadata,
-  personalSharedFailureReply,
-  personalSharedNoResponseFailure,
-  readPersonalSharedFailureMetadata,
-} from "@elizaos/cloud-services-common/personal-shared-failure";
-import {
-  executeResponseAttempts,
-  type ResponseAttemptsResult,
-} from "@elizaos/cloud-services-common/response-attempts";
 import { TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER } from "@elizaos/cloud-services-common/telegram-connector";
 import {
   executeTelegramDelivery,
@@ -22,6 +12,14 @@ import {
   type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
 } from "@elizaos/cloud-services-common/telegram-delivery";
+import {
+  executeResponseAttempts,
+  type PersonalSharedFailureMetadata,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
+  type ResponseAttemptsResult,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/transport";
 import type {
   ChatEvent,
   Platform,

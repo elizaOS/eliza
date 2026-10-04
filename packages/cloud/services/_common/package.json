@@ -22,7 +22,10 @@
     "./gateway-routing": "./src/gateway-routing.ts",
     "./gateway-forward": "./src/gateway-forward.ts",
     "./bounded-fetch": "./src/bounded-fetch.ts",
-    "./blooio-environment": "./src/blooio-environment.ts"
+    "./blooio-environment": "./src/blooio-environment.ts",
+    "./node": "./src/node.ts",
+    "./transport": "./src/transport.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

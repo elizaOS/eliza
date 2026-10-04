@@ -6,8 +6,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { PERSONAL_SHARED_NO_RESPONSE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
-import { __resetTelegramIdentityAttestationCacheForTests } from "@elizaos/cloud-services-common/telegram-connector";
+import { __resetTelegramIdentityAttestationCacheForTests } from "@elizaos/cloud-services-common/testing";
+import { PERSONAL_SHARED_NO_RESPONSE_REPLY } from "@elizaos/cloud-services-common/transport";
 import { Hono } from "hono";
 import { PersonalTelegramDelivery } from "@/api-app/personal-telegram-delivery";
 import type { AppEnv } from "@/types/cloud-worker-env";

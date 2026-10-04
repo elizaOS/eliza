@@ -12,8 +12,8 @@ import { z } from "zod";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
+import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
 import { resolvePersonalDedicatedTrafficAccess } from "@/lib/services/personal-dedicated-fallback";
 import {
   personalDirectChatRefusalResponse,

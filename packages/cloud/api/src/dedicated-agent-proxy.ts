@@ -1,4 +1,5 @@
 import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
+
 /**
  * Authentication and proxy boundary for dedicated-agent subdomains.
  *
@@ -17,6 +18,7 @@ import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
  * entrypoint stays thin (Cloudflare startup-CPU budget).
  */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { isInferenceTraceId } from "@elizaos/core";
 import { renderCloudPairHandoffHtml } from "@elizaos/core/contracts/cloud-pair";
 import {
@@ -36,7 +38,6 @@ import {
   isMobileApiKeySecret,
   mobileApiKeyIngressRateLimitKey,
 } from "@/lib/auth/mobile-api-key";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { isFirstPartyOrigin } from "@/lib/cors/cloud-api-hono-cors";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";

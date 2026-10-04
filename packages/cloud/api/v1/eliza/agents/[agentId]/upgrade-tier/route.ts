@@ -36,11 +36,11 @@
  *    re-arms, for stopped/sleeping/dead-job targets) durable state.
  */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
 import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";

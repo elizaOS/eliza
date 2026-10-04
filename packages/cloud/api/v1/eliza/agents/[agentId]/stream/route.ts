@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { chatSseFrame } from "@/lib/services/chat-sse-frames";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
+import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import {
   personalDirectChatRefusalResponse,
   resolveSharedSurfaceTarget,

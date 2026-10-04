@@ -1,11 +1,6 @@
 /** Routes Discord messages to registered cloud agent servers. */
 
 import {
-  executeGatewayForwardAttempts,
-  type GatewayTargetResult,
-  postGatewayTarget,
-} from "@elizaos/cloud-services-common/gateway-forward";
-import {
   type GatewayRoutingRedis as CommonGatewayRoutingRedis,
   type GatewayWakeDependencies,
   observeGatewayWake,
@@ -13,6 +8,11 @@ import {
   resolveGatewayAgentServer,
   wakeGatewayServer,
 } from "@elizaos/cloud-services-common/gateway-routing";
+import {
+  executeGatewayForwardAttempts,
+  type GatewayTargetResult,
+  postGatewayTarget,
+} from "@elizaos/cloud-services-common/transport";
 
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";

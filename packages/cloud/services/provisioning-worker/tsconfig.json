@@ -1,0 +1,21 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@/lib/*": ["../../shared/src/lib/*"],
+      "@/db/*": ["../../shared/src/db/*"],
+      "@/types/*": ["../../shared/src/types/*"],
+      "@elizaos/cloud-shared/*": ["../../shared/src/*"],
+      "@elizaos/core/*": ["../../../../packages/core/src/*"],
+      "@/*": ["../../../*"],
+      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"]
+    }
+  },
+  "include": ["src/**/*", "../../shared/src/types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

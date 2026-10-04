@@ -5,6 +5,11 @@
  * POST — create a new Agent cloud agent (gated on a minimum credit balance).
  */
 
+import type {
+  AgentActiveJobDto,
+  AgentListItemDto,
+  AgentsResponse,
+} from "@elizaos/cloud-shared/types";
 import { Hono } from "hono";
 import { z } from "zod";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
@@ -41,11 +46,6 @@ import {
   getAgentTier,
   tierProvisionsEagerly,
 } from "@/lib/services/shared-runtime/agent-tier";
-import type {
-  AgentActiveJobDto,
-  AgentListItemDto,
-  AgentsResponse,
-} from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { projectProductAgentList } from "./product-agent-list";

@@ -1,3 +1,7 @@
+import {
+  projectLegacyStripeCheckoutReceipt,
+  projectStripeCheckoutReceipt,
+} from "@/lib/services/stripe-checkout-receipt";
 /**
  * Redis queue consumer for Stripe events.
  *
@@ -750,21 +754,9 @@ async function handleCheckoutSessionCompleted(
   let legacyCutoverApplied = false;
   let legacyAlreadyApplied = false;
   if (checkoutOrderId) {
-    const customerId =
-      typeof session.customer === "string"
-        ? session.customer
-        : (session.customer?.id ?? null);
-    const settlement = await stripeCheckoutOrdersService.settle({
-      checkoutOrderId,
-      clientReferenceId: session.client_reference_id,
-      metadataOrderId: session.metadata?.checkout_order_id ?? null,
-      checkoutSessionId: session.id,
-      paymentIntentId,
-      paymentStatus: session.payment_status,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-      customerId,
-    });
+    const settlement = await stripeCheckoutOrdersService.settle(
+      projectStripeCheckoutReceipt(session, paymentIntentId, checkoutOrderId),
+    );
     organizationId = settlement.order.organization_id;
     userId = settlement.order.initiated_by_user_id;
     credits = Number(settlement.order.credits_to_grant);
@@ -775,23 +767,9 @@ async function handleCheckoutSessionCompleted(
     purchaseType === "custom_amount" ||
     purchaseType === "credit_pack"
   ) {
-    const customerId =
-      typeof session.customer === "string"
-        ? session.customer
-        : (session.customer?.id ?? null);
-    const settlement = await stripeCheckoutOrdersService.settleLegacy({
-      checkoutSessionId: session.id,
-      paymentIntentId,
-      paymentStatus: session.payment_status,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-      customerId,
-      organizationId: session.metadata?.organization_id ?? null,
-      initiatedByUserId: session.metadata?.user_id ?? null,
-      purchaseType,
-      creditPackId: session.metadata?.credit_pack_id ?? null,
-      claimedCredits: session.metadata?.credits ?? null,
-    });
+    const settlement = await stripeCheckoutOrdersService.settleLegacy(
+      projectLegacyStripeCheckoutReceipt(session, paymentIntentId),
+    );
     organizationId = settlement.organizationId;
     userId = settlement.initiatedByUserId;
     purchaseType = settlement.purchaseType;

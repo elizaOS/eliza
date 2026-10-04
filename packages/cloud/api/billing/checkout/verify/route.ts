@@ -1,3 +1,7 @@
+import {
+  projectLegacyStripeCheckoutReceipt,
+  projectStripeCheckoutReceipt,
+} from "@/lib/services/stripe-checkout-receipt";
 /**
  * POST /api/billing/checkout/verify
  *
@@ -96,36 +100,18 @@ app.post("/", async (c) => {
         : (session.customer?.id ?? null);
     const settlement = checkoutOrderId
       ? await stripeCheckoutOrdersService.settle(
-          {
-            checkoutOrderId,
-            clientReferenceId: session.client_reference_id,
-            metadataOrderId: session.metadata?.checkout_order_id ?? null,
-            checkoutSessionId: session.id,
+          projectStripeCheckoutReceipt(
+            session,
             paymentIntentId,
-            paymentStatus: session.payment_status,
-            amountTotal: session.amount_total,
-            currency: session.currency,
-            customerId,
-          },
+            checkoutOrderId,
+          ),
           {
             callerOrganizationId: user.organization_id,
             callerUserId: user.id,
           },
         )
       : await stripeCheckoutOrdersService.settleLegacy(
-          {
-            checkoutSessionId: session.id,
-            paymentIntentId,
-            paymentStatus: session.payment_status,
-            amountTotal: session.amount_total,
-            currency: session.currency,
-            customerId,
-            organizationId: session.metadata?.organization_id ?? null,
-            initiatedByUserId: session.metadata?.user_id ?? null,
-            purchaseType: session.metadata?.type ?? null,
-            creditPackId: session.metadata?.credit_pack_id ?? null,
-            claimedCredits: session.metadata?.credits ?? null,
-          },
+          projectLegacyStripeCheckoutReceipt(session, paymentIntentId),
           {
             callerOrganizationId: user.organization_id,
             callerUserId: user.id,

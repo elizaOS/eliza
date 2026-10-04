@@ -19,6 +19,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
@@ -56,7 +57,6 @@ import { subscriptionAllowancePeriods } from "../../../db/schemas/subscription-a
 import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
-import { AGENT_PRICING } from "../../constants/agent-pricing";
 import type { AgentRetentionNotice } from "../agent-funding-retention";
 
 const TEST_TIMEOUT = 300_000;

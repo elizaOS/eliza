@@ -12,6 +12,7 @@
  */
 
 import { createHmac } from "node:crypto";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import {
@@ -31,7 +32,6 @@ import {
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import {
   CRON_INVOCATION_ID_HEADER,
   CRON_SCHEDULE_HEADER,

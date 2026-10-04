@@ -5,6 +5,7 @@
  * one primary-database observation boundary.
  */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import {
   and,
@@ -29,7 +30,6 @@ import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { jobs } from "../../db/schemas/jobs";
 import type { AppEnv } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
-import { AGENT_PRICING } from "../constants/agent-pricing";
 import { calculateDailyContainerCost } from "../constants/pricing";
 import { logger } from "../utils/logger";
 import {

@@ -1,6 +1,5 @@
 /** Delegates Telegram protocol behavior to the shared Web-standard connector. */
 
-import { normalizeIdentityLinkCodeBody } from "@elizaos/cloud-services-common/identity-link-code";
 import {
   parseTelegramWebhook,
   resolveTelegramBotUsername,
@@ -16,6 +15,7 @@ import {
   telegramReplyWithMedia,
   verifyTelegramWebhook,
 } from "@elizaos/cloud-services-common/telegram-connector";
+import { normalizeIdentityLinkCodeBody } from "@elizaos/cloud-services-common/transport";
 import { resolveConnectorAccountId } from "../connector-account";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";

@@ -110,7 +110,7 @@ export async function forwardToContainerControlPlane(
  * (job processing, node autoscale, warm-pool replenish/drain, fleet upgrade,
  * node health) is driven by the daemon's `pollCycle` /
  * `runInfraMaintenanceCycle` (see
- * packages/cloud/scripts/admin/daemons/provisioning-worker.ts). The CF cron
+ * packages/cloud/services/provisioning-worker/src/index.ts). The CF cron
  * here only needs to validate auth and acknowledge — returning 200 instead of
  * a dead-forward 5xx so the scheduled invocation stops erroring.
  *

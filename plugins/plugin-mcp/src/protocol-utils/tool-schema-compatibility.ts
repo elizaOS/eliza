@@ -1,3 +1,4 @@
+import type { JSONSchema7 } from "json-schema";
 /**
  * Walks untrusted MCP tool schemas through a host-supplied provider policy,
  * preserving stripped constraints in model-visible descriptions.
@@ -106,4 +107,50 @@ export function transformMcpToolSchema<TSchema extends McpJsonSchema>(
   const rewritten = rewriteSchema(schema, policy);
   assertMcpJsonSchemaBudget(rewritten);
   return rewritten as TSchema;
+}
+
+/** Shared schema transformation; hosts retain model selection and description policy. */
+export abstract class McpSchemaCompatibility<
+  TModelInfo,
+  TConstraints extends object = Record<string, unknown>,
+> {
+  protected modelInfo: TModelInfo;
+  constructor(modelInfo: TModelInfo) {
+    this.modelInfo = modelInfo;
+  }
+  abstract shouldApply(): boolean;
+  transformToolSchema<TSchema extends JSONSchema7>(toolSchema: TSchema): TSchema {
+    return transformMcpToolSchema(toolSchema as Record<string, unknown>, {
+      applies: this.shouldApply(),
+      unsupportedFor: (type) => this.unsupportedFor(type),
+      describe: (original, constraints) =>
+        this.mergeDescription(original, { ...constraints } as TConstraints),
+    }) as TSchema;
+  }
+  private unsupportedFor(type: string | undefined): readonly string[] {
+    switch (type) {
+      case "string":
+        return this.getUnsupportedStringProperties();
+      case "number":
+      case "integer":
+        return this.getUnsupportedNumberProperties();
+      case "array":
+        return this.getUnsupportedArrayProperties();
+      case "object":
+        return this.getUnsupportedObjectProperties();
+      default:
+        return [];
+    }
+  }
+  protected mergeDescription(original: string | undefined, constraints: TConstraints): string {
+    const serialized = this.stringifyConstraints(constraints);
+    return original ? `${original}\n${serialized}` : serialized;
+  }
+  protected stringifyConstraints(constraints: TConstraints): string {
+    return JSON.stringify(constraints);
+  }
+  protected abstract getUnsupportedStringProperties(): readonly string[];
+  protected abstract getUnsupportedNumberProperties(): readonly string[];
+  protected abstract getUnsupportedArrayProperties(): readonly string[];
+  protected abstract getUnsupportedObjectProperties(): readonly string[];
 }

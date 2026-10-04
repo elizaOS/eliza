@@ -12,14 +12,6 @@
  * In devnet, the default anvil wallet (0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266) is auto-admin.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { ApiError, ValidationError } from "@/lib/api/cloud-worker-errors";
-import {
-  requireAdmin,
-  requireUserOrApiKey,
-} from "@/lib/auth/workers-hono-auth";
-import { adminService } from "@/lib/services/admin";
 import type {
   AdminModerationActionResponse,
   AdminModerationAdminsResponse,
@@ -32,7 +24,15 @@ import type {
   AdminModerationViolationDto,
   AdminModerationViolationsResponse,
   AdminUserDto,
-} from "@/lib/types/cloud-api";
+} from "@elizaos/cloud-shared/types";
+import { Hono } from "hono";
+import { z } from "zod";
+import { ApiError, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  requireAdmin,
+  requireUserOrApiKey,
+} from "@/lib/auth/workers-hono-auth";
+import { adminService } from "@/lib/services/admin";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 

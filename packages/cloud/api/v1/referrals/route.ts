@@ -1,6 +1,11 @@
 /**
  * GET /api/v1/referrals — current user's referral code (creates one if missing).
  */
+
+import {
+  coerceNonNegativeIntegerCount,
+  type ReferralMeResponse,
+} from "@elizaos/cloud-sdk/contracts";
 import { Hono } from "hono";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -9,10 +14,6 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { referralsService } from "@/lib/services/referrals";
-import {
-  coerceNonNegativeIntegerCount,
-  type ReferralMeResponse,
-} from "@/lib/types/referral-me";
 import { getCorsHeaders } from "@/lib/utils/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
