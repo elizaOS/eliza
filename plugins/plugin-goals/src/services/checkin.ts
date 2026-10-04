@@ -170,9 +170,8 @@ export function checkinTriggersForGoal(
       }
       // Keyed by instant: moving the date needs a new task, because a once
       // task that has already fired can't be re-armed by an edit.
-      return [
-        { slotKey: `once:${dueAt}`, trigger: { kind: "once", atIso: dueAt } },
-      ];
+      const atIso = new Date(dueAt).toISOString();
+      return [{ slotKey: `once:${atIso}`, trigger: { kind: "once", atIso } }];
     }
     case "daily": {
       const hours = windowHoursOf(cadence.windows, goal.id);
@@ -440,10 +439,13 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     const desiredOnceTriggers = new Set(
       desired
         .filter((input) => input.trigger.kind === "once")
-        .map((input) => JSON.stringify(input.trigger)),
+        .map((input) =>
+          input.trigger.kind === "once" ? Date.parse(input.trigger.atIso) : NaN,
+        ),
     );
     const holdsDesiredOnce = (task: ScheduledTask): boolean =>
-      desiredOnceTriggers.has(JSON.stringify(task.trigger));
+      task.trigger.kind === "once" &&
+      desiredOnceTriggers.has(Date.parse(task.trigger.atIso));
 
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
@@ -469,7 +471,10 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
           input.trigger.kind === "once" &&
           existing.some(
             (task) =>
-              JSON.stringify(task.trigger) === JSON.stringify(input.trigger),
+              task.trigger.kind === "once" &&
+              input.trigger.kind === "once" &&
+              Date.parse(task.trigger.atIso) ===
+                Date.parse(input.trigger.atIso),
           );
         if (!covered) scheduled.push(await runner.schedule(input));
         continue;

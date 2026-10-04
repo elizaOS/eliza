@@ -407,6 +407,46 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     expect(await spine.runner.list({ kind: "checkin" })).toHaveLength(1);
   });
 
+  it.each(["scheduled", "completed", "dismissed"] as const)(
+    "preserves a %s legacy once task across equivalent timestamps",
+    async (status) => {
+      const spine = makeSpine();
+      const service = makeService(spine);
+      const goal = makeGoal({
+        cadence: { kind: "once", dueAt: "2026-10-05T15:00:00.000Z" },
+      });
+      const legacy = await spine.runner.schedule(
+        buildCheckinTaskInput(
+          goal,
+          {
+            slotKey: "once",
+            trigger: { atIso: "2026-10-05T11:00:00-04:00", kind: "once" },
+          },
+          CREATED_ISO,
+        ),
+      );
+      if (status !== "scheduled")
+        await spine.runner.apply(
+          legacy.taskId,
+          status === "completed" ? "complete" : "dismiss",
+          {},
+        );
+      expect(await service.syncGoalCheckins(goal)).toEqual({
+        scheduled: [],
+        edited: [],
+        dismissedTaskIds: [],
+      });
+      expect(await spine.runner.list({ kind: "checkin" })).toHaveLength(1);
+      expect(
+        checkinTriggersForGoal(
+          makeGoal({
+            cadence: { kind: "once", dueAt: "2026-10-05T11:00:00-04:00" },
+          }),
+        ),
+      ).toEqual(checkinTriggersForGoal(goal));
+    },
+  );
+
   it("moves a still-pending once check-in to the new instant", async () => {
     const spine = makeSpine();
     const service = makeService(spine);
