@@ -24,7 +24,7 @@
       "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/core/protocol": ["../../packages/core/dist/protocol"]
     },
-    "customConditions": ["eliza-source"]
+    "customConditions": []
   },
   "include": ["src/ui", "src/ui.ts", "src/register.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]

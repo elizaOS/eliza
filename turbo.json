@@ -370,6 +370,9 @@
       "dependsOn": ["^typecheck:deps"],
       "outputs": []
     },
+    "@elizaos/os-usb-installer#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
+    },
     "@elizaos/agent-server#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-sql#build"]
     },
@@ -419,7 +422,7 @@
       ]
     },
     "@elizaos/plugin-anthropic#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build", "@elizaos/host#build", "@elizaos/contracts#build"]
     },
     "@elizaos/plugin-assistant#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]
@@ -471,6 +474,7 @@
     "@elizaos/plugin-wallet#typecheck": {
       "dependsOn": [
         "typecheck:deps",
+        "@elizaos/host#build",
         "@elizaos/ui#build",
         "@elizaos/cloud-routing#build"
       ]

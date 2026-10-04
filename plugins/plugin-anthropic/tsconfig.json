@@ -7,7 +7,6 @@
       "DOM"
     ],
     "moduleResolution": "bundler",
-    "customConditions": ["eliza-source"],
     "outDir": "./dist",
     "strict": true,
     "strictNullChecks": true,
