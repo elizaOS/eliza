@@ -21,6 +21,7 @@ export type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
 const STORAGE_KEY = "elizaos:agent-profiles";
+const ACTIVE_SERVER_KEY = "elizaos:active-server";
 
 function tryLocalStorage<T>(fn: () => T, fallback: T): T {
   try {
@@ -44,6 +45,52 @@ function emptyRegistry(): AgentProfileRegistry {
   return { version: 1, activeProfileId: null, profiles: [] };
 }
 
+// Retain the saved connection on first upgrade; an existing registry always wins.
+function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
+  const raw = localStorage.getItem(ACTIVE_SERVER_KEY);
+  if (!raw) return null;
+
+  let parsed: PersistedActiveServer;
+  try {
+    parsed = JSON.parse(raw) as PersistedActiveServer;
+  } catch {
+    // error-policy:J3 corrupt persisted server entry — migration starts from
+    // an empty registry rather than wedging profile bootstrap.
+    return null;
+  }
+
+  if (!parsed.kind || !parsed.id || !parsed.label) return null;
+
+  const profile: AgentProfile = {
+    id: generateId(),
+    label: parsed.label,
+    kind: parsed.kind,
+    ...(parsed.kind === "cloud" && parsed.id.startsWith("cloud:")
+      ? { cloudAgentId: parsed.id.slice("cloud:".length) }
+      : {}),
+    ...(parsed.kind === "cloud" && parsed.cloudRuntimeAgentId
+      ? { cloudRuntimeAgentId: parsed.cloudRuntimeAgentId }
+      : {}),
+    ...(parsed.kind === "cloud" && parsed.cloudRuntime
+      ? { cloudRuntime: parsed.cloudRuntime }
+      : {}),
+    apiBase: parsed.apiBase,
+    accessToken: parsed.accessToken,
+    createdAt: new Date().toISOString(),
+  };
+
+  const registry: AgentProfileRegistry = {
+    version: 1,
+    activeProfileId: profile.id,
+    profiles: [profile],
+  };
+
+  // Persist immediately so migration only runs once.
+  shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
+  // Leave elizaos:active-server intact for rollback.
+  return registry;
+}
+
 export function loadAgentProfileRegistry(): AgentProfileRegistry {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -53,7 +100,7 @@ export function loadAgentProfileRegistry(): AgentProfileRegistry {
         return parsed;
       }
     }
-    return emptyRegistry();
+    return migrateFromPersistedActiveServer() ?? emptyRegistry();
   }, emptyRegistry());
 }
 
