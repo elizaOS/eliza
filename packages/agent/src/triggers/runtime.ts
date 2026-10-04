@@ -1026,6 +1026,10 @@ async function advanceDedupedScheduledFire(
       executionId,
     };
   }
+  if (currentTrigger.triggerType === "once") {
+    await runtime.deleteTask(currentTask.id);
+    return { status: "skipped", taskDeleted: true, executionId };
+  }
   const nextMetadata = buildTriggerMetadata({
     existingMetadata: taskMetadata(currentTask),
     trigger: currentTrigger,
