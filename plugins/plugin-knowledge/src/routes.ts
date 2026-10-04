@@ -585,6 +585,11 @@ async function countDocumentFacets({
   return counts;
 }
 export const __setDocumentFetchImplForTests = __setDocumentUrlFetchImplForTests;
+
+/** Re-adding existing content under a different visibility is a client conflict. */
+function isDocumentScopeConflict(err: unknown): err is ElizaError {
+  return err instanceof ElizaError && err.code === "DOCUMENT_SCOPE_CONFLICT";
+}
 export async function handleDocumentsRoutes(
   ctx: DocumentRouteContext,
 ): Promise<boolean> {
@@ -1559,6 +1564,10 @@ export async function handleDocumentsRoutes(
         );
         return true;
       }
+      if (isDocumentScopeConflict(err)) {
+        error(res, err.message, 409);
+        return true;
+      }
       const message = err instanceof Error ? err.message : String(err);
       error(
         res,
@@ -1759,35 +1768,44 @@ export async function handleDocumentsRoutes(
         ? (scopedToEntityId ?? routeActor.entityId)
         : routeActor.entityId;
     const isYouTubeTranscript = isYouTubeUrl(urlToFetch);
-    const result = await documentsService.addDocument({
-      agentId,
-      worldId,
-      roomId,
-      entityId,
-      clientDocumentId: "" as UUID,
-      contentType,
-      originalFilename: filename,
-      content,
-      scope: uploadFilters.scope,
-      scopedToEntityId,
-      addedBy: routeActor.entityId,
-      addedByRole: routeActorAddedByRole(routeActor),
-      addedFrom: "url",
-      metadata: {
-        ...body.metadata,
-        url: urlToFetch,
-        source: isYouTubeTranscript ? "youtube" : "url",
-        filename,
-        originalFilename: filename,
-        fileType: contentType,
+    let result: Awaited<ReturnType<typeof documentsService.addDocument>>;
+    try {
+      result = await documentsService.addDocument({
+        agentId,
+        worldId,
+        roomId,
+        entityId,
+        clientDocumentId: "" as UUID,
         contentType,
-        textBacked: fetchedContent.contentType !== "binary",
+        originalFilename: filename,
+        content,
         scope: uploadFilters.scope,
-        ...(scopedToEntityId ? { scopedToEntityId } : {}),
+        scopedToEntityId,
         addedBy: routeActor.entityId,
         addedByRole: routeActorAddedByRole(routeActor),
-      },
-    });
+        addedFrom: "url",
+        metadata: {
+          ...body.metadata,
+          url: urlToFetch,
+          source: isYouTubeTranscript ? "youtube" : "url",
+          filename,
+          originalFilename: filename,
+          fileType: contentType,
+          contentType,
+          textBacked: fetchedContent.contentType !== "binary",
+          scope: uploadFilters.scope,
+          ...(scopedToEntityId ? { scopedToEntityId } : {}),
+          addedBy: routeActor.entityId,
+          addedByRole: routeActorAddedByRole(routeActor),
+        },
+      });
+    } catch (err) {
+      if (isDocumentScopeConflict(err)) {
+        error(res, err.message, 409);
+        return true;
+      }
+      throw err;
+    }
     json(res, {
       ok: true,
       documentId: result.clientDocumentId,
