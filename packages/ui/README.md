@@ -39,3 +39,12 @@ The `voice/pcm-wave` leaf shares mono PCM16 WAV encoding for single buffers or
 cumulative chunks without importing capture, desktop bridge or provider code.
 Hosts own recording lifecycle, sample-rate selection and playback/transcription.
 Nonfinite samples encode as silence; finite samples are clipped and rounded.
+
+`BrowserDocumentStore` stores opaque text with IndexedDB transaction receipts.
+Its compare-and-swap operation detects stale writes and retains reset tombstones;
+`edit` serializes asynchronous, side-effect-free callbacks with Web Locks and never
+replays them. Cancellation prevents a late callback from committing. Hosts own
+storage namespaces, schema validation, legacy migration and recovery presentation.
+This API does not maintain a localStorage mirror. Run
+`bun run --cwd packages/ui test:browser-document-store` for real cross-tab,
+cancellation and recovery checks in Chromium, Firefox and WebKit.
