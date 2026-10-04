@@ -47,8 +47,38 @@ test("log text uses the same assignment protection without matching ordinary low
 		expect(new SecretSwapSession().substituteText(text)).toBe(text);
 	}
 });
+test("prefixed lowercase credential names redact logs and model input", () => {
+	for (const key of [
+		"db_password",
+		"openai_api_key",
+		"github_token",
+		"aws_secret_access_key",
+		"oauth-client-secret",
+	]) {
+		const text = `${key}=${value}`;
+		expect(redactSensitiveLogText(text)).not.toContain(value);
+		const s = new SecretSwapSession(),
+			wire = s.substituteText(text);
+		expect(wire).not.toContain(value);
+		expect(s.restoreText(wire)).toBe(text);
+	}
+	// A separator is required, so ordinary words and plural fields still pass.
+	for (const key of [
+		"monkey",
+		"turnkey_mode",
+		"keyboard_layout",
+		"max_tokens",
+	]) {
+		const text = `${key}=${value}`;
+		expect(new SecretSwapSession().substituteText(text)).toBe(text);
+		expect(redactSensitiveLogText(text)).toBe(text);
+	}
+});
 test("stream retains every named assignment opener before an unknown long credential", () => {
 	for (const key of [
+		"db_password",
+		"github_token",
+		"aws_secret_access_key",
 		"password",
 		"passwd",
 		"passphrase",
