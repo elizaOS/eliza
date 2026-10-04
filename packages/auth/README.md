@@ -44,3 +44,27 @@ email?, phone?}`, defaulting to the account's own email, then phone) and
 They never re-enroll or write storage, and they reject a different
 user/organization with `code: "billing_account_mismatch"`. `billing-status`
 returns `{status: "authorized", expiresAt}` or `{status: "required"}`.
+
+## Native Cloud service composition
+
+`native-host/cloud-services/cloud-services.mjs` is a Node source entrypoint for
+verified native gateway payloads. It shares private credential persistence,
+account epochs, Cloud login/billing transport, speech framing, account-bound
+Google reads and document-runtime authority/provenance checks. It does not
+provision a remote agent or expose account API credentials to the renderer.
+The checkout projection intentionally returns only provider-scoped payment UI
+fields. The document loader requires the host to supply the reviewed source commit and
+canvasVersion explicitly; artifact provenance must match both.
+
+Hosts supply explicit `hostPolicy` functions (projectAccountAccess,
+createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
+planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
+messages, plus speechVoice. These are trusted host settings, never renderer
+input. The host remains responsible for origin admission and authenticating
+requests before this route handler. Native enrollment keeps its own registered
+application identity. Document runtimes are reviewed host-owned artifacts.
+
+These are source-composition APIs, not browser-safe root or published dist
+exports. Run `bun run --cwd packages/auth test:cloud-services` for transport and
+private-file tests with synthetic provider responses. Consumer tests cover
+product voice, privacy, account races and installed payload dependency closure.
