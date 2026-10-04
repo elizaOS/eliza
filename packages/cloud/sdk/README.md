@@ -50,3 +50,14 @@ Service-only consumers set `hostPolicy.accountBilling: false` to exclude billing
 routes. Enrollment requires its factory when a pending credential store is supplied.
 Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`
 uses provider language detection. Omitting these choices retains policy validation.
+
+Native billing also exposes management and portal projections, cancellation,
+pending/status recovery and reviewed reversal. The local POST
+`/cloud/account/subscription/renewal-review` accepts subscriptionId and revision;
+`/cloud/account/subscription/undo` additionally requires expectedRenewalTermsDigest.
+Hosts must display the complete renewal estimate and obtain explicit approval.
+Undo calls the reviewed confirmation API, never legacy unreviewed undo. Its
+idempotency identity includes approved terms and survives native restarts. A
+same-terms retry requires a matching FAILED predecessor via retryOf; changed
+terms require a fresh review and explicit confirmation. Recovery reads never
+redispatch. Server-side pending exclusion and billing authority remain decisive.
