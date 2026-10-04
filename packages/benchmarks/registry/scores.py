@@ -1214,8 +1214,6 @@ def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
     )
     if sample_count <= 0:
         raise ValueError("vision_language: zero-sample report is not publishable")
-    if not sample_count.is_integer():
-        raise ValueError("vision_language: sample_count must be an integer")
     error_count = expect_count(
         get_required(root, "error_count", ctx="vision_language:root"),
         ctx="vision_language:error_count",
@@ -1403,8 +1401,6 @@ def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
     )
     if total_samples <= 0:
         raise ValueError("mmau: zero-sample score is not publishable")
-    if not total_samples.is_integer():
-        raise ValueError("mmau: total_samples must be an integer")
     error_count = expect_count(
         get_required(root, "error_count", ctx="mmau:root"),
         ctx="mmau:error_count",
