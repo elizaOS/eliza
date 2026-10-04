@@ -216,6 +216,8 @@ export interface LifeOpsXConnectorStatus {
   sourceOfTruth?: LifeOpsConnectorSourceOfTruth;
   configured?: boolean;
   connected: boolean;
+  /** Diagnostic from a failed registered status probe; absence is not a failure. */
+  probeError?: string;
   reason?: "connected" | "disconnected" | "config_missing" | "needs_reauth";
   preferredByAgent?: boolean;
   cloudConnectionId?: string | null;
