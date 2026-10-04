@@ -63,6 +63,23 @@ They never re-enroll or write storage, and they reject a different
 user/organization with `code: "billing_account_mismatch"`. `billing-status`
 returns `{status: "authorized", expiresAt}` or `{status: "required"}`.
 
+Account management uses the same private, account-bound interactive session.
+`account-methods` returns masked methods and a one-minute review; `account-unlink`
+requires its `reviewId` and `methodId`, rereads ownership, and clears authority on
+confirmed removal. Phone linking uses `account-phone-start` (`{phone}` in E.164)
+and `account-phone-verify` (`{sessionId, code}`). Auth owns collision and last-method
+protection. Ambiguous mutations consume their attempt; reread inventory before a
+new explicit action. Never automatically retry a mutation.
+
+Mutations require recent MFA. `account-security-status` lists enabled TOTP/SMS
+methods; `account-security-start` (`{method}`) and `account-security-verify`
+(`{sessionId, code}`) step up that session. Replacement authority must resolve to
+the same Cloud user and organization before it is retained. All operations share
+enrollment serialization and cancellation. These operations do not enroll a first
+MFA method, link another email, or link Google OAuth; hosts must not advertise
+those capabilities through this adapter. Sign-in methods are separate from Gmail
+consent and inference credentials.
+
 The protected App Live E2E workflow also offers an explicit staging credential
 fixture. It verifies single-use session PKCE, native credential acknowledgement,
 encrypted vault reopening, restored API access and exact-key revocation. Only a

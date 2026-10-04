@@ -1,4 +1,5 @@
 /** Shared host configuration and HTTP contracts; safe to import in a browser. */
+export * from "./api/app-route-plugin-registry.js";
 export * from "./api/http-plugin.js";
 export * from "./api/http-plugin-runtime.js";
 export * from "./api/route-helpers.js";

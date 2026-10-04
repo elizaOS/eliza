@@ -1,4 +1,5 @@
 import { mintCloudRuntimeProof } from "@elizaos/cloud-shared/lib/auth/cloud-runtime-proof";
+import { renderCloudPairHandoffHtml } from "@elizaos/contracts";
 
 /**
  * Authentication and proxy boundary for dedicated-agent subdomains.
@@ -49,7 +50,6 @@ import {
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { isInferenceTraceId } from "@elizaos/core";
-import { renderCloudPairHandoffHtml } from "@elizaos/contracts";
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,

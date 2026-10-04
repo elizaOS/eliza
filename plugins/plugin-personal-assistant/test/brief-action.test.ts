@@ -17,6 +17,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 }));
 
 import { PGlite } from "@electric-sql/pglite";
+import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -24,7 +25,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { getConnectorAccountManager, ModelType } from "@elizaos/core";
-import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,

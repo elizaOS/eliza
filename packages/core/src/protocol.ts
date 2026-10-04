@@ -225,6 +225,7 @@ export {
 	DEFAULT_INPUT_RESERVE_TOKENS,
 	estimateTokensFromChars,
 	MODEL_WINDOW_RESERVE_FRACTION,
+	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./runtime/model-input-budget.ts";
 export type {
