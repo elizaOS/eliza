@@ -151,7 +151,7 @@ async function bundleFixture() {
   const result = await build({
     entryPoints: [join(here, "accounts-fixture.tsx")],
     bundle: true,
-    format: "iife",
+    format: "esm",
     platform: "browser",
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
@@ -206,7 +206,7 @@ await writeFile(
 <link rel="stylesheet" href="/fixture.css">
 <style>html,body{margin:0;min-height:100%;background:var(--bg,#0b0b0b);color:var(--text,#eee)}</style>
 <script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-</head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`,
+</head><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>`,
 );
 console.log(`fixture bundled (${js.length} bytes js, ${css.length} bytes css)`);
 
