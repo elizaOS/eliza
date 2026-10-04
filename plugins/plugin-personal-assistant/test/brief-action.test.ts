@@ -23,9 +23,12 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { getConnectorAccountManager, ModelType } from "@elizaos/core";
 import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
-import { getDefaultTriageService } from "@elizaos/plugin-assistant";
+import {
+  __resetDefaultTriageServiceForTests,
+  getDefaultTriageService,
+} from "@elizaos/plugin-assistant";
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -701,6 +704,18 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         vi.useFakeTimers({ toFake: ["Date"] });
         vi.setSystemTime(new Date(instant));
         const db = await PGlite.create();
+        getDefaultTriageService().register({
+          source: "slack",
+          isAvailable: () => true,
+          capabilities: () => ({
+            list: true,
+            search: false,
+            manage: {},
+            send: { reply: false, new: false, schedule: false },
+            worlds: "single",
+            channels: "none",
+          }),
+        } as never);
         const triage = vi
           .spyOn(getDefaultTriageService(), "triage")
           .mockResolvedValue([]);
@@ -790,6 +805,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             },
           ]);
           expect(triage).toHaveBeenCalledWith(runtime, {
+            sources: ["slack"],
             sinceMs: Date.parse(expectedStart),
           });
           const briefing = result.data?.briefing as {
@@ -876,7 +892,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             expect(briefing.narrative).toBe("Life source unavailable.");
           } else {
             expect(prompts).toEqual([]);
-            expect(result.text).toContain("sources are unavailable");
+            expect(result.text).toContain(
+              "requested information could not be checked",
+            );
           }
         } finally {
           await db.close();
@@ -1261,6 +1279,276 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(modelType).toBe(ModelType.TEXT_LARGE);
       expect(args.prompt).toContain("Standup");
     });
+  });
+
+  describe("configured inbox selection — real account registry", () => {
+    it.each([
+      "default-disconnected",
+      "explicit-disconnected",
+      "pending",
+      "connected",
+      "failed",
+      "partial",
+      "multiple",
+      "agent-only",
+      "empty",
+      "partial-empty",
+      "reauth",
+      "service-missing",
+      "calendar-only",
+      "other-adapter",
+      "other-partial",
+    ])(
+      "handles %s without treating setup absence as a failed inbox",
+      async (mode) => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-02-05T16:00:00.000Z"));
+        __resetDefaultTriageServiceForTests();
+        const fixture = await createLifeOpsTestRuntime();
+        const { createGoogleConnectorAccountProvider } = await import(
+          "../../plugin-google-workspace/src/connector-account-provider.ts"
+        );
+        const { GoogleGmailAdapter } = await import(
+          "../../plugin-google-workspace/src/lifeops-message-adapter.ts"
+        );
+        const manager = getConnectorAccountManager(fixture.runtime);
+        manager.registerProvider(
+          createGoogleConnectorAccountProvider(fixture.runtime),
+        );
+        const calls: string[] = [];
+        const accountIds: string[] = [];
+        const failingIds = new Set<string>();
+        const fetchMessages = vi.fn(
+          async ({ accountId }: { accountId: string }) => {
+            calls.push(accountId);
+            if (failingIds.has(accountId))
+              throw new Error("Configured Gmail fetch failed");
+            if (mode === "empty" || mode === "partial-empty") return [];
+            return [
+              {
+                externalId: "same-mail-id",
+                threadId: "thread",
+                subject: `Mail from ${accountId}`,
+                from: "Sender",
+                fromEmail: "sender@example.test",
+                replyTo: null,
+                to: ["owner@example.test"],
+                cc: [],
+                snippet: "A real registered mailbox item",
+                receivedAt: "2026-02-05T12:00:00.000Z",
+                isUnread: true,
+                isImportant: false,
+                likelyReplyNeeded: true,
+                labels: ["INBOX"],
+                metadata: {},
+              },
+            ];
+          },
+        );
+        const google = {
+          listGmailTriageMessages: fetchMessages,
+          searchGmailMessages: vi.fn(async () => []),
+          getGmailMessageDetail: vi.fn(async () => null),
+          getGmailMessageRevision: vi.fn(async () => "v1"),
+          sendGmailReply: vi.fn(),
+          sendGmailMessage: vi.fn(),
+          modifyGmailMessages: vi.fn(),
+          createGmailFilterForSender: vi.fn(),
+        };
+        const originalGetService = fixture.runtime.getService.bind(
+          fixture.runtime,
+        );
+        vi.spyOn(fixture.runtime, "getService").mockImplementation((name) =>
+          name === "google"
+            ? mode === "service-missing"
+              ? null
+              : (google as never)
+            : originalGetService(name),
+        );
+        const diagnostic = vi
+          .spyOn(fixture.runtime, "reportError")
+          .mockImplementation(() => {});
+        const model = vi
+          .spyOn(fixture.runtime, "useModel")
+          .mockImplementation(async () => {
+            throw new Error("JSON brief must not call models");
+          });
+        try {
+          const accounts = ["partial", "partial-empty"].includes(mode)
+            ? ["good-mail", "failed-mail"]
+            : mode === "multiple"
+              ? ["good-mail", "other-mail"]
+              : ["failed", "reauth", "other-partial"].includes(mode)
+                ? ["failed-mail"]
+                : [
+                      "connected",
+                      "pending",
+                      "agent-only",
+                      "empty",
+                      "service-missing",
+                      "calendar-only",
+                    ].includes(mode)
+                  ? ["good-mail"]
+                  : [];
+          for (const id of accounts) {
+            const account = await manager.upsertAccount("google", {
+              id,
+              provider: "google",
+              role: mode === "agent-only" ? "AGENT" : "OWNER",
+              purpose: ["messaging"],
+              accessGate: "owner",
+              status:
+                mode === "pending"
+                  ? "pending"
+                  : mode === "reauth"
+                    ? "error"
+                    : "connected",
+              metadata: {
+                grantedCapabilities: [
+                  mode === "calendar-only" ? "calendar.read" : "gmail.read",
+                ],
+              },
+            });
+            accountIds.push(account.id);
+            if (id === "failed-mail") failingIds.add(account.id);
+          }
+          const registryBefore = await manager.listAccounts("google");
+          getDefaultTriageService().register(new GoogleGmailAdapter());
+          const otherRead = vi.fn(async () => [
+            {
+              id: "slack-item",
+              source: "slack",
+              externalId: "slack-item",
+              from: { identifier: "source-user", displayName: "Slack sender" },
+              to: [],
+              subject: "Other inbox item",
+              snippet: "Another configured adapter remains included",
+              receivedAtMs: Date.now(),
+              hasAttachments: false,
+              isRead: false,
+            },
+          ]);
+          if (mode === "other-adapter" || mode === "other-partial")
+            getDefaultTriageService().register({
+              source: "slack",
+              isAvailable: () => true,
+              capabilities: () => ({
+                list: true,
+                search: false,
+                manage: {},
+                send: { reply: false, new: false, schedule: false },
+                worlds: "single",
+                channels: "none",
+              }),
+              listMessages: otherRead,
+            } as never);
+
+          setBriefComposers({
+            loadCalendar: async () => [],
+            loadLife: async () => [],
+            loadCompletedToday: async () => [],
+            loadCommitments: async () => [],
+          });
+          const result = await callBrief(fixture.runtime, makeMessage(), {
+            action: "compose_morning",
+            format: "json",
+            ...(mode === "explicit-disconnected"
+              ? { include: { inbox: true } }
+              : {}),
+          });
+          const briefing = result.data?.briefing as LifeOpsBriefing;
+          expect(result.success).toBe(true);
+          if (
+            [
+              "default-disconnected",
+              "pending",
+              "agent-only",
+              "calendar-only",
+            ].includes(mode)
+          ) {
+            expect(briefing.sections).not.toHaveProperty("inbox");
+            expect(briefing.sourceErrors).toBeUndefined();
+            expect(calls).toEqual([]);
+            expect(diagnostic).not.toHaveBeenCalled();
+          } else if (mode === "explicit-disconnected") {
+            expect(briefing.sections.inbox).toEqual([]);
+            expect(briefing.sourceErrors).toEqual({ inbox: "not_connected" });
+            expect(result.text).toContain("Your inbox isn't connected");
+            expect(result.text).toContain(
+              "Connect an email or message account",
+            );
+            expect(calls).toEqual([]);
+            expect(diagnostic).not.toHaveBeenCalled();
+          } else if (mode === "service-missing") {
+            expect(briefing.sourceErrors?.inbox).toBe("unavailable");
+            expect(calls).toEqual([]);
+            expect(diagnostic).toHaveBeenCalledWith(
+              "Brief.loadInbox",
+              expect.objectContaining({
+                code: "BRIEF_CONFIGURED_INBOX_UNAVAILABLE",
+              }),
+              expect.objectContaining({
+                source: "inbox",
+                messageSource: "gmail",
+              }),
+            );
+          } else {
+            expect(calls.sort()).toEqual(accountIds.sort());
+            expect(calls).not.toContain("default");
+            expect(briefing.sections.inbox).toHaveLength(
+              ["failed", "reauth", "empty", "partial-empty"].includes(mode)
+                ? 0
+                : mode === "multiple"
+                  ? 2
+                  : 1,
+            );
+            if (
+              [
+                "partial",
+                "partial-empty",
+                "failed",
+                "reauth",
+                "other-partial",
+              ].includes(mode)
+            ) {
+              expect(briefing.sourceErrors?.inbox).toBe(
+                ["partial", "partial-empty", "other-partial"].includes(mode)
+                  ? "partial"
+                  : "unavailable",
+              );
+              expect(diagnostic).toHaveBeenCalledWith(
+                "Brief.loadInbox",
+                expect.objectContaining({
+                  message: "Configured Gmail fetch failed",
+                }),
+                expect.objectContaining({
+                  source: "inbox",
+                  messageSource: "gmail",
+                  accountId: [...failingIds][0],
+                }),
+              );
+            } else expect(briefing.sourceErrors).toBeUndefined();
+            if (mode === "multiple")
+              expect(
+                new Set(briefing.sections.inbox?.map((item) => item.id)).size,
+              ).toBe(2);
+          }
+          if (mode === "other-adapter" || mode === "other-partial") {
+            expect(otherRead).toHaveBeenCalledOnce();
+            expect(
+              briefing.sections.inbox?.some((item) => item.id === "slack-item"),
+            ).toBe(true);
+          }
+          expect(model).not.toHaveBeenCalled();
+          expect(await manager.listAccounts("google")).toEqual(registryBefore);
+        } finally {
+          vi.restoreAllMocks();
+          await fixture.cleanup();
+          __resetDefaultTriageServiceForTests();
+        }
+      },
+      120000,
+    );
   });
 
   describe("canonical briefing categories — real PGlite", () => {

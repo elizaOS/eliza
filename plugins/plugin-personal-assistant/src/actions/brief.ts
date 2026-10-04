@@ -38,14 +38,15 @@ import {
   calendarDateKey,
   resolveCalendarTimeZone,
 } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
-import type { MessageRef } from "@elizaos/plugin-assistant";
-import { getDefaultTriageService } from "@elizaos/plugin-assistant";
+import type { MessageRef, TriageOptions } from "@elizaos/plugin-assistant";
+import { getDefaultTriageService, rankScored } from "@elizaos/plugin-assistant";
 import {
   resolveCalendarWindow,
   resolveNextCalendarEventWindow,
 } from "@elizaos/plugin-calendar";
 import type {
   LifeOpsDefinitionRecord,
+  LifeOpsGoogleConnectorStatus,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsTaskDefinition,
@@ -74,6 +75,7 @@ import type {
   LifeOpsBriefingCalendarItem,
   LifeOpsBriefingCommitmentItem,
   LifeOpsBriefingEditorialContract,
+  LifeOpsBriefingInboxCollection,
   LifeOpsBriefingInboxItem,
   LifeOpsBriefingKind,
   LifeOpsBriefingLifeCollection,
@@ -182,6 +184,10 @@ interface BriefLifeOpsService {
     readonly LifeOpsOccurrenceView[]
   >;
   listDefinitions(): Promise<readonly LifeOpsDefinitionRecord[]>;
+  getGoogleConnectorAccounts(
+    requestUrl: URL,
+    side?: "owner" | "agent",
+  ): Promise<LifeOpsGoogleConnectorStatus[]>;
 }
 
 async function getBriefLifeOpsService(
@@ -316,13 +322,85 @@ export function mapCalendarFeedEventToBriefingItem(
 async function loadInboxFromTriage(args: {
   runtime: IAgentRuntime;
   period: LifeOpsBriefingPeriod;
-}): Promise<readonly LifeOpsBriefingInboxItem[]> {
-  if (typeof args.runtime.getService !== "function") return [];
+  explicit?: boolean;
+}): Promise<LifeOpsBriefingInboxCollection | undefined> {
+  const triage = getDefaultTriageService();
+  const reads: TriageOptions[] = [];
+  let failed = 0;
+  const reportFailure = (
+    error: unknown,
+    source: string,
+    accountId?: string,
+  ) => {
+    failed++;
+    args.runtime.reportError("Brief.loadInbox", error, {
+      source: "inbox",
+      messageSource: source,
+      ...(accountId ? { accountId } : {}),
+    });
+  };
+  for (const adapter of triage.listAdapters()) {
+    if (!adapter.capabilities().list) continue;
+    if (adapter.source !== "gmail") {
+      if (adapter.isAvailable(args.runtime))
+        reads.push({ sources: [adapter.source] });
+      continue;
+    }
+    try {
+      const service = await getBriefLifeOpsService(args.runtime);
+      const accounts = await service.getGoogleConnectorAccounts(
+        INTERNAL_URL,
+        "owner",
+      );
+      for (const account of accounts) {
+        if (
+          !account.configured ||
+          !(account.connected || account.reason === "needs_reauth") ||
+          !account.grantedCapabilities.includes("google.gmail.triage")
+        )
+          continue;
+        const accountId = account.grant?.connectorAccountId;
+        if (!accountId || !adapter.isAvailable(args.runtime)) {
+          reportFailure(
+            new ElizaError(
+              "The configured Gmail inbox reader is unavailable.",
+              { code: "BRIEF_CONFIGURED_INBOX_UNAVAILABLE" },
+            ),
+            "gmail",
+            accountId ?? undefined,
+          );
+          continue;
+        }
+        reads.push({ sources: ["gmail"], worldIds: [accountId] });
+      }
+    } catch (error) {
+      reportFailure(error, "gmail");
+    }
+  }
+  if (reads.length === 0 && failed === 0) {
+    return args.explicit ? { items: [], coverage: "not_connected" } : undefined;
+  }
   const { start } = await periodWindow(args.runtime, args.period);
-  const refs = await getDefaultTriageService().triage(args.runtime, {
-    sinceMs: start.getTime(),
-  });
-  return refs.map(mapMessageRefToBriefingItem);
+  const refs: MessageRef[] = [];
+  let succeeded = 0;
+  for (const read of reads) {
+    try {
+      refs.push(
+        ...(await triage.triage(args.runtime, {
+          ...read,
+          sinceMs: start.getTime(),
+        })),
+      );
+      succeeded++;
+    } catch (error) {
+      reportFailure(error, read.sources?.[0] ?? "inbox", read.worldIds?.[0]);
+    }
+  }
+  return {
+    items: rankScored(refs).map(mapMessageRefToBriefingItem),
+    coverage:
+      failed > 0 ? (succeeded > 0 ? "partial" : "unavailable") : "complete",
+  };
 }
 
 async function loadLifeFromOverview(args: {
@@ -558,7 +636,12 @@ export interface BriefComposers {
   loadInbox: (args: {
     runtime: IAgentRuntime;
     period: LifeOpsBriefingPeriod;
-  }) => Promise<readonly LifeOpsBriefingInboxItem[]>;
+    explicit?: boolean;
+  }) => Promise<
+    | readonly LifeOpsBriefingInboxItem[]
+    | LifeOpsBriefingInboxCollection
+    | undefined
+  >;
   loadLife: (args: {
     runtime: IAgentRuntime;
     period: LifeOpsBriefingPeriod;
@@ -643,12 +726,14 @@ function resolveSubaction(params: BriefActionParameters): Subaction | null {
 function resolveIncludeFlags(input: BriefIncludeFlags | undefined): {
   calendar: boolean;
   inbox: boolean;
+  inboxExplicit: boolean;
   life: boolean;
   commitments: boolean;
 } {
   return {
     calendar: input?.calendar !== false,
     inbox: input?.inbox !== false,
+    inboxExplicit: input?.inbox === true,
     life: input?.life !== false,
     commitments: input?.commitments !== false,
   };
@@ -824,7 +909,7 @@ export function buildNarrativePrompt(args: {
 
 ${instructions}
 Write directly to the owner in ordinary conversational language, not a tracking or status report. For an evening brief with completedToday items, start with what was marked done today; the editorial lead then guides the still-open items. Keep item names and categories faithful. Do not narrate which records went active or contrast open carryovers with finished tasks. An uncompleted reminder record does not prove that its real-world activity is unfinished; its dueAt is a scheduled time, not activation or delivery time. Prefer the supplied clock times to estimating elapsed minutes.
-Use asOf as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. Use relationToAsOf rather than converting UTC timestamps or guessing the current day. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding. Item state and lifeSummary counts are canonical source facts: a visible or snoozed occurrence remains active even if a notification was sent; only the canonical completed state means completed, and skipped is distinct.${args.sourceErrors ? "\nRequested sources in sourceErrors are unavailable, not empty. Say what could not be checked in one compact, ordinary-language clause; do not use source/status labels. Name the unavailable domain as supplied; do not rename an inbox error as an email/social-provider failure. Never claim it has no items or nothing due." : ""}
+Use asOf as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. Use relationToAsOf rather than converting UTC timestamps or guessing the current day. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding. Item state and lifeSummary counts are canonical source facts: a visible or snoozed occurrence remains active even if a notification was sent; only the canonical completed state means completed, and skipped is distinct. An omitted section was not selected: do not discuss omitted domains or claim they were checked, empty, or unavailable.${args.sourceErrors ? "\nRequested sources marked unavailable are unavailable, not empty; partial means some inboxes could not be checked while supplied items remain valid. not_connected means no readable inbox connection: say the inbox is not connected and suggest connecting an email/message account to include its messages. Do not say a not_connected inbox check failed. Say what could not be checked in one compact, ordinary-language clause; do not use source/status labels. Name the unavailable domain as supplied; do not rename an inbox error as an email/social-provider failure. Never claim it has no items or nothing due." : ""}
 
 Data:
 ${payload}`;
@@ -942,7 +1027,7 @@ async function assembleBriefing(args: {
   };
   const [
     calendarItems,
-    inboxItems,
+    inboxCollection,
     lifeCollection,
     commitmentItems,
     engagementSummaries,
@@ -957,7 +1042,11 @@ async function assembleBriefing(args: {
       : Promise.resolve([] as readonly LifeOpsBriefingCalendarItem[]),
     args.include.inbox
       ? collectSource("inbox", () =>
-          composers.loadInbox({ runtime: args.runtime, period: args.period }),
+          composers.loadInbox({
+            runtime: args.runtime,
+            period: args.period,
+            explicit: args.include.inboxExplicit,
+          }),
         )
       : Promise.resolve([] as readonly LifeOpsBriefingInboxItem[]),
     args.include.life
@@ -972,6 +1061,19 @@ async function assembleBriefing(args: {
       : Promise.resolve([] as readonly LifeOpsBriefingCommitmentItem[]),
     composers.loadEngagementSummaries({ runtime: args.runtime }),
   ]);
+
+  const inboxItems =
+    inboxCollection === undefined
+      ? undefined
+      : "items" in inboxCollection
+        ? inboxCollection.items
+        : inboxCollection;
+  if (
+    inboxCollection &&
+    "items" in inboxCollection &&
+    inboxCollection.coverage !== "complete"
+  )
+    sourceErrors.inbox = inboxCollection.coverage;
 
   const lifeItems =
     "items" in lifeCollection ? lifeCollection.items : lifeCollection;
@@ -991,7 +1093,9 @@ async function assembleBriefing(args: {
 
   const sections: LifeOpsBriefingSections = {
     ...(args.include.calendar ? { calendar: calendarItems } : {}),
-    ...(args.include.inbox ? { inbox: inboxItems } : {}),
+    ...(args.include.inbox && inboxItems !== undefined
+      ? { inbox: inboxItems }
+      : {}),
     ...(args.include.life ? { life: lifeItems } : {}),
     ...(kind === "evening" && args.include.life ? { completedToday } : {}),
     ...(args.include.commitments ? { commitments: commitmentItems } : {}),
@@ -1245,7 +1349,8 @@ export const briefAction: Action & {
     },
     {
       name: "include",
-      description: "Include flags, default true: { calendar?, inbox?, life? }.",
+      description:
+        "Include flags: { calendar?, inbox?, life? }. Ordinary briefs use configured inboxes by default. Leave include.inbox unset for ordinary briefs; set true only when the owner explicitly requests inbox/email coverage, or false to exclude it.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
@@ -1317,7 +1422,7 @@ export const briefAction: Action & {
 
     const text =
       briefing.narrative ??
-      `Composed your ${briefing.kind} briefing for ${briefing.period}.${briefing.sourceErrors ? " Some requested sources are unavailable." : ""}`;
+      `Composed your ${briefing.kind} briefing for ${briefing.period}.${briefing.sourceErrors?.inbox === "not_connected" ? " Your inbox isn't connected. Connect an email or message account to include its messages." : ""}${Object.values(briefing.sourceErrors ?? {}).some((coverage) => coverage !== "not_connected") ? " Some requested information could not be checked." : ""}`;
 
     logger.info(
       `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} commitments=${briefing.sections.commitments?.length ?? 0}`,
