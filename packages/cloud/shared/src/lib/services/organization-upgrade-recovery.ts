@@ -1,6 +1,8 @@
 /** Leases the complete read-only recovery attempt, including missing receipt search. */
 import { ElizaError } from "@elizaos/core";
+import { z } from "zod";
 import { finalizePaidOrganizationUpgrade } from "../../db/repositories/organization-upgrade-finalization";
+import { recordOrganizationUpgradeHistoricalTarget } from "../../db/repositories/organization-upgrade-historical-targets";
 import { recordOrganizationUpgradeInvoiceOrigin } from "../../db/repositories/organization-upgrade-invoice-origins";
 import { claimOrganizationUpgradeObservation } from "../../db/repositories/organization-upgrade-observation-lease";
 import { readOrganizationUpgradeRecoveryContext } from "../../db/repositories/organization-upgrade-recovery-context";
@@ -8,6 +10,7 @@ import { releaseOrganizationUpgradeRecovery } from "../../db/repositories/organi
 import { requireStripe } from "../stripe";
 import { findOriginalUpgradeInvoiceEvent } from "./organization-upgrade-invoice-search";
 import { observeOriginalUpgradeInvoiceState } from "./organization-upgrade-recovery-state";
+import { findOriginalUpgradeTargetEvent } from "./organization-upgrade-target-search";
 export async function reconcileOriginalOrganizationUpgrade(input: {
   organizationId: string;
   commandId: string;
@@ -58,6 +61,36 @@ export async function reconcileOriginalOrganizationUpgrade(input: {
         {},
         options,
       );
+      const period = z
+        .object({ current_period_start: z.number().int().nonnegative().safe() })
+        .safeParse(rawSubscription);
+      if (
+        !context.historicalTarget &&
+        period.success &&
+        period.data.current_period_start * 1000 >=
+          context.historicalSource.current_period_end.getTime()
+      ) {
+        const historical = context.historicalSource;
+        const found = await findOriginalUpgradeTargetEvent({
+          reader: stripe.events,
+          source: {
+            ...historical,
+            id: historical.subscription_id,
+            lifecycle_revision: historical.revision,
+          },
+          review: context.quote.review,
+          binding: context.binding,
+          observedAt: new Date(),
+          origin: {
+            invoiceId: origin.invoice_id,
+            customerId: origin.customer_id,
+            subscriptionId: origin.subscription_id,
+            livemode: origin.livemode,
+            invoiceCreatedAt: origin.invoice_created_at,
+          },
+        });
+        await recordOrganizationUpgradeHistoricalTarget({ ...input, raw: found.raw });
+      }
       const finalized = await finalizePaidOrganizationUpgrade({
         ...identity,
         rawInvoice,

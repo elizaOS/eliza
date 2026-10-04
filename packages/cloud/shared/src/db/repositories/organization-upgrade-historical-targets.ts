@@ -5,7 +5,6 @@ import { organizationUpgradeReviewSchema } from "../../lib/services/organization
 import { projectHistoricalUpgradeTarget } from "../../lib/services/organization-upgrade-historical-target";
 import { isUniqueConstraintError } from "../../lib/utils/db-errors";
 import { writeTransaction } from "../helpers";
-import { billingSubscriptions } from "../schemas/billing-subscriptions";
 import { organizationUpgradeHistoricalTargets as targets } from "../schemas/organization-upgrade-historical-targets";
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations";
@@ -44,24 +43,10 @@ export async function recordOrganizationUpgradeHistoricalTarget(input: {
       const origin = context.origin;
       if (!origin) reject("original_invoice_unavailable");
       const historical = context.historicalSource;
-      const [current] = await tx
-        .select()
-        .from(billingSubscriptions)
-        .where(
-          and(
-            eq(billingSubscriptions.id, historical.subscription_id),
-            eq(billingSubscriptions.organization_id, input.organizationId),
-          ),
-        );
-      if (!current) reject("subscription_unavailable");
-      // Financial fields come from the immutable original revision; row creation timestamps are unused by projection.
       const source = {
-        ...current,
         ...historical,
         id: historical.subscription_id,
         lifecycle_revision: historical.revision,
-        last_provider_event_id: historical.provider_event_id,
-        last_provider_event_created_at: historical.provider_event_created_at,
       };
       const now = await readPostLockDatabaseNow(tx);
       const evidence = projectHistoricalUpgradeTarget({
