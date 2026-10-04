@@ -63,3 +63,11 @@ hosts retain directory identity, qualification policy and authenticated evidence
 `AndroidUpdateStorage` provides no-follow directory durability. The Android
 `AndroidUpdateStorageContract` checks real filesystem rejection and clock restart
 behavior without provisioning an external time authority.
+
+`NativePreparation` owns private discovery, staging, APK verification and final
+journal admission through explicit trust and artifact-verifier ports. Hosts bind
+generated native types, product package/manifest identity and qualified device
+observations. The core rechecks enrollment, time, channel generation and installed
+identity before final admission; cancellation closes active native sessions and
+private no-follow locks prevent overlapping preparation. It never installs or
+provisions a default trust/time authority.
