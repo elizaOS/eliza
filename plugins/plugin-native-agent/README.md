@@ -164,3 +164,10 @@ executor and supply coarse delivery-failure handling. The sink must validate sta
 PKCE, account identity and single-use exchange. `QUEUED` is transport admission,
 not authentication success. Portable JVM coverage is in `test:native-host`; Android
 intent/app-link delivery and provider callback registration need host qualification.
+
+`RuntimePrivateFiles` publishes host-selected files with mode 0600 and atomic
+replacement, and reads optional single-line UTF-8 inputs with host-selected byte
+bounds. The host supplies a real private parent, serialized writes and directory
+sync. A sync failure after rename means publication happened but durability is
+unknown. Portable tests cover concurrent readers and rejected inputs; Android
+instrumentation qualifies the real directory-sync adapter.
