@@ -2772,6 +2772,7 @@ export {
 	getEffectDeliveryBinding,
 	stripEffectDeliveryBinding,
 } from "./runtime/effect-delivery.ts";
+export { compactHistoricalReceiptSegments } from "./runtime/historical-receipt-wire";
 export {
 	containsToolCallShapedMarkup,
 	extractJsonObjects,

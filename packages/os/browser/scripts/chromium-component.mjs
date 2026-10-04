@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { androidNativeHost } from "./android-host.mjs";
+import { applyAutofillFullOrigin } from "./chromium/autofill-full-origin.mjs";
 import { applyIndexedDBLockOrder } from "./chromium/indexeddb-lock-order.mjs";
 import { applyStandaloneCredMan } from "./chromium/standalone-credman.mjs";
 import { applyStandaloneCredManTests } from "./chromium/standalone-credman-tests.mjs";
@@ -36,7 +37,26 @@ export const assetNames = [
   "protocol.mjs",
   "runtime-config.mjs",
 ];
+export const protectionAssetNames = [
+  "protection.mjs",
+  "policy.mjs",
+  "warning.html",
+  "warning.mjs",
+  "warning.css",
+  "licenses.html",
+];
+export function componentAssetNames(assets) {
+  return Object.hasOwn(assets, "protection.mjs")
+    ? [...assetNames, ...protectionAssetNames]
+    : assetNames;
+}
 const resourceIds = {
+  "protection.mjs": "IDR_ELIZA_BROWSER_PROTECTION",
+  "policy.mjs": "IDR_ELIZA_BROWSER_PROTECTION_POLICY",
+  "warning.html": "IDR_ELIZA_BROWSER_PROTECTION_WARNING",
+  "warning.mjs": "IDR_ELIZA_BROWSER_PROTECTION_WARNING_SCRIPT",
+  "warning.css": "IDR_ELIZA_BROWSER_PROTECTION_WARNING_STYLE",
+  "licenses.html": "IDR_ELIZA_BROWSER_PROTECTION_LICENSES",
   "background.mjs": "IDR_ELIZA_BROWSER_BACKGROUND",
   "command-handler.mjs": "IDR_ELIZA_BROWSER_COMMAND_HANDLER",
   "commands.mjs": "IDR_ELIZA_BROWSER_COMMANDS",
@@ -71,7 +91,7 @@ export function validateAssets(
     throw new Error("Platform must be linux or android");
   if (
     JSON.stringify(Object.keys(assets).sort()) !==
-    JSON.stringify([...assetNames].sort())
+    JSON.stringify([...componentAssetNames(assets)].sort())
   )
     throw new Error(
       "Extension resource inventory changed; review every resource before embedding",
@@ -89,7 +109,9 @@ export function validateAssets(
     .replace(/[0-9a-f]/g, (digit) =>
       String.fromCharCode(97 + Number.parseInt(digit, 16)),
     );
+  const protection = Object.hasOwn(assets, "protection.mjs");
   const keys = [
+    ...(protection ? ["web_accessible_resources"] : []),
     "manifest_version",
     "name",
     "version",
@@ -100,6 +122,11 @@ export function validateAssets(
     "background",
   ];
   if (
+    (protection &&
+      JSON.stringify(manifest.web_accessible_resources) !==
+        JSON.stringify([
+          { resources: ["warning.html"], matches: ["<all_urls>"] },
+        ])) ||
     identity !== EXTENSION_ID ||
     manifest.manifest_version !== 3 ||
     !Array.isArray(manifest.permissions) ||
@@ -110,6 +137,7 @@ export function validateAssets(
     JSON.stringify([...manifest.permissions].sort()) !==
       JSON.stringify([
         "alarms",
+        ...(protection ? ["declarativeNetRequest"] : []),
         "nativeMessaging",
         "scripting",
         "storage",
@@ -157,6 +185,7 @@ export async function generateComponentOverlay({
   validateAssets(assets, platform, certificate, application);
   if (typeof embedHost !== "boolean" || (embedHost && platform !== "android"))
     throw new Error("Host embedding is an explicit Android-only build option");
+  const assetNames = componentAssetNames(assets);
   const files = {};
   const edit = (filename, transform) => {
     files[filename] = transform(files[filename] ?? sources[filename]);
@@ -344,6 +373,7 @@ export async function generateComponentOverlay({
   });
   applyIndexedDBLockOrder(edit, replaceOnce);
   if (platform === "android") {
+    applyAutofillFullOrigin(edit, replaceOnce);
     applyStandaloneCredMan(edit, replaceOnce);
     applyStandaloneCredManTests(edit, replaceOnce);
     if (embedHost) {

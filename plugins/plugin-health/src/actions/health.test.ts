@@ -4,6 +4,11 @@
  * deterministically without a live model.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  CALENDAR_TIME_ZONE_INVALID,
+  CALENDAR_TIME_ZONE_UNAVAILABLE,
+  CalendarTimeZoneError,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 // The health planner routes its instructions through
@@ -36,6 +41,8 @@ function makeRunner(
     fallback,
   }) => ({ kind: "model", text: fallback }),
   hasAccess: CreateHealthActionRunnerOptions["hasAccess"] = async () => true,
+  resolveTimeZone: CreateHealthActionRunnerOptions["resolveTimeZone"] = () =>
+    "UTC",
 ) {
   return createHealthActionRunner({
     hasAccess,
@@ -45,7 +52,7 @@ function makeRunner(
     renderReply,
     recentConversationTexts: async () => [],
     runJsonModel: async () => null,
-    resolveTimeZone: () => "UTC",
+    resolveTimeZone,
   });
 }
 
@@ -58,6 +65,36 @@ const message = {
 } as Memory;
 
 describe("health action runner", () => {
+  it.each([
+    [CALENDAR_TIME_ZONE_INVALID, 422, "isn't valid"],
+    [CALENDAR_TIME_ZONE_UNAVAILABLE, 503, "can't read your time zone"],
+  ] as const)(
+    "fails visibly when the owner's zone resolution throws %s",
+    async (code, status, wording) => {
+      const service = {
+        getHealthConnectorStatus: vi.fn(),
+        getHealthSummary: vi.fn(),
+        getHealthTrend: vi.fn(),
+        getHealthDataPoints: vi.fn(),
+        getHealthDailySummary: vi.fn(),
+      } satisfies HealthActionService;
+      const resolveTimeZone = () => {
+        throw new CalendarTimeZoneError(status, "owner zone", { code });
+      };
+      const result = await makeRunner(
+        service,
+        undefined,
+        undefined,
+        resolveTimeZone,
+      )(runtime, message, undefined, { parameters: { subaction: "today" } });
+
+      expect(result).toMatchObject({ success: false, data: { error: code } });
+      expect(result.text).toContain(wording);
+      expect(service.getHealthConnectorStatus).not.toHaveBeenCalled();
+      expect(service.getHealthDailySummary).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps an access refusal unsuccessful when its reply is unavailable", async () => {
     const service = {
       getHealthConnectorStatus: vi.fn(),
@@ -440,7 +477,7 @@ describe("health action runner", () => {
           syncedAt: "2026-09-13T22:30:00.000Z",
         })),
         getHealthTrend: vi.fn(async () => []),
-        getHealthDataPoints: vi.fn(),
+        getHealthDataPoints: vi.fn(async () => []),
         getHealthDailySummary: vi.fn(async (date: string) => ({
           date,
           steps: 1200,
@@ -465,7 +502,9 @@ describe("health action runner", () => {
       await runner(runtime, message, undefined, {
         parameters: { subaction: "today" },
       });
-      expect(service.getHealthDailySummary).toHaveBeenCalledWith("2026-09-14");
+      expect(service.getHealthDailySummary).toHaveBeenCalledWith("2026-09-14", {
+        timeZone: "Asia/Tokyo",
+      });
 
       await runner(runtime, message, undefined, {
         parameters: { subaction: "trend", days: 3 },
@@ -473,6 +512,14 @@ describe("health action runner", () => {
       expect(service.getHealthTrend).toHaveBeenCalledWith(3, {
         timeZone: "Asia/Tokyo",
       });
+
+      await runner(runtime, message, undefined, {
+        parameters: { subaction: "by_metric", metric: "sleep_hours", days: 2 },
+      });
+      expect(service.getHealthDataPoints).toHaveBeenCalledWith(
+        expect.objectContaining({ metric: "sleep_hours" }),
+        { timeZone: "Asia/Tokyo" },
+      );
     } finally {
       vi.useRealTimers();
     }

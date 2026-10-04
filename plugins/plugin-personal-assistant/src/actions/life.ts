@@ -26,15 +26,19 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
   ElizaError,
   extractUserText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveActionArgs,
+  resolveCalendarTimeZone,
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
+import { findInteractionRegions } from "@elizaos/core/messaging/interactions/parse";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import type {
   CreateLifeOpsDefinitionRequest,
@@ -77,6 +81,10 @@ import {
   ownerDefinitionSurface,
   resolveOwnerDefinitionSurface,
 } from "../lifeops/definition-owner-surface.js";
+import {
+  getCallerDefinition,
+  getCallerOccurrenceView,
+} from "../lifeops/domains/definition-authorization.js";
 import {
   dayRange,
   detailArray,
@@ -1386,6 +1394,52 @@ async function resolveOccurrence(
   domain?: LifeOpsDomain,
 ): Promise<OccurrenceResult> {
   if (!target) return { match: null, ambiguousCandidates: [] };
+  if (validateUuid(target)) {
+    const occurrence = await getCallerOccurrenceView(
+      service.repository,
+      service,
+      target,
+    );
+    if (occurrence && (!domain || occurrence.domain === domain)) {
+      return { match: occurrence, ambiguousCandidates: [] };
+    }
+    const definition = await getCallerDefinition(
+      service.repository,
+      service,
+      target,
+    );
+    // A definition names one occurrence only for a one-shot reminder. A stale
+    // recurring choice must supply its occurrence ID instead of completing a
+    // newer date. These scoped reads also avoid the overview's display limit.
+    if (
+      definition?.status !== "active" ||
+      definition.cadence.kind !== "once" ||
+      (domain && definition.domain !== domain)
+    ) {
+      return { match: null, ambiguousCandidates: [] };
+    }
+    const occurrences = await service.repository.listOccurrencesForDefinition(
+      service.agentId(),
+      definition.id,
+    );
+    const candidates = await Promise.all(
+      occurrences
+        .filter((candidate) =>
+          ["pending", "visible", "snoozed"].includes(candidate.state),
+        )
+        .map((candidate) =>
+          getCallerOccurrenceView(service.repository, service, candidate.id),
+        ),
+    );
+    const matches = candidates.filter((candidate) => candidate !== null);
+    return {
+      match: matches.length === 1 ? matches[0] : null,
+      ambiguousCandidates:
+        matches.length > 1
+          ? matches.map(formatOccurrenceDisambiguationLabel)
+          : [],
+    };
+  }
   const overview = await service.getOverview();
   const all = [
     ...overview.owner.occurrences,
@@ -1953,9 +2007,14 @@ async function runLifeConnectedQueryInner(args: {
         data: toActionData(next),
       };
     }
+    // "Today" is the owner's calendar day, resolved by the shared fail-closed
+    // calendar zone owner so an unreadable or invalid zone is never replaced
+    // by the host's.
+    const now = new Date();
+    const { timeZone } = await resolveCalendarTimeZone(runtime, now);
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
-      ...dayRange(0),
-      timeZone: resolveDefaultTimeZone(),
+      ...dayRange(0, timeZone, now),
+      timeZone,
     });
     const fallback =
       feed.events.length === 0
@@ -1986,6 +2045,20 @@ async function runLifeConnectedQueryInner(args: {
       data: toActionData(feed),
     };
   } catch (err) {
+    if (err instanceof CalendarTimeZoneError) {
+      // error-policy:J4 the owner's zone is unreadable or invalid; answering
+      // for another zone's day would be a wrong answer reported as success.
+      return {
+        success: false,
+        text:
+          err.code !== CALENDAR_TIME_ZONE_INVALID
+            ? "I can't read your time zone right now, so I can't tell which day is today for you. Please try again shortly."
+            : err.context?.source === "owner"
+              ? "I can't tell what day it is for you: your saved time zone isn't valid. Tell me your time zone and I'll check your calendar."
+              : "I can't tell what day it is for you: the agent's configured time zone isn't valid. Ask the operator to fix the TIMEZONE setting, or tell me your time zone.",
+        data: { actionName, operation: queryOperation, error: err.code },
+      };
+    }
     if (err instanceof LifeOpsServiceError) {
       return {
         success: false,
@@ -4243,10 +4316,92 @@ async function runLifeOperationHandlerInner(
   const rawParams = (options as HandlerOptions | undefined)?.parameters as
     | LifeParams
     | undefined;
-  const params = rawParams ?? ({} as LifeParams);
+  let params = rawParams ?? ({} as LifeParams);
   const authoredText = extractPrimaryLifeInputText(messageText(message));
   const currentText = normalizeLifeInputText(authoredText);
+  const service = new LifeOpsService(runtime, {
+    ownerEntityId: message.entityId,
+  });
+  const choiceMetadata = detailObject(message.content, "metadata");
+  if (choiceMetadata?.reminderChoiceId !== undefined) {
+    const choiceValue = extractUserText(currentText);
+    const sourceId = validateUuid(message.content.inReplyTo);
+    const source = sourceId ? await runtime.getMemoryById(sourceId) : null;
+    const reference = source
+      ? detailObject(source.content, "metadata")
+      : undefined;
+    const ownerId = validateUuid(reference?.ownerId);
+    const occurrence = ownerId
+      ? await getCallerOccurrenceView(service.repository, service, ownerId)
+      : null;
+    const chosen =
+      source && typeof source.content.text === "string"
+        ? findInteractionRegions(source.content.text).find(
+            ({ block }) =>
+              block.kind === "choice" &&
+              block.scope === "lifeops-reminder" &&
+              block.id === choiceMetadata.reminderChoiceId &&
+              block.options.some((option) => option.value === choiceValue),
+          )
+        : null;
+    if (
+      ownerSurfaceActionName !== "OWNER_REMINDERS" ||
+      !source ||
+      source.entityId !== runtime.agentId ||
+      source.agentId !== runtime.agentId ||
+      source.roomId !== message.roomId ||
+      source.content.source !== "reminder" ||
+      !chosen ||
+      reference?.ownerType !== "occurrence" ||
+      reference.subjectType !== "owner" ||
+      typeof reference.scheduledFor !== "string" ||
+      !Number.isFinite(Date.parse(reference.scheduledFor)) ||
+      !occurrence ||
+      occurrence.subjectType !== "owner" ||
+      reference.dueAt !== occurrence.dueAt ||
+      !["pending", "visible", "snoozed", "completed"].includes(
+        occurrence.state,
+      ) ||
+      !["done", "skip", "10 minutes"].includes(choiceValue)
+    ) {
+      return {
+        success: false,
+        text: "I couldn't verify which reminder that choice belongs to. Open the current reminder and try again.",
+        data: {
+          actionName: ownerSurfaceActionName,
+          reason: "reminder_choice_source_invalid",
+        },
+      };
+    }
+    const action =
+      choiceValue === "done"
+        ? "complete"
+        : choiceValue === "skip"
+          ? "skip"
+          : "snooze";
+    // The authenticated click owns this operation and exact occurrence;
+    // unrelated planner targets or edit fields cannot redirect its effect.
+    params = {
+      action,
+      subaction: action,
+      kind: "definition",
+      ownerSurface: "OWNER_REMINDERS",
+      target: occurrence.id,
+      details: {
+        occurrenceId: occurrence.id,
+        domain: occurrence.domain,
+        ...(action === "snooze" ? { minutes: 10 } : {}),
+      },
+    };
+  }
   const details = params.details;
+  // The owner surface preserves this canonical selector while stripping edit
+  // fields. An ordinary update's details.status grants no archive authority.
+  const archiveOnlyReminder =
+    ownerSurfaceActionName === "OWNER_REMINDERS" &&
+    params.action === "cancel" &&
+    params.subaction === "update" &&
+    params.kind === "definition";
   const stateDeferredDraft = latestDeferredLifeDraft(state);
   const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
     runtime,
@@ -4281,18 +4436,19 @@ async function runLifeOperationHandlerInner(
   // plan kept the draft's slots and lost the after-dinner citations session).
   // The classifier abstaining never cancels an explicit yes, though — that
   // falls back to confirm instead of dropping consent.
-  const deferredDraftFollowupMode = deferredDraft
-    ? explicitCreateConfirmation &&
-      isBareLifeCreateConfirmationMessage(currentText)
-      ? "confirm"
-      : ((await extractDeferredLifeDraftFollowupWithLlm({
-          runtime,
-          message,
-          state,
-          currentText,
-          draft: deferredDraft,
-        })) ?? (explicitCreateConfirmation ? "confirm" : null))
-    : null;
+  const deferredDraftFollowupMode =
+    deferredDraft && !archiveOnlyReminder
+      ? explicitCreateConfirmation &&
+        isBareLifeCreateConfirmationMessage(currentText)
+        ? "confirm"
+        : ((await extractDeferredLifeDraftFollowupWithLlm({
+            runtime,
+            message,
+            state,
+            currentText,
+            draft: deferredDraft,
+          })) ?? (explicitCreateConfirmation ? "confirm" : null))
+      : null;
   const draftExpiryReason = deferredLifeDraftExpiryReason({
     draft: deferredDraft,
     turnsSinceDraft,
@@ -4355,7 +4511,9 @@ async function runLifeOperationHandlerInner(
       },
     };
   }
-  const explicitAction = normalizeExplicitLifeAction(params.action);
+  const explicitAction = archiveOnlyReminder
+    ? { operation: "update" as const, kind: "definition" as const }
+    : normalizeExplicitLifeAction(params.action);
   // Retraction of an un-previewed save: the crisp-ask fast path persists with
   // no draft to cancel, and the planner cannot be trusted to translate
   // "actually don't save that one" into action=delete — observed live
@@ -4363,7 +4521,11 @@ async function runLifeOperationHandlerInner(
   // it", and left the definition active. This runs before extraction so no
   // classifier verdict can strand the stale row; a same-message create
   // (retract + replace in one utterance) still runs after the deletion.
-  if (deferredDraft === null && isLifeSaveRetraction(messageText(message))) {
+  if (
+    !archiveOnlyReminder &&
+    deferredDraft === null &&
+    isLifeSaveRetraction(messageText(message))
+  ) {
     const recentSave = await readRecentLifeSaveCache(runtime, message);
     const retractionMessageId =
       message.id !== undefined && message.id !== null ? String(message.id) : "";
@@ -4509,9 +4671,11 @@ async function runLifeOperationHandlerInner(
   const forceGoalKind =
     looksLikeGoalTrackingFollowup(currentText) ||
     looksLikeGoalTrackingFollowup(intent);
-  const resolvedKind: LifeKind | undefined = forceGoalKind
-    ? "goal"
-    : (operationPlan.kind ?? explicitKind);
+  const resolvedKind: LifeKind | undefined = archiveOnlyReminder
+    ? "definition"
+    : forceGoalKind
+      ? "goal"
+      : (operationPlan.kind ?? explicitKind);
   const forceCreateExecution = shouldForceLifeCreateExecution({
     intent,
     missing: operationPlan.missing,
@@ -4569,9 +4733,6 @@ async function runLifeOperationHandlerInner(
     : !isLifeOwnedOperation(operationPlan.operation)
       ? operationPlan.operation
       : null;
-  const service = new LifeOpsService(runtime, {
-    ownerEntityId: message.entityId,
-  });
   if (
     queryOperation === "query_calendar_today" ||
     queryOperation === "query_calendar_next" ||
@@ -5822,6 +5983,20 @@ async function runLifeOperationHandlerInner(
                 : `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
               : "I could not find that item to update.",
         };
+      if (archiveOnlyReminder) {
+        const updated = await service.updateDefinition(target.definition.id, {
+          ownership,
+          status: "archived",
+        });
+        const text = `Cancelled "${updated.definition.title}".`;
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: toActionData(updated),
+        };
+      }
       if (
         requestedTime !== undefined &&
         requestedTimeZone === null &&

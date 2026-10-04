@@ -1,3 +1,4 @@
+import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 /**
  * PII pseudonymization for the model-call boundary (#10469 / #7007).
  *
@@ -491,6 +492,10 @@ function walkPiiPseudonymValue(
 		return mapString(value);
 	}
 	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	// Preserve a clean native cancellation signal, never control-shaped payload data.
+	if (isRuntimeAbortSignal(value)) {
 		return value;
 	}
 	if (depth > MAX_PII_PSEUDONYM_WALK_DEPTH) {

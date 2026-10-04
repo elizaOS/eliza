@@ -24,7 +24,15 @@ import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
 import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 
-export function InlineWidgetText({ content }: { content: string }): ReactNode {
+export function InlineWidgetText({
+  content,
+  messageId,
+  producerScope,
+}: {
+  content: string;
+  messageId?: string;
+  producerScope?: string;
+}): ReactNode {
   const { sendActionMessage } = useAppSelectorShallow((s) => ({
     sendActionMessage: s.sendActionMessage,
   }));
@@ -34,7 +42,12 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
 
   // Same shared contract MessageContent (ChatView) uses, so interactive inline
   // widgets behave identically on both surfaces.
-  const ctx = useInlineWidgetContext(sendActionMessage, setChatInput);
+  const ctx = useInlineWidgetContext(
+    sendActionMessage,
+    setChatInput,
+    messageId,
+    producerScope,
+  );
 
   // The overlay shows clean display text (no raw analysis view), so parse in
   // non-analysis mode — hidden reasoning/tool tags are stripped, not leaked.

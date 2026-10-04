@@ -1,5 +1,6 @@
-// Handles cloud API my agents claim affiliate characters route traffic with route-local auth expectations.
+/** Handles ownership claims for affiliate characters discovered through chats or anonymous sessions. */
 import { Hono } from "hono";
+import { z } from "zod";
 import {
   participantsRepository,
   roomsRepository,
@@ -10,6 +11,7 @@ import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { charactersService } from "@/lib/services/characters/characters";
 import { usersService } from "@/lib/services/users";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -32,6 +34,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 const app = new Hono<AppEnv>();
 
+const claimAffiliateCharactersBodySchema = z.object({
+  sessionToken: z.string().min(1).optional(),
+});
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -48,15 +54,33 @@ app.post("/", async (c) => {
     );
 
     try {
-      let sessionToken: string | undefined;
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          sessionToken?: string;
-        };
-        sessionToken = body.sessionToken;
-      } catch {
-        // No body or invalid JSON - that's okay
+      const decodedBody = await decodeOptionalRequestJson(c.req);
+      if (!decodedBody.ok) {
+        return c.json(
+          {
+            success: false,
+            claimed: [],
+            failed: [],
+            message: "Invalid JSON body",
+          },
+          400,
+        );
       }
+      const parsedBody = claimAffiliateCharactersBodySchema.safeParse(
+        decodedBody.value,
+      );
+      if (!parsedBody.success) {
+        return c.json(
+          {
+            success: false,
+            claimed: [],
+            failed: [],
+            message: "Invalid request data",
+          },
+          400,
+        );
+      }
+      const { sessionToken } = parsedBody.data;
 
       // Find affiliate characters user has interacted with via room associations
       // New architecture: entityId = userId, rooms.agentId = characterId
@@ -107,6 +131,11 @@ app.post("/", async (c) => {
         }
       }
 
+      // Session claimed through its token, if the session is still retryable
+      // and every session-backed claim in this attempt succeeds.
+      let convertibleSessionId: string | null = null;
+      const sessionOwnedCharacterIds = new Set<string>();
+
       // Also find characters via session token if provided
       if (sessionToken) {
         logger.info(
@@ -132,6 +161,8 @@ app.post("/", async (c) => {
             );
 
             for (const char of sessionCharacters) {
+              sessionOwnedCharacterIds.add(char.id);
+
               // Only add if not already in the list and owned by the session owner
               if (
                 char.user_id === sessionOwner.id &&
@@ -149,11 +180,10 @@ app.post("/", async (c) => {
               }
             }
 
-            // Mark session as converted to prevent future claims
-            await anonymousSessionsService.markConverted(session.id);
-            logger.info(
-              `[Claim Affiliate Chars] Marked session as converted: ${session.id}`,
-            );
+            // Defer conversion until after the claim calls below: converting
+            // first would consume the token and turn a temporary
+            // ownership-transfer failure into a permanent one.
+            convertibleSessionId = session.id;
           }
         }
       }
@@ -162,6 +192,13 @@ app.post("/", async (c) => {
         logger.info(
           `[Claim Affiliate Chars] No claimable characters found for user ${user.id}`,
         );
+        if (convertibleSessionId) {
+          // Nothing was transferable, so conversion cannot strand a failed claim.
+          await anonymousSessionsService.markConverted(convertibleSessionId);
+          logger.info(
+            `[Claim Affiliate Chars] Marked session as converted: ${convertibleSessionId}`,
+          );
+        }
         return c.json({
           success: true,
           claimed: [],
@@ -204,6 +241,21 @@ app.post("/", async (c) => {
             `[Claim Affiliate Chars] ❌ Failed to claim ${char.characterName}: ${result.message}`,
           );
         }
+      }
+
+      // Convert the session only after every session-backed ownership transfer
+      // in this attempt succeeded; a returned or thrown claim failure leaves it
+      // unconverted so a retry can rediscover the remaining session characters.
+      // Failures on room-discovered characters unrelated to the session do not
+      // block conversion.
+      const sessionBackedFailure = failedClaims.some((claim) =>
+        sessionOwnedCharacterIds.has(claim.id),
+      );
+      if (convertibleSessionId && !sessionBackedFailure) {
+        await anonymousSessionsService.markConverted(convertibleSessionId);
+        logger.info(
+          `[Claim Affiliate Chars] Marked session as converted: ${convertibleSessionId}`,
+        );
       }
 
       return c.json({

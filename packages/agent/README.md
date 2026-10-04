@@ -44,6 +44,20 @@ never repeat the effect. Revision/epoch and account checks fence late results;
 resolved results require a durable evidence reference. Reconciliation does not
 resume the task. This method is deliberately absent from renderer HTTP routes.
 
+## Optional phone workflows
+
+Lean-chat hosts may set `ELIZA_LEAN_CHAT_WORKFLOWS=1` to retain the workflow
+plugin while keeping the lean profile's desktop actuator exclusions. Android
+hosts may independently set `ELIZA_MOBILE_WORKFLOWS=1`; the default remains
+workflow-free, and iOS remains excluded. An explicit `workflow.enabled: false`
+or disabled `plugins.entries.workflow` overrides either opt-in.
+
+Android bundles include the optional workflow plugin, but execution still
+requires the separately verified workflow worker/compiler resource directory
+and the process-host configuration. Enabling the plugin does not establish
+worker readiness or authorize device effects. Use the existing reviewed
+workflow and device-action permission/receipt boundaries.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -131,3 +145,9 @@ Each explicit uncertain-operation readback commits a recovery epoch before bindi
 the actuator. An ambiguous result or lost reply therefore cannot strand the next
 readback on a native epoch that was already consumed. The original operation stays
 unknown until evidence resolves it, and recovery never resumes or repeats effects.
+
+Mobile hosts may set `ELIZA_MOBILE_DNS_SERVERS` to one through eight comma-separated
+IP literals from their trusted native network configuration. Missing configuration
+retains the public resolver defaults; malformed addresses reject before installing
+DNS overrides. This startup snapshot does not implement Private DNS, VPN-bound
+resolution or automatic network-change refresh.

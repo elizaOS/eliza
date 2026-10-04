@@ -143,6 +143,10 @@ const stubBarrels = {
                 if (prop === "listAppPermissions") {
                   return () => Promise.resolve([]);
                 }
+                // The real subscription returns synchronous effect cleanup.
+                if (prop === "onBaseUrlChange") {
+                  return () => () => {};
+                }
                 return asyncEmpty;
               },
             });

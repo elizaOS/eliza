@@ -118,6 +118,8 @@ export interface CheckinReport {
   readonly reportId: string;
   readonly kind: CheckinKind;
   readonly generatedAt: string;
+  /** Collector timezone; absent on reports saved before this field existed. */
+  readonly timezone?: string;
   readonly escalationLevel: EscalationLevel;
   readonly overdueTodos: readonly OverdueTodo[];
   readonly todaysMeetings: readonly MeetingEntry[];

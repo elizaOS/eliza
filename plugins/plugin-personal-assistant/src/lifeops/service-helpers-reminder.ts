@@ -1527,6 +1527,19 @@ export async function classifyReminderOwnerResponse(args: {
       classifierSource: "deterministic",
     };
   }
+  if (
+    args.context?.allowStandaloneResolution === false &&
+    classifyExactReminderReply(cleaned)
+  ) {
+    return {
+      decision: "unrelated",
+      resolution: null,
+      snoozeRequest: null,
+      confidence: 1,
+      reason: "standalone_resolution_not_allowed",
+      classifierSource: "deterministic",
+    };
+  }
   const exact = classifyExactReminderReply(cleaned, args.context);
   if (exact) {
     return { ...exact, classifierSource: "deterministic" };
