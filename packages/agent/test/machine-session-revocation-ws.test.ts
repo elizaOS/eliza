@@ -14,10 +14,8 @@ import {
 } from "../../app/src/api/auth/sessions.ts";
 import { resolveSessionTokenRole } from "../../app/src/api/auth.ts";
 import { handleAuthSessionRoutes } from "../../app/src/api/auth-session-routes.ts";
-import {
-  type AuthRepository,
-  authStoreForRuntime,
-} from "../../app/src/services/auth-store.ts";
+import type { AuthRepository } from "../../app/src/services/auth-repository.ts";
+import { authStoreForRuntime } from "../../app/src/services/auth-store.ts";
 import { startApiServer } from "../src/api/server.ts";
 import {
   getAgentHostBridge,
