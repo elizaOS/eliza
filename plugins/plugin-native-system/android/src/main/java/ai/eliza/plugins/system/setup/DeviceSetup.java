@@ -45,7 +45,7 @@ public final class DeviceSetup {
 
  private String selectedAutofillPackage() {
   String component = Settings.Secure.getString(context.getContentResolver(), "autofill_service");
-  if (component == null || component.isBlank()) return null;
+  if (component == null || component.trim().isEmpty()) return null;
   ComponentName name = ComponentName.unflattenFromString(component);
   return name == null ? null : name.getPackageName();
  }
