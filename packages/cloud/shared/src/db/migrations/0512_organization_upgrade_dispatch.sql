@@ -26,6 +26,8 @@ BEGIN
   IF NOT FOUND OR ROW(quote.organization_id,quote.actor_id,quote.subscription_id,quote.subscription_revision,quote.target_plan_key)
    IS DISTINCT FROM ROW(NEW.organization_id,NEW.requested_by_user_id,NEW.subscription_id,NEW.expected_subscription_revision,NEW.target_plan_key)
    OR quote.expires_at<=clock_timestamp()
+   OR OLD.status<>'OUTCOME_UNKNOWN' OR OLD.lease_expires_at IS NULL
+   OR OLD.lease_expires_at<=clock_timestamp()
    OR NEW.status<>'OUTCOME_UNKNOWN' OR NEW.lease_token IS NULL
    OR NEW.lease_expires_at IS NULL OR NEW.lease_expires_at<=clock_timestamp() OR NEW.execution_generation<=0
    OR ROW(NEW.lease_token,NEW.execution_generation) IS DISTINCT FROM ROW(OLD.lease_token,OLD.execution_generation) THEN
