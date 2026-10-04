@@ -1,4 +1,6 @@
 /** Exercises the registered field's parsed source binding and the real evaluator patch runner. */
+
+import type { CalendarReadBinding } from "@elizaos/contracts";
 import {
   AgentRuntime,
   type Memory,
@@ -7,7 +9,6 @@ import {
   runResponseHandlerEvaluators,
   stringToUuid,
 } from "@elizaos/core";
-import type { CalendarReadBinding } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   calendarActionPromotionOptions,

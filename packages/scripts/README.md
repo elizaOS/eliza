@@ -25,6 +25,9 @@ tracks source changes without running builds. Typechecks that read generated
 declarations declare the producing build explicitly. Source imports outside
 Turbo's dependency graph, including peer-only packages, need an explicit
 `#typecheck:deps` edge so their changes invalidate cached checks.
+The local-inference dependency-hash task covers native inference, computer use,
+and UI sources together to break their protocol import cycle. It retains the
+group's external dependency hashes; do not restore cyclic `^typecheck:deps` edges.
 Typechecks use the `eliza-source` export condition from the root TypeScript config;
 package exports own workspace source entrypoints. Keep `paths` only for mappings
 that differ from those exports. Emit configs clear inherited source conditions
