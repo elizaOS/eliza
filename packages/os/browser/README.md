@@ -235,3 +235,11 @@ reviewed Phishing.Database and HaGeZi lists and ships their license notices.
 existing component without changing its other capabilities. Keep existing alarm
 names when upgrading an installed consumer. Run `test:browser:protection:network`
 for real Chromium blocking, exception, offline-restart and capacity checks.
+
+`prepareAndroidConsumerInputs` in `scripts/android-consumer-inputs.mjs` builds
+certificate-bound Android assets from a reviewed checkout and signed launcher APK.
+Hosts provide application identity, signer tool/environment and optional asset
+composition; they retain product APK admission, protection policy and report format.
+Source/APK mutation and invalid composed identities reject before returning a result.
+Use a new output directory: failed composition may leave partial files, and no
+Chromium build, installation, atomic publication or device qualification is implied.
