@@ -8,6 +8,7 @@
  * zero USD value are dropped. All sorting/filtering is memoized on the raw
  * inputs and the user's sort/filter selections.
  */
+
 import type {
   EvmChainBalance,
   WalletAddresses,

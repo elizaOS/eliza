@@ -11,6 +11,7 @@
  */
 
 import type { FirstRunOptions } from "@elizaos/host/protocol";
+
 import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import { useReducer, useRef } from "react";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";

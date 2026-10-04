@@ -16,7 +16,7 @@ export function CalendarPage(): JSX.Element {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden pt-[var(--safe-area-top,0px)]">
       <ViewHeader title="Calendar" />
-      <div className="min-h-0 min-w-0 flex-1 overflow-auto p-3 md:p-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto p-3 pb-[calc(0.75rem+var(--eliza-chat-clearance,0px))] md:p-4 md:pb-[calc(1rem+var(--eliza-chat-clearance,0px))]">
         <CalendarSection
           selectedEventId={selectedEventId}
           onSelectEvent={setSelectedEventId}

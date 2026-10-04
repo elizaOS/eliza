@@ -7,6 +7,7 @@
  */
 
 import type { UiLanguage } from "@elizaos/core/protocol";
+
 import {
   APPEARANCE_APPLY_EVENT,
   type AppearanceApplyPayload,

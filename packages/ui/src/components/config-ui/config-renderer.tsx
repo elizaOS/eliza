@@ -1,10 +1,3 @@
-import {
-  evaluateFieldVisibility,
-  matchesSafeUntrustedRegexPattern,
-  resolveFields,
-  runValidation,
-} from "@elizaos/host/protocol";
-
 /**
  * Renders a JSON-Schema-described plugin config as a form: resolves the schema
  * into ordered fields (basic + advanced groups), evaluates per-field visibility,
@@ -16,6 +9,12 @@ import {
 
 import type { ConfigUiHint, PluginUiTheme } from "@elizaos/contracts";
 import type { JsonSchemaObject, ResolvedField } from "@elizaos/host/protocol";
+import {
+  evaluateFieldVisibility,
+  matchesSafeUntrustedRegexPattern,
+  resolveFields,
+  runValidation,
+} from "@elizaos/host/protocol";
 import type React from "react";
 import {
   forwardRef,
@@ -24,7 +23,6 @@ import {
   useMemo,
   useState,
 } from "react";
-
 import type {
   FieldRegistry,
   FieldRenderer,

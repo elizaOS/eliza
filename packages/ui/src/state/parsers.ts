@@ -5,6 +5,7 @@
  */
 
 import type { CustomActionDef } from "@elizaos/contracts";
+
 import { parseChatFailureKind } from "@elizaos/contracts";
 import type { ConversationMessage } from "../api/client-types-chat";
 import type {

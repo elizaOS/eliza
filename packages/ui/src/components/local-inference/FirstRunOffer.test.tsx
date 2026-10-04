@@ -1,6 +1,7 @@
 /** Exercises the rendered Settings download action against real catalog publication and hardware policy. */
 // @vitest-environment jsdom
 
+// @vitest-environment jsdom
 import type { HardwareProbe } from "@elizaos/contracts";
 import {
   filterSettingsDefaultLocalModels,

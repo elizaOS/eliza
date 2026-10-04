@@ -30,7 +30,6 @@ import {
   ElizaClient,
   ErrorBoundary,
   exchangeRemoteAgentPairing,
-  FIRST_RUN_CLOUD_LOGIN_ACTION,
   getBootConfig,
   getChatOverlayHotkey,
   getPushToTalkAccelerator,
@@ -97,7 +96,6 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-  tryHandleFirstRunAction,
   upsertAndActivateAgentProfile,
 } from "@elizaos/ui";
 import { installAndroidNativeAgentFetchBridge } from "./renderer/transports/android-native-agent-transport";
@@ -156,7 +154,6 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
-
 import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
 import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";

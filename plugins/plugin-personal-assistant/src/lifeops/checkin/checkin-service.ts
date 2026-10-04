@@ -779,9 +779,11 @@ async function collectOverdueTodos(
               COALESCE(def.title, '') AS title,
               occ.due_at AS due_at
          FROM app_lifeops.life_task_occurrences occ
-         LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
+         JOIN app_lifeops.life_task_definitions def
+           ON def.id = occ.definition_id AND def.agent_id = occ.agent_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
-          AND occ.state IN ('pending', 'active', 'in_progress')
+          AND def.kind = 'task'
+          AND occ.state IN ('pending', 'visible')
           AND occ.due_at IS NOT NULL
           AND occ.due_at < ${sqlQuote(nowIso)}
         ORDER BY occ.due_at ASC

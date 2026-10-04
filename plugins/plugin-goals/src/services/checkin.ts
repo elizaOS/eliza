@@ -168,7 +168,10 @@ export function checkinTriggersForGoal(
         warnCadence(goal.id, "once cadence has no parseable dueAt");
         return [];
       }
-      return [{ slotKey: "once", trigger: { kind: "once", atIso: dueAt } }];
+      // Keyed by instant: moving the date needs a new task, because a once
+      // task that has already fired can't be re-armed by an edit.
+      const atIso = new Date(dueAt).toISOString();
+      return [{ slotKey: `once:${atIso}`, trigger: { kind: "once", atIso } }];
     }
     case "daily": {
       const hours = windowHoursOf(cadence.windows, goal.id);
@@ -430,12 +433,26 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     );
     const existing = await this.listGoalTasks(runner, goal.id);
     const desiredKeys = new Set(desired.map((input) => input.idempotencyKey));
+    // A task already holding a desired once instant covers it under any key
+    // (including the older unkeyed `once` slot): live, it is kept; finished,
+    // that check-in already ran; dismissed, the owner turned it off.
+    const desiredOnceTriggers = new Set(
+      desired
+        .filter((input) => input.trigger.kind === "once")
+        .map((input) =>
+          input.trigger.kind === "once" ? Date.parse(input.trigger.atIso) : NaN,
+        ),
+    );
+    const holdsDesiredOnce = (task: ScheduledTask): boolean =>
+      task.trigger.kind === "once" &&
+      desiredOnceTriggers.has(Date.parse(task.trigger.atIso));
 
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
       if (task.idempotencyKey && desiredKeys.has(task.idempotencyKey)) {
         continue;
       }
+      if (holdsDesiredOnce(task)) continue;
       if (TERMINAL_TASK_STATUSES.has(task.state.status)) continue;
       await runner.apply(task.taskId, "dismiss", {
         reason: GOAL_CHECKIN_SYNC_DISMISS_REASON,
@@ -450,14 +467,26 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
         (task) => task.idempotencyKey === input.idempotencyKey,
       );
       if (!current) {
-        scheduled.push(await runner.schedule(input));
+        const covered =
+          input.trigger.kind === "once" &&
+          existing.some(
+            (task) =>
+              task.trigger.kind === "once" &&
+              input.trigger.kind === "once" &&
+              Date.parse(task.trigger.atIso) ===
+                Date.parse(input.trigger.atIso),
+          );
+        if (!covered) scheduled.push(await runner.schedule(input));
         continue;
       }
       // A dismissed slot is a deliberate off-switch (owner or sync); never
       // resurrect it for the same trigger shape.
       if (current.state.status === "dismissed") continue;
       const triggerChanged =
-        JSON.stringify(current.trigger) !== JSON.stringify(input.trigger);
+        current.trigger.kind === "once" && input.trigger.kind === "once"
+          ? Date.parse(current.trigger.atIso) !==
+            Date.parse(input.trigger.atIso)
+          : JSON.stringify(current.trigger) !== JSON.stringify(input.trigger);
       const titleChanged = current.metadata?.goalTitle !== goal.title;
       if (triggerChanged || titleChanged) {
         edited.push(

@@ -928,9 +928,7 @@ async function readGmailMockRequests(
     );
   }
   const response = await fetch(`${base}/__mock/requests`, {
-    signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
-      : AbortSignal.timeout(30_000),
+    signal,
   });
   if (!response.ok) {
     throw new Error(
@@ -2082,7 +2080,7 @@ registerFinalCheckHandler(
         rejectedActions.some((action) => !action.apiEffects))
     )
       return {
-        status: "skipped",
+        status: "failed",
         detail:
           "no independent effect observer is configured for this runtime; rejection effects are unproven",
       };

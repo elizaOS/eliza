@@ -1,3 +1,10 @@
+import type {
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
+} from "@elizaos/contracts";
 /**
  * API client for the backend.
  *
@@ -44,11 +51,6 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-  VerificationResult,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,

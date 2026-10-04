@@ -29,7 +29,7 @@ it("does not mistake model confirmation parameters for an actual rejection", asy
 it("requires independent effects evidence even after an explicit cancellation", async () => {
   expect(
     (await runFinalCheck(check, { runtime: {}, ctx: cancelled })).status,
-  ).toBe("skipped");
+  ).toBe("failed");
   expect(
     (
       await runFinalCheck(check, {

@@ -1,6 +1,3 @@
-import { removeProfileWithoutStaleSelection as removeProfileCanonically } from "../../state/runtime-profile-removal";
-/** Live state and secure enrollment flows for Devices & Runtimes settings. */
-
 import { Capacitor } from "@capacitor/core";
 import type { RemoteControllerPublicIdentity } from "@elizaos/contracts";
 import type {
@@ -26,10 +23,12 @@ import {
 import { subscribeRemoteControllerPairingIntents } from "../../platform/remote-target-pairing-intent";
 import { deleteRuntimeCredentialRecord } from "../../platform/runtime-credential-store";
 import { executeRuntimeManagementCommand } from "../../platform/runtime-management";
+import type {
+  SshHostInspection,
+  SshRuntimeStatus,
+} from "../../platform/ssh-runtime";
 import {
   getSshRuntimeStatus,
-  type SshHostInspection,
-  type SshRuntimeStatus,
   startSshRuntime,
 } from "../../platform/ssh-runtime";
 import type {
@@ -40,15 +39,18 @@ import {
   addAgentProfile,
   loadAgentProfileRegistry,
 } from "../../state/agent-profiles";
+import { removeProfileWithoutStaleSelection as removeProfileCanonically } from "../../state/runtime-profile-removal";
 import { switchRuntimeNonDestructive } from "../../state/switch-runtime";
-import {
-  type ControllerPairingClaimView,
-  type DevicePairingView,
-  type DeviceRuntimeTarget,
-  DevicesRuntimesSection,
-  type LinuxRemoteTargetView,
-  type SshConnectInput,
+import type {
+  ControllerPairingClaimView,
+  DevicePairingView,
+  DeviceRuntimeTarget,
+  LinuxRemoteTargetView,
+  SshConnectInput,
 } from "./DevicesRuntimesSection";
+import { DevicesRuntimesSection } from "./DevicesRuntimesSection";
+
+/** Live state and secure enrollment flows for Devices & Runtimes settings. */
 
 function messageFor(cause: unknown): string {
   if (cause instanceof Error && cause.message.trim()) return cause.message;

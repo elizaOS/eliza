@@ -62,6 +62,9 @@ vi.mock("@elizaos/ui", () => ({
     <input {...props} />
   ),
   client: lifeOpsClient,
+  // The LifeOps and Calendar client modules install methods on this prototype
+  // at import time; the cards call the mocked `client` above.
+  ElizaClient: class ElizaClient {},
   useApp: () => blockerAppState,
   useAppSelector: <T,>(selector: (s: typeof blockerAppState) => T): T =>
     selector(blockerAppState),

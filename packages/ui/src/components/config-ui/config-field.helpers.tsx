@@ -1,4 +1,3 @@
-import { resolveDynamic } from "@elizaos/host/protocol";
 /**
  * Per-field-type control renderers for the plugin-config form (text, password,
  * number, boolean, url, select, textarea, email, color, radio, multiselect,
@@ -10,6 +9,7 @@ import { resolveDynamic } from "@elizaos/host/protocol";
  */
 
 import type { DynamicValue } from "@elizaos/contracts";
+import { resolveDynamic } from "@elizaos/host/protocol";
 import { ChevronDown, X } from "lucide-react";
 import React, {
   useCallback,

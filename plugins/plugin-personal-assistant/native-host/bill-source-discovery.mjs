@@ -54,14 +54,26 @@ function scope(input) {
   Object.freeze(c.senders);
   return Object.freeze(c);
 }
+// Domains are case-insensitive; local parts retain the host's exact sender grants.
+function sameAddress(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const aAt = a.lastIndexOf("@"),
+    bAt = b.lastIndexOf("@");
+  return (
+    aAt > 0 &&
+    bAt > 0 &&
+    a.slice(0, aAt) === b.slice(0, bAt) &&
+    a.slice(aAt + 1).toLowerCase() === b.slice(bAt + 1).toLowerCase()
+  );
+}
 function matches(m, c) {
   const time = Date.parse(m?.receivedAt);
   return (
     text(m?.externalId, 256) &&
     /^[A-Za-z0-9_-]+$/.test(m.externalId) &&
-    c.senders.includes(m.fromEmail) &&
+    c.senders.some((sender) => sameAddress(sender, m.fromEmail)) &&
     Array.isArray(m.to) &&
-    m.to.includes(c.recipient) &&
+    m.to.some((to) => sameAddress(to, c.recipient)) &&
     Number.isFinite(time) &&
     time >= c.after &&
     time < c.before

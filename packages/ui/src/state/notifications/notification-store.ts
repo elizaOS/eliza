@@ -30,8 +30,8 @@ import { isApiError } from "../../api/client-types-core";
 import { deliverSystemNotification } from "../../bridge/notification-delivery";
 import { APP_RESUME_EVENT } from "../../events";
 import { STEWARD_SESSION_CHANGE_EVENT } from "../../events/steward-session-event";
+import type { AuthStatusState } from "../../hooks/useAuthStatus";
 import {
-  type AuthStatusState,
   getAuthStatusSnapshot,
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";

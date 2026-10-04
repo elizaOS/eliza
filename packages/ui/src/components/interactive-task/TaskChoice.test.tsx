@@ -196,6 +196,32 @@ it("explains an in-flight choice without dispatching it twice", async () => {
   expect(screen.queryByRole("status")).toBeNull();
   expect(button.getAttribute("aria-disabled")).toBeNull();
 });
+it("announces the checking notice outside the busy options", async () => {
+  let resolve!: () => void;
+  const first = new Promise<void>((r) => {
+    resolve = r;
+  });
+  render(
+    <TaskChoice
+      explainUnavailable
+      widget={widget()}
+      taskId="task-1"
+      onChoose={() => first}
+    />,
+  );
+  const button = screen.getByRole("button");
+  fireEvent.click(button);
+  fireEvent.click(button);
+  // The notice only exists while busy; inside an aria-busy subtree it could
+  // be held back until it is already gone.
+  expect(button.closest('[aria-busy="true"]')).toBe(button);
+  expect(screen.getByRole("status").closest('[aria-busy="true"]')).toBeNull();
+  await act(async () => {
+    resolve();
+    await first;
+  });
+  expect(button.closest('[aria-busy="true"]')).toBeNull();
+});
 it("explains a host-pending choice with the default text", () => {
   let calls = 0;
   render(

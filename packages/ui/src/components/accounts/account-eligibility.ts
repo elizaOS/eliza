@@ -10,12 +10,13 @@
  * provider-name copy leaks into components.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/contracts";
 import {
   codingAgentSpawnCapabilityForProvider,
   codingProviderDescriptorForProvider,
   type ProviderRuntimeEligibility,
 } from "@elizaos/contracts";
+
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import type { AccountsListProvider } from "../../api/client-agent-accounts";
 import type { AccountProviderOption } from "./account-provider-options";
 export interface ResolvedEligibility {

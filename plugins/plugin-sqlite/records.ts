@@ -2592,16 +2592,24 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   // ── World CRUD ────────────────────────────────────────────────────────
 
+  private worldIsVisibleToOwner(world: World): boolean {
+    // Worlds created without an agentId belong to this database. A stored
+    // agentId for someone else matches the SQL `worlds.agent_id` predicate.
+    return world.agentId === undefined || world.agentId === this.agentId;
+  }
+
   async getAllWorlds(): Promise<World[]> {
     const worlds = await this.storage.getAll<World>(COLLECTIONS.WORLDS);
-    return worlds.map((world) => structuredClone(world));
+    return worlds
+      .filter((world) => this.worldIsVisibleToOwner(world))
+      .map((world) => structuredClone(world));
   }
 
   async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
     const worlds: World[] = [];
     for (const id of worldIds) {
       const w = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
-      if (w) worlds.push(structuredClone(w));
+      if (w && this.worldIsVisibleToOwner(w)) worlds.push(structuredClone(w));
     }
     return worlds;
   }
@@ -2636,7 +2644,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async deleteWorlds(worldIds: UUID[]): Promise<void> {
     return withWorldMetadataTail(this.storage, async () => {
       for (const id of worldIds) {
-        await this.storage.delete(COLLECTIONS.WORLDS, id);
+        const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
+        if (existing && this.worldIsVisibleToOwner(existing)) {
+          await this.storage.delete(COLLECTIONS.WORLDS, id);
+        }
       }
     });
   }
@@ -2653,7 +2664,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           COLLECTIONS.WORLDS,
           world.id,
         );
-        if (!existing) continue;
+        if (!existing || !this.worldIsVisibleToOwner(existing)) continue;
         const storedRevision = requireFreshWorldMetadataRevision(
           existing.metadata as Metadata | undefined,
           world.metadata as Metadata | undefined,
@@ -2678,6 +2689,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       for (const world of worlds) {
         const id = world.id as UUID;
         const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
+        if (existing && !this.worldIsVisibleToOwner(existing)) continue;
         if (!existing) {
           await this.storage.set(COLLECTIONS.WORLDS, id, {
             ...structuredClone(world),
@@ -2737,7 +2749,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.WORLDS,
       params.worldId,
     );
-    if (!stored) return { status: "not_found" };
+    if (!stored || !this.worldIsVisibleToOwner(stored))
+      return { status: "not_found" };
     const storedMetadata = (stored.metadata ?? {}) as Record<string, unknown>;
     if (
       !worldMetadataValueEquals(
@@ -2833,11 +2846,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Room CRUD ─────────────────────────────────────────────────────────
 
+  private roomIsVisibleToOwner(room: Room): boolean {
+    // Rooms created without an agentId belong to this database. A stored
+    // agentId for someone else matches the SQL room `agent_id` predicate.
+    return room.agentId === undefined || room.agentId === this.agentId;
+  }
+
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
     const rooms: Room[] = [];
     for (const id of roomIds) {
       const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, id);
-      if (room) rooms.push(room);
+      if (room && this.roomIsVisibleToOwner(room)) rooms.push(room);
     }
     return rooms;
   }
@@ -2846,7 +2865,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (worldIds.length === 0) return;
     const worldSet = new Set(worldIds);
     const rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
-      r.worldId ? worldSet.has(r.worldId as UUID) : false,
+      Boolean(
+        r.worldId &&
+          worldSet.has(r.worldId as UUID) &&
+          this.roomIsVisibleToOwner(r),
+      ),
     );
     const roomIds = rooms
       .map((r) => r.id)
@@ -2861,7 +2884,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => entitySet.has(p.entityId as UUID),
     );
-    return [...new Set(participants.map((p) => p.roomId as UUID))];
+    const roomIds = [...new Set(participants.map((p) => p.roomId as UUID))];
+    const rooms = await this.getRoomsByIds(roomIds);
+    return rooms.flatMap((room) => (room.id ? [room.id] : []));
   }
 
   async getRoomsByWorlds(
@@ -2872,7 +2897,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (worldIds.length === 0) return [];
     const worldSet = new Set(worldIds);
     let rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
-      r.worldId ? worldSet.has(r.worldId as UUID) : false,
+      Boolean(
+        r.worldId &&
+          worldSet.has(r.worldId as UUID) &&
+          this.roomIsVisibleToOwner(r),
+      ),
     );
     const off = offset ?? 0;
     if (off > 0) rooms = rooms.slice(off);
@@ -3388,10 +3417,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return tasks;
   }
 
+  private taskIsVisibleToOwner(task: Task): boolean {
+    // Tasks created without an agentId belong to this database. A stored
+    // agentId for someone else matches the SQL `agent_id = this.agentId`
+    // predicate and must not be readable or writable here.
+    return task.agentId === undefined || task.agentId === this.agentId;
+  }
+
   async getTasksByName(name: string): Promise<Task[]> {
     return this.storage.getWhere<Task>(
       COLLECTIONS.TASKS,
-      (t) => t.name === name,
+      (t) => t.name === name && this.taskIsVisibleToOwner(t),
     );
   }
 
@@ -3413,7 +3449,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const tasks: Task[] = [];
     for (const id of taskIds) {
       const task = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
-      if (task) tasks.push(task);
+      if (task && this.taskIsVisibleToOwner(task)) tasks.push(task);
     }
     return tasks;
   }
@@ -3422,7 +3458,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const operation = async () => {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
       if (
-        !existing?.tags?.includes("queue") ||
+        !existing ||
+        !this.taskIsVisibleToOwner(existing) ||
+        !existing.tags?.includes("queue") ||
         (existing.metadata?.status != null &&
           existing.metadata.status !== "pending")
       ) {
@@ -3449,7 +3487,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<boolean> {
     const operation = async () => {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
-      if (!existing) return false;
+      if (!existing || !this.taskIsVisibleToOwner(existing)) return false;
       const metadata: Record<string, unknown> = {
         ...(existing.metadata ?? {}),
         ...(patch.set ?? {}),
@@ -3475,13 +3513,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<void> {
     for (const { id, task } of updates) {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
-      if (!existing) continue;
+      if (!existing || !this.taskIsVisibleToOwner(existing)) continue;
       await this.storage.set(COLLECTIONS.TASKS, id, { ...existing, ...task });
     }
   }
 
   async deleteTasks(taskIds: UUID[]): Promise<void> {
     for (const id of taskIds) {
+      const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
+      if (!existing || !this.taskIsVisibleToOwner(existing)) continue;
       await this.storage.delete(COLLECTIONS.TASKS, id);
     }
   }

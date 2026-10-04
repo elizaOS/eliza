@@ -14,6 +14,7 @@ import {
  */
 
 import type { NavigateViewDetail } from "@elizaos/core/protocol";
+
 import {
   MAX_CHAT_MEDIA_RAW_BYTES,
   transcriptPlainText,

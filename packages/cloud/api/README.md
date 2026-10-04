@@ -57,3 +57,16 @@ retains OUTCOME_UNKNOWN until observation resolves it. Recovery fails expired
 prepared reviews without reconstructing a mutation. The existing undo/status
 APIs remain compatible; consumers needing reviewed confirmation use this route.
 Apply migration `0510_subscription_renewal_review_receipts` before deploying.
+
+
+## Organization upgrade review
+
+`POST /api/v1/subscriptions/upgrade/review` accepts `subscriptionId`, a positive
+safe-integer `expectedSubscriptionRevision`, and a catalog `targetPlanKey`.
+The current billing manager session is required and revalidated after provider
+reads. The no-store response contains `quoteId` and `review`, separating due-now
+proration/tax/discount/customer-balance terms from a long-term recurring estimate.
+The exact reviewed timestamp and prorated additional allowance are retained.
+Apply migration `0511_organization_plan_change_quotes` before deployment.
+Saving a quote creates no charge, command or allowance grant. Upgrade confirmation
+and scheduled downgrade are separate lifecycle work and are not exposed here.

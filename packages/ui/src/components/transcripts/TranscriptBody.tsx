@@ -10,10 +10,10 @@
  * deterministic and unit-testable without real audio playback.
  */
 
+import type { Transcript } from "@elizaos/core/protocol";
 import {
   activeWordIndex,
   flattenTranscriptWords,
-  type Transcript,
 } from "@elizaos/core/protocol";
 import * as React from "react";
 import { Button } from "../ui/button";

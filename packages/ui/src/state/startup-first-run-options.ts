@@ -5,6 +5,7 @@
  */
 
 import type { UiLanguage } from "@elizaos/core/protocol";
+
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   type FirstRunOptions,
