@@ -248,6 +248,13 @@ function toPushMessage(notification: AgentNotification): PushMessage {
     const value = notification.data?.[key];
     if (typeof value === "string") data[key] = value;
   }
+  const ownerType = notification.data?.ownerType;
+  if (
+    notification.category === "reminder" &&
+    (ownerType === "occurrence" || ownerType === "calendar_event")
+  ) {
+    data.ownerType = ownerType;
+  }
   return {
     title: notification.title,
     body: notification.body,

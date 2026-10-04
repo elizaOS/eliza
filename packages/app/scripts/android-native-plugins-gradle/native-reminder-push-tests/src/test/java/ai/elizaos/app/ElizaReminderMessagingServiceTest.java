@@ -202,7 +202,8 @@ public class ElizaReminderMessagingServiceTest {
         android.net.Uri sound = android.net.Uri.parse("content://media/internal/audio/media/42");
         updates.setSound(sound, new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build());
         manager.createNotificationChannel(updates);
-        receiver().onMessageReceived(message(data(A), "legacy-sound"));
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "legacy-sound"));
         assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
         assertEquals(sound, manager.getNotificationChannel("eliza_updates").getSound());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
@@ -226,6 +227,32 @@ public class ElizaReminderMessagingServiceTest {
         receiver().onMessageReceived(message(high, "quiet-high"));
         assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
         assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel("eliza_notifications").getImportance());
+    }
+    @Test public void occurrenceHighPreservesLegacyQuietUpdates() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Quiet", NotificationManager.IMPORTANCE_LOW));
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "occurrence-quiet"));
+        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Test public void occurrenceHighPreservesLegacyMutedUpdatesWithoutReceipt() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Muted", NotificationManager.IMPORTANCE_NONE));
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "occurrence-muted"));
+        assertEquals(0, manager.getActiveNotifications().length);
+        assertFalse(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
+    }
+    @Test public void occurrenceHighUsesAlertWhenLegacyUpdatesIsUntouched() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT));
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "occurrence-default"));
+        assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
+    }
+    @Test public void calendarHighDoesNotInheritOccurrenceLegacyChoice() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Quiet", NotificationManager.IMPORTANCE_LOW));
+        Map<String, String> calendar = data(A); calendar.put("priority", "high"); calendar.put("ownerType", "calendar_event");
+        receiver().onMessageReceived(message(calendar, "calendar-high"));
+        assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
     }
     @Test public void malformedRequiredFieldsNeverProject() {
         for (String field : new String[]{"notificationId", "title", "body", "priority", "category"}) {
