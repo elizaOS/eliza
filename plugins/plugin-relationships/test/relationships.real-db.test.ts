@@ -129,6 +129,51 @@ describe("relationships KnowledgeGraph backing — real PGLite", () => {
     ).toBe(false);
   });
 
+  it("set_relationship updates the existing edge instead of adding a duplicate", async () => {
+    const action = runtime.actions.find(
+      (candidate) => candidate.name === "KNOWLEDGE_GRAPH",
+    );
+    if (!action) throw new Error("External graph action was not registered");
+    const relationships = service?.getRelationshipStore();
+    if (!relationships) throw new Error("RelationshipStore unavailable");
+    const toEntityId = `ent_${stringToUuid("relationships-set-relationship-target")}`;
+    const request = (evidence: string) => ({
+      parameters: {
+        op: "set_relationship",
+        toEntityId,
+        relationshipType: "manages",
+        evidence,
+      },
+    });
+    const message: Memory = {
+      id: stringToUuid("relationships-set-relationship-owner"),
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text: "Pat is my manager", source: "test" },
+    };
+
+    const first = await action.handler(
+      runtime,
+      message,
+      undefined,
+      request("first chat"),
+      undefined,
+    );
+    const second = await action.handler(
+      runtime,
+      message,
+      undefined,
+      request("second chat"),
+      undefined,
+    );
+
+    expect(first).toMatchObject({ success: true });
+    expect(second).toMatchObject({ success: true });
+    const edges = await relationships.list({ toEntityId, type: "manages" });
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
+  });
+
   it("entity upsert → get / list / resolve round-trip against the live DB", async () => {
     const store = service?.getEntityStore();
     if (!store) throw new Error("EntityStore unavailable");

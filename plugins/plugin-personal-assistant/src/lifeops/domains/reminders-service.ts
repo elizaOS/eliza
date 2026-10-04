@@ -953,6 +953,8 @@ export function buildReminderDispatchPrompt(args: {
   urgency: LifeOpsReminderUrgency;
   recentConversation: readonly string[];
   nearbyReminderTitles?: string[];
+  /** Owner's IANA zone; the model must anchor spoken times to it, not the host. */
+  timezone?: string;
 }): string {
   const instructions = resolveOptimizedPromptForRuntime(
     args.runtime,
@@ -967,7 +969,7 @@ export function buildReminderDispatchPrompt(args: {
     "",
     "Current reminder:",
     `- title: ${args.title}`,
-    `- due: ${new Date(args.reminderAt).toLocaleString()}`,
+    `- due: ${args.timezone ? new Date(args.reminderAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.reminderAt).toLocaleString()}`,
     `- channel: ${args.channel}`,
     `- urgency: ${args.urgency}`,
     `- lifecycle: ${args.lifecycle}`,
@@ -1665,6 +1667,7 @@ export class RemindersDomain {
     subjectType: LifeOpsSubjectType;
     nearbyReminderTitles?: string[];
     derivedTarget?: Record<string, unknown> | null;
+    timezone?: string;
   }): Promise<string> {
     // The laddered rung, when present, is the small step the reminder should be
     // about — both the deterministic fallback and the model prompt lead with it
@@ -1679,6 +1682,7 @@ export class RemindersDomain {
       lifecycle: args.lifecycle,
       nearbyReminderTitles: args.nearbyReminderTitles,
       derivedTarget: args.derivedTarget,
+      timezone: args.timezone,
     });
     if (typeof this.ctx.runtime.useModel !== "function") {
       return fallback;
@@ -1697,6 +1701,7 @@ export class RemindersDomain {
       urgency: args.urgency,
       recentConversation,
       nearbyReminderTitles: args.nearbyReminderTitles,
+      timezone: args.timezone,
     });
 
     try {
@@ -4653,6 +4658,7 @@ export class RemindersDomain {
             subjectType: args.subjectType,
             nearbyReminderTitles: args.nearbyReminderTitles,
             derivedTarget: args.derivedTarget,
+            timezone: args.timezone,
           })));
       if (exactReminder)
         presentation = createReminderPresentation(
