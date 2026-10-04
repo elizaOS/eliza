@@ -216,7 +216,8 @@ const config = {
       ],
       project: [
         "src/**/*.{ts,tsx}",
-        "scripts/**/*.ts",
+        "scripts/**/*.{ts,mjs}",
+        "native-host/**/*.mjs",
         "vite/**/*.ts",
         "*.ts",
         "test/**/*.{ts,tsx}",
@@ -445,14 +446,24 @@ const appRoot = fileURLToPath(new URL("./packages/app/", import.meta.url));
 const manifest = JSON.parse(
   readFileSync(path.join(appRoot, "package.json"), "utf8"),
 ) as {
-  exports: Record<string, { "eliza-source"?: string; import?: string }>;
+  exports: Record<
+    string,
+    string | { "eliza-source"?: string; import?: string }
+  >;
 };
 const app = config.workspaces["packages/app"];
 for (const entry of Object.values(manifest.exports)) {
   const target =
-    entry["eliza-source"] ??
-    entry.import?.replace("./dist/", "./src/").replace(/\.js$/, ".ts");
-  if (target && existsSync(path.join(appRoot, target))) app.entry.push(target);
+    typeof entry === "string"
+      ? entry
+      : (entry["eliza-source"] ??
+        entry.import?.replace("./dist/", "./src/").replace(/\.js$/, ".ts"));
+  if (
+    target &&
+    /\.[cm]?[jt]sx?$/.test(target) &&
+    (target.includes("*") || existsSync(path.join(appRoot, target)))
+  )
+    app.entry.push(target);
 }
 for (const asset of PUBLISH_ASSET_PATHS) {
   const file = path.join(appRoot, asset);

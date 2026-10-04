@@ -12,7 +12,7 @@ test("new nested tests join their runner and embedded imports do not change owne
     mkdirSync(path.join(root, "scripts/nested"), { recursive: true });
     writeFileSync(
       path.join(root, "scripts/a.test.ts"),
-      'import test from "node:test"; const program = `import { mock } from "bun:test";`;',
+      'import test from "node:test"; import type { TestContext } from "vitest"; const program = `import { mock } from "bun:test";`;',
     );
     writeFileSync(
       path.join(root, "scripts/nested/b.spec.ts"),

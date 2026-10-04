@@ -23,6 +23,7 @@ export function discoverScriptTestLanes(appRoot: string) {
       source.statements.flatMap((statement) => {
         if (
           !ts.isImportDeclaration(statement) ||
+          statement.importClause?.isTypeOnly ||
           !ts.isStringLiteral(statement.moduleSpecifier)
         )
           return [];
