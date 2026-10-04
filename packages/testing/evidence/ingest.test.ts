@@ -448,9 +448,7 @@ describe("ingestAllSilos", () => {
       source: "group-chat-timing",
       lane: "evaluation",
     });
-    expect(
-      byPath["lanes/content-context/run-1/benchmark.json"],
-    ).toMatchObject({
+    expect(byPath["lanes/content-context/run-1/benchmark.json"]).toMatchObject({
       kind: "report",
       source: "content-context",
       lane: "content-context",
