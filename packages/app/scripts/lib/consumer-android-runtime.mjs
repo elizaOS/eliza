@@ -97,7 +97,9 @@ export function buildConsumerAndroidRuntime({
   if (
     before.commit !== git("rev-parse", "HEAD").toString().trim() ||
     before.trackedDiffSha256 !== hash(git("diff", "HEAD", "--binary")) ||
-    before.lockSha256 !== hash(fs.readFileSync(path.join(source, "bun.lock")))
+    before.lockSha256 !==
+      hash(fs.readFileSync(path.join(source, "bun.lock"))) ||
+    git("status", "--porcelain", "--untracked-files=normal").toString().trim()
   )
     throw new ConsumerSourceError(
       "Source changed during runtime build; output is not coherent",

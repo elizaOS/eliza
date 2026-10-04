@@ -88,6 +88,19 @@ test("runtime orchestration admits pinned source, stages bytes and rejects mutat
       () =>
         buildConsumerAndroidRuntime({
           ...options,
+          output: path.join(root, "untracked"),
+          stageGateway: () => {
+            fs.writeFileSync(path.join(source, "unexpected.txt"), "changed");
+            return {};
+          },
+        }),
+      /Source changed/,
+    );
+    fs.rmSync(path.join(source, "unexpected.txt"));
+    assert.throws(
+      () =>
+        buildConsumerAndroidRuntime({
+          ...options,
           output: path.join(root, "changed"),
           stageGateway: () => {
             fs.appendFileSync(path.join(source, "bun.lock"), "changed");
