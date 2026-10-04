@@ -43,6 +43,7 @@ export {
   resolveCharacterCatalog,
   setBootConfig,
 } from "./config/boot-config-store.js";
+export * from "./config/brand-env-aliases.js";
 export * from "./config/branding.js";
 export * from "./config/cloud-only.js";
 export * from "./config/config-catalog.js";
