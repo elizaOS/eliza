@@ -501,6 +501,41 @@ function warnOnUnexpectedApiVersion(event: Stripe.Event): void {
     );
 }
 
+async function reconcileUpgradeTarget(
+  delivery: StripeEventDelivery,
+  live: unknown,
+) {
+  const { reconcileOrganizationUpgradeSubscriptionEvent } = await import(
+    "@elizaos/cloud-shared/lib/services/organization-upgrade-subscription-event"
+  );
+  return reconcileOrganizationUpgradeSubscriptionEvent(delivery.body, live);
+}
+
+/** Capture is independently durable, but never converts a failed current lifecycle into success. */
+async function reconcileLifecycleWithUpgradeEvidence(
+  delivery: StripeEventDelivery,
+  live: unknown,
+  reconcileLifecycle: () => Promise<unknown>,
+) {
+  let failure: { error: unknown } | null = null;
+  try {
+    await reconcileLifecycle();
+  } catch (error) {
+    failure = { error };
+  }
+  try {
+    await reconcileUpgradeTarget(delivery, live);
+  } catch (error) {
+    if (failure)
+      throw new AggregateError(
+        [failure.error, error],
+        "Current lifecycle and original upgrade evidence both require reconciliation",
+      );
+    throw error;
+  }
+  if (failure) throw failure.error;
+}
+
 /**
  * Owns organization subscription deliveries. Routes on the live Stripe status
  * (fetched once here; each owner re-retrieves after capturing its revisions),
@@ -537,29 +572,61 @@ async function processSubscriptionEvent(
       switch (live.status) {
         case "canceled":
         case "incomplete_expired":
-          await reconcileStripeTerminalLifecycle(delivery.body);
+          await reconcileLifecycleWithUpgradeEvidence(delivery, live, () =>
+            reconcileStripeTerminalLifecycle(delivery.body),
+          );
           return "ack";
         case "past_due":
         case "unpaid":
-          await (
-            await import(
-              "@elizaos/cloud-shared/lib/services/stripe-dunning-lifecycle"
-            )
-          ).reconcileStripeDunningLifecycle(
-            delivery.body,
-            stripeSubscriptionId,
+          await reconcileLifecycleWithUpgradeEvidence(
+            delivery,
+            live,
+            async () =>
+              (
+                await import(
+                  "@elizaos/cloud-shared/lib/services/stripe-dunning-lifecycle"
+                )
+              ).reconcileStripeDunningLifecycle(
+                delivery.body,
+                event.data.object.id,
+              ),
           );
           return "ack";
         case "active":
+          if (
+            live.cancel_at_period_end ||
+            live.cancel_at !== null ||
+            live.schedule !== null ||
+            live.pause_collection !== null
+          ) {
+            await reconcileLifecycleWithUpgradeEvidence(delivery, live, () =>
+              reconcileStripeScheduledCancellationLifecycle(delivery.body),
+            );
+            return "ack";
+          }
+          if ((await reconcileUpgradeTarget(delivery, live)).owned)
+            return "ack";
           await reconcileStripeScheduledCancellationLifecycle(delivery.body);
           return "ack";
         default:
+          await reconcileUpgradeTarget(delivery, live);
           return await acknowledgeUnownedSubscriptionEvent(
             event,
             stripeSubscriptionId,
             `live_status_${live.status}`,
           );
       }
+    }
+    if (event.type === "customer.subscription.pending_update_applied") {
+      stripeSubscriptionId = event.data.object.id;
+      const live =
+        await requireStripe().subscriptions.retrieve(stripeSubscriptionId);
+      if ((await reconcileUpgradeTarget(delivery, live)).owned) return "ack";
+      return acknowledgeUnownedSubscriptionEvent(
+        event,
+        stripeSubscriptionId,
+        "pending_update_not_owned",
+      );
     }
     if (
       (event.type === "invoice.created" || event.type === "invoice.paid") &&
