@@ -109,3 +109,13 @@ Android service shares the direct-child termination helper while retaining its
 detached-agent policy. Portable real-process tests run in `test:native-host`;
 `NativeProcessSupervisorInstrumentedTest` checks the primitive with app-domain
 processes on Android. Neither suite establishes full agent or foreground-service lifetime.
+
+`InstallerResultReceiver` shares the asynchronous PackageInstaller callback and
+journal reconciliation. Hosts declare a non-exported component and supply its
+explicit callback action, target package, journal and executor. Rejected worker
+submission finishes the broadcast and leaves durable reconciliation to the host.
+Transaction, immutable/framework session and optional package identity must match;
+success/failure hints never substitute for installed-identity and live-session
+readback, and user-action intents are never launched. The Android contract uses
+real PackageInstaller sessions; hosts must also qualify actual installation,
+callback delivery, process death and cached recovery with their signed fixtures.
