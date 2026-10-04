@@ -294,7 +294,7 @@ describe("GoogleGmailAdapter", () => {
       EventType.MESSAGE_MUTATED,
       expect.objectContaining({
         messageSource: "gmail",
-        messageId: "gmail:msg_1",
+        messageId: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
         operation: "replied",
         domainEventId: "gmail_reply:acct_google_1:sent_1",
       })
@@ -560,7 +560,7 @@ describe("GoogleGmailAdapter", () => {
       EventType.MESSAGE_MUTATED,
       expect.objectContaining({
         messageSource: "gmail",
-        messageId: "gmail:msg_1",
+        messageId: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
         operation: "mark_read",
         domainEventId: "gmail_mark_read:acct_google_1:msg_1",
       })
