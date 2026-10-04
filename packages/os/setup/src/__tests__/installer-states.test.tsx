@@ -184,3 +184,109 @@ it("waits for verified unlock, then rechecks stock Android before installation",
   ).toBeGreaterThan(previousScans);
   expect(backend.createFlashPlan).toHaveBeenCalledTimes(2);
 });
+
+it.each(["authenticate", "plan", "plan-failure", "execute-failure"])(
+  "releases an iOS attempt when %s completes after leaving",
+  async (pendingRoute) => {
+    window.__ELIZA_SERVER_TOKEN__ = "fixture-token";
+    const device = {
+      udid: "device",
+      name: "Phone",
+      model: "iPhone",
+      osVersion: "18",
+      architecture: "arm64",
+      connectionType: "usb",
+    };
+    const app = {
+      id: "app",
+      name: "Fixture App",
+      version: "1",
+      description: "Fixture",
+      ipaUrl: "https://example.test/app.ipa",
+    };
+    let finish: (() => void) | undefined;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const route = String(input).split("/").at(-1);
+      if (route === pendingRoute.split("-")[0])
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      switch (route) {
+        case "devices":
+          return Response.json([device]);
+        case "region":
+          return Response.json("worldwide");
+        case "apps":
+          return Response.json([app]);
+        case "authenticate":
+          return Response.json({
+            status: "authenticated",
+            attemptToken: "attempt",
+            appleId: "fixture@example.test",
+          });
+        case "plan":
+          if (pendingRoute === "plan-failure")
+            return Response.json({ error: "failed" }, { status: 400 });
+          return Response.json({
+            device,
+            app,
+            steps: [],
+            requiresAppleId: true,
+          });
+        case "execute":
+          return Response.json({ error: "not admitted" }, { status: 503 });
+        case "cancel":
+          return Response.json({ cancelled: true });
+        default:
+          throw new Error(`Unexpected route ${route}`);
+      }
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => root.render(<IosFlasher serverUrl="/api" />));
+    const click = async (text: string) => {
+      const button = Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.includes(text),
+      );
+      if (!button) throw new Error(`Missing button ${text}`);
+      await act(async () => button.click());
+    };
+    await click("Continue");
+    await click("Fixture App");
+    await click("Continue to Apple ID");
+    for (const [id, value] of [
+      ["apple-id-email", "fixture@example.test"],
+      ["apple-id-password", "fixture-password"],
+    ]) {
+      const input = container.querySelector(`#${id}`);
+      if (!(input instanceof HTMLInputElement))
+        throw new Error(`Missing ${id}`);
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )?.set?.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () =>
+      container
+        .querySelector("form")
+        ?.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        ),
+    );
+    expect(finish).toBeTypeOf("function");
+    await act(async () => root.render(null));
+    await act(async () => finish?.());
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).endsWith("/cancel")),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).endsWith("/execute")),
+    ).toBe(pendingRoute === "execute-failure");
+    if (pendingRoute === "authenticate")
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url).endsWith("/plan")),
+      ).toBe(false);
+  },
+);
