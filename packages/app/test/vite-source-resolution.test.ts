@@ -261,10 +261,7 @@ describe("workspace package resolution", () => {
       const resolved =
         await server.environments.client.pluginContainer.resolveId(
           "@elizaos/cloud-sdk/redemption-contract",
-          path.resolve(
-            appRoot,
-            "../cloud/shared/src/types/redemption-contract.ts",
-          ),
+          path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
         );
       expect(resolved?.id).toBe(
         normalizePath(
@@ -277,7 +274,7 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
-    "resolves Cloud shared wildcard exports from workspace source while %s config resolves",
+    "resolves the canonical Cloud SDK contract from workspace source while %s config resolves",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
 
@@ -292,10 +289,7 @@ describe("workspace package resolution", () => {
           );
         expect(resolved?.id).toBe(
           normalizePath(
-            path.resolve(
-              appRoot,
-              "../cloud/shared/src/types/redemption-contract.ts",
-            ),
+            path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
           ),
         );
       } finally {
