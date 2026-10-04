@@ -4,6 +4,10 @@ import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";
+import {
+  type SubscriptionRenewalReview,
+  subscriptionRenewalReviewSchema,
+} from "../../lib/services/subscription-renewal-review-contract";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -15,6 +19,7 @@ import { organizations } from "../schemas/organizations";
 import {
   type BillingSubscriptionCommand,
   billingSubscriptionCommands,
+  billingSubscriptionRenewalReviews,
 } from "../schemas/subscription-billing-operations";
 import { users } from "../schemas/users";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
@@ -30,6 +35,7 @@ export interface PrepareCancellationInput extends CancellationIdentity {
   subscriptionId: string;
   expectedSubscriptionRevision: number;
   idempotencyKey: string;
+  renewalReview?: SubscriptionRenewalReview;
 }
 function reject(reason: string): never {
   throw new ElizaError("Organization subscription cancellation is not currently authorized", {
@@ -176,6 +182,7 @@ function intentDigest(
   input: PrepareCancellationInput,
   kind: "cancel" | "resume",
   predecessorCommandId: string | null = null,
+  renewalTermsDigest = input.renewalReview?.termsDigest,
 ): string {
   return createHash("sha256")
     .update(
@@ -186,6 +193,7 @@ function intentDigest(
         expectedSubscriptionRevision: input.expectedSubscriptionRevision,
         kind: kind === "cancel" ? "cancel_at_period_end" : "undo_cancel_at_period_end",
         ...(predecessorCommandId === null ? {} : { predecessorCommandId }),
+        ...(renewalTermsDigest === undefined ? {} : { renewalTermsDigest }),
       }),
     )
     .digest("hex");
@@ -194,6 +202,7 @@ export async function prepareCancellation(
   input: PrepareCancellationInput,
   kind: "cancel" | "resume" = "cancel",
 ): Promise<BillingSubscriptionCommand> {
+  if (input.renewalReview !== undefined && kind !== "resume") reject("review_requires_undo");
   return writeTransaction(async (tx) => {
     const locked = await lockActor(tx, input);
     const [existing] = await tx
@@ -238,6 +247,25 @@ export async function prepareCancellation(
       )
       .limit(1);
     if (live) reject("contradictory_command_pending");
+    if (input.renewalReview !== undefined) {
+      const parsed = subscriptionRenewalReviewSchema.safeParse(input.renewalReview);
+      if (!parsed.success) reject("renewal_review_invalid");
+      const review = parsed.data;
+      const observed = Date.parse(review.observedAt),
+        expires = Date.parse(review.expiresAt);
+      if (
+        review.subscriptionId !== source.id ||
+        review.expectedSubscriptionRevision !== String(source.lifecycle_revision) ||
+        review.catalogVersion !== source.catalog_version ||
+        review.planKey !== source.plan_key ||
+        review.renewalAt !== source.current_period_end?.toISOString() ||
+        observed > locked.now.getTime() + 5000 ||
+        expires <= locked.now.getTime() ||
+        expires > observed + 60_000 ||
+        expires <= observed
+      )
+        reject("renewal_review_expired_or_changed");
+    }
     const id = randomUUID();
     const [command] = await tx
       .insert(billingSubscriptionCommands)
@@ -258,6 +286,14 @@ export async function prepareCancellation(
       })
       .returning();
     if (!command) reject("command_insert_failed");
+    if (input.renewalReview !== undefined)
+      await tx.insert(billingSubscriptionRenewalReviews).values({
+        command_id: command.id,
+        organization_id: input.organizationId,
+        payload: input.renewalReview,
+        expires_at: new Date(input.renewalReview.expiresAt),
+        created_at: locked.now,
+      });
     return command;
   });
 }
@@ -506,6 +542,16 @@ export async function finalizeCancellation(
     return applied;
   });
 }
+function recoverableCancellationState() {
+  return sql`(${billingSubscriptionCommands.status} = 'OUTCOME_UNKNOWN' OR (
+    ${billingSubscriptionCommands.status} = 'PREPARED' AND EXISTS (
+      SELECT 1 FROM ${billingSubscriptionRenewalReviews} AS renewal_review
+      WHERE renewal_review.command_id = ${billingSubscriptionCommands.id}
+        AND renewal_review.organization_id = ${billingSubscriptionCommands.organization_id}
+        AND renewal_review.expires_at <= clock_timestamp()
+    )
+  ))`;
+}
 /** Filter before LIMIT and rotate each claimed inspection, so one unverifiable command cannot monopolize recovery. */
 export async function listCancellationRecovery(limit: number) {
   return dbWrite
@@ -516,7 +562,7 @@ export async function listCancellationRecovery(limit: number) {
         isNull(billingSubscriptionCommands.billing_scope_id),
         isNull(billingSubscriptionCommands.app_id),
         inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
-        eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+        recoverableCancellationState(),
         sql`(${billingSubscriptionCommands.lease_expires_at} IS NULL OR ${billingSubscriptionCommands.lease_expires_at} <= clock_timestamp())`,
       ),
     )
@@ -619,7 +665,7 @@ export async function rotateCancellationRecovery(command: BillingSubscriptionCom
           isNull(billingSubscriptionCommands.billing_scope_id),
           isNull(billingSubscriptionCommands.app_id),
           inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
-          eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+          recoverableCancellationState(),
         ),
       );
   });
@@ -638,4 +684,117 @@ async function validatePredecessor(
       : source.cancel_at_period_end || (latest !== null && latest.kind !== "resume"))
   )
     reject("schedule_predecessor_changed");
+}
+
+/** Replays only recorded state, without refreshing terms or repeating a dispatch. */
+export async function readReviewedCancellationReplay(
+  input: PrepareCancellationInput & { expectedRenewalTermsDigest: string },
+) {
+  return writeTransaction(async (tx) => {
+    await lockActor(tx, input);
+    const [command] = await tx
+      .select()
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          eq(billingSubscriptionCommands.idempotency_key, input.idempotencyKey),
+        ),
+      )
+      .for("update");
+    if (!command) return null;
+    if (
+      command.kind !== "resume" ||
+      command.request_digest !==
+        intentDigest(
+          input,
+          "resume",
+          command.schedule_predecessor_command_id,
+          input.expectedRenewalTermsDigest,
+        )
+    )
+      reject("idempotency_intent_changed");
+    const [receipt] = await tx
+      .select()
+      .from(billingSubscriptionRenewalReviews)
+      .where(
+        and(
+          eq(billingSubscriptionRenewalReviews.organization_id, input.organizationId),
+          eq(billingSubscriptionRenewalReviews.command_id, command.id),
+        ),
+      );
+    if (!receipt || receipt.payload.termsDigest !== input.expectedRenewalTermsDigest)
+      reject("renewal_review_receipt_unavailable");
+    return command;
+  });
+}
+export async function readCancellationRenewalReview(
+  input: CancellationIdentity,
+  commandId: string,
+) {
+  return writeTransaction(async (tx) => {
+    await lockActor(tx, input);
+    const [receipt] = await tx
+      .select()
+      .from(billingSubscriptionRenewalReviews)
+      .where(
+        and(
+          eq(billingSubscriptionRenewalReviews.organization_id, input.organizationId),
+          eq(billingSubscriptionRenewalReviews.command_id, commandId),
+        ),
+      );
+    if (!receipt) return null;
+    const parsed = subscriptionRenewalReviewSchema.safeParse(receipt.payload);
+    if (!parsed.success) reject("renewal_review_receipt_invalid");
+    return parsed.data;
+  });
+}
+/** A ready, owned lease proves this reviewed command has never crossed the dispatch fence. */
+export async function failReviewedCancellationBeforeDispatch(
+  input: CancellationIdentity,
+  claim: CancellationClaim,
+) {
+  return writeTransaction(async (tx) => {
+    await lockActor(tx, input);
+    const [receipt] = await tx
+      .select({ id: billingSubscriptionRenewalReviews.command_id })
+      .from(billingSubscriptionRenewalReviews)
+      .where(
+        and(
+          eq(billingSubscriptionRenewalReviews.organization_id, input.organizationId),
+          eq(billingSubscriptionRenewalReviews.command_id, claim.command.id),
+        ),
+      );
+    if (!receipt) return false;
+    const [failed] = await tx
+      .update(billingSubscriptionCommands)
+      .set({
+        status: "FAILED",
+        error_code: "RENEWAL_REVIEW_REJECTED_BEFORE_DISPATCH",
+        state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
+        completed_at: sql`clock_timestamp()`,
+        updated_at: sql`clock_timestamp()`,
+        lease_token: null,
+        lease_expires_at: null,
+      })
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          eq(billingSubscriptionCommands.id, claim.command.id),
+          eq(billingSubscriptionCommands.requested_by_user_id, input.actorId),
+          eq(billingSubscriptionCommands.kind, "resume"),
+          eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+          eq(billingSubscriptionCommands.cancellation_dispatch_state, "ready"),
+          eq(billingSubscriptionCommands.lease_token, claim.command.lease_token!),
+          eq(billingSubscriptionCommands.execution_generation, claim.command.execution_generation),
+          gt(billingSubscriptionCommands.lease_expires_at, sql`clock_timestamp()`),
+        ),
+      )
+      .returning({ id: billingSubscriptionCommands.id });
+    return Boolean(failed);
+  });
 }

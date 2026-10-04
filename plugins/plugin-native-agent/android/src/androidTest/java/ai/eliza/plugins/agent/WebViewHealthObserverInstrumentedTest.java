@@ -5,6 +5,5 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public final class WebViewHealthObserverInstrumentedTest {
- @Test public void rendererReplacement()throws Exception{WebViewHealthObserverContract.rendererReplacement(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().getTargetContext());}
- @Test public void policyAndThreadBoundaries()throws Exception{WebViewHealthObserverContract.run();}
+ @Test public void policyAndThreadBoundaries()throws Exception{WebViewHealthObserverContract.run();WebViewHealthObserverContract.runLifecycle(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().getTargetContext());}
 }

@@ -302,6 +302,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/google/accounts": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/calendars": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/feed": Record<never, never>;
+  "GET /api/v1/eliza/google/gmail/inbox-v1": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/read": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/search": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/subscription-headers": Record<never, never>;
@@ -432,6 +433,8 @@ export interface PublicRoutePathParams {
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": {
     commandId: string | number;
   };
+  "GET /api/v1/subscriptions/cancel/undo/review": Record<never, never>;
+  "GET /api/v1/subscriptions/checkout/payer": Record<never, never>;
   "GET /api/v1/subscriptions/commands": Record<never, never>;
   "GET /api/v1/subscriptions/plans": Record<never, never>;
   "GET /api/v1/telegram/chats": Record<never, never>;
@@ -835,6 +838,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/stripe/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/cancel": Record<never, never>;
   "POST /api/v1/subscriptions/cancel/undo": Record<never, never>;
+  "POST /api/v1/subscriptions/cancel/undo/confirm": Record<never, never>;
   "POST /api/v1/subscriptions/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/checkout/confirm": Record<never, never>;
   "POST /api/v1/subscriptions/portal": Record<never, never>;
@@ -1105,6 +1109,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/google/accounts": never;
   "GET /api/v1/eliza/google/calendar/calendars": never;
   "GET /api/v1/eliza/google/calendar/feed": never;
+  "GET /api/v1/eliza/google/gmail/inbox-v1": never;
   "GET /api/v1/eliza/google/gmail/read": never;
   "GET /api/v1/eliza/google/gmail/search": never;
   "GET /api/v1/eliza/google/gmail/subscription-headers": never;
@@ -1190,6 +1195,8 @@ export interface PublicRouteHeaders {
   "GET /api/v1/steward/tenants/credentials": never;
   "GET /api/v1/subscriptions/cancel/{commandId}": never;
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": never;
+  "GET /api/v1/subscriptions/cancel/undo/review": never;
+  "GET /api/v1/subscriptions/checkout/payer": never;
   "GET /api/v1/subscriptions/commands": never;
   "GET /api/v1/subscriptions/plans": never;
   "GET /api/v1/telegram/chats": never;
@@ -1487,6 +1494,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/stripe/checkout": never;
   "POST /api/v1/subscriptions/cancel": never;
   "POST /api/v1/subscriptions/cancel/undo": never;
+  "POST /api/v1/subscriptions/cancel/undo/confirm": never;
   "POST /api/v1/subscriptions/checkout": never;
   "POST /api/v1/subscriptions/checkout/confirm": never;
   "POST /api/v1/subscriptions/portal": never;

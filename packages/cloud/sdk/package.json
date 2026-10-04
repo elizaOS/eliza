@@ -38,8 +38,8 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "bun ../scripts/sdk/run-unit-tests.ts",
-    "test:native-host": "node --test native-host/*.test.mjs"
+    "test:native-host": "node --test native-host/*.test.mjs",
+    "test": "bun ../scripts/sdk/run-unit-tests.ts"
   },
   "exports": {
     ".": {
@@ -137,6 +137,7 @@
       "import": "./dist/app-auth.js",
       "default": "./dist/app-auth.js"
     },
+    "./native-host": "./native-host/cloud-services.mjs",
     "./contracts": {
       "eliza-source": "./src/contracts/index.ts",
       "types": "./dist/contracts/index.d.ts",
@@ -154,8 +155,7 @@
       "types": "./dist/testing/mock-cloud-setup-session.d.ts",
       "import": "./dist/testing/mock-cloud-setup-session.js",
       "default": "./dist/testing/mock-cloud-setup-session.js"
-    },
-    "./native-host": "./native-host/cloud-services.mjs"
+    }
   },
   "elizaos": {
     "managedIntegration": {

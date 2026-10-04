@@ -17,6 +17,7 @@ const TARGETS = new Set(["direct", "gateway", "paired", "dedicated"]);
 const DEDICATED_REQUEST_MODES = new Set(["browser-literal", "instrumented"]);
 const REASONING_EFFORTS = new Set(["omit", "none", "low", "medium", "high"]);
 const DELTA_STREAM_PROTOCOL = "delta-v2";
+const PROOF_TEMPERATURE = 0;
 const SHARED_TURN_CORRELATION_HEADER = "X-ElizaOS-Turn-Correlation";
 const SHARED_TURN_ATTEMPT_HEADER = "X-ElizaOS-Turn-Attempt";
 const SAFE_RESPONSE_HEADERS = [
@@ -214,6 +215,8 @@ export function buildOpenAiRequestBody(probeCase, prompt, promptCacheKey) {
     stream: true,
     stream_options: { include_usage: true },
     max_tokens: probeCase.maxTokens,
+    // Control sampling identically on both sides of the synthetic nonce probe.
+    temperature: PROOF_TEMPERATURE,
     ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
   };
   if (probeCase.reasoningEffort !== "omit") {
@@ -465,6 +468,7 @@ export async function probeOpenAi({
   fetchImpl = fetch,
 }) {
   const expectedProof = proof || ["latency-proof", randomUUID()].join("-");
+  metadata = { ...metadata, temperature: PROOF_TEMPERATURE };
   const prompt = buildProofPrompt(promptOverride, expectedProof);
   // Gateway telemetry only adopts the dedicated runtime's lower-case 32-hex
   // trace schema, so this probe can correlate its sent and echoed id.
