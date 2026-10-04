@@ -279,3 +279,72 @@ export async function stageAndroidDocuments(
     fs.rmSync(temporary, { recursive: true, force: true });
   }
 }
+
+/** Verify the document component after APK packaging has remapped jniLibs to lib. */
+export function verifyPackagedAndroidDocuments(entries, readEntry) {
+  const manifestName = "assets/agent/gateway/document-services.manifest.json";
+  const library = "lib/arm64-v8a/libeliza_canvas.so";
+  const service = "assets/agent/gateway/document-services.mjs";
+  if (!entries.includes(manifestName)) {
+    if (entries.includes(library) || entries.includes(service))
+      throw new NativeHostError("APK document runtime lacks its manifest");
+    return null;
+  }
+  if (entries.filter((name) => name === manifestName).length !== 1)
+    throw new NativeHostError("Duplicate APK document manifest");
+  let manifest;
+  try {
+    manifest = JSON.parse(readEntry(manifestName));
+  } catch {
+    throw new NativeHostError("Invalid APK document manifest");
+  }
+  if (
+    manifest.schemaVersion !== 1 ||
+    manifest.target !== "linux-arm64-musl" ||
+    !/^[a-f0-9]{40}$/.test(manifest.sourceCommit) ||
+    !Array.isArray(manifest.files)
+  )
+    throw new NativeHostError("Invalid APK document manifest");
+  const selected = new Set();
+  for (const item of manifest.files) {
+    if (
+      typeof item.path !== "string" ||
+      !/^(assets\/agent\/gateway\/|jniLibs\/arm64-v8a\/)/.test(item.path) ||
+      item.path.includes("\\") ||
+      item.path
+        .split("/")
+        .some((part) => !part || part === "." || part === "..") ||
+      selected.has(item.path)
+    )
+      throw new NativeHostError("Invalid APK document path");
+    selected.add(item.path);
+    const name = item.path.replace(/^jniLibs\//, "lib/");
+    if (
+      entries.filter((entry) => entry === name).length !== 1 ||
+      digest(readEntry(name)) !== item.sha256
+    )
+      throw new NativeHostError(`APK document bytes mismatch: ${name}`);
+  }
+  for (const name of [
+    service,
+    `${service}.json`,
+    "assets/agent/gateway/node_modules/@napi-rs/canvas/package.json",
+    "jniLibs/arm64-v8a/libeliza_canvas.so",
+  ])
+    if (!selected.has(name))
+      throw new NativeHostError("Incomplete APK document runtime");
+  for (const name of entries) {
+    if (
+      name.startsWith("assets/agent/gateway/node_modules/@napi-rs/canvas/") &&
+      !name.endsWith("/") &&
+      !selected.has(name)
+    )
+      throw new NativeHostError("Unlisted APK document runtime file");
+  }
+  assertArm64Library(readEntry(library));
+  return {
+    sourceCommit: manifest.sourceCommit,
+    target: manifest.target,
+    verifiedFiles: manifest.files.length,
+  };
+}

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))
 
-from registry.scores import (  # noqa: E402
+from benchmarks.registry.scores import (  # noqa: E402
     _score_from_action_calling_json,
     _score_from_hermes_env_json,
     _score_from_meeting_transcription_proof_json,
@@ -24,11 +24,21 @@ from registry.scores import (  # noqa: E402
 )
 
 
-@pytest.mark.parametrize("markers", [
-    {"mock": True},
-    {"smoke": True},
-    {"results": [{"status": "smoke_validated native_worktree provider=elizaos", "success": True}]},
-])
+@pytest.mark.parametrize(
+    "markers",
+    [
+        {"mock": True},
+        {"smoke": True},
+        {
+            "results": [
+                {
+                    "status": "smoke_validated native_worktree provider=elizaos",
+                    "success": True,
+                }
+            ]
+        },
+    ],
+)
 def test_swe_structural_smoke_is_not_a_resolution_score(markers) -> None:
     report = {"summary": {"resolve_rate": 1.0, "total_instances": 1}, **markers}
     with pytest.raises(ValueError, match="smoke validation"):
@@ -37,7 +47,7 @@ def test_swe_structural_smoke_is_not_a_resolution_score(markers) -> None:
 
 def test_action_calling_registry_uses_shared_case_scorer() -> None:
     from benchmarks.action_calling_contract import score_action_calling_case
-    from registry import scores
+    from benchmarks.registry import scores
 
     assert scores.score_action_calling_case is score_action_calling_case
 
@@ -680,7 +690,7 @@ def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() ->
 
 
 def test_taubench_scorer_surfaces_judge_degraded_rollouts() -> None:
-    from registry.scores import _score_from_taubench_json
+    from benchmarks.registry.scores import _score_from_taubench_json
 
     report = {
         "num_tasks": 2,
@@ -715,7 +725,7 @@ def test_taubench_scorer_surfaces_judge_degraded_rollouts() -> None:
 
 
 def test_taubench_scorer_reports_zero_degraded_for_legacy_reports() -> None:
-    from registry.scores import _score_from_taubench_json
+    from benchmarks.registry.scores import _score_from_taubench_json
 
     report = {
         "num_tasks": 1,
@@ -723,7 +733,13 @@ def test_taubench_scorer_reports_zero_degraded_for_legacy_reports() -> None:
         "pass_k": {"1": {"k": 1, "num_tasks": 1, "pass_hat_k": 1.0}},
         "domain_results": {
             "retail": [
-                {"task_id": 0, "trial": 0, "reward": 1.0, "success": True, "error": None}
+                {
+                    "task_id": 0,
+                    "trial": 0,
+                    "reward": 1.0,
+                    "success": True,
+                    "error": None,
+                }
             ]
         },
     }
@@ -734,8 +750,13 @@ def test_taubench_scorer_reports_zero_degraded_for_legacy_reports() -> None:
 
 def test_provider_matrix_without_orchestration_receipts_is_not_publishable() -> None:
     with pytest.raises(ValueError, match="TASKS/ACP"):
-        _score_from_swebench_orchestrated_json({
-            "summary": {"total_instances": 1, "resolve_rate": 1.0},
-            "metrics": {"overall_score": 1.0},
-            "execution": {"mode": "provider_matrix", "orchestration_verified": False},
-        })
+        _score_from_swebench_orchestrated_json(
+            {
+                "summary": {"total_instances": 1, "resolve_rate": 1.0},
+                "metrics": {"overall_score": 1.0},
+                "execution": {
+                    "mode": "provider_matrix",
+                    "orchestration_verified": False,
+                },
+            }
+        )

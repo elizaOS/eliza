@@ -1,7 +1,10 @@
+import type { TenantMfaPolicyConfig } from "../contracts/index.js";
 /** Defines the browser-safe identity, session and wallet contracts shared by login clients. */
 
 /** Identifies the blockchain family for a wallet key/address. */
-export type ChainFamily = "evm" | "solana" | "bitcoin" | "monero";
+import type { ChainFamily } from "../contracts/index.js";
+
+export * from "../contracts/index.js";
 
 export type BitcoinNetwork = "mainnet" | "testnet";
 export type BitcoinAddressType = "p2wpkh" | "p2tr";
@@ -474,19 +477,6 @@ export interface TenantSamlSsoUpdate {
 
 export type TenantCaptchaProvider = "turnstile" | "hcaptcha";
 export type TenantCaptchaAction = "email_otp" | "sms_otp";
-
-export interface TenantMfaPolicyConfig {
-  maxAgeSeconds?: number;
-  requireFor?: {
-    vaultSigning?: boolean;
-    keyImport?: boolean;
-    keyExport?: boolean;
-    recoveryCodes?: boolean;
-    tenantAdmin?: boolean;
-  };
-  allowDelegatedSignerAutomation?: boolean;
-  allowKeyQuorumAutomation?: boolean;
-}
 
 export interface TenantAuthAbuseConfig {
   loginMethods?: {
@@ -1283,14 +1273,6 @@ export const WEBHOOK_EVENT_TYPES = [
   "wallet_action.earn_incentive_claim.failed",
 ] as const;
 
-export const SUPPORTED_CHAINS = {
-  base: 8453,
-  baseSepolia: 84532,
-  bsc: 56,
-  bscTestnet: 97,
-  gnosis: 100,
-} as const;
-
 /** Result of exporting private keys from a vault agent or user wallet. */
 export interface BitcoinPrivateKeyExport {
   privateKey: string;
@@ -1452,121 +1434,6 @@ export interface PregeneratedUserWalletClaimResult {
   walletAddress: string;
   walletIndex: number;
   claimed: true;
-}
-
-/**
- * Registry of all supported chains, keyed by CAIP-2 identifier.
- *
- * CAIP-2 format:
- *   EVM:    `eip155:{chainId}`
- *   Solana: `solana:{genesisHashPrefix}`
- */
-export interface ChainIdentifier {
-  caip2: string;
-  numericId: number;
-  family: ChainFamily;
-  name: string;
-  symbol: string;
-  testnet: boolean;
-}
-
-export const CHAINS: Record<string, ChainIdentifier> = {
-  "eip155:1": {
-    caip2: "eip155:1",
-    numericId: 1,
-    family: "evm",
-    name: "Ethereum",
-    symbol: "ETH",
-    testnet: false,
-  },
-  "eip155:56": {
-    caip2: "eip155:56",
-    numericId: 56,
-    family: "evm",
-    name: "BSC",
-    symbol: "BNB",
-    testnet: false,
-  },
-  "eip155:97": {
-    caip2: "eip155:97",
-    numericId: 97,
-    family: "evm",
-    name: "BSC Testnet",
-    symbol: "tBNB",
-    testnet: true,
-  },
-  "eip155:100": {
-    caip2: "eip155:100",
-    numericId: 100,
-    family: "evm",
-    name: "Gnosis",
-    symbol: "xDAI",
-    testnet: false,
-  },
-  "eip155:137": {
-    caip2: "eip155:137",
-    numericId: 137,
-    family: "evm",
-    name: "Polygon",
-    symbol: "POL",
-    testnet: false,
-  },
-  "eip155:8453": {
-    caip2: "eip155:8453",
-    numericId: 8453,
-    family: "evm",
-    name: "Base",
-    symbol: "ETH",
-    testnet: false,
-  },
-  "eip155:42161": {
-    caip2: "eip155:42161",
-    numericId: 42161,
-    family: "evm",
-    name: "Arbitrum",
-    symbol: "ETH",
-    testnet: false,
-  },
-  "eip155:84532": {
-    caip2: "eip155:84532",
-    numericId: 84532,
-    family: "evm",
-    name: "Base Sepolia",
-    symbol: "ETH",
-    testnet: true,
-  },
-  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
-    caip2: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-    numericId: 101,
-    family: "solana",
-    name: "Solana",
-    symbol: "SOL",
-    testnet: false,
-  },
-  "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1": {
-    caip2: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-    numericId: 102,
-    family: "solana",
-    name: "Solana Devnet",
-    symbol: "SOL",
-    testnet: true,
-  },
-};
-
-export function chainFromNumeric(id: number): ChainIdentifier | undefined {
-  return Object.values(CHAINS).find((c) => c.numericId === id);
-}
-
-export function chainFromCaip2(caip2: string): ChainIdentifier | undefined {
-  return CHAINS[caip2];
-}
-
-export function toCaip2(numericId: number): string | undefined {
-  return chainFromNumeric(numericId)?.caip2;
-}
-
-export function fromCaip2(caip2: string): number | undefined {
-  return CHAINS[caip2]?.numericId;
 }
 
 export type PendingProxyRequestStatus =

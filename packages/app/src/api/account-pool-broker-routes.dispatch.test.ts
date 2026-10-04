@@ -25,7 +25,7 @@ import path from "node:path";
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetDefaultAccountPoolForTests } from "../services/account-pool.js";
 import { __resetAccountPoolBrokerRoutesForTests } from "./account-pool-broker-routes.js";

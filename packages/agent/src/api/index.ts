@@ -18,6 +18,25 @@ export {
   isInsufficientCreditsMessage,
   isRateLimitError,
 } from "@elizaos/core";
+export {
+  buildWalletTradingProfile,
+  loadWalletTradingProfile,
+  readWalletTradeLedgerStore,
+  recordWalletTradeLedgerEntry,
+  resolveWalletTradingProfileFilePath,
+  updateWalletTradeLedgerEntryStatus,
+  type WalletTradeLedgerRecordInput,
+  type WalletTradeLedgerStatusPatch,
+  type WalletTradingProfileOptions,
+  writeWalletTradeLedgerStore,
+} from "@elizaos/plugin-wallet/read";
+export {
+  formatPrivateKeyPreview,
+  type JsonRpcEndpointProbeResult,
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "@elizaos/plugin-wallet/transactions";
 export * from "./accounts-routes.ts";
 export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";
@@ -68,10 +87,8 @@ export {
 export { hasPersistedFirstRunState } from "./server-helpers.ts";
 export * from "./subscription-routes.ts";
 export * from "./terminal-run-limits.ts";
-export * from "./tx-service.ts";
 export * from "./wallet.ts";
 export * from "./wallet-evm-balance.ts";
 export * from "./wallet-rpc.ts";
-export * from "./wallet-trading-profile.ts";
 export * from "./workbench-vfs-routes.ts";
 export * from "./zip-utils.ts";

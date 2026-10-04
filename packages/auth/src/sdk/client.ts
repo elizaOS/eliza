@@ -1,3 +1,17 @@
+import { hmacSha256Hex } from "../contracts/index";
+import {
+  boundedPositiveInteger,
+  DEFAULT_MAX_RESPONSE_BODY_BYTES,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchLoginJson,
+  fetchLoginText,
+  LoginApiError,
+  MAX_REQUEST_TIMEOUT_MS,
+  MAX_RESPONSE_BODY_BYTES,
+} from "./transport.ts";
+
+export { LoginApiError } from "./transport.ts";
+
 /** Sends authenticated identity and wallet requests to the host-owned login service. */
 import { assertSecureBaseUrl, stripTrailingSlashes } from "./base-url.ts";
 import type {
@@ -332,27 +346,6 @@ async function sha256Hex(input: string): Promise<string> {
     new TextEncoder().encode(input),
   );
   return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function hmacSha256Hex(
-  secret: string,
-  canonical: string,
-): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(canonical),
-  );
-  return [...new Uint8Array(signature)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
@@ -753,16 +746,6 @@ export type LoginErrorResponse = {
   results?: PolicyResult[];
 } & LoginMfaRequiredErrorData;
 
-function errorMessageRequiresMfa(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("recent mfa") ||
-    normalized.includes("mfa step-up") ||
-    normalized.includes("multi-factor") ||
-    normalized.includes("mfa verification")
-  );
-}
-
 type ApiRequestResult<TSuccess, TFailure> =
   | { ok: true; status: number; data: TSuccess }
   | { ok: false; status: number; error: string; data?: TFailure };
@@ -874,25 +857,6 @@ function signerHeaders(
   return headers;
 }
 
-export class LoginApiError<TData = unknown> extends Error {
-  readonly status: number;
-  readonly data?: TData;
-  readonly mfaRequired: boolean;
-
-  constructor(message: string, status: number, data?: TData) {
-    super(message);
-    this.name = "LoginApiError";
-    this.status = status;
-    this.data = data;
-    this.mfaRequired =
-      (typeof data === "object" &&
-        data !== null &&
-        "mfaRequired" in data &&
-        (data as { mfaRequired?: unknown }).mfaRequired === true) ||
-      errorMessageRequiresMfa(message);
-  }
-}
-
 export function isLoginMfaRequiredError(
   error: unknown,
 ): error is LoginApiError<LoginMfaRequiredErrorData> {
@@ -914,27 +878,6 @@ function isBrowserRuntime(): boolean {
     typeof globalThis.window !== "undefined" &&
     typeof globalThis.document !== "undefined"
   );
-}
-
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-const MAX_REQUEST_TIMEOUT_MS = 5 * 60_000;
-const DEFAULT_MAX_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
-const MAX_RESPONSE_BODY_BYTES = 16 * 1024 * 1024;
-
-function boundedPositiveInteger(
-  name: string,
-  value: number | undefined,
-  fallback: number,
-  maximum: number,
-): number {
-  const resolved = value ?? fallback;
-  if (!Number.isSafeInteger(resolved) || resolved <= 0 || resolved > maximum) {
-    throw new LoginApiError(
-      `${name} must be a positive integer no greater than ${maximum}`,
-      0,
-    );
-  }
-  return resolved;
 }
 
 export class LoginClient {
@@ -1326,12 +1269,10 @@ export class LoginClient {
       tenantId: string,
       invitationId: string,
     ): Promise<void> => {
-      const response = await this.request<
-        Record<string, never>,
-        LoginErrorResponse
-      >(
+      const response = await this.request<LoginErrorResponse>(
         `/platform/tenants/${encodeURIComponent(tenantId)}/invitations/${encodeURIComponent(invitationId)}`,
         { method: "DELETE" },
+        true,
       );
       if (!response.ok)
         throw new LoginApiError(response.error, response.status, response.data);
@@ -1362,12 +1303,10 @@ export class LoginClient {
       const params = new URLSearchParams();
       if (opts?.force) params.set("force", "true");
       const qs = params.toString();
-      const response = await this.request<
-        Record<string, never>,
-        LoginErrorResponse
-      >(
+      const response = await this.request<LoginErrorResponse>(
         `/platform/users/${encodeURIComponent(userId)}/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(providerAccountId)}${qs ? `?${qs}` : ""}`,
         { method: "DELETE" },
+        true,
       );
       if (!response.ok)
         throw new LoginApiError(response.error, response.status, response.data);
@@ -4207,25 +4146,20 @@ export class LoginClient {
     if (opts?.limit) params.set("limit", String(opts.limit));
     const qs = params.toString();
     const url = `${this.baseUrl}/user/me/tenants/${encodeURIComponent(tenantId)}/users/export${qs ? `?${qs}` : ""}`;
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        headers: this.buildHeaders(),
-        redirect: "error",
-      });
-    } catch (error) {
-      throw new LoginApiError(
-        error instanceof Error ? error.message : "Network request failed",
-        0,
-      );
-    }
-    if (!response.ok) {
+    const { response, text } = await fetchLoginText(
+      url,
+      { headers: this.buildHeaders() },
+      {
+        requestTimeoutMs: this.requestTimeoutMs,
+        maxResponseBodyBytes: this.maxResponseBodyBytes,
+      },
+    );
+    if (!response.ok)
       throw new LoginApiError(
         `Tenant user export failed: ${response.status}`,
         response.status,
       );
-    }
-    return response.text();
+    return text;
   }
 
   /** Read a tenant-scoped user record. Requires user JWT, tenant admin role, and recent MFA. */
@@ -4318,12 +4252,10 @@ export class LoginClient {
 
   /** Remove a user from the current tenant. Requires user JWT, tenant admin role, and recent MFA. */
   async removeTenantUser(tenantId: string, userId: string): Promise<void> {
-    const response = await this.request<
-      Record<string, never>,
-      LoginErrorResponse
-    >(
+    const response = await this.request<LoginErrorResponse>(
       `/user/me/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}`,
       { method: "DELETE" },
+      true,
     );
     if (!response.ok)
       throw new LoginApiError(response.error, response.status, response.data);
@@ -4428,25 +4360,55 @@ export class LoginClient {
     };
   }
 
+  private request<TFailure>(
+    path: string,
+    init: RequestInit,
+    allowEmpty: true,
+  ): Promise<ApiRequestResult<void, TFailure>>;
+  private request<TSuccess, TFailure = unknown>(
+    path: string,
+    init?: RequestInit,
+  ): Promise<ApiRequestResult<TSuccess, TFailure>>;
   private async request<TSuccess, TFailure = unknown>(
     path: string,
     init: RequestInit = {},
-  ): Promise<ApiRequestResult<TSuccess, TFailure>> {
+    allowEmpty = false,
+  ): Promise<ApiRequestResult<TSuccess | undefined, TFailure>> {
     const { response, payload } = await this.fetchJson<
       ApiResponse<TSuccess | TFailure>
     >(path, init);
 
-    if (!payload.ok) {
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      typeof payload.ok !== "boolean"
+    ) {
+      throw new LoginApiError(
+        "Received an invalid response envelope from login API",
+        response.status,
+      );
+    }
+
+    if (!response.ok || !payload.ok) {
       return {
         ok: false,
         status: response.status,
-        error: payload.error ?? `Request failed with status ${response.status}`,
+        error:
+          typeof payload.error === "string"
+            ? payload.error
+            : `Request failed with status ${response.status}`,
         data: payload.data as TFailure | undefined,
       };
     }
 
     if (typeof payload.data === "undefined") {
-      return { ok: true, status: response.status, data: undefined as TSuccess };
+      if (!allowEmpty)
+        throw new LoginApiError(
+          "Login API response is missing required data",
+          response.status,
+        );
+      return { ok: true, status: response.status, data: undefined };
     }
 
     return {
@@ -4554,139 +4516,15 @@ export class LoginClient {
     path: string,
     init: RequestInit,
   ): Promise<{ response: Response; payload: T }> {
-    const controller = new AbortController();
-    const deadlineAt = Date.now() + this.requestTimeoutMs;
-    const callerSignal = init.signal;
-    let timedOut = false;
-    let callerCancelled = callerSignal?.aborted ?? false;
-    const cancelFromCaller = () => {
-      callerCancelled = true;
-      controller.abort();
-    };
-    callerSignal?.addEventListener("abort", cancelFromCaller, { once: true });
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, this.requestTimeoutMs);
-
-    try {
-      if (callerCancelled)
-        throw new DOMException("Request cancelled", "AbortError");
-      const headers = await this.buildRequestHeaders(path, init);
-      if (controller.signal.aborted)
-        throw new DOMException("Request aborted", "AbortError");
-      const response = await fetch(`${this.baseUrl}${path}`, {
-        ...init,
-        headers,
-        redirect: "error",
-        signal: controller.signal,
-      });
-      const payload = await this.parseJson<T>(response, controller.signal);
-      if (Date.now() >= deadlineAt) {
-        timedOut = true;
-        controller.abort();
-        throw new DOMException("Request deadline elapsed", "AbortError");
-      }
-      return { response, payload };
-    } catch (error) {
-      if (timedOut) throw new LoginApiError("login API request timed out", 0);
-      if (callerCancelled)
-        throw new LoginApiError("login API request was cancelled", 0);
-      if (error instanceof LoginApiError) throw error;
-      throw new LoginApiError("Network request failed", 0);
-    } finally {
-      clearTimeout(timeout);
-      callerSignal?.removeEventListener("abort", cancelFromCaller);
-    }
-  }
-
-  private async parseJson<T>(
-    response: Response,
-    signal: AbortSignal,
-  ): Promise<T> {
-    const declaredLength = response.headers.get("content-length");
-    if (declaredLength !== null) {
-      const parsedLength = Number(declaredLength);
-      if (
-        Number.isFinite(parsedLength) &&
-        parsedLength > this.maxResponseBodyBytes
-      ) {
-        void response.body?.cancel().catch(() => undefined);
-        throw new LoginApiError(
-          "login API response exceeded the configured size limit",
-          response.status,
-        );
-      }
-    }
-
-    const reader = response.body?.getReader();
-    const chunks: Uint8Array[] = [];
-    let totalBytes = 0;
-    if (reader) {
-      try {
-        while (true) {
-          const { done, value } = await this.readResponseChunk(reader, signal);
-          if (done) break;
-          totalBytes += value.byteLength;
-          if (totalBytes > this.maxResponseBodyBytes) {
-            void reader.cancel().catch(() => undefined);
-            throw new LoginApiError(
-              "login API response exceeded the configured size limit",
-              response.status,
-            );
-          }
-          chunks.push(value);
-        }
-      } finally {
-        if (signal.aborted) void reader.cancel().catch(() => undefined);
-        try {
-          reader.releaseLock();
-        } catch {
-          // An abort may leave a hostile/custom stream's read pending. The
-          // controller and cancel above still ensure this request stops waiting.
-        }
-      }
-    }
-
-    const body = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      body.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const text = new TextDecoder().decode(body);
-
-    if (!text) {
-      return { ok: response.ok } as T;
-    }
-
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new LoginApiError(
-        "Received invalid JSON from login API",
-        response.status,
-      );
-    }
-  }
-
-  private async readResponseChunk(
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-    signal: AbortSignal,
-  ): Promise<
-    { done: false; value: Uint8Array } | { done: true; value?: Uint8Array }
-  > {
-    if (signal.aborted) throw new DOMException("Request aborted", "AbortError");
-    let onAbort: (() => void) | undefined;
-    const aborted = new Promise<never>((_resolve, reject) => {
-      onAbort = () => reject(new DOMException("Request aborted", "AbortError"));
-      signal.addEventListener("abort", onAbort, { once: true });
-    });
-    try {
-      return await Promise.race([reader.read(), aborted]);
-    } finally {
-      if (onAbort) signal.removeEventListener("abort", onAbort);
-    }
+    return fetchLoginJson<T>(
+      `${this.baseUrl}${path}`,
+      init,
+      {
+        requestTimeoutMs: this.requestTimeoutMs,
+        maxResponseBodyBytes: this.maxResponseBodyBytes,
+      },
+      () => this.buildRequestHeaders(path, init),
+    );
   }
 
   private isPendingApproval(

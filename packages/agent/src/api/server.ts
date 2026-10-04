@@ -39,6 +39,10 @@ import {
 } from "@elizaos/core";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
+import {
+  canUseLocalTradeExecution,
+  resolveTradePermissionMode,
+} from "@elizaos/plugin-wallet/transactions";
 import { WebSocket, WebSocketServer } from "ws";
 import {
   type ElizaConfig,
@@ -239,6 +243,7 @@ import {
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
+  readDeletedConversationIdsFromState,
 } from "./server-helpers.ts";
 import {
   applyCors,
@@ -359,10 +364,6 @@ import {
   isAuthProtectedRoute,
   serveStaticUi,
 } from "./static-file-server.ts";
-import {
-  canUseLocalTradeExecution,
-  type TradePermissionMode,
-} from "./trade-safety.ts";
 import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 import {
   bindViewRequestHost,
@@ -793,31 +794,6 @@ function _requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
   }
   return service;
 }
-const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
-interface DeletedConversationsStateFile {
-  version: 1;
-  updatedAt: string;
-  ids: string[];
-}
-function readDeletedConversationIdsFromState(): Set<string> {
-  const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
-  if (!fs.existsSync(filePath)) return new Set();
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<DeletedConversationsStateFile>;
-    const ids = Array.isArray(parsed.ids) ? parsed.ids : [];
-    return new Set(
-      ids
-        .map((id) => (typeof id === "string" ? id.trim() : ""))
-        .filter((id) => id.length > 0),
-    );
-  } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return new Set();
-  }
-}
 
 export {
   fetchWithTimeoutGuard,
@@ -1116,37 +1092,7 @@ function _writeFavoriteAppsToConfig(
 }
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 
-export { isSafeResetStateDir } from "./server-helpers-config.ts";
-export {
-  resolveMcpServersRejection,
-  resolveMcpTerminalAuthorizationRejection,
-} from "./server-helpers-mcp.ts";
-// ---------------------------------------------------------------------------
-// Trade permission helpers (exported for use by awareness contributors)
-// ---------------------------------------------------------------------------
-/**
- * Resolve the active trade permission mode from config.
- * Falls back to "user-sign-only" when not configured.
- */
-export function resolveTradePermissionMode(
-  config: ElizaConfig,
-): TradePermissionMode {
-  const raw = (config.features as Record<string, unknown> | undefined)
-    ?.tradePermissionMode;
-  if (
-    raw === "user-sign-only" ||
-    raw === "manual-local-key" ||
-    raw === "agent-auto"
-  ) {
-    return raw;
-  }
-  return "user-sign-only";
-}
-/**
- * Maximum number of autonomous agent trades allowed per calendar day.
- * Acts as a safety rail when `agent-auto` mode is enabled.
- */
-// Trade safety utilities (defined in trade-safety.ts for testability)
+// Compatibility exports point at the single wallet-owned trade policy.
 export {
   AGENT_AUTO_MAX_DAILY_TRADES,
   agentAutoDailyTrades,
@@ -1155,8 +1101,14 @@ export {
   getAgentAutoTradeDate,
   QUOTE_MAX_AGE_MS,
   recordAgentAutoTrade,
+  resolveTradePermissionMode,
   type TradePermissionMode,
-} from "./trade-safety.ts";
+} from "@elizaos/plugin-wallet/transactions";
+export { isSafeResetStateDir } from "./server-helpers-config.ts";
+export {
+  resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
+} from "./server-helpers-mcp.ts";
 
 // ---------------------------------------------------------------------------
 // Automation & agent permission helpers

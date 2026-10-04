@@ -98,12 +98,7 @@ def _format_question(item: dict[str, object]) -> str:
     return "\n".join(body)
 
 
-def _extract_letter(text: str) -> str | None:
-    if not text:
-        return None
-    stripped = text.strip().upper()
-    match = _LETTER_RE.search(stripped)
-    return match.group(1) if match else None
+from benchmarks.lib import extract_choice_letter as _extract_letter
 
 
 def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:

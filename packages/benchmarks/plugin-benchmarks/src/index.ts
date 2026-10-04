@@ -65,11 +65,13 @@ import { vendingMachineAction } from "./actions/vending-machine";
 import { visualWebBenchTaskAction } from "./actions/visualwebbench";
 import { webshopAction } from "./actions/webshop";
 
-export { osworldAction } from "./actions/osworld";
-export { tauBenchToolAction } from "./actions/tau-bench";
-export { vendingMachineAction } from "./actions/vending-machine";
-export { visualWebBenchTaskAction } from "./actions/visualwebbench";
-export { webshopAction } from "./actions/webshop";
+export {
+  osworldAction,
+  tauBenchToolAction,
+  vendingMachineAction,
+  visualWebBenchTaskAction,
+  webshopAction,
+};
 
 export const benchmarksPlugin: Plugin = {
   name: "benchmarks",

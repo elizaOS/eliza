@@ -12,11 +12,10 @@
  * (local-only, desktop, cloud-routed), drives a golden (trusted) key release
  * for each, and then drives a golden + tampered fixture for EVERY decision
  * reason in the closed `TeeEvidencePolicyDecision` union, asserting the exact
- * reason each time. Artifacts are written under evidence/tee/.
+ * reason each time. Artifacts are written under test-results/agent-tee-full-stack-local/.
  *
- * This is NOT the unit test (tee-evidence-policy.matrix.test.ts owns the pure
- * data matrix). This script wires the same vectors through the real key-release
- * client + mock KMS so the wrap/unwrap, nonce, and report_data binding paths are
+ * This script wires the vectors through the real key-release client and a
+ * mock KMS so the wrap/unwrap, nonce, and report_data binding paths are
  * exercised end to end. CPU evidence here is a normalized fixture document (the
  * raw dstack TDX path is covered by test/tee-dstack-*.test.ts). GPU claims
  * cannot be self-declared: the cloud-routed topology obtains gpuProtected /
@@ -26,10 +25,12 @@
  * Run: bun packages/agent/scripts/tee-full-stack-local.ts
  * Exit: 0 on all-green, non-zero on any mismatch.
  */
+
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   type SealedWeightsBlob,
   unsealModelWeights,
@@ -833,7 +834,7 @@ if (!output.ok) {
   );
 }
 
-const outputPath = "evidence/tee/full-stack-local-2026-05-20.json";
+const outputPath = testOutputPath("agent-tee-full-stack-local", "report.json");
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
 console.log(
