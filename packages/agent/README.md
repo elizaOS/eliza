@@ -186,3 +186,9 @@ settle. Hosts with an existing token-format contract may supply a synchronous
 `createToken` factory; it runs only for a newly created token file. Existing
 tokens are preserved and validated regardless of the current factory. The native-host end-to-end suite covers real disk and child-process
 isolation, failure cleanup and cancellation during launch.
+
+Hosts whose runtime writes its own persistent configuration should use
+`preparePrivateRuntimeProfile` and continue passing their original config path
+to that runtime. It returns the saved token and parsed configuration without
+rewriting existing bytes. `preparePrivateRuntimeFiles` composes this primitive
+with a separate generated launch config for hosts that need a per-launch selection.
