@@ -62,7 +62,7 @@ func TestDiscoveryFailurePersistsServerDelay(t *testing.T) {
 	if err != nil || result.Status != "deferred" || len(result.Descriptor) != 0 || result.DelayMillis < 120000 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	claim, err := BeginDiscovery(a, now.UnixMilli()+1000, 1)
+	claim, err := BeginDiscoveryInterval(a, now.UnixMilli()+1000, now.UnixMilli()+1000, 1)
 	if err != nil || claim.Token != "" || claim.DelayMillis < 119000 {
 		t.Fatalf("claim=%+v err=%v", claim, err)
 	}
@@ -79,7 +79,7 @@ func TestDiscoveryCancellationAndChannelRaceDiscardBytes(t *testing.T) {
 				case "cancel":
 					s.Close()
 				case "channel":
-					if _, err := BeginDiscovery(a, now.UnixMilli(), 1); err != nil {
+					if _, err := BeginDiscoveryInterval(a, now.UnixMilli(), now.UnixMilli(), 1); err != nil {
 						t.Fatal(err)
 					}
 				case "corrupt":

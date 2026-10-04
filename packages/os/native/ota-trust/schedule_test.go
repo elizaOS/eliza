@@ -15,7 +15,7 @@ const scheduleNow int64 = 1790899200000
 
 func claim(t *testing.T, dir string, now, generation int64) *CheckDecision {
 	t.Helper()
-	d, err := BeginDiscovery(dir, now, generation)
+	d, err := BeginDiscoveryInterval(dir, now, now, generation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestDiscoveryRetrySurvivesRestartAndChannelChange(t *testing.T) {
 	if busy.Token != "" || busy.DelayMillis <= 0 {
 		t.Fatal("duplicate check admitted")
 	}
-	done, err := FinishDiscovery(dir, first.Token, scheduleNow+1000, false, 120000)
+	done, err := FinishDiscoveryInterval(dir, first.Token, scheduleNow+1000, scheduleNow+1000, false, 120000)
 	if err != nil || done.DelayMillis < 120000 || done.Failures != 1 {
 		t.Fatal("retry not stored", done, err)
 	}
@@ -39,14 +39,14 @@ func TestDiscoveryRetrySurvivesRestartAndChannelChange(t *testing.T) {
 	if restarted.Token != "" || restarted.DelayMillis < 119000 {
 		t.Fatal("channel change bypassed server delay")
 	}
-	if _, err = FinishDiscovery(dir, first.Token, scheduleNow+2000, true, 0); err == nil {
+	if _, err = FinishDiscoveryInterval(dir, first.Token, scheduleNow+2000, scheduleNow+2000, true, 0); err == nil {
 		t.Fatal("duplicate result accepted")
 	}
 	next := claim(t, dir, scheduleNow+122000, 1)
 	if next.Token == "" || next.Token == first.Token {
 		t.Fatal("retry not admitted after delay")
 	}
-	if _, err = BeginDiscovery(dir, scheduleNow+122001, 0); err == nil {
+	if _, err = BeginDiscoveryInterval(dir, scheduleNow+122001, scheduleNow+122001, 0); err == nil {
 		t.Fatal("old channel generation admitted")
 	}
 }
@@ -57,7 +57,7 @@ func TestDiscoveryChannelChangeDuringCheck(t *testing.T) {
 	if changed.Token != "" {
 		t.Fatal("parallel channel check admitted")
 	}
-	done, err := FinishDiscovery(dir, first.Token, scheduleNow+1000, true, 0)
+	done, err := FinishDiscoveryInterval(dir, first.Token, scheduleNow+1000, scheduleNow+1000, true, 0)
 	if err != nil || done.DelayMillis > 30000 {
 		t.Fatal("old channel success suppressed fresh channel check", done, err)
 	}
@@ -68,14 +68,14 @@ func TestDiscoveryChannelChangeDuringCheck(t *testing.T) {
 func TestDiscoveryAbandonedLeaseAndLateResult(t *testing.T) {
 	dir := privateDir(t)
 	first := claim(t, dir, scheduleNow, 0)
-	if _, err := FinishDiscovery(dir, first.Token, scheduleNow+leaseMillis, true, 0); err == nil {
+	if _, err := FinishDiscoveryInterval(dir, first.Token, scheduleNow+leaseMillis, scheduleNow+leaseMillis, true, 0); err == nil {
 		t.Fatal("expired claim completed")
 	}
 	after := claim(t, dir, scheduleNow+leaseMillis, 0)
 	if after.Failures != 1 || after.DelayMillis > 60000 {
 		t.Fatal("abandoned check not backed off")
 	}
-	if _, err := FinishDiscovery(dir, first.Token, scheduleNow+leaseMillis+1, true, 0); err == nil {
+	if _, err := FinishDiscoveryInterval(dir, first.Token, scheduleNow+leaseMillis+1, scheduleNow+leaseMillis+1, true, 0); err == nil {
 		t.Fatal("stale result accepted after abandonment")
 	}
 }
@@ -93,7 +93,7 @@ func TestDiscoveryJitterUsesWholeWindow(t *testing.T) {
 		if err = saveDiscovery(dir, state, nil); err != nil {
 			t.Fatal(err)
 		}
-		done, err := FinishDiscovery(dir, first.Token, scheduleNow+1, true, 0)
+		done, err := FinishDiscoveryInterval(dir, first.Token, scheduleNow+1, scheduleNow+1, true, 0)
 		want := int64(6*60*60*1000) + int64(offset) - 900000
 		if err != nil || done.DelayMillis != want {
 			t.Fatal("wrong normal check jitter", done, want, err)
@@ -103,7 +103,7 @@ func TestDiscoveryJitterUsesWholeWindow(t *testing.T) {
 func TestDiscoveryCorruptionAndClockRollback(t *testing.T) {
 	dir := privateDir(t)
 	claim(t, dir, scheduleNow, 0)
-	if _, err := BeginDiscovery(dir, scheduleNow-1, 0); err == nil {
+	if _, err := BeginDiscoveryInterval(dir, scheduleNow-1, scheduleNow-1, 0); err == nil {
 		t.Fatal("clock rollback admitted")
 	}
 	file := filepath.Join(dir, "schedule.json")
@@ -116,7 +116,7 @@ func TestDiscoveryCorruptionAndClockRollback(t *testing.T) {
 		t.Fatal("test mutation missing")
 	}
 	os.WriteFile(file, []byte(changed), 0600)
-	if _, err = BeginDiscovery(dir, scheduleNow+1, 0); err == nil {
+	if _, err = BeginDiscoveryInterval(dir, scheduleNow+1, scheduleNow+1, 0); err == nil {
 		t.Fatal("corrupt state reset")
 	}
 }
@@ -129,7 +129,7 @@ func TestDiscoveryConcurrentClaims(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			decision, err := BeginDiscovery(dir, scheduleNow, 0)
+			decision, err := BeginDiscoveryInterval(dir, scheduleNow, scheduleNow, 0)
 			if err == nil && decision.Token != "" {
 				mu.Lock()
 				claims++
@@ -192,14 +192,14 @@ func TestDiscoveryBackoffCapsAndSuccessResets(t *testing.T) {
 		if begin.Token == "" {
 			t.Fatal("scheduled attempt not granted")
 		}
-		done, err := FinishDiscovery(dir, begin.Token, now+1, false, 0)
+		done, err := FinishDiscoveryInterval(dir, begin.Token, now+1, now+1, false, 0)
 		if err != nil || done.DelayMillis > dayMillis || done.Failures != min(attempt, 32) {
 			t.Fatal("unbounded backoff", done, err)
 		}
 		now += done.DelayMillis + 2
 	}
 	begin := claim(t, dir, now, 0)
-	done, err := FinishDiscovery(dir, begin.Token, now+1, true, 0)
+	done, err := FinishDiscoveryInterval(dir, begin.Token, now+1, now+1, true, 0)
 	if err != nil || done.Failures != 0 {
 		t.Fatal("success did not reset failures")
 	}
@@ -207,48 +207,48 @@ func TestDiscoveryBackoffCapsAndSuccessResets(t *testing.T) {
 
 func TestStagingLeaseCoversLongTransfersWithoutMetadataDelay(t *testing.T) {
 	dir := privateDir(t)
-	first, e := BeginStaging(dir, scheduleNow, 0)
+	first, e := BeginStagingInterval(dir, scheduleNow, scheduleNow, 0)
 	if e != nil || first.Token == "" {
 		t.Fatal(e)
 	}
-	busy, e := BeginStaging(dir, scheduleNow+4*60*1000, 0)
+	busy, e := BeginStagingInterval(dir, scheduleNow+4*60*1000, scheduleNow+4*60*1000, 0)
 	if e != nil || busy.Token != "" || busy.DelayMillis < 30*60*1000 {
 		t.Fatal("short staging lease", busy, e)
 	}
-	done, e := FinishStaging(dir, first.Token, scheduleNow+30*60*1000, true, 0)
+	done, e := FinishStagingInterval(dir, first.Token, scheduleNow+30*60*1000, scheduleNow+30*60*1000, true, 0)
 	if e != nil || done.DelayMillis != 0 {
 		t.Fatal("staging inherited metadata delay", done, e)
 	}
-	next, e := BeginStaging(dir, scheduleNow+30*60*1000+1, 0)
+	next, e := BeginStagingInterval(dir, scheduleNow+30*60*1000+1, scheduleNow+30*60*1000+1, 0)
 	if e != nil || next.Token == "" {
 		t.Fatal("new pair was blocked", e)
 	}
 }
 func TestStagingPersistsBackoffAcrossChannelAndProcessLoss(t *testing.T) {
 	dir := privateDir(t)
-	first, e := BeginStaging(dir, scheduleNow, 0)
+	first, e := BeginStagingInterval(dir, scheduleNow, scheduleNow, 0)
 	if e != nil {
 		t.Fatal(e)
 	}
-	done, e := FinishStaging(dir, first.Token, scheduleNow+1000, false, 120000)
+	done, e := FinishStagingInterval(dir, first.Token, scheduleNow+1000, scheduleNow+1000, false, 120000)
 	if e != nil || done.DelayMillis < 120000 || done.Failures != 1 {
 		t.Fatal(done, e)
 	}
-	changed, e := BeginStaging(dir, scheduleNow+2000, 1)
+	changed, e := BeginStagingInterval(dir, scheduleNow+2000, scheduleNow+2000, 1)
 	if e != nil || changed.Token != "" || changed.DelayMillis < 119000 {
 		t.Fatal("channel bypassed server delay", changed, e)
 	}
-	resumed, e := BeginStaging(dir, scheduleNow+122000, 1)
+	resumed, e := BeginStagingInterval(dir, scheduleNow+122000, scheduleNow+122000, 1)
 	if e != nil || resumed.Token == "" {
 		t.Fatal(e)
 	}
 	// Abandoned process cannot leave a permanent active claim; recovery applies
 	// exponential backoff after its longer staging lease expires.
-	recovered, e := BeginStaging(dir, scheduleNow+122000+36*60*1000, 1)
+	recovered, e := BeginStagingInterval(dir, scheduleNow+122000+36*60*1000, scheduleNow+122000+36*60*1000, 1)
 	if e != nil || recovered.Failures != 2 {
 		t.Fatal(recovered, e)
 	}
-	if _, e = FinishStaging(dir, resumed.Token, scheduleNow+122000+36*60*1000, true, 0); e == nil {
+	if _, e = FinishStagingInterval(dir, resumed.Token, scheduleNow+122000+36*60*1000, scheduleNow+122000+36*60*1000, true, 0); e == nil {
 		t.Fatal("late abandoned completion accepted")
 	}
 }

@@ -163,7 +163,7 @@ func TestBetaDelegatedTargetAuthenticatesIndependently(t *testing.T) {
 	}
 	digest := sha256.Sum256(r.body)
 	r.files[baseURL+"targets/beta/"+hex.EncodeToString(digest[:])+".launcher.json"] = r.body
-	data, err := FetchDescriptor(privateDir(t), r.root, baseURL, "beta", "launcher", now.UnixMilli(), r)
+	data, err := FetchDescriptorInterval(privateDir(t), r.root, baseURL, "beta", "launcher", now.UnixMilli(), now.UnixMilli(), r)
 	if err != nil || !bytes.Equal(data, r.body) {
 		t.Fatalf("Beta delegation failed: %v", err)
 	}
