@@ -660,6 +660,48 @@ test("billing authority is cleared by cancel, explicit clear and expiry", async 
   assert.equal(await cleared.auth.billingAuthority(), null);
 });
 
+test("clearing billing authority mid-verification grants nothing", async () => {
+  for (const stage of ["code", "account", "mfa"]) {
+    let reached;
+    let release;
+    const atGate = new Promise((resolve) => {
+      reached = resolve;
+    });
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const f = billingFixture({
+      fetch: async (path, _body, init, state) => {
+        const sessionRead =
+          path === "/api/v1/user" &&
+          init.headers.Authorization !== `Bearer ${state.active}`;
+        const codeCheck = path === "/auth/email/code/verify";
+        if ((stage === "account" ? sessionRead : codeCheck) && reached) {
+          reached();
+          reached = null;
+          await gate;
+        }
+        return stage === "mfa" && codeCheck
+          ? Response.json({
+              ok: true,
+              mfaRequired: true,
+              mfa: { type: "totp", challengeId: "c", expiresAt: future() },
+            })
+          : null;
+      },
+    });
+    const verifying = billingVerify(f, await billingStart(f));
+    await atGate;
+    f.auth.clearBillingAuthority();
+    release();
+    await assert.rejects(verifying, {
+      status: 410,
+      code: "billing_session_expired",
+    });
+    assert.equal(await f.auth.billingAuthority(), null);
+  }
+});
+
 test("billing authority follows the exact active credential, not just any credential", async () => {
   let active = `eliza_mobile_${"f".repeat(64)}`;
   // The host can replace the stored key outside this module (account change).

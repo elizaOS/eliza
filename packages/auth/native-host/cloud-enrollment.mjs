@@ -105,6 +105,7 @@ export function createNativeCloudAuth({
     attempt = null,
     billingAttempt = null,
     billing = null,
+    billingGeneration = 0,
     busy = false,
     cancelling = false,
     epoch = 0,
@@ -211,8 +212,19 @@ export function createNativeCloudAuth({
   }
   const clearBilling = () => {
     accountMethods?.reset();
+    // Operations that captured an older generation must not write authority
+    // or attempt state back after the host cleared it.
+    billingGeneration++;
     billing = null;
     billingAttempt = null;
+  };
+  const checkBilling = (generation) => {
+    if (generation !== billingGeneration)
+      throw fail(
+        message("error9", "Sign-in expired. Start again."),
+        410,
+        "billing_session_expired",
+      );
   };
   /** Binds an interactive session to the exact active credential it was verified for. */
   function retainBilling(token, credential) {
@@ -250,7 +262,8 @@ export function createNativeCloudAuth({
       phone: typeof value.phone_number === "string" ? value.phone_number : null,
     };
   }
-  async function confirmBilling(value, ticket) {
+  async function confirmBilling(value, ticket, generation) {
+    checkBilling(generation);
     if (value.mfaRequired === true) {
       if (
         !value.mfa ||
@@ -287,6 +300,7 @@ export function createNativeCloudAuth({
     const verified = await account(value.token, ticket);
     const active = await readActive();
     check(ticket);
+    checkBilling(generation);
     if (!active || fingerprint(active) !== expected.credential) {
       clearBilling();
       throw fail(
@@ -450,6 +464,7 @@ export function createNativeCloudAuth({
       );
     if (typeof input.code !== "string" || !/^\d{6}$/.test(input.code))
       throw fail(message("error30", "Enter the six-digit code."));
+    const generation = billingGeneration;
     if (operation === "billing-verify" && !billingAttempt.mfa)
       return await confirmBilling(
         await call(
@@ -468,6 +483,7 @@ export function createNativeCloudAuth({
           ticket,
         ),
         ticket,
+        generation,
       );
     if (
       operation === "billing-mfa" &&
@@ -482,6 +498,7 @@ export function createNativeCloudAuth({
           ticket,
         ),
         ticket,
+        generation,
       );
     throw fail(
       message("error31", "This verification method requires account recovery."),
@@ -508,6 +525,7 @@ export function createNativeCloudAuth({
     };
   }
   async function replaceAccountAuthority(token, expectedToken, ticket) {
+    const generation = billingGeneration;
     const held = await currentBilling();
     check(ticket);
     if (!held || held.token !== expectedToken)
@@ -532,7 +550,7 @@ export function createNativeCloudAuth({
         "account_verification_mismatch",
       );
     }
-    if (!retainBilling(token, active))
+    if (generation !== billingGeneration || !retainBilling(token, active))
       throw fail("Account security check expired", 410);
   }
   accountMethods = createNativeAccountMethods({
@@ -547,6 +565,7 @@ export function createNativeCloudAuth({
       call(auth, path, input, token, ticket, method),
   });
   async function finish(ticket, pending, session) {
+    const generation = billingGeneration;
     if (!validTime(pending.acknowledgeBy))
       throw fail(message("error9", "Sign-in expired. Start again."), 410);
     const result = await call(
@@ -572,7 +591,8 @@ export function createNativeCloudAuth({
     check(ticket);
     attempt = null;
     // The session that just minted this credential is also current billing authority.
-    if (session) retainBilling(session, pending.proof.secret);
+    if (session && generation === billingGeneration)
+      retainBilling(session, pending.proof.secret);
     return { status: "authenticated", connected: true };
   }
   async function exchange(value, ticket) {
