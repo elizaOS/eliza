@@ -203,7 +203,7 @@ with (
             try:
                 urllib.request.urlopen(url + "health", timeout=1).close()
                 break
-            except (urllib.error.URLError, TimeoutError):
+            except (urllib.error.URLError, TimeoutError, socket.timeout):
                 time.sleep(0.25)
         else:
             raise TimeoutError(
