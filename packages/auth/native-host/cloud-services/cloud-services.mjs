@@ -131,25 +131,34 @@ export function createCloudRoutes({
   credentialGate,
   pendingCredentialStore,
 } = {}) {
+  const billingEnabled = hostPolicy?.accountBilling !== false;
   if (
     !hostPolicy ||
-    [
-      "projectAccountAccess",
-      "createNativeCloudAuth",
-      "requireNonSensitiveText",
-      "pickMessage",
-      "fundingError",
-    ].some((key) => typeof hostPolicy[key] !== "function") ||
-    !Array.isArray(hostPolicy.planKeys) ||
-    !hostPolicy.planKeys.length ||
-    typeof hostPolicy.planCurrency !== "string" ||
-    typeof hostPolicy.planInterval !== "string" ||
-    hostPolicy.planKeys.some((key) => typeof key !== "string" || !key) ||
+    ["requireNonSensitiveText", "pickMessage"].some(
+      (key) => typeof hostPolicy[key] !== "function",
+    ) ||
+    (pendingCredentialStore &&
+      typeof hostPolicy.createNativeCloudAuth !== "function") ||
+    (billingEnabled &&
+      (["projectAccountAccess", "fundingError"].some(
+        (key) => typeof hostPolicy[key] !== "function",
+      ) ||
+        !Array.isArray(hostPolicy.planKeys) ||
+        !hostPolicy.planKeys.length ||
+        typeof hostPolicy.planCurrency !== "string" ||
+        typeof hostPolicy.planInterval !== "string" ||
+        hostPolicy.planKeys.some((key) => typeof key !== "string" || !key))) ||
     !/^[A-Za-z0-9-]{1,32}$/.test(hostPolicy.multipartPrefix ?? "") ||
-    !/^[a-z]{2}(?:-[A-Za-z0-9]{2,8})?$/.test(hostPolicy.speechLanguage ?? "") ||
-    !speechVoice ||
-    typeof speechVoice.voiceId !== "string" ||
-    typeof speechVoice.modelId !== "string"
+    !(
+      hostPolicy.speechLanguage === null ||
+      /^[a-z]{2}(?:-[A-Za-z0-9]{2,8})?$/.test(hostPolicy.speechLanguage ?? "")
+    ) ||
+    !(
+      (speechVoice === undefined && hostPolicy.providerDefaultVoice === true) ||
+      (speechVoice &&
+        typeof speechVoice.voiceId === "string" &&
+        typeof speechVoice.modelId === "string")
+    )
   )
     throw new TypeError("Explicit Cloud service host policy is required");
   const {
@@ -289,6 +298,8 @@ export function createCloudRoutes({
     }
   }
   async function accountAccess() {
+    if (!billingEnabled)
+      throw fail("Account billing is unavailable in this host", 404);
     await ready;
     const epoch = generation;
     await credentialWrites;
@@ -334,6 +345,10 @@ export function createCloudRoutes({
     try {
       await ready;
       let path = url.pathname;
+      if (!billingEnabled && path.startsWith("/cloud/account/")) {
+        send(res, 404, { error: "Cloud route not available" });
+        return true;
+      }
       let method = req.method,
         requestInput;
       if (path === "/gmail/status" || path === "/gmail/connect")
@@ -659,8 +674,9 @@ export function createCloudRoutes({
           method: "POST",
           json: {
             text: input.text,
-            voiceId: speechVoice.voiceId,
-            modelId: speechVoice.modelId,
+            ...(speechVoice
+              ? { voiceId: speechVoice.voiceId, modelId: speechVoice.modelId }
+              : {}),
           },
           key,
           signal,
@@ -718,7 +734,9 @@ export function createCloudRoutes({
           // Language hint comes from the trusted application policy.
           audio,
           Buffer.from(
-            `\r\n--${boundary}\r\nContent-Disposition: form-data; name="languageCode"\r\n\r\n${hostPolicy.speechLanguage}\r\n--${boundary}--\r\n`,
+            hostPolicy.speechLanguage === null
+              ? `\r\n--${boundary}--\r\n`
+              : `\r\n--${boundary}\r\nContent-Disposition: form-data; name="languageCode"\r\n\r\n${hostPolicy.speechLanguage}\r\n--${boundary}--\r\n`,
           ),
         ]);
         const value = await parse(
