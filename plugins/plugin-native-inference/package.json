@@ -221,7 +221,6 @@
     "ws": "^8.21.3",
     "yaml": "^2.8.2",
     "zod": "^4.4.3",
-    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
@@ -239,7 +238,8 @@
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
     "@capacitor/core": "^8.3.1",
-    "@elizaos/agent": "workspace:*"
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

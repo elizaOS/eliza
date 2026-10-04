@@ -628,7 +628,8 @@
     "@elizaos/plugin-native-inference": "workspace:*",
     "llama-cpp-capacitor": "^0.1.5",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "@elizaos/plugin-local-inference": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@capacitor/app": {
@@ -723,7 +724,6 @@
     "viem": "^2.56.9",
     "wagmi": "^2.19.5",
     "ws": "^8.21.3",
-    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {

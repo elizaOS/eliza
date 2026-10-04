@@ -2,11 +2,7 @@
 /**
  * Real-service audio round-trip smoke (#8876).
  *
- * The agent can *generate* audio attachments (TTS) and *transcribe* them (STT)
- * through `@elizaos/plugin-elevenlabs` — but every test in that plugin mocks the
- * ElevenLabs SDK, so nothing exercises the real service end-to-end. This script
- * is the complement the goal asks for ("we ALSO test/validate with a real
- * service"): it drives a REAL generated-audio attachment round-trip —
+ * Exercises the ElevenLabs HTTP service with a generated-audio round-trip:
  *
  *   text → (real TTS) → MP3 bytes → sha256 (the content-addressed media handle,
  *          identical to packages/agent/src/api/media-store.ts) → (real STT) →
