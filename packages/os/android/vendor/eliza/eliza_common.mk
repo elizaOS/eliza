@@ -82,7 +82,7 @@ ifneq ($(PLATFORM_SDK_VERSION),37)
 $(error vendor/eliza: Android 17 SDK 37 is required)
 endif
 ifeq ($(ELIZA_GSI),true)
-SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += vendor/eliza/sepolicy/system_ext
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += vendor/eliza/sepolicy/system_ext vendor/eliza/sepolicy/common
 else
-BOARD_VENDOR_SEPOLICY_DIRS += vendor/eliza/sepolicy
+BOARD_VENDOR_SEPOLICY_DIRS += vendor/eliza/sepolicy vendor/eliza/sepolicy/common
 endif

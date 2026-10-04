@@ -100,9 +100,15 @@ test("GSI products inherit the AOSP GSI layers before the shared Eliza layer", (
 });
 
 test("Android 17 selects policy for the image partition", () => {
-  assert.deepEqual(selectPolicy("37", false).vendor, ["vendor/eliza/sepolicy"]);
+  assert.deepEqual(selectPolicy("37", false).vendor, [
+    "vendor/eliza/sepolicy",
+    "vendor/eliza/sepolicy/common",
+  ]);
   const gsi = selectPolicy("37", true);
-  assert.deepEqual(gsi.systemExt, ["vendor/eliza/sepolicy/system_ext"]);
+  assert.deepEqual(gsi.systemExt, [
+    "vendor/eliza/sepolicy/system_ext",
+    "vendor/eliza/sepolicy/common",
+  ]);
   assert.deepEqual(gsi.vendor, []);
   for (const sdk of ["", "35", "36", "38"]) {
     const rejected = selectPolicy(sdk, false);
@@ -112,16 +118,14 @@ test("Android 17 selects policy for the image partition", () => {
 });
 
 test("Android 17 app compatibility rules stay development-only", () => {
-  for (const policyPath of [
-    "sepolicy/eliza_agent_app36.te",
-    "sepolicy/system_ext/eliza_agent_app36.te",
-  ]) {
-    const policy = read(policyPath).replace(/^\s*#.*$/gm, "");
-    assert.match(
-      policy,
-      /userdebug_or_eng\(`[\s\S]*allow platform_app_36 app_data_file:file \{ execute execute_no_trans \};[\s\S]*allow platform_app_36 app_data_file:file link;/,
-    );
-  }
+  const policy = read("sepolicy/common/eliza_agent_app.te").replace(
+    /^\s*#.*$/gm,
+    "",
+  );
+  assert.match(
+    policy,
+    /userdebug_or_eng\(`[\s\S]*allow platform_app_36 app_data_file:file \{ execute execute_no_trans \};[\s\S]*allow platform_app_36 app_data_file:file link;/,
+  );
 });
 
 test("the generic MediaTek GSI target stays blocked", () => {
