@@ -239,3 +239,38 @@ test("malformed projection fields and regressing transition replies never publis
     assert.equal(state.error, messages.pause);
   }
 });
+
+test("account reset permits a new start while the prior account request is unresolved", async () => {
+  const old = deferred();
+  let calls = 0,
+    state;
+  const client = new TaskLifecycle(
+    async () => (++calls === 1 ? old.promise : { task }),
+    (next) => {
+      state = next;
+    },
+  );
+  const previous = client.start("old-goal");
+  client.reset();
+  assert.equal(await client.start("new-goal"), true);
+  old.resolve({ task: null });
+  assert.equal(await previous, false);
+  assert.equal(state.task.id, task.id);
+});
+
+test("a transition cannot regress the authoritative task epoch", async () => {
+  let state;
+  const client = new TaskLifecycle(
+    async (path) => ({
+      task:
+        path === "/tasks/current"
+          ? task
+          : { ...task, revision: 4, epoch: 0, status: "paused" },
+    }),
+    (next) => {
+      state = next;
+    },
+  );
+  assert.equal(await client.control("pause"), false);
+  assert.equal(state.error, messages.pause);
+});

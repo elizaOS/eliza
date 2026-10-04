@@ -86,6 +86,7 @@ export class TaskLifecycle {
   }
   reset() {
     this.generation++;
+    this.starting = null;
     this.publish({ task: null, pending: false, error: "" });
   }
   retry() {
@@ -170,7 +171,12 @@ export class TaskLifecycle {
         }),
       );
       if (ticket !== this.generation) return false;
-      if (!result || result.id !== task.id || result.revision < task.revision)
+      if (
+        !result ||
+        result.id !== task.id ||
+        result.revision < task.revision ||
+        result.epoch < task.epoch
+      )
         throw new Error("Invalid task transition");
       this.publish({ task: result, pending: false, error: "" });
       return true;
