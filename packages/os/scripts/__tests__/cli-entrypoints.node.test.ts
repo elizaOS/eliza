@@ -39,7 +39,6 @@ const modules = [
   "check-confidential-policy",
   "check-confidential-profile",
   "check-dstack-pins",
-  "check-pr-agent-attribution",
   "generate-confidential-artifacts",
   "read-eliza-source-lock",
   "tee-evidence-bridge",
