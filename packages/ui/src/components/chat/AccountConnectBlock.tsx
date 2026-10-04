@@ -11,11 +11,11 @@
  * `AccountList`; it never duplicates that UI.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import { useMemo, useState } from "react";
 import type { AccountConnectRequest } from "../../api/client-types-chat";
 import { useAccounts } from "../../hooks/useAccounts";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { AddAccountDialog } from "../accounts/AddAccountDialog";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

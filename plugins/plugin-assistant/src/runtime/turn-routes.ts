@@ -16,7 +16,7 @@
  *
  * Registered by the basic-capabilities plugin so every runtime gets them.
  */
-import { type Route } from "@elizaos/core/api/http-plugin";
+import type { Route } from "@elizaos/host/protocol";
 
 const TURN_ABORT_ROUTE: Route = {
   type: "POST",

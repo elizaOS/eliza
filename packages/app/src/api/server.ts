@@ -59,15 +59,13 @@ import {
 } from "@elizaos/auth/auth";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import {
-  type AgentRuntime,
   getHttpRuntime,
   isElizaSettingsDebugEnabled,
-  logger,
   resolveLinkedAccountsInConfig,
-  resolveStateDir,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 import { authStoreForRuntime } from "../services/auth-store";
 import { sharedVault } from "../services/vault-mirror";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";

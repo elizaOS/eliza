@@ -7,7 +7,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, RouteHandlerContext } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   dstackOperatorAttestationRoute,

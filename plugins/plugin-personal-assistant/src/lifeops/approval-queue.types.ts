@@ -1,6 +1,6 @@
 /** Types for the owner-approval queue: request states, action kinds, and payload shapes. */
 
-import type { CalendarNoteSourceReference } from "@elizaos/core/contracts/calendar";
+import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,

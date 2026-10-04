@@ -11,8 +11,8 @@
 import { Target } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useRole } from "../../../hooks/useRole";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";

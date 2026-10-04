@@ -9,11 +9,11 @@
  * reliability are plain functions.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   type LifeOpsActivitySignal,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   createSignalSourceRegistry,

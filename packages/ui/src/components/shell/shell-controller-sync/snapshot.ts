@@ -11,7 +11,7 @@
  * which keeps `snapshotsEqual` cheap enough to coalesce the many per-token
  * updates a streaming reply emits.
  */
-import type { ChatTurnStatus } from "../../../api/client-types-chat";
+import type { ChatTurnStatus } from "@elizaos/contracts";
 import type { HomeModelStatus } from "../../../services/local-inference/home-model-status";
 import type { MicrophonePermissionState } from "../../../voice/local-asr-capture";
 import type { ShellAuthGate } from "../shell-auth-gate";

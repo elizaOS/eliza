@@ -4,7 +4,7 @@ import path from "node:path";
 import {
   getInstalledPackageEntry,
   resolveModuleEntry,
-} from "@elizaos/testing/package-paths";
+} from "@elizaos/repository-tools";
 
 /** Vite rollup alias shape; structural type avoids duplicate vite versions in Bun's typings. */
 export type ModuleAlias = {

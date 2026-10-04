@@ -7,17 +7,6 @@
 // `server.ts` is the single wiring site that constructs the context.
 import crypto from "node:crypto";
 import type http from "node:http";
-import { type AgentRuntime, type ElizaConfig, logger } from "@elizaos/core";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
-import { normalizeWalletRpcSelections } from "@elizaos/core/contracts/wallet";
-import {
-  PostWalletGenerateRequestSchema,
-  PostWalletImportRequestSchema,
-  PostWalletPrimaryRequestSchema,
-} from "@elizaos/core/contracts/wallet-routes";
 import type {
   WalletBalancesResponse,
   WalletChain,
@@ -32,7 +21,19 @@ import type {
   WalletRpcChain,
   WalletRpcSelections,
   WalletSource,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import {
+  normalizeWalletRpcSelections,
+  PostWalletGenerateRequestSchema,
+  PostWalletImportRequestSchema,
+  PostWalletPrimaryRequestSchema,
+} from "@elizaos/contracts";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import type {
+  ElizaConfig,
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/host/protocol";
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 // Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.
 // Defined structurally here so this plugin module stays free of

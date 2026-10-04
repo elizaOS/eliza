@@ -5,7 +5,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
-import { runCli } from "@elizaos/testing/scenario-runner/cli";
+import { runCli } from "@elizaos/testing/cli";
 
 type ProcessWithDiagnostics = NodeJS.Process & {
   _getActiveHandles?: () => unknown[];

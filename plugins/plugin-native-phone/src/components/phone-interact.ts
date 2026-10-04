@@ -4,7 +4,7 @@
  * makes an undeclared operation or an unimplemented declaration a type error.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { Phone } from "@elizaos/plugin-native-phone/bridge";
 import type { PhoneViewCapabilityId } from "../view-capabilities.ts";
 import {

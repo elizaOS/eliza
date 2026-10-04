@@ -11,11 +11,8 @@ import {
   saveAccount,
 } from "@elizaos/auth/auth";
 import { probeDirectApiKey } from "@elizaos/auth/providers";
-import {
-  ElizaError,
-  type LinkedAccountConfig,
-  resolveStateDir,
-} from "@elizaos/core";
+import type { LinkedAccountConfig } from "@elizaos/contracts";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

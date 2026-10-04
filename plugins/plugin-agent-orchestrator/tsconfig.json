@@ -22,7 +22,7 @@
     "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,

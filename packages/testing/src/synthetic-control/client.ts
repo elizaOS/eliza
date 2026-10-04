@@ -1,7 +1,7 @@
 /** Sends authenticated synthetic-control commands and rejects malformed or mismatched subprocess replies. */
 
 import { randomUUID } from "node:crypto";
-import { isSyntheticEnvironmentNamespace } from "@elizaos/core/contracts/synthetic-environment-lease";
+import { isSyntheticEnvironmentNamespace } from "@elizaos/contracts";
 import {
   parseSyntheticControlRequest,
   parseSyntheticControlResponse,

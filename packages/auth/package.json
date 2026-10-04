@@ -375,7 +375,9 @@
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",
     "@simplewebauthn/server": "^13",
-    "resend": "^6.9.4"
+    "resend": "^6.9.4",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

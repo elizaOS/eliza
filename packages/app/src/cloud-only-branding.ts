@@ -3,7 +3,7 @@
  * Packaged desktop builds seed the typed boot config before renderer modules
  * evaluate.
  */
-import { shouldUseCloudOnlyBranding } from "@elizaos/core/config/cloud-only";
+import { shouldUseCloudOnlyBranding } from "@elizaos/host/protocol";
 export interface AppCloudOnlyBrandingInputs {
   isDev: boolean;
   bootApiBase?: string | null;

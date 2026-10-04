@@ -14,15 +14,17 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  openProgressiveContentBoundedSource,
+  runProgressiveContentTargetHarness,
+  validateProgressiveContentPostgresEvidence,
+  verifyProgressiveContentCorpus,
+} from "elizaos-benchmarks/content-context";
 import { Pool } from "pg";
 import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
 import { createProgressiveToolOutputTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts";
 import { createProgressivePostgresSqlTargetFactories } from "../../plugins/plugin-sql/src/__tests__/support/progressive-content-sql-targets.ts";
 import { createProgressiveAttachmentTargetFactory } from "../agent/test/support/progressive-content-attachment-target.ts";
-import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
-import { validateProgressiveContentPostgresEvidence } from "../testing/corpus/progressive-content-postgres-evidence.ts";
-import { openProgressiveContentBoundedSource } from "../testing/corpus/progressive-content-realization.ts";
-import { runProgressiveContentTargetHarness } from "../testing/corpus/progressive-content-target-harness.ts";
 
 const SCRIPT_PATH = "packages/scripts/produce-content-context-postgres.ts";
 const SHA256 = /^[0-9a-f]{64}$/u;

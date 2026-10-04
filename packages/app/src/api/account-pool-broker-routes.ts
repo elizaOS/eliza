@@ -19,7 +19,7 @@ import {
   updateAccountPoolConsumerKey,
 } from "@elizaos/auth/accounts";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { readCompatJsonBody } from "./compat-route-shared.js";
 import { sendJson } from "./response.js";
 

@@ -3,8 +3,9 @@
  * Status and retry require the runtime, not an active family workflow service,
  * so interrupted cleanup remains observable after workspace revocation.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { z } from "zod";
 import { previewFamilyDeletionDatabase } from "../lifeops/family-workflows/deletion-database-snapshot.js";
 import {

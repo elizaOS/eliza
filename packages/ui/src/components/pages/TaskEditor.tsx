@@ -13,8 +13,8 @@
 
 import { Calendar, Clock3, Zap } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { CRON_PRESETS, formatSchedule } from "../../utils/cron-format";
 import { PagePanel } from "../composites/page-panel";

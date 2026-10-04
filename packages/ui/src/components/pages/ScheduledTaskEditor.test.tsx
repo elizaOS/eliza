@@ -22,7 +22,7 @@ const { applyScheduledTaskMock, fireScheduledTaskMock } = vi.hoisted(() => ({
   applyScheduledTaskMock: vi.fn(),
   fireScheduledTaskMock: vi.fn(),
 }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     applyScheduledTask: applyScheduledTaskMock,
     fireScheduledTask: fireScheduledTaskMock,

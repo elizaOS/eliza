@@ -17,12 +17,12 @@
  */
 import fs from "node:fs/promises";
 import type {
+	LinkedAccountProviderId,
 	ProviderEnableState,
 	ProviderId,
 	ProviderMeta,
 	ProviderStatus,
-} from "@elizaos/core/contracts/local-inference-providers";
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/contracts";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";

@@ -22,6 +22,7 @@ import {
 } from "@elizaos/app/api/auth";
 import { isTrustedLocalRequest } from "@elizaos/app/api/compat-route-shared";
 import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   resolveOwnerEntityIdOrDefault,
@@ -31,13 +32,12 @@ import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import {
-  type LegacyRouteHandler,
-  type HttpPlugin as Plugin,
-  type Route,
-} from "@elizaos/core/api/http-plugin";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/host";
+import type {
+  LegacyRouteHandler,
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/host/protocol";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,

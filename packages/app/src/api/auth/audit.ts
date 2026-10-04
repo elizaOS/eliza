@@ -18,7 +18,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { RuntimeEnvRecord } from "@elizaos/core/runtime-env";
+import type { RuntimeEnvRecord } from "@elizaos/host/protocol";
 import type { AuthRepository } from "../../services/auth-repository";
 import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
 export const AUDIT_LOG_FILENAME = "audit.log";

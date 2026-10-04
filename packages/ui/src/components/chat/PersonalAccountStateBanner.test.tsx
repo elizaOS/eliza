@@ -51,7 +51,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../api", () => ({ client: mocks.client }));
+vi.mock("../../api/client", () => ({ client: mocks.client }));
 vi.mock("../../utils/openExternalUrl", () => ({
   openExternalUrl: mocks.openExternalUrl,
 }));

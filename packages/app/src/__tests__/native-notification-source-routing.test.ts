@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   dispatchNavigateViewRequest,
   listenForNavigateViewRequests,
   rejectNavigateViewRequest,
-} from "@elizaos/ui/events";
-import { navigateDeepLink } from "@elizaos/ui/state/notifications/navigate-deep-link";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+} from "../../../ui/src/events/index";
+import { navigateDeepLink } from "../../../ui/src/state/notifications/navigate-deep-link";
 import { resolveDeepLinkNavigationIntent } from "../deep-link-routing";
 import {
   createMobileLifecycle,

@@ -7,9 +7,10 @@
 
 import { Download, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type LocalAgentBackupMetadata } from "../../api";
-import { useAppSelectorShallow } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { LocalAgentBackupMetadata } from "../../api/client-types-cloud";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";

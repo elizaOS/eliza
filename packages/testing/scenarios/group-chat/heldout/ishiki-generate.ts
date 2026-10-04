@@ -219,6 +219,7 @@ function renderScenario(
 ): { fileName: string; source: string } {
   const id = `groupchat.ishiki.${point.sourceDomain}.${point.label}.${String(ordinal).padStart(3, "0")}`;
   const config = {
+    lane: "live-only",
     id,
     title: `Held-out group timing: ${point.sourceDomain.toUpperCase()} ${point.label.toUpperCase()}`,
     label: point.label,
@@ -230,58 +231,9 @@ function renderScenario(
     sourceDecisionPointId: point.decisionPointId,
     sourceRevision: ISHIKI_REVISION,
   };
-  const assertion =
-    point.label === "silent"
-      ? `if (responseLength > 0) {
-          return \`held-out label is SILENT; expected no agent response, got \${responseLength} characters\`;
-        }`
-      : `if (responseLength === 0) {
-          return "held-out label is SPEAK, but the agent produced no reply";
-        }`;
-  const rubric =
-    point.label === "silent"
-      ? "The assistant occupies one participant's seat in a group conversation. The observed target participant did not take the next turn. Score 1.0 only for literal silence and 0.0 for any reaction or interjection."
-      : "The assistant occupies one participant's seat in a group conversation. The observed target participant took the next turn. Score whether the assistant makes a concise, relevant contribution that fits the conversation and responds to the delivered turn.";
   return {
     fileName: `${id}.scenario.ts`,
-    source: `/**
- * Generated from ishiki-labs/multi-party-dialogue at ${ISHIKI_REVISION}.
- * Apache-2.0. Do not hand-edit; run heldout/ishiki-generate.ts.
- */
-import { scenario } from "@elizaos/testing";
-import {
-  buildHeldoutSetup,
-  type HeldoutScenarioConfig,
-} from "../_factory.ts";
-
-const config = ${JSON.stringify(config, null, 2)} satisfies HeldoutScenarioConfig;
-const setup = buildHeldoutSetup(config);
-
-export default scenario({
-  lane: "live-only",
-  id: ${JSON.stringify(id)},
-  title: ${JSON.stringify(config.title)},
-  domain: "group-chat",
-  ...setup,
-  turns: [
-    {
-      ...setup.decisionTurn,
-      assertResponse(text: string) {
-        const responseLength = text.trim().length;
-        ${assertion}
-      },
-    },
-  ],
-  finalChecks: [
-    {
-      type: "judgeRubric",
-      name: ${JSON.stringify(`heldout-timing:${point.label}`)},
-      minimumScore: 0.7,
-      rubric: ${JSON.stringify(rubric)},
-    },
-  ],
-});
-`,
+    source: `heldoutTimingScenario(${JSON.stringify(config, null, 2)})`,
   };
 }
 
@@ -314,6 +266,7 @@ export async function generateIshikiScenarios(): Promise<void> {
       await unlink(path.join(OUTPUT_DIR, entry));
   }
   const ordinals = new Map<string, number>();
+  const definitions: string[] = [];
   const trace: Array<{
     id: string;
     decisionPointId: string;
@@ -325,11 +278,7 @@ export async function generateIshikiScenarios(): Promise<void> {
     const ordinal = (ordinals.get(cell) ?? 0) + 1;
     ordinals.set(cell, ordinal);
     const rendered = renderScenario(point, ordinal);
-    await writeFile(
-      path.join(OUTPUT_DIR, rendered.fileName),
-      rendered.source,
-      "utf8",
-    );
+    definitions.push(rendered.source);
     trace.push({
       id: rendered.fileName.replace(".scenario.ts", ""),
       decisionPointId: point.decisionPointId,
@@ -337,6 +286,11 @@ export async function generateIshikiScenarios(): Promise<void> {
       label: point.label,
     });
   }
+  await writeFile(
+    path.join(OUTPUT_DIR, "ishiki.scenarios.ts"),
+    `/** Generated from ishiki-labs/multi-party-dialogue at ${ISHIKI_REVISION} (Apache-2.0). */\nimport { heldoutTimingScenario } from "../_factory.ts";\nexport default [\n${definitions.join(",\n")}\n];\n`,
+    "utf8",
+  );
   await writeFile(
     path.join(OUTPUT_DIR, "source-manifest.json"),
     `${JSON.stringify({ dataset: DATASET, revision: ISHIKI_REVISION, license: "Apache-2.0", sourceFiles, scenarios: trace }, null, 2)}\n`,

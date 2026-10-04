@@ -1,5 +1,5 @@
 /** Real SQL task metadata and virtual existing core clock; no model calls. */
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { TaskService } from "./task";
 

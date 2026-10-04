@@ -6,7 +6,7 @@ import path from "node:path";
 import type {
   LinkedAccountConfig,
   LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   __resetAccountPoolStatusForTests,

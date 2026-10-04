@@ -18,8 +18,8 @@ import {
   logger,
   type TargetSource,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
-import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
+import { formatErrorWithStack } from "@elizaos/core/protocol";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { restoreRemoteBrowserController } from "@elizaos/plugin-browser/remote-controller";
 import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql";
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";

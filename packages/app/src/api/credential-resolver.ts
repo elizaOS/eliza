@@ -33,7 +33,7 @@ import {
   getFirstRunProviderOption,
   getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/host/protocol";
 
 // ── Credential source registry ───────────────────────────────────────
 interface CredentialSource {

@@ -76,10 +76,12 @@
     "vitest": "5.0.2"
   },
   "dependencies": {
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@nut-tree-fork/nut-js": "^4.2.6",
     "puppeteer-core": "^24.9.0",
-    "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "optionalDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"

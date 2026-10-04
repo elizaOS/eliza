@@ -18,7 +18,10 @@ import { defineConfig } from "vitest/config";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger.ts";
 import { repoRoot } from "./repo-root.ts";
 import { buildWorkspaceSourceAliases } from "./source-aliases.ts";
-import { getElizaWorkspaceRoot, type ModuleAlias } from "./workspace-aliases.ts";
+import {
+  getElizaWorkspaceRoot,
+  type ModuleAlias,
+} from "./workspace-aliases.ts";
 
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";

@@ -5,11 +5,11 @@
  * the document is visible so provider state follows env/config changes.
  */
 
+import type { ProviderStatus } from "@elizaos/contracts";
 import { Cloud, Cpu, KeyRound, Settings, Smartphone } from "lucide-react";
-import type { ComponentType } from "react";
-import { useCallback, useEffect, useState } from "react";
-import { client } from "../../api";
-import type { ProviderStatus } from "../../api/client-local-inference";
+import { type ComponentType, useCallback, useEffect, useState } from "react";
+
+import { client } from "../../api/client";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";

@@ -14,35 +14,6 @@ import {
   formatHourlyRate,
   getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  Badge,
-  BulkDeleteDialog,
-  BulkSelectionBar,
-  DashboardDataList,
-  DashboardDataListDesktop,
-  DashboardDataListFilteredCount,
-  DashboardDataListMobile,
-  DataListEmptyState,
-  Input,
-  runBulkDelete,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@elizaos/ui/cloud-ui";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpDown,
@@ -58,8 +29,45 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "../../../bridge/toast";
+import {
+  BulkDeleteDialog,
+  BulkSelectionBar,
+  runBulkDelete,
+} from "../../../cloud-ui/components/bulk/bulk-select";
+import {
+  DashboardDataList,
+  DashboardDataListDesktop,
+  DashboardDataListFilteredCount,
+  DashboardDataListMobile,
+} from "../../../cloud-ui/components/data-list/dashboard-data-list";
+import { DataListEmptyState } from "../../../cloud-ui/components/data-list/data-list-empty-state";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
+import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
+import { Input } from "../../../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { api, apiWithStatus } from "../../lib/api-client";
 import { parseAgentsResponse } from "../lib/data/eliza-agents";

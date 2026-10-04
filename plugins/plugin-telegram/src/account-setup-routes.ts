@@ -24,7 +24,7 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,

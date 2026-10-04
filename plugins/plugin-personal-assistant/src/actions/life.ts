@@ -14,6 +14,23 @@ import {
   isPageScopedConversationMetadata,
 } from "@elizaos/agent";
 import type {
+  CreateLifeOpsDefinitionRequest,
+  CreateLifeOpsGoalRequest,
+  LifeOpsCadence,
+  LifeOpsDailySlot,
+  LifeOpsDefinitionRecord,
+  LifeOpsDomain,
+  LifeOpsGoalRecord,
+  LifeOpsWindowPolicy,
+  UpdateLifeOpsDefinitionRequest,
+  UpdateLifeOpsGoalRequest,
+} from "@elizaos/contracts";
+import {
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
+import type {
   ActionResult,
   AgentContext,
   EffectReceipt,
@@ -26,32 +43,17 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
-  CALENDAR_TIME_ZONE_INVALID,
-  CalendarTimeZoneError,
   ElizaError,
   extractUserText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveActionArgs,
-  resolveCalendarTimeZone,
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
-import { findInteractionRegions } from "@elizaos/core/messaging/interactions/parse";
+import { findInteractionRegions } from "@elizaos/core/protocol";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
-import type {
-  CreateLifeOpsDefinitionRequest,
-  CreateLifeOpsGoalRequest,
-  LifeOpsCadence,
-  LifeOpsDailySlot,
-  LifeOpsDefinitionRecord,
-  LifeOpsDomain,
-  LifeOpsGoalRecord,
-  LifeOpsWindowPolicy,
-  UpdateLifeOpsDefinitionRequest,
-  UpdateLifeOpsGoalRequest,
-} from "../contracts/index.js";
 import {
   calendarReadUnavailableMessage,
   getGoogleCapabilityStatus,

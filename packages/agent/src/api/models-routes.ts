@@ -11,7 +11,7 @@ import { parseOptionalBooleanQuery } from "./query-parameters.ts";
  * transport-agnostic and unit-testable.
  */
 
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
 import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";

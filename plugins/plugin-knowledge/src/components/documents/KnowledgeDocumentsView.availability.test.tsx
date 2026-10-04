@@ -5,8 +5,6 @@
  */
 // @vitest-environment jsdom
 
-import { __resetResourceCache, getCached } from "@elizaos/ui";
-import { ApiError } from "@elizaos/ui/api/client-types-core";
 import {
   act,
   cleanup,
@@ -16,6 +14,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../../../../packages/ui/src/api/client-types-core";
+import {
+  __resetResourceCache,
+  getCached,
+} from "../../../../../packages/ui/src/hooks/resource-cache";
 
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const platformMock = vi.hoisted(() => ({ isNative: false }));
@@ -26,22 +29,25 @@ const clientMock = vi.hoisted(() => ({
   listDocuments: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/state", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAppSelector: (selector: (value: Record<string, unknown>) => unknown) =>
     selector(appMock.value),
   useTranslation: () => ({ t: appMock.value.t }),
   useRegisterViewChatBinding: () => {},
-}));
-vi.mock("@elizaos/ui/api/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/ui/api/client")>()),
-  client: clientMock,
-}));
-vi.mock("@elizaos/ui/platform", () => ({
   get isNative() {
     return platformMock.isNative;
   },
 }));
-vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
+vi.mock(
+  "../../../../../packages/ui/src/api/client",
+  async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: clientMock,
+  }),
+);
+
+vi.mock("../../../../../packages/ui/src/hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityMock.value,
 }));
 vi.mock("./documents-detail", () => ({

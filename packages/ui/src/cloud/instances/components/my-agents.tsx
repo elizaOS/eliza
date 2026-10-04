@@ -1,6 +1,5 @@
 "use client";
 
-import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui/cloud-ui";
 import {
   ArrowRight,
   BookOpen,
@@ -14,6 +13,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
+import { DashboardPageContainer } from "../../../cloud-ui/components/layout/dashboard-page";
+import { useSetPageHeader } from "../../../cloud-ui/components/layout/page-header-context.hooks";
 import { Button } from "../../../components/ui/button";
 /**
  * The My Agents surface: lists the user's cloud agent instances with sort/view

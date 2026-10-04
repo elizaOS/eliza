@@ -5,7 +5,7 @@
  * Handles local callback server + manual code paste fallback.
  */
 
-import { logger } from "@elizaos/core/logger";
+import { logger } from "@elizaos/core";
 import type { OAuthCredentials } from "./types.ts";
 import {
   loginOpenAICodex,

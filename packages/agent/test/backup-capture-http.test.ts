@@ -18,8 +18,8 @@ import {
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Frames,
-} from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+} from "@elizaos/contracts";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {
@@ -37,6 +37,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(tmpdir(), "agent-backup-http-"));
   for (const [key, value] of Object.entries({
     ELIZA_STATE_DIR: directory,
+    PGLITE_DATA_DIR: path.join(directory, ".elizadb"),
     ELIZA_CONFIG_PATH: path.join(directory, "eliza.json"),
     ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "eliza.json"),
     ELIZA_API_BIND_HOST: "127.0.0.1",

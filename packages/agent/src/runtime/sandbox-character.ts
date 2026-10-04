@@ -12,12 +12,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  type AgentConfig,
   type CharacterSettings,
   logger,
-  normalizeFirstRunProviderId,
   resolveElizaPackageRootSync,
 } from "@elizaos/core";
+import {
+  type AgentConfig,
+  normalizeFirstRunProviderId,
+} from "@elizaos/host/protocol";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";

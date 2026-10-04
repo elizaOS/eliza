@@ -39,8 +39,8 @@ import {
   unlinkSync,
 } from "node:fs";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core/errors";
-import { logger } from "@elizaos/core/logger";
+import { logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import {
   type AccountStorageMutationScope,
   type AccountStoragePolicy,

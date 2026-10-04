@@ -1,3 +1,4 @@
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 /**
  * Trigger event bridge — routes runtime event-bus emissions to enabled
  * event-kind triggers via the existing `executeTriggerTask` pipeline.
@@ -31,7 +32,6 @@ import {
   EventType,
   type IAgentRuntime,
   isPassiveConnectorSource,
-  lifeOpsPassiveConnectorsEnabled,
   type Task,
   type UUID,
 } from "@elizaos/core";

@@ -1,4 +1,4 @@
-import { getCodingAgentSelectorBridge } from "@elizaos/core/account-pool-bridge";
+import { getCodingAgentSelectorBridge } from "@elizaos/core/protocol";
 /**
  * Session-affinity semantics under mid-session failover — the gap left open by
  * the sibling suites (#11032 lineage, QA umbrella #10722/#9950):

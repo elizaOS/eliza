@@ -31,12 +31,31 @@ export function buildTaskRuntime(
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-task-build-"));
   try {
     exportCommittedSources(sourceRoot, sourceCommit, temporary, SOURCE_PATHS);
+    // This isolated consumer contains only the task runtime. Its local barrel
+    // resolves public imports to the same committed implementations without
+    // pulling the full agent kernel or unrelated workspace dependencies.
+    fs.writeFileSync(
+      path.join(temporary, "task-core.ts"),
+      [
+        "errors",
+        "messaging/interactive-task",
+        "messaging/interactions/sessions",
+        "messaging/interactions/profiles",
+        "messaging/interactions/profile-catalog",
+        "messaging/task-widgets",
+      ]
+        .map((name) => `export * from './packages/core/src/${name}.ts';`)
+        .join("\n"),
+    );
     fs.writeFileSync(
       path.join(temporary, "tsconfig.json"),
       JSON.stringify({
         compilerOptions: {
           baseUrl: ".",
           paths: {
+            "@elizaos/core": ["./task-core.ts"],
+            "@elizaos/core/protocol": ["./task-core.ts"],
+            // Retain source aliases for building older immutable commits.
             "@elizaos/plugin-browser/native-wire": [
               "./plugins/plugin-browser/src/native-wire.ts",
             ],

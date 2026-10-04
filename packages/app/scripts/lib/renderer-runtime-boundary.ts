@@ -49,6 +49,8 @@ function isHostRuntime(id: string): boolean {
     id.startsWith("node:") ||
     id === "@elizaos/app" ||
     id === "@elizaos/core" ||
+    id === "@elizaos/host" ||
+    id === "@elizaos/contracts/node" ||
     id === "@elizaos/core/index" ||
     id === "@elizaos/plugin-sql" ||
     id.startsWith("@elizaos/plugin-sql/") ||

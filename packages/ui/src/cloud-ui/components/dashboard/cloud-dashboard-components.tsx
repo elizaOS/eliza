@@ -260,10 +260,10 @@ export function ContainersEmptyState() {
   return (
     <div className="flex min-h-[400px] flex-col items-center justify-center gap-6 rounded-sm bg-card py-12">
       <div className="space-y-2 text-center">
-        <h3 className="text-xl font-medium text-white">No containers yet</h3>
+        <h3 className="text-xl font-medium text-txt">No containers yet</h3>
       </div>
 
-      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-sm border border-white/10 bg-black/60">
+      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-sm border border-border bg-bg-muted">
         {commands.map((cmd, index) => (
           <div
             key={cmd}

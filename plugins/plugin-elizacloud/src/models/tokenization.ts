@@ -1,4 +1,4 @@
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/host/protocol";
 import { ModelType } from "@elizaos/core";
 import { encodingForModel } from "js-tiktoken";
 import { type DetokenizeTextParams } from "@elizaos/core";

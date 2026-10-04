@@ -1,4 +1,5 @@
 import { rpcJsonRequest } from "../lib/rpc-request.ts";
+
 /**
  * EVM balance fetching — Alchemy, Ankr, and direct-RPC fallback paths.
  *
@@ -6,14 +7,12 @@ import { rpcJsonRequest } from "../lib/rpc-request.ts";
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
  */
 
-import {
-  ElizaError,
-  type EvmChainBalance,
-  type EvmNft,
-  type EvmTokenBalance,
-  logger,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+import type {
+  EvmChainBalance,
+  EvmNft,
+  EvmTokenBalance,
+} from "@elizaos/contracts";
+import { ElizaError, logger, toWellFormedUnicode } from "@elizaos/core";
 
 import {
   computeValueUsd,

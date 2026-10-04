@@ -28,7 +28,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { getDefaultAccountPool } from "@elizaos/auth/accounts";
-import type { ElizaConfig } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
   type AccountsRouteContext,
   handleAccountsRoutes,

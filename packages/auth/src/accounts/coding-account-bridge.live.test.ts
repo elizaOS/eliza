@@ -1,4 +1,4 @@
-import { getCodingAgentSelectorBridge } from "@elizaos/core/account-pool-bridge";
+import { getCodingAgentSelectorBridge } from "@elizaos/core/protocol";
 /**
  * Live multi-account E2E — runs against the operator's REAL linked accounts.
  *
@@ -16,7 +16,7 @@ import { getCodingAgentSelectorBridge } from "@elizaos/core/account-pool-bridge"
  *   ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun run --cwd packages/auth test -- coding-account-bridge.live
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   getDefaultAccountPool,

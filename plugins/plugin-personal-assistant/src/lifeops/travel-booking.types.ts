@@ -1,6 +1,6 @@
 /** Types for the flight-booking flow: passengers, prepared bookings, and approval payload fields over the Duffel client. */
 
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type {
   DuffelOffer,
   DuffelOrder,

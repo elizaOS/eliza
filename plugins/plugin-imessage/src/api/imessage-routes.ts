@@ -4,7 +4,7 @@
  * access stays structural so the connector remains dynamically loadable.
  */
 import type http from "node:http";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core/api/route-helpers";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 import { z } from "zod";
 import { parseIMessageContactId } from "../contact-path.js";
 /**

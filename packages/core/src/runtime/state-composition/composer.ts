@@ -112,7 +112,6 @@ export class ProviderStateComposer {
 		// cached providers to execute again. Reused providers are logged as cache
 		// hits below, so enabling trajectories cannot add latency or change what a
 		// provider observes.
-		const filterList = onlyInclude ? includeList : null;
 		const emptyObj = {
 			values: {},
 			data: {},
@@ -139,78 +138,12 @@ export class ProviderStateComposer {
 					message.roomId)
 				? cachedCandidate
 				: emptyObj;
-		const activeContexts = getActiveRoutingContextsForTurn(
-			cachedState,
+		const providerNames = await this.selectProviderNames(
 			message,
+			cachedState,
+			includeList,
+			onlyInclude,
 		);
-		const providerNames = new Set<string>();
-		if (filterList) {
-			// Explicit stage selection owns role/context admission. Hooks may narrow
-			// that selection but cannot expand it into another stage's providers.
-			for (const name of filterList) {
-				providerNames.add(name);
-			}
-		} else {
-			for (const p of this.runtime.providers.filter(
-				(p) => !p.private && !p.dynamic,
-			)) {
-				if (
-					activeContexts.length > 0 &&
-					!shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
-				) {
-					continue;
-				}
-				providerNames.add(p.name);
-			}
-		}
-		if (!filterList && includeList && includeList.length > 0) {
-			for (const name of includeList) {
-				providerNames.add(name);
-			}
-		}
-		// Opt-in provider-selection hook: lets a host app filter, extend, or
-		// reorder the provider set per message intent before any provider runs.
-		// Guarded so the default (no-hook) path stays allocation-free.
-		if (this.lifecycle.hasProviderSelectionHooks()) {
-			const selection = composeStateProvidersPipelineHookContext({
-				message,
-				providers: { current: [...providerNames] },
-				activeContexts,
-				onlyInclude,
-				includeList,
-			});
-			await this.runtime.applyPipelineHooks(
-				"compose_state_providers",
-				selection,
-			);
-			// Boundary validation: a buggy hook may replace `current` with a
-			// non-array (or throw mid-mutation). Only adopt a well-formed list;
-			// otherwise keep the pre-hook selection rather than crash the turn.
-			const selected = selection.providers.current;
-			if (Array.isArray(selected)) {
-				providerNames.clear();
-				for (const name of selected) {
-					if (typeof name === "string" && name.length > 0) {
-						providerNames.add(name);
-					}
-				}
-			} else {
-				this.runtime.logger.warn(
-					{
-						src: "agent",
-						agentId: this.runtime.agentId,
-						phase: "compose_state_providers",
-					},
-					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
-				);
-			}
-		}
-		if (filterList) {
-			const allowed = new Set(filterList);
-			for (const name of providerNames) {
-				if (!allowed.has(name)) providerNames.delete(name);
-			}
-		}
 
 		const providersToGet: Provider[] = [];
 		const deniedSensitiveProviderNames = new Set<string>();
@@ -820,6 +753,115 @@ export class ProviderStateComposer {
 			},
 			text: providersText,
 		} as State;
+		this.publishState(
+			message,
+			newState,
+			providersToGet,
+			currentProviderResults,
+			containsSensitiveProvider,
+			providerSelectionKey,
+			audienceCacheKey,
+			conversationSeed,
+			providerSignal,
+		);
+		return newState;
+	}
+	/** Select names before disclosure admission or execution; explicit stages remain an upper bound. */
+	private async selectProviderNames(
+		message: Memory,
+		cachedState: State,
+		includeList: string[] | null,
+		onlyInclude: boolean,
+	): Promise<Set<string>> {
+		const filterList = onlyInclude ? includeList : null;
+		const activeContexts = getActiveRoutingContextsForTurn(
+			cachedState,
+			message,
+		);
+		const providerNames = new Set<string>();
+		if (filterList) {
+			// Explicit stage selection owns role/context admission. Hooks may narrow
+			// that selection but cannot expand it into another stage's providers.
+			for (const name of filterList) {
+				providerNames.add(name);
+			}
+		} else {
+			for (const p of this.runtime.providers.filter(
+				(p) => !p.private && !p.dynamic,
+			)) {
+				if (
+					activeContexts.length > 0 &&
+					!shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
+				) {
+					continue;
+				}
+				providerNames.add(p.name);
+			}
+		}
+		if (!filterList && includeList && includeList.length > 0) {
+			for (const name of includeList) {
+				providerNames.add(name);
+			}
+		}
+		// Opt-in provider-selection hook: lets a host app filter, extend, or
+		// reorder the provider set per message intent before any provider runs.
+		// Guarded so the default (no-hook) path stays allocation-free.
+		if (this.lifecycle.hasProviderSelectionHooks()) {
+			const selection = composeStateProvidersPipelineHookContext({
+				message,
+				providers: { current: [...providerNames] },
+				activeContexts,
+				onlyInclude,
+				includeList,
+			});
+			await this.runtime.applyPipelineHooks(
+				"compose_state_providers",
+				selection,
+			);
+			// Boundary validation: a buggy hook may replace `current` with a
+			// non-array (or throw mid-mutation). Only adopt a well-formed list;
+			// otherwise keep the pre-hook selection rather than crash the turn.
+			const selected = selection.providers.current;
+			if (Array.isArray(selected)) {
+				providerNames.clear();
+				for (const name of selected) {
+					if (typeof name === "string" && name.length > 0) {
+						providerNames.add(name);
+					}
+				}
+			} else {
+				this.runtime.logger.warn(
+					{
+						src: "agent",
+						agentId: this.runtime.agentId,
+						phase: "compose_state_providers",
+					},
+					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
+				);
+			}
+		}
+		if (filterList) {
+			const allowed = new Set(filterList);
+			for (const name of providerNames) {
+				if (!allowed.has(name)) providerNames.delete(name);
+			}
+		}
+
+		return providerNames;
+	}
+
+	/** Publish only after audience checks; cancellation is rechecked after reading lazy provider values. */
+	private publishState(
+		message: Memory,
+		newState: State,
+		providersToGet: Provider[],
+		currentProviderResults: Record<string, CachedProviderResult>,
+		containsSensitiveProvider: boolean,
+		providerSelectionKey: string,
+		audienceCacheKey: string,
+		conversationSeed: string,
+		providerSignal: AbortSignal | undefined,
+	): void {
 		// Provider values can be lazily materialized while assembling the state;
 		// recheck at the mutation boundary so a cancellation in that window cannot
 		// populate either the normal cache or the audience-scoped public cache.
@@ -886,6 +928,5 @@ export class ProviderStateComposer {
 				},
 			});
 		}
-		return newState;
 	}
 }

@@ -6,7 +6,7 @@
  */
 import type http from "node:http";
 import { type RoleGateRole, roleRank } from "@elizaos/core";
-import { resolveApiToken } from "@elizaos/core/runtime-env";
+import { resolveApiToken } from "@elizaos/host/protocol";
 import type {
   AuthIdentityRow,
   AuthRepository,

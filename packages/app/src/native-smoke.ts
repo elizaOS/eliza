@@ -1,13 +1,13 @@
 /** Installed-native smoke drivers. Loaded only by the native shell; every driver requires a harness request marker. */
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-import { client } from "@elizaos/ui/api";
-import { shellLocalStorage } from "@elizaos/ui/bridge";
 import {
+  client,
   FIRST_RUN_CLOUD_LOGIN_ACTION,
+  logger,
+  shellLocalStorage,
   tryHandleFirstRunAction,
-} from "@elizaos/ui/first-run/first-run-action-channel";
-import { logger } from "@elizaos/ui/logger";
+} from "@elizaos/ui";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
 import {
   extractIosLivenessChallengeToken,

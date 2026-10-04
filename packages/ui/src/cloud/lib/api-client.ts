@@ -1,3 +1,5 @@
+import { getHostRequestTransport } from "../../api/host-transport";
+import { nativeJsonRequestData as nativeRequestData } from "../../api/native-http-codec";
 /**
  * Typed fetch wrapper for the cloud surfaces hosted inside the Eliza app.
  * Every `/api/*` call routed through here gets a single place that:
@@ -25,23 +27,23 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { CSRF_HEADER_NAME } from "@elizaos/auth";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
+import { getElizaApiToken } from "@elizaos/host/protocol";
+
+import {
+  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
+  resolveDirectCloudAuthApiBase,
+  STAGING_DIRECT_CLOUD_API_BASE_URL,
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
-import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
-import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";
-import {
-  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
-  resolveDirectCloudAuthApiBase,
-  STAGING_DIRECT_CLOUD_API_BASE_URL,
-} from "../../api/direct-cloud-endpoints";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import { logger } from "../../logger.ts";
@@ -253,17 +255,7 @@ function headersToRecord(headers: Headers): Record<string, string> {
 }
 /** CapacitorHttp wants a structured `data` value; parse a JSON string body back
  *  to an object, pass other bodies through, treat empty/absent as no body. */
-function nativeRequestData(body: BodyInit | null | undefined): unknown {
-  if (body == null) return undefined;
-  if (typeof body !== "string") return body;
-  const trimmed = body.trim();
-  if (!trimmed) return undefined;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return body;
-  }
-}
+
 function nativeResponseBody(data: unknown): {
   body: string;
   contentType: string;
@@ -472,7 +464,7 @@ export async function apiFetch(
   // installed in the macOS shell and otherwise falls back to a CORS-blocked
   // WKWebView request. Capacitor keeps its native plugin, while web retains the
   // original same-origin fetch path.
-  const desktopTransport = desktopHttpTransportForUrl(url);
+  const desktopTransport = await getHostRequestTransport(url, "cloud");
   let res: Response;
   if (desktopTransport) {
     res = await requestNativeResponseWithAbort(
@@ -599,4 +591,16 @@ export async function apiWithStatusAndHeaders<T = unknown>(
     }
     throw err;
   }
+}
+
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const body = error.body;
+    if (body && typeof body === "object" && "error" in body) {
+      const apiError = (body as { error?: unknown }).error;
+      if (typeof apiError === "string" && apiError) return apiError;
+    }
+    return error.message || fallback;
+  }
+  return fallback;
 }

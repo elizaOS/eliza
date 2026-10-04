@@ -25,9 +25,8 @@ import path from "node:path";
 import type {
   LinkedAccountConfig,
   LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
-import { logger } from "@elizaos/core/logger";
-import { resolveStateDir } from "@elizaos/core/utils/state-dir";
+} from "@elizaos/contracts";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { type AccountPool, getDefaultAccountPool } from "./account-pool.js";
 import {
   type AccountPoolConsumerUsageBreakdown,

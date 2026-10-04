@@ -10,7 +10,7 @@ import {
   isPermissionId,
   type PermissionId,
   type PermissionState,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core/protocol";
 /**
  * Friendly human-readable labels per permission id. Used as the card title
  * (e.g. `reminders` → "Apple Reminders").

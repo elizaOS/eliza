@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { getElizaNamespace, resolveStateDir } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,

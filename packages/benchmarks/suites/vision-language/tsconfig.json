@@ -10,7 +10,8 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "types": ["node"],
-    "lib": ["ES2022", "DOM"]
+    "lib": ["ES2022", "DOM"],
+    "customConditions": ["eliza-source"]
   },
   "include": [
     "src/**/*.ts",

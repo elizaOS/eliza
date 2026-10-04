@@ -21,8 +21,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..", "..", "..");
 const liveSmokeScript = path.join(
   repoRoot,
-  "packages",
-  "core",
+  "plugins",
+  "plugin-agent-orchestrator",
   "test",
   "live",
   "task-agent-live-smoke.ts",

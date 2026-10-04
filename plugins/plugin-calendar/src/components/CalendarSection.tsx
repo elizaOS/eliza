@@ -11,8 +11,7 @@
  * the same event editor and calendar mutation boundary.
  */
 
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import {
   Button,
   Popover,
@@ -20,9 +19,12 @@ import {
   PopoverTrigger,
   SegmentedControl,
   Spinner,
-} from "@elizaos/ui/components";
-import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
-import { useAppSelector } from "@elizaos/ui/state";
+  useAgentElement,
+  useAppSelector,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "@elizaos/ui";
+
 import { CalendarClock, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import {
   type CSSProperties,

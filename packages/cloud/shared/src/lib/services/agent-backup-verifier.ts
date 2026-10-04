@@ -43,7 +43,7 @@
  * Manifest hashing here intentionally mirrors the producer in
  * `packages/agent/src/services/agent-backup.ts` (canonical sorted-key JSON →
  * sha256). Cloud-shared cannot import that package, so both sides now call the
- * one bounded walk in `@elizaos/core/canonical-json` instead of keeping two
+ * one bounded walk in `@elizaos/contracts` instead of keeping two
  * copies of the recursion in sync; if the producer's hash shapes change, this
  * verifier must still change in lockstep or the fleet will page with
  * hash-mismatch failures.
@@ -54,8 +54,8 @@ import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CANONICAL_JSON,
   CANONICAL_JSON_UNBOUNDED,
-  stableJsonString,
-} from "@elizaos/core/canonical-json";
+  canonicalJsonString,
+} from "@elizaos/core/protocol";
 import { and, desc, eq, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
@@ -377,8 +377,8 @@ function sha256Bytes(bytes: Buffer | string): string {
  * stamping that row as unverifiable. Canonical bytes are unchanged for every
  * manifest that hashed before.
  */
-function sha256Json(value: unknown): string {
-  return sha256Bytes(stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON));
+function sha256Json(value: object): string {
+  return sha256Bytes(canonicalJsonString(value, AGENT_BACKUP_CANONICAL_JSON));
 }
 
 function verifyFileEntry(label: string, entry: AgentBackupFileEntry, mismatches: string[]): void {

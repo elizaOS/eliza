@@ -47,9 +47,11 @@ vi.mock("../../../lib/api-client", () => {
   return { api: apiMock, ApiError };
 });
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
-vi.mock("../../../../components/primitives", () => {
+vi.mock("../../../../components/ui/alert", () => {
   const Container = ({ children }: { children?: ReactNode }) => (
     <div>{children}</div>
   );
@@ -57,15 +59,27 @@ vi.mock("../../../../components/primitives", () => {
     Alert: Container,
     AlertDescription: Container,
     AlertTitle: Container,
+  };
+});
+vi.mock("../../../../components/ui/button", () => {
+  return {
     Button: ({
       children,
       ...props
     }: ButtonHTMLAttributes<HTMLButtonElement>) => (
       <button {...props}>{children}</button>
     ),
+  };
+});
+vi.mock("../../../../components/ui/input", () => {
+  return {
     Input: (props: InputHTMLAttributes<HTMLInputElement>) => (
       <input {...props} />
     ),
+  };
+});
+vi.mock("../../../../components/ui/textarea", () => {
+  return {
     Textarea: (props: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
       <textarea {...props} />
     ),

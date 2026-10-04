@@ -23,7 +23,6 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
-  lifeOpsPassiveConnectorsEnabled,
   logger,
   type Media,
   type Memory,
@@ -41,6 +40,7 @@ import {
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import type {
   Chat,
   Document,

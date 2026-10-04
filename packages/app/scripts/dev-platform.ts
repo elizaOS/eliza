@@ -71,7 +71,7 @@ import { colorizeDevSettingsStartupBanner } from "@elizaos/app/dev-settings-bann
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.ts";
 import { createApiSupervisor } from "./lib/api-supervisor.ts";

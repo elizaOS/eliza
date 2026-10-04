@@ -11,7 +11,7 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
 
 export type DevSettingsRow = {
   setting: string;

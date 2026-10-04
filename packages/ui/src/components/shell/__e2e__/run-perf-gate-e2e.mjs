@@ -42,7 +42,7 @@ import {
 import {
   LAYOUT_SHIFT_OBSERVER_INIT,
   summarizeStability,
-} from "../../../testing/layout-stability.ts";
+} from "../../../perf/layout-stability.ts";
 import { measureInjectedNonTransientShift } from "../../../testing/layout-shift-teeth.ts";
 import {
   evaluateFrameBudgetWindows,

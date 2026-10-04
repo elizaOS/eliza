@@ -1,6 +1,7 @@
 /** Derives the scheduler's default execution profiles from native host evidence. */
+
+import type { TaskExecutionProfile } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { TaskExecutionProfile } from "@elizaos/core/contracts/scheduled-task-execution";
 
 interface CapacitorPluginsLike {
   BackgroundRunner?: unknown;

@@ -34,11 +34,11 @@
  * checks BEFORE computing admission); this module only maps verified evidence
  * onto the policy core.
  */
+
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";
 import type {
 	ArtifactShareGrant,
 	ArtifactShareGrantMode,
-	MemoryScope,
 } from "../types/memory.js";
 import type { UUID } from "../types/primitives.js";
 import {
@@ -47,24 +47,10 @@ import {
 	type DisclosureSubject,
 	resolveAudienceAdmission,
 } from "./audience-disclosure";
+import { isMemoryScope } from "./memory-scope.js";
 
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isMemoryScope(value: unknown): value is MemoryScope {
-	switch (value) {
-		case "shared":
-		case "private":
-		case "room":
-		case "global":
-		case "owner-private":
-		case "user-private":
-		case "agent-private":
-			return true;
-		default:
-			return false;
-	}
-}
 
 function stringUuid(value: unknown): UUID | undefined {
 	return typeof value === "string" && UUID_PATTERN.test(value)

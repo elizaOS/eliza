@@ -17,7 +17,7 @@ import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { normalizeHostPairingCode } from "@elizaos/agent/host-use-cases";
 import { logger } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { authStoreForRuntime } from "../services/auth-store";
 import {
   createMachineSession,

@@ -2,12 +2,10 @@
   "compilerOptions": {
     "customConditions": ["eliza-source"],
     "paths": {
-      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/app": ["../app/src/index.ts"],
       "@elizaos/app/*": ["../app/src/*"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
-      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-computeruse/mobile/*": [
         "../../plugins/plugin-computeruse/src/mobile/*"
       ],
@@ -41,7 +39,6 @@
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],
@@ -87,7 +84,8 @@
       "@elizaos/plugin-relationships/*": [
         "../../plugins/plugin-relationships/src/*"
       ],
-      "@elizaos/plugin-pty/*": ["../../plugins/plugin-pty/*"]
+      "@elizaos/plugin-pty/*": ["../../plugins/plugin-pty/*"],
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   }
 }

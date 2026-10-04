@@ -5,7 +5,6 @@
  * instead of this journal.
  */
 import path from "node:path";
-import { readJsonFile, writeJsonAtomic } from "@elizaos/core";
 import {
 	canonicalizeRemoteControlValue,
 	type EncryptedRemoteControlEnvelope,
@@ -19,7 +18,8 @@ import {
 	type RemoteControllerPublicIdentity,
 	type RemoteJsonValue,
 	type SignedRemoteCommand,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import { readJsonFile, writeJsonAtomic } from "@elizaos/core";
 import { resolveStateDir } from "./native/auth-bridge";
 export type RemoteTargetCommandStatus =
 	| "reserved"

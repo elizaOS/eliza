@@ -1,16 +1,14 @@
 /** Frontend field renderers over the runtime's declarative configuration catalog. */
 
+import type { ConfigUiHint } from "@elizaos/contracts";
 import type {
   ActionDefinition,
   ActionHandler,
   FieldCatalog,
   FieldDefinition,
   JsonSchemaProperty,
-} from "@elizaos/core/config/config-catalog";
-import type { ConfigUiHint } from "@elizaos/core/contracts/host-types";
+} from "@elizaos/host/protocol";
 import type { ReactNode } from "react";
-
-export * from "@elizaos/core/config/config-catalog";
 
 // ── Render props (≈ json-render ComponentRenderProps) ──────────────────
 

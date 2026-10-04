@@ -16,7 +16,7 @@
  */
 
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,

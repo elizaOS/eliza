@@ -13,5 +13,8 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/testing": "workspace:*",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@elizaos/host": "workspace:*"
   }
 }

@@ -1,6 +1,6 @@
 /** Applies app display-name normalization to the canonical agent character. */
 import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
-import { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character-message-examples";
+import { normalizeCharacterMessageExamples } from "@elizaos/core/protocol";
 
 export function buildCharacterFromConfig(
   ...args: Parameters<typeof upstreamBuildCharacterFromConfig>

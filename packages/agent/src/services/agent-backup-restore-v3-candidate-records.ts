@@ -21,8 +21,8 @@ import {
   type AgentBackupRestoreV3StageRecordReceipt,
   type AgentBackupRestoreV3StagingSession,
   type AgentBackupRestoreV3StreamComponentName,
-  ElizaError,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   type AgentBackupRestoreV3CandidateFs,
   type AgentBackupRestoreV3CandidateFsLock,

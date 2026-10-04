@@ -14,8 +14,8 @@
  * the evaluator. Exact approval previews remain interactive controls.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,

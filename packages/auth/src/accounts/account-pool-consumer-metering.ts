@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core/utils/state-dir";
+import { resolveStateDir } from "@elizaos/core";
 
 const STORE_DIR = "account-pool";
 const KEY_FILE = "consumer-keys.json";

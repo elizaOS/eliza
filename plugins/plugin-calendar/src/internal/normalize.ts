@@ -11,7 +11,7 @@ import {
   type LifeOpsConnectorMode,
   type LifeOpsConnectorSide,
   type LifeOpsGoogleCapability,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
   isValidTimeZone,

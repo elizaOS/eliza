@@ -27,16 +27,14 @@ export {
   syncSolanaPublicKeyEnv,
 } from "./wallet-keygen.ts";
 
-import {
-  type KeyValidationResult,
-  logger,
-  type SolanaTokenBalance,
-  toWellFormedUnicode,
-  truncateWellFormed,
-  type WalletAddresses,
-  type WalletChain,
-  type WalletImportResult,
-} from "@elizaos/core";
+import type {
+  KeyValidationResult,
+  SolanaTokenBalance,
+  WalletAddresses,
+  WalletChain,
+  WalletImportResult,
+} from "@elizaos/contracts";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { computeValueUsd } from "@elizaos/plugin-wallet/read";
@@ -81,7 +79,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 

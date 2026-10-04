@@ -3,7 +3,7 @@
  * React component that renders its custom detail panel. Apps self-register on
  * startup via side-effect import; the app-details UI looks up components here.
  */
-import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
 import type { AppDetailExtensionComponent } from "./detail-extension-types.js";
 
 /**

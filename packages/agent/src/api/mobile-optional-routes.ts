@@ -11,13 +11,11 @@
  * activity-signals.
  */
 import type http from "node:http";
+import { readRequestBody, sendJson, sendJsonError } from "@elizaos/host";
 import {
   isMobilePlatform,
   normalizeDeploymentTargetConfig,
-  readRequestBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { loadEffectiveElizaConfig } from "../config/config.ts";
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";

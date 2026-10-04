@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { SecureStoreSecretKind } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 /** Fixed Keychain / Secret Service “service” identifier (see docs/guides/platform-secure-store.md). */
 export const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";

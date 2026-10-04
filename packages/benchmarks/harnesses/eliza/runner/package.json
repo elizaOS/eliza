@@ -34,7 +34,9 @@
     "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/lifeops-bench": "workspace:*"
+    "@elizaos/lifeops-bench": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/ui": "workspace:*",

@@ -27,7 +27,7 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import { DEFAULT_ACCOUNT_ID } from "./accounts";
 import { resolveTelegramBotCredential } from "./bot-credential";
 import {

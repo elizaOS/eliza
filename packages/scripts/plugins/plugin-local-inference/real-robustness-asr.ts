@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { existsSync } from "node:fs";
-import { wordErrorRate } from "@elizaos/core/voice-wer";
+import { wordErrorRate } from "@elizaos/voice";
 /**
  * Real ASR WER under acoustic degradation — REAL speech + REAL models (#8785).
  *

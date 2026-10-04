@@ -26,7 +26,7 @@ const client = vi.hoisted(() => ({
 }));
 const loggerWarn = vi.hoisted(() => vi.fn());
 
-vi.mock("../api", () => ({ client }));
+vi.mock("../api/client", () => ({ client }));
 vi.mock("../logger.ts", () => ({
   logger: { warn: loggerWarn },
 }));
@@ -41,7 +41,7 @@ vi.mock("./useDocumentVisibility", () => ({
   useIntervalWhenDocumentVisible: () => undefined,
 }));
 
-import type { AccountsListResponse } from "../api/client-agent";
+import type { AccountsListResponse } from "../api/client-agent-accounts";
 import { AccountCard } from "../components/accounts/AccountCard";
 import { useAccounts } from "./useAccounts";
 

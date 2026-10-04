@@ -11,7 +11,7 @@ import {
   type KeyboardEvent,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import type { CharacterData } from "../../api/client-types-config";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

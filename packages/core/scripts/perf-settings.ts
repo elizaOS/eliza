@@ -48,11 +48,11 @@ benchmark("encryptStringValue (v2 AES-GCM)", iterations, () => {
 	lastEncrypted = encryptStringValue(value, salt);
 });
 
+const encryptedCorpus = corpus.map((value) => encryptStringValue(value, salt));
 cursor = 0;
 benchmark("decryptStringValue (v2 AES-GCM)", iterations, () => {
-	const value = corpus[cursor];
-	cursor = (cursor + 1) % corpus.length;
-	const encrypted = encryptStringValue(value, salt);
+	const encrypted = encryptedCorpus[cursor];
+	cursor = (cursor + 1) % encryptedCorpus.length;
 	lastEncrypted = decryptStringValue(encrypted, salt);
 });
 

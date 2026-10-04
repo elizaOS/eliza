@@ -8,10 +8,12 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 
 const mocks = vi.hoisted(() => ({
   client: {
+    // This fixture keeps one stable runtime authority throughout each scenario.
+    onAuthorityChange: vi.fn(() => () => {}),
     getConversationMessages: vi.fn(),
     listConversations: vi.fn(async () => ({ conversations: [] })),
     getConfig: vi.fn(async () => ({ ui: {} })),
@@ -25,7 +27,7 @@ let runtimeAuthoritySwitchListener:
   | ((phase: "before" | "after") => void)
   | undefined;
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 vi.mock("./switch-runtime", () => ({
   subscribeRuntimeAuthoritySwitch: mocks.subscribeRuntimeAuthoritySwitch,
 }));

@@ -15,7 +15,7 @@
       "@elizaos/auth/vault/*": ["./packages/auth/src/vault/*"],
       "@elizaos/auth/auth": ["./packages/auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["./packages/auth/src/auth/*"],
-      "@elizaos/core/*": ["./packages/core/src/*"]
+      "@elizaos/core/protocol": ["./packages/core/src/protocol"]
     }
   }
 }

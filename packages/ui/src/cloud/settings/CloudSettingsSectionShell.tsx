@@ -37,10 +37,8 @@ import {
   Routes,
   useInRouterContext,
 } from "react-router-dom";
-import {
-  PageHeaderProvider,
-  usePageHeader,
-} from "../../cloud-ui/components/layout";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
+import { usePageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import "../billing/routes";
 import { queryClient } from "../lib/query-client";
 import {

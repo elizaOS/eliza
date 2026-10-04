@@ -10,6 +10,7 @@
 		"ignoreDeprecations": "6.0",
 		"declaration": true,
 		"declarationMap": true,
+		"rootDir": "../..",
 		"lib": ["ES2024", "DOM"],
 		"types": ["node"],
 		"allowImportingTsExtensions": true,
@@ -55,7 +56,6 @@
 			"@elizaos/app": ["../../packages/app/src/index.ts"],
 			"@elizaos/app/*": ["../../packages/app/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
-			"@elizaos/ui/*": ["../../packages/ui/src/*"],
 			"@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
 			"@elizaos/auth/accounts": ["../../packages/auth/src/accounts/index.ts"],
 			"@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
@@ -69,9 +69,8 @@
 			"@elizaos/plugin-native-inference/*": [
 				"../plugin-native-inference/src/*"
 			],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
-		},
-		"rootDir": "../.."
+			"@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+		}
 	},
 	"include": ["src/**/*"],
 	"exclude": [

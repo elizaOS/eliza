@@ -1,3 +1,4 @@
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 /**
  * Runtime wiring for the ScheduledTask spine.
  *
@@ -31,7 +32,6 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,

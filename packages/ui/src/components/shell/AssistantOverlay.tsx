@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding";
-import { useNativeGlassAnchor } from "../../glass";
+import { useNativeGlassAnchor } from "../../glass/GlassSurface";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { Button } from "../ui/button";
@@ -168,6 +168,7 @@ export function AssistantOverlay({
         }}
         visualStyle={{
           borderColor: "var(--assistant-overlay-border)",
+          backgroundColor: "var(--assistant-overlay-card)",
         }}
         className="h-full w-full overflow-hidden motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       >

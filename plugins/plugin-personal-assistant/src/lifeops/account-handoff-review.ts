@@ -4,11 +4,11 @@
  * calendar preference, approval, or delivery control changes during review.
  */
 
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsLinkedCalendarLink,
+} from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsLinkedCalendarLink,
-} from "@elizaos/core/contracts/calendar";
 import { createApprovalQueue } from "@elizaos/plugin-assistant";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { z } from "zod";

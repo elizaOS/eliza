@@ -15,7 +15,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { ApnsProvider } from "../src/services/push/apns-provider.ts";
 import { FcmProvider } from "../src/services/push/fcm-provider.ts";

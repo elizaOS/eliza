@@ -21,7 +21,7 @@ import {
   Z_VIEW_MODAL_BACKDROP,
 } from "../../lib/floating-layers";
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 

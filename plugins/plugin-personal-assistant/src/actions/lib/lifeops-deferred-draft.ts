@@ -7,6 +7,12 @@
  * `lifeDraft`; this module owns the parsing, expiry, and reuse-mode
  * decision so the umbrella action can stay focused on dispatch.
  */
+
+import type {
+  CreateLifeOpsDefinitionRequest,
+  CreateLifeOpsGoalRequest,
+  LifeOpsCadence,
+} from "@elizaos/contracts";
 import type {
   ActionResult,
   IAgentRuntime,
@@ -22,11 +28,6 @@ import {
   recentConversationTexts,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsDefinitionRequest,
-  CreateLifeOpsGoalRequest,
-  LifeOpsCadence,
-} from "../../contracts/index.js";
 import { asCacheRuntime } from "../../lifeops/runtime-cache.js";
 import { textStatesExplicitUndatedTodo } from "./undated-todo-intent.js";
 

@@ -11,17 +11,15 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveAppBranding } from "@elizaos/core/config/app-config";
 import {
+  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
+  resolveAppBranding,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-} from "@elizaos/core/runtime-env";
-import {
-  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   syncElizaEnvAliases,
-} from "@elizaos/core/utils/env";
+} from "@elizaos/host/protocol";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
@@ -530,17 +528,8 @@ const otelApiEntry = (() => {
   } catch {
     /* not resolvable from this scope */
   }
-  // 3. core's nested node_modules.
-  try {
-    candidateRoots.push(
-      path.join(
-        path.dirname(_require.resolve("@elizaos/core/package.json")),
-        "node_modules",
-      ),
-    );
-  } catch {
-    /* core not resolvable */
-  }
+  // 3. The workspace core's nested node_modules. Its manifest is private.
+  candidateRoots.push(path.join(elizaRoot, "packages/core/node_modules"));
   // 4. bun content-addressable store — ai package's nested node_modules.
   try {
     const bunDir = path.join(elizaRoot, "node_modules/.bun");
@@ -2039,13 +2028,8 @@ export default defineConfig(({ command, mode }) => ({
     // by scanning plugins/ for elizaos.appRegister markers. This plugin is the
     // only provider for that virtual module in production web/mobile builds.
     appSideEffectModulesPlugin([nativePluginsRoot]),
-    // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
-    // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
-    // cloud entry points are already aliased to passthrough stubs, but the main
-    // `@elizaos/ui` barrel ALSO re-exports the cloud namespace (`export * as
-    // cloud from "./cloud"`), which would otherwise drag the subtree (and its
-    // wallet/web3 deps) into every consumer of the barrel. Emptying the subtree
-    // cuts it at the source — the agent app never uses the cloud namespace.
+    // Disabled Cloud builds replace only documented entrypoint contracts.
+    // Unknown imports still fail; ordinary domain modules are never emptied.
     ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
       ? [
           {
@@ -2062,13 +2046,29 @@ export default defineConfig(({ command, mode }) => ({
               ) {
                 return "export function listExtraSettingsGroups() { return []; }";
               }
-              // Empty the broken cloud feature subtrees (their `./data/*` hooks
-              // were never migrated) plus the cloud barrel that re-exports them.
-              const broken =
-                /\/packages\/ui\/src\/cloud\/(account-security|admin|billing|instances|organization)\//.test(
-                  p,
-                ) || /\/packages\/ui\/src\/cloud\/index\.tsx?$/.test(p);
-              return broken ? "export {};" : null;
+              const uiCloudRoot = path
+                .join(uiPkgRoot, "src/cloud")
+                .split(path.sep)
+                .join("/");
+              if (p === `${uiCloudRoot}/shell/CloudRouterShell.tsx`) {
+                return fs.readFileSync(
+                  path.join(here, "src/shims/cloud-shell-stub.tsx"),
+                  "utf8",
+                );
+              }
+              if (
+                p ===
+                path
+                  .join(here, "src/renderer/cloud-registration.ts")
+                  .split(path.sep)
+                  .join("/")
+              ) {
+                return fs.readFileSync(
+                  path.join(here, "src/shims/cloud-registration-stub.ts"),
+                  "utf8",
+                );
+              }
+              return null;
             },
           },
         ]
@@ -2532,58 +2532,23 @@ export const INVALID_TRACER_PROVIDER = {};
       })),
       // Capacitor plugins — resolve to local plugin sources
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
-      // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
-      // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
-      // broad @elizaos/ui/* alias below (first match wins) so Rollup never
-      // resolves the cloud subtree, which would otherwise drag in its
-      // wallet/web3 deps.
-      ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
-        ? [
-            {
-              find: /^@elizaos\/ui\/cloud\/shell\/CloudRouterShell$/,
-              replacement: path.join(here, "src/shims/cloud-shell-stub.tsx"),
-            },
-            {
-              find: /^@elizaos\/ui\/cloud\/register-all$/,
-              replacement: path.join(
-                here,
-                "src/shims/cloud-register-all-stub.ts",
-              ),
-            },
-            {
-              find: /^@elizaos\/ui\/cloud\/register-public$/,
-              replacement: path.join(
-                here,
-                "src/shims/cloud-register-all-stub.ts",
-              ),
-            },
-          ]
-        : []),
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app sources directly.
       {
         find: /^@elizaos\/ui$/,
-        replacement: path.join(uiPkgRoot, "src/browser.ts"),
+        replacement: path.join(uiPkgRoot, "src/index.ts"),
       },
       {
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
       },
-      ...[
-        ["button", "button.tsx"],
-        ["input", "input.tsx"],
-        ["textarea", "textarea.tsx"],
-        ["native-select", "native-select.tsx"],
-        ["native-dialog", "native-dialog.tsx"],
-      ].map(([subpath, source]) => ({
-        find: new RegExp(`^${escapeRegExp(`@elizaos/ui/${subpath}`)}$`),
-        replacement: path.join(uiPkgRoot, "src/components/ui", source),
-      })),
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: path.join(uiPkgRoot, "src/$1"),
-      },
-      // Resolve the browser entry from its source in clean workspace builds.
+      // plugin-personal-assistant no longer ships a renderer view (the
+      // legacy /lifeops dashboard was killed in the lifeops decomposition);
+      // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
+      // src/ui.ts is the browser-safe facade — it imports the side-effectful
+      // HTTP client and re-exports the surviving settings-card components,
+      // without dragging discord/health/phone/native deps into the
+      // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
       {
         find: /^@elizaos\/plugin-personal-assistant\/ui$/,
         replacement: path.resolve(
@@ -2693,17 +2658,8 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: sourceTarget,
           });
         }
-        const uiSource = path.resolve(elizaRoot, "packages/ui/src");
         return [
           ...generatedAliases,
-          {
-            find: /^@elizaos\/ui$/,
-            replacement: path.join(uiSource, "browser.ts"),
-          },
-          {
-            find: /^@elizaos\/ui\/(.+)$/,
-            replacement: path.join(uiSource, "$1"),
-          },
           {
             find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
             replacement: path.join(
@@ -2880,6 +2836,9 @@ export const INVALID_TRACER_PROVIDER = {};
     // CloudRouterShell + login chunk tree).
     modulePreload: false,
     rolldownOptions: {
+      // Vite 8 prefers this block over rollupOptions; both bundlers need the
+      // same startup-safe vendor boundaries.
+      output: { manualChunks: resolveManualChunk },
       plugins: [
         // Rolldown build-phase resolver for @opentelemetry/api.
         // The `ai` package imports @opentelemetry/api but it is not hoisted to
@@ -2952,10 +2911,8 @@ export const INVALID_TRACER_PROVIDER = {};
         main: path.resolve(here, "index.html"),
       },
     },
-    // rollupOptions is the only bundle-options key Vite reads. The sibling
-    // `rolldownOptions` block above configures Rolldown-specific checks only;
-    // chunk-splitting and the otel fallback must live under rollupOptions so
-    // classic Rollup builds receive them too.
+    // Vite 7 uses Rollup while Vite 8 uses Rolldown. Keep the chunk rules
+    // and telemetry resolver in both blocks so both production paths agree.
     rollupOptions: {
       output: {
         // Manual chunk-splitting. `@elizaos/vitest-vite` builds with classic

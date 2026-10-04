@@ -28,7 +28,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 import { shouldAutoBridgeToSso } from "../../../sso-bridge/sso-bridge";
 import LoginPage from "./login-page";

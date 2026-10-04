@@ -22,7 +22,8 @@
 import { execFile } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { promisify } from "node:util";
-import { logger, normalizeTimeZone } from "@elizaos/core";
+import { normalizeTimeZone } from "@elizaos/contracts";
+import { logger } from "@elizaos/core";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

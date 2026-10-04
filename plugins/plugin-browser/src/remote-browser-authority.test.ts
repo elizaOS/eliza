@@ -5,7 +5,7 @@ import type {
   RemoteControllerGrant,
   RemoteControllerPublicIdentity,
   RemoteTargetPublicIdentity,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import {
   digestRemotePayload,
   signRemoteCommand,

@@ -4,7 +4,7 @@
  * claim lease may retry, while any post-start uncertainty becomes terminally
  * `execution_ambiguous` and is never returned to the queue.
  */
-import { ElizaError } from "@elizaos/core";
+
 import {
   canonicalizeRemoteControlValue,
   type EncryptedRemoteCommandEnvelope,
@@ -14,7 +14,8 @@ import {
   REMOTE_COMMAND_CLOCK_SKEW_MS,
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_MAX_REPLAY_ENTRIES_PER_SESSION,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { type Database, type DbTransaction } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";

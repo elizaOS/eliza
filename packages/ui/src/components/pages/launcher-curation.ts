@@ -24,10 +24,7 @@
  */
 
 import type { EnabledViewKinds } from "@elizaos/core";
-import {
-  isViewKindEnabled,
-  resolveViewKind,
-} from "@elizaos/core/views/view-kind";
+import { isViewKindEnabled, resolveViewKind } from "@elizaos/core/protocol";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import {
   LAUNCHER_AOSP_ONLY_VIEW_IDS,

@@ -1,14 +1,7 @@
 /** Canonical environment-variable reader. */
 
 import { parseBooleanValue } from "./boolean.js";
-
-/** Trim and treat empty strings as unset, matching dotenv semantics. */
-function readRaw(env: NodeJS.ProcessEnv, key: string): string | undefined {
-	const value = env[key];
-	if (typeof value !== "string") return undefined;
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : undefined;
-}
+import { normalizeEnvValue } from "./env.js";
 
 export interface ReadEnvOptions {
 	/** Environment object to read from. Defaults to `process.env`. */
@@ -22,7 +15,7 @@ export function readEnv(
 	options: ReadEnvOptions = {},
 ): string | undefined {
 	const env = options.env ?? process.env;
-	return readRaw(env, canonicalKey) ?? options.defaultValue;
+	return normalizeEnvValue(env[canonicalKey]) ?? options.defaultValue;
 }
 
 /** Boolean form of {@link readEnv}: truthy when the value is `1`/`true`/`yes`/`on`. */

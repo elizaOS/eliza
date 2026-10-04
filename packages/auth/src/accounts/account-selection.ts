@@ -1,7 +1,7 @@
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/contracts";
 import type { DirectAccountProvider } from "../auth/types.js";
 
 export type Strategy =

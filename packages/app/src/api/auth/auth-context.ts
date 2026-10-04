@@ -18,10 +18,8 @@ import {
   isLoopbackRemoteAddress,
   proxyClientHeaderBlocksLocalTrust,
 } from "@elizaos/agent/api/loopback-trust";
-import {
-  isLoopbackBindHost,
-  type RuntimeEnvRecord,
-} from "@elizaos/core/runtime-env";
+import { isLoopbackBindHost } from "@elizaos/core/protocol";
+import type { RuntimeEnvRecord } from "@elizaos/host/protocol";
 import type {
   AuthIdentityRow,
   AuthRepository,

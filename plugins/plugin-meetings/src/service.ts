@@ -19,14 +19,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  type MeetingArtifact,
-  meetingArtifactToTranscriptSegments,
-} from "@elizaos/core/meeting-artifacts";
-import {
   DEFAULT_MEETING_AUTO_LEAVE,
   DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_PLATFORM_LABELS,
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
+  type MeetingArtifact,
   type MeetingAutoLeaveConfig,
   type MeetingBillingState,
   type MeetingEndReason,
@@ -37,13 +34,12 @@ import {
   type MeetingSession,
   type MeetingSessionStatus,
   type MeetingTranscriptFinalizedPayload,
+  meetingArtifactToTranscriptSegments,
   parseMeetingUrl,
-} from "@elizaos/core/meetings";
-import {
+  parsePositiveInteger,
   type Transcript,
   type TranscriptSegment,
-} from "@elizaos/core/transcripts";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+} from "@elizaos/core/protocol";
 import { MeetingEventEmitter } from "./events.js";
 import { resolveMeetingRuntimeSupport } from "./platform-support.js";
 import {
@@ -56,16 +52,16 @@ import {
   MeetingTranscriptWriter,
   persistMeetingMedia,
 } from "./transcripts/meeting-transcript-writer.js";
-import {
-  type MeetingAudioSink,
-  type MeetingBillingError,
-  type MeetingBillingSession,
-  type MeetingBillingSessionInput,
-  type MeetingBotSession,
-  type MeetingPipelineOptions,
-  type MeetingPlatformAdapter,
-  type MeetingTranscriptionPipeline,
-  type ResolvedMeetingBotConfig,
+import type {
+  MeetingAudioSink,
+  MeetingBillingError,
+  MeetingBillingSession,
+  MeetingBillingSessionInput,
+  MeetingBotSession,
+  MeetingPipelineOptions,
+  MeetingPlatformAdapter,
+  MeetingTranscriptionPipeline,
+  ResolvedMeetingBotConfig,
 } from "./types.js";
 /** Pipeline instance plus the optional retained-audio accessor. */
 export interface MeetingPipelineInstance extends MeetingTranscriptionPipeline {

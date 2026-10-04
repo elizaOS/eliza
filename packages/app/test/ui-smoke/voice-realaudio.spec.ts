@@ -22,7 +22,7 @@
  *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts
  */
 import { expect, type Page, type Response, test } from "@playwright/test";
-import { KNOWN_PHRASE_WAV_DATA_URL } from "../../../ui/src/voice/voice-selftest/fixtures/known-phrase";
+import { KNOWN_PHRASE_WAV_DATA_URL } from "../../../ui/src/voice/voice-selftest/known-phrase";
 import {
   installDefaultAppRoutes,
   openAppPath,

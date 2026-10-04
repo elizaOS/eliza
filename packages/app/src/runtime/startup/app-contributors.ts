@@ -12,19 +12,19 @@ import { pathToFileURL } from "node:url";
 import { resolvePackageEntry } from "@elizaos/agent/runtime/plugin-types";
 import {
   type AgentRuntime,
-  drainAppRoutePluginLoaders,
   getApps,
   loadRegistry,
   logger,
 } from "@elizaos/core";
+import { formatErrorWithStack } from "@elizaos/core/protocol";
+import { drainAppRoutePluginLoaders } from "@elizaos/host";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   type AppRoutePluginRegistryEntry,
   isOptionalAppRoutePluginUnavailableError,
   listAppRoutePluginLoaders,
   OptionalAppRoutePluginUnavailableError,
-} from "@elizaos/core/api/app-route-plugin-registry";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
+} from "@elizaos/host/protocol";
 
 const _require = createRequire(import.meta.url);
 // ---------------------------------------------------------------------------
