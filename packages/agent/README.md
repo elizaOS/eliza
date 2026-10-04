@@ -174,3 +174,13 @@ own registration, origin policy, encrypted storage and lifecycle adapters.
 The native-host end-to-end test uses real local HTTP, disk restart and child
 processes. Run `node --test packages/agent/native-host/gateway.e2e.test.mjs` from
 the repository root; it is also included by the package's Vitest suite.
+
+`native-host/private-runtime-launch.mjs` composes host-only literal settings,
+allowlisted inherited environment, persistent private tokens and a separate
+generated launch config. The trusted host supplies paths, default configuration,
+provider policy, command and launch-receipt callback. It owns one child and reaps
+it if receipt persistence fails; signal listeners are removed on child closure.
+It does not restart processes or replace the account supervisor. Parent
+directories must be private and host-controlled, and receipt callbacks must
+settle. The native-host end-to-end suite covers real disk and child-process
+isolation, failure cleanup and cancellation during launch.
