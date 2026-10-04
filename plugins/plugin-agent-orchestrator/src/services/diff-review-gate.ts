@@ -618,6 +618,11 @@ function isLiteralYamlScalar(value: string): boolean {
     .slice(properties.length)
     .replace(/\s+#.*$/, "")
     .trimEnd();
+  // A local tag asks the consumer to resolve the value (CloudFormation
+  // `!Ref`/`!GetAtt`/`!Sub`, Home Assistant `!secret`, Ansible `!vault`):
+  // a reference to a secret, never inline material. Core `!!` tags keep the
+  // scalar's own type.
+  if (/(?:^|\s)!(?!!)/.test(properties)) return false;
   const quoted = /^(["'])(.*)\1$/.exec(scalar);
   const unquoted = quoted?.[2] ?? scalar;
   if (!unquoted) return false;

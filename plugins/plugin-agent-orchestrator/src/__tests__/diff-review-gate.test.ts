@@ -429,6 +429,15 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["chart/values.yaml", "max_tokens: 4096"],
     ["chart/values.yaml", "password: *dbPassword"],
     ["chart/values.yaml", "credentials: &defaults"],
+    // Local tags resolve a referenced secret instead of inlining one.
+    ["template.yaml", "      MasterUserPassword: !Ref DBPassword"],
+    ["template.yaml", "      DbPassword: !GetAtt DbSecret.SecretString"],
+    [
+      "template.yaml",
+      "      MasterUserPassword: !Sub '{{resolve:secretsmanager:db}}'",
+    ],
+    ["configuration.yaml", "  password: !secret db_password"],
+    ["group_vars/all.yml", "db_password: !vault |"],
     ["src/client.ts", "  password: options.password,"],
   ])("allows %s line %s", (file, line) => {
     const result = review(file, line);
