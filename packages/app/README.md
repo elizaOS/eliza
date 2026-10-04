@@ -189,3 +189,11 @@ lease and caller-cancelled transport. Its explicit start/stop lifecycle preserve
 consent and current-owner fences; importing it starts no collection. Run the
 native-host tests for real SQLite/HTTP evidence, including stop during an
 unanswered request. These modules do not authorize enrolling real participants.
+
+External product APK tests can compose `scripts/lib/isolated-android-test.mjs`.
+Supply explicit package/test identities, ABI, APK paths and a report directory.
+It validates both APK identities and the instrumentation target before installing,
+leases the emulator, refuses existing package data across users, requires complete
+instrumentation, removes its packages after each variant and checks unchanged HOME.
+Product callbacks own controlled fixture provisioning; this runner does not authorize
+live integrations. Use `testOutputPath` for reports produced inside this checkout.
