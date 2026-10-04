@@ -455,7 +455,11 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-computeruse#build"]
     },
     "@elizaos/bench-vision-language#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/core#build",
+        "@elizaos/plugin-assistant#build"
+      ]
     },
     "@elizaos/benchmark-framework#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-openai#build"]
