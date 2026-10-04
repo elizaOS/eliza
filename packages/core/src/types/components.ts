@@ -823,7 +823,8 @@ export interface ProviderResult {
 
 	/** Optional Stage-1 discovery notice. Keep standing constraints complete here;
 	 * the response handler can request the entire authorized `text` before answering.
-	 * Other consumers retain `text`. This never replaces stored provider evidence. */
+	 * Other consumers retain `text` unless using the same authorized-source
+	 * deferred-provider restoration contract. Stored provider evidence stays exact. */
 	discoveryText?: string;
 
 	/**
