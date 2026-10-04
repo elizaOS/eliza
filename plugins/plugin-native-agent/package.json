@@ -18,7 +18,8 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./native-host/*": "./native-host/*.mjs"
   },
   "unpkg": "dist/plugin.js",
   "files": [
@@ -27,7 +28,8 @@
     "dist/",
     "ios/Sources/",
     "*.podspec",
-    "dist"
+    "dist",
+    "native-host/*.mjs"
   ],
   "author": "elizaOS",
   "license": "MIT",
