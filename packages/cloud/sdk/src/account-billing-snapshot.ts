@@ -316,6 +316,35 @@ export interface SubscriptionCancellationNoticeSnapshot {
   delivery: "not_observed";
 }
 
+/** Economic categories, not product availability or authorization to charge. */
+export type OrganizationSubscriptionFundingOperation =
+  | "ai_inference"
+  | "container_compute"
+  | "managed_agent_compute"
+  | "media_generation"
+  | "search"
+  | "storage"
+  | "voice"
+  | "advertising_or_promotion"
+  | "app_or_marketplace"
+  | "domain"
+  | "hardware_or_network_access"
+  | "payout_or_transfer"
+  | "unclassified";
+
+/** Descriptive enforced classification. Cash-only never means a cash charge is approved. */
+export interface OrganizationSubscriptionFundingPolicySnapshot {
+  schemaVersion: 1;
+  operationClasses: Readonly<
+    Record<
+      OrganizationSubscriptionFundingOperation,
+      "allowance_eligible" | "cash_only"
+    >
+  >;
+  /** Balance, lifecycle, quota and spending authorization remain per-request checks. */
+  requiresRequestEligibility: true;
+}
+
 /** Organization infrastructure billing only; never an app subscriber's merchant account. */
 export interface OrganizationSubscriptionSnapshot {
   planKey: "plus_monthly" | "pro_monthly";
@@ -339,6 +368,8 @@ export interface OrganizationSubscriptionSnapshot {
   graceExpiresAt: string | null;
   dunningStartedAt: string | null;
   cancellationNotice: Observed<SubscriptionCancellationNoticeSnapshot>;
+  /** Optional for older servers; absence is unknown policy, never unlimited spending. */
+  fundingPolicy?: Observed<OrganizationSubscriptionFundingPolicySnapshot>;
   allowance: Observed<{
     sourceLifecycleRevision: string;
     periodStart: string;
