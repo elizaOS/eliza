@@ -1,8 +1,3 @@
-import type {
-  DropStatus,
-  MintResult,
-  VerificationResult,
-} from "@elizaos/contracts";
 /**
  * Wallet domain methods — wallet addresses/balances, BSC trading, steward,
  * trading profile, registry (ERC-8004), drop/mint, whitelist, twitter verify.
@@ -17,11 +12,14 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
+  DropStatus,
+  MintResult,
   StewardBalanceResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
+  VerificationResult,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -31,9 +29,6 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-  DropStatus,
-  MintResult,
-  VerificationResult,
 } from "@elizaos/contracts";
 import { ElizaClient } from "./client-base";
 import type {

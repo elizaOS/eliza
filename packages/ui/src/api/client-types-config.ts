@@ -12,7 +12,6 @@ import type {
   ViewKind,
 } from "@elizaos/core";
 import type { PluginParamDef } from "@elizaos/core/protocol";
-import type { ReleaseChannel, ConfigUiHint } from "@elizaos/contracts";
 import type { MessageExampleContent } from "@elizaos/host/protocol";
 import type {
   ConversationScope,
