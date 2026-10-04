@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 
 const MAX_BODY = 64 * 1024;
@@ -411,4 +411,53 @@ export function createLocalAgentGateway({
       });
     }
   });
+}
+
+export function createCredentialGate({
+  readBinding,
+  readCredential,
+  verifyProcess = true,
+  localMode,
+  localOwner,
+  staleMessage = "Runtime account binding changed",
+  stoppedMessage = "Runtime process unavailable",
+}) {
+  if (
+    typeof localMode !== "string" ||
+    !localMode ||
+    typeof localOwner !== "string" ||
+    !localOwner
+  )
+    throw new TypeError("Explicit local runtime identity is required");
+  return async () => {
+    const binding = await readBinding();
+    const key = await readCredential();
+    const owner = key
+      ? `cloud:${createHash("sha256").update(key).digest("hex")}`
+      : localOwner;
+    if (binding?.mode === localMode) {
+      const fingerprint = key
+        ? createHash("sha256").update(key).digest("hex")
+        : null;
+      if ((binding.fingerprint ?? null) !== fingerprint)
+        throw Object.assign(new Error(staleMessage), { status: 409 });
+      return owner;
+    }
+    if (
+      !binding ||
+      binding.mode !== "cloud" ||
+      !key ||
+      createHash("sha256").update(key).digest("hex") !== binding.fingerprint
+    ) {
+      throw Object.assign(new Error(staleMessage), { status: 409 });
+    }
+    if (verifyProcess) {
+      try {
+        process.kill(binding.pid, 0);
+      } catch {
+        throw Object.assign(new Error(stoppedMessage), { status: 409 });
+      }
+    }
+    return owner;
+  };
 }
