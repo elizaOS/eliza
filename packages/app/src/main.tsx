@@ -1,3 +1,10 @@
+// FIRST side-effect: repair the same-origin WebSocket base for the plain-web
+// served bundle before the `client` singleton can dial its socket. The dev
+// server injects a desktop-loopback `__ELIZA_WS_BASE__` (ws://127.0.0.1:31337)
+// that client-base reads first; on a reverse-proxied web page the socket must
+// be same-origin (wss://<host>/ws). No-op on desktop / native. See module.
+import "./web-ws-base-fix";
+import "./renderer/transports/configure";
 import {
   AGENT_READY_EVENT,
   type AppBootConfig,
@@ -92,13 +99,6 @@ import {
   upsertAndActivateAgentProfile,
 } from "@elizaos/ui";
 import { installAndroidNativeAgentFetchBridge } from "./renderer/transports/android-native-agent-transport";
-import "./renderer/transports/configure";
-// FIRST side-effect: repair the same-origin WebSocket base for the plain-web
-// served bundle before the `client` singleton can dial its socket. The dev
-// server injects a desktop-loopback `__ELIZA_WS_BASE__` (ws://127.0.0.1:31337)
-// that client-base reads first; on a reverse-proxied web page the socket must
-// be same-origin (wss://<host>/ws). No-op on desktop / native. See module.
-import "./web-ws-base-fix";
 /**
  * Renderer boot entry and composition root for the cross-platform Eliza app
  * shell (web browser, Electrobun desktop, and Capacitor iOS/Android). Runs
