@@ -1263,6 +1263,267 @@ describe("BRIEF umbrella action — Daily Operations", () => {
     });
   });
 
+  describe("canonical briefing categories — real PGlite", () => {
+    it("classifies mixed open and archived completed items without changing source records", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-02-05T16:00:00.000Z"));
+      const fixture = await createLifeOpsTestRuntime();
+      const { LifeOpsService } = await import("../src/lifeops/service.js");
+      const apple = await import("../src/lifeops/apple-reminders.js");
+      const native = vi
+        .spyOn(apple, "createNativeAppleReminderLikeItem")
+        .mockResolvedValue({
+          ok: false,
+          reason: "unsupported",
+          message: "test boundary",
+        } as never);
+      const model = vi
+        .spyOn(fixture.runtime, "useModel")
+        .mockImplementation(async () => {
+          throw new Error("JSON brief must not call a model");
+        });
+      try {
+        const service = new LifeOpsService(fixture.runtime);
+        await resolveOwnerFactStore(fixture.runtime).update(
+          { timezone: "Asia/Tokyo" },
+          { source: "first_run", recordedAt: new Date().toISOString() },
+        );
+        const dueAt = "2026-02-05T16:30:00.000Z";
+        const kinds = [
+          {
+            name: "reminder",
+            kind: "habit" as const,
+            ownerSurface: "OWNER_REMINDERS",
+            expected: "reminder",
+          },
+          {
+            name: "habit",
+            kind: "habit" as const,
+            ownerSurface: "OWNER_ROUTINES",
+            expected: "habit",
+          },
+          {
+            name: "routine",
+            kind: "routine" as const,
+            ownerSurface: "OWNER_ROUTINES",
+            expected: "habit",
+          },
+          {
+            name: "todo",
+            kind: "habit" as const,
+            ownerSurface: "OWNER_TODOS",
+            expected: "todo",
+          },
+        ];
+        const expectedOpen = new Map<string, string>();
+        const expectedCompleted = new Map<string, string>();
+        for (const item of kinds)
+          for (const completed of [false, true]) {
+            const record = await service.createDefinition({
+              title: `${completed ? "Completed" : "Open"} ${item.name}`,
+              kind: item.kind,
+              timezone: "Asia/Tokyo",
+              cadence: { kind: "once", dueAt, visibilityLeadMinutes: 0 },
+              metadata: {
+                ownerSurface: item.ownerSurface,
+                nativeProjection: "in_app_only",
+              },
+              reminderPlan: null,
+            });
+            const [occurrence] =
+              await service.repository.listOccurrencesForDefinition(
+                fixture.runtime.agentId,
+                record.definition.id,
+              );
+            if (!occurrence) throw new Error("Missing stored occurrence");
+            if (completed) {
+              await service.completeOccurrence(occurrence.id, {});
+              await service.updateDefinition(record.definition.id, {
+                status: "archived",
+              });
+              expectedCompleted.set(occurrence.id, item.expected);
+            } else expectedOpen.set(occurrence.id, item.expected);
+          }
+        const peer = new LifeOpsService(fixture.runtime, {
+          ownerEntityId: crypto.randomUUID() as UUID,
+        });
+        const sibling = await peer.createDefinition({
+          title: "Sibling private reminder",
+          kind: "habit",
+          timezone: "Asia/Tokyo",
+          cadence: { kind: "once", dueAt },
+          metadata: {
+            ownerSurface: "OWNER_REMINDERS",
+            nativeProjection: "in_app_only",
+          },
+          reminderPlan: null,
+        });
+        await expect(
+          service.getDefinition(sibling.definition.id),
+        ).rejects.toThrow("not found");
+        const overview = await service.getOverview();
+        const before = await service.listDefinitions();
+        const beforeOccurrences =
+          await service.repository.listOccurrencesForDefinitions(
+            fixture.runtime.agentId,
+            before.map((record) => record.definition.id),
+          );
+        const batches = vi.spyOn(LifeOpsService.prototype, "listDefinitions");
+        setBriefComposers({
+          loadCalendar: async () => [],
+          loadInbox: async () => [],
+          loadCommitments: async () => [],
+        });
+        const result = await callBrief(fixture.runtime, makeMessage(), {
+          action: "DAILY_DIGEST",
+          format: "json",
+        });
+        const briefing = result.data?.briefing as LifeOpsBriefing;
+        expect(result.success).toBe(true);
+        expect(briefing.sourceErrors).toBeUndefined();
+        expect(batches).toHaveBeenCalledTimes(2);
+        batches.mockRestore();
+        expect(briefing.lifeSummary).toEqual(overview.summary);
+        expect(
+          new Map(briefing.sections.life?.map((item) => [item.id, item.kind])),
+        ).toEqual(expectedOpen);
+        expect(
+          new Map(
+            briefing.sections.completedToday?.map((item) => [
+              item.id,
+              item.kind,
+            ]),
+          ),
+        ).toEqual(expectedCompleted);
+        for (const item of [
+          ...(briefing.sections.life ?? []),
+          ...(briefing.sections.completedToday ?? []),
+        ])
+          expect(item.dueAt).toBe(dueAt);
+        expect(JSON.stringify(briefing)).not.toContain(
+          sibling.definition.title,
+        );
+        expect(await service.listDefinitions()).toEqual(before);
+        expect(
+          await service.repository.listOccurrencesForDefinitions(
+            fixture.runtime.agentId,
+            before.map((record) => record.definition.id),
+          ),
+        ).toEqual(beforeOccurrences);
+        expect(native).not.toHaveBeenCalled();
+        expect(model).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        await fixture.cleanup();
+      }
+    }, 120000);
+
+    it.each(["missing", "sibling", "completed-missing"])(
+      "reports unavailable classification for %s references without guessing or disclosing siblings",
+      async (reference) => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-02-05T16:00:00.000Z"));
+        const fixture = await createLifeOpsTestRuntime();
+        const { LifeOpsService } = await import("../src/lifeops/service.js");
+        const model = vi
+          .spyOn(fixture.runtime, "useModel")
+          .mockImplementation(async () => {
+            throw new Error("JSON brief must not call a model");
+          });
+        try {
+          const service = new LifeOpsService(fixture.runtime);
+          const own = await service.createDefinition({
+            title: "Own legitimate habit",
+            kind: "habit",
+            timezone: "Asia/Tokyo",
+            cadence: { kind: "once", dueAt: "2026-02-05T16:30:00.000Z" },
+            metadata: { ownerSurface: "OWNER_ROUTINES" },
+            reminderPlan: null,
+          });
+          const peer = new LifeOpsService(fixture.runtime, {
+            ownerEntityId: crypto.randomUUID() as UUID,
+          });
+          const sibling = await peer.createDefinition({
+            title: "Sibling private title",
+            kind: "habit",
+            timezone: "Asia/Tokyo",
+            cadence: { kind: "once", dueAt: "2026-02-05T16:30:00.000Z" },
+            metadata: {
+              ownerSurface: "OWNER_REMINDERS",
+              nativeProjection: "in_app_only",
+            },
+            reminderPlan: null,
+          });
+          const overview = await service.getOverview();
+          const source = overview.occurrences.find(
+            (occurrence) => occurrence.definitionId === own.definition.id,
+          );
+          if (!source) throw new Error("Missing own occurrence");
+          const fake = {
+            ...source,
+            definitionId:
+              reference === "sibling"
+                ? sibling.definition.id
+                : "missing-definition",
+            title: sibling.definition.title,
+          };
+          if (reference === "completed-missing")
+            vi.spyOn(
+              LifeOpsService.prototype,
+              "listOwnerOccurrencesCompletedToday",
+            ).mockResolvedValueOnce([{ ...fake, state: "completed" }]);
+          else
+            vi.spyOn(
+              LifeOpsService.prototype,
+              "getOverview",
+            ).mockResolvedValueOnce({
+              ...overview,
+              occurrences: [fake],
+              reminders: [],
+            });
+          const diagnostic = vi
+            .spyOn(fixture.runtime, "reportError")
+            .mockImplementation(() => {});
+          setBriefComposers({
+            loadCalendar: async () => [],
+            loadInbox: async () => [],
+            loadCommitments: async () => [],
+          });
+          const result = await callBrief(fixture.runtime, makeMessage(), {
+            action:
+              reference === "completed-missing"
+                ? "compose_evening"
+                : "compose_morning",
+            format: "json",
+          });
+          const briefing = result.data?.briefing as LifeOpsBriefing;
+          const failedSource =
+            reference === "completed-missing" ? "completedToday" : "life";
+          expect(result.success).toBe(true);
+          expect(briefing.sourceErrors).toMatchObject({
+            [failedSource]: "unavailable",
+          });
+          expect(briefing.sections[failedSource]).toEqual([]);
+          expect(JSON.stringify(briefing)).not.toContain(
+            sibling.definition.title,
+          );
+          expect(diagnostic).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+              code: "BRIEF_DEFINITION_CLASSIFICATION_UNAVAILABLE",
+            }),
+            expect.objectContaining({ source: failedSource }),
+          );
+          expect(model).not.toHaveBeenCalled();
+        } finally {
+          vi.restoreAllMocks();
+          await fixture.cleanup();
+        }
+      },
+      120000,
+    );
+  });
+
   describe("compose_evening — completed-today wins (#16935)", () => {
     it("aggregates completedToday and feeds it to the narrative prompt", async () => {
       const useModel = vi.fn(async () => "evening narrative");

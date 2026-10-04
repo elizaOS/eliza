@@ -27,6 +27,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
+  ElizaError,
   getTrajectoryContext,
   logger,
   ModelType,
@@ -44,8 +45,10 @@ import {
   resolveNextCalendarEventWindow,
 } from "@elizaos/plugin-calendar";
 import type {
+  LifeOpsDefinitionRecord,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
+  LifeOpsTaskDefinition,
 } from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
@@ -59,6 +62,7 @@ import {
   buildCommitmentRegretAudit,
   type CommitmentRegretAuditItem,
 } from "../lifeops/commitments/index.js";
+import { resolveOwnerDefinitionSurface } from "../lifeops/definition-owner-surface.js";
 import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
@@ -177,6 +181,7 @@ interface BriefLifeOpsService {
   listOwnerOccurrencesCompletedToday(): Promise<
     readonly LifeOpsOccurrenceView[]
   >;
+  listDefinitions(): Promise<readonly LifeOpsDefinitionRecord[]>;
 }
 
 async function getBriefLifeOpsService(
@@ -241,13 +246,26 @@ function mapMessageRefToBriefingItem(
   };
 }
 
-function normalizeLifeKind(value: unknown): LifeOpsBriefingLifeItem["kind"] {
-  return value === "todo" ||
-    value === "reminder" ||
-    value === "habit" ||
-    value === "goal"
-    ? value
-    : "reminder";
+function briefingDefinitionKind(
+  definition: LifeOpsTaskDefinition | undefined,
+): LifeOpsBriefingLifeItem["kind"] {
+  if (definition) {
+    switch (resolveOwnerDefinitionSurface(definition)) {
+      case "OWNER_REMINDERS":
+      case "OWNER_ALARMS":
+        return "reminder";
+      case "OWNER_ROUTINES":
+        return "habit";
+      case "OWNER_TODOS":
+        return "todo";
+    }
+  }
+  throw new ElizaError(
+    "The briefing item's definition classification is unavailable.",
+    {
+      code: "BRIEF_DEFINITION_CLASSIFICATION_UNAVAILABLE",
+    },
+  );
 }
 
 async function loadCalendarFromLifeOps(args: {
@@ -318,20 +336,24 @@ async function loadLifeFromOverview(args: {
   const occurrenceIds = new Set(
     occurrences.map((item) => readString(asRecord(item), "id")).filter(Boolean),
   );
-  const records = [
-    ...occurrences,
-    // Reminder-plan steps project the same occurrence, not additional owner items.
-    ...(Array.isArray(overview.reminders)
-      ? overview.reminders.filter((item) => {
-          const occurrenceId = readString(asRecord(item), "occurrenceId");
-          return !occurrenceId || !occurrenceIds.has(occurrenceId);
-        })
-      : []),
-    ...(Array.isArray(overview.goals) ? overview.goals : []),
-  ];
+  // Reminder-plan steps project the same occurrence, not additional owner items.
+  const reminders = Array.isArray(overview.reminders)
+    ? overview.reminders.filter((item) => {
+        const occurrenceId = readString(asRecord(item), "occurrenceId");
+        return !occurrenceId || !occurrenceIds.has(occurrenceId);
+      })
+    : [];
+  const goals = Array.isArray(overview.goals) ? overview.goals : [];
+  // This public batch read uses the caller's definition scopes and includes
+  // archived rows; never infer human item kinds from storage's raw kind.
+  const definitions =
+    occurrences.length > 0 ? await service.listDefinitions() : [];
+  const definitionsById = new Map(
+    definitions.map(({ definition }) => [definition.id, definition]),
+  );
+  const records = [...occurrences, ...reminders, ...goals];
   const items = records.map((item, index) => {
     const record = asRecord(item);
-    const metadata = asRecord(record.metadata);
     const ownerId = readString(record, "ownerId");
     const ownerType = readString(record, "ownerType");
     return {
@@ -341,12 +363,14 @@ async function loadLifeFromOverview(args: {
         (ownerId && ownerType
           ? `${ownerType}:${ownerId}:${record.stepIndex ?? index}`
           : `life-item:${index}`),
-      kind: normalizeLifeKind(
-        readString(record, "kind") ??
-          readString(record, "type") ??
-          readString(record, "subjectType") ??
-          metadata.kind,
-      ),
+      kind:
+        index < occurrences.length
+          ? briefingDefinitionKind(
+              definitionsById.get(readString(record, "definitionId") ?? ""),
+            )
+          : index < occurrences.length + reminders.length
+            ? ("reminder" as const)
+            : ("goal" as const),
       title: readString(record, "title") ?? "Untitled item",
       ...(index < occurrences.length
         ? { state: occurrences[index].state }
@@ -371,9 +395,14 @@ async function loadCompletedTodayFromService(args: {
 }): Promise<readonly LifeOpsBriefingLifeItem[]> {
   const service = await getBriefLifeOpsService(args.runtime);
   const completed = await service.listOwnerOccurrencesCompletedToday();
+  if (completed.length === 0) return [];
+  const definitions = await service.listDefinitions();
+  const definitionsById = new Map(
+    definitions.map(({ definition }) => [definition.id, definition]),
+  );
   return completed.map((occurrence) => ({
     id: occurrence.id,
-    kind: normalizeLifeKind(occurrence.definitionKind),
+    kind: briefingDefinitionKind(definitionsById.get(occurrence.definitionId)),
     title: occurrence.title,
     dueAt: occurrence.dueAt ?? null,
     state: occurrence.state,
