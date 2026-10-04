@@ -72,7 +72,7 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
         NotificationChannel selected = ElizaReminderMessagingService.resolveReminderChannel(manager, priority, ownerType);
         JSObject result = new JSObject();
         result.put("channelId", selected.getId());
-        result.put("blocked", selected.getImportance() == NotificationManager.IMPORTANCE_NONE);
+        result.put("blocked", ElizaReminderMessagingService.isReminderChannelBlocked(manager, selected));
         call.resolve(result);
     }
 

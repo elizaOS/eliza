@@ -169,7 +169,7 @@ public class ElizaReminderMessagingServiceTest {
     @Test public void channelsPreserveSystemDndPolicy() {
         Map<String, String> data = data(A); data.put("priority", "urgent");
         receiver().onMessageReceived(message(data, "urgent"));
-        assertEquals(5, manager.getNotificationChannel("eliza_alerts").getImportance());
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, manager.getNotificationChannel("eliza_alerts").getImportance());
         assertFalse(manager.getNotificationChannel("eliza_alerts").canBypassDnd());
     }
     @Test public void normalCalendarReminderKeepsDefaultTier() {
@@ -253,6 +253,47 @@ public class ElizaReminderMessagingServiceTest {
         Map<String, String> calendar = data(A); calendar.put("priority", "high"); calendar.put("ownerType", "calendar_event");
         receiver().onMessageReceived(message(calendar, "calendar-high"));
         assertEquals("eliza_notifications", manager.getActiveNotifications()[0].getNotification().getChannelId());
+    }
+    @Test public void occurrenceAlertPreservesRestrictiveVisibility() {
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        manager.createNotificationChannel(updates);
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "private-occurrence"));
+        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals(Notification.VISIBILITY_PRIVATE, manager.getNotificationChannel("eliza_updates").getLockscreenVisibility());
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Test public void occurrenceAlertPreservesExistingGroup() {
+        manager.createNotificationChannelGroup(new android.app.NotificationChannelGroup("reminders", "Reminders"));
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        updates.setGroup("reminders");
+        manager.createNotificationChannel(updates);
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "grouped-occurrence"));
+        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals("reminders", manager.getNotificationChannel("eliza_updates").getGroup());
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Test public void blockedGroupDoesNotConsumeReceiptAndCanLaterDeliver() {
+        android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("muted-reminders", "Muted reminders");
+        org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", true);
+        manager.createNotificationChannelGroup(group);
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setGroup("muted-reminders");
+        manager.createNotificationChannel(updates);
+        assertTrue(manager.getNotificationChannelGroup("muted-reminders").isBlocked());
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "blocked-group"));
+        assertEquals(0, manager.getActiveNotifications().length);
+        assertFalse(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
+        org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", false);
+        manager.createNotificationChannelGroup(group);
+        assertFalse(manager.getNotificationChannelGroup("muted-reminders").isBlocked());
+        receiver().onMessageReceived(message(occurrence, "unblocked-group"));
+        assertEquals(1, manager.getActiveNotifications().length);
+        assertTrue(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
     }
     @Test public void malformedRequiredFieldsNeverProject() {
         for (String field : new String[]{"notificationId", "title", "body", "priority", "category"}) {
