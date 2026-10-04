@@ -19,11 +19,13 @@ export function createConsumerFixture(root, appId) {
     ["res", "standalone"],
     ["launcher-res", "launcher"],
   ]) {
-    fs.mkdirSync(path.join(root, directory, "values"), { recursive: true });
-    fs.writeFileSync(
-      path.join(root, directory, "values/distribution.xml"),
-      `<resources><string name="host_distribution">${value}</string></resources>`,
-    );
+    for (const locale of ["values", "values-es"]) {
+      fs.mkdirSync(path.join(root, directory, locale), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, directory, locale, "distribution.xml"),
+        `<resources><string name="host_distribution">${value}</string></resources>`,
+      );
+    }
   }
   const source = (relative) => ({ root: "consumer", path: relative });
   return {

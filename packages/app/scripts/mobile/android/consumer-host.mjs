@@ -13,8 +13,8 @@ const inside = (root, value) =>
   value === root || value.startsWith(root + path.sep);
 const namePattern = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 export class AndroidConsumerHostError extends Error {
-  constructor(message) {
-    super(message);
+  constructor(message, options) {
+    super(message, options);
     this.name = "AndroidConsumerHostError";
   }
 }
@@ -143,9 +143,15 @@ export function generateAndroidConsumerHost({
       "Unknown Android host source root",
     );
     const root = roots[reference.root];
-    const candidate = fs.realpathSync(
-      path.join(root, relativePath(reference.path)),
-    );
+    const requested = path.join(root, relativePath(reference.path));
+    let candidate;
+    try {
+      candidate = fs.realpathSync(requested);
+    } catch (cause) {
+      throw new AndroidConsumerHostError("Android host input is unavailable", {
+        cause,
+      });
+    }
     requireValue(
       inside(root, candidate),
       "Android host input escapes its declared root",
@@ -214,7 +220,7 @@ export function generateAndroidConsumerHost({
     .replaceAll(">", "&gt;");
   add(
     "app/src/main/res/values/eliza_consumer_identity.xml",
-    `<resources><string name="app_name" formatted="false">${xmlLabel}</string></resources>\n`,
+    `<resources><string name="app_name" formatted="false" translatable="false">${xmlLabel}</string></resources>\n`,
   );
   add(
     "app/src/main/AndroidManifest.xml",

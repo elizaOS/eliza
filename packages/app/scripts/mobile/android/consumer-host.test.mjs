@@ -223,3 +223,15 @@ test("a regular file cannot become a generated output directory", (t) => {
   );
   assert.equal(fs.readFileSync(options.output, "utf8"), "user file");
 });
+
+test("missing declared input reports a typed failure without creating output", (t) => {
+  const { options, generate } = setup(t);
+  options.profile.manifest = { root: "consumer", path: "missing.xml" };
+  assert.throws(
+    generate,
+    (error) =>
+      error instanceof AndroidConsumerHostError &&
+      error.cause?.code === "ENOENT",
+  );
+  assert.equal(fs.existsSync(options.output), false);
+});
