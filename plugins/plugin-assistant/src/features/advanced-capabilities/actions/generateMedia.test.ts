@@ -99,6 +99,39 @@ describe("generateMediaAction availability", () => {
     },
   );
 
+  it("keeps music controls when retrying without shaping hints", async () => {
+    const parameters = {
+      mediaType: "audio",
+      audioKind: "music",
+      prompt: "rainy night beat",
+      duration: 30,
+      instrumental: true,
+      genre: "lofi hip hop",
+    };
+    const generateMedia = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("duration is not supported"))
+      .mockResolvedValueOnce({
+        mediaType: "audio",
+        url: "https://cdn.example.com/generated/out",
+        audioUrl: "https://cdn.example.com/generated/out.mp3",
+      });
+
+    const result = await generateMediaAction.handler?.(
+      runtimeWithMediaService(true, generateMedia),
+      message,
+      undefined,
+      { parameters },
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({ success: true });
+    expect(generateMedia).toHaveBeenCalledTimes(2);
+    const retry = generateMedia.mock.calls[1]?.[0];
+    expect(retry).toMatchObject({ instrumental: true, genre: "lofi hip hop" });
+    expect(retry).not.toHaveProperty("duration");
+  });
+
   it("keeps image controls undeclared while the cloud and fallback image paths drop them", () => {
     // ImageGenerationParams has no quality/style/negativePrompt, so only the
     // own-key provider branch could honor them; admitting them would report
