@@ -15,7 +15,10 @@ import {
 } from "vitest";
 import { testOutputPath } from "../../../scripts/lib/test-output";
 import { resolveBunExecutable } from "../../../scripts/lib/vitest-batches";
-import { StandaloneKokoroService, speechWorkerArgs } from "./standalone-kokoro-service";
+import {
+  StandaloneKokoroService,
+  speechWorkerArgs,
+} from "./standalone-kokoro-service";
 
 class Worker extends EventEmitter {
   stdin = new PassThrough();
