@@ -13,10 +13,18 @@ export function buildAndroidTrust({
   ldflags,
   env = process.env,
 }) {
-  const { go, ndk, target, androidApi, javaPackage } = toolchain;
+  const {
+    go,
+    ndk,
+    target,
+    androidApi,
+    javaPackage,
+    ndkRevision = ndk,
+  } = toolchain;
   if (
     !/^\d+\.\d+\.\d+$/.test(go) ||
     !/^\d+\.\d+\.\d+$/.test(ndk) ||
+    !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9]+)?$/.test(ndkRevision) ||
     !/^android\/(arm|arm64|386|amd64)(,android\/(arm|arm64|386|amd64))*$/.test(
       target,
     ) ||
@@ -39,9 +47,9 @@ export function buildAndroidTrust({
   if (
     !properties
       .split(/\r?\n/)
-      .some((line) => line.trim() === `Pkg.Revision = ${ndk}`)
+      .some((line) => line.trim() === `Pkg.Revision = ${ndkRevision}`)
   )
-    throw new Error(`Android trust build requires NDK ${ndk}`);
+    throw new Error(`Android trust build requires NDK ${ndkRevision}`);
   const buildEnv = { ...env, ANDROID_NDK_HOME: ndkHome, GOTOOLCHAIN: "local" };
   const version = execFileSync("go", ["env", "GOVERSION"], {
     cwd: source,

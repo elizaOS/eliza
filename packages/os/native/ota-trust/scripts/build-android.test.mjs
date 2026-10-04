@@ -115,3 +115,14 @@ test("invalid host build inputs fail before invoking tools", (t) => {
   );
   assert.ok(!fs.existsSync(f.trace));
 });
+
+test("prerelease NDK revision must be explicit", (t) => {
+  const f = fixture(t);
+  fs.writeFileSync(
+    path.join(f.env.ANDROID_HOME, "ndk", f.toolchain.ndk, "source.properties"),
+    "Pkg.Revision = 29.0.13113456-beta1\n",
+  );
+  assert.throws(() => buildAndroidTrust(f), /requires NDK/);
+  f.toolchain.ndkRevision = "29.0.13113456-beta1";
+  assert.equal(buildAndroidTrust(f), f.output);
+});
