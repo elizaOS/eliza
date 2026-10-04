@@ -155,7 +155,7 @@ function clearAllScopedCloudPairKeysSession(): void {
  * shellSessionStorage wrapper).
  *
  * With an `agentId`, remove only that agent’s key. An explicit global
- * disconnect removes all scoped credentials and owner hints.
+ * disconnect removes all scoped credentials, legacy credentials, and owner hints.
  */
 export function clearCloudPairApiToken(agentId?: string): void {
   const scopedKey = agentId?.trim()
@@ -167,6 +167,7 @@ export function clearCloudPairApiToken(agentId?: string): void {
   } else {
     // No agentId resolved — explicit disconnect with global intent.
     // Clear all scoped keys from both storages.
+    removePairKeyFromBothStorages("eliza:cloud-pair:api-token");
     clearAllScopedCloudPairKeys();
     clearAllScopedCloudPairKeysSession();
     removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);

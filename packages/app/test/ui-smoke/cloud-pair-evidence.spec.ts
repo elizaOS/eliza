@@ -499,10 +499,10 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
     expect(phase3.storage.localStorage[AGENT_B_KEY]).toBe(TOKEN_B);
     expect(phase3.storage.sessionStorage[AGENT_B_KEY]).toBe(TOKEN_B);
 
-    // Phase 4 assertions — global clear purges scoped keys and preserves unrelated storage.
+    // Phase 4 assertions — global clear purges scoped and legacy keys.
     expect(phase4.storage.localStorage[AGENT_B_KEY]).toBeUndefined();
     expect(phase4.storage.sessionStorage[AGENT_B_KEY]).toBeUndefined();
-    expect(phase4.storage.localStorage[LEGACY_KEY]).toBe(LEGACY_TOKEN);
+    expect(phase4.storage.localStorage[LEGACY_KEY]).toBeUndefined();
     expect(phase4.storage.sessionStorage[LEGACY_KEY]).toBeUndefined();
 
     // Manifest.
@@ -531,7 +531,7 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
         "  unscoped token is never adopted; active-server mirrors token A",
         "- Phase 3: scoped clear purges agent A key from BOTH storages; agent B key AND the",
         "  legacy global key (unknown owner) untouched",
-        "- Phase 4: global clear purges scoped keys from both storages",
+        "- Phase 4: global clear purges scoped and legacy keys from both storages",
       ].join("\n"),
     );
 
