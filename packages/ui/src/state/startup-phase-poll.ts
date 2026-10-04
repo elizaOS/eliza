@@ -30,6 +30,7 @@ import {
 } from "../api/ios-local-agent-transport";
 import { isPasswordAuthTransportConfidential } from "../api/password-auth-transport-policy";
 import { getBackendStartupTimeoutMs } from "../bridge";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import { getBootConfig } from "../config/boot-config";
 import {
@@ -411,6 +412,7 @@ export async function runPollingBackend(
     current: ReturnType<typeof setTimeout> | null;
   },
   target: RuntimeTarget = "embedded-local",
+  signal?: AbortSignal,
 ): Promise<void> {
   const completionAtPollStart = deps.firstRunCompletionCommittedRef.current;
   const describeBackendFailure = (
@@ -504,6 +506,45 @@ export async function runPollingBackend(
     deadline = Date.now() + policy.backendTimeoutMs;
     attempts = 0;
     lastErr = null;
+  };
+  // Desktop credential-publication race (elizaOS/eliza#33034 follow-up): the
+  // Electrobun shell no longer embeds the OWNER bearer in served HTML, so the
+  // token reaches the renderer only through the typed RPC bridge — native
+  // `dom-ready` → `apiBaseUpdate` → boot-config update → client repoint.
+  // Renderer module code and the first auth probe can start before that
+  // publication lands, so an unauthenticated 401 on the desktop shell can be
+  // a publication race rather than a missing pairing. Before the FIRST no-
+  // token auth decision on an Electrobun runtime, wait for the publication
+  // event the same way the Capacitor iOS local-agent path already tolerates
+  // its async token injection. The wait is bounded by this poll's own
+  // remaining `deadline` — never a new timeout constant — and arms at most
+  // once per poll, so a genuinely tokenless desktop still reaches the same
+  // gates as before, just after its deadline. Web browsers and native mobile
+  // are unaffected: the wait only arms on the Electrobun bridge.
+  let awaitedDesktopCredentialPublication = false;
+  const waitForDesktopCredentialPublication = (): Promise<boolean> => {
+    if (awaitedDesktopCredentialPublication) {
+      return Promise.resolve(client.hasToken());
+    }
+    awaitedDesktopCredentialPublication = true;
+    if (client.hasToken()) return Promise.resolve(true);
+    if (typeof window === "undefined") return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const settle = () => {
+        window.removeEventListener(
+          "eliza:desktop-api-base-updated",
+          onPublished,
+        );
+        clearTimeout(tid);
+        signal?.removeEventListener("abort", settle);
+        resolve(!signal?.aborted && client.hasToken());
+      };
+      const onPublished = () => settle();
+      const tid = setTimeout(settle, Math.max(0, deadline - Date.now()));
+      window.addEventListener("eliza:desktop-api-base-updated", onPublished);
+      signal?.addEventListener("abort", settle, { once: true });
+      if (signal?.aborted) settle();
+    });
   };
   // One-shot recovery to the bundled ON-DEVICE agent (issue: iOS icon-tap
   // startup timeout). A stale persisted `cloud` runtime mode can pin a
@@ -811,6 +852,19 @@ export async function runPollingBackend(
       remoteNativeFailureStreakStartedAt = null;
       agentUnreachableStreakStartedAt = null;
       if (cancelled.current) return;
+      if (
+        auth.required &&
+        !auth.authenticated &&
+        !client.hasToken() &&
+        isElectrobunRuntime()
+      ) {
+        // Publication race: give the desktop's apiBaseUpdate push one
+        // deadline-bounded chance to land before declaring the session
+        // unauthenticated (see waitForDesktopCredentialPublication).
+        const published = await waitForDesktopCredentialPublication();
+        if (cancelled.current || effectRunRef.current !== effectRunId) return;
+        if (published) continue;
+      }
       if (auth.required && !auth.authenticated && !client.hasToken()) {
         if (auth.bootstrapRequired) {
           deps.setAuthRequired(false);
@@ -1184,6 +1238,19 @@ export async function runPollingBackend(
         return;
       }
       if (ae?.status === 401 && !client.hasToken()) {
+        if (isElectrobunRuntime() && !awaitedDesktopCredentialPublication) {
+          const published = await waitForDesktopCredentialPublication();
+          if (cancelled.current || effectRunRef.current !== effectRunId) return;
+          if (published) {
+            // Publication race: the desktop bearer landed after this probe was
+            // already sent without it — re-probe with the bearer instead of
+            // dead-ending on the pairing gate (see
+            // waitForDesktopCredentialPublication).
+            if (cancelled.current || effectRunRef.current !== effectRunId)
+              return;
+            continue;
+          }
+        }
         // On Capacitor native the bearer token is injected asynchronously by
         // the native Agent plugin after the WebView boots. The first poll can
         // fire before that injection completes, producing a spurious 401 even

@@ -38,8 +38,9 @@ export interface LoadOlderConversationMessagesDeps {
    * first element's timestamp; an empty thread has no cursor to page below.
    */
   currentMessages: ConversationMessage[];
-  /** Prepend the older, renderable turns in front of the thread. */
-  prependMessages: (older: ConversationMessage[]) => void;
+  /** Prepend the older, renderable turns in front of the thread. Returns how many were actually added when known. */
+  // biome-ignore lint/suspicious/noConfusingVoidType: Existing callbacks may return void when a count is unavailable.
+  prependMessages: (older: ConversationMessage[]) => number | void;
   /** Page size hint; the server may clamp it. */
   limit?: number;
   signal?: AbortSignal;
@@ -117,8 +118,11 @@ export async function loadOlderConversationMessages(
     const hasMore = response.hasMore === true;
 
     if (older.length > 0) {
-      prependMessages(older);
-      return { hasMore, prependedCount: older.length };
+      const added = prependMessages(older);
+      return {
+        hasMore,
+        prependedCount: typeof added === "number" ? added : older.length,
+      };
     }
     if (!hasMore) {
       return { hasMore: false, prependedCount: 0 };

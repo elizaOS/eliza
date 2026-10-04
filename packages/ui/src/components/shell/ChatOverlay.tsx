@@ -2059,9 +2059,8 @@ export function ChatOverlay({
       before: loadOlderResumeRef.current.before,
       beforeId: loadOlderResumeRef.current.beforeId,
       prependMessages: (older) => {
-        if (loadOlderConversationIdRef.current === conversationId) {
-          prependConversationMessages(older);
-        }
+        if (loadOlderConversationIdRef.current !== conversationId) return 0;
+        return prependConversationMessages(older);
       },
     });
     if (loadOlderConversationIdRef.current === conversationId) {

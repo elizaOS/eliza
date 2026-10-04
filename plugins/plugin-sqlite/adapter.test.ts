@@ -52,6 +52,37 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("keeps the newer memory when two vectors are equally close", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const olderId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const newerId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
+    const older = {
+      ...memory("older"),
+      id: olderId,
+      createdAt: 1_700_000_000_000,
+      embedding: [1, 0, 0],
+    };
+    const newer = {
+      ...memory("newer"),
+      id: newerId,
+      createdAt: 1_700_000_000_005,
+      embedding: [1, 0, 0],
+    };
+    await adapter.createMemories([
+      { memory: older, tableName: "messages" },
+      { memory: newer, tableName: "messages" },
+    ]);
+    const hits = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [1, 0, 0],
+      roomId,
+      count: 1,
+      match_threshold: 0.5,
+    });
+    expect(hits.map((row) => row.id)).toEqual([newerId]);
+  });
+
   it("keeps a createdAt of 0 inside an inclusive start/end window", async () => {
     const adapter = await open();
     const epoch = {
