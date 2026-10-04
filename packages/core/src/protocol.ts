@@ -563,11 +563,8 @@ export { tokenizeNameOccurrences } from "./utils/name-tokens.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/path-component.js";
 export {
-	type OpenPermissionSettingsDeps,
-	openPermissionSettings,
-} from "./utils/permission-deep-links.js";
-export {
 	getMacPermissionDeepLink,
+	type OpenPermissionSettingsDeps,
 	openPermissionSettings,
 } from "./utils/permission-deep-links.js";
 export {
