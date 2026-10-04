@@ -10,7 +10,6 @@ import {
   fingerprintWireRequest,
   type WireRequestShape,
 } from "./cerebras-chat-flow-experiment.ts";
-import { sourceRevisionEvidence } from "./cerebras-chat-flow-latency.ts";
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -304,6 +303,9 @@ async function main(): Promise<void> {
     throw new Error(
       "Verify optional prompt_cache_key account capability first",
     );
+  const { sourceRevisionEvidence } = await import(
+    "./cerebras-chat-flow-latency.ts"
+  );
   const sourceRevision = sourceRevisionEvidence();
   const inputBytes = await readFile(input);
   const report = object(JSON.parse(inputBytes.toString()));

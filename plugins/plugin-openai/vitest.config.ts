@@ -32,6 +32,10 @@ export default defineConfig({
 				replacement: path.join(pluginSqlRoot, "types.ts"),
 			},
 			{
+				find: /^@elizaos\/plugin-sql\/errors$/,
+				replacement: path.join(pluginSqlRoot, "pglite", "errors.ts"),
+			},
+			{
 				find: /^@elizaos\/plugin-sql\/(.+)$/,
 				replacement: path.join(pluginSqlRoot, "$1"),
 			},
