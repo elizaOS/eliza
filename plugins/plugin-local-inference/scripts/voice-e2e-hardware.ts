@@ -131,7 +131,7 @@ interface PcmResult {
 
 function usage(): void {
   console.log(`Usage:
-  bun packages/app/scripts/voice-e2e-hardware.ts --cases roundtrip --bundle <eliza-1.bundle> --dylib <libelizainference>
+  bun plugins/plugin-local-inference/scripts/voice-e2e-hardware.ts --cases roundtrip --bundle <eliza-1.bundle> --dylib <libelizainference>
 
 Cases:
   roundtrip            Real TTS -> real ASR WER check through libelizainference.

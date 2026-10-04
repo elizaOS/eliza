@@ -208,6 +208,25 @@ const config = {
         "vitest*.config.ts",
         "playwright.*.config.ts",
         "scripts/**/*.{test,spec}.{ts,tsx,mjs}",
+        // Device/workflow CLIs and subprocess entrypoints outside package scripts.
+        "scripts/alpha-dstack.ts",
+        "scripts/android-chromium-smoke.mjs",
+        "scripts/android-gateway-lifecycle.ts",
+        "scripts/android-native-agent.ts",
+        "scripts/android-native-browser-smoke.mjs",
+        "scripts/android-native-filesystem.ts",
+        "scripts/android-native-sms.ts",
+        "scripts/cloud-provisioning-e2e.ts",
+        "scripts/link-docker-local-app-packages.ts",
+        "scripts/onboarding-replay-evidence.ts",
+        "scripts/playwright-ui-live-stack.ts",
+        "scripts/release-check.ts",
+        "scripts/run-release-check.ts",
+        "scripts/testing/start-eliza-live.ts",
+        "scripts/visual-qa-report.ts",
+        "scripts/voice-attribution-smoke.ts",
+        "scripts/mobile/android/qualify-consumer-host.mjs",
+        "scripts/android-native-plugins-gradle/bridge-tests/assets/contracts.ts",
         "test/**/*.{ts,tsx}",
         "e2e/**/*.{ts,tsx,mjs}",
         "platforms/electrobun/electrobun.config.ts",
@@ -446,12 +465,22 @@ const appRoot = fileURLToPath(new URL("./packages/app/", import.meta.url));
 const manifest = JSON.parse(
   readFileSync(path.join(appRoot, "package.json"), "utf8"),
 ) as {
+  scripts: Record<string, string>;
   exports: Record<
     string,
     string | { "eliza-source"?: string; import?: string }
   >;
 };
 const app = config.workspaces["packages/app"];
+// Our Node/TS launchers take script paths as arguments. Discover those paths
+// even when Knip cannot infer the custom launcher's argument convention.
+for (const command of Object.values(manifest.scripts)) {
+  for (const [target] of command.matchAll(
+    /(?:scripts|native-host)\/[\w./-]+\.[cm]?[jt]sx?\b/g,
+  )) {
+    if (existsSync(path.join(appRoot, target))) app.entry.push(target);
+  }
+}
 for (const entry of Object.values(manifest.exports)) {
   const target =
     typeof entry === "string"

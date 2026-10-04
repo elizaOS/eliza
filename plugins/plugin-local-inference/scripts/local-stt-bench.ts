@@ -11,7 +11,7 @@
  * `BENCH_TURNS` turns.
  *
  * Run:
- *   BUN_TEST_COVERAGE=0 bun packages/app/scripts/local-stt-bench.ts
+ *   BUN_TEST_COVERAGE=0 bun plugins/plugin-local-inference/scripts/local-stt-bench.ts
  *
  * Output: a human-readable table on stderr + a single JSON block on stdout.
  * Exit code is 0 unless the runtime itself fails — this is a measurement
