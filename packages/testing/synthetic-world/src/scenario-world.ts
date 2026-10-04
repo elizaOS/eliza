@@ -309,10 +309,7 @@ export async function startSyntheticScenarioWorld<T>(
         headers: { "content-type": "application/json" },
         ...(seed.body !== undefined ? { body: JSON.stringify(seed.body) } : {}),
         redirect: "error",
-        signal: AbortSignal.any([
-          initializationSignal,
-          AbortSignal.timeout(30_000),
-        ]),
+        signal: initializationSignal,
       });
       await response.arrayBuffer();
       if (!response.ok)

@@ -21,14 +21,39 @@
  *      shared adapter. This is the documented best-effort handoff contract.
  */
 
-import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
-import {
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { ElizaClient, getBootConfig, setBootConfig } from "@elizaos/ui";
+import { expect, test } from "../src/helpers/test-fixtures";
+
+// The client is consumed through its built public export. Resolve its mutable
+// fixture authorities through the same owner, rather than source aliases that
+// Playwright applies only to the spec and would create a second registry.
+const requireFromUi = createRequire(
+  createRequire(import.meta.url).resolve("@elizaos/ui"),
+);
+const {
+  DIRECT_ELIZA_CLOUD_API_BY_HOST,
+}: typeof import("@elizaos/plugin-browser/remote-control/cloud-endpoints") =
+  await import(
+    pathToFileURL(
+      requireFromUi.resolve(
+        "@elizaos/plugin-browser/remote-control/cloud-endpoints",
+      ),
+    ).href
+  );
+const {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/plugin-elizacloud/steward-session-client";
-import { ElizaClient, getBootConfig, setBootConfig } from "@elizaos/ui";
-import { expect, test } from "../src/helpers/test-fixtures";
+}: typeof import("@elizaos/plugin-elizacloud/steward-session-client") =
+  await import(
+    pathToFileURL(
+      requireFromUi.resolve(
+        "@elizaos/plugin-elizacloud/steward-session-client",
+      ),
+    ).href
+  );
 
 test.describe("app onboarding client ↔ real cloud-api", () => {
   test("real ElizaClient provisions, reuses, and arms the handoff through the router", async ({

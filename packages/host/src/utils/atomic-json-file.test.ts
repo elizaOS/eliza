@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
@@ -105,6 +105,35 @@ it.skipIf(process.platform === "win32")(
       chmodSync(file, 0o600);
       writeJsonFileAtomic(file, { updated: true });
       expect(statSync(file).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ updated: true });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "keeps a shared registry group-writable under the process umask",
+  () => {
+    const directory = mkdtempSync(join(tmpdir(), "eliza-registry-shared-"));
+    try {
+      const file = join(directory, "registry.json");
+      writeFileSync(file, "{}");
+      chmodSync(file, 0o664);
+      const implementation = new URL("./atomic-json-file.ts", import.meta.url)
+        .href;
+      // A child process owns its umask; worker threads cannot set one.
+      const writer = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `process.umask(0o022); const { writeJsonFileAtomic } = await import(${JSON.stringify(implementation)}); writeJsonFileAtomic(${JSON.stringify(file)}, { updated: true });`,
+        ],
+        { encoding: "utf8" },
+      );
+      expect(writer.status, writer.stderr).toBe(0);
+      expect(statSync(file).mode & 0o777).toBe(0o664);
       expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ updated: true });
     } finally {
       rmSync(directory, { recursive: true, force: true });

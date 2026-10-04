@@ -5,7 +5,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
-import type { OrchestratorWidgetSnapshot } from "../../../api/client-types-cloud";
+import type { OrchestratorWidgetSnapshot } from "../../../api/client-orchestrator-widgets";
 import {
   assert,
   waitForTestId,

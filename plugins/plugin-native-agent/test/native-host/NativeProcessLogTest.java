@@ -50,6 +50,15 @@ public final class NativeProcessLogTest {
     check(!read(boundary).contains("TOKEN"));
     check(read(boundary).endsWith(" [truncated]\n"));
     check(Files.size(boundary) <= 128);
+    // A second copy cut at the retained edge is never matched; redacting the
+    // first copy must not pull that unmatched prefix into the visible line.
+    String repeated = "TOKEN-" + "q".repeat(94);
+    Path twice = root.resolve("twice.log");
+    new NativeProcessLog(twice, 128, 32).drain(text(repeated + repeated + "\n"), Arrays.asList(repeated));
+    check(read(twice).equals("[redacted] [truncated]\n"));
+    Path prefixed = root.resolve("prefixed.log");
+    new NativeProcessLog(prefixed, 32768, 64).drain(text("id=" + repeated + "," + repeated + "," + repeated + "\n"), Arrays.asList(repeated));
+    check(read(prefixed).equals("id=[redacted] [truncated]\n"));
     Path utf8 = root.resolve("utf8.log");
     NativeProcessLog small = new NativeProcessLog(utf8, 128, 32);
     small.drain(text("界".repeat(100) + "\n"), Collections.emptyList());

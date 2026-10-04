@@ -23,7 +23,7 @@ import {
   type IntentTarget,
   type OsIntent,
   type OsIntentType,
-} from "./contract";
+} from "@elizaos/contracts";
 import type { IntentDedupeStore } from "./dedupe";
 
 /** Microphone-permission state, mirroring the shell's proactive probe. `denied`

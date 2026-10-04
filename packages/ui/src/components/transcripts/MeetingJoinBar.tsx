@@ -7,10 +7,12 @@
  * `client.requestMeetingBot` / `client.stopMeeting`.
  */
 
+import type {
+  MeetingJoinRequest,
+  MeetingSession,
+} from "@elizaos/core/protocol";
 import {
   MEETING_PLATFORM_LABELS,
-  type MeetingJoinRequest,
-  type MeetingSession,
   parseMeetingUrl,
 } from "@elizaos/core/protocol";
 import { Video } from "lucide-react";
