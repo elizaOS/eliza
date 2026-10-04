@@ -43,6 +43,16 @@ routes. Enrollment requires its factory when a pending credential store is suppl
 Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`
 uses provider language detection. Omitting these choices retains policy validation.
 
+Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
+setup-session mock exports remain compatible; the client root does not load them.
+
+Organization cancellation reversal can use `readOrganizationSubscriptionRenewalReview`
+and `submitReviewedOrganizationSubscriptionCancellationUndo` with the returned
+terms digest. These require the current billing-manager session. Display the
+estimate and obtain explicit confirmation; on an unknown outcome use
+`readOrganizationSubscriptionCancellationUndo` instead of inventing another intent.
+The review is short-lived and does not lock a future invoice price.
+
 Native billing also exposes management and portal projections, cancellation,
 pending/status recovery and reviewed reversal. The local POST
 `/cloud/account/subscription/renewal-review` accepts subscriptionId and revision;
@@ -53,13 +63,3 @@ idempotency identity includes approved terms and survives native restarts. A
 same-terms retry requires a matching FAILED predecessor via retryOf; changed
 terms require a fresh review and explicit confirmation. Recovery reads never
 redispatch. Server-side pending exclusion and billing authority remain decisive.
-
-Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
-setup-session mock exports remain compatible; the client root does not load them.
-
-Organization cancellation reversal can use `readOrganizationSubscriptionRenewalReview`
-and `submitReviewedOrganizationSubscriptionCancellationUndo` with the returned
-terms digest. These require the current billing-manager session. Display the
-estimate and obtain explicit confirmation; on an unknown outcome use
-`readOrganizationSubscriptionCancellationUndo` instead of inventing another intent.
-The review is short-lived and does not lock a future invoice price.
