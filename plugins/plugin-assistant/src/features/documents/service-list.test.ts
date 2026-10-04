@@ -50,6 +50,15 @@ async function makeHarness(): Promise<{
     adapter,
     logLevel: "fatal",
   });
+  await adapter.createRooms(
+    [ROOM_A, ROOM_B].map((id) => ({
+      id,
+      agentId: AGENT_ID,
+      worldId: WORLD_ID,
+      source: "test",
+      type: ChannelType.GROUP,
+    })),
+  );
   await adapter.createRoomParticipants([AGENT_ID, USER_ID], ROOM_A);
   await adapter.createRoomParticipants([AGENT_ID, USER_ID], ROOM_B);
   return {
@@ -221,6 +230,15 @@ describe("DocumentService list semantics", () => {
     const { adapter, runtime, service } = await makeHarness();
     const revocationUserId = "00000000-0000-0000-0000-00000000cafe" as UUID;
     const revocationRoomId = "00000000-0000-0000-0000-00000000da7a" as UUID;
+    await adapter.createRooms([
+      {
+        id: revocationRoomId,
+        agentId: AGENT_ID,
+        worldId: WORLD_ID,
+        source: "test",
+        type: ChannelType.GROUP,
+      },
+    ]);
     await adapter.createRoomParticipants(
       [AGENT_ID, revocationUserId],
       revocationRoomId,

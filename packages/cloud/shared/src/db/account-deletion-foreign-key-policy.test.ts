@@ -25,3 +25,11 @@ test("reviewed renewal receipts retain the same financial handling as commands",
   expect(receipts).toHaveLength(1);
   expect(classifyAccountDeletionForeignKey(receipts[0]!)).toBe("anonymize_retained_record");
 });
+
+test("organization plan quotes retain anonymized financial review history", () => {
+  const quotes = listAccountDeletionForeignKeys().filter(
+    (d) => d.sourceTable === "organization_plan_change_quotes",
+  );
+  expect(quotes).toHaveLength(1);
+  expect(classifyAccountDeletionForeignKey(quotes[0]!)).toBe("anonymize_retained_record");
+});
