@@ -34,3 +34,8 @@ The browser-safe `api/task-lifecycle` leaf projects authoritative task status an
 reconciles start/pause/resume/cancel requests without optimistically reporting
 success. Hosts provide transport, localized failure messages and view updates.
 The durable runtime remains authoritative; this projection grants no task authority.
+
+The `voice/pcm-wave` leaf shares mono PCM16 WAV encoding for single buffers or
+cumulative chunks without importing capture, desktop bridge or provider code.
+Hosts own recording lifecycle, sample-rate selection and playback/transcription.
+Nonfinite samples encode as silence; finite samples are clipped and rounded.
