@@ -39,6 +39,18 @@ Web subscription settings select a registered product with `VITE_ELIZA_APPLICATI
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
 
+## Disposable hosted Android fixtures
+
+`scripts/mobile/android/hosted-fixture` supplies display/network admission and
+bounded diagnostics for fresh GitHub-hosted AOSP fixtures. Mutating setup requires
+`emulator-5554`, AVD `test`, a single user 0 and an unsecured observed keyguard;
+network setup also rejects preinstalled third-party apps. Boot-device admission
+is specific to the captured API 35 x86_64 topology. Hosts inject ADB execution and
+retain orchestration/output ownership. Never use these helpers to provision a
+physical phone or relax their admission checks to fit an arbitrary emulator.
+Run `node --test scripts/mobile/android/hosted-fixture/*.test.mjs` for the captured
+state and refusal tests; these tests do not establish live emulator qualification.
+
 ## Android native plugin verification
 
 With the Android SDK, Java 21, workspace dependencies, and a running emulator:
