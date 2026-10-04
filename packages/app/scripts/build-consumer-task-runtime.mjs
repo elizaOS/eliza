@@ -121,7 +121,9 @@ export function buildTaskRuntime(
       );
     }
     if (commandSource) {
-      fs.mkdirSync(commandSource, { recursive: true });
+      const commandDirectory = path.resolve(commandSource);
+      const commandOutput = path.join(commandDirectory, "command-handler.mjs");
+      fs.mkdirSync(commandDirectory, { recursive: true });
       execFileSync(
         "bun",
         [
@@ -129,13 +131,17 @@ export function buildTaskRuntime(
           "packages/os/browser/src/command-handler.mjs",
           "--target=node",
           "--outfile",
-          path.join(commandSource, "command-handler.mjs"),
+          commandOutput,
         ],
         { cwd: temporary, stdio: "pipe" },
       );
       fs.writeFileSync(
-        path.join(commandSource, "provenance.json"),
-        JSON.stringify(provenance, null, 2) + "\n",
+        path.join(commandDirectory, "provenance.json"),
+        JSON.stringify(
+          { ...spec, bundleSha256: hash(fs.readFileSync(commandOutput)) },
+          null,
+          2,
+        ) + "\n",
       );
     }
     return provenance;

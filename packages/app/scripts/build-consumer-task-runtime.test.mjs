@@ -7,6 +7,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { buildTaskRuntime } from "./build-consumer-task-runtime.mjs";
 import { exportCommittedSources } from "./lib/committed-source.mjs";
 
@@ -66,10 +67,15 @@ test("a committed task bundle runs on SQLite and records the consumer's exact so
       { encoding: "utf8" },
     ).trim();
   const output = path.join(temporary, "runtime.mjs");
+  const commandRoot = testOutputPath("consumer-task-build");
+  fs.mkdirSync(commandRoot, { recursive: true });
+  const commandDirectory = fs.mkdtempSync(path.join(commandRoot, "command-"));
+  t.after(() => fs.rmSync(commandDirectory, { recursive: true, force: true }));
   const report = buildTaskRuntime(output, {
     sourceRoot,
     sourceCommit,
     browserSource: path.join(temporary, "browser"),
+    commandSource: path.relative(process.cwd(), commandDirectory),
   });
   assert.equal(report.sourceCommit, sourceCommit);
   assert.equal(
@@ -94,5 +100,16 @@ test("a committed task bundle runs on SQLite and records the consumer's exact so
   assert.ok(
     fs.statSync(path.join(temporary, "browser/messaging/task-events.ts")).size >
       0,
+  );
+  const commandBytes = fs.readFileSync(
+    path.join(commandDirectory, "command-handler.mjs"),
+  );
+  const commandProvenance = JSON.parse(
+    fs.readFileSync(path.join(commandDirectory, "provenance.json"), "utf8"),
+  );
+  assert.equal(commandProvenance.sourceCommit, sourceCommit);
+  assert.equal(
+    commandProvenance.bundleSha256,
+    createHash("sha256").update(commandBytes).digest("hex"),
   );
 });
