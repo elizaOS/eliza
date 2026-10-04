@@ -1,8 +1,14 @@
-/** Shared Chromium DNR policy. Never truncate a feed to fit a quota. */
+/** Shared Chromium DNR mechanism. Never truncate a feed to fit a quota. */
 export const RULE_BASE = 10000,
   MAX_DOMAINS = 1200000,
   CHUNK = 2000;
-export function compileThreatRules(domains, extensionId) {
+export function compileThreatRules(
+  domains,
+  extensionId,
+  { warningPage = "warning.html" } = {},
+) {
+  if (!/^[a-z][a-z0-9-]*\.html$/.test(warningPage))
+    throw Error("Invalid warning page");
   if (!/^[a-p]{32}$/.test(extensionId))
     throw Error("Invalid extension identity");
   const unique = [...new Set(domains)].sort();
@@ -33,7 +39,7 @@ export function compileThreatRules(domains, extensionId) {
       action: {
         type: "redirect",
         redirect: {
-          regexSubstitution: `chrome-extension://${extensionId}/warning.html#\\1`,
+          regexSubstitution: `chrome-extension://${extensionId}/${warningPage}#\\1`,
         },
       },
       condition: {
@@ -65,13 +71,13 @@ export function exceptionRule(address, tabId) {
       tabIds: [tabId],
       resourceTypes: ["main_frame"],
       requestMethods: ["get"],
-      regexFilter: "^" + url.href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$",
+      regexFilter: `^${url.href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
       isUrlFilterCaseSensitive: true,
     },
   };
 }
-export async function installThreatRules(api, domains, extensionId) {
-  const addRules = compileThreatRules(domains, extensionId);
+export async function installThreatRules(api, domains, extensionId, options) {
+  const addRules = compileThreatRules(domains, extensionId, options);
   const current = await api.getDynamicRules();
   // This module owns only its reserved interval. Preserve other component rules.
   const removeRuleIds = current
@@ -150,7 +156,7 @@ export async function readFeedBody(response, maximum = 24 * 1024 * 1024) {
 }
 export async function downloadThreatFeed(
   feed,
-  { fetchImpl = fetch, now = Date.now, minEntries = 1000 } = {},
+  { fetchImpl = fetch, now = Date.now, minEntries = 1000, userAgent } = {},
 ) {
   let body, publishedAt;
   try {
@@ -170,7 +176,18 @@ export async function downloadThreatFeed(
     if (!feed.mirror) throw error;
     const response = await fetchImpl(
       "https://api.github.com/repos/Phishing-Database/Phishing.Database/commits?path=phishing-domains-ACTIVE.txt&per_page=1",
-      { signal: AbortSignal.timeout(5000), redirect: "error" },
+      {
+        signal: AbortSignal.timeout(5000),
+        redirect: "error",
+        ...(userAgent
+          ? {
+              headers: {
+                "User-Agent": userAgent,
+                Accept: "application/vnd.github+json",
+              },
+            }
+          : {}),
+      },
     );
     const commits = JSON.parse(await readFeedBody(response, 128 * 1024));
     const sha = commits?.[0]?.sha;

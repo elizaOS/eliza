@@ -19,7 +19,8 @@
     "scripts/native-host.mjs",
     "scripts/native-host.test.mjs",
     "protection/policy.mjs",
-    "protection/website-reputation.mjs",
-    "protection/build.mjs"
+    "protection/reputation.mjs",
+    "protection/build.mjs",
+    "protection/extension.mjs"
   ]
 }

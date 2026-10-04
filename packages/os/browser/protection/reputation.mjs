@@ -34,14 +34,12 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+
 import {
   downloadThreatFeed,
   parseThreatDomains,
-  REPUTATION_FEEDS,
   validFeedTime,
 } from "./policy.mjs";
-
-export { PHISHING_FEED, REPUTATION_FEEDS, THREAT_FEED } from "./policy.mjs";
 
 const HOUR = 3600000,
   MAX_BYTES = 24 * 1024 * 1024;
@@ -53,8 +51,17 @@ export function createWebsiteReputation({
   now = Date.now,
   minEntries = 1000,
   cacheDir = null,
-  feeds = REPUTATION_FEEDS,
+  feeds,
+  userAgent = "Eliza-Browser-Protection",
 } = {}) {
+  if (
+    !Array.isArray(feeds) ||
+    !feeds.length ||
+    feeds.length > 8 ||
+    new Set(feeds.map((feed) => feed.id)).size !== feeds.length ||
+    feeds.some((feed) => !/^[-a-z0-9]{1,64}$/.test(feed.id))
+  )
+    throw Error("Invalid reputation feed configuration");
   const states = feeds.map((feed) => ({
     feed,
     snapshot: null,
@@ -63,7 +70,7 @@ export function createWebsiteReputation({
   }));
   let timer = null,
     stopped = false;
-  const validTime = (t) => validFeedTime(t, now());
+  const validTime = (time) => validFeedTime(time, now());
   const usable = (s) =>
     s && validTime(s.publishedAt) && validTime(s.downloadedAt);
   const fresh = (s) => usable(s) && now() - s.downloadedAt < 6 * HOUR;
@@ -81,7 +88,7 @@ export function createWebsiteReputation({
     states.map(async (state) => {
       if (!cacheDir) return;
       try {
-        const path = join(cacheDir, state.feed.id + ".json");
+        const path = join(cacheDir, `${state.feed.id}.json`);
         if ((await stat(path)).size > MAX_BYTES * 2)
           throw Error("oversized cache");
         const data = JSON.parse(await readFile(path, "utf8"));
@@ -100,9 +107,10 @@ export function createWebsiteReputation({
   );
   async function download(feed) {
     const { body, publishedAt, downloadedAt } = await downloadThreatFeed(feed, {
-      minEntries,
       fetchImpl,
       now,
+      minEntries,
+      userAgent,
     });
     return { body, snapshot: parse(body, publishedAt, downloadedAt) };
   }
@@ -113,7 +121,7 @@ export function createWebsiteReputation({
       state.snapshot = snapshot;
       if (cacheDir) {
         await mkdir(cacheDir, { recursive: true, mode: 0o700 });
-        temporary = join(cacheDir, state.feed.id + "." + randomUUID() + ".tmp");
+        temporary = join(cacheDir, `${state.feed.id}.${randomUUID()}.tmp`);
         await writeFile(
           temporary,
           JSON.stringify({
@@ -128,7 +136,7 @@ export function createWebsiteReputation({
           }),
           { mode: 0o600, flag: "wx" },
         );
-        await rename(temporary, join(cacheDir, state.feed.id + ".json"));
+        await rename(temporary, join(cacheDir, `${state.feed.id}.json`));
         temporary = null;
       }
     } catch {

@@ -1,11 +1,30 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  createWebsiteReputation as create,
-  PHISHING_FEED,
-  REPUTATION_FEEDS,
-} from "./website-reputation.mjs";
+import { createWebsiteReputation as create } from "../protection/reputation.mjs";
 
+const PHISHING_FEED = "https://phish.co.za/latest/phishing-domains-ACTIVE.txt";
+const THREAT_FEED =
+  "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/tif.mini-onlydomains.txt";
+const REPUTATION_FEEDS = [
+  {
+    id: "phishing",
+    mirror: true,
+    url: PHISHING_FEED,
+    source: "Phishing.Database",
+    license: "MIT",
+    licenseUrl:
+      "https://github.com/Phishing-Database/Phishing.Database/blob/master/LICENSE",
+    threats: ["SOCIAL_ENGINEERING"],
+  },
+  {
+    id: "threats",
+    url: THREAT_FEED,
+    source: "HaGeZi TIF Mini",
+    license: "GPL-3.0",
+    licenseUrl: "https://github.com/hagezi/dns-blocklists/blob/main/LICENSE",
+    threats: ["MALWARE_OR_SCAM"],
+  },
+];
 const createWebsiteReputation = (options) =>
   create({
     cacheDir: null,
@@ -166,6 +185,7 @@ test("a current cache serves immediately while refresh runs in the background", 
 });
 test("both feeds are required for a clean result; either fresh threat still blocks", async () => {
   const check = create({
+    feeds: REPUTATION_FEEDS,
     cacheDir: null,
     minEntries: 2,
     now: () => start,
@@ -212,4 +232,14 @@ test("primary outage uses immutable official mirror bytes with source-age valida
   );
   assert.equal(urls.length, 3);
   assert.ok(urls.every((url) => !url.includes("private")));
+});
+
+test("feed policy must be explicit and cache filenames cannot traverse the host directory", () => {
+  for (const feeds of [
+    undefined,
+    [],
+    [{ id: "../escape" }],
+    [REPUTATION_FEEDS[0], REPUTATION_FEEDS[0]],
+  ])
+    assert.throws(() => create({ feeds }), /configuration/);
 });

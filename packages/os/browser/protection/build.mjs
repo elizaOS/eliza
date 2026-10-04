@@ -3,17 +3,23 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { REPUTATION_FEEDS } from "./policy.mjs";
+
 const root = fileURLToPath(new URL(".", import.meta.url));
 /** @param {string} output
- * @param {{warningDirectory?: string}} options
+ * @param {{warningDirectory?: string, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string}} options
  */
 export async function buildBrowserProtection(
   output,
-  { warningDirectory } = {},
+  {
+    warningDirectory,
+    feeds = REPUTATION_FEEDS,
+    refreshAlarm = "eliza-protection-refresh",
+    exceptionAlarm = "eliza-protection-exception",
+  } = {},
 ) {
   await mkdir(output, { recursive: true });
   for (const file of [
-    "background.mjs",
     "policy.mjs",
     "warning.html",
     "warning.mjs",
@@ -28,6 +34,14 @@ export async function buildBrowserProtection(
       ),
       join(output, file),
     );
+  const engine = await readFile(join(root, "extension.mjs"), "utf8");
+  await writeFile(
+    join(output, "background.mjs"),
+    engine +
+      "\ninstallBrowserProtection({chrome:globalThis.chrome,..." +
+      JSON.stringify({ feeds, refreshAlarm, exceptionAlarm }) +
+      "});\n",
+  );
   const manifest = {
     manifest_version: 3,
     name: "Eliza website protection",

@@ -6,7 +6,7 @@ import {
   installThreatRules,
   MAX_DOMAINS,
   RULE_BASE,
-} from "./policy.mjs";
+} from "../protection/policy.mjs";
 
 const id = "a".repeat(32);
 test("native policy batches all domains without dropping threats and includes frame/subresource blocking", () => {
@@ -67,7 +67,29 @@ test("exceptions are exact-address, case-sensitive, main-frame and tab-bound", (
   for (const value of [
     "javascript:alert(1)",
     "https://user:pass@bad.example",
-    "https://bad.example/" + "a".repeat(900),
+    `https://bad.example/${"a".repeat(900)}`,
   ])
     assert.throws(() => exceptionRule(value, 23));
+});
+
+test("host warning page is configurable without accepting a path or remote authority", () => {
+  const rules = compileThreatRules(["blocked.example"], "a".repeat(32), {
+    warningPage: "custom-warning.html",
+  });
+  assert.match(
+    rules[1].action.redirect.regexSubstitution,
+    /\/custom-warning\.html#/,
+  );
+  for (const warningPage of [
+    "../warning.html",
+    "https://evil.test/x",
+    "warning.html?x",
+  ])
+    assert.throws(
+      () =>
+        compileThreatRules(["blocked.example"], "a".repeat(32), {
+          warningPage,
+        }),
+      /Invalid warning/,
+    );
 });

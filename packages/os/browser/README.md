@@ -205,13 +205,33 @@ Ninja, and records APK and GN-input hashes. It does not sign a release, install 
 APK, provision AOSP or qualify a device. Preserve `chromium-build.json` alongside
 the overlay and use the existing signed-artifact admission flow for release.
 
-The optional shared protection engine is in `protection/`. Build an unpacked test
-artifact with `node packages/os/browser/protection/build.mjs OUTPUT`.
-`buildBrowserProtection(output, {warningDirectory})` accepts only product HTML/CSS
-warning overrides; worker and messaging behavior remain shared. Host applications
-may import `createWebsiteReputation` from `protection/website-reputation.mjs` and
-supply their private `cacheDir`; the default keeps no disk cache. Both adapters
-share bounded feed decoding and immutable fallback provenance. The worker retains
-stale deny rules through outages; host verdicts report unavailable for stale data.
-Run `bun run --cwd packages/os test:browser:protection` for controlled regressions.
-This engine does not certify arbitrary websites or replace installed-browser tests.
+## Shared host protection
+
+`protection/` provides an opt-in rule compiler, extension-worker engine and Node
+reputation cache. The host owns warning HTML/CSS/copy, reviewed feed selection,
+cache location, user-agent attribution and alarm names. `installBrowserProtection`
+is installed once per extension worker; its warning page must be a local HTML
+filename. The DNR engine reserves IDs 10000–11999 and one session exception at ID
+1; compose other rules outside those ranges. A temporary exception requires a
+message from the host warning page in its top-level tab and permits only the exact
+main-frame GET; navigation failure, commit, expiry or tab removal revokes it.
+
+`createWebsiteReputation` requires explicit feeds and accepts an optional private
+cache directory. It downloads the configured lists, never visited URLs, and never
+reports missing/expired feed data as clean. Feed configuration is trusted host
+policy, not model input. The Phishing.Database mirror adapter pins fallback bytes
+to an official commit. Hosts must ship the selected feeds' required attribution.
+
+These modules are not enabled automatically in Eliza's browser build. Consumers
+bundle the extension engine into their admitted worker resource and include the
+Node module in the verified native gateway dependency closure. Run the protection
+regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
+
+`buildBrowserProtection(output, {warningDirectory, feeds, refreshAlarm, exceptionAlarm})`
+builds the optional unpacked worker using the shared engine. HTML/CSS overrides
+preserve shared messaging and enforcement. The optional builder defaults to the
+reviewed Phishing.Database and HaGeZi lists and ships their license notices.
+`composeProtectionAssets` adds the complete admitted resource inventory to an
+existing component without changing its other capabilities. Keep existing alarm
+names when upgrading an installed consumer. Run `test:browser:protection:network`
+for real Chromium blocking, exception, offline-restart and capacity checks.

@@ -1,3 +1,13 @@
+import { installBrowserProtection } from "../protection/extension.mjs";
+
+const feeds = [
+  {
+    id: "phishing",
+    url: "https://phish.co.za/latest/phishing-domains-ACTIVE.txt",
+  },
+  { id: "threats", url: "https://example.test/feed" },
+];
+
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -32,7 +42,7 @@ test("engine failure records unavailable and websites/embedded pages cannot requ
     },
     runtime: {
       id: "a".repeat(32),
-      getURL: (file) => "chrome-extension://" + "a".repeat(32) + "/" + file,
+      getURL: (file) => `chrome-extension://${"a".repeat(32)}/${file}`,
       onInstalled: event,
       onStartup: event,
       onMessage: {
@@ -44,15 +54,18 @@ test("engine failure records unavailable and websites/embedded pages cannot requ
     alarms: { create: () => {}, onAlarm: event },
     webNavigation: { onCommitted: event },
     tabs: { onRemoved: event },
-    tabs: { onRemoved: event },
   };
   try {
-    await import("./background.mjs?engine-failure");
+    installBrowserProtection({
+      chrome: globalThis.chrome,
+      fetchImpl: globalThis.fetch,
+      feeds,
+    });
     for (let i = 0; i < 20 && !written; i++)
       await new Promise((resolve) => setImmediate(resolve));
     assert.equal(written.protection.status, "unavailable");
     assert.equal(requests, 0);
-    const url = chrome.runtime.getURL("warning.html") + "#https://bad.example/";
+    const url = `${chrome.runtime.getURL("warning.html")}#https://bad.example/`;
     for (const sender of [
       {
         id: chrome.runtime.id,
@@ -108,7 +121,7 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
     },
     runtime: {
       id: "a".repeat(32),
-      getURL: (f) => "chrome-extension://" + "a".repeat(32) + "/" + f,
+      getURL: (f) => `chrome-extension://${"a".repeat(32)}/${f}`,
       onInstalled: event,
       onStartup: event,
       onMessage: {
@@ -119,7 +132,6 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
     },
     alarms: { create: async () => {}, onAlarm: event },
     webNavigation: { onCommitted: event },
-    tabs: { onRemoved: event },
     tabs: {
       onRemoved: event,
       update: async () => {
@@ -128,7 +140,11 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
     },
   };
   try {
-    await import("./background.mjs?clock-and-navigation");
+    installBrowserProtection({
+      chrome: globalThis.chrome,
+      fetchImpl: globalThis.fetch,
+      feeds,
+    });
     for (let i = 0; i < 20 && !written; i++)
       await new Promise((r) => setImmediate(r));
     assert.ok(
@@ -142,7 +158,7 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
         {
           id: chrome.runtime.id,
           frameId: 0,
-          url: chrome.runtime.getURL("warning.html") + "#https://bad.example/",
+          url: `${chrome.runtime.getURL("warning.html")}#https://bad.example/`,
           tab: { id: 4 },
         },
         resolve,
@@ -155,40 +171,5 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
   } finally {
     globalThis.chrome = previousChrome;
     globalThis.fetch = previousFetch;
-  }
-});
-
-test("an exception alarm from a previous consumer worker still revokes the allow rule", async () => {
-  const previousChrome = globalThis.chrome;
-  let onAlarm;
-  const removed = [];
-  const event = { addListener() {} };
-  globalThis.chrome = {
-    runtime: { onInstalled: event, onStartup: event, onMessage: event },
-    storage: { local: { get: async () => ({}), set: async () => {} } },
-    declarativeNetRequest: {
-      getDynamicRules: async () => {
-        throw Error("offline upgrade");
-      },
-      updateSessionRules: async (value) => removed.push(value),
-    },
-    alarms: {
-      create() {},
-      onAlarm: {
-        addListener: (fn) => {
-          onAlarm = fn;
-        },
-      },
-    },
-    webNavigation: { onCommitted: event },
-    tabs: { onRemoved: event },
-  };
-  try {
-    await import("./background.mjs?legacy-alarm");
-    onAlarm({ name: "senior-protection-exception" });
-    assert.deepEqual(removed, [{ removeRuleIds: [1] }]);
-    await new Promise((resolve) => setImmediate(resolve));
-  } finally {
-    globalThis.chrome = previousChrome;
   }
 });
