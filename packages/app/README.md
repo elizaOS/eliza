@@ -157,6 +157,26 @@ account matching, inference policy and renderer environment stay with the host.
 
 ## External Android consumers
 
+`scripts/mobile/android/consumer-host.mjs` generates an owned external Gradle
+project from explicit identity, manifest, variant, source and dependency data.
+It copies no product UI or native service tree. Input paths use declared consumer,
+upstream or dependency roots; selected native files can be copied without admitting
+whole plugin source directories. Existing unmarked projects, identity changes,
+unowned-file collisions and symlink escapes are rejected. Generated ownership
+permits regeneration and removal of formerly selected generated files while
+preserving other build outputs. Hosts keep authored manifests/resources outside
+the generated project and supply already-verified optional runtime payloads. The
+generator owns the `app_name` string; host resources must not redefine it.
+
+The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /
+JDK 21, independently of the full app's newer default wrapper. The distribution
+and shared wrapper JAR are hash pinned. Run the filesystem contract with
+`node --test scripts/mobile/android/consumer-host.test.mjs`; with SDK 36 and
+build-tools 36.0.0, `node scripts/mobile/android/qualify-consumer-host.mjs` builds
+two independent identities and checks all eight debug/release variant APKs.
+Reports go to root `test-results/android-consumer-host`. This is build/manifest
+qualification, not installed service, HOME-role, AOSP or device acceptance.
+
 Shared local speech sources and reproducible runtime/model tooling are documented
 in [local speech](scripts/local-speech/README.md). The source-export resolver in
 `scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
