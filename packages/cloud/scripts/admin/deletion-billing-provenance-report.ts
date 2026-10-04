@@ -10,8 +10,11 @@ import {
 } from "./preflight-database-identity";
 
 export class DeletionBillingProvenanceReportError extends Error {
-  constructor(readonly code: string) {
-    super(code);
+  constructor(
+    readonly code: string,
+    options?: ErrorOptions,
+  ) {
+    super(code, options);
     this.name = "DeletionBillingProvenanceReportError";
   }
 }
@@ -75,12 +78,7 @@ const agentAuthorityFacts = {
     "NULLIF(btrim(a.node_id), '') IS NOT NULL AND NULLIF(btrim(a.container_name), '') IS NOT NULL",
 } as const;
 
-/** Classify exact guarded subjects without IDs. Record presence does not authorize repair. */
-async function readAgentAuthorityFacts(
-  client: DeletionBillingReportClient,
-  migration: string,
-  fixtureApiKey: string,
-) {
+function unresolvedAgentSelector(migration: string): string {
   const guard = deletionBillingGuardQueries(migration)[1];
   const prefix = "SELECT count(*)::integer AS unresolved_count";
   if (!guard.startsWith(prefix)) {
@@ -88,7 +86,16 @@ async function readAgentAuthorityFacts(
       "migration_guard_contract_changed",
     );
   }
-  const selector = guard.replace(prefix, "SELECT a.*").replace(/;\s*$/, "");
+  return guard.replace(prefix, "SELECT a.*").replace(/;\s*$/, "");
+}
+
+/** Classify exact guarded subjects without IDs. Record presence does not authorize repair. */
+async function readAgentAuthorityFacts(
+  client: DeletionBillingReportClient,
+  migration: string,
+  fixtureApiKey: string,
+) {
+  const selector = unresolvedAgentSelector(migration);
   const hash = createHash("sha256").update(fixtureApiKey).digest("hex");
   const { rows } = await client.query(
     `
@@ -141,10 +148,103 @@ async function readAgentAuthorityFacts(
   return facts;
 }
 
+/** Complete failed-job records stay private; observations never authorize a retry. */
+export async function readGuardedFailedDeleteJobFacts(
+  client: DeletionBillingReportClient,
+  migration: string,
+) {
+  const [{ hydrateJob }, { isAgentDeleteJobData }] = await Promise.all([
+    import("../../shared/src/db/repositories/jobs"),
+    import("../../shared/src/lib/services/provisioning-job-policy"),
+  ]);
+  const selector = unresolvedAgentSelector(migration);
+  const { rows } = await client.query(`
+    WITH unresolved_agents AS (${selector})
+    SELECT j.* FROM jobs j JOIN unresolved_agents a
+      ON j.organization_id = a.organization_id AND j.agent_id = a.id::text
+    WHERE j.type = 'agent_delete' AND j.status = 'failed'
+    ORDER BY j.created_at, j.id
+  `);
+  const facts = {
+    scope: "migration_0398_unresolved_agents_failed_delete_jobs",
+    status: "failed" as const,
+    failedJobCount: rows.length,
+    validDeleteJobDataCount: 0,
+    tenantMetadataMatchCount: 0,
+    completeStateLossAcknowledgementCount: 0,
+    containerStoppedResultCount: 0,
+    rowDeletedResultCount: 0,
+    offloadedPayloadJobCount: 0,
+    recordedErrorCount: 0,
+    legacyDateFailureCount: 0,
+  };
+  for (const row of rows) {
+    let job: import("../../shared/src/db/schemas/jobs").Job;
+    try {
+      job = await hydrateJob(
+        row as import("../../shared/src/db/schemas/jobs").Job,
+        { strict: true },
+      );
+    } catch (cause) {
+      // error-policy:J2 missing offloaded authority cannot become an inline preview.
+      throw new DeletionBillingProvenanceReportError(
+        "failed_job_payload_unavailable",
+        { cause },
+      );
+    }
+    if (
+      [job.data_storage, job.result_storage, job.error_storage].includes("r2")
+    ) {
+      facts.offloadedPayloadJobCount++;
+    }
+    if (isAgentDeleteJobData(job.data)) {
+      facts.validDeleteJobDataCount++;
+      if (
+        job.data.agentId === job.agent_id &&
+        job.data.organizationId === job.organization_id
+      ) {
+        facts.tenantMetadataMatchCount++;
+        // The canonical validator already checks complete actor/time provenance.
+        // Legacy acknowledgement without provenance remains explicitly incomplete.
+        if (
+          job.data.stateLossAcknowledged === true &&
+          typeof job.data.stateLossAcknowledgedByUserId === "string" &&
+          typeof job.data.stateLossAcknowledgedAt === "string"
+        ) {
+          facts.completeStateLossAcknowledgementCount++;
+        }
+      }
+    }
+    if (
+      job.result &&
+      typeof job.result === "object" &&
+      !Array.isArray(job.result) &&
+      job.result.cloudAgentId === job.agent_id
+    ) {
+      if (job.result.containerStopped === true)
+        facts.containerStoppedResultCount++;
+      if (job.result.rowDeleted === true) facts.rowDeletedResultCount++;
+    }
+    if (typeof job.error === "string" && job.error.length > 0) {
+      facts.recordedErrorCount++;
+      // Classify the known historical failure over the complete private diagnostic.
+      // This observed message alone is not a provider receipt or repair authority.
+      if (
+        /(?:^|\n)(?:TypeError: )?value\.toISOString is not a function(?:\n|$)/.test(
+          job.error,
+        )
+      ) {
+        facts.legacyDateFailureCount++;
+      }
+    }
+  }
+  return facts;
+}
+
 export async function readDeletionBillingProvenance(
   client: DeletionBillingReportClient,
   migration: string,
-  options?: { fixtureApiKey: string },
+  options?: { fixtureApiKey: string; includeFailedJobs?: boolean },
 ) {
   const queries = deletionBillingGuardQueries(migration);
   await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -184,6 +284,14 @@ export async function readDeletionBillingProvenance(
             ),
           }
         : {}),
+      ...(options?.includeFailedJobs
+        ? {
+            failedDeleteJobFacts: await readGuardedFailedDeleteJobFacts(
+              client,
+              migration,
+            ),
+          }
+        : {}),
     };
   } finally {
     await client.query("ROLLBACK");
@@ -211,8 +319,11 @@ if (import.meta.main) {
     );
     client = await createRuntimePgClient(process.env.DATABASE_URL);
     await client.connect();
+    const includeFailedJobs =
+      process.env.ELIZA_DELETION_FAILED_JOB_REPORT === "1";
     const includeAuthority =
-      process.env.ELIZA_DELETION_BILLING_AUTHORITY_REPORT === "1";
+      process.env.ELIZA_DELETION_BILLING_AUTHORITY_REPORT === "1" ||
+      includeFailedJobs;
     const fixtureApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
     if (includeAuthority && !fixtureApiKey) {
       throw new DeletionBillingProvenanceReportError(
@@ -222,7 +333,9 @@ if (import.meta.main) {
     const receipt = await readDeletionBillingProvenance(
       client,
       migration,
-      includeAuthority && fixtureApiKey ? { fixtureApiKey } : undefined,
+      includeAuthority && fixtureApiKey
+        ? { fixtureApiKey, includeFailedJobs }
+        : undefined,
     );
     const json = `${JSON.stringify({ ...receipt, sourceSha: process.env.GITHUB_SHA })}\n`;
     const output = testOutputPath(
