@@ -164,14 +164,13 @@ regexes = [
 # The deterministic scenario scripts explicitly clear every Cerebras key. In
 # the historical command text, adjacent empty shell assignments make the
 # generic-api-key rule misread the next variable name as a value. Scope the
-# exact all-empty assignment sequence to the original and consolidated manifests; any
+# exact all-empty assignment sequence to the scenario-runner manifest; any
 # non-empty key or different command still fails the scan.
 [[allowlists]]
 description = "Scenario-runner deterministic lanes clear Cerebras credentials"
 condition = "AND"
 paths = [
   '''(^|/)packages/scenario-runner/package\.json$''',
-  '''(^|/)packages/testing/package\.json$''',
 ]
 regexTarget = "line"
 regexes = [

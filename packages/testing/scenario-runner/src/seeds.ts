@@ -7,6 +7,10 @@
  * executor between setup and the first turn.
  */
 
+import {
+  LIFEOPS_REMINDER_CHANNELS,
+  type LifeOpsReminderChannel,
+} from "@elizaos/contracts";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import {
   createMessageMemory,
@@ -14,10 +18,6 @@ import {
   MemoryType,
   stringToUuid,
 } from "@elizaos/core";
-import {
-  LIFEOPS_REMINDER_CHANNELS,
-  type LifeOpsReminderChannel,
-} from "@elizaos/core/contracts/personal-assistant";
 import { GMAIL_FIXTURE_MESSAGE_IDS } from "../../scripts/mocks/google-gmail-fixtures.ts";
 import type { ScenarioContext, ScenarioSeedStep } from "../schema/index.ts";
 import { isLoopbackUrl } from "./utils.js";
