@@ -656,12 +656,34 @@ function resolveLocalBrowserSolanaSeed(
     seed,
   };
 }
+/**
+ * Strict, canonical base64. Buffer.from silently skips invalid characters, so
+ * a malformed payload would otherwise sign or relay different bytes than the
+ * caller sent (an all-invalid string signs an empty message).
+ */
+function decodeBrowserBase64(value: string, field: string): Buffer {
+  const normalized = value.trim();
+  const bytes = Buffer.from(normalized, "base64");
+  const canonical = bytes.toString("base64");
+  // Padded input must be fully padded ("Zg==", not "Zg="); unpadded input
+  // must be exactly the canonical encoding without its padding.
+  const padded = normalized.endsWith("=");
+  if (
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) ||
+    bytes.length === 0 ||
+    (padded
+      ? canonical !== normalized
+      : canonical.replace(/=+$/, "") !== normalized)
+  )
+    throw new BrowserWalletInputError(`${field} must be valid base64.`);
+  return bytes;
+}
 function resolveBrowserSolanaMessageBytes(
   body: Record<string, unknown>,
 ): Buffer {
   const messageBase64 = normalizeBrowserString(body.messageBase64);
   if (messageBase64) {
-    return Buffer.from(messageBase64, "base64");
+    return decodeBrowserBase64(messageBase64, "messageBase64");
   }
   const message = normalizeBrowserString(body.message);
   if (!message) {
@@ -784,13 +806,13 @@ async function signLocalBrowserSolanaTransaction(
   if (!transactionBase64) {
     throw new BrowserWalletInputError("transactionBase64 is required.");
   }
+  const txBytes = decodeBrowserBase64(transactionBase64, "transactionBase64");
   const broadcast = normalizeBrowserBoolean(body.broadcast, false);
   const cluster = normalizeBrowserSolanaCluster(body.cluster);
   const { address, seed } = resolveLocalBrowserSolanaSeed(deriveSolanaAddress);
   const { Keypair, VersionedTransaction, Transaction, Connection } =
     await loadBrowserSolanaWeb3();
   const keypair = Keypair.fromSeed(new Uint8Array(seed));
-  const txBytes = Buffer.from(transactionBase64, "base64");
   let signedBytes: Uint8Array;
   let broadcastSignature: string | undefined;
   try {

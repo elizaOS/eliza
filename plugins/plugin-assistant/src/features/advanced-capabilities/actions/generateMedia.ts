@@ -679,6 +679,11 @@ export const generateMediaAction = {
             prompt: request.prompt,
             audioKind: request.audioKind,
             imageUrl: request.imageUrl,
+            ...(request.instrumental !== undefined
+              ? { instrumental: request.instrumental }
+              : {}),
+            ...(request.genre !== undefined ? { genre: request.genre } : {}),
+            ...(request.voice !== undefined ? { voice: request.voice } : {}),
           });
         } catch (retryError) {
           return mediaGenerationFailure(runtime, request, retryError);

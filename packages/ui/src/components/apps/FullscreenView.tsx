@@ -5,6 +5,7 @@
  * a connection-status indicator. Auth-payload delivery is delegated to
  * `EmbeddedAppViewer` when `shouldUseEmbeddedAppViewer` selects it.
  */
+
 import {
   type AppRunSummary,
   type AppSessionControlAction,

@@ -848,7 +848,7 @@ export async function handleAccountsRoutes(
     }
     writeAccountStrategy(ctx.state.config, providerId, parsed.data.strategy);
     ctx.saveConfig(ctx.state.config);
-    await syncDirectProviderCredentials(ctx, providerId);
+    await applyAccountPoolToRuntime(ctx);
     json(res, { providerId, strategy: parsed.data.strategy });
     return true;
   }
@@ -1168,6 +1168,12 @@ export async function syncDirectProviderCredentials(
   providerId: string,
 ): Promise<void> {
   if (!isDirectAccountProvider(providerId)) return;
+  await applyAccountPoolToRuntime(ctx);
+}
+
+async function applyAccountPoolToRuntime(
+  ctx: Pick<AccountsRouteContext, "state">,
+): Promise<void> {
   const config = ctx.state.config as Record<string, unknown>;
   const serviceRouting = resolveServiceRoutingInConfig(config);
   const accountStrategies = config.accountStrategies;

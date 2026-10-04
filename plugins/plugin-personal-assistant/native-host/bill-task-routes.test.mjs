@@ -412,6 +412,30 @@ test("route suppresses a completed workflow response after actor, epoch or cance
     });
 });
 
+test("malformed bill POST JSON is a client error with no workflow effect", async (t) => {
+  let effects = 0;
+  const f = await routeFixture(t, () => ({
+    refresh: async () => {
+      effects++;
+      return { kind: "human-sign-in" };
+    },
+    chooseExistingMethod: async () => {
+      effects++;
+      return { kind: "human-sign-in" };
+    },
+  }));
+  const response = await f.route(
+    new Request("http://localhost/tasks/bill/bill", {
+      method: "POST",
+      body: '{"callbackData":',
+    }),
+    f.context,
+  );
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { code: "TASK_INVALID" });
+  assert.equal(effects, 0);
+});
+
 test("repeat choice POST restores the stored outcome without another workflow effect", async (t) => {
   let refreshes = 0,
     choices = 0;

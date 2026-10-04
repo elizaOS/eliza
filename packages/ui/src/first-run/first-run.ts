@@ -1,5 +1,4 @@
 import { getDefaultStylePreset } from "@elizaos/host/protocol";
-
 /**
  * Deterministic first-run helpers shared by the in-chat onboarding conductor
  * and the headless finish path: draft normalization, runtime-target mapping,
@@ -9,6 +8,7 @@ import { getDefaultStylePreset } from "@elizaos/host/protocol";
  */
 
 import type { UiLanguage } from "@elizaos/core/protocol";
+
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,

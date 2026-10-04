@@ -1,6 +1,7 @@
 /** Composed first-send ownership coverage for the local-turn overlay. */
 // @vitest-environment jsdom
 
+// @vitest-environment jsdom
 import type { ChatToolCallEvent } from "@elizaos/contracts";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";

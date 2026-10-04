@@ -154,7 +154,6 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
-
 import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
 import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";

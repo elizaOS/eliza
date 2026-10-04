@@ -23,6 +23,10 @@ import {
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
 import { expect, it } from "vitest";
+import {
+  restoreConversationFromDb,
+  restoreConversationsFromDb,
+} from "../src/api/conversation-restore.ts";
 import type { ConversationRouteState } from "../src/api/conversation-routes.ts";
 import { handleConversationRoutes } from "../src/api/conversation-routes.ts";
 
@@ -32,37 +36,62 @@ async function call(
   url: string,
   body: Record<string, unknown> | null = null,
 ): Promise<{ status: number; payload: unknown }> {
-  let status = 200;
-  let payload: unknown;
-  const req = Object.assign(new http.IncomingMessage(null as never), {
-    method,
-    url,
-    headers: { host: "localhost" },
-    socket: { remoteAddress: "127.0.0.1" },
-  }) as http.IncomingMessage;
-  const res = {
-    setHeader: () => undefined,
-    write: () => true,
-    end: () => undefined,
-    writableEnded: false,
-  } as unknown as http.ServerResponse;
-  await handleConversationRoutes({
-    req,
-    res,
-    method,
-    pathname: url.split("?")[0],
-    state,
-    readJsonBody: async () => body,
-    json: (_r: unknown, v: unknown, c?: number) => {
-      status = c ?? 200;
-      payload = v;
-    },
-    error: (_r: unknown, m: string, c = 500) => {
-      status = c;
-      payload = { error: m };
-    },
-  } as never);
-  return { status, payload };
+  const server = http.createServer((req, res) => {
+    const json = (
+      response: http.ServerResponse,
+      value: unknown,
+      status = 200,
+    ) => {
+      response.writeHead(status, { "content-type": "application/json" });
+      response.end(JSON.stringify(value));
+    };
+    void handleConversationRoutes({
+      req,
+      res,
+      method: req.method ?? "GET",
+      pathname: new URL(req.url ?? "/", "http://localhost").pathname,
+      state,
+      readJsonBody: async (request) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        return chunks.length
+          ? JSON.parse(Buffer.concat(chunks).toString())
+          : null;
+      },
+      json,
+      error: (response, message, status = 500) =>
+        json(response, { error: message }, status),
+    })
+      .then((handled) => {
+        if (!handled) json(res, { error: "Not found" }, 404);
+      })
+      .catch((error: unknown) => {
+        json(res, { error: String(error) }, 500);
+      });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing HTTP address");
+    const response = await fetch(`http://127.0.0.1:${address.port}${url}`, {
+      method,
+      ...(body
+        ? {
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        : {}),
+    });
+    return { status: response.status, payload: await response.json() };
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
 }
 
 async function createFixture() {
@@ -213,3 +242,96 @@ it("does not restore a conversation from a room outside the web-chat world", asy
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 }, 120_000);
+
+it.each(["lookup", "boot", "concurrent"] as const)(
+  "preserves conversation identity across a delayed database restore (%s)",
+  async (mode) => {
+    const { adapter, dataDir, runtime, state } = await createFixture();
+    const original = runtime.getMemories;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let restoring: Promise<unknown> | undefined;
+    try {
+      const created = await call(state, "POST", "/api/conversations", {
+        title: "Stored conversation",
+      });
+      expect(created.status).toBe(200);
+      const { conversation } = created.payload as {
+        conversation: { id: string; roomId: UUID };
+      };
+      state.conversations.delete(conversation.id);
+      let gated = false;
+      runtime.getMemories = async (params) => {
+        const memories = await original.call(runtime, params);
+        if (
+          !gated &&
+          params.roomId === conversation.roomId &&
+          params.limit === 1
+        ) {
+          gated = true;
+          reached();
+          await gate;
+        }
+        return memories;
+      };
+      restoring =
+        mode === "boot"
+          ? restoreConversationsFromDb(runtime, state)
+          : restoreConversationFromDb(runtime, state, conversation.id);
+      await reading;
+      if (mode === "concurrent") {
+        const current = await restoreConversationFromDb(
+          runtime,
+          state,
+          conversation.id,
+        );
+        expect(current).toBeDefined();
+        const renamed = await call(
+          state,
+          "PATCH",
+          `/api/conversations/${conversation.id}`,
+          { title: "Renamed while restoring" },
+        );
+        expect(renamed.status).toBe(200);
+        release();
+        expect(await restoring).toBe(current);
+        expect(state.conversations.get(conversation.id)).toBe(current);
+        expect(current?.title).toBe("Renamed while restoring");
+      } else {
+        const deleted = await call(
+          state,
+          "DELETE",
+          `/api/conversations/${conversation.id}`,
+        );
+        expect(deleted.status).toBe(200);
+        expect(state.deletedConversationIds.has(conversation.id)).toBe(true);
+        release();
+        expect(await restoring).toBe(mode === "boot" ? 0 : undefined);
+        expect(state.conversations.has(conversation.id)).toBe(false);
+        expect(await runtime.getRoom(conversation.roomId)).toBeNull();
+        expect(
+          (
+            await call(
+              state,
+              "GET",
+              `/api/conversations/${conversation.id}/messages`,
+            )
+          ).status,
+        ).toBe(404);
+      }
+    } finally {
+      release();
+      await restoring;
+      runtime.getMemories = original;
+      await adapter.close();
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    }
+  },
+  120_000,
+);

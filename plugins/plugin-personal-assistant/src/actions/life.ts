@@ -5109,7 +5109,12 @@ async function runLifeOperationHandlerInner(
       const timedRequestKind = llmRequestKind;
       // A one-shot reminder fires at its requested time, not the generic
       // task visibility window. Preserve explicitly configured lead time.
-      if (timedRequestKind === "reminder" && cadence?.kind === "once") {
+      if (
+        cadence?.kind === "once" &&
+        (timedRequestKind === "reminder" ||
+          timedRequestKind === "alarm" ||
+          ownerSurfaceActionName === "OWNER_REMINDERS")
+      ) {
         cadence = {
           ...cadence,
           visibilityLeadMinutes: cadence.visibilityLeadMinutes ?? 0,
