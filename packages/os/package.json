@@ -41,6 +41,7 @@
     "lint:browser": "bunx @biomejs/biome check browser",
     "test:browser:guidance": "node --conditions=eliza-source browser/scripts/test-page-guidance.mjs",
     "test:browser:task-guidance": "node --conditions=eliza-source browser/scripts/test-task-guidance.mjs",
+    "test:ota-trust": "cd native/ota-trust && go test -race ./... && go vet ./...",
     "test:browser:protection": "node --test browser/protection/*.test.mjs",
     "test:browser:protection:network": "node browser/protection/test-network.mjs"
   },
