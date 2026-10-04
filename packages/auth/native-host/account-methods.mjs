@@ -77,11 +77,13 @@ export function createNativeAccountMethods({
   let review = null,
     attempt = null,
     security = null,
+    enrollment = null,
     resendAt = 0;
   const reset = () => {
     review = null;
     attempt = null;
     security = null;
+    enrollment = null;
     resendAt = 0;
   };
   async function authority(expected) {
@@ -165,6 +167,100 @@ export function createNativeAccountMethods({
             })),
           ],
         };
+      }
+      if (operation === "account-security-enroll-start") {
+        fields(input, ["phone"]);
+        if (typeof input.phone !== "string" || !phone.test(input.phone))
+          throw fail("Enter a phone number with its country calling code");
+        if (now() < resendAt)
+          throw fail(
+            "Wait before requesting another code",
+            429,
+            "account_code_cooldown",
+          );
+        enrollment = null;
+        // Auth checks recent factor-enrollment authority and any existing durable
+        // factor. Enrollment never substitutes an ordinary login for required MFA.
+        for (const method of ["totp", "sms"]) {
+          const status = await send(`/auth/mfa/${method}/status`);
+          if (status?.ok !== true || typeof status.enabled !== "boolean")
+            throw fail("Security methods are unavailable", 502);
+          if (status.enabled)
+            throw fail(
+              "Use your existing security method",
+              409,
+              "account_security_already_enabled",
+            );
+        }
+        resendAt = now() + 60000;
+        const value = await send("/auth/mfa/sms/enroll", {
+          phone: input.phone,
+        });
+        const expiry = Date.parse(value?.expiresAt);
+        if (
+          value?.ok !== true ||
+          !Number.isFinite(expiry) ||
+          expiry <= now() ||
+          value.phone !== `***${input.phone.slice(-4)}`
+        )
+          throw fail("Security code delivery was not confirmed", 502);
+        enrollment = {
+          id: opaque(),
+          token: current.token,
+          destination: value.phone,
+          expiresAt: Math.min(expiry, now() + 300000),
+        };
+        return {
+          status: "code",
+          sessionId: enrollment.id,
+          destination: enrollment.destination,
+          expiresAt: new Date(enrollment.expiresAt).toISOString(),
+          resendAt,
+        };
+      }
+      if (operation === "account-security-enroll-verify") {
+        fields(input, ["sessionId", "code"]);
+        if (
+          !enrollment ||
+          enrollment.id !== input.sessionId ||
+          enrollment.token !== current.token ||
+          enrollment.expiresAt <= now()
+        )
+          throw fail(
+            "Start security setup again",
+            410,
+            "account_security_expired",
+          );
+        if (typeof input.code !== "string" || !/^\d{6}$/.test(input.code))
+          throw fail("Enter the six-digit code");
+        const pending = enrollment;
+        try {
+          const value = await send("/auth/mfa/sms/verify", {
+            code: input.code,
+          });
+          if (
+            value?.ok !== true ||
+            value.enabled !== true ||
+            value.phone !== pending.destination
+          )
+            throw fail("Security setup was not confirmed", 502);
+          clearAuthority();
+          reset();
+          return { status: "enabled", reauthenticationRequired: true };
+        } catch (error) {
+          if (![400, 401, 403, 409, 429].includes(error.status)) {
+            // Auth may have enabled the factor and revoked this session. Never
+            // replay the code after losing the response; require fresh identity.
+            clearAuthority();
+            reset();
+            throw fail(
+              "Confirm your identity and check your security methods before trying again",
+              502,
+              "account_security_enrollment_unknown",
+            );
+          }
+          throw error;
+        }
       }
       if (operation === "account-security-status") {
         fields(input, []);

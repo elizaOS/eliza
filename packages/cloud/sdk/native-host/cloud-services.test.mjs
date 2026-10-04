@@ -227,6 +227,14 @@ test("independent host selects its plan and speech policy without exposing autho
         { sessionId: "phone", code: "123456" },
       ],
       "/cloud/account/security/status": ["account-security-status", {}],
+      "/cloud/account/security/enroll/start": [
+        "account-security-enroll-start",
+        { phone: "+15555550123" },
+      ],
+      "/cloud/account/security/enroll/verify": [
+        "account-security-enroll-verify",
+        { sessionId: "enrollment", code: "123456" },
+      ],
       "/cloud/account/security/start": [
         "account-security-start",
         { method: "totp" },
