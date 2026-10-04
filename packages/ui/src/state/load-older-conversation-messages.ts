@@ -31,7 +31,8 @@ export interface LoadOlderConversationMessagesDeps {
    */
   currentMessages: ConversationMessage[];
   /** Prepend the older, renderable turns in front of the thread. Returns how many were actually added when known. */
-  prependMessages: (older: ConversationMessage[]) => number | undefined;
+  // biome-ignore lint/suspicious/noConfusingVoidType: Existing callbacks may return void when a count is unavailable.
+  prependMessages: (older: ConversationMessage[]) => number | void;
   /** Page size hint; the server may clamp it. */
   limit?: number;
   signal?: AbortSignal;

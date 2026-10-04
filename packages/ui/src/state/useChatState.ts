@@ -246,7 +246,7 @@ export interface ChatStateHook {
    * `conversationMessagesRef` in step with the reducer. Never trims the newest
    * tail (see the PREPEND_MESSAGES reducer note).
    */
-  prependConversationMessages: (older: ConversationMessage[]) => void;
+  prependConversationMessages: (older: ConversationMessage[]) => number;
   setAutonomousEvents: (v: StreamEventEnvelope[]) => void;
   setAutonomousLatestEventId: (v: string | null) => void;
   setAutonomousRunHealthByRunId: (v: AutonomyRunHealthMap) => void;
