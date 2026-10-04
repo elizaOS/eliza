@@ -335,10 +335,7 @@ export function createLocalAgentGateway({
             ...(body ? { "Content-Type": "application/json" } : {}),
           },
           ...(body ? { body: JSON.stringify(body) } : {}),
-          signal: AbortSignal.any([
-            controller.signal,
-            AbortSignal.timeout(120000),
-          ]),
+          signal: controller.signal,
         });
         data = await response.json();
         if (isMessage || isCreate || isAbort) {
