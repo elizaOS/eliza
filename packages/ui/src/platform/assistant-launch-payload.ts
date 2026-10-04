@@ -3,7 +3,7 @@ import {
   ASSISTANT_LAUNCH_SOURCES,
   ASSISTANT_LAUNCH_TEXT_KEYS,
   type AssistantLaunchPayload,
-} from "@elizaos/core/contracts/os-intent/assistant-launch";
+} from "@elizaos/contracts";
 
 export interface AssistantLaunchPayloadClaimOptions {
   allowedRoutes?: readonly string[];

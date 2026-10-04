@@ -8,9 +8,14 @@ it("loads package-path helpers without runtime packages or build outputs", () =>
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "testing-paths-"));
   try {
     fs.mkdirSync(path.join(dir, "lib"));
-    fs.copyFileSync(
-      new URL("../package.json", import.meta.url),
+    const { name, type, exports } = JSON.parse(
+      fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    );
+    // Preserve self-resolution without declaring installable dependencies:
+    // Bun can otherwise resolve core from its package cache in this fixture.
+    fs.writeFileSync(
       path.join(dir, "package.json"),
+      JSON.stringify({ name, type, exports }),
     );
     fs.copyFileSync(
       new URL("../lib/package-paths.ts", import.meta.url),
@@ -32,12 +37,17 @@ it("loads package-path helpers without runtime packages or build outputs", () =>
     );
     const env = { ...process.env };
     delete env.NODE_OPTIONS;
-    const result = spawnSync(process.execPath, [path.join(dir, "probe.mjs")], {
-      cwd: dir,
-      env,
-      encoding: "utf8",
-      timeout: 10000,
-    });
+    const runtimeArgs = process.versions.bun ? ["--no-install"] : [];
+    const result = spawnSync(
+      process.execPath,
+      [...runtimeArgs, path.join(dir, "probe.mjs")],
+      {
+        cwd: dir,
+        env,
+        encoding: "utf8",
+        timeout: 10000,
+      },
+    );
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr || result.stdout).toBe(0);
   } finally {

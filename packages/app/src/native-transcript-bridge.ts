@@ -6,7 +6,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import type { TranscriptEventStream } from "@elizaos/core/contracts/native-transcript/contract";
+import type { TranscriptEventStream } from "@elizaos/contracts";
 import {
   acceptNativeTranscriptViewModel,
   invokeDesktopBridgeRequest,

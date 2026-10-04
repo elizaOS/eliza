@@ -31,9 +31,9 @@ export type NativeTranscriptSchema = typeof NATIVE_TRANSCRIPT_SCHEMA;
 
 /** Per-word timing for a final STT result (ms from the utterance start). */
 export interface TranscriptEventWord {
-	text: string;
-	startMs: number;
-	endMs: number;
+  text: string;
+  startMs: number;
+  endMs: number;
 }
 
 // ── Events (the append-only wire log) ──────────────────────────────────
@@ -44,21 +44,21 @@ export interface TranscriptEventWord {
  * every partial.
  */
 export interface SttPartialEvent {
-	type: "stt.partial";
-	seq: number;
-	turnId: string;
-	text: string;
-	at?: number;
+  type: "stt.partial";
+  seq: number;
+  turnId: string;
+  text: string;
+  at?: number;
 }
 
 /** Committed STT result for a user turn; terminal for that `turnId`. */
 export interface SttFinalEvent {
-	type: "stt.final";
-	seq: number;
-	turnId: string;
-	text: string;
-	words?: TranscriptEventWord[];
-	at?: number;
+  type: "stt.final";
+  seq: number;
+  turnId: string;
+  text: string;
+  words?: TranscriptEventWord[];
+  at?: number;
 }
 
 /**
@@ -67,13 +67,13 @@ export interface SttFinalEvent {
  * turn it answers so a turn-scoped cancellation can reach it.
  */
 export interface AgentTextEvent {
-	type: "agent.text";
-	seq: number;
-	messageId: string;
-	text: string;
-	final: boolean;
-	turnId?: string;
-	at?: number;
+  type: "agent.text";
+  seq: number;
+  messageId: string;
+  text: string;
+  final: boolean;
+  turnId?: string;
+  at?: number;
 }
 
 /** Lifecycle phase of a tool/action invocation. */
@@ -81,14 +81,14 @@ export type ToolPhase = "started" | "succeeded" | "failed";
 
 /** Tool/action invocation state update, identified by a stable `callId`. */
 export interface ToolStateEvent {
-	type: "tool.state";
-	seq: number;
-	callId: string;
-	name: string;
-	phase: ToolPhase;
-	detail?: string;
-	turnId?: string;
-	at?: number;
+  type: "tool.state";
+  seq: number;
+  callId: string;
+  name: string;
+  phase: ToolPhase;
+  detail?: string;
+  turnId?: string;
+  at?: number;
 }
 
 /** Audio-playback phase for one TTS utterance. */
@@ -99,12 +99,12 @@ export type AudioPhase = "started" | "ended";
  * state (a "speaking now" indicator), not a persisted transcript row.
  */
 export interface TtsAudioEvent {
-	type: "tts.audio";
-	seq: number;
-	utteranceId: string;
-	phase: AudioPhase;
-	messageId?: string;
-	at?: number;
+  type: "tts.audio";
+  seq: number;
+  utteranceId: string;
+  phase: AudioPhase;
+  messageId?: string;
+  at?: number;
 }
 
 /** Scope of a cancellation boundary. */
@@ -117,22 +117,22 @@ export type CancelScope = "turn" | "all";
  * post-boundary event (higher `seq`) is a fresh continuation and still applies.
  */
 export interface CancelEvent {
-	type: "cancel";
-	seq: number;
-	scope: CancelScope;
-	turnId?: string;
-	reason?: string;
-	at?: number;
+  type: "cancel";
+  seq: number;
+  scope: CancelScope;
+  turnId?: string;
+  reason?: string;
+  at?: number;
 }
 
 /** A surfaced error. `retryable` drives whether the shell offers a retry. */
 export interface TranscriptErrorEvent {
-	type: "error";
-	seq: number;
-	code: string;
-	retryable: boolean;
-	message?: string;
-	at?: number;
+  type: "error";
+  seq: number;
+  code: string;
+  retryable: boolean;
+  message?: string;
+  at?: number;
 }
 
 /** Connection lifecycle phase for a reconnect marker. */
@@ -140,41 +140,41 @@ export type ReconnectPhase = "lost" | "restored";
 
 /** Transport reconnect marker; `lost`/`restored` toggle the connection state. */
 export interface ReconnectEvent {
-	type: "reconnect";
-	seq: number;
-	phase: ReconnectPhase;
-	attempt: number;
-	at?: number;
+  type: "reconnect";
+  seq: number;
+  phase: ReconnectPhase;
+  attempt: number;
+  at?: number;
 }
 
 export type TranscriptEvent =
-	| SttPartialEvent
-	| SttFinalEvent
-	| AgentTextEvent
-	| ToolStateEvent
-	| TtsAudioEvent
-	| CancelEvent
-	| TranscriptErrorEvent
-	| ReconnectEvent;
+  | SttPartialEvent
+  | SttFinalEvent
+  | AgentTextEvent
+  | ToolStateEvent
+  | TtsAudioEvent
+  | CancelEvent
+  | TranscriptErrorEvent
+  | ReconnectEvent;
 
 export type TranscriptEventType = TranscriptEvent["type"];
 
 /** Every recognized event discriminant, for the decoder's known-type gate. */
 export const TRANSCRIPT_EVENT_TYPES: readonly TranscriptEventType[] = [
-	"stt.partial",
-	"stt.final",
-	"agent.text",
-	"tool.state",
-	"tts.audio",
-	"cancel",
-	"error",
-	"reconnect",
+  "stt.partial",
+  "stt.final",
+  "agent.text",
+  "tool.state",
+  "tts.audio",
+  "cancel",
+  "error",
+  "reconnect",
 ] as const;
 
 /** Stream envelope: the versioned schema tag plus the ordered event log. */
 export interface TranscriptEventStream {
-	schema: NativeTranscriptSchema;
-	events: TranscriptEvent[];
+  schema: NativeTranscriptSchema;
+  events: TranscriptEvent[];
 }
 
 // ── Reduced render model (what every shell draws) ──────────────────────
@@ -185,62 +185,62 @@ export type ToolItemStatus = "running" | "succeeded" | "failed" | "cancelled";
 
 /** A user utterance row, keyed by its `turnId`. */
 export interface UserTranscriptItem {
-	kind: "user";
-	id: string;
-	status: UserTurnStatus;
-	text: string;
-	words: TranscriptEventWord[];
+  kind: "user";
+  id: string;
+  status: UserTurnStatus;
+  text: string;
+  words: TranscriptEventWord[];
 }
 
 /** An agent message row, keyed by its `messageId`. */
 export interface AgentTranscriptItem {
-	kind: "agent";
-	id: string;
-	status: AgentTurnStatus;
-	text: string;
-	turnId?: string;
+  kind: "agent";
+  id: string;
+  status: AgentTurnStatus;
+  text: string;
+  turnId?: string;
 }
 
 /** A tool/action row, keyed by its `callId`. */
 export interface ToolTranscriptItem {
-	kind: "tool";
-	id: string;
-	status: ToolItemStatus;
-	name: string;
-	detail?: string;
-	turnId?: string;
+  kind: "tool";
+  id: string;
+  status: ToolItemStatus;
+  name: string;
+  detail?: string;
+  turnId?: string;
 }
 
 /** An error row; `id` is synthesized from the event `seq` (`error:<seq>`). */
 export interface ErrorTranscriptItem {
-	kind: "error";
-	id: string;
-	code: string;
-	retryable: boolean;
-	message?: string;
+  kind: "error";
+  id: string;
+  code: string;
+  retryable: boolean;
+  message?: string;
 }
 
 /** A reconnect marker row; `id` is synthesized (`reconnect:<seq>`). */
 export interface ReconnectTranscriptItem {
-	kind: "reconnect";
-	id: string;
-	phase: ReconnectPhase;
-	attempt: number;
+  kind: "reconnect";
+  id: string;
+  phase: ReconnectPhase;
+  attempt: number;
 }
 
 export type TranscriptItem =
-	| UserTranscriptItem
-	| AgentTranscriptItem
-	| ToolTranscriptItem
-	| ErrorTranscriptItem
-	| ReconnectTranscriptItem;
+  | UserTranscriptItem
+  | AgentTranscriptItem
+  | ToolTranscriptItem
+  | ErrorTranscriptItem
+  | ReconnectTranscriptItem;
 
 export type TranscriptItemKind = TranscriptItem["kind"];
 
 /** Transient "audio is playing now" indicator, cleared when playback ends. */
 export interface SpeakingState {
-	utteranceId: string;
-	messageId?: string;
+  utteranceId: string;
+  messageId?: string;
 }
 
 export type ConnectionState = "live" | "lost";
@@ -251,8 +251,8 @@ export type ConnectionState = "live" | "lost";
  * transport state. This is the single shape the golden fixture asserts against.
  */
 export interface TranscriptViewModel {
-	items: TranscriptItem[];
-	speaking: SpeakingState | null;
-	connection: ConnectionState;
-	lastSeq: number;
+  items: TranscriptItem[];
+  speaking: SpeakingState | null;
+  connection: ConnectionState;
+  lastSeq: number;
 }

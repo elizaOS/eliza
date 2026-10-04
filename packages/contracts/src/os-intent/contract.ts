@@ -27,10 +27,10 @@
  * `decode.ts`, routing in `router.ts`) so it is safe to import from any layer,
  * native bridge shim included.
  */
-import type { ChatImageAttachment } from "../../api/agent-api-types";
+import type { ChatImageAttachment } from "@elizaos/core/protocol";
 
 export interface IntentImageAttachment extends ChatImageAttachment {
-	transcriptId?: string;
+  transcriptId?: string;
 }
 
 /** Versioned schema identifier carried by an intent envelope. */
@@ -44,57 +44,57 @@ export type OsIntentSchema = typeof OS_INTENT_SCHEMA;
  * `source` query key of an `elizaos://…` deep link appears here.
  */
 export type IntentSource =
-	| "ios-app-intent"
-	| "ios-app-intents"
-	| "ios-app-shortcuts"
-	| "ios-widget"
-	| "ios-control"
-	| "ios-live-activity"
-	| "siri"
-	| "macos-shortcuts"
-	| "macos-siri"
-	| "android-app-actions"
-	| "android-assist"
-	| "android-assistant-session"
-	| "android-static-shortcut"
-	| "android-quick-settings"
-	| "android-recognition-service"
-	| "android-ime"
-	| "android-widget"
-	| "android-share-sheet"
-	| "desktop-deep-link"
-	| "desktop-tray"
-	| "desktop-hotkey"
-	| "notification"
-	| "assistant-entry"
-	| "in-app";
+  | "ios-app-intent"
+  | "ios-app-intents"
+  | "ios-app-shortcuts"
+  | "ios-widget"
+  | "ios-control"
+  | "ios-live-activity"
+  | "siri"
+  | "macos-shortcuts"
+  | "macos-siri"
+  | "android-app-actions"
+  | "android-assist"
+  | "android-assistant-session"
+  | "android-static-shortcut"
+  | "android-quick-settings"
+  | "android-recognition-service"
+  | "android-ime"
+  | "android-widget"
+  | "android-share-sheet"
+  | "desktop-deep-link"
+  | "desktop-tray"
+  | "desktop-hotkey"
+  | "notification"
+  | "assistant-entry"
+  | "in-app";
 
 /** Every recognized source, for the decoder's known-source gate. */
 export const INTENT_SOURCES: readonly IntentSource[] = [
-	"ios-app-intent",
-	"ios-app-intents",
-	"ios-app-shortcuts",
-	"ios-widget",
-	"ios-control",
-	"ios-live-activity",
-	"siri",
-	"macos-shortcuts",
-	"macos-siri",
-	"android-app-actions",
-	"android-assist",
-	"android-assistant-session",
-	"android-static-shortcut",
-	"android-quick-settings",
-	"android-recognition-service",
-	"android-ime",
-	"android-widget",
-	"android-share-sheet",
-	"desktop-deep-link",
-	"desktop-tray",
-	"desktop-hotkey",
-	"notification",
-	"assistant-entry",
-	"in-app",
+  "ios-app-intent",
+  "ios-app-intents",
+  "ios-app-shortcuts",
+  "ios-widget",
+  "ios-control",
+  "ios-live-activity",
+  "siri",
+  "macos-shortcuts",
+  "macos-siri",
+  "android-app-actions",
+  "android-assist",
+  "android-assistant-session",
+  "android-static-shortcut",
+  "android-quick-settings",
+  "android-recognition-service",
+  "android-ime",
+  "android-widget",
+  "android-share-sheet",
+  "desktop-deep-link",
+  "desktop-tray",
+  "desktop-hotkey",
+  "notification",
+  "assistant-entry",
+  "in-app",
 ] as const;
 
 /** The shell surface an intent addresses. Derived structurally, never parsed. */
@@ -104,26 +104,26 @@ export type IntentTarget = "chat" | "voice" | "transcription";
 
 /** Fields every intent carries: its dedupe identity and provenance. */
 interface IntentBase {
-	/** Stable idempotency key. Identical across every redelivery of one launch. */
-	intentId: string;
-	source: IntentSource;
-	/** Epoch ms the launch was issued; drives staleness rejection when present. */
-	issuedAt?: number;
+  /** Stable idempotency key. Identical across every redelivery of one launch. */
+  intentId: string;
+  source: IntentSource;
+  /** Epoch ms the launch was issued; drives staleness rejection when present. */
+  issuedAt?: number;
 }
 
 /** Bring the chat surface forward without sending anything. */
 export interface OpenChatIntent extends IntentBase {
-	type: "open-chat";
+  type: "open-chat";
 }
 
 /** Open chat and submit `text` as a turn (App-Intent "ask", assist smart-reply). */
 export interface SendIntent extends IntentBase {
-	type: "send";
-	text: string;
-	/** `VOICE_DM` requests a spoken reply; defaults to a typed `DM` turn. */
-	channelType?: "DM" | "VOICE_DM";
-	images?: IntentImageAttachment[];
-	metadata?: Record<string, unknown>;
+  type: "send";
+  text: string;
+  /** `VOICE_DM` requests a spoken reply; defaults to a typed `DM` turn. */
+  channelType?: "DM" | "VOICE_DM";
+  images?: IntentImageAttachment[];
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -131,13 +131,13 @@ export interface SendIntent extends IntentBase {
  * the final transcript to the composer draft without sending. Consent-gated.
  */
 export interface StartVoiceIntent extends IntentBase {
-	type: "start-voice";
-	mode: "converse" | "dictate";
+  type: "start-voice";
+  mode: "converse" | "dictate";
 }
 
 /** Stop microphone capture. Always permitted (the reverse of {@link StartVoiceIntent}). */
 export interface StopVoiceIntent extends IntentBase {
-	type: "stop-voice";
+  type: "stop-voice";
 }
 
 /**
@@ -145,50 +145,50 @@ export interface StopVoiceIntent extends IntentBase {
  * session with the agent held quiet until an exit phrase. Consent-gated.
  */
 export interface StartTranscriptionIntent extends IntentBase {
-	type: "start-transcription";
+  type: "start-transcription";
 }
 
 /** Stop transcription and the mic. Always permitted (the reverse of start). */
 export interface StopTranscriptionIntent extends IntentBase {
-	type: "stop-transcription";
+  type: "stop-transcription";
 }
 
 /** Reopen the ongoing conversation (a notification tap / "resume" affordance). */
 export interface ContinueConversationIntent extends IntentBase {
-	type: "continue-conversation";
+  type: "continue-conversation";
 }
 
 export type OsIntent =
-	| OpenChatIntent
-	| SendIntent
-	| StartVoiceIntent
-	| StopVoiceIntent
-	| StartTranscriptionIntent
-	| StopTranscriptionIntent
-	| ContinueConversationIntent;
+  | OpenChatIntent
+  | SendIntent
+  | StartVoiceIntent
+  | StopVoiceIntent
+  | StartTranscriptionIntent
+  | StopTranscriptionIntent
+  | ContinueConversationIntent;
 
 export type OsIntentType = OsIntent["type"];
 
 /** Every recognized intent discriminant, for the decoder's known-type gate. */
 export const OS_INTENT_TYPES: readonly OsIntentType[] = [
-	"open-chat",
-	"send",
-	"start-voice",
-	"stop-voice",
-	"start-transcription",
-	"stop-transcription",
-	"continue-conversation",
+  "open-chat",
+  "send",
+  "start-voice",
+  "stop-voice",
+  "start-transcription",
+  "stop-transcription",
+  "continue-conversation",
 ] as const;
 
 /** The shell surface each intent type addresses. */
 export const INTENT_TARGET: Record<OsIntentType, IntentTarget> = {
-	"open-chat": "chat",
-	send: "chat",
-	"start-voice": "voice",
-	"stop-voice": "voice",
-	"start-transcription": "transcription",
-	"stop-transcription": "transcription",
-	"continue-conversation": "chat",
+  "open-chat": "chat",
+  send: "chat",
+  "start-voice": "voice",
+  "stop-voice": "voice",
+  "start-transcription": "transcription",
+  "stop-transcription": "transcription",
+  "continue-conversation": "chat",
 };
 
 /**
@@ -198,8 +198,8 @@ export const INTENT_TARGET: Record<OsIntentType, IntentTarget> = {
  * allowed, so a stuck session is always recoverable).
  */
 export const AUTO_START_INTENT_TYPES: ReadonlySet<OsIntentType> = new Set([
-	"start-voice",
-	"start-transcription",
+  "start-voice",
+  "start-transcription",
 ]);
 
 // ── Prerequisites ──────────────────────────────────────────────────────
@@ -216,35 +216,35 @@ export const AUTO_START_INTENT_TYPES: ReadonlySet<OsIntentType> = new Set([
  *   - `voice-capture`  the platform supports voice capture at all (else degrade).
  */
 export type IntentPrerequisite =
-	| "session"
-	| "unlocked"
-	| "foreground"
-	| "microphone"
-	| "voice-capture";
+  | "session"
+  | "unlocked"
+  | "foreground"
+  | "microphone"
+  | "voice-capture";
 
 /** The prerequisites each intent type declares, checked in `router.ts`. */
 export const INTENT_PREREQUISITES: Record<
-	OsIntentType,
-	readonly IntentPrerequisite[]
+  OsIntentType,
+  readonly IntentPrerequisite[]
 > = {
-	"open-chat": ["session"],
-	send: ["session"],
-	"start-voice": [
-		"session",
-		"unlocked",
-		"foreground",
-		"microphone",
-		"voice-capture",
-	],
-	"stop-voice": [],
-	"start-transcription": [
-		"unlocked",
-		"foreground",
-		"microphone",
-		"voice-capture",
-	],
-	"stop-transcription": [],
-	"continue-conversation": ["session"],
+  "open-chat": ["session"],
+  send: ["session"],
+  "start-voice": [
+    "session",
+    "unlocked",
+    "foreground",
+    "microphone",
+    "voice-capture",
+  ],
+  "stop-voice": [],
+  "start-transcription": [
+    "unlocked",
+    "foreground",
+    "microphone",
+    "voice-capture",
+  ],
+  "stop-transcription": [],
+  "continue-conversation": ["session"],
 };
 
 // ── Controller commands (the routing output) ───────────────────────────
@@ -257,18 +257,18 @@ export const INTENT_PREREQUISITES: Record<
  * the authority never touches the DOM or the mic directly.
  */
 export type IntentControllerCommand =
-	| { kind: "open" }
-	| {
-			kind: "send";
-			text: string;
-			channelType?: "DM" | "VOICE_DM";
-			images?: IntentImageAttachment[];
-			metadata?: Record<string, unknown>;
-	  }
-	| { kind: "startRecording"; intent: "converse" | "dictate" }
-	| { kind: "stopRecording" }
-	| { kind: "toggleTranscriptionMode" }
-	| { kind: "stopTranscriptionAndMic" };
+  | { kind: "open" }
+  | {
+      kind: "send";
+      text: string;
+      channelType?: "DM" | "VOICE_DM";
+      images?: IntentImageAttachment[];
+      metadata?: Record<string, unknown>;
+    }
+  | { kind: "startRecording"; intent: "converse" | "dictate" }
+  | { kind: "stopRecording" }
+  | { kind: "toggleTranscriptionMode" }
+  | { kind: "stopTranscriptionAndMic" };
 
 export type IntentControllerCommandKind = IntentControllerCommand["kind"];
 
@@ -278,11 +278,11 @@ export type IntentControllerCommandKind = IntentControllerCommand["kind"];
  *  and the same `intentId` will route on retry (blocked intents are not recorded
  *  as applied). */
 export type IntentBlockReason =
-	| "unauthenticated"
-	| "auth-expired"
-	| "locked"
-	| "backgrounded"
-	| "microphone-denied";
+  | "unauthenticated"
+  | "auth-expired"
+  | "locked"
+  | "backgrounded"
+  | "microphone-denied";
 
 /** Reason a device fundamentally cannot honor an intent; the shell must show a
  *  visible unavailable state rather than pretend it ran. */
@@ -294,33 +294,33 @@ export type IntentDegradeReason = "voice-unsupported" | "sandboxed";
  * instead of a silent success.
  */
 export type IntentOutcome =
-	| {
-			status: "routed";
-			intentId: string;
-			intentType: OsIntentType;
-			target: IntentTarget;
-			commands: IntentControllerCommand[];
-	  }
-	| { status: "duplicate"; intentId: string; firstAppliedAt: number }
-	| { status: "stale"; intentId: string; ageMs: number; maxAgeMs: number }
-	| {
-			status: "blocked";
-			intentId: string;
-			intentType: OsIntentType;
-			reason: IntentBlockReason;
-			missing: IntentPrerequisite[];
-	  }
-	| {
-			status: "consent-required";
-			intentId: string;
-			intentType: OsIntentType;
-			target: IntentTarget;
-	  }
-	| {
-			status: "degraded";
-			intentId: string;
-			intentType: OsIntentType;
-			reason: IntentDegradeReason;
-	  };
+  | {
+      status: "routed";
+      intentId: string;
+      intentType: OsIntentType;
+      target: IntentTarget;
+      commands: IntentControllerCommand[];
+    }
+  | { status: "duplicate"; intentId: string; firstAppliedAt: number }
+  | { status: "stale"; intentId: string; ageMs: number; maxAgeMs: number }
+  | {
+      status: "blocked";
+      intentId: string;
+      intentType: OsIntentType;
+      reason: IntentBlockReason;
+      missing: IntentPrerequisite[];
+    }
+  | {
+      status: "consent-required";
+      intentId: string;
+      intentType: OsIntentType;
+      target: IntentTarget;
+    }
+  | {
+      status: "degraded";
+      intentId: string;
+      intentType: OsIntentType;
+      reason: IntentDegradeReason;
+    };
 
 export type IntentOutcomeStatus = IntentOutcome["status"];

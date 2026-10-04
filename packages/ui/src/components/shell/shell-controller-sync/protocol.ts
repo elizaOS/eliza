@@ -12,8 +12,8 @@
  * stable `commandId` so the authority can retain its terminal outcome.
  */
 
-import type { OsIntent } from "@elizaos/core/contracts/os-intent/contract";
-import { decodeOsIntent } from "@elizaos/core/contracts/os-intent/decode";
+import type { OsIntent } from "@elizaos/contracts";
+import { decodeOsIntent } from "@elizaos/contracts";
 import type { TranscriptSegment } from "@elizaos/core/protocol";
 import type { ImageAttachment } from "../../../api/client-types-chat";
 /**

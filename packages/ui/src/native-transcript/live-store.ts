@@ -8,17 +8,17 @@
 import type {
   TranscriptEvent,
   TranscriptViewModel,
-} from "@elizaos/core/contracts/native-transcript/contract";
+} from "@elizaos/contracts";
 import {
   applyTranscriptEvent,
   initialReducerState,
   type TranscriptReducerState,
   toViewModel,
-} from "@elizaos/core/contracts/native-transcript/reduce";
+} from "@elizaos/contracts";
 import {
   decodeTranscriptViewModel,
   type TranscriptViewModelDecodeError,
-} from "@elizaos/core/contracts/native-transcript/view-model-decode";
+} from "@elizaos/contracts";
 
 export type NativeTranscriptViewSource = "web" | "ios" | "android" | "desktop";
 

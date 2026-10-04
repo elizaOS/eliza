@@ -7,7 +7,7 @@
 import type {
   TranscriptItem,
   TranscriptViewModel,
-} from "@elizaos/core/contracts/native-transcript/contract";
+} from "@elizaos/contracts";
 import { ChevronDown } from "lucide-react";
 import {
   type ReactNode,

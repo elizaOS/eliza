@@ -7,8 +7,8 @@
 import {
   decodeDeepLinkIntent,
   type IntentDecodeResult,
-} from "@elizaos/core/contracts/os-intent/decode";
-import type { AppliedIntentRecord } from "@elizaos/core/contracts/os-intent/dedupe";
+} from "@elizaos/contracts";
+import type { AppliedIntentRecord } from "@elizaos/contracts";
 import { shellLocalStorage } from "../surface-realm-channel";
 
 const DEDUPE_STORAGE_KEY = "eliza:os-intent:applied:v1";

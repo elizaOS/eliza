@@ -16,7 +16,7 @@ import {
   type TranscriptEvent,
   type TranscriptEventStream,
   type TtsAudioEvent,
-} from "@elizaos/core/contracts/native-transcript/contract";
+} from "@elizaos/contracts";
 import {
   applyRendererTranscriptEvents,
   resetNativeTranscriptStoreForTests,
