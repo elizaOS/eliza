@@ -54,3 +54,12 @@ bundle publication and secures an app-owned parent directory to mode 0700.
 It rejects symlinks and foreign ownership, and verifies inode identity after
 chmod. Hosts retain directory layout and startup policy. Its Android instrumented
 test exercises real permissions and fsync, including invalid targets.
+
+`PreparedAuthorizationStore` coordinates retention and prepared-pair admission
+under the update journal lock. Hosts inject the native trust binding; missing or
+rejected authorization never advances the journal. `AndroidQualifiedClock` binds
+qualified clock anchors to Android boot count and suspend-aware elapsed time;
+hosts retain directory identity, qualification policy and authenticated evidence.
+`AndroidUpdateStorage` provides no-follow directory durability. The Android
+`AndroidUpdateStorageContract` checks real filesystem rejection and clock restart
+behavior without provisioning an external time authority.
