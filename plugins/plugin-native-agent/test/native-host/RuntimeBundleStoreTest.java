@@ -138,6 +138,24 @@ public final class RuntimeBundleStoreTest {
         check(Files.readString(b.resolve("agent-bundle.js")).startsWith("new"), "Shared bundle must be complete");
       } finally { resume.countDown(); pool.shutdownNow(); }
     }
+
+    // Cold start: concurrent first preparers race to create the root itself,
+    // before any lock can be keyed on its real path.
+    for (int round = 0; round < 40; round++) {
+      Path cold = Files.createDirectory(suite.resolve("cold-" + round)); libraries(cold);
+      java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(4);
+      java.util.concurrent.ExecutorService racers = java.util.concurrent.Executors.newFixedThreadPool(4);
+      try {
+        List<java.util.concurrent.Future<Path>> results = new ArrayList<>();
+        for (int i = 0; i < 4; i++) results.add(racers.submit(() -> {
+          start.await(10, java.util.concurrent.TimeUnit.SECONDS);
+          return prepare(cold, next);
+        }));
+        Path expected = results.get(0).get(60, java.util.concurrent.TimeUnit.SECONDS);
+        for (java.util.concurrent.Future<Path> result : results)
+          check(result.get(60, java.util.concurrent.TimeUnit.SECONDS).equals(expected), "Cold-start preparers must share one bundle");
+      } finally { racers.shutdownNow(); }
+    }
     System.out.println("RuntimeBundleStore: " + assertions + " assertions passed, including 6 real process-death boundaries");
   }
 }

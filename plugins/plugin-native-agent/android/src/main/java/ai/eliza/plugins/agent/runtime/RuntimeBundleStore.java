@@ -48,14 +48,20 @@ public class RuntimeBundleStore {
   public static Path prepare(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, Faults faults, String format) throws IOException {
     List<Entry> entries = parse(manifest, format);
     String identity = digest(manifest);
-    root = root.toAbsolutePath().normalize();
-    privateDirectory(root);
-    // Validate the leaf without following links before collapsing parent aliases.
-    root = root.toRealPath();
-    // A FileChannel lock belongs to the whole JVM: a second thread preparing
-    // the same root would get OverlappingFileLockException instead of waiting.
-    synchronized (ROOT_LOCKS.computeIfAbsent(root, key -> new Object())) {
-      return prepareLocked(root, entries, identity, source, nativeLibraries, durability, faults);
+    Path requested = root.toAbsolutePath().normalize();
+    // privateDirectory briefly clears permission bits while restricting the
+    // root, so a same-path preparer must not open the lock file meanwhile.
+    // Requested-path monitors are always taken before real-path ones, and a
+    // real path is its own requested path, so the nesting cannot deadlock.
+    synchronized (ROOT_LOCKS.computeIfAbsent(requested, key -> new Object())) {
+      privateDirectory(requested);
+      // Validate the leaf without following links before collapsing parent aliases.
+      Path real = requested.toRealPath();
+      // A FileChannel lock belongs to the whole JVM: a second thread preparing
+      // the same root would get OverlappingFileLockException instead of waiting.
+      synchronized (ROOT_LOCKS.computeIfAbsent(real, key -> new Object())) {
+        return prepareLocked(real, entries, identity, source, nativeLibraries, durability, faults);
+      }
     }
   }
 
@@ -144,7 +150,11 @@ public class RuntimeBundleStore {
     for (String part : value.split("/", -1)) if (part.isEmpty() || part.equals(".") || part.equals("..")) throw new IOException("Unsafe runtime path");
   }
   private static void privateDirectory(Path directory) throws IOException {
-    if (!Files.exists(directory, NOFOLLOW)) Files.createDirectory(directory);
+    if (!Files.exists(directory, NOFOLLOW)) {
+      // Cold-start preparers race to create the root before any lock can be
+      // keyed on its real path; the loser re-checks the winner's directory.
+      try { Files.createDirectory(directory); } catch (FileAlreadyExistsException created) { }
+    }
     if (!Files.isDirectory(directory, NOFOLLOW)) throw new IOException("Runtime directory is not a real directory");
     restrict(directory);
   }
