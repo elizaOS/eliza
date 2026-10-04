@@ -57,4 +57,13 @@ export async function applyAppBillingTestMigrations(
   );
   const column = upgradeDispatch.split("--> statement-breakpoint")[0]!;
   await execute(column.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"));
+  const historicalSettlement = await readFile(
+    new URL("../migrations/0518_organization_upgrade_historical_settlement.sql", import.meta.url),
+    "utf8",
+  );
+  await execute(
+    historicalSettlement
+      .split("--> statement-breakpoint")[0]!
+      .replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"),
+  );
 }
