@@ -58,3 +58,20 @@ export function syntheticWorldSettings(
     ),
   };
 }
+
+export function parseSyntheticWorldConfiguration(serialized: string): {
+  endpoints: Record<string, string>;
+  settings: Record<string, string>;
+} {
+  let endpoints: unknown;
+  try {
+    endpoints = JSON.parse(serialized);
+  } catch (cause) {
+    throw new ElizaError("Synthetic world endpoints contain invalid JSON", {
+      code: "SYNTHETIC_WORLD_ENDPOINT_INVALID",
+      cause,
+    });
+  }
+  const settings = syntheticWorldSettings(endpoints);
+  return { endpoints: endpoints as Record<string, string>, settings };
+}

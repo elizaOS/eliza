@@ -2,6 +2,8 @@
 
 export type CapturedAction = {
   actionName: string;
+  /** Independent observation of the configured mock API boundary, not action-reported success. */
+  apiEffects?: string[];
   parameters?: unknown;
   result?: {
     success?: boolean;

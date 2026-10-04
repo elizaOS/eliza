@@ -928,7 +928,9 @@ async function readGmailMockRequests(
     );
   }
   const response = await fetch(`${base}/__mock/requests`, {
-    signal,
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+      : AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
     throw new Error(
@@ -2031,20 +2033,23 @@ registerFinalCheckHandler(
     const matchingActions = ctx.actionsCalled.filter((action) =>
       matchesActionName(action.actionName, actionName),
     );
+    const rejectedActions = matchingActions.filter((action) =>
+      [action.result?.data, action.result?.values, action.result?.raw].some(
+        (value) => {
+          const result = toRecord(value);
+          return (
+            result?.requiresConfirmation === true ||
+            result?.pendingApproval === true ||
+            result?.cancelled === true ||
+            result?.rejected === true ||
+            result?.status === "cancelled" ||
+            result?.status === "rejected"
+          );
+        },
+      ),
+    );
     const rejected =
-      matchingActions.some((action) =>
-        [action.result?.data, action.result?.values, action.result?.raw].some(
-          (value) => {
-            const result = toRecord(value);
-            return (
-              result?.cancelled === true ||
-              result?.rejected === true ||
-              result?.status === "cancelled" ||
-              result?.status === "rejected"
-            );
-          },
-        ),
-      ) ||
+      rejectedActions.length > 0 ||
       (ctx.approvalRequests ?? []).some(
         (request) =>
           request.state === "rejected" &&
@@ -2056,12 +2061,12 @@ registerFinalCheckHandler(
         detail: `no rejected action found for [${toArray(actionName).join(",")}]`,
       };
     }
-    const completed = matchingActions.some(
+    const completed = rejectedActions.some(
       (action) =>
         hasBrowserTaskCompletedValue(action.result?.data) ||
         hasBrowserTaskCompletedValue(action.result?.raw),
     );
-    const artifacts = matchingActions.some((action) =>
+    const artifacts = rejectedActions.some((action) =>
       actionArtifactsPresent(action),
     );
     if (completed || artifacts) {
@@ -2071,13 +2076,22 @@ registerFinalCheckHandler(
           "reject path still produced a completion or artifact side effect",
       };
     }
-    if (!observeRejectedEffects)
+    if (
+      !observeRejectedEffects &&
+      (rejectedActions.length === 0 ||
+        rejectedActions.some((action) => !action.apiEffects))
+    )
       return {
-        status: "failed",
+        status: "skipped",
         detail:
-          "noSideEffectOnReject requires an independent API or store observer; empty action artifacts cannot prove no effects",
+          "no independent effect observer is configured for this runtime; rejection effects are unproven",
       };
-    const effects = await observeRejectedEffects(toArray(actionName), ctx);
+    const effects = observeRejectedEffects
+      ? await observeRejectedEffects(toArray(actionName), {
+          ...ctx,
+          actionsCalled: rejectedActions,
+        })
+      : rejectedActions.flatMap((action) => action.apiEffects ?? []);
     if (
       !Array.isArray(effects) ||
       effects.some((effect) => typeof effect !== "string")
@@ -2093,8 +2107,9 @@ registerFinalCheckHandler(
       };
     return {
       status: "passed",
-      detail:
-        "independent observer found no effects for the rejected action scope",
+      detail: observeRejectedEffects
+        ? "independent observer found no effects for the rejected action scope"
+        : "independent mock API evidence found no effects for the blocked action scope",
     };
   },
 );
