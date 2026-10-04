@@ -491,6 +491,7 @@ async function count(organizationId: string) {
     const quote = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: { ...f.review, expiresAt: expiry.toISOString() },
     });
     const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
@@ -529,6 +530,7 @@ async function count(organizationId: string) {
       const quote = await quotes.saveOrganizationUpgradeQuote({
         identity: f.input,
         captured: f.captured,
+        providerBinding: f.providerBinding,
         review: { ...f.review, expiresAt: expiry.toISOString() },
       });
       const admitted = await commands.prepareOrganizationUpgrade({
