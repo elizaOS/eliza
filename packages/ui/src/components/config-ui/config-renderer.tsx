@@ -7,8 +7,14 @@
  * plugin theme tokens style the output; secret reveal is delegated to the caller.
  */
 
-import type { JsonSchemaObject, ResolvedField } from "@elizaos/host/protocol";
 import type { ConfigUiHint, PluginUiTheme } from "@elizaos/contracts";
+import type { JsonSchemaObject, ResolvedField } from "@elizaos/host/protocol";
+import {
+  evaluateFieldVisibility,
+  matchesSafeUntrustedRegexPattern,
+  resolveFields,
+  runValidation,
+} from "@elizaos/host/protocol";
 import type React from "react";
 import {
   forwardRef,
@@ -17,12 +23,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  evaluateFieldVisibility,
-  matchesSafeUntrustedRegexPattern,
-  resolveFields,
-  runValidation,
-} from "../../config/config-catalog";
 import type {
   FieldRegistry,
   FieldRenderer,
@@ -34,12 +34,12 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
-import { Card } from "../ui/card";
 import type { CardProps } from "../ui/card";
+import { Card } from "../ui/card";
 import { Progress } from "../ui/progress";
 import { Separator } from "../ui/separator";
-import { ConfigField } from "./config-field";
 import type { ConfigFieldLayout } from "./config-field";
+import { ConfigField } from "./config-field";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
