@@ -3,7 +3,7 @@
 Run OSWorld benchmark with the Eliza bridge agent.
 
 Routes ALL decision-making through the elizaOS TypeScript benchmark
-bridge (``suites/lifeops-bench/runner/src/server.ts``); the legacy
+bridge (``harnesses/eliza/runner/src/server.ts``); the legacy
 Python ``AgentRuntime`` path has been removed.
 
 Usage:
@@ -34,6 +34,7 @@ Usage:
         --max_steps 15 \
         --result_dir ./results/eliza
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,7 +48,9 @@ import sys
 from typing import Any
 
 # Ensure the OSWorld root is on the Python path
-OSWORLD_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../suites/OSWorld"))
+OSWORLD_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../../suites/OSWorld")
+)
 if OSWORLD_ROOT not in sys.path:
     sys.path.insert(0, OSWORLD_ROOT)
 REPO_ROOT = os.path.dirname(os.path.dirname(OSWORLD_ROOT))
@@ -84,10 +87,14 @@ EDGE_VARIANTS = (
 
 def _selected_delegate_harness() -> str:
     return (
-        os.environ.get("ELIZA_BENCH_HARNESS")
-        or os.environ.get("BENCHMARK_HARNESS")
-        or ""
-    ).strip().lower()
+        (
+            os.environ.get("ELIZA_BENCH_HARNESS")
+            or os.environ.get("BENCHMARK_HARNESS")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
 
 
 def _effective_harness_label() -> str:
@@ -145,55 +152,107 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run OSWorld with Eliza agent")
 
     # VM / Environment
-    parser.add_argument("--provider_name", type=str, default="docker",
-                        choices=["vmware", "docker", "virtualbox", "aws"],
-                        help="VM provider")
-    parser.add_argument("--path_to_vm", type=str, default=None,
-                        help="Path to VMware .vmx file (VMware provider only)")
-    parser.add_argument("--region", type=str, default=None,
-                        help="Cloud region (AWS/Azure)")
-    parser.add_argument("--headless", action="store_true",
-                        help="Run VMs in headless mode")
-    parser.add_argument("--snapshot_name", type=str, default="init_state",
-                        help="VM snapshot to revert to")
+    parser.add_argument(
+        "--provider_name",
+        type=str,
+        default="docker",
+        choices=["vmware", "docker", "virtualbox", "aws"],
+        help="VM provider",
+    )
+    parser.add_argument(
+        "--path_to_vm",
+        type=str,
+        default=None,
+        help="Path to VMware .vmx file (VMware provider only)",
+    )
+    parser.add_argument(
+        "--region", type=str, default=None, help="Cloud region (AWS/Azure)"
+    )
+    parser.add_argument(
+        "--headless", action="store_true", help="Run VMs in headless mode"
+    )
+    parser.add_argument(
+        "--snapshot_name",
+        type=str,
+        default="init_state",
+        help="VM snapshot to revert to",
+    )
 
     # Agent configuration
-    parser.add_argument("--model", type=str, default="gemma-4-31b",
-                        help="LLM model to use (e.g., gemma-4-31b)")
-    parser.add_argument("--observation_type", type=str, default="screenshot_a11y_tree",
-                        choices=["screenshot", "a11y_tree", "screenshot_a11y_tree"],
-                        help="Observation type")
-    parser.add_argument("--action_space", type=str, default="pyautogui",
-                        choices=["pyautogui", "computer_13"],
-                        help="Action space format")
-    parser.add_argument("--max_steps", type=int, default=15,
-                        help="Max steps per task")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="gemma-4-31b",
+        help="LLM model to use (e.g., gemma-4-31b)",
+    )
+    parser.add_argument(
+        "--observation_type",
+        type=str,
+        default="screenshot_a11y_tree",
+        choices=["screenshot", "a11y_tree", "screenshot_a11y_tree"],
+        help="Observation type",
+    )
+    parser.add_argument(
+        "--action_space",
+        type=str,
+        default="pyautogui",
+        choices=["pyautogui", "computer_13"],
+        help="Action space format",
+    )
+    parser.add_argument("--max_steps", type=int, default=15, help="Max steps per task")
     parser.add_argument("--temperature", type=float, default=0.5)
     parser.add_argument("--max_tokens", type=int, default=2048)
     parser.add_argument("--max_trajectory_length", type=int, default=0)
     parser.add_argument("--a11y_tree_max_tokens", type=int, default=0)
 
     # Execution
-    parser.add_argument("--result_dir", type=str, default="./results/eliza",
-                        help="Directory to store results")
-    parser.add_argument("--task_id", type=str, default=None,
-                        help="Run a specific task by ID")
-    parser.add_argument("--domain", type=str, default=None,
-                        help="Run tasks from a specific domain (chrome, gimp, etc.)")
-    parser.add_argument("--max_tasks", type=int, default=None,
-                        help="Limit number of tasks to run")
-    parser.add_argument("--num_envs", type=int, default=1,
-                        help="Number of parallel VMs")
-    parser.add_argument("--sleep_after_execution", type=float, default=3.0,
-                        help="Sleep after each action execution")
-    parser.add_argument("--dry_run", action="store_true",
-                        help="Run one cheap in-process smoke task without starting VMs or the Eliza server")
-    parser.add_argument("--expand-scenarios", action="store_true",
-                        help="Run ten deterministic instruction-pressure variants per selected task")
-    parser.add_argument("--count-scenarios", action="store_true",
-                        help="Print base/edge/total task counts for the selected task set")
-    parser.add_argument("--validate-scenarios", action="store_true",
-                        help="Validate selected task set and optional expansion before running")
+    parser.add_argument(
+        "--result_dir",
+        type=str,
+        default="./results/eliza",
+        help="Directory to store results",
+    )
+    parser.add_argument(
+        "--task_id", type=str, default=None, help="Run a specific task by ID"
+    )
+    parser.add_argument(
+        "--domain",
+        type=str,
+        default=None,
+        help="Run tasks from a specific domain (chrome, gimp, etc.)",
+    )
+    parser.add_argument(
+        "--max_tasks", type=int, default=None, help="Limit number of tasks to run"
+    )
+    parser.add_argument(
+        "--num_envs", type=int, default=1, help="Number of parallel VMs"
+    )
+    parser.add_argument(
+        "--sleep_after_execution",
+        type=float,
+        default=3.0,
+        help="Sleep after each action execution",
+    )
+    parser.add_argument(
+        "--dry_run",
+        action="store_true",
+        help="Run one cheap in-process smoke task without starting VMs or the Eliza server",
+    )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run ten deterministic instruction-pressure variants per selected task",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total task counts for the selected task set",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected task set and optional expansion before running",
+    )
 
     return parser.parse_args()
 
@@ -211,7 +270,11 @@ def load_tasks(args: argparse.Namespace) -> list[dict[str, object]]:
         for domain, task_ids in test_all.items():
             if args.task_id in task_ids:
                 task_path = os.path.join(
-                    OSWORLD_ROOT, "evaluation_examples", "examples", domain, f"{args.task_id}.json"
+                    OSWORLD_ROOT,
+                    "evaluation_examples",
+                    "examples",
+                    domain,
+                    f"{args.task_id}.json",
                 )
                 with open(task_path) as f:
                     task = json.load(f)
@@ -230,7 +293,11 @@ def load_tasks(args: argparse.Namespace) -> list[dict[str, object]]:
             continue
         for task_id in test_all[domain]:
             task_path = os.path.join(
-                OSWORLD_ROOT, "evaluation_examples", "examples", domain, f"{task_id}.json"
+                OSWORLD_ROOT,
+                "evaluation_examples",
+                "examples",
+                domain,
+                f"{task_id}.json",
             )
             if not os.path.exists(task_path):
                 logger.warning("Task file not found: %s", task_path)
@@ -281,7 +348,9 @@ def expand_tasks(tasks: list[dict[str, object]]) -> list[dict[str, object]]:
     return expanded
 
 
-def count_tasks(tasks: list[dict[str, object]], include_edge_scenarios: bool = False) -> dict[str, int]:
+def count_tasks(
+    tasks: list[dict[str, object]], include_edge_scenarios: bool = False
+) -> dict[str, int]:
     base = len(tasks)
     edge = base * len(EDGE_VARIANTS) if include_edge_scenarios else 0
     return {
@@ -292,19 +361,26 @@ def count_tasks(tasks: list[dict[str, object]], include_edge_scenarios: bool = F
     }
 
 
-def validate_tasks(tasks: list[dict[str, object]], include_edge_scenarios: bool = False) -> None:
+def validate_tasks(
+    tasks: list[dict[str, object]], include_edge_scenarios: bool = False
+) -> None:
     if not tasks:
         raise ValueError("OSWorld selected task set is empty")
     for index, task in enumerate(tasks):
         if not isinstance(task.get("id"), str) or not str(task.get("id")).strip():
             raise ValueError(f"OSWorld task {index} missing id")
-        if not isinstance(task.get("instruction"), str) or not str(task.get("instruction")).strip():
+        if (
+            not isinstance(task.get("instruction"), str)
+            or not str(task.get("instruction")).strip()
+        ):
             raise ValueError(f"OSWorld task {index} missing instruction")
     if include_edge_scenarios:
         expanded = expand_tasks(tasks)
         expected = len(tasks) * (len(EDGE_VARIANTS) + 1)
         if len(expanded) != expected:
-            raise ValueError(f"expanded OSWorld tasks has {len(expanded)} tasks, expected {expected}")
+            raise ValueError(
+                f"expanded OSWorld tasks has {len(expanded)} tasks, expected {expected}"
+            )
         ids = [str(task.get("id")) for task in expanded]
         if len(ids) != len(set(ids)):
             raise ValueError("expanded OSWorld tasks has duplicate ids")
@@ -383,13 +459,20 @@ class _DryRunEnv:
             "instruction": "dry run",
         }
 
-    def step(self, action: str, sleep_after_execution: float = 0.0) -> tuple[dict[str, object], float, bool, dict[str, object]]:
+    def step(
+        self, action: str, sleep_after_execution: float = 0.0
+    ) -> tuple[dict[str, object], float, bool, dict[str, object]]:
         self._step_count += 1
-        return self._get_obs(), 0.0, True, {
-            "dry_run": True,
-            "action": action,
-            "sleep_after_execution": sleep_after_execution,
-        }
+        return (
+            self._get_obs(),
+            0.0,
+            True,
+            {
+                "dry_run": True,
+                "action": action,
+                "sleep_after_execution": sleep_after_execution,
+            },
+        )
 
     def evaluate(self) -> float:
         return 1.0
@@ -402,7 +485,9 @@ class _DryRunAgent:
     def reset(self, *_args: object, **_kwargs: object) -> None:
         pass
 
-    def predict(self, instruction: str, obs: dict[str, object]) -> tuple[str, list[str]]:
+    def predict(
+        self, instruction: str, obs: dict[str, object]
+    ) -> tuple[str, list[str]]:
         return (
             f"Dry run handled instruction: {instruction}",
             ["pyautogui.press('esc')"],
@@ -414,7 +499,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
     base_tasks = load_tasks_for_run(args)
     if getattr(args, "validate_scenarios", False):
         validate_tasks(base_tasks, include_edge_scenarios=bool(args.expand_scenarios))
-    scenario_counts = count_tasks(base_tasks, include_edge_scenarios=bool(args.expand_scenarios))
+    scenario_counts = count_tasks(
+        base_tasks, include_edge_scenarios=bool(args.expand_scenarios)
+    )
     if getattr(args, "count_scenarios", False):
         print(json.dumps(scenario_counts, sort_keys=True))
     tasks = expand_tasks(base_tasks) if args.expand_scenarios else base_tasks
@@ -429,7 +516,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
         "provider_name": args.provider_name,
         "action_space": args.action_space,
         "headless": args.headless,
-        "require_a11y_tree": args.observation_type in ("a11y_tree", "screenshot_a11y_tree"),
+        "require_a11y_tree": args.observation_type
+        in ("a11y_tree", "screenshot_a11y_tree"),
         "require_terminal": False,
     }
     if args.path_to_vm:
@@ -492,31 +580,43 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
                 )
 
                 result_val = scores[-1] if scores else 0.0
-                results.append({
-                    "task_id": task_id,
-                    "domain": domain,
-                    "instruction": instruction,
-                    "score": result_val,
-                    "result_dir": example_result_dir,
-                })
+                results.append(
+                    {
+                        "task_id": task_id,
+                        "domain": domain,
+                        "instruction": instruction,
+                        "score": result_val,
+                        "result_dir": example_result_dir,
+                    }
+                )
 
                 logger.info("Task %s: score=%.2f", task_id, result_val)
 
             except Exception as e:
                 logger.error("Task %s failed with error: %s", task_id, e, exc_info=True)
-                with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
+                with open(
+                    os.path.join(example_result_dir, "result.txt"),
+                    "w",
+                    encoding="utf-8",
+                ) as f:
                     f.write("0.0\n")
-                with open(os.path.join(example_result_dir, "traj.jsonl"), "a", encoding="utf-8") as f:
+                with open(
+                    os.path.join(example_result_dir, "traj.jsonl"),
+                    "a",
+                    encoding="utf-8",
+                ) as f:
                     f.write(json.dumps({"Error": str(e)}))
                     f.write("\n")
                 log_task_error(task, str(e), example_result_dir, args)
-                results.append({
-                    "task_id": task_id,
-                    "domain": domain,
-                    "instruction": instruction,
-                    "score": 0.0,
-                    "error": str(e),
-                })
+                results.append(
+                    {
+                        "task_id": task_id,
+                        "domain": domain,
+                        "instruction": instruction,
+                        "score": 0.0,
+                        "error": str(e),
+                    }
+                )
                 scores.append(0.0)
 
         # Summary
@@ -543,7 +643,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
         }
 
         # Save summary
-        summary_path = os.path.join(args.result_dir, f"osworld-eliza-results-{timestamp}.json")
+        summary_path = os.path.join(
+            args.result_dir, f"osworld-eliza-results-{timestamp}.json"
+        )
         os.makedirs(os.path.dirname(summary_path), exist_ok=True)
         with open(summary_path, "w") as f:
             json.dump(summary, f, indent=2, default=str)

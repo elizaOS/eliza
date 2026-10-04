@@ -10,12 +10,13 @@ Covers:
     (otherwise still scores correctly when deps are present).
   * Agentic checker handles whitespace/punctuation normalization.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from suites.bfcl.evaluators import ExecutionEvaluator
-from suites.bfcl.executable_runtime import (
+from benchmarks.bfcl.evaluators import ExecutionEvaluator
+from benchmarks.bfcl.executable_runtime import (
     MEMORY_BACKEND_CLASSES,
     ExecutableRuntime,
     agentic_checker,
@@ -90,9 +91,11 @@ class TestMemoryKVRuntime:
             },
             memory_backend="kv",
         )
-        results = rt.execute_calls([
-            "core_memory_add(key='favorite_color', value='blue')",
-        ])
+        results = rt.execute_calls(
+            [
+                "core_memory_add(key='favorite_color', value='blue')",
+            ]
+        )
         assert len(results) == 1
         # Should NOT be an error
         assert "Error during execution" not in results[0]
@@ -187,6 +190,7 @@ class TestEvaluateMemory:
         try:
             import sentence_transformers  # noqa: F401
             import faiss  # noqa: F401
+
             pytest.skip("ML deps installed — graceful-fallback test n/a")
         except ImportError:
             pass

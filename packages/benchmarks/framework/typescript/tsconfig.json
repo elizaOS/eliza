@@ -7,6 +7,7 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
+    "rootDir": "../../../..",
     "types": ["node", "bun-types"],
     "resolveJsonModule": true,
     "customConditions": ["eliza-source"],
