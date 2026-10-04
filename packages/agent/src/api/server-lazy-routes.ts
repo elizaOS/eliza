@@ -331,37 +331,41 @@ export const handleRemoteCapabilityRoutes = lazyRoute(
       .handleRemoteCapabilityRoutes,
 );
 
-export const handleInboxAndCloudRelayRouteGroup = lazyRoute(
-  (ctx) =>
-    ctx !== null &&
-    (ctx.pathname.startsWith("/api/notifications") ||
-      ctx.pathname.startsWith("/api/inbox") ||
-      ctx.pathname === "/api/approvals" ||
-      ctx.pathname === "/api/cloud/relay-status"),
-  async () =>
-    (await import("./server-route-dispatch.ts"))
-      .handleInboxAndCloudRelayRouteGroup,
-);
-export const handleCloudAndCoreRouteGroup = lazyRoute(
-  (ctx) => Boolean(ctx?.pathname.startsWith("/api/cloud/")),
-  async () =>
-    (await import("./server-route-dispatch.ts")).handleCloudAndCoreRouteGroup,
-);
-export const handleSandboxRouteGroup = lazyRoute(
-  (ctx) => Boolean(ctx?.pathname.startsWith("/api/sandbox")),
-  async () =>
-    (await import("./server-route-dispatch.ts")).handleSandboxRouteGroup,
-);
-export const handleConversationRouteGroup = lazyRoute(
-  (ctx) =>
-    ctx !== null &&
-    (ctx.pathname.startsWith("/api/conversations") ||
-      ctx.pathname.startsWith("/v1/") ||
-      (ctx.method === "POST" &&
-        /^\/api\/agents\/[^/]+\/message$/.test(ctx.pathname))),
-  async () =>
-    (await import("./server-route-dispatch.ts")).handleConversationRouteGroup,
-);
+export const handleInboxAndCloudRelayRouteGroup: RouteDispatchModule["handleInboxAndCloudRelayRouteGroup"] =
+  lazyRoute(
+    (ctx) =>
+      ctx !== null &&
+      (ctx.pathname.startsWith("/api/notifications") ||
+        ctx.pathname.startsWith("/api/inbox") ||
+        ctx.pathname === "/api/approvals" ||
+        ctx.pathname === "/api/cloud/relay-status"),
+    async () =>
+      (await import("./server-route-dispatch.ts"))
+        .handleInboxAndCloudRelayRouteGroup,
+  );
+export const handleCloudAndCoreRouteGroup: RouteDispatchModule["handleCloudAndCoreRouteGroup"] =
+  lazyRoute(
+    (ctx) => Boolean(ctx?.pathname.startsWith("/api/cloud/")),
+    async () =>
+      (await import("./server-route-dispatch.ts")).handleCloudAndCoreRouteGroup,
+  );
+export const handleSandboxRouteGroup: RouteDispatchModule["handleSandboxRouteGroup"] =
+  lazyRoute(
+    (ctx) => Boolean(ctx?.pathname.startsWith("/api/sandbox")),
+    async () =>
+      (await import("./server-route-dispatch.ts")).handleSandboxRouteGroup,
+  );
+export const handleConversationRouteGroup: RouteDispatchModule["handleConversationRouteGroup"] =
+  lazyRoute(
+    (ctx) =>
+      ctx !== null &&
+      (ctx.pathname.startsWith("/api/conversations") ||
+        ctx.pathname.startsWith("/v1/") ||
+        (ctx.method === "POST" &&
+          /^\/api\/agents\/[^/]+\/message$/.test(ctx.pathname))),
+    async () =>
+      (await import("./server-route-dispatch.ts")).handleConversationRouteGroup,
+  );
 type RouteDispatchModule = typeof import("./server-route-dispatch.ts");
 export async function handleDatabaseRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleDatabaseRouteGroup"]>

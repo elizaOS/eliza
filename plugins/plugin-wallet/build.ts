@@ -29,6 +29,7 @@ await buildPlugin({
     {
       label: "Node",
       splitting: true,
+      root: "src",
       entry: [
         "src/index.ts",
         "src/diagnostic.ts",
