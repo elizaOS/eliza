@@ -137,6 +137,63 @@ describe("grounded reply outcomes — real PGlite", () => {
     },
   );
 
+  it("grounds reminder confirmation in the persisted timezone, channel and absent native projection", async () => {
+    const renderReply = vi
+      .spyOn(assistant, "renderGroundedActionReply")
+      .mockResolvedValue({
+        kind: "deferred",
+        grounding: "Saved reminder facts",
+      });
+    const callback = vi.fn(async () => []);
+    const result = await runLifeOperationHandler(
+      runtime,
+      message("Remind me in 2 minutes, in-app only, using Tokyo time"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "definition",
+          ownerSurface: "OWNER_REMINDERS",
+          confirmed: true,
+          intent: "Remind me in 2 minutes, in-app only, using Tokyo time",
+          createPlan: {
+            mode: "create",
+            requestKind: "reminder",
+            nativeProjection: "in_app_only",
+            title: "Drink water",
+            cadenceKind: "once",
+            dueInMinutes: 2,
+            timeZone: "Asia/Tokyo",
+            multiStep: false,
+          },
+        },
+      },
+      callback,
+    );
+    const id = result.effectReceipts?.[0]?.resource.id;
+    expect(result.success).toBe(true);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "applied",
+      commit: { kind: "durable" },
+    });
+    if (!id) throw new Error("Missing saved reminder receipt");
+    const saved = await service.getDefinition(id);
+    expect(saved.definition.timezone).toBe("Asia/Tokyo");
+    expect(saved.definition.metadata.nativeAppleReminder).toBeUndefined();
+    expect(renderReply).toHaveBeenCalledOnce();
+    expect(renderReply.mock.calls[0]?.[0].context).toMatchObject({
+      created: {
+        title: saved.definition.title,
+        cadence: saved.definition.cadence,
+        timezone: saved.definition.timezone,
+        notificationChannels: ["in_app"],
+        nativeAppleReminderId: null,
+      },
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.userFacingText).toBeUndefined();
+  });
+
   it("keeps one persisted entity contact and its applied receipt after reply failure", async () => {
     const renderReply = vi
       .spyOn(assistant, "renderGroundedActionReply")
