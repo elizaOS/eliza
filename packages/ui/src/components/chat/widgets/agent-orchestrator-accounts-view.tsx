@@ -4,6 +4,8 @@
  * it bundles for the browser and renders in Storybook / the screenshot harness
  * across every state. The fetching container lives in `agent-orchestrator.tsx`.
  */
+
+import type { TranslateFn } from "@elizaos/contracts";
 import { Workflow, Zap } from "lucide-react";
 import { useMemo } from "react";
 import type {
@@ -14,7 +16,6 @@ import type {
   OrchestratorAccountOverview,
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
-import type { TranslateFn } from "../../../types";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Progress } from "../../ui/progress";

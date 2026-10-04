@@ -218,7 +218,7 @@ export * from "./slots/task-coordinator-slots.helpers.ts";
 export * from "./slots/task-coordinator-slots.tsx";
 export * from "./state/index.ts";
 export * from "./themes/index.ts";
-export * from "./types/index.ts";
+
 export { resolveAppAssetUrl } from "./utils/asset-url.js";
 export { copyTextToClipboard } from "./utils/clipboard.ts";
 export { confirmDesktopAction } from "./utils/desktop-dialogs.ts";

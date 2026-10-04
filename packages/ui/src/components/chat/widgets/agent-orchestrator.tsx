@@ -16,6 +16,7 @@
  * plugin just provides the backend capabilities it consumes.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
 import {
   Activity,
   AlertTriangle,
@@ -58,7 +59,6 @@ import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { logger } from "../../../logger.ts";
 import { useAppSelectorShallow } from "../../../state";
-import type { TranslateFn } from "../../../types";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";
 import { loadMergedCatalogApps } from "../../apps/catalog-loader";
 import { getRunAttentionReasons } from "../../apps/run-attention";

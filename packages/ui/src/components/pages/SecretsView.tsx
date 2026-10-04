@@ -5,6 +5,8 @@
  * `resource-cache` for instant revisits. Pinned keys persist in localStorage
  * (best-effort — pinning is cosmetic, so a storage failure is swallowed).
  */
+
+import type { TranslateFn } from "@elizaos/contracts";
 import { ChevronDown } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";
@@ -13,7 +15,6 @@ import { getCached, setCached } from "../../hooks/resource-cache";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelector } from "../../state";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import type { TranslateFn } from "../../types";
 import { Button } from "../ui/button";
 import {
   Dialog,

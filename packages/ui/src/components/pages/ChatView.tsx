@@ -12,6 +12,7 @@
  * terminal, and a user-initiated dismissal sticks.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -60,7 +61,6 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
-import type { TranslateFn } from "../../types";
 import {
   buildDroppedAttachmentNotice,
   CHAT_UPLOAD_ACCEPT,

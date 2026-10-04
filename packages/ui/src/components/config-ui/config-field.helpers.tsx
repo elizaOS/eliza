@@ -8,6 +8,7 @@
  * config-control-primitives.helpers.
  */
 
+import type { DynamicValue } from "@elizaos/contracts";
 import { resolveDynamic } from "@elizaos/host/protocol";
 import { ChevronDown, X } from "lucide-react";
 import React, {
@@ -29,7 +30,6 @@ import {
   CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
 } from "../../lib/floating-layers";
 import { useAppSelector } from "../../state";
-import type { DynamicValue } from "../../types";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";

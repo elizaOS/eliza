@@ -3,6 +3,10 @@
  * shared across the plugin management UI.
  */
 
+import type {
+  TranslateFn as AppTranslateFn,
+  ConfigUiHint,
+} from "@elizaos/contracts";
 import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import {
   Binary,
@@ -79,7 +83,6 @@ import {
   Zap,
 } from "lucide-react";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
 import { autoLabel } from "../../utils/labels.js";
 import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";

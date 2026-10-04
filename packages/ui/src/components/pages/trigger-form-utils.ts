@@ -6,6 +6,7 @@
  * by TriggersView and its tests so neither duplicates the logic.
  */
 
+import type { TranslateFn as AppTranslateFn } from "@elizaos/contracts";
 import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { CronExpressionParser } from "cron-parser";
 import type {
@@ -16,7 +17,6 @@ import type {
   UpdateTriggerRequest,
 } from "../../api/client";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 export type TriggerKind = "text" | "workflow";
 // ── Translation helper type ────────────────────────────────────────

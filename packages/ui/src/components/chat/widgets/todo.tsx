@@ -17,6 +17,8 @@
  *
  * Exports `TODO_PLUGIN_WIDGETS`, the widget-registry entry the host consumes.
  */
+
+import type { TranslateFn } from "@elizaos/contracts";
 import { Circle, ListTodo, Target } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../../api";
@@ -26,7 +28,6 @@ import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useRole } from "../../../hooks/useRole";
 import { useAppSelectorShallow } from "../../../state";
-import type { TranslateFn } from "../../../types";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { Badge } from "../../ui/badge";

@@ -5,6 +5,10 @@
  * `RpcSectionConfigMap`, translate-fn aliases) are exported for the parent view.
  */
 
+import type {
+  TranslateFn as AppTranslateFn,
+  ConfigUiHint,
+} from "@elizaos/contracts";
 import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import { normalizeFirstRunProviderId } from "@elizaos/host/protocol";
 import { useCallback, useEffect, useState } from "react";
@@ -12,7 +16,6 @@ import { client } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import { useAppSelector } from "../../state";
-import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { SettingsSwitchRow } from "../settings/settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "../settings/settings-layout";
 import { Button } from "../ui/button";

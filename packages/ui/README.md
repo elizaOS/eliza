@@ -5,7 +5,8 @@ dashboard shell (`App.tsx`), the typed HTTP/WS API client, agent-surface view
 instrumentation, GenUI, voice, and platform/bridge glue.
 
 Shared React components and application surfaces. Consumers render domain DTOs; business
-logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
+logic belongs to domain services. Import domain DTOs from `@elizaos/contracts`;
+the former `@elizaos/ui/types` forwarding entry has been removed. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
 
 ## Development

@@ -6,6 +6,7 @@
  * warnings/errors flow in as props and surface inline.
  */
 
+import type { ConfigUiHint } from "@elizaos/contracts";
 import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import { API_KEY_PREFIX_HINTS } from "@elizaos/host/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,7 +19,6 @@ import {
 } from "../../components/config-ui/config-renderer.helpers";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useAppSelector } from "../../state";
-import type { ConfigUiHint } from "../../types";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { autoLabel } from "../../utils/labels.js";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";

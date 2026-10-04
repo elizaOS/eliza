@@ -384,11 +384,6 @@
       "import": "./dist/slots/*.js",
       "default": "./dist/slots/*.js"
     },
-    "./types": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.js",
-      "default": "./dist/types/index.js"
-    },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js",
