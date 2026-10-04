@@ -838,11 +838,16 @@ export interface IMessagingAdapter {
 	 * @param channelId The channel to fetch messages from
 	 * @param limit Max messages to return (default 50)
 	 * @param beforeTimestamp Get messages before this timestamp (for pagination)
+	 * @param beforeMessageId Continue the cursor from the row that carries
+	 * `beforeTimestamp`: rows sharing that timestamp but sorting before this id
+	 * are still returned. Without it a same-timestamp group wider than `limit`
+	 * silently loses its remainder on the next page.
 	 */
 	getMessagesForChannel(
 		channelId: UUID,
 		limit?: number,
 		beforeTimestamp?: Date,
+		beforeMessageId?: UUID,
 	): Promise<MessagingMessage[]>;
 
 	/**

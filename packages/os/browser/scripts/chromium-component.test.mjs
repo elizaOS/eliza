@@ -304,44 +304,45 @@ int main() {
   }
 });
 
-test("generated patch applies cleanly to pinned upstream and preserves every emitted byte", async () => {
-  const overlay = await generateComponentOverlay(request());
-  const patch = await createComponentPatch(sources, overlay.files);
-  assert.equal(patch, await createComponentPatch(sources, overlay.files));
-  const root = await mkdtemp(path.join(tmpdir(), "eliza-component-apply-"));
-  try {
-    for (const [filename, content] of Object.entries(sources)) {
-      const target = path.join(root, filename);
-      await mkdir(path.dirname(target), { recursive: true });
-      await writeFile(target, content);
+for (const embedHost of [false, true])
+  test(`generated patch applies cleanly and preserves every byte (embedding=${embedHost})`, async () => {
+    const overlay = await generateComponentOverlay({ ...request(), embedHost });
+    const patch = await createComponentPatch(sources, overlay.files);
+    assert.equal(patch, await createComponentPatch(sources, overlay.files));
+    const root = await mkdtemp(path.join(tmpdir(), "eliza-component-apply-"));
+    try {
+      for (const [filename, content] of Object.entries(sources)) {
+        const target = path.join(root, filename);
+        await mkdir(path.dirname(target), { recursive: true });
+        await writeFile(target, content);
+      }
+      execFileSync("git", ["apply", "--check", "-"], {
+        cwd: root,
+        input: patch,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["apply", "-"], {
+        cwd: root,
+        input: patch,
+        stdio: "pipe",
+      });
+      for (const [filename, hash] of Object.entries(overlay.report.outputs))
+        assert.equal(sha256(await readFile(path.join(root, filename))), hash);
+      assert.equal(
+        await readFile(
+          path.join(root, "extensions/common/extension_features.cc"),
+          "utf8",
+        ),
+        sources["extensions/common/extension_features.cc"],
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
-    execFileSync("git", ["apply", "--check", "-"], {
-      cwd: root,
-      input: patch,
-      stdio: "pipe",
-    });
-    execFileSync("git", ["apply", "-"], {
-      cwd: root,
-      input: patch,
-      stdio: "pipe",
-    });
-    for (const [filename, hash] of Object.entries(overlay.report.outputs))
-      assert.equal(sha256(await readFile(path.join(root, filename))), hash);
-    assert.equal(
-      await readFile(
-        path.join(root, "extensions/common/extension_features.cc"),
-        "utf8",
-      ),
-      sources["extensions/common/extension_features.cc"],
+    await assert.rejects(
+      createComponentPatch({}, { "../escape": "bad" }),
+      /Invalid component overlay path/,
     );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-  await assert.rejects(
-    createComponentPatch({}, { "../escape": "bad" }),
-    /Invalid component overlay path/,
-  );
-});
+  });
 
 test("Linux and Android resource additions fit the reviewed GRIT allocation", async () => {
   const overlay = await generateComponentOverlay(request());
@@ -389,4 +390,97 @@ test("a different Android host must match the component assets and build certifi
     generateComponentOverlay({ ...input, certificate: "B".repeat(64) }),
     /Native host configuration/,
   );
+});
+
+test("Android embedding is opt-in and restricted to the provisioned native host signer", async () => {
+  const manifest = "chrome/android/java/AndroidManifest.xml";
+  const defaultBuild = await generateComponentOverlay(request());
+  assert.equal(defaultBuild.files[manifest], undefined);
+  assert.equal(defaultBuild.report.trustedActivityEmbedding, null);
+  const embedded = await generateComponentOverlay({
+    ...request(),
+    embedHost: true,
+  });
+  const output = embedded.files[manifest];
+  assert.equal(
+    (output.match(/android:knownActivityEmbeddingCerts=/g) ?? []).length,
+    4,
+  );
+  assert.equal(
+    (
+      output.match(
+        new RegExp(`android:knownActivityEmbeddingCerts="${certificate}"`, "g"),
+      ) ?? []
+    ).length,
+    4,
+  );
+  assert.equal(
+    output.replaceAll(
+      `\n            android:knownActivityEmbeddingCerts="${certificate}"`,
+      "",
+    ),
+    sources[manifest],
+  );
+  assert.ok(!output.includes("allowUntrustedActivityEmbedding"));
+  assert.deepEqual(embedded.report.trustedActivityEmbedding, {
+    certificateSha256: certificate,
+    application: "ai.elizaos.app",
+  });
+  await assert.rejects(
+    generateComponentOverlay({ ...request(), embedHost: "true" }),
+    /explicit Android-only/,
+  );
+  const linux = { ...request(), platform: "linux", embedHost: true };
+  linux.assets["runtime-config.mjs"] = Buffer.from(
+    'export const nativeHost = "ai.elizaos.browser";\n',
+  );
+  await assert.rejects(
+    generateComponentOverlay(linux),
+    /explicit Android-only/,
+  );
+});
+
+test("optional protection embeds a complete reviewed inventory without broadening ordinary builds", async () => {
+  const input = request();
+  for (const name of [
+    "protection.mjs",
+    "policy.mjs",
+    "warning.html",
+    "warning.mjs",
+    "warning.css",
+    "licenses.html",
+  ])
+    input.assets[name] = Buffer.from("reviewed product resource");
+  const manifest = JSON.parse(input.assets["manifest.json"]);
+  manifest.permissions.push("declarativeNetRequest");
+  manifest.web_accessible_resources = [
+    { resources: ["warning.html"], matches: ["<all_urls>"] },
+  ];
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  const overlay = await generateComponentOverlay(input);
+  assert.equal(
+    Object.keys(overlay.report.resources).length,
+    assetNames.length + 6,
+  );
+  assert.match(
+    overlay.files[
+      "components/android_autofill/browser/form_data_android_bridge_impl.cc"
+    ],
+    /main_frame_origin\(\)\.Serialize\(\)/,
+  );
+  assert.ok(
+    overlay.files["chrome/browser/resources/eliza_browser/warning.html"],
+  );
+  const omitted = { ...input, assets: { ...input.assets } };
+  delete omitted.assets["policy.mjs"];
+  await assert.rejects(generateComponentOverlay(omitted), /inventory/);
+  manifest.permissions.push("debugger");
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  await assert.rejects(generateComponentOverlay(input), /capabilities/);
+  manifest.permissions.pop();
+  manifest.web_accessible_resources[0].resources.push("policy.mjs");
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  await assert.rejects(generateComponentOverlay(input), /capabilities/);
+  const ordinary = await generateComponentOverlay(request());
+  assert.equal(ordinary.report.resources["protection.mjs"], undefined);
 });

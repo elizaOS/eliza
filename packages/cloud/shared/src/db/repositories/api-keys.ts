@@ -416,6 +416,37 @@ export class ApiKeysRepository {
     return tombstone;
   }
 
+  /** Retains only the hash-backed receipt and removes recoverable secret bytes. */
+  async tombstoneExactStandardCredential(
+    id: string,
+    keyHash: string,
+    revokedAt: Date,
+    tx?: DbTransaction,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await (tx ?? dbWrite)
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.key_hash, keyHash),
+          isNull(apiKeys.deleted_at),
+          isNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
+  }
+
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {
     await dbWrite
       .update(apiKeys)

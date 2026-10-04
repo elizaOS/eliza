@@ -45,6 +45,7 @@ interface AddEarningsParams {
   description: string;
   metadata?: Record<string, unknown>;
   dedupeBySourceId?: boolean;
+  reversesRedemption?: boolean;
   /** Reuse the caller's settlement transaction when this earning is one leg of a larger unit. */
   transaction?: DbTransaction;
 }
@@ -394,14 +395,23 @@ class RedeemableEarningsService {
 
         [earnings] = await tx
           .update(redeemableEarnings)
-          .set({
-            total_earned: sql`${redeemableEarnings.total_earned} + ${amountDecimal}`,
-            available_balance: sql`${redeemableEarnings.available_balance} + ${amountDecimal}`,
-            [sourceColumn.name]: sql`${sourceColumn} + ${amountDecimal}`,
-            last_earning_at: new Date(),
-            version: sql`${redeemableEarnings.version} + 1`,
-            updated_at: new Date(),
-          })
+          .set(
+            params.reversesRedemption
+              ? {
+                  total_redeemed: sql`GREATEST(0, ${redeemableEarnings.total_redeemed} - ${amountDecimal})`,
+                  available_balance: sql`${redeemableEarnings.available_balance} + ${amountDecimal}`,
+                  version: sql`${redeemableEarnings.version} + 1`,
+                  updated_at: new Date(),
+                }
+              : {
+                  total_earned: sql`${redeemableEarnings.total_earned} + ${amountDecimal}`,
+                  available_balance: sql`${redeemableEarnings.available_balance} + ${amountDecimal}`,
+                  [sourceColumn.name]: sql`${sourceColumn} + ${amountDecimal}`,
+                  last_earning_at: new Date(),
+                  version: sql`${redeemableEarnings.version} + 1`,
+                  updated_at: new Date(),
+                },
+          )
           .where(eq(redeemableEarnings.user_id, userId))
           .returning();
       }
@@ -505,6 +515,7 @@ class RedeemableEarningsService {
      * once. Default false preserves the additive reconciliation behavior.
      */
     dedupeBySourceId?: boolean;
+    countAsRedeemed?: boolean;
     /** Reuse an owning settlement transaction so every money leg commits together. */
     transaction?: DbTransaction;
   }): Promise<{
@@ -636,13 +647,22 @@ class RedeemableEarningsService {
       // Reduce balances - use GREATEST to prevent going negative
       const [updated] = await tx
         .update(redeemableEarnings)
-        .set({
-          total_earned: sql`GREATEST(0, ${redeemableEarnings.total_earned} - ${amountDecimal})`,
-          available_balance: sql`GREATEST(0, ${redeemableEarnings.available_balance} - ${amountDecimal})`,
-          [sourceColumn.name]: sql`GREATEST(0, ${sourceColumn} - ${amountDecimal})`,
-          version: sql`${redeemableEarnings.version} + 1`,
-          updated_at: new Date(),
-        })
+        .set(
+          params.countAsRedeemed
+            ? {
+                total_redeemed: sql`${redeemableEarnings.total_redeemed} + ${amountDecimal}`,
+                available_balance: sql`GREATEST(0, ${redeemableEarnings.available_balance} - ${amountDecimal})`,
+                version: sql`${redeemableEarnings.version} + 1`,
+                updated_at: new Date(),
+              }
+            : {
+                total_earned: sql`GREATEST(0, ${redeemableEarnings.total_earned} - ${amountDecimal})`,
+                available_balance: sql`GREATEST(0, ${redeemableEarnings.available_balance} - ${amountDecimal})`,
+                [sourceColumn.name]: sql`GREATEST(0, ${sourceColumn} - ${amountDecimal})`,
+                version: sql`${redeemableEarnings.version} + 1`,
+                updated_at: new Date(),
+              },
+        )
         .where(eq(redeemableEarnings.user_id, userId))
         .returning();
 

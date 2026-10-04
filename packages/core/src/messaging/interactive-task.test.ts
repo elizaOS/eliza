@@ -194,6 +194,15 @@ describe("interactive task lifecycle", () => {
 				status: "succeeded",
 				evidenceRef: "readback-1",
 			});
+			expect(reconciled.epoch).toBe(task.epoch + 1);
+			expect(reconciled.observation).toBeNull();
+			expect(
+				move(task, {
+					type: "reconcile",
+					operationId: "operation-1",
+					status: "unknown",
+				}).epoch,
+			).toBe(task.epoch);
 			expect(reconciled.operations[0].evidenceRef).toBe("readback-1");
 			expect(reconciled.status).toBe(
 				type === "cancel" ? "cancelled" : "paused",

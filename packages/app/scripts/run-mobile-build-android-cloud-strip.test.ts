@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { cloudSafeMainActivityJava } from "./mobile/android/templates/main-activity.ts";
 
 import {
   ANDROID_CLOUD_REWRITTEN_JAVA_FILES,
@@ -37,6 +38,38 @@ const androidTestJavaRoot = path.resolve(
   scriptsDir,
   "../platforms/android/app/src/test/java/ai/elizaos/app",
 );
+
+describe("Android push bridge startup", () => {
+  it("registers SafePush after discovery but before the initial renderer header", () => {
+    const sources = [
+      fs.readFileSync(
+        path.join(androidMainJavaRoot, "MainActivity.java"),
+        "utf8",
+      ),
+      cloudSafeMainActivityJava("ai.elizaos.app"),
+    ];
+    for (const source of sources) {
+      const registration = source.indexOf(
+        "initialPlugins.add(SafePushNotificationsPlugin.class)",
+      );
+      expect(registration).toBeGreaterThan(-1);
+      expect(registration).toBeLessThan(
+        source.indexOf("super.onCreate(savedInstanceState)"),
+      );
+      expect(source).not.toContain(
+        "getBridge().registerPlugin(SafePushNotificationsPlugin.class)",
+      );
+    }
+  });
+
+  it("does not reference SafePush when its native dependency is stripped", () => {
+    expect(
+      cloudSafeMainActivityJava("ai.elizaos.app", {
+        safePushNotifications: false,
+      }),
+    ).not.toContain("SafePushNotificationsPlugin");
+  });
+});
 
 /** Every committed main-sourceset .java basename that references ElizaAgentService. */
 function collectAgentServiceReferencingSources() {

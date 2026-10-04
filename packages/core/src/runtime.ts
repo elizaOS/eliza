@@ -370,6 +370,17 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 // Its immutable stores retain nested runtimes only for the originating async chain.
 const errorReportScopes = new AsyncLocalStorage<ReadonlySet<AgentRuntime>>();
 
+/**
+ * Egress swap master switches may come from the host process environment.
+ * `getSetting` reads only character/runtime settings, and hosts forward
+ * environment keys into settings through allowlists that reject any key
+ * containing "SECRET", so without this fallback a host could never enable the
+ * secret swap. An explicit runtime setting still wins.
+ */
+function swapEnvSetting(key: string): string | undefined {
+	return typeof process === "undefined" ? undefined : process.env?.[key];
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
 		invalidateTurnEntityDetails: (...args) =>
@@ -806,7 +817,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isSecretSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
@@ -853,7 +866,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isPiiSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(PII_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
@@ -2009,7 +2024,10 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	setSetting(key: string, value: string | boolean | null, secret = false) {
-		if (secret) {
+		const shadowedBySecret =
+			this.character.secrets !== undefined &&
+			Object.hasOwn(this.character.secrets, key);
+		if (secret || shadowedBySecret) {
 			const nestedSecrets =
 				this.character.settings &&
 				typeof this.character.settings.secrets === "object" &&
@@ -2817,7 +2835,7 @@ export class AgentRuntime implements IAgentRuntime {
 									);
 								}
 							: options?.callback;
-					await settleActionHandler({
+					const settled = await settleActionHandler({
 						runtime: this,
 						action,
 						callback: protectedCallback,
@@ -2852,6 +2870,18 @@ export class AgentRuntime implements IAgentRuntime {
 							);
 						},
 					});
+					// A handler that RETURNS { success: false } must be reported as
+					// failed, not completed. settleActionHandler normalizes that
+					// result, but the mode loop previously discarded it, so only a
+					// thrown handler flipped `success`. Honor the explicit result —
+					// never fabricate success (AGENTS.md: "never fabricate success").
+					if (settled.success === false) {
+						success = false;
+						errorMsg =
+							settled.error instanceof Error
+								? settled.error.message
+								: (settled.error ?? settled.text ?? errorMsg);
+					}
 					if (action.disclosureGate?.require === "owner_exclusive") {
 						const disclosure = await revalidateOwnerExclusiveDisclosure(
 							this,

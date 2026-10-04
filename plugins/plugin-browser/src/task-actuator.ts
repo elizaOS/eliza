@@ -42,7 +42,12 @@ export class NativeTaskActuator {
   ] as const;
   private bindings = new Map<
     string,
-    { context: NativeTaskContext; policy: TaskBrowserPolicy; expiresAt: number }
+    {
+      context: NativeTaskContext;
+      policy: TaskBrowserPolicy;
+      expiresAt: number;
+      readOnly: boolean;
+    }
   >();
   private guidanceRevisions = new Map<string, number>();
   private activeGuidance = new Set<string>();
@@ -80,6 +85,15 @@ export class NativeTaskActuator {
         after: TaskBrowserSnapshot,
         result: "succeeded" | "failed" | "unknown",
       ) => Promise<string>;
+      /** Interpret a fresh read-only snapshot using durable host-owned provenance. */
+      reconcile?: (
+        task: InteractiveTask,
+        proposal: TaskActionProposal,
+        snapshot: TaskBrowserSnapshot,
+      ) => Promise<
+        | { status: "succeeded" | "failed"; evidenceRef: string }
+        | { status: "unknown"; evidenceRef?: string }
+      >;
       now?: () => number;
     },
   ) {}
@@ -96,9 +110,14 @@ export class NativeTaskActuator {
       fail("Task authority ended");
     return task;
   }
-  private async bind(task: InteractiveTask) {
+  private async bind(task: InteractiveTask, readOnly = false) {
     const cached = this.bindings.get(task.id);
-    if (cached && cached.context.epoch === task.epoch) {
+    if (
+      !readOnly &&
+      cached &&
+      !cached.readOnly &&
+      cached.context.epoch === task.epoch
+    ) {
       if (cached.expiresAt <= this.now())
         fail("Resume with a fresh task epoch after the browser lease expires");
       return cached;
@@ -111,6 +130,7 @@ export class NativeTaskActuator {
       policy.leaseMs > 300000
     )
       fail("Invalid task browser policy");
+    if (readOnly) policy.targets = [];
     const context = {
       actorId: task.owner.actorId,
       accountId: task.owner.connector.accountId,
@@ -139,7 +159,7 @@ export class NativeTaskActuator {
       reply.bindingRevision !== binding.bindingRevision
     )
       fail("Browser did not acknowledge the task binding");
-    const entry = { context, policy, expiresAt: binding.expiresAt };
+    const entry = { context, policy, expiresAt: binding.expiresAt, readOnly };
     this.bindings.set(task.id, entry);
     return entry;
   }
@@ -320,6 +340,59 @@ export class NativeTaskActuator {
     )
       fail("Guidance removal was not acknowledged");
     this.activeGuidance.delete(taskId);
+  }
+
+  /** Fresh readback under an empty target allowlist; never caches an action observation. */
+  async reconcile(
+    proposal: TaskActionProposal,
+    context: {
+      owner: TaskOwner;
+      signal: AbortSignal;
+      isCurrent: () => boolean;
+    },
+  ): Promise<
+    | { status: "succeeded" | "failed"; evidenceRef: string }
+    | { status: "unknown"; evidenceRef?: string }
+  > {
+    const task = this.options.getTask(proposal.taskId);
+    const operation = task.operations.find(
+      (op) => op.proposal.id === proposal.id,
+    );
+    if (
+      !this.options.reconcile ||
+      !sameTaskOwner(task.owner, context.owner) ||
+      task.authorization.state !== "active" ||
+      !["paused", "blocked", "cancelled"].includes(task.status) ||
+      operation?.status !== "unknown" ||
+      operation.proposal.authorizationId !== task.authorization.decisionId
+    )
+      fail("No authorized unknown browser operation");
+    const requireCurrent = () => {
+      context.signal.throwIfAborted();
+      const current = this.options.getTask(task.id);
+      if (
+        !context.isCurrent() ||
+        !sameTaskOwner(current.owner, context.owner) ||
+        current.revision !== task.revision ||
+        current.epoch !== task.epoch ||
+        current.authorization.state !== "active"
+      )
+        fail("Readback authority changed");
+    };
+    requireCurrent();
+    await this.quiesce({ owner: context.owner, taskId: task.id });
+    this.observations.delete(task.id);
+    const binding = await this.bind(task, true);
+    requireCurrent();
+    const snapshot = await this.snapshot(binding, context.signal);
+    requireCurrent();
+    const result = await this.options.reconcile(
+      task,
+      operation.proposal,
+      snapshot,
+    );
+    requireCurrent();
+    return result;
   }
 
   async execute(
