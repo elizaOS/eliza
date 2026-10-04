@@ -215,3 +215,10 @@ receive the signal and must cooperate with cancellation before returning. The
 lease follows the caller environment and remains held for a live process, rather
 than expiring during long instrumentation. Product callbacks own controlled
 fixture provisioning; this runner does not authorize live integrations. Use `testOutputPath` for reports produced inside this checkout.
+
+The isolated Android harness also accepts an explicit unique `testClasses` list
+instead of `testClass`, with the complete `expectedTests` count across that suite.
+It freezes the selection before asynchronous work, checks every requested class
+through the same strict instrumentation parser, and rejects missing or unexpected
+classes while retaining owned-installation cleanup. This supports product
+platform profiles without duplicating APK admission, leasing or teardown.

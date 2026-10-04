@@ -37,6 +37,12 @@ if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.pack
 if(args.includes('instrument')){
  if(mode==='hanging'){fs.writeFileSync(${JSON.stringify(path.join(root, "instrumentation-started"))},'started');setInterval(()=>{},1000);return;}
 
+ if(mode.startsWith('suite')){
+  const cases=mode==='suite-missing'?['org.example.consumer.Probe#first','org.example.consumer.Probe#second']:['org.example.consumer.Probe#first','org.example.consumer.Probe#second','org.example.consumer.Second#probe'];
+  if(mode==='suite-unexpected')cases[2]='org.unrelated.Injected#probe';
+  for(const item of cases){const [cls,method]=item.split('#');for(const code of [1,0])console.log(['INSTRUMENTATION_STATUS: class='+cls,'INSTRUMENTATION_STATUS: test='+method,'INSTRUMENTATION_STATUS: numtests='+cases.length,'INSTRUMENTATION_STATUS_CODE: '+code].join(String.fromCharCode(10)));}
+  console.log('OK ('+cases.length+' tests)'+String.fromCharCode(10)+'INSTRUMENTATION_CODE: -1');return;
+ }
  if(mode==='home-change'){state.home='other/.Home';fs.writeFileSync(file,JSON.stringify(state));}
  console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 1');
  if(mode!=='partial')console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 0');
@@ -241,4 +247,70 @@ test("the fixture AVD identity is required before installation", async (t) => {
     /fixture AVD/,
   );
   assert.ok(!f.commands().some((c) => ["install", "uninstall"].includes(c[0])));
+});
+
+test("explicit suites preserve requested class membership and complete test counts", async (t) => {
+  const f = fixture(t, "suite"),
+    testClasses = ["org.example.consumer.Probe", "org.example.consumer.Second"];
+  const report = await runIsolatedAndroidTest({
+    ...f.options,
+    testClass: undefined,
+    testClasses,
+    expectedTests: 3,
+    prepareVariant: () => testClasses.push("org.unrelated.Injected"),
+  });
+  assert.equal(report.cleaned, true);
+  assert.deepEqual(report.testClasses, [
+    "org.example.consumer.Probe",
+    "org.example.consumer.Second",
+  ]);
+  assert.ok(
+    report.variants.every((record) => record.instrumentation.totalTests === 3),
+  );
+  for (const args of f.commands().filter((args) => args.includes("instrument")))
+    assert.equal(
+      args[args.indexOf("class") + 1],
+      "org.example.consumer.Probe,org.example.consumer.Second",
+    );
+});
+for (const mode of ["suite-missing", "suite-unexpected"])
+  test(`${mode} fails and cleans owned installation`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        testClass: undefined,
+        testClasses: [
+          "org.example.consumer.Probe",
+          "org.example.consumer.Second",
+        ],
+        expectedTests: 3,
+      }),
+    );
+    assert.equal(
+      JSON.parse(
+        fs.readFileSync(path.join(f.options.directory, "verification.json")),
+      ).cleaned,
+      true,
+    );
+  });
+test("invalid or ambiguous class selections fail before any device mutation", async (t) => {
+  const f = fixture(t);
+  for (const selection of [
+    { testClasses: ["org.example.consumer.Second"] },
+    { testClass: undefined, testClasses: [] },
+    {
+      testClass: undefined,
+      testClasses: ["org.example.consumer.Probe", "org.example.consumer.Probe"],
+    },
+    {
+      testClass: undefined,
+      testClasses: ["org.example.consumer.Probe;injected"],
+    },
+    { testClass: undefined, testClasses: "org.example.consumer.Probe" },
+  ])
+    await assert.rejects(
+      runIsolatedAndroidTest({ ...f.options, ...selection }),
+    );
+  assert.deepEqual(f.commands(), []);
 });
