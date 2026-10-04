@@ -106,6 +106,7 @@ export function createBillOutcomeStore(db, tasks) {
       typeof record.decision.reference !== "string" ||
       !record.decision.reference.trim() ||
       record.decision.reference.length > 128 ||
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in provider references.
       /[\x00-\x1f\x7f]/.test(record.decision.reference) ||
       typeof record.decision.billSource !== "string" ||
       record.decision.billSource.length > 512
