@@ -14,15 +14,12 @@ def test_timeout_preserves_partial_utf8_streams_and_redacts_secrets(
         benchmark="synthetic-evidence",
         adapter="child-process",
         command=[
-            sys.executable,
-            "-u",
+            "/bin/sh",
             "-c",
             (
-                "import os, sys, time\n"
-                "secret = os.environ['PRIVATE_CHILD_SECRET']\n"
-                "print('stdout café ' + secret, flush=True)\n"
-                "sys.stderr.write('  stderr naïve ' + secret + '\\n'); sys.stderr.flush()\n"
-                "time.sleep(60)\n"
+                "printf 'stdout café %s\\n' \"$PRIVATE_CHILD_SECRET\"; "
+                "printf '  stderr naïve %s\\n' \"$PRIVATE_CHILD_SECRET\" >&2; "
+                "exec sleep 60"
             ),
         ],
         cwd=str(tmp_path),
