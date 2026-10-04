@@ -96,6 +96,8 @@ beforeAll(async () => {
     "0428_billing_identity_anchors",
     "0429_billing_identity_backfill",
     "0430_billing_identity_references",
+    "0511_organization_plan_change_quotes",
+    "0512_organization_upgrade_dispatch",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
