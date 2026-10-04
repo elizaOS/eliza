@@ -32,6 +32,7 @@ try {
     "updater/JobRunRegistry",
     "updater/PreparationFlow",
     "updater/PreparedRecovery",
+    "updater/PreparedAuthorizationStore",
   ].map((name) =>
     path.join(
       root,
@@ -61,6 +62,7 @@ try {
     ["updater", "JobRunRegistryTest"],
     ["updater", "PreparationFlowTest"],
     ["updater", "PreparedRecoveryTest"],
+    ["updater", "PreparedAuthorizationStoreTest"],
   ]) {
     execFileSync(
       bin("java"),
