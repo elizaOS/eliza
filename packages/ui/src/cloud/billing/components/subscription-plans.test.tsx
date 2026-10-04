@@ -186,19 +186,22 @@ test("a spent intent is replaced once instead of reporting a false confirmation"
   expect(checkoutKeys()[0]).not.toBe(checkoutKeys()[1]);
   expect(screen.queryByText(/Subscription payment confirmed/)).toBeNull();
 });
-test("checkout never navigates to a provider lookalike", async () => {
-  sdk.getSubscriptionPlans.mockResolvedValue(response);
-  sdk.startSubscriptionCheckout.mockResolvedValue(
-    checkoutResult("open", "https://checkout.stripe.com.attacker.example/pay"),
-  );
-  mount("org-redirect");
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Subscribe to Plus" }),
-  );
-  expect(
-    await screen.findByText("Checkout returned an invalid destination."),
-  ).toBeTruthy();
-});
+test.each([null, "https://checkout.stripe.com.attacker.example/pay"])(
+  "checkout rejects an unavailable or lookalike redirect: %s",
+  async (destination) => {
+    sdk.getSubscriptionPlans.mockResolvedValue(response);
+    sdk.startSubscriptionCheckout.mockResolvedValue(
+      checkoutResult("open", destination),
+    );
+    mount("org-redirect");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Subscribe to Plus" }),
+    );
+    expect(
+      await screen.findByText("Checkout returned an invalid destination."),
+    ).toBeTruthy();
+  },
+);
 test("unavailable storage keeps retries idempotent within the tab", async () => {
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
     throw new Error("blocked");
