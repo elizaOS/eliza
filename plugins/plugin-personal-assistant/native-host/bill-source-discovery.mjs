@@ -197,9 +197,8 @@ export class BillSourceDiscovery {
         tokens = new Set();
       let token,
         conflict = false;
-      const attachmentBudget = { remaining: 25 };
       await check();
-      for (let page = 0; page < 4; page++) {
+      for (;;) {
         const result = await this.google.searchGmailMessagesPage({
           accountId: c.accountId,
           query: c.searchQuery,
@@ -235,7 +234,6 @@ export class BillSourceDiscovery {
             policy: this.attachmentPolicy,
             parse: this.parseAttachment,
             maxBytes: this.maxAttachmentBytes,
-            budget: attachmentBudget,
           });
           if (documents.incomplete)
             return { status: "incomplete", candidates: [] };
@@ -267,8 +265,7 @@ export class BillSourceDiscovery {
         if (token == null || token === "") break;
         if (!text(token, 4096)) throw unavailable();
         // Partial search must never be presented as a unique selected bill.
-        if (page === 3 || tokens.has(token))
-          return { status: "incomplete", candidates: [] };
+        if (tokens.has(token)) return { status: "incomplete", candidates: [] };
         tokens.add(token);
       }
       await check();

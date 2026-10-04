@@ -12,12 +12,10 @@ export async function readBillAttachments({
   policy,
   parse,
   maxBytes = 5 * 1024 * 1024,
-  budget = { remaining: 25 },
 }) {
   const attachments = detail.attachments ?? [];
   if (
     !Array.isArray(attachments) ||
-    attachments.length > 100 ||
     !Number.isSafeInteger(maxBytes) ||
     maxBytes < 1 ||
     maxBytes > 25 * 1024 * 1024
@@ -50,8 +48,6 @@ export async function readBillAttachments({
       attachment.size > maxBytes
     )
       throw failure();
-    if (budget.remaining <= 0) return { incomplete: true, found: [] };
-    budget.remaining--;
     const value = await google.getGmailAttachment({
       accountId: context.accountId,
       messageId: detail.message.externalId,

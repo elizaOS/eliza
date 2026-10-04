@@ -166,7 +166,7 @@ test("changed descriptors, bytes and authorization cannot reach the document par
   };
   await assert.rejects(discover(f), { code: "BILL_SOURCES_UNAVAILABLE" });
 });
-test("one discovery has a total attachment read budget", async () => {
+test("one discovery reads every authorized attachment", async () => {
   const f = fixture(),
     read = f.google.getGmailAttachment;
   f.google.getGmailMessageDetail = async () => ({
@@ -186,6 +186,8 @@ test("one discovery has a total attachment read budget", async () => {
     ...(await read(input)),
     partId: input.partId,
   });
-  assert.deepEqual(await discover(f), { status: "incomplete", candidates: [] });
-  assert.equal(f.reads(), 25);
+  const result = await discover(f);
+  assert.equal(result.status, "candidate");
+  assert.equal(result.candidates[0].sources.length, 26);
+  assert.equal(f.reads(), 26);
 });

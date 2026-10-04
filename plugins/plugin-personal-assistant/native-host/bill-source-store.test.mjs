@@ -184,3 +184,29 @@ test("an invalid source link cannot enter a durable offer", (t) => {
     assert.throws(() => f.api.offer(result, 1));
   }
 });
+
+test("complete source offers persist more than one hundred candidates and sources", (t) => {
+  const f = fixture(t);
+  const sources = Array.from({ length: 101 }, (_, i) => ({
+    ...candidate.sources[0],
+    messageId: `m${i}`,
+  }));
+  const candidates = Array.from({ length: 101 }, (_, i) => ({
+    ...structuredClone(candidate),
+    candidateId: i.toString(16).padStart(64, "0"),
+    sources,
+  }));
+  const result = { status: "ambiguous", candidates };
+  const offer = f.api.offer(result, f.task.revision);
+  const selected = f.api.select(
+    {
+      offerId: offer.offerId,
+      candidateId: candidates[100].candidateId,
+      expectedRevision: f.task.revision,
+    },
+    result,
+  );
+  assert.equal(offer.candidates.length, 101);
+  assert.equal(selected.candidate.sources.length, 101);
+  assert.deepEqual(f.api.load(), selected);
+});

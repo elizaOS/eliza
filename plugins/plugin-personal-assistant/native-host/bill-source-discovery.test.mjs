@@ -129,7 +129,7 @@ test("query hints never substitute for sender, recipient and date checks", async
     code: "BILL_SOURCES_UNAVAILABLE",
   });
 });
-test("unbounded or cyclic search reports incomplete without selecting a partial result", async () => {
+test("cyclic search reports incomplete without selecting a partial result", async () => {
   const f = fixture({
     page: async () => ({ messages: [message("m1")], nextPageToken: "repeat" }),
   });
@@ -230,4 +230,26 @@ test("source links come from matched provider metadata and never from message bo
   });
   result = await f.discovery.discover(context, signal());
   assert.equal(result.candidates[0].sources[0].url, undefined);
+});
+
+test("authorized search exhausts all pages and preserves a late invoice", async () => {
+  let pages = 0;
+  const f = fixture({
+    page: async () => {
+      pages++;
+      return {
+        messages: [message(`m${pages}`)],
+        ...(pages < 6 ? { nextPageToken: `page${pages + 1}` } : {}),
+      };
+    },
+    text: (id) => (id === "m6" ? body.replace("SEP-1", "SEP-2") : body),
+  });
+  const result = await f.discovery.discover(context, signal());
+  assert.equal(pages, 6);
+  assert.equal(result.status, "ambiguous");
+  assert.equal(result.candidates.length, 2);
+  assert.equal(
+    result.candidates.reduce((n, c) => n + c.sources.length, 0),
+    6,
+  );
 });

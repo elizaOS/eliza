@@ -79,8 +79,7 @@ function validateCandidate(value, task) {
     )
   )
     throw fail();
-  if (!Array.isArray(c.sources) || !c.sources.length || c.sources.length > 100)
-    throw fail();
+  if (!Array.isArray(c.sources) || !c.sources.length) throw fail();
   for (const source of c.sources) {
     if (
       !source ||
@@ -129,8 +128,7 @@ function validateResult(result, task) {
     !["candidate", "ambiguous", "missing", "incomplete"].includes(
       result.status,
     ) ||
-    !Array.isArray(result.candidates) ||
-    result.candidates.length > 100
+    !Array.isArray(result.candidates)
   )
     throw fail();
   const candidates = result.candidates.map((c) => validateCandidate(c, task));
