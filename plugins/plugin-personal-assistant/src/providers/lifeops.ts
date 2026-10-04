@@ -192,7 +192,7 @@ function summarizeActiveGoals(
  * replies claiming an empty day while completions sat in the store (#16935).
  */
 function summarizeCompletedToday(
-  occurrences: Array<{ title: string; updatedAt: string }>,
+  occurrences: Array<{ title: string }>,
 ): string[] {
   if (occurrences.length === 0) {
     return [];

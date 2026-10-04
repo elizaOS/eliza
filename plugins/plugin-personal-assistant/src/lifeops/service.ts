@@ -170,7 +170,6 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
-import { resolveDefaultTimeZone } from "./defaults.js";
 import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
@@ -218,7 +217,10 @@ import {
 import { WorkflowsDomain } from "./domains/workflows-service.js";
 import { XReadDomain } from "./domains/x-read-service.js";
 import { XDomain } from "./domains/x-service.js";
-import { resolveOwnerFactStore } from "./owner/fact-store.js";
+import {
+  resolveOwnerFactStore,
+  resolveOwnerTimeZone,
+} from "./owner/fact-store.js";
 import type {
   LifeOpsScheduleInspection,
   LifeOpsScheduleSummary,
@@ -1750,7 +1752,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
   async listOwnerOccurrencesCompletedToday(
     now = new Date(),
   ): Promise<LifeOpsOccurrenceView[]> {
-    const timeZone = resolveDefaultTimeZone();
+    const timeZone = await resolveOwnerTimeZone(this.runtime, now);
     const dayKey = (date: Date): string => {
       const parts = getZonedDateParts(date, timeZone);
       return `${parts.year}-${parts.month}-${parts.day}`;
@@ -1780,9 +1782,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
       },
     );
     return views
-      .filter(
-        (occurrence) => dayKey(new Date(occurrence.updatedAt)) === todayKey,
-      )
+      .filter((occurrence) => {
+        const completedAt = occurrence.completionPayload?.completedAt;
+        if (typeof completedAt !== "string") return false;
+        const completedMs = Date.parse(completedAt);
+        return (
+          Number.isFinite(completedMs) &&
+          new Date(completedMs).toISOString() === completedAt &&
+          completedMs <= now.getTime() &&
+          dayKey(new Date(completedMs)) === todayKey
+        );
+      })
       .slice(0, 24);
   }
 

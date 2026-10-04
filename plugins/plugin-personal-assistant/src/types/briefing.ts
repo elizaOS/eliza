@@ -54,6 +54,8 @@ export interface LifeOpsBriefingLifeItem {
   readonly kind: "todo" | "reminder" | "habit" | "goal";
   readonly title: string;
   readonly dueAt: string | null;
+  /** Actual completion instant, when a dated completion has been established. */
+  readonly completedAt?: string | null;
   /** Canonical occurrence lifecycle; absent for unattested reminder projections. */
   readonly state?: LifeOpsOccurrenceState;
 }

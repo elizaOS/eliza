@@ -858,27 +858,38 @@ async function collectCompletedWins(
   const day = localDayWindow(now, timezone, kind === "morning" ? -1 : 0);
   const start = day.start;
   const end = kind === "morning" ? day.end : now;
+  // Use the same canonical writer timestamp policy as dated owner recaps.
+  // This collector's existing joins/scopes differ from the overview repository.
+  const completedAt = `(occ.completion_payload_json::jsonb ->> 'completedAt')`;
   try {
     const rows = await executeRawSql(
       runtime,
       `SELECT occ.id AS id,
               COALESCE(def.title, '') AS title,
-              occ.updated_at AS completed_at
+              ${completedAt} AS completed_at
          FROM app_lifeops.life_task_occurrences occ
          LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
           AND occ.state = 'completed'
-          AND occ.updated_at >= ${sqlQuote(start.toISOString())}
-          AND occ.updated_at <= ${sqlQuote(end.toISOString())}
-        ORDER BY occ.updated_at DESC
+          AND jsonb_typeof(occ.completion_payload_json::jsonb -> 'completedAt') = 'string'
+          AND ${completedAt} ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9][.][0-9]{3}Z$'
+          AND ${completedAt} >= ${sqlQuote(start.toISOString())}
+          AND ${completedAt} ${kind === "morning" ? "<" : "<="} ${sqlQuote(end.toISOString())}
+        ORDER BY ${completedAt} DESC, occ.id ASC
         LIMIT 50`,
     );
     return {
-      rows: rows.map((row) => ({
-        id: toText(row.id),
-        title: toText(row.title) || "(untitled)",
-        completedAt: row.completed_at == null ? null : toText(row.completed_at),
-      })),
+      rows: rows
+        .filter((row) => {
+          const instant = toText(row.completed_at);
+          const ms = Date.parse(instant);
+          return Number.isFinite(ms) && new Date(ms).toISOString() === instant;
+        })
+        .map((row) => ({
+          id: toText(row.id),
+          title: toText(row.title) || "(untitled)",
+          completedAt: toText(row.completed_at),
+        })),
       error: null,
     };
   } catch (error) {

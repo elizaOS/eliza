@@ -68,6 +68,71 @@ describe("check-in source availability and generation failures", () => {
     vi.unstubAllEnvs();
   });
 
+  it("keeps morning wins on their actual owner-local completion day despite refreshes", async () => {
+    const now = new Date("2026-10-04T06:14:13.975Z");
+    await db.exec(`
+      CREATE TABLE app_lifeops.life_task_definitions (id text PRIMARY KEY, title text);
+      CREATE TABLE app_lifeops.life_task_occurrences (
+        id text PRIMARY KEY, agent_id text, definition_id text, state text,
+        completion_payload_json jsonb, updated_at text
+      );
+      INSERT INTO app_lifeops.life_task_definitions VALUES ('definition', 'Completed item');
+    `);
+    const records = [
+      [
+        "actual-yesterday-refreshed-today",
+        { completedAt: "2026-10-03T04:12:14.140Z" },
+      ],
+      ["yesterday-start", { completedAt: "2026-10-02T07:00:00.000Z" }],
+      ["today-midnight", { completedAt: "2026-10-03T07:00:00.000Z" }],
+      ["prior-day", { completedAt: "2026-10-02T06:59:59.999Z" }],
+      ["missing", null],
+      ["invalid", { completedAt: "invalid" }],
+      ["relative", { completedAt: "today" }],
+      ["wrong-type", { completedAt: 42 }],
+    ];
+    for (const [id, payload] of records)
+      await db.query(
+        "INSERT INTO app_lifeops.life_task_occurrences VALUES ($1,$2,'definition','completed',$3,$4)",
+        [
+          id,
+          String(runtime.agentId),
+          JSON.stringify(payload),
+          now.toISOString(),
+        ],
+      );
+    const before = (
+      await db.query(
+        "SELECT * FROM app_lifeops.life_task_occurrences ORDER BY id",
+      )
+    ).rows;
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      timezone: "America/Los_Angeles",
+      now,
+    });
+    expect(report.collectorErrors.yesterdaysWins).toBeNull();
+    expect(report.yesterdaysWins).toEqual([
+      {
+        id: "actual-yesterday-refreshed-today",
+        title: "Completed item",
+        completedAt: "2026-10-03T04:12:14.140Z",
+      },
+      {
+        id: "yesterday-start",
+        title: "Completed item",
+        completedAt: "2026-10-02T07:00:00.000Z",
+      },
+    ]);
+    expect(
+      (
+        await db.query(
+          "SELECT * FROM app_lifeops.life_task_occurrences ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(before);
+    expect(prompts).toHaveLength(0);
+  });
+
   it.each([
     { ownerTimezone: "America/Los_Angeles", configuredTimezone: "Asia/Tokyo" },
     { ownerTimezone: undefined, configuredTimezone: "America/Los_Angeles" },
@@ -194,8 +259,8 @@ describe("check-in source availability and generation failures", () => {
       const winsQuery = statements.find((statement) =>
         statement.includes("AS completed_at"),
       );
-      expect(winsQuery).toContain(`occ.updated_at >= '${start}'`);
-      expect(winsQuery).toContain(`occ.updated_at <= '${end}'`);
+      expect(winsQuery).toContain(`->> 'completedAt') >= '${start}'`);
+      expect(winsQuery).toContain(`->> 'completedAt') < '${end}'`);
       expect(prompts).toHaveLength(0);
       expect(report.collectorErrors.habitSummaries).toContain("does not exist");
       expect(report.summaryText).toContain("unavailable.");
@@ -228,7 +293,7 @@ describe("check-in source availability and generation failures", () => {
         );
         CREATE TABLE app_lifeops.life_task_occurrences (
           id text PRIMARY KEY, agent_id text, definition_id text, state text,
-          due_at text, updated_at text
+          due_at text, updated_at text, completion_payload_json jsonb
         );
         CREATE TABLE app_lifeops.life_task_progress_events (
           agent_id text, occurrence_id text, quantity integer
@@ -322,7 +387,7 @@ describe("check-in source availability and generation failures", () => {
           ],
         );
         await db.query(
-          "INSERT INTO app_lifeops.life_task_occurrences VALUES ($1,$2,$3,$4,$5,$6)",
+          "INSERT INTO app_lifeops.life_task_occurrences (id,agent_id,definition_id,state,due_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6)",
           [
             `occurrence-${row.id}`,
             String(runtime.agentId),

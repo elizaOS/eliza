@@ -428,6 +428,9 @@ export class ScheduleProjectionRepository {
     } = {},
   ): Promise<LifeOpsOccurrenceView[]> {
     const limit = options.limit ?? 24;
+    // Completion writers persist canonical UTC ISO strings. Do not treat a
+    // housekeeping update as a completion; unknown legacy dates are excluded.
+    const completedAt = `(occurrence.completion_payload_json::jsonb ->> 'completedAt')`;
     const subjectFilter = options.subjectType
       ? `AND occurrence.subject_type = ${sqlQuote(options.subjectType)}`
       : "";
@@ -453,9 +456,11 @@ export class ScheduleProjectionRepository {
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
           AND occurrence.state = 'completed'
-          AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
+          AND jsonb_typeof(occurrence.completion_payload_json::jsonb -> 'completedAt') = 'string'
+          AND ${completedAt} ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9][.][0-9]{3}Z$'
+          AND ${completedAt} >= ${sqlQuote(sinceIso)}
           ${subjectFilter}${definitionScopeSetPredicate(options.definitionScopes)}
-        ORDER BY occurrence.updated_at DESC
+        ORDER BY ${completedAt} DESC, occurrence.id ASC
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseOccurrenceView);

@@ -1683,6 +1683,30 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             ]),
           ),
         ).toEqual(expectedCompleted);
+        expect(
+          briefing.sections.completedToday?.every(
+            (item) => item.completedAt === "2026-02-05T16:00:00.000Z",
+          ),
+        ).toBe(true);
+        const completionPrompt = buildNarrativePrompt({
+          kind: "evening",
+          period: "today",
+          sections: briefing.sections,
+          timeZone: "Asia/Tokyo",
+          asOf: "2026-02-05T16:00:00.000Z",
+        });
+        const completionPayload = JSON.parse(
+          completionPrompt.split("Data:\n")[1],
+        );
+        expect(
+          completionPayload.sections.completedToday[0].timeContext.completedAt
+            .localTime,
+        ).toBe("Feb 6, 2026, 1:00 AM GMT+9");
+        expect(
+          completionPayload.sections.completedToday[0].timeContext.completedAt
+            .localDate,
+        ).toBe("2026-02-06");
+
         for (const item of [
           ...(briefing.sections.life ?? []),
           ...(briefing.sections.completedToday ?? []),
