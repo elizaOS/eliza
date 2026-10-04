@@ -1,27 +1,12 @@
 #!/usr/bin/env node
 /**
- * Real-service audio round-trip smoke (#8876).
+ * Live ElevenLabs TTS → MP3 → STT smoke. Hashes the returned bytes and checks
+ * that transcription recovers the input phrase. This calls the provider HTTP
+ * API directly; it does not exercise runtime dispatch or media-store writes.
  *
- * The agent can *generate* audio attachments (TTS) and *transcribe* them (STT)
- * through `@elizaos/plugin-elevenlabs` — but every test in that plugin mocks the
- * ElevenLabs SDK, so nothing exercises the real service end-to-end. This script
- * is the complement the goal asks for ("we ALSO test/validate with a real
- * service"): it drives a REAL generated-audio attachment round-trip —
- *
- *   text → (real TTS) → MP3 bytes → sha256 (the content-addressed media handle,
- *          identical to packages/agent/src/api/media-store.ts) → (real STT) →
- *          transcript → assert the transcript recovers the input phrase.
- *
- * This proves the bytes a generated-audio attachment would carry are real,
- * valid, storable under `/api/media/<sha256>.mp3`, playable, and transcribable.
- *
- * It is CI-safe and turnkey: with a valid ElevenLabs key it runs and asserts;
- * with no key it SKIPS cleanly (exit 0) so it never red-fails a build that simply has no credentials. Exit 1
- * on a configured provider failure or a wrong/invalid result.
- *
- * Run: `node packages/scripts/provider-smokes/real-service-audio-roundtrip.ts`
- * (reads ELEVENLABS_API_KEY, then ELEVENLABS_XI_API_KEY, from the env — the
- * plugin reads ELEVENLABS_API_KEY; the repo .env historically uses the XI name).
+ * Run: node packages/scripts/provider-smokes/real-service-audio-roundtrip.ts
+ * Reads ELEVENLABS_API_KEY, then ELEVENLABS_XI_API_KEY. Missing credentials skip;
+ * configured provider failures or invalid results exit with a failure.
  */
 
 import { createHash } from "node:crypto";

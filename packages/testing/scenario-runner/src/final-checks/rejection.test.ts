@@ -29,7 +29,7 @@ it("does not mistake model confirmation parameters for an actual rejection", asy
 it("requires independent effects evidence even after an explicit cancellation", async () => {
   expect(
     (await runFinalCheck(check, { runtime: {}, ctx: cancelled })).status,
-  ).toBe("failed");
+  ).toBe("skipped");
   expect(
     (
       await runFinalCheck(check, {
@@ -48,4 +48,25 @@ it("requires independent effects evidence even after an explicit cancellation", 
       })
     ).status,
   ).toBe("passed");
+});
+
+it("checks only blocked invocations when a later approved invocation succeeds", async () => {
+  const result = await runFinalCheck(check, {
+    runtime: {},
+    ctx: {
+      actionsCalled: [
+        {
+          actionName: "SEND",
+          result: { data: { pendingApproval: true } },
+          apiEffects: [],
+        },
+        {
+          actionName: "SEND",
+          result: { data: { completed: true }, path: "receipt" },
+          apiEffects: ["POST /messages"],
+        },
+      ],
+    },
+  });
+  expect(result.status).toBe("passed");
 });

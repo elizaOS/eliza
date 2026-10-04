@@ -19,3 +19,10 @@ individually validated definitions in `*.scenarios.ts`. Listing reads literal
 metadata without importing modules; manifest entries must expose literal IDs.
 `loadScenarioEntries` reads either form; singular `loadScenarioFile` rejects a
 multi-entry manifest. Scenario IDs, lane selection and edge expansion are unchanged.
+
+Synthetic scenarios and CLI mock runtimes automatically observe API writes through
+each turn's tracked-task drain. `noSideEffectOnReject` uses this independent
+ledger evidence; without an observer it is unproven and fails deterministic lanes.
+Overlapping actions share a conservative observation window, so a later write in
+the same turn also fails an earlier rejection check. These checks cover declared
+mock APIs, not arbitrary external services or SQL writes.
