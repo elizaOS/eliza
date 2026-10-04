@@ -17,6 +17,7 @@ import {
   type DirectWalletNetwork,
   directWalletPaymentsService,
 } from "@elizaos/cloud-shared/lib/services/direct-wallet-payments";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
