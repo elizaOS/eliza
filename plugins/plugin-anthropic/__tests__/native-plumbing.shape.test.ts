@@ -60,6 +60,32 @@ describe("Anthropic native text plumbing", () => {
     });
   }, 60_000);
 
+  it("forwards the runtime cancellation signal and does not retry a cancelled request", async () => {
+    const controller = new AbortController();
+    const generateText = vi.fn(async (request: { abortSignal?: AbortSignal }) => {
+      controller.abort();
+      throw Object.assign(new Error("This operation was aborted"), {
+        name: "AbortError",
+        aborted: request.abortSignal?.aborted,
+      });
+    });
+    vi.doMock("ai", () => ({ generateText, streamText: vi.fn() }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), {
+        prompt: "hello",
+        signal: controller.signal,
+      })
+    ).rejects.toThrow();
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0][0].abortSignal).toBe(controller.signal);
+  }, 60_000);
+
   it("forwards nested __proto__ provider data without changing prototypes", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
