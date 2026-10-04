@@ -356,32 +356,15 @@ export const entityAction: Action = {
         }
         const fromEntityId = trimmed(params.fromEntityId) ?? SELF_ENTITY_ID;
         const evidence = trimmed(params.evidence) ?? "user_chat";
-        // Restating an edge updates the active one: the store keys upserts by
-        // relationshipId, so omitting it would add a duplicate edge each time.
-        const [existing] = await relationshipStore.list({
+        // Restating an edge updates the active one instead of adding a duplicate.
+        const edge = await relationshipStore.assertEdge({
           fromEntityId,
           toEntityId,
           type: relationshipType,
+          evidence: [evidence],
+          confidence: 1,
+          source: "user_chat",
         });
-        const edge = await relationshipStore.upsert(
-          existing
-            ? {
-                ...existing,
-                evidence: Array.from(new Set([...existing.evidence, evidence])),
-                confidence: 1,
-                source: "user_chat",
-              }
-            : {
-                fromEntityId,
-                toEntityId,
-                type: relationshipType,
-                metadata: {},
-                state: {},
-                evidence: [evidence],
-                confidence: 1,
-                source: "user_chat",
-              },
-        );
         return reply({
           success: true,
           text: `Recorded ${fromEntityId} -[${relationshipType}]-> ${toEntityId}.`,
