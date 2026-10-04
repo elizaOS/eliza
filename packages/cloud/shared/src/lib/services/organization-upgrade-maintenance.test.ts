@@ -8,7 +8,7 @@ let behavior = async (_input: { commandId: string }): Promise<unknown> => ({
   status: "pending",
   reason: "awaiting_payment",
 });
-const recover = mock(async (input: { commandId: string }, _budget: number) => behavior(input));
+const recover = mock(async (input: { commandId: string }) => behavior(input));
 const record = mock(async (_input: unknown) => ({ recorded: true, resolved: 0 }));
 mock.module("../../db/repositories/organization-upgrade-observation-lease", () => ({
   listOrganizationUpgradeRecovery: async () => due,
@@ -67,7 +67,7 @@ test("failure to retain incident evidence fails the maintenance lane", async () 
   await expect(run()).rejects.toThrow("journal unavailable");
   expect(recover).toHaveBeenCalledTimes(1);
 });
-test("exhausted batch budget defers remaining commands", async () => {
+test("a healthy prior observation does not impose a separate deadline on the next command", async () => {
   let clock = 0;
   const timer = spyOn(performance, "now").mockImplementation(() => clock);
   behavior = async () => {
@@ -76,14 +76,14 @@ test("exhausted batch budget defers remaining commands", async () => {
   };
   try {
     expect(await run()).toEqual({
-      inspected: 1,
+      inspected: 2,
       applied: 0,
-      pending: 1,
+      pending: 2,
       unavailable: 0,
-      deferred: 1,
+      deferred: 0,
     });
-    expect(recover.mock.calls[0]![1]).toBe(20000);
-    expect(recover).toHaveBeenCalledTimes(1);
+    expect(recover.mock.calls[0]).toEqual([{ organizationId: "org", commandId: "a" }]);
+    expect(recover).toHaveBeenCalledTimes(2);
   } finally {
     timer.mockRestore();
   }
