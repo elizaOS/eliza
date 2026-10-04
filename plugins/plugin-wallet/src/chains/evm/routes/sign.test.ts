@@ -96,14 +96,21 @@ describe("EVM browser signing routes", () => {
         }
     });
     it("rejects bad bearer/header tokens without leaking a credentialed CORS origin", async () => {
-        const response = res();
-        await route("wallet-evm-address").handler(req({
-            authorization: "Bearer wrong-token",
-            origin: "https://dapp.example",
-        }), response, runtime("1234567890abcdef"));
-        expect(response.statusCode).toBe(401);
-        expect(response.body).toEqual({ error: "invalid sign token" });
-        expect(response.headers.Vary).toBe("Origin");
+        for (const authorization of [
+            "Bearer wrong-token",
+            // Padding must not let a shorter or longer bearer pass the comparison.
+            "Bearer 1234567890abcd",
+            "Bearer 1234567890abcdef-extended",
+        ]) {
+            const response = res();
+            await route("wallet-evm-address").handler(req({
+                authorization,
+                origin: "https://dapp.example",
+            }), response, runtime("1234567890abcdef"));
+            expect(response.statusCode).toBe(401);
+            expect(response.body).toEqual({ error: "invalid sign token" });
+            expect(response.headers.Vary).toBe("Origin");
+        }
     });
     it("never reflects an arbitrary cross-origin or sends credentialed CORS", async () => {
         const response = res();
