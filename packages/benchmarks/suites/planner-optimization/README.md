@@ -39,7 +39,10 @@ module. Producer, engine and adapter sources are rechecked before publication;
 this is not an attestation of arbitrary callable identity or third-party packages.
 Train/validation/test scenario families must be disjoint; upstream
 keeps held-out cases outside reflection and scores baseline/candidate afterward.
-Budgets cover optimization calls; held-out calls are additional and recorded.
+The producer API accepts a positive integer `caseTimeoutMs` for cold worker
+startup and execution (default 30,000 ms), retained in evidence and optimizer
+configuration identity. Its `timeoutMs` controls the overall run (default
+300,000 ms). Budgets cover optimization calls; held-out calls are additional and recorded.
 The CLI writes the canonical `artifact.json` and full `evidence.json` under
 `test-results/gepa-producer/`; the two files publish atomically after source and cancellation checks. It never
 calls `setPrompt`. Missing usage/cost is
