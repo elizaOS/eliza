@@ -88,3 +88,12 @@ supports standalone/launcher distributions and fixed runtime/UI observation stat
 reports never mark a journal healthy or authorize recovery. The Android contract
 checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
 IPC, process death and observation providers in their packaged applications.
+
+`WebViewHealthObserver` tracks one host Activity/WebView on the main thread and
+serves deadline-bound observations off the main thread. Hosts supply a trusted
+HTTPS origin and a read-only JavaScript expression returning a boolean; product
+DOM/content policy stays in that expression. The shared wrapper guards the DOM
+origin and supplies `visible(element)` for ancestor CSS and viewport checks. Resume/pause/destroy transitions,
+renderer replacement, URL changes and late callbacks fence results. It never
+launches an Activity, navigates a WebView or declares an update healthy. Hosts
+must qualify their actual Activity lifecycle and expression in instrumentation.
