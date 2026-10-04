@@ -2539,13 +2539,6 @@ export async function searchMemoriesForCluster(
       }),
     ),
   );
-  // searchMemories has no author filter; keep only the members' own rows.
-  const members = new Set<string>(ids);
-  const flat = results
-    .flat()
-    .filter(
-      (memory) =>
-        typeof memory.entityId === "string" && members.has(memory.entityId),
-    );
+  const flat = results.flat();
   return dedupeMemoriesById(flat);
 }

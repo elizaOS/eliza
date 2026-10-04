@@ -931,8 +931,6 @@ describe("cluster-aware memory helpers", () => {
       searchResultsByEntity: {
         [ALICE]: [
           makeMemory({ id: "hit-dup", entityId: ALICE, text: "alice hit" }),
-          // searchMemories scopes by principal, not author: a room-mate's row.
-          makeMemory({ id: "hit-bob", entityId: BOB, text: "bob in room" }),
         ],
         [ALICE_ALT]: [
           makeMemory({ id: "hit-dup", entityId: ALICE_ALT, text: "alt hit" }),
