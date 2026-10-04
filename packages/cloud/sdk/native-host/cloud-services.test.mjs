@@ -443,3 +443,81 @@ test("a service-only host composes CLI login and provider-default voice without 
   assert.doesNotMatch(calls.at(-1).options.body.toString(), /languageCode/);
   assert.equal((await post("/cloud/login", {})).status, 200);
 });
+
+test("a saved pending sign-in that becomes unparseable reports account recovery, not a service outage", async () => {
+  let pendingRaw = null;
+  const routes = createCloudRoutes({
+    hostPolicy: policy,
+    pendingCredentialStore: { read: async () => pendingRaw },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: async (url) => {
+      if (url.endsWith("/api/v1/user")) return Response.json({ id: "user" });
+      if (url.endsWith("/api/v1/billing/limits")) return Response.json({});
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const healthy = await fetch(base + "/cloud/account/access");
+    assert.equal(healthy.status, 200);
+    assert.deepEqual(await healthy.json(), { state: "active" });
+    // The journal corrupts after startup (partial write, editor, sync tool):
+    // `ready` already resolved, so the per-request read is what sees it.
+    pendingRaw = "{not json";
+    const corrupted = await fetch(base + "/cloud/account/access");
+    assert.equal(corrupted.status, 409);
+    assert.match(
+      (await corrupted.json()).error,
+      /savedSignInNeedsAccountRecovery/,
+    );
+    const gated = await fetch(base + "/cloud/account/invoices");
+    assert.equal(gated.status, 409);
+    assert.match((await gated.json()).error, /savedSignInNeedsAccountRecovery/);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("a JSON-null saved pending sign-in stays benign across cloud routes", async () => {
+  const routes = createCloudRoutes({
+    hostPolicy: policy,
+    pendingCredentialStore: { read: async () => "null" },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: async (url) => {
+      if (url.endsWith("/api/v1/user")) return Response.json({ id: "user" });
+      if (url.endsWith("/api/v1/billing/limits")) return Response.json({});
+      if (url.endsWith("/subscriptions/plans"))
+        return Response.json({ data: { plans: [] } });
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const status = await fetch(base + "/cloud/status");
+    assert.equal(status.status, 200);
+    assert.deepEqual(await status.json(), {
+      connected: true,
+      disconnectPending: false,
+      credentialPersistence: "process-memory",
+    });
+    const access = await fetch(base + "/cloud/account/access");
+    assert.equal(access.status, 200);
+    assert.deepEqual(await access.json(), { state: "active" });
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

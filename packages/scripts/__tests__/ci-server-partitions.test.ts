@@ -1,6 +1,6 @@
 /**
  * Executes the real server test planner with CI's partition filters to prove
- * that splitting heavy runtime suites retains each package task exactly once.
+ * that the general partitions and dedicated OS job retain every task once.
  */
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
@@ -40,7 +40,7 @@ function identities(result) {
   );
 }
 
-test("CI partitions run every selected server task once and keep the agent on its own runner", () => {
+test("CI owners run every selected server task once and keep the agent on its own runner", () => {
   const workflow = Bun.YAML.parse(
     readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
@@ -52,7 +52,28 @@ test("CI partitions run every selected server task once and keep the agent on it
       return tasks;
     },
   );
-  const actual = groups.flat();
+  const osWorkflow = Bun.YAML.parse(
+    readFileSync(path.join(root, ".github/workflows/os.yml"), "utf8"),
+  );
+  const osScripts = JSON.parse(
+    readFileSync(path.join(root, "packages/os/package.json"), "utf8"),
+  ).scripts;
+  // Count the installer only when its complete command chain is owned by CI.
+  const osCommands = osWorkflow.jobs.verify.steps.flatMap((step) =>
+    (step.run ?? "").split("\n").map((command) => command.trim()),
+  );
+  expect(osCommands).toContain("bun run verify:portable");
+  expect(osScripts["verify:portable"].split(" && ")).toContain("bun run test");
+  expect(osScripts.test.split(" && ")).toContain(
+    "bun run --cwd linux/installer test",
+  );
+  const installerTasks = identities(
+    plan(
+      "^@elizaos/linux-installer-plan \\(packages/os/linux/installer\\)#test$",
+    ),
+  );
+  expect(installerTasks).toHaveLength(1);
+  const actual = [...groups.flat(), ...installerTasks];
   const expected = identities(plan());
   expect(actual.toSorted()).toEqual(expected.toSorted());
   expect(new Set(actual).size).toBe(actual.length);
