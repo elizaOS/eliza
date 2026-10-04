@@ -153,3 +153,39 @@ Shared local speech sources and reproducible runtime/model tooling are documente
 in [local speech](scripts/local-speech/README.md). The source-export resolver in
 `scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
 for independent Bun hosts; consumers retain their source pin, credentials and policy.
+
+Consumer hosts can use `native-host/task-runtime-gateway.mjs` for authenticated
+SQLite task lifecycles and explicit domain-route extensions. Document/canvas
+bundling and verified ARM64 packaging live in `native-host/build-document-runtime.mjs`
+and `native-host/android-documents.mjs`; consumers supply reviewed source identity,
+canvas version and locked package records. Run `bun run test:consumer-host` here.
+The renderer gateway and Cloud services remain owned by `packages/agent/native-host`
+and `packages/auth/native-host`; these build helpers do not provide device acceptance.
+
+Native hosts can compose `native-host/trace-queue.mjs`, `trace-transport.mjs` and
+`database-lease.mjs` for opt-in, encrypted research uploads. Hosts must supply an
+explicit `validateEvent` policy, private database path/key, authenticated collector
+and lifecycle/cancellation ownership. The queue retains events until the collector
+acknowledges the exact batch durably; overflow records a visible gap and withdrawal
+persists across restart. Event IDs remain database indexes, so validators must keep
+identifiers free of private content. Study definitions, measurement projection and operator UI belong to the host. Uploads never
+start merely by importing these modules. Caller-owned abort signals cancel HTTP
+work; the owner should abort pending transport before awaiting worker shutdown.
+
+
+`research-store.mjs` and `research-server.mjs` provide the opt-in collector: private
+AES-GCM SQLite records, named operator/device roles, enrollment revisions,
+consent-aware ingestion, withdrawal, key rotation and structural-event routes.
+`measurementPolicy.validateDataset` and `.report` are explicit trusted host
+callbacks; the dataset envelope retains study, participants, tasks and coverage
+so withdrawal removes the participant's evidence. The shared server accepts an
+optional `readAsset` callback for the host's fixed console assets. It never serves
+application files by arbitrary request paths.
+
+`task-trace-capture.mjs` reads the existing owner-scoped task journal and emits
+pseudonymous structural events, excluding task text and connector content.
+`research-capture-host.mjs` composes the collector, encrypted queue, exclusive
+lease and caller-cancelled transport. Its explicit start/stop lifecycle preserves
+consent and current-owner fences; importing it starts no collection. Run the
+native-host tests for real SQLite/HTTP evidence, including stop during an
+unanswered request. These modules do not authorize enrolling real participants.

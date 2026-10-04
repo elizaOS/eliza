@@ -68,3 +68,9 @@ These are source-composition APIs, not browser-safe root or published dist
 exports. Run `bun run --cwd packages/auth test:cloud-services` for transport and
 private-file tests with synthetic provider responses. Consumer tests cover
 product voice, privacy, account races and installed payload dependency closure.
+
+Service-only consumers set `hostPolicy.accountBilling: false` to exclude account
+billing routes and avoid supplying an unused checkout policy. Native enrollment
+still requires its factory when a pending credential store is supplied. Explicit
+`providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`
+uses provider language detection. Omitting these choices retains policy validation.

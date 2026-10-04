@@ -1,90 +1,46 @@
 #!/usr/bin/env node
-
-// Updates a release manifest JSON with sha256 checksums and file sizes after artifacts are built.
-// Usage: node update-manifest-checksums.ts --manifest <path> --artifacts-dir <dir>
-
-import { createHash } from "node:crypto";
+// Populate missing artifact digests only after every required file is readable.
+import { randomUUID } from "node:crypto";
+import { rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
-  createReadStream,
-  existsSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { join, resolve } from "node:path";
+  artifactFileRecord,
+  parseArgs,
+  readJson,
+  validateManifest,
+} from "./os-release-lib.ts";
 
-function parseArgs(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith("--")) {
-      args[argv[i].slice(2)] = argv[i + 1];
-      i++;
-    }
-  }
-  return args;
-}
-
-async function sha256File(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = createHash("sha256");
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex")));
-    stream.on("error", reject);
-  });
-}
-
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.manifest || !args["artifacts-dir"]) {
-    console.error(
-      "Usage: node update-manifest-checksums.ts --manifest <path> --artifacts-dir <dir>",
-    );
-    process.exit(1);
-  }
-
-  const manifestPath = resolve(args.manifest);
-  const artifactsDir = resolve(args["artifacts-dir"]);
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  let updated = 0;
-  let skipped = 0;
-  let missing = 0;
-
-  for (const artifact of manifest.artifacts ?? []) {
-    if (artifact.sha256 !== null && artifact.sha256 !== undefined) {
-      skipped++;
-      continue;
-    }
-    const filePath = join(artifactsDir, artifact.filename);
-    if (!existsSync(filePath)) {
-      console.warn(`Missing: ${artifact.filename} — skipping`);
-      missing++;
-      continue;
-    }
-    try {
-      const sha256 = await sha256File(filePath);
-      const { size } = statSync(filePath);
-      artifact.sha256 = sha256;
-      artifact.sizeBytes = size;
-      artifact.validation ??= { evidence: [] };
-      if (!artifact.validation.evidence.includes("sha256-generated")) {
-        artifact.validation.evidence.push("sha256-generated");
-      }
-      console.log(`Updated: ${artifact.filename}  sha256=${sha256}`);
-      updated++;
-    } catch (err) {
-      console.warn(`Error processing ${artifact.filename}: ${err.message}`);
-      missing++;
-    }
-  }
-
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(
-    `\nDone: ${updated} updated, ${skipped} already set, ${missing} missing/errored`,
+const args = parseArgs(process.argv.slice(2));
+if (!args.manifest || !args["artifacts-dir"]) {
+  throw new Error(
+    "Usage: update-manifest-checksums.ts --manifest <path> --artifacts-dir <dir>",
   );
 }
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const manifestPath = path.resolve(args.manifest);
+const manifest = await readJson(manifestPath);
+const validation = validateManifest(manifest);
+if (!validation.ok) throw new Error(validation.errors.join("\n"));
+const artifactRoot = path.resolve(args["artifacts-dir"]);
+let updated = 0;
+for (const artifact of manifest.artifacts) {
+  if (artifact.sha256 !== null && artifact.sha256 !== undefined) continue;
+  if (artifact.status === "withdrawn" || artifact.kind === "checksum-manifest")
+    continue;
+  const record = await artifactFileRecord(artifactRoot, artifact);
+  artifact.sha256 = record.sha256;
+  artifact.sizeBytes = record.sizeBytes;
+  artifact.validation ??= { evidence: [] };
+  if (!artifact.validation.evidence.includes("sha256-generated"))
+    artifact.validation.evidence.push("sha256-generated");
+  updated++;
+}
+const temporary = `${manifestPath}.${randomUUID()}.tmp`;
+try {
+  await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, {
+    flag: "wx",
+  });
+  await rename(temporary, manifestPath);
+} finally {
+  await rm(temporary, { force: true });
+}
+console.log(`Updated ${updated} artifact checksums in ${manifestPath}`);

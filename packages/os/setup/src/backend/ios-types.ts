@@ -56,6 +56,7 @@ export interface IosInstallPlan {
 }
 
 export interface IosAuthState {
+  attemptToken?: string;
   status:
     | "idle"
     | "authenticating"

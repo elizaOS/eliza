@@ -20,3 +20,8 @@ Service create/update inputs using `title`/`body` treat a nonempty body as lines
 
 The app renderer resolves the package to `src/browser.ts`, which keeps views and
 client registration separate from runtime actions and provider storage.
+
+The separate `./client` entry provides device-local note contracts, persistence
+and encrypted compare-and-exchange migration. Hosts supply storage keys, the
+native vault and legacy storage; preserve installed namespaces when adopting it.
+These device clients do not replace Cloud tenant storage or grant account authority.

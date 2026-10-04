@@ -124,3 +124,13 @@ test("reused recovery files are deduplicated only for identical contracts", () =
     "Conflicting signed file contracts",
   );
 });
+
+test("empty release discovery does not invent downloadable builds", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json([])),
+  );
+  await expect(new AdbFlasherBackend().listBuilds()).rejects.toThrow(
+    "No published",
+  );
+});
