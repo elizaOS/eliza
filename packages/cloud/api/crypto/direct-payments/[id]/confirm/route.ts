@@ -1,4 +1,3 @@
-import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 /**
  * POST /api/crypto/direct-payments/:id/confirm
  * Confirms a wallet-native payment by verifying the submitted on-chain

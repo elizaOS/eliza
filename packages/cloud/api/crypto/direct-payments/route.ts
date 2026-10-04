@@ -1,4 +1,3 @@
-import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 /**
  * /api/crypto/direct-payments
  * Wallet-native credit purchases. The browser sends a normal wallet transfer
