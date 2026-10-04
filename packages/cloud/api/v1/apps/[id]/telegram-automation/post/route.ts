@@ -44,14 +44,15 @@ async function __hono_POST(
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
+  // Without text the service posts a generated announcement, so a
+  // malformed body must be rejected rather than read as "no text".
+  const decodedBody = await decodeOptionalRequestJson(request);
+  if (!decodedBody.ok) {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   let body: z.infer<typeof postSchema>;
   try {
-    // Without text the service posts a generated announcement, so a
-    // malformed body must be rejected rather than read as "no text".
-    const decodedBody = await decodeOptionalRequestJson(request);
-    if (!decodedBody.ok) {
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
     body = postSchema.parse(decodedBody.value);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -60,7 +61,7 @@ async function __hono_POST(
         { status: 400 },
       );
     }
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
+    throw error;
   }
 
   try {

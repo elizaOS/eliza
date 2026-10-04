@@ -557,3 +557,28 @@ test("paid tunnel auth-key mint does not debit credits for a malformed body", as
   expect(calls.tunnelDebit).toHaveLength(0);
   expect(calls.tunnelKey).toHaveLength(0);
 });
+
+test.each(mutationCases.slice(11))(
+  "$label preserves request stream failures as server errors before mutation",
+  async (testCase) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("request body unavailable"));
+      },
+    });
+    const request = new Request(`https://cloud.test${testCase.path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...testCase.headers },
+      body,
+    });
+    const response = await testCase.route.request(
+      request,
+      undefined,
+      testCase.env,
+    );
+
+    expect(response.status).toBe(500);
+    expect(testCase.ledger).toHaveLength(0);
+    expect(calls.tunnelDebit).toHaveLength(0);
+  },
+);
