@@ -168,7 +168,24 @@ explicit `validateEvent` policy, private database path/key, authenticated collec
 and lifecycle/cancellation ownership. The queue retains events until the collector
 acknowledges the exact batch durably; overflow records a visible gap and withdrawal
 persists across restart. Event IDs remain database indexes, so validators must keep
-identifiers free of private content. Study definitions, consent/role decisions,
-collector storage, reporting and operator UI belong to the host. Uploads never
+identifiers free of private content. Study definitions, measurement projection and operator UI belong to the host. Uploads never
 start merely by importing these modules. Caller-owned abort signals cancel HTTP
 work; the owner should abort pending transport before awaiting worker shutdown.
+
+
+`research-store.mjs` and `research-server.mjs` provide the opt-in collector: private
+AES-GCM SQLite records, named operator/device roles, enrollment revisions,
+consent-aware ingestion, withdrawal, key rotation and structural-event routes.
+`measurementPolicy.validateDataset` and `.report` are explicit trusted host
+callbacks; the dataset envelope retains study, participants, tasks and coverage
+so withdrawal removes the participant's evidence. The shared server accepts an
+optional `readAsset` callback for the host's fixed console assets. It never serves
+application files by arbitrary request paths.
+
+`task-trace-capture.mjs` reads the existing owner-scoped task journal and emits
+pseudonymous structural events, excluding task text and connector content.
+`research-capture-host.mjs` composes the collector, encrypted queue, exclusive
+lease and caller-cancelled transport. Its explicit start/stop lifecycle preserves
+consent and current-owner fences; importing it starts no collection. Run the
+native-host tests for real SQLite/HTTP evidence, including stop during an
+unanswered request. These modules do not authorize enrolling real participants.
