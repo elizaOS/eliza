@@ -78,21 +78,19 @@ export class StandaloneKokoroService {
     const work = new Promise<void>((resolve, reject) => {
       this.rejectBoot = reject;
       let text = "";
-      // Cold model loading and first-use compute compilation can exceed 15 seconds.
-      // Readiness stays false until the worker completes its synthesis probe;
-      // cancellation and pipe failure still retire this bounded wait immediately.
-      const timer = setTimeout(() => {
-        if (this.child === child) this.stop();
-      }, 60000);
+      // The host lifecycle and synthesis caller own cancellation. Cold loading
+      // has no independent retirement deadline before its readiness probe.
       const failed = () => {
-        clearTimeout(timer);
         if (this.child === child) this.stop();
       };
       child.once("error", failed);
       child.once("exit", failed);
       child.stdin?.on("error", failed);
-      (child.stdio[3] as Readable).on("error", failed);
-      (child.stdio[3] as Readable).on("data", (bytes: Buffer) => {
+      const output = child.stdio[3] as Readable;
+      output.on("error", failed);
+      output.once("end", failed);
+      output.once("close", failed);
+      output.on("data", (bytes: Buffer) => {
         if (this.child !== child) return;
         text += bytes.toString("utf8");
         if (text.length > 2 * 1024 * 1024) {
@@ -112,7 +110,6 @@ export class StandaloneKokoroService {
               if (value.ready !== true) throw Error("Invalid readiness");
               this.ready = true;
               this.rejectBoot = undefined;
-              clearTimeout(timer);
               resolve();
               continue;
             }
@@ -138,6 +135,7 @@ export class StandaloneKokoroService {
             pending.resolve(audio);
           } catch {
             failed();
+            return;
           }
         }
       });
