@@ -152,8 +152,9 @@ export interface VisionAnalysisProvider {
 export function fetchMediaProviderResponse(
 	url: string,
 	init: RequestInit,
-	timeoutMs = 30_000,
+	timeoutMs?: number,
 ): Promise<Response> {
+	if (timeoutMs === undefined) return fetch(url, init);
 	const deadline = AbortSignal.timeout(timeoutMs);
 	const signal = init.signal
 		? AbortSignal.any([init.signal, deadline])
