@@ -899,6 +899,9 @@ export interface PluginOwnership {
 	services: PluginServiceRegistration[];
 	sendHandlerSources: string[];
 	hasAdapter: boolean;
+	chatPreHandlerIds: string[];
+	responseHandlerEvaluatorNames: string[];
+	responseHandlerFieldEvaluatorNames: string[];
 	registeredAt: number;
 }
 

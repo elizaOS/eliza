@@ -64,6 +64,9 @@ export default defineConfig({
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
       // Executed by test:script-suites with Node's test runner.
+      "scripts/lib/consumer-source-resolver.test.mjs",
+      "scripts/lib/instrumentation-result.test.mjs",
+      "scripts/local-speech/speech-passage.test.mjs",
       "scripts/remote-browser-host-entry.test.mjs",
       "scripts/lib/assert-android-elf.test.mjs",
       "scripts/lib/desktop-preflight.test.mjs",

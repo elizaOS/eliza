@@ -31,6 +31,20 @@ copy, encrypted persistence and application UI. The browser-safe root SDK does
 not import this Node entrypoint. Run `bun run --cwd packages/auth test:native-host`
 for synthetic lifecycle tests; these do not establish live provider acceptance.
 
+The stored app credential stays inference-only. A successful code `verify`/`mfa`
+also keeps that Steward session in memory as billing authority, bound to the
+activated credential. `await auth.billingAuthority()` returns `{token, expiresAt}`
+or `null`. Use it only as `Authorization: Bearer` on organization billing routes
+from the trusted host, and never return it to a renderer. It is cleared on
+`cancel`, a new `start`, `clearBillingAuthority()`, expiry (JWT `exp`, at most
+one hour), or when the active credential changes. When it is missing (for
+example after a restart, or for Google/CLI keys), `billing-start` (`{method?,
+email?, phone?}`, defaulting to the account's own email, then phone) and
+`billing-verify`/`billing-mfa` (`{sessionId, code}`) repeat the code check.
+They never re-enroll or write storage, and they reject a different
+user/organization with `code: "billing_account_mismatch"`. `billing-status`
+returns `{status: "authorized", expiresAt}` or `{status: "required"}`.
+
 ## Native Cloud service composition
 
 `native-host/cloud-services/cloud-services.mjs` is a Node source entrypoint for

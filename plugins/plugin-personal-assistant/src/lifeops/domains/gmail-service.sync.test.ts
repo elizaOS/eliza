@@ -79,6 +79,10 @@ function harness(args: {
         References: "<earlier-message@example.com>",
       },
     })),
+    sendEmail: vi.fn(async () => ({
+      id: "sent-1",
+      threadId: "thread-message-1",
+    })),
     createGmailDraft: vi.fn(async () => ({
       draftId: "draft-1",
       messageId: "draft-message-1",
@@ -673,6 +677,53 @@ describe("LifeOps Gmail provider draft", () => {
         inReplyTo: "<provider-message@example.com>",
         references:
           "<earlier-message@example.com> <provider-message@example.com>",
+      }),
+    );
+  });
+});
+
+describe("LifeOps Gmail reply send subject", () => {
+  it("keeps a single Re: prefix when the original subject already has one", async () => {
+    const { domain, google } = harness({});
+
+    await domain.sendGmailReply(new URL("http://127.0.0.1/"), {
+      messageId: "message-1",
+      bodyText: "Tomorrow works.",
+      confirmSend: true,
+    });
+
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: "Re: Review",
+      }),
+    );
+  });
+
+  it("adds Re: once when the original subject has no reply prefix", async () => {
+    const { domain, google } = harness({});
+    google.getMessage = vi.fn(async ({ messageId }: { messageId: string }) => ({
+      id: messageId,
+      threadId: `thread-${messageId}`,
+      subject: "Quarterly review",
+      from: { email: "sender@example.com", name: "Sender" },
+      to: [{ email: "owner@example.com" }],
+      receivedAt: "2026-08-22T07:00:00.000Z",
+      labelIds: ["INBOX"],
+      headers: {
+        "Message-Id": "<provider-message@example.com>",
+        References: "<earlier-message@example.com>",
+      },
+    }));
+
+    await domain.sendGmailReply(new URL("http://127.0.0.1/"), {
+      messageId: "message-1",
+      bodyText: "Tomorrow works.",
+      confirmSend: true,
+    });
+
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: "Re: Quarterly review",
       }),
     );
   });

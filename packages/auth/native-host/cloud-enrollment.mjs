@@ -1,13 +1,49 @@
 import { createHash, randomBytes } from "node:crypto";
 
-const fail = (message, status = 400) =>
-  Object.assign(new Error(message), { status });
+const fail = (message, status = 400, code) =>
+  Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
 const opaque = () => randomBytes(32).toString("base64url");
 const validTime = (value) =>
   typeof value === "string" &&
   Number.isFinite(Date.parse(value)) &&
   Date.parse(value) > Date.now();
-/** Private gateway enrollment. JWTs, PKCE material and app credentials never leave this module. */
+const fingerprint = (secret) =>
+  createHash("sha256").update(secret).digest("hex");
+const EMAIL_RE =
+  /^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u;
+const PHONE_RE = /^\+[1-9]\d{7,14}$/;
+const BILLING_OPERATIONS = [
+  "billing-status",
+  "billing-start",
+  "billing-verify",
+  "billing-mfa",
+];
+/** Billing authority is never held longer than this, whatever the session claims. */
+const BILLING_MAX_MS = 60 * 60 * 1000;
+/** Without a readable `exp`, assume a short interactive session. */
+const BILLING_DEFAULT_MS = 10 * 60 * 1000;
+/** Treat authority as expired slightly early so an in-flight request never carries a dead token. */
+const BILLING_SKEW_MS = 30 * 1000;
+function sessionExpiry(token) {
+  try {
+    const exp = JSON.parse(
+      Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
+    ).exp;
+    return Number.isFinite(exp) ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+const maskDestination = (method, value) =>
+  method === "phone"
+    ? `\u2022\u2022\u2022${value.slice(-4)}`
+    : `${value[0]}\u2022\u2022\u2022${value.slice(value.indexOf("@"))}`;
+/**
+ * Private gateway enrollment. PKCE material and app credentials never leave this module.
+ * The Steward session from an interactive code check is kept only in memory as billing
+ * authority for the trusted host (`billingAuthority()`); it is never persisted, logged or
+ * returned through `handle()`, and the stored app credential stays inference-only.
+ */
 export function createNativeCloudAuth({
   fetchImpl = fetch,
   api = "https://api.eliza.app",
@@ -49,6 +85,8 @@ export function createNativeCloudAuth({
   binding = Object.freeze({ ...binding });
   const message = (key, fallback) => messages[key] ?? fallback;
   let attempt = null,
+    billingAttempt = null,
+    billing = null,
     busy = false,
     cancelling = false,
     epoch = 0,
@@ -144,7 +182,286 @@ export function createNativeCloudAuth({
       scopes: ["cloud:user"],
     };
   }
-  async function finish(ticket, pending) {
+  const clearBilling = () => {
+    billing = null;
+    billingAttempt = null;
+  };
+  /** Binds an interactive session to the exact active credential it was verified for. */
+  function retainBilling(token, credential) {
+    const now = Date.now();
+    const expiresAt = Math.min(
+      sessionExpiry(token) ?? now + BILLING_DEFAULT_MS,
+      now + BILLING_MAX_MS,
+    );
+    billing =
+      expiresAt - BILLING_SKEW_MS > now
+        ? Object.freeze({
+            token,
+            expiresAt,
+            credential: fingerprint(credential),
+          })
+        : null;
+    return billing;
+  }
+  async function account(token, ticket) {
+    const value = await call(api, "/api/v1/user", undefined, token, ticket);
+    if (
+      typeof value.id !== "string" ||
+      !value.id ||
+      typeof value.organization_id !== "string" ||
+      !value.organization_id
+    )
+      throw fail(
+        message("error32", "Account service returned no account."),
+        502,
+      );
+    return {
+      id: value.id,
+      organizationId: value.organization_id,
+      email: typeof value.email === "string" ? value.email : null,
+      phone: typeof value.phone_number === "string" ? value.phone_number : null,
+    };
+  }
+  async function confirmBilling(value, ticket) {
+    if (value.mfaRequired === true) {
+      if (
+        !value.mfa ||
+        !["totp", "sms", "passkey"].includes(value.mfa.type) ||
+        typeof value.mfa.challengeId !== "string" ||
+        !validTime(value.mfa.expiresAt)
+      )
+        throw fail(
+          message("error11", "Invalid account verification response."),
+          502,
+        );
+      billingAttempt.mfa = value.mfa;
+      billingAttempt.expiresAt = Math.min(
+        billingAttempt.expiresAt,
+        Date.parse(value.mfa.expiresAt),
+      );
+      return {
+        status: "mfa",
+        method: value.mfa.type,
+        sessionId: billingAttempt.id,
+        expiresAt: new Date(billingAttempt.expiresAt).toISOString(),
+      };
+    }
+    if (
+      typeof value.token !== "string" ||
+      value.token.length < 20 ||
+      value.token.length > 16384
+    )
+      throw fail(
+        message("error12", "Account service returned no session."),
+        502,
+      );
+    const expected = billingAttempt;
+    const verified = await account(value.token, ticket);
+    const active = await readActive();
+    check(ticket);
+    if (!active || fingerprint(active) !== expected.credential) {
+      clearBilling();
+      throw fail(
+        message(
+          "error33",
+          "The connected account changed. Start the payment check again.",
+        ),
+        409,
+        "billing_account_changed",
+      );
+    }
+    if (
+      verified.id !== expected.account.id ||
+      verified.organizationId !== expected.account.organizationId
+    ) {
+      clearBilling();
+      throw fail(
+        message(
+          "error34",
+          "That code belongs to a different account than the one connected here.",
+        ),
+        403,
+        "billing_account_mismatch",
+      );
+    }
+    billingAttempt = null;
+    const retained = retainBilling(value.token, active);
+    if (!retained)
+      throw fail(
+        message("error9", "Sign-in expired. Start again."),
+        410,
+        "billing_session_expired",
+      );
+    return {
+      status: "authorized",
+      expiresAt: new Date(retained.expiresAt).toISOString(),
+    };
+  }
+  /** Re-verifies the connected person for billing without touching the stored credential. */
+  async function billingOperation(operation, input, ticket) {
+    if (operation === "billing-status") {
+      const authority = await currentBilling();
+      return authority
+        ? { status: "authorized", expiresAt: authority.expiresAt }
+        : { status: "required" };
+    }
+    if (operation === "billing-start") {
+      const active = await readActive();
+      check(ticket);
+      if (!active)
+        throw fail(
+          message("error35", "Connect an account before managing billing."),
+          409,
+          "billing_not_enrolled",
+        );
+      if (billingAttempt && Date.now() < billingAttempt.resendAt)
+        throw fail(
+          message(
+            "error28",
+            "Please wait a minute before requesting another code.",
+          ),
+          429,
+        );
+      if (
+        input.method !== undefined &&
+        !["email", "phone"].includes(input.method)
+      )
+        throw fail(message("error25", "Choose email or phone sign-in."));
+      const owner = await account(active, ticket);
+      const method =
+        input.method ??
+        (input.phone !== undefined
+          ? "phone"
+          : input.email !== undefined || owner.email
+            ? "email"
+            : "phone");
+      const destination =
+        method === "phone"
+          ? (input.phone ?? owner.phone)
+          : (input.email ?? owner.email);
+      if (
+        method === "phone" &&
+        (typeof destination !== "string" || !PHONE_RE.test(destination))
+      )
+        throw fail(
+          message(
+            "error26",
+            "Enter a phone number with its country calling code.",
+          ),
+          400,
+          "billing_destination_required",
+        );
+      if (
+        method === "email" &&
+        (typeof destination !== "string" ||
+          destination.length > 254 ||
+          !EMAIL_RE.test(destination))
+      )
+        throw fail(
+          message("error27", "Enter a valid email address."),
+          400,
+          "billing_destination_required",
+        );
+      const identity =
+        method === "phone" ? { phone: destination } : { email: destination };
+      const value = await call(
+          auth,
+          method === "phone" ? "/auth/sms/send" : "/auth/email/send",
+          { ...identity, tenantId: tenant },
+          undefined,
+          ticket,
+        ),
+        data = value.data ?? value;
+      if (!validTime(data.expiresAt))
+        throw fail(
+          message("error29", "Account service returned no code expiry."),
+          502,
+        );
+      billingAttempt = {
+        id: opaque(),
+        method,
+        identity,
+        account: { id: owner.id, organizationId: owner.organizationId },
+        credential: fingerprint(active),
+        expiresAt: Math.min(
+          Date.parse(data.expiresAt),
+          Date.now() + 15 * 60 * 1000,
+        ),
+        resendAt: Date.now() + 60000,
+      };
+      return {
+        status: "code",
+        method,
+        destination: maskDestination(method, destination),
+        sessionId: billingAttempt.id,
+        expiresAt: new Date(billingAttempt.expiresAt).toISOString(),
+        resendAt: billingAttempt.resendAt,
+      };
+    }
+    if (
+      !billingAttempt ||
+      input.sessionId !== billingAttempt.id ||
+      Date.now() >= billingAttempt.expiresAt
+    )
+      throw fail(
+        message("error9", "Sign-in expired. Start again."),
+        410,
+        "billing_session_expired",
+      );
+    if (typeof input.code !== "string" || !/^\d{6}$/.test(input.code))
+      throw fail(message("error30", "Enter the six-digit code."));
+    if (operation === "billing-verify" && !billingAttempt.mfa)
+      return await confirmBilling(
+        await call(
+          auth,
+          billingAttempt.method === "phone"
+            ? "/auth/sms/verify"
+            : "/auth/email/code/verify",
+          { ...billingAttempt.identity, code: input.code, tenantId: tenant },
+          undefined,
+          ticket,
+        ),
+        ticket,
+      );
+    if (
+      operation === "billing-mfa" &&
+      ["totp", "sms"].includes(billingAttempt.mfa?.type)
+    )
+      return await confirmBilling(
+        await call(
+          auth,
+          `/auth/mfa/${billingAttempt.mfa.type}/complete`,
+          { challengeId: billingAttempt.mfa.challengeId, code: input.code },
+          undefined,
+          ticket,
+        ),
+        ticket,
+      );
+    throw fail(
+      message("error31", "This verification method requires account recovery."),
+      409,
+      "billing_method_unsupported",
+    );
+  }
+  async function currentBilling() {
+    const held = billing;
+    if (!held) return null;
+    if (Date.now() >= held.expiresAt - BILLING_SKEW_MS) {
+      if (billing === held) billing = null;
+      return null;
+    }
+    const active = await readActive();
+    if (billing !== held) return null;
+    if (!active || fingerprint(active) !== held.credential) {
+      billing = null;
+      return null;
+    }
+    return {
+      token: held.token,
+      expiresAt: new Date(held.expiresAt).toISOString(),
+    };
+  }
+  async function finish(ticket, pending, session) {
     if (!validTime(pending.acknowledgeBy))
       throw fail(message("error9", "Sign-in expired. Start again."), 410);
     const result = await call(
@@ -169,6 +486,8 @@ export function createNativeCloudAuth({
     await pendingStore.clear();
     check(ticket);
     attempt = null;
+    // The session that just minted this credential is also current billing authority.
+    if (session) retainBilling(session, pending.proof.secret);
     return { status: "authenticated", connected: true };
   }
   async function exchange(value, ticket) {
@@ -271,9 +590,18 @@ export function createNativeCloudAuth({
     await pendingStore.write(JSON.stringify(pending));
     check(ticket);
     // Durable encrypted receipt precedes activation; an interrupted acknowledgement can be retried.
-    return finish(ticket, pending);
+    return finish(ticket, pending, value.token);
   }
   return {
+    /**
+     * Trusted-host only: the in-memory Steward session for organization billing routes,
+     * or null when absent, expired or no longer bound to the active credential. Never
+     * forward it to a renderer.
+     */
+    billingAuthority: currentBilling,
+    clearBillingAuthority() {
+      clearBilling();
+    },
     async cancel({ disconnect = false } = {}) {
       if (cancelling)
         throw fail(
@@ -283,6 +611,7 @@ export function createNativeCloudAuth({
       cancelling = true;
       epoch++;
       attempt = null;
+      clearBilling();
       try {
         await settled;
         let raw = await pendingStore.read();
@@ -409,6 +738,8 @@ export function createNativeCloudAuth({
       });
       const ticket = epoch;
       try {
+        if (BILLING_OPERATIONS.includes(operation))
+          return await billingOperation(operation, input, ticket);
         if (operation === "config") return await config(ticket);
         if (operation === "resume") {
           const raw = await pendingStore.read();
@@ -446,6 +777,7 @@ export function createNativeCloudAuth({
           return await finish(ticket, pending);
         }
         if (operation === "start") {
+          clearBilling();
           if (await readActive())
             throw fail(
               message(
