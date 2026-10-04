@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -179,4 +179,14 @@ test("trace transport uses authenticated HTTP, validates before sending and hono
     }).captureState(),
   );
   assert.equal(requests, 2);
+});
+
+test("an old database owner cannot release a replacement lease", (t) => {
+  const { path } = fixture(t);
+  const releaseOld = acquireExclusiveDatabaseLease(path);
+  renameSync(path + ".lock", path + ".old-lock");
+  const releaseNew = acquireExclusiveDatabaseLease(path);
+  assert.throws(releaseOld, /ownership changed/);
+  assert.throws(() => acquireExclusiveDatabaseLease(path), { code: "EEXIST" });
+  releaseNew();
 });
