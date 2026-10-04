@@ -16,7 +16,7 @@
  *     client runs — no drift between what we test and what we ship).
  *
  * Pure (no DOM, no I/O); the only dependency is the canonical syntactic EOT
- * heuristic in `@elizaos/core/voice-eot`.
+ * heuristic in `@elizaos/plugin-local-inference/protocol`.
  */
 
 import { scoreEndOfTurnHeuristic } from "./voice-eot.js";

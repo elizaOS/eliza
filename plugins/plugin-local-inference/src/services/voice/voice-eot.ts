@@ -1,24 +1,8 @@
 /**
- * Heuristic end-of-turn (EOT) scoring — the single source of truth (#8786).
- *
- * The semantic "is the speaker done?" syntactic heuristic used to be implemented
- * twice with drifted behavior: the UI shell capture path
- * (`packages/ui/src/voice/end-of-turn.ts:scoreEndOfTurn`) and the plugin's
- * Tier-3 classifier (`plugin-local-inference .../voice/eot-classifier.ts:
- * HeuristicEotClassifier`). The two had diverged — different rule ORDERING
- * (the plugin scored a 2-word trail-off like "and so" as a complete short
- * command; the UI correctly held it), a missing ellipsis rule on the plugin
- * side, and a different question-tag set. This module is the one canonical
- * implementation both surfaces consume.
- *
- * It lives in `@elizaos/core` (which both already depend on), is pure +
- * browser-safe (no Node deps), and ships via the `@elizaos/core/voice-eot`
- * subpath without pulling the whole barrel — mirroring `voice-wer`.
- *
- * The fused composite EOT (ABI v11, `CompositeEotClassifier`) is preferred when
- * the loaded native build wires the semantic model; it blends THIS heuristic as
- * its high-precision syntactic co-signal, so consolidating here also feeds the
- * model path one definition.
+ * Browser-safe end-of-turn heuristic shared by UI capture and the Tier-3
+ * classifier, exported through @elizaos/plugin-local-inference/protocol.
+ * The native composite classifier also uses this syntactic signal alongside
+ * its semantic model when that model is available.
  */
 import { trimEndCharacters } from "@elizaos/core/protocol";
 

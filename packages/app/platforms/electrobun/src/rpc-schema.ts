@@ -910,7 +910,7 @@ export interface FirstRunStatusSnapshot {
 /**
  * Typed response for `getFirstRunOptions` — provider/model catalogs +
  * style presets used by the first-run UI. Mirrors the first-run options
- * structure in `@elizaos/core/contracts/firstRun`, narrowed to the
+ * structure in `@elizaos/contracts`, narrowed to the
  * subset the server actually returns at `/api/first-run/options`
  * (server source: `first-run-routes.ts:328`). Fields are kept structural
  * (`unknown`/`Record<string, unknown>`) for items whose shape lives

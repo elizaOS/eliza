@@ -5,7 +5,7 @@
  * start servers. Hardware scripts feed it real measurements; unit tests can
  * exercise the orchestration logic without native artifacts.
  *
- * Word-error-rate scoring lives in `@elizaos/core/voice-wer` (the single
+ * Word-error-rate scoring lives in `@elizaos/plugin-local-inference/protocol` (the single
  * source of truth shared with the headful self-test, #8785); it is re-exported
  * here so existing `./e2e-harness` importers keep working unchanged.
  */

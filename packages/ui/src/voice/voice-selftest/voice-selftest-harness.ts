@@ -29,7 +29,7 @@ import {
 import { classifyErrorFallbackReply } from "./error-fallback-reply";
 import { now, sleep } from "./timing";
 
-/** Re-exported from the single source of truth (`@elizaos/core/voice-wer`). */
+/** Re-exported from the single source of truth (`@elizaos/plugin-local-inference/protocol`). */
 export { wordErrorRate };
 export type StageStatus = "pass" | "fail" | "skipped";
 export type VoiceSelfTestMode =

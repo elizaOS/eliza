@@ -1,16 +1,9 @@
 /**
- * Word-error-rate scoring — the single source of truth (#8785).
+ * Shared browser-safe word-error-rate scoring for the headless harness and UI
+ * self-test, exported through @elizaos/plugin-local-inference/protocol.
  *
- * Both the headless metric library (plugin-local-inference `e2e-harness.ts`) and
- * the headful self-test (ui `voice-selftest-harness.ts`) need WER; this used to
- * be implemented twice with subtly different normalization. It lives in
- * `@elizaos/core` (which both already depend on) so there is exactly one
- * definition. Pure + browser-safe (no Node deps), so it ships in the UI bundle
- * via the `@elizaos/core/voice-wer` subpath without pulling the whole barrel.
- *
- * The rolling-row Levenshtein implementation uses linear memory but still
- * performs O(|ref|·|hyp|) comparisons. Input and comparison budgets keep
- * untrusted transcripts from monopolizing the browser or benchmark process.
+ * Rolling-row Levenshtein uses linear memory and O(|ref|·|hyp|) comparisons.
+ * Input and comparison budgets bound untrusted transcript processing.
  */
 /** Lowercase, strip punctuation (keep letters/numbers/apostrophes), collapse WS. */
 export function normalizeWerText(text: string): string {

@@ -3,8 +3,8 @@
  *
  * For each turn this adapter exercises the shipped decision modules:
  *
- *   - end-of-turn:        `scoreEndOfTurnHeuristic` (`@elizaos/core/voice-eot`)
- *   - respond / echo /    `buildVoiceTurnSignal` (`@elizaos/core/voice/respond-gate`)
+ *   - end-of-turn:        `scoreEndOfTurnHeuristic` (`@elizaos/plugin-local-inference/protocol`)
+ *   - respond / echo /    `buildVoiceTurnSignal` (`@elizaos/plugin-local-inference/protocol`)
  *     bystander / wake-word   — the SAME gate the UI client ships
  *   - diarization:        `OnlineSpeakerClusterer` clusters each turn BY ITS
  *                         AUDIO (blind to the ground-truth label), so the DER

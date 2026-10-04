@@ -1,11 +1,6 @@
 /**
- * Theme system — public API.
- *
- * Theme runtime (presets + DOM apply engine) was relocated here in Phase 5B
- * (`@elizaos/core` shrink). The theme TYPE contract still lives in
- * `@elizaos/core/contracts/theme` because `shared/contracts/content-pack`
- * references `ThemeDefinition` and is itself consumed by this package — a
- * `shared → ui → shared` cycle would close if we moved the contract too.
+ * Theme presets and DOM application. Shared ThemeDefinition contracts live in
+ * @elizaos/contracts so non-UI consumers do not depend on this package.
  */
 export {
   THEME_CSS_VAR_MAP,

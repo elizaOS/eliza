@@ -61,7 +61,7 @@ export function bundleTierSlug(tier: Eliza1Tier): string {
 // speaks in terms of the optimization, not the .metal/.comp file.
 //
 // The relationship to the runtime-side `LocalRuntimeKernel` enum (the
-// llama.cpp-handle layer, declared in `@elizaos/core/contracts/local-inference`)
+// llama.cpp-handle layer, declared in `@elizaos/contracts`)
 // is made explicit by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`
 // below — that is the single source of truth for the manifest↔runtime kernel
 // bridge.
@@ -82,7 +82,7 @@ export type Eliza1RequiredRuntimeKernel =
 //
 // `Eliza1Kernel` (this module, the bundle-manifest layer) names the *named
 // optimization* a bundle advertises; `LocalRuntimeKernel`
-// (`@elizaos/core/contracts/local-inference`, the llama.cpp-handle layer) names
+// (`@elizaos/contracts`, the llama.cpp-handle layer) names
 // the *fork kernel handle* the binary must expose. They overlap but are not the
 // same enum:
 //

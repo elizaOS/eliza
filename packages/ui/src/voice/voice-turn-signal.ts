@@ -6,7 +6,7 @@
  * `endOfTurnProbability < 0.4`.
  *
  * The implementation is the canonical, pure definition in
- * `@elizaos/core/voice/respond-gate` — shared with the UI shell capture loop,
+ * `@elizaos/plugin-local-inference/protocol` — shared with the UI shell capture loop,
  * the chat-view voice path, and the Voice Workbench headless runner (#8785) so
  * the gate never drifts between what we test and what we ship. This module
  * re-exports it to keep the `@elizaos/ui` `voice/voice-turn-signal` import path
