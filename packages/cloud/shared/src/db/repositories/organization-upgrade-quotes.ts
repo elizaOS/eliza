@@ -104,17 +104,26 @@ export async function readOrganizationUpgradeQuote(
         ),
       );
     const now = await readPostLockDatabaseNow(tx);
-    if (
-      !quote ||
-      quote.subscription_id !== current.source.id ||
-      quote.subscription_revision !== current.source.lifecycle_revision ||
-      quote.source_digest !== settlementDigest(current) ||
-      quote.review_digest !== settlementDigest(quote.review) ||
-      quote.expires_at <= now ||
-      quote.consumed_by_command_id !== null
-    )
-      conflict();
-    organizationUpgradeReviewSchema.parse(quote.review);
+    if (!quote) conflict();
+    assertCurrentOrganizationUpgradeQuote(quote, current, now);
     return quote;
   });
+}
+
+/** Called only while holding primary organization authority inside the caller transaction. */
+export function assertCurrentOrganizationUpgradeQuote(
+  quote: typeof organizationPlanChangeQuotes.$inferSelect,
+  current: CapturedSource,
+  now: Date,
+) {
+  if (
+    quote.subscription_id !== current.source.id ||
+    quote.subscription_revision !== current.source.lifecycle_revision ||
+    quote.source_digest !== settlementDigest(current) ||
+    quote.review_digest !== settlementDigest(quote.review) ||
+    quote.expires_at <= now ||
+    quote.consumed_by_command_id !== null
+  )
+    conflict();
+  organizationUpgradeReviewSchema.parse(quote.review);
 }
