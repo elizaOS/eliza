@@ -19,6 +19,7 @@ async function seed() {
   const quote = await quotes.saveOrganizationUpgradeQuote({
     identity: f.input,
     captured: f.captured,
+    providerBinding: f.providerBinding,
     review: f.review,
   });
   return {
@@ -87,6 +88,7 @@ async function count(organizationId: string) {
     const second = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: f.review,
     });
     await commands.prepareOrganizationUpgrade(f.confirm);
@@ -143,6 +145,7 @@ async function count(organizationId: string) {
     const quote = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: { ...f.review, expiresAt: expiresAt.toISOString() },
     });
     const input = { ...f.confirm, quoteId: quote.id };
@@ -220,6 +223,7 @@ async function count(organizationId: string) {
       f.quote = await quotes.saveOrganizationUpgradeQuote({
         identity: f.input,
         captured: f.captured,
+        providerBinding: f.providerBinding,
         review: { ...f.review, expiresAt: new Date(Date.now() + expiryMs).toISOString() },
       });
     }
@@ -487,6 +491,7 @@ async function count(organizationId: string) {
     const quote = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: { ...f.review, expiresAt: expiry.toISOString() },
     });
     const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
@@ -525,6 +530,7 @@ async function count(organizationId: string) {
       const quote = await quotes.saveOrganizationUpgradeQuote({
         identity: f.input,
         captured: f.captured,
+        providerBinding: f.providerBinding,
         review: { ...f.review, expiresAt: expiry.toISOString() },
       });
       const admitted = await commands.prepareOrganizationUpgrade({
@@ -589,6 +595,7 @@ async function count(organizationId: string) {
     const quote = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: { ...f.review, expiresAt: expiry.toISOString() },
     });
     const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
@@ -610,6 +617,7 @@ async function count(organizationId: string) {
     const fresh = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: f.review,
     });
     expect(fresh.id).not.toBe(quote.id);
@@ -620,6 +628,7 @@ async function count(organizationId: string) {
     const quote = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: { ...f.review, expiresAt: expiry.toISOString() },
     });
     const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
@@ -645,6 +654,7 @@ async function count(organizationId: string) {
         await quotes.saveOrganizationUpgradeQuote({
           identity: f.input,
           captured: f.captured,
+          providerBinding: f.providerBinding,
           review: f.review,
         })
       ).id,
@@ -685,6 +695,7 @@ async function count(organizationId: string) {
     const quote = await quotes.saveOrganizationUpgradeQuote({
       identity: f.input,
       captured: f.captured,
+      providerBinding: f.providerBinding,
       review: { ...f.review, expiresAt: expiry.toISOString() },
     });
     const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });

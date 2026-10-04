@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
+import { organizationUpgradeIntentDigest } from "../../lib/services/organization-upgrade-provider-binding";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import { writeTransaction } from "../helpers";
 import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
@@ -51,14 +52,13 @@ export async function prepareOrganizationUpgrade(
       .for("update");
     if (!quote || quote.review_digest !== settlementDigest(quote.review))
       reject("quote_unavailable");
-    const digest = settlementDigest({
-      version: 1,
-      kind: "organization_upgrade",
+    const digest = organizationUpgradeIntentDigest({
       organizationId: input.organizationId,
       actorId: input.actorId,
       quoteId: quote.id,
       reviewDigest: quote.review_digest,
       sourceDigest: quote.source_digest,
+      providerBinding: quote.provider_binding,
     });
     const [existing] = await tx
       .select()

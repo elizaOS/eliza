@@ -3389,6 +3389,13 @@
       "when": 1796083200131,
       "tag": "0513_organization_upgrade_live_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1796083200132,
+      "tag": "0514_organization_upgrade_quote_binding",
+      "breakpoints": true
     }
   ]
 }
