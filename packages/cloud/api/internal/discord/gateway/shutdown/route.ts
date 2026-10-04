@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { discordConnectionsRepository } from "@/db/repositories/discord-connections";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
@@ -24,7 +25,11 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    const body = shutdownSchema.parse(await c.req.json().catch(() => ({})));
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = shutdownSchema.parse(decodedBody.value);
     const podName = body.pod_name ?? auth.podName;
     const released =
       await discordConnectionsRepository.clearPodAssignments(podName);
