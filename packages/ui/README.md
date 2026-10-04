@@ -29,3 +29,9 @@ responses; the durable runtime remains authoritative. Hosts that pass
 an in-flight or expired choice cannot be used, and hide options once the choice
 is no longer pending. `voice/speech-segments`
 shares lossless caption/playback chunks without importing the voice runtime.
+
+`voice/microphone-capture` shares cumulative sample previews and speech-pause
+observation without owning microphone tracks, transcription or message submission.
+Hosts supply timing/energy policy and the URL of `voice/microphone-samples.worklet.js`
+(or a compatible mono worklet). Previews are single-flight and are not replayed;
+unsupported capture returns no observer so the host can retain final-recording UX.

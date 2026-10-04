@@ -620,7 +620,9 @@
       "types": "./dist/terminal/palette.d.ts",
       "import": "./dist/terminal/palette.js",
       "default": "./dist/terminal/palette.js"
-    }
+    },
+    "./voice/microphone-capture": "./src/voice/microphone-capture.ts",
+    "./voice/microphone-samples.worklet.js": "./src/voice/microphone-samples.worklet.js"
   },
   "peerDependencies": {
     "@capacitor/app": "^8.0.0",
