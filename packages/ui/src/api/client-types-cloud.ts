@@ -457,7 +457,7 @@ export interface CloudCompatLaunchResult {
   };
 }
 // App types — the App-run / App-session DTO contract is owned by
-// @elizaos/core/contracts/apps (re-exported from the shared root barrel and
+// @elizaos/core/protocol (re-exported from the shared root barrel and
 // re-exported above). Only InstalledAppInfo is defined here: the client's
 // installed-app view (installPath / isRunning) is a distinct shape from shared's
 // registry-oriented InstalledAppInfo (pluginName), so it stays UI-local.

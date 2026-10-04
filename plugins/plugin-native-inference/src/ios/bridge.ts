@@ -1509,7 +1509,7 @@ async function handleMemoriesStatsRoute(
 // plugin-local-inference is deliberately excluded from the mobile plugin set
 // (MOBILE_CORE_PLUGINS), so its `/api/transcripts*` rawPath routes never reach
 // `runtime.routes`. Mirror the store's memory-partition CRUD here — it uses only
-// core runtime memory APIs + @elizaos/core/transcripts helpers, so nothing
+// core runtime memory APIs + @elizaos/core/protocol helpers, so nothing
 // from the excluded plugin is imported.
 const TRANSCRIPTS_TABLE = "transcripts";
 const TRANSCRIPT_METADATA_TYPE = "transcript";

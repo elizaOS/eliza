@@ -610,7 +610,7 @@ const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
   "@elizaos/ui/brand",
-  "@elizaos/plugin-local-inference/protocol",
+  "@elizaos/voice",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-wallet",
@@ -644,18 +644,13 @@ const dedupeTargets = {
     "brand",
     "index.ts",
   ),
-  // Pin the AEC subpath to src as well (#11373). Without this the subpath
-  // resolves through the exports map to the compiled `dist/voice/aec/index.js`
-  // re-export barrel, which Bun.build's lazy CJS-interop lowering drops while
-  // keeping its consumers — on device the live-diarization status route then
-  // dies with `EchoReferenceBuffer is not defined` at session construction
-  // (invisible to the module-load smoke, which never constructs the session).
-  "@elizaos/plugin-local-inference/protocol": path.resolve(
+  // Pin portable voice processing to one source identity in the mobile bundle.
+  "@elizaos/voice": path.resolve(
     repoRoot,
-    "plugins",
-    "plugin-local-inference",
+    "packages",
+    "voice",
     "src",
-    "protocol.ts",
+    "index.ts",
   ),
   "@elizaos/ui": path.resolve(repoRoot, "packages", "ui", "src", "index.ts"),
   // Graph services run in the background agent; renderer registration and

@@ -28,10 +28,7 @@ import type {
   AppContext,
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import {
-  FIRST_SENTENCE_SNIP_VERSION,
-  firstSentenceSnip,
-} from "@elizaos/plugin-local-inference/protocol";
+import { FIRST_SENTENCE_SNIP_VERSION, firstSentenceSnip } from "@elizaos/voice";
 import { Hono } from "hono";
 import { z } from "zod";
 import {

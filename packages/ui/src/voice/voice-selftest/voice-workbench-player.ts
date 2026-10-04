@@ -27,7 +27,7 @@ import { measureBufferLevel } from "./audio-buffer";
  * drives and never re-implements scenario validation.
  */
 
-import { wordErrorRate } from "@elizaos/plugin-local-inference/protocol";
+import { wordErrorRate } from "@elizaos/voice";
 import type { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { resolveApiUrl } from "../../utils/asset-url";

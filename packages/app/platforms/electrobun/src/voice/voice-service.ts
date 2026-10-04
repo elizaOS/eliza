@@ -1,6 +1,6 @@
 /** Implements Electrobun desktop voice service ts behavior for app shell integration. */
 import type { JsonValue } from "@elizaos/core";
-import { buildVoiceTurnSignal } from "@elizaos/plugin-local-inference/protocol";
+import { buildVoiceTurnSignal } from "@elizaos/voice";
 import type { TraceService } from "../trace/trace-service";
 import { VoiceError } from "./errors";
 import type {

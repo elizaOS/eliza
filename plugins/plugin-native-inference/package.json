@@ -252,6 +252,9 @@
   "peerDependenciesMeta": {
     "@elizaos/agent": {
       "optional": true
+    },
+    "@elizaos/plugin-local-inference": {
+      "optional": true
     }
   }
 }

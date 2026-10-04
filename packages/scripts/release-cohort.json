@@ -32,6 +32,7 @@
     "@elizaos/core",
     "@elizaos/contracts",
     "@elizaos/host",
+    "@elizaos/voice",
     "@elizaos/auth",
     "@elizaos/electrobun",
     "@elizaos/macosreminders",

@@ -154,6 +154,25 @@
         "@elizaos/plugin-pdf#build"
       ]
     },
+    "@elizaos/os-usb-installer#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build"
+      ]
+    },
+    "@elizaos/os#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "^build",
+        "@elizaos/ui#build",
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build"
+      ]
+    },
     "@elizaos/benchmark-eliza-host#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]
     },
@@ -495,9 +514,6 @@
     "@elizaos/native-activity-tracker#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
-    "@elizaos/os#typecheck": {
-      "dependsOn": ["typecheck:deps", "^build"]
-    },
     "@elizaos/plugin-benchmarks#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
@@ -551,7 +567,11 @@
       ]
     },
     "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/plugin-assistant#build",
+        "@elizaos/voice#build"
+      ]
     },
     "@elizaos/plugin-meetings#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]

@@ -113,7 +113,6 @@
     "llama-cpp-capacitor": "^0.1.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "@elizaos/plugin-local-inference": "workspace:*",
     "@capacitor/core": "^8.4.0"
   },
   "peerDependenciesMeta": {
@@ -201,7 +200,8 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/voice": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/haptics": "8.0.2",

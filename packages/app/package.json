@@ -326,7 +326,8 @@
     "use-sync-external-store": "1.7.0",
     "tar": "7.5.22",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/voice": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
