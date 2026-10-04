@@ -32,7 +32,7 @@ import {
   schedulingPlugin,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { createProductionScheduledTaskDispatcher } from "../../../plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts";

@@ -9,14 +9,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { buildReadView, type Content, type Memory, MemoryType, type UUID } from "@elizaos/core";
-import {
-  PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION,
-  type ProgressiveContentBoundedSource,
-  type ProgressiveContentTarget,
-  type ProgressiveContentTargetFactory,
-  type ProgressiveContentTargetFamily,
-  type ProgressiveContentTargetObject,
-} from "@elizaos/testing/progressive-content-target";
+import { PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION, type ProgressiveContentBoundedSource, type ProgressiveContentTarget, type ProgressiveContentTargetFactory, type ProgressiveContentTargetFamily, type ProgressiveContentTargetObject } from "@elizaos/testing/progressive-content";
 import { and, count, eq, inArray, sql, sum } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import { DatabaseMigrationService } from "../../migration-service";

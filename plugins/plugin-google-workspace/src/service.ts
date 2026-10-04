@@ -85,6 +85,8 @@ import {
 
 export interface GoogleWorkspaceServiceOptions {
   credentialResolver?: GoogleCredentialResolver;
+  /** Host-owned API endpoint; credentials remain account-scoped. */
+  apiRootUrl?: string;
 }
 
 export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceService {
@@ -103,7 +105,8 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
   constructor(runtime?: IAgentRuntime, options: GoogleWorkspaceServiceOptions = {}) {
     super(runtime);
     this.clientFactory = new GoogleApiClientFactory(
-      options.credentialResolver ?? new DefaultGoogleCredentialResolver({ runtime })
+      options.credentialResolver ?? new DefaultGoogleCredentialResolver({ runtime }),
+      options.apiRootUrl ?? runtime?.getSetting("ELIZA_MOCK_GOOGLE_BASE")?.toString()
     );
     this.gmailClient = new GoogleGmailClient(this.clientFactory);
     this.calendarClient = new GoogleCalendarClient(this.clientFactory);

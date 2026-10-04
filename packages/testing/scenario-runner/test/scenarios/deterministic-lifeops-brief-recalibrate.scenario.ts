@@ -34,17 +34,19 @@ import type { UUID } from "@elizaos/core";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import type {
   CapturedAction,
-  RuntimeWithScenarioModelFixtures,
   ScenarioContext,
   ScenarioTurnExecution,
-  StrictActionRouteFixture,
 } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
+} from "@elizaos/testing/models";
 
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,
-} from "../../../scenarios/_fixtures/simple-turn-memory.ts";
+} from "@elizaos/testing/models";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 

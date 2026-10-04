@@ -18,11 +18,11 @@ async function bundle(entry: string) {
       JSON.stringify({
         name: "@elizaos/core",
         type: "module",
-        exports: { "./errors": "./errors.js" },
+        exports: { "./protocol": "./protocol.js" },
       }),
     );
     await writeFile(
-      join(core, "errors.js"),
+      join(core, "protocol.js"),
       "export class ElizaError extends Error {}",
     );
     await Promise.all([
@@ -109,6 +109,7 @@ describe("renderer runtime boundary", () => {
   });
 
   it.each([
+    'export { applyHostProcessGuards } from "@elizaos/host";',
     'export { getLlama } from "node-llama-cpp";',
     'export { pgTable } from "drizzle-orm/pg-core";',
     'export { createManager } from "@elizaos/auth/vault";',

@@ -1,5 +1,5 @@
 /** Real SQL task storage with a virtual timer; no model calls. */
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { TaskService } from "./task";
 

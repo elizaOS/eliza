@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import openaiPlugin from "../../../plugins/plugin-openai/index.ts";
 import {

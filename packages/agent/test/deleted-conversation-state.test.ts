@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {

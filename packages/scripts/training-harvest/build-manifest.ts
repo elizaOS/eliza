@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * gpt-5.5 trajectory-training pipeline — Stage 2 corpus manifest builder.
  *
@@ -20,46 +23,30 @@
  * Usage:
  *   node packages/scripts/training-harvest/build-manifest.ts [--out <path>]
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  discoverScenarios,
+  listScenarioMetadata,
+} from "@elizaos/testing/scenarios";
 import { listPackages } from "../lib/workspaces.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
-const PACKAGES = path.join(REPO_ROOT, "packages");
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-/** Recursively count files matching a suffix under a dir. */
-function countFiles(dir, suffix) {
-  if (!existsSync(dir)) return [];
-  const out = [];
-  const walk = (d) => {
-    for (const entry of readdirSync(d, { withFileTypes: true })) {
-      if (entry.name.startsWith("_")) continue; // scenario loader skips these
-      const full = path.join(d, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith(suffix)) out.push(full);
-    }
-  };
-  walk(dir);
-  return out;
-}
-
 const DEFAULT_SCENARIO_ROOT = "packages/testing/scenarios";
 
 // Every workspace package's `test/scenarios` dir that exists on disk, discovered
 // through the shared workspace seam (#12332) rather than a hardcoded plugin list.
-// `scenarioFamily` skips any dir with zero `.scenario.ts` files, so a package
+// `scenarioFamily` skips any dir with no discoverable scenarios, so a package
 // without scenarios contributes nothing — adding or removing a plugin with
 // scenarios updates the corpus with no edit to this file.
 const SCENARIO_DIRS = [
   DEFAULT_SCENARIO_ROOT,
+  "packages/benchmarks/suites/personality-bench/scenarios",
   ...listPackages({ repoRoot: REPO_ROOT }).map((pkg) =>
     path.posix.join(pkg.dir, "test", "scenarios"),
   ),
@@ -70,15 +57,17 @@ const SCENARIO_DIRS = [
 
 const SCENARIO_CLI = "packages/testing/scenario-runner/src/cli.ts";
 
-function scenarioFamily() {
+async function scenarioFamily() {
   const items = [];
   for (const rel of SCENARIO_DIRS) {
     const dir = path.join(REPO_ROOT, rel);
-    const files = countFiles(dir, ".scenario.ts");
+    const files = await discoverScenarios(dir);
     if (files.length === 0) continue;
     const expansion = {
-      existing: files.length,
-      total: files.length * 11,
+      existing: (await listScenarioMetadata(dir, undefined, undefined, false))
+        .length,
+      total: (await listScenarioMetadata(dir, undefined, undefined, true))
+        .length,
     };
     items.push({
       id: rel.replace(/[/]/g, "__"),
@@ -185,9 +174,9 @@ function e2eFamily() {
     liveLaneCount: live.length,
     lanes: live.sort(),
     scriptedRealServices: [
-      "packages/testing/scripts/scenario-runner/real-llm-attachment-smoke.ts",
-      "packages/testing/scripts/scenario-runner/real-service-audio-roundtrip.ts",
-      "packages/testing/scripts/scenario-runner/real-service-voice-e2e.ts",
+      "packages/scripts/provider-smokes/real-llm-attachment-smoke.ts",
+      "packages/scripts/provider-smokes/real-service-audio-roundtrip.ts",
+      "packages/scripts/provider-smokes/real-service-voice-e2e.ts",
     ],
   };
 }
@@ -215,7 +204,7 @@ const manifest = {
       "packages/training/scripts/prepare_eliza1_trajectory_dataset.py",
   },
   families: {
-    scenario: scenarioFamily(),
+    scenario: await scenarioFamily(),
     benchmark: benchmarkFamily(),
     e2e: e2eFamily(),
   },

@@ -27,8 +27,8 @@ import {
 
 type GoogleApiAuth = NonNullable<Parameters<typeof google.gmail>[0]>["auth"];
 
-function googleRootUrlOverride(): string | undefined {
-  const raw = process.env.ELIZA_MOCK_GOOGLE_BASE?.trim();
+function googleRootUrlOverride(configured?: string): string | undefined {
+  const raw = (configured ?? process.env.ELIZA_MOCK_GOOGLE_BASE)?.trim();
   if (!raw) return undefined;
   try {
     const url = new URL(raw);
@@ -43,7 +43,8 @@ function googleRootUrlOverride(): string | undefined {
 
 export class GoogleApiClientFactory {
   constructor(
-    private credentialResolver: GoogleCredentialResolver = new MissingGoogleCredentialResolver()
+    private credentialResolver: GoogleCredentialResolver = new MissingGoogleCredentialResolver(),
+    private readonly apiRootUrl?: string
   ) {}
 
   setCredentialResolver(credentialResolver: GoogleCredentialResolver): void {
@@ -124,7 +125,7 @@ export class GoogleApiClientFactory {
     version: TVersion,
     auth: GoogleAuthClient
   ): { version: TVersion; auth: GoogleApiAuth; rootUrl?: string } {
-    const rootUrl = googleRootUrlOverride();
+    const rootUrl = googleRootUrlOverride(this.apiRootUrl);
     const apiAuth = auth as unknown as GoogleApiAuth;
     return rootUrl ? { version, auth: apiAuth, rootUrl } : { version, auth: apiAuth };
   }

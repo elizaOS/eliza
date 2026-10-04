@@ -5,18 +5,19 @@
 
 import { randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  getHttpRuntime,
-  type HttpPlugin as Plugin,
-} from "@elizaos/host/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { getHttpRuntime } from "@elizaos/host/protocol";
 import {
   type CapturedAction,
-  type RuntimeWithScenarioModelFixtures,
   type ScenarioContext,
   type ScenarioTurnExecution,
   scenario,
-  strictActionRouteFixtures,
 } from "@elizaos/testing";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  strictActionRouteFixtures,
+  transientTurnEvaluationSeed,
+} from "@elizaos/testing/models";
 import workflowPlugin, {
   workflowRoutePlugin,
 } from "../../../../../plugins/plugin-workflow/src/index.ts";
@@ -28,7 +29,6 @@ import {
 } from "../../../../../plugins/plugin-workflow/src/services/index.ts";
 import type { WorkflowDefinition } from "../../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../../plugins/plugin-workflow/src/utils/context.ts";
-import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";

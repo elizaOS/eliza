@@ -24,7 +24,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { RelationshipsService } from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { z } from "zod";
 import { reflectionItems } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 import {

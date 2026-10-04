@@ -15,10 +15,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  createRealTestRuntime,
-  type RealTestRuntimeResult,
-} from "@elizaos/testing";
+import { createRealTestRuntime, type RealTestRuntimeResult } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 interface LiveTrajectoryDetail {

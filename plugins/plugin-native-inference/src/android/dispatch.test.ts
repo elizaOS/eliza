@@ -17,7 +17,7 @@ import {
   stringToUuid as sqliteTestAgentId,
 } from "@elizaos/core";
 import type { RouteHandlerResult } from "@elizaos/host/protocol";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {

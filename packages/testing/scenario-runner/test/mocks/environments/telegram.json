@@ -20,7 +20,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -30,6 +35,127 @@
           "rulesOperator": "OR",
           "disableTemplating": false,
           "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020060",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 429,\n  \"description\": \"Too Many Requests: retry after 1\",\n  \"parameters\": {\n    \"retry_after\": 1\n  }\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020061",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 401,\n  \"description\": \"Unauthorized\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020062",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
           "crudKey": "id",
           "callbacks": []
         }
@@ -51,7 +177,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -61,6 +192,127 @@
           "rulesOperator": "OR",
           "disableTemplating": false,
           "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020056",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 429,\n  \"description\": \"Too Many Requests: retry after 1\",\n  \"parameters\": {\n    \"retry_after\": 1\n  }\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020057",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 401,\n  \"description\": \"Unauthorized\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020058",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
           "crudKey": "id",
           "callbacks": []
         }
@@ -82,7 +334,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -113,7 +370,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -123,6 +385,127 @@
           "rulesOperator": "OR",
           "disableTemplating": false,
           "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002005b",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 429,\n  \"description\": \"Too Many Requests: retry after 1\",\n  \"parameters\": {\n    \"retry_after\": 1\n  }\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002005c",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 401,\n  \"description\": \"Unauthorized\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002005d",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
           "crudKey": "id",
           "callbacks": []
         }
@@ -144,7 +527,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -175,7 +563,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -206,7 +599,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -237,7 +635,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -268,7 +671,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -278,6 +686,127 @@
           "rulesOperator": "OR",
           "disableTemplating": false,
           "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020065",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 429,\n  \"description\": \"Too Many Requests: retry after 1\",\n  \"parameters\": {\n    \"retry_after\": 1\n  }\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020066",
+          "body": "{\n  \"ok\": false,\n  \"error_code\": 401,\n  \"description\": \"Unauthorized\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020067",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
           "crudKey": "id",
           "callbacks": []
         }
@@ -299,7 +828,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -330,7 +864,12 @@
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
-          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
           "default": true,
           "bodyType": "INLINE",
           "filePath": "",
@@ -350,17 +889,50 @@
     }
   ],
   "rootChildren": [
-    { "type": "route", "uuid": "00000001-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "00000003-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "00000005-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "00000007-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "00000009-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "0000000b-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "0000000d-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "0000000f-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "00000011-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "00000013-0000-4000-8000-00telegram0000" },
-    { "type": "route", "uuid": "00000015-0000-4000-8000-00telegram0000" }
+    {
+      "type": "route",
+      "uuid": "00000001-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "00000003-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "00000005-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "00000007-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "00000009-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "0000000b-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "0000000d-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "0000000f-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "00000011-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "00000013-0000-4000-8000-00telegram0000"
+    },
+    {
+      "type": "route",
+      "uuid": "00000015-0000-4000-8000-00telegram0000"
+    }
   ],
   "folders": [],
   "data": [],

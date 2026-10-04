@@ -1,11 +1,11 @@
+import type { JSONSchema } from "@elizaos/core";
 /**
  * Exercises the assistant's inactive-field omission through the real response handler and
  * AI SDK transport. The rejecting provider fixture reproduces the structured-enum
  * admission failure; accepted calls preserve the complete prompt and tool result.
  */
 
-import type { JSONSchema } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import { withoutInactiveFields } from "../../plugin-assistant/src/services/message/inactive-field-schema";
 import { handleResponseHandler } from "../models/text";

@@ -11,23 +11,25 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { createPreparedModelRequestGuard } from "@elizaos/core";
-import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
-import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
-import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../testing/corpus/progressive-content-realization.ts";
-import { runProgressiveContentTargetHarness } from "../testing/corpus/progressive-content-target-harness.ts";
-import { createProgressiveContentExternalMutantExecutors } from "../testing/scenario-runner/src/progressive-content-external-mutants.ts";
 import {
   applyProgressiveContentMutant,
-  cleanupProgressiveContentProductionFaults,
-  createProgressiveContentProductionFaultExecutors,
+  cleanupProgressiveContentOperationalFaults,
+  createProgressiveContentOperationalFaultExecutors,
   PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_MUTANTS,
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
   runProgressiveContentConformance,
   runProgressiveContentFaultRegistry,
   runProgressiveContentStress,
-} from "../testing/src/index.ts";
+} from "@elizaos/testing/progressive-content";
+import { createProgressiveContentExternalMutantExecutors } from "@elizaos/testing/scenario-runner";
+import {
+  PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION,
+  runProgressiveContentTargetHarness,
+  verifyProgressiveContentCorpus,
+} from "elizaos-benchmarks/content-context";
+import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
+import { createPreparedModelRequestGuard } from "@elizaos/core";
 import {
   createDeterministicTargetAdapter,
   traverseTarget,
@@ -272,7 +274,7 @@ async function productionFaults(corpusRoot, manifest, factories) {
     "production-faults",
   );
   const productionExecutors =
-    await createProgressiveContentProductionFaultExecutors({
+    await createProgressiveContentOperationalFaultExecutors({
       workRoot: faultWorkRoot,
     });
   const keepAlive = setInterval(() => {}, 1_000);
@@ -317,7 +319,7 @@ async function productionFaults(corpusRoot, manifest, factories) {
     });
   } finally {
     clearInterval(keepAlive);
-    await cleanupProgressiveContentProductionFaults(faultWorkRoot);
+    await cleanupProgressiveContentOperationalFaults(faultWorkRoot);
   }
 }
 

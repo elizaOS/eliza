@@ -13,13 +13,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
-import {
-  AGENT_BACKUP_CAPTURE_V2_LIMITS,
-  AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
-  type AgentBackupCaptureV2Request,
-  parseAgentBackupCaptureV2Frames,
-} from "@elizaos/contracts";
-import { createTestRuntime } from "@elizaos/testing";
+import { AGENT_BACKUP_CAPTURE_V2_LIMITS, AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT, type AgentBackupCaptureV2Request, parseAgentBackupCaptureV2Frames } from "@elizaos/contracts";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {
