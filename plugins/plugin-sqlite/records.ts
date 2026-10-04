@@ -2609,7 +2609,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const worlds: World[] = [];
     for (const id of worldIds) {
       const w = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
-      if (w) worlds.push(structuredClone(w));
+      if (w && this.worldIsVisibleToOwner(w)) worlds.push(structuredClone(w));
     }
     return worlds;
   }
@@ -2644,7 +2644,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async deleteWorlds(worldIds: UUID[]): Promise<void> {
     return withWorldMetadataTail(this.storage, async () => {
       for (const id of worldIds) {
-        await this.storage.delete(COLLECTIONS.WORLDS, id);
+        const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
+        if (existing && this.worldIsVisibleToOwner(existing)) {
+          await this.storage.delete(COLLECTIONS.WORLDS, id);
+        }
       }
     });
   }
