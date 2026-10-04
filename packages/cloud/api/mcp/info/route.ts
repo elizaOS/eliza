@@ -15,10 +15,9 @@ import {
   MCP_USAGE_BASED_COST_LABEL,
   PLATFORM_MCP_TOOL_PRICING,
 } from "@elizaos/cloud-shared/billing";
+import { listPlatformCloudMcpTools } from "@elizaos/cloud-shared/lib/mcp/platform-cloud-tools";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
-import { listPlatformCloudMcpTools } from "@/lib/mcp/platform-cloud-tools";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /** Category for a `cloud.<domain>.<action>` tool name; falls back to "platform". */
 export function categoryForToolName(toolName: string): string {

@@ -14,7 +14,8 @@
   "files": [
     "dist",
     "LICENSE",
-    "native-host/cloud-enrollment.mjs"
+    "native-host/cloud-enrollment.mjs",
+    "native-host/account-methods.mjs"
   ],
   "exports": {
     ".": {
@@ -51,18 +52,6 @@
       "import": "./dist/vault/index.js",
       "default": "./dist/vault/index.js"
     },
-    "./auth/*": {
-      "eliza-source": "./src/auth/*.ts",
-      "types": "./dist/auth/*.d.ts",
-      "import": "./dist/auth/*.js",
-      "default": "./dist/auth/*.js"
-    },
-    "./vault/*": {
-      "eliza-source": "./src/vault/*.ts",
-      "types": "./dist/vault/*.d.ts",
-      "import": "./dist/vault/*.js",
-      "default": "./dist/vault/*.js"
-    },
     "./kms": {
       "eliza-source": "./src/kms/index.ts",
       "types": "./dist/kms/index.d.ts",
@@ -75,13 +64,276 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./native-host": "./native-host/cloud-enrollment.mjs"
+    "./native-host": "./native-host/cloud-enrollment.mjs",
+    "./testing": {
+      "eliza-source": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    },
+    "./auth/account-storage": {
+      "eliza-source": "./src/auth/account-storage.ts",
+      "types": "./dist/auth/account-storage.d.ts",
+      "import": "./dist/auth/account-storage.js",
+      "default": "./dist/auth/account-storage.js"
+    },
+    "./auth/anthropic": {
+      "eliza-source": "./src/auth/anthropic.ts",
+      "types": "./dist/auth/anthropic.d.ts",
+      "import": "./dist/auth/anthropic.js",
+      "default": "./dist/auth/anthropic.js"
+    },
+    "./auth/codex-device": {
+      "eliza-source": "./src/auth/codex-device.ts",
+      "types": "./dist/auth/codex-device.d.ts",
+      "import": "./dist/auth/codex-device.js",
+      "default": "./dist/auth/codex-device.js"
+    },
+    "./auth/codex-usage": {
+      "eliza-source": "./src/providers/codex-usage.ts",
+      "types": "./dist/providers/codex-usage.d.ts",
+      "import": "./dist/providers/codex-usage.js",
+      "default": "./dist/providers/codex-usage.js"
+    },
+    "./auth/credentials": {
+      "eliza-source": "./src/auth/credentials.ts",
+      "types": "./dist/auth/credentials.d.ts",
+      "import": "./dist/auth/credentials.js",
+      "default": "./dist/auth/credentials.js"
+    },
+    "./auth/direct-api-probe": {
+      "eliza-source": "./src/providers/direct-api-probe.ts",
+      "types": "./dist/providers/direct-api-probe.d.ts",
+      "import": "./dist/providers/direct-api-probe.js",
+      "default": "./dist/providers/direct-api-probe.js"
+    },
+    "./auth/index": {
+      "eliza-source": "./src/auth/index.ts",
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js",
+      "default": "./dist/auth/index.js"
+    },
+    "./auth/oauth-flow": {
+      "eliza-source": "./src/auth/oauth-flow.ts",
+      "types": "./dist/auth/oauth-flow.d.ts",
+      "import": "./dist/auth/oauth-flow.js",
+      "default": "./dist/auth/oauth-flow.js"
+    },
+    "./auth/openai-codex": {
+      "eliza-source": "./src/auth/openai-codex.ts",
+      "types": "./dist/auth/openai-codex.d.ts",
+      "import": "./dist/auth/openai-codex.js",
+      "default": "./dist/auth/openai-codex.js"
+    },
+    "./auth/refresh-mutex": {
+      "eliza-source": "./src/auth/refresh-mutex.ts",
+      "types": "./dist/auth/refresh-mutex.d.ts",
+      "import": "./dist/auth/refresh-mutex.js",
+      "default": "./dist/auth/refresh-mutex.js"
+    },
+    "./auth/subscription-auth/adopt-codex-cli-login": {
+      "eliza-source": "./src/auth/subscription-auth/adopt-codex-cli-login.ts",
+      "types": "./dist/auth/subscription-auth/adopt-codex-cli-login.d.ts",
+      "import": "./dist/auth/subscription-auth/adopt-codex-cli-login.js",
+      "default": "./dist/auth/subscription-auth/adopt-codex-cli-login.js"
+    },
+    "./auth/subscription-auth/builtin-providers": {
+      "eliza-source": "./src/auth/subscription-auth/builtin-providers.ts",
+      "types": "./dist/auth/subscription-auth/builtin-providers.d.ts",
+      "import": "./dist/auth/subscription-auth/builtin-providers.js",
+      "default": "./dist/auth/subscription-auth/builtin-providers.js"
+    },
+    "./auth/subscription-auth/index": {
+      "eliza-source": "./src/auth/subscription-auth/index.ts",
+      "types": "./dist/auth/subscription-auth/index.d.ts",
+      "import": "./dist/auth/subscription-auth/index.js",
+      "default": "./dist/auth/subscription-auth/index.js"
+    },
+    "./auth/subscription-auth/registry": {
+      "eliza-source": "./src/auth/subscription-auth/registry.ts",
+      "types": "./dist/auth/subscription-auth/registry.d.ts",
+      "import": "./dist/auth/subscription-auth/registry.js",
+      "default": "./dist/auth/subscription-auth/registry.js"
+    },
+    "./auth/subscription-auth/types": {
+      "eliza-source": "./src/auth/subscription-auth/types.ts",
+      "types": "./dist/auth/subscription-auth/types.d.ts",
+      "import": "./dist/auth/subscription-auth/types.js",
+      "default": "./dist/auth/subscription-auth/types.js"
+    },
+    "./auth/token-expiry": {
+      "eliza-source": "./src/auth/token-expiry.ts",
+      "types": "./dist/auth/token-expiry.d.ts",
+      "import": "./dist/auth/token-expiry.js",
+      "default": "./dist/auth/token-expiry.js"
+    },
+    "./auth/types": {
+      "eliza-source": "./src/auth/types.ts",
+      "types": "./dist/auth/types.d.ts",
+      "import": "./dist/auth/types.js",
+      "default": "./dist/auth/types.js"
+    },
+    "./auth/vendor/pi-oauth/anthropic-login": {
+      "eliza-source": "./src/auth/vendor/pi-oauth/anthropic-login.ts",
+      "types": "./dist/auth/vendor/pi-oauth/anthropic-login.d.ts",
+      "import": "./dist/auth/vendor/pi-oauth/anthropic-login.js",
+      "default": "./dist/auth/vendor/pi-oauth/anthropic-login.js"
+    },
+    "./auth/vendor/pi-oauth/openai-codex-login": {
+      "eliza-source": "./src/auth/vendor/pi-oauth/openai-codex-login.ts",
+      "types": "./dist/auth/vendor/pi-oauth/openai-codex-login.d.ts",
+      "import": "./dist/auth/vendor/pi-oauth/openai-codex-login.js",
+      "default": "./dist/auth/vendor/pi-oauth/openai-codex-login.js"
+    },
+    "./vault/audit": {
+      "eliza-source": "./src/vault/audit.ts",
+      "types": "./dist/vault/audit.d.ts",
+      "import": "./dist/vault/audit.js",
+      "default": "./dist/vault/audit.js"
+    },
+    "./vault/credentials": {
+      "eliza-source": "./src/vault/credentials.ts",
+      "types": "./dist/vault/credentials.d.ts",
+      "import": "./dist/vault/credentials.js",
+      "default": "./dist/vault/credentials.js"
+    },
+    "./vault/crypto": {
+      "eliza-source": "./src/vault/crypto.ts",
+      "types": "./dist/vault/crypto.d.ts",
+      "import": "./dist/vault/crypto.js",
+      "default": "./dist/vault/crypto.js"
+    },
+    "./vault/external-credentials": {
+      "eliza-source": "./src/vault/external-credentials.ts",
+      "types": "./dist/vault/external-credentials.d.ts",
+      "import": "./dist/vault/external-credentials.js",
+      "default": "./dist/vault/external-credentials.js"
+    },
+    "./vault/index": {
+      "eliza-source": "./src/vault/index.ts",
+      "types": "./dist/vault/index.d.ts",
+      "import": "./dist/vault/index.js",
+      "default": "./dist/vault/index.js"
+    },
+    "./vault/install": {
+      "eliza-source": "./src/vault/install.ts",
+      "types": "./dist/vault/install.d.ts",
+      "import": "./dist/vault/install.js",
+      "default": "./dist/vault/install.js"
+    },
+    "./vault/internal-utils": {
+      "eliza-source": "./src/vault/internal-utils.ts",
+      "types": "./dist/vault/internal-utils.d.ts",
+      "import": "./dist/vault/internal-utils.js",
+      "default": "./dist/vault/internal-utils.js"
+    },
+    "./vault/inventory": {
+      "eliza-source": "./src/vault/inventory.ts",
+      "types": "./dist/vault/inventory.d.ts",
+      "import": "./dist/vault/inventory.js",
+      "default": "./dist/vault/inventory.js"
+    },
+    "./vault/keychain-process": {
+      "eliza-source": "./src/vault/keychain-process.ts",
+      "types": "./dist/vault/keychain-process.d.ts",
+      "import": "./dist/vault/keychain-process.js",
+      "default": "./dist/vault/keychain-process.js"
+    },
+    "./vault/manager": {
+      "eliza-source": "./src/vault/manager.ts",
+      "types": "./dist/vault/manager.d.ts",
+      "import": "./dist/vault/manager.js",
+      "default": "./dist/vault/manager.js"
+    },
+    "./vault/master-key": {
+      "eliza-source": "./src/vault/master-key.ts",
+      "types": "./dist/vault/master-key.d.ts",
+      "import": "./dist/vault/master-key.js",
+      "default": "./dist/vault/master-key.js"
+    },
+    "./vault/password-managers": {
+      "eliza-source": "./src/vault/password-managers.ts",
+      "types": "./dist/vault/password-managers.d.ts",
+      "import": "./dist/vault/password-managers.js",
+      "default": "./dist/vault/password-managers.js"
+    },
+    "./vault/pglite-vault": {
+      "eliza-source": "./src/vault/pglite-vault.ts",
+      "types": "./dist/vault/pglite-vault.d.ts",
+      "import": "./dist/vault/pglite-vault.js",
+      "default": "./dist/vault/pglite-vault.js"
+    },
+    "./vault/profiles": {
+      "eliza-source": "./src/vault/profiles.ts",
+      "types": "./dist/vault/profiles.d.ts",
+      "import": "./dist/vault/profiles.js",
+      "default": "./dist/vault/profiles.js"
+    },
+    "./vault/store": {
+      "eliza-source": "./src/vault/store.ts",
+      "types": "./dist/vault/store.d.ts",
+      "import": "./dist/vault/store.js",
+      "default": "./dist/vault/store.js"
+    },
+    "./vault/testing": {
+      "eliza-source": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
+    "./vault/types": {
+      "eliza-source": "./src/vault/types.ts",
+      "types": "./dist/vault/types.d.ts",
+      "import": "./dist/vault/types.js",
+      "default": "./dist/vault/types.js"
+    },
+    "./vault/vault-paths": {
+      "eliza-source": "./src/vault/vault-paths.ts",
+      "types": "./dist/vault/vault-paths.d.ts",
+      "import": "./dist/vault/vault-paths.js",
+      "default": "./dist/vault/vault-paths.js"
+    },
+    "./vault/vault-types": {
+      "eliza-source": "./src/vault/vault-types.ts",
+      "types": "./dist/vault/vault-types.d.ts",
+      "import": "./dist/vault/vault-types.js",
+      "default": "./dist/vault/vault-types.js"
+    },
+    "./vault/vault": {
+      "eliza-source": "./src/vault/vault.ts",
+      "types": "./dist/vault/vault.d.ts",
+      "import": "./dist/vault/vault.js",
+      "default": "./dist/vault/vault.js"
+    },
+    "./vault/verified-write": {
+      "eliza-source": "./src/vault/verified-write.ts",
+      "types": "./dist/vault/verified-write.d.ts",
+      "import": "./dist/vault/verified-write.js",
+      "default": "./dist/vault/verified-write.js"
+    },
+    "./providers": {
+      "eliza-source": "./src/providers/index.ts",
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    },
+    "./auth/vendor/pi-oauth/pkce": {
+      "eliza-source": "./src/contracts/crypto.ts",
+      "types": "./dist/contracts/crypto.d.ts",
+      "import": "./dist/contracts/crypto.js",
+      "default": "./dist/contracts/crypto.js"
+    },
+    "./accounts": {
+      "browser": null,
+      "eliza-source": "./src/accounts/index.ts",
+      "types": "./dist/accounts/index.d.ts",
+      "import": "./dist/accounts/index.js",
+      "default": "./dist/accounts/index.js"
+    }
   },
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
-    "build": "bun scripts/clean-build.ts && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/prepare-package-dist.ts packages/auth && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/auth",
-    "test": "bun run build && bun run test:credentials && bun run test:login && bun run test:native-host && bun run test:cloud-services",
+    "build": "bun run clean && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/prepare-package-dist.ts packages/auth && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/auth",
+    "test": "bun run build && bun run test:credentials && bun run test:login && bun run test:native-host",
     "test:watch": "node ../scripts/run-vitest.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.vault.json && tsc --noEmit -p tsconfig.login.json",
     "lint": "biome check src test scripts native-host",
@@ -94,9 +346,10 @@
     "test:railpack": "bun test test/login/railpack-runtime.test.ts",
     "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
     "test:credentials": "node ../scripts/run-vitest.ts run",
-    "test:login": "bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack",
-    "test:native-host": "node --test native-host/*.test.mjs",
-    "test:cloud-services": "node --test native-host/cloud-services/*.test.mjs"
+    "test:login": "bun test --timeout 30000 --isolate src/sdk/__tests__ src/server/__tests__ && bun run test:railpack",
+    "test:native-host": "node --test native-host/*.test.mjs native-host/staging-acceptance.process-test.mjs",
+    "test:postgres": "LOGIN_REQUIRE_POSTGRES_TESTS=1 bun test src/server/__tests__/postgres-login.integration.test.ts",
+    "test:integration": "bun run test:browser && bun run test:postgres"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -104,7 +357,6 @@
     "@napi-rs/keyring": "^1.1.6",
     "bs58": "^6.0.0",
     "@simplewebauthn/browser": "^13.0.0",
-    "@neondatabase/serverless": "^1.1.0",
     "drizzle-orm": "0.45.3",
     "postgres": "^3.4.7",
     "@upstash/redis": "^1.34.3",
@@ -123,7 +375,9 @@
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",
     "@simplewebauthn/server": "^13",
-    "resend": "^6.9.4"
+    "resend": "^6.9.4",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

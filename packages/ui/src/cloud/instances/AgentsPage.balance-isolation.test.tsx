@@ -6,14 +6,21 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AgentsPage from "./AgentsPage";
 
-vi.mock("@elizaos/ui/cloud-ui", () => ({
-  ContainersSkeleton: () => <div>Loading agents</div>,
+vi.mock(
+  "../../cloud-ui/components/dashboard/cloud-dashboard-components",
+  () => ({
+    ContainersSkeleton: () => <div>Loading agents</div>,
+    ElizaAgentsPageWrapper: ({ children }: { children: ReactNode }) => children,
+  }),
+);
+vi.mock("../../cloud-ui/components/dashboard/route-placeholders", () => ({
   DashboardErrorState: ({ message }: { message: string }) => (
     <div role="alert">{message}</div>
   ),
   DashboardLoadingState: ({ label }: { label: string }) => <div>{label}</div>,
+}));
+vi.mock("../../cloud-ui/components/layout/dashboard-page", () => ({
   DashboardPageContainer: ({ children }: { children: ReactNode }) => children,
-  ElizaAgentsPageWrapper: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("../lib/use-document-title", () => ({ useDocumentTitle: vi.fn() }));
 vi.mock("../lib/use-session-auth", () => ({

@@ -12,8 +12,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import { Miniflare } from "miniflare";
-import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-identity";
 
 const RUNTIME_BOUNDARIES = {
   apiErrors:

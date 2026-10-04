@@ -13,7 +13,7 @@
  * only through this wrapper, never registered as a separate app/nav tab.
  */
 
-import { Escape } from "@elizaos/ui/spatial";
+import { Escape } from "@elizaos/ui";
 import * as React from "react";
 import { InventoryAppView } from "./components/InventoryAppView.tsx";
 

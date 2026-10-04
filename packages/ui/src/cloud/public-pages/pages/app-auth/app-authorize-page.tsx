@@ -14,13 +14,13 @@
 
 import { Suspense } from "react";
 import { AuthorizeContent } from "../../../../cloud-ui/components/auth/authorize-content";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { StewardAuthProvider } from "../../../shell/StewardProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 
 export default function AppAuthAuthorizePage() {
   const t = useCloudT();
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.appAuth.metaTitle", {
       defaultValue: "Authorize App | Eliza Cloud",
     }),

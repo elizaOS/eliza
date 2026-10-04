@@ -4,13 +4,14 @@
  * semantics ("confirmed appends, pending replaces") are unit-testable without
  * a WebSocket or the data layer.
  */
+
+import type { Transcript, TranscriptSegment } from "@elizaos/core/protocol";
 import {
   MEETING_PLATFORMS,
   type MeetingParticipant,
   type MeetingPlatform,
   type MeetingTranscriptEvent,
-} from "@elizaos/core/meetings";
-import type { Transcript, TranscriptSegment } from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 /** The live pane's view of an in-progress meeting transcript. */
 export interface LiveTranscriptState {
   /** Stable, LocalAgreement-confirmed segments (append-only). */

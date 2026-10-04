@@ -2,7 +2,9 @@
  * Loads and warms the Apps catalog by merging internal tools, server apps,
  * catalog entries, and overlay app registrations.
  */
-import { client, type RegistryAppInfo } from "../../api";
+
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
+import { client } from "../../api/client";
 import {
   getAvailableOverlayApps,
   overlayAppToRegistryInfo,

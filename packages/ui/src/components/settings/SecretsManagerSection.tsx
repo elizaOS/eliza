@@ -16,7 +16,7 @@
 
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 // All requests go through the shared client (never bare `fetch`) so they hit
 // the configured apiBase and carry the injected auth token — a bare relative
 // fetch targets the page origin unauthenticated, which breaks remote/token-

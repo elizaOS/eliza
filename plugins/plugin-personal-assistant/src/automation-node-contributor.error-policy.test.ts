@@ -8,14 +8,15 @@
  * is a hand-built fake, no live OS permission bridge.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import { type PermissionState } from "@elizaos/core/contracts/permissions";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { PermissionState } from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { resolveNativeCalendarPermission } from "./automation-node-contributor.js";
 
 // The module under test pulls a value import from app's registration seam;
 // stub it so this unit test does not require app to be built.
-vi.mock("@elizaos/core/automation-node-contributors", () => ({
+vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/host/protocol")>()),
   registerAutomationNodeContributor: vi.fn(),
 }));
 function cachedState(): PermissionState {

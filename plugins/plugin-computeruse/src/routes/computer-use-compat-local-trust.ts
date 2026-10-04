@@ -1,6 +1,6 @@
 /** Applies the agent server's canonical same-machine trust policy to computer-use routes. */
 import type http from "node:http";
-import { isTrustedLocalRequest } from "@elizaos/core/security/loopback-trust";
+import { isTrustedLocalRequest } from "@elizaos/core";
 
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 

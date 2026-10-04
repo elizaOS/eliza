@@ -1,8 +1,8 @@
 /** The application host composes its Android receiver before starting the portable agent. */
 
+import { STATIC_ELIZA_PLUGINS } from "@elizaos/agent/runtime/plugin-types";
 import { browserPlugin } from "@elizaos/plugin-browser";
 import { workflowPlugin } from "@elizaos/plugin-workflow";
-import { STATIC_ELIZA_PLUGINS } from "../../agent/src/runtime/plugin-types";
 import { mobileRemoteTargetPlugin } from "./mobile-remote-target";
 
 STATIC_ELIZA_PLUGINS["@elizaos/app/mobile-remote-target"] = {
@@ -18,4 +18,4 @@ const { installMobileAuthHostBridge } = await import(
   "./runtime/install-mobile-auth-host-bridge"
 );
 installMobileAuthHostBridge();
-await import("../../agent/src/bin");
+await import("@elizaos/agent/bin");

@@ -3,7 +3,7 @@
  * payloads) from a resolved sleep-cycle state and the owner's baseline/profile.
  */
 
-import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import { parseIsoMs } from "@elizaos/contracts";
 import type {
   LifeOpsCircadianState,
   LifeOpsPersonalBaseline,

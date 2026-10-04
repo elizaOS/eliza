@@ -6,8 +6,8 @@
  */
 
 import { SearchX } from "lucide-react";
-import type { QueryResult } from "../../api";
-import { useAppSelector } from "../../state";
+import type { QueryResult } from "../../api/client-types-core";
+import { useAppSelector } from "../../state/app-store";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";

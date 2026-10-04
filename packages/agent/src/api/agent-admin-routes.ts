@@ -8,15 +8,17 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth";
 import {
   type AgentRuntime,
-  getDefaultStylePreset,
   normalizeCharacterLanguage,
-  type RouteHelpers,
-  type RouteRequestMeta,
   type UUID,
 } from "@elizaos/core";
+import {
+  getDefaultStylePreset,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/host/protocol";
 
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveUserPath } from "../config/paths.ts";

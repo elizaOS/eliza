@@ -14,6 +14,16 @@
 
 import { createHash } from "node:crypto";
 import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
+import type {
   Action,
   ActionExample,
   ActionResult,
@@ -32,20 +42,10 @@ import {
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
 import {
   selectUserAuthorizedRecurrence,
   textStatesExplicitRecurrence,
-} from "@elizaos/core/i18n/recurrence-markers";
+} from "@elizaos/core/protocol";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import {
   CALENDAR_DETAIL_ALIASES,
@@ -81,6 +81,7 @@ import {
   formatCalendarEventDateTime,
   formatCalendarFeed,
   formatNextEventContext,
+  formatNextEventContextForUser,
 } from "../internal/format.js";
 import { GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX } from "../internal/google-delegates.js";
 import { parseCalendarNoteSource } from "../internal/note-source.js";
@@ -5341,11 +5342,15 @@ const calendarAction: CalendarHandlerAction = {
       scenario: string,
       facts: string,
       context?: Record<string, unknown>,
+      userFacingFacts?: string,
     ) => ({
       domain: "calendar",
       intent,
       scenario,
       facts,
+      ...(userFacingFacts !== undefined || scenario === "feed_results"
+        ? { userFacingFacts: userFacingFacts ?? facts }
+        : {}),
       context: {
         ...context,
         ...(scenario === "feed_results"
@@ -5517,7 +5522,12 @@ const calendarAction: CalendarHandlerAction = {
         const fallback = formatNextEventContext(context);
         return respond({
           success: true,
-          text: await renderReply("next_event", fallback),
+          text: await renderReply(
+            "next_event",
+            fallback,
+            undefined,
+            formatNextEventContextForUser(context),
+          ),
           effectReceipt: calendarNextEventReadReceipt(context),
           data: toActionData(context),
         });

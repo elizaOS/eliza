@@ -13,9 +13,8 @@
  * Data-fetch only; all derived values come from server DTOs (readiness verdict,
  * availability, assignments) — the panel displays, it does not compute.
  */
+import { client, OrchestratorAccountsView } from "@elizaos/ui";
 
-import { client } from "@elizaos/ui/api";
-import { OrchestratorAccountsView } from "@elizaos/ui/components";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { type ComponentProps, useCallback, useEffect, useState } from "react";
 

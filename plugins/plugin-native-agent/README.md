@@ -62,3 +62,112 @@ bundle for PGlite. Hosts supply exact directory exclusions and package the
 returned inventory plus assets. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
+
+`NativeStorageDiagnostic` runs a disposable SQLite write/close/reopen/integrity
+probe in a dedicated no-backup namespace on API 26+. Hosts supply the namespace,
+absolute elapsed-time deadline, database-byte budget and cleanup entry limit.
+A private no-follow file lock fences orphan cleanup; unknown entries, links and
+foreign ownership reject before deletion. It never opens application databases
+or declares an update healthy. Android tests cover readback, orphan cleanup,
+expired/invalid policy and unsafe files while preserving an external sentinel.
+
+`ReconciliationScheduler` persists local package-readback jobs without network,
+charging or idle constraints. Hosts supply distinct job IDs and the declared
+service. `ReconciliationJobService` owns bounded workers and cancellation/late
+completion fencing through `JobRunRegistry`; hosts bind the readback operation.
+Neither component initiates an installation. The consumer must qualify actual
+Android job dispatch and reboot persistence alongside its install/recovery tests.
+
+`NativeHealthService`, `NativeHealthEvidence` and updater `NativeHealthClient`
+share native observation IPC on API 29+: signature/sender-UID checks,
+nonce/version/deadline binding, bounded worker admission and installed-identity
+rechecks. Hosts declare the signature-protected service, supply component
+identities, positive request/UI budgets and runtime/storage/UI observation ports.
+The client enforces its absolute deadline independently of the service. Schema 5
+supports standalone/launcher distributions and fixed runtime/UI observation states;
+reports never mark a journal healthy or authorize recovery. The Android contract
+checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
+IPC, process death and observation providers in their packaged applications.
+
+`WebViewHealthObserver` tracks one host Activity/WebView on the main thread and
+serves deadline-bound observations off the main thread. Hosts supply a trusted
+HTTPS origin and a read-only JavaScript expression returning a boolean; product
+DOM/content policy stays in that expression. The shared wrapper guards the DOM
+origin and supplies `visible(element)` for ancestor CSS and viewport checks. Resume/pause/destroy transitions,
+renderer replacement, URL changes and late callbacks fence results. Expired or
+interrupted reads retire their logical request lease; WebView cannot cancel an
+already issued evaluation, so late callbacks cannot complete or clear a newer
+request. Lifecycle transitions retire pending reads immediately. It never
+launches an Activity, navigates a WebView or declares an update healthy. Hosts
+must qualify their actual Activity lifecycle and expression in instrumentation.
+
+`NativeProcessSupervisor` owns a host's direct child processes, bounded readiness,
+restart budget, per-launch cleanup and generation fences. Hosts supply commands,
+credentials, readiness probes and timing policy. Cancelled or retired scopes refuse
+late spawns and readiness; a group death retires every child before restarting.
+Probes must release their own resources when interrupted; a daemon probe that ignores
+interruption cannot publish readiness after its deadline. Detached processes and
+process descendants require the host's existing ownership protocol. The canonical
+Android service shares the direct-child termination helper while retaining its
+detached-agent policy. Portable real-process tests run in `test:native-host`;
+`NativeProcessSupervisorInstrumentedTest` checks the primitive with app-domain
+processes on Android. Neither suite establishes full agent or foreground-service lifetime.
+
+`InstallerResultReceiver` shares the asynchronous PackageInstaller callback and
+journal reconciliation. Hosts declare a non-exported component and supply its
+explicit callback action, target package, journal and executor. Rejected worker
+submission finishes the broadcast and leaves durable reconciliation to the host.
+Transaction, immutable/framework session and optional package identity must match;
+success/failure hints never substitute for installed-identity and live-session
+readback, and user-action intents are never launched. The Android contract uses
+real PackageInstaller sessions; hosts must also qualify actual installation,
+callback delivery, process death and cached recovery with their signed fixtures.
+
+### Local runtime health sampling
+
+`health.LocalRuntimeHealth` reads a host-supplied immutable runtime snapshot and
+uses the host's authenticated local transport with an explicit per-probe timeout.
+It samples the agent status and gateway health/storage protocols, rejects a
+changed process lifetime, and rechecks reported process liveness. Transport
+failures produce unavailable observations; malformed protocol payloads fail the
+read. The host owns current-process binding, transport credentials, budgets and
+update admission. The helper neither starts the runtime nor admits an update.
+`LocalRuntimeHealthInstrumentedTest` exercises the shared protocol/lifecycle
+contract; maintained consumers separately qualify their actual IPC binding.
+
+Hosts must change the runtime instance or epoch whenever a child process is
+replaced, including automatic retries: delayed `unchanged` checks use that
+identity. Schema-5 consumers supply the UUID identities required by
+`NativeHealthEvidence`. A gateway that dies during storage sampling reports
+`gatewayResponsive:false` and `taskStorage:unavailable` together.
+
+`PreparedRecovery` reopens cached recovery material through a host-authenticated
+authority. It requires the recovery-ready journal phase and matching installed
+candidate, checks material distribution, and rejects state or installed-identity
+changes during the authority read. It neither discovers nor installs releases;
+the installer must repeat current trust and APK checks at commit. Hosts retain
+security-floor policy, generated trust bindings and package identity. Its portable
+contract is included in `test:native-host`.
+
+`PrivateOAuthCallback` admits a host-configured HTTPS callback and queues it to a
+private sink without persistence, logging or renderer output. Hosts must strip
+handled Intent data before passing lifecycle events to a WebView, use a bounded
+executor and supply coarse delivery-failure handling. The sink must validate state,
+PKCE, account identity and single-use exchange. `QUEUED` is transport admission,
+not authentication success. Portable JVM coverage is in `test:native-host`; Android
+intent/app-link delivery and provider callback registration need host qualification.
+
+`NativeProcessLog` drains child diagnostics with bounded line buffers, literal
+secret redaction before truncation, UTF-8 byte-limited rotation and serialized
+records across writers in one JVM. Hosts provide a private real parent directory,
+file/line limits, single-line secrets and thread/error policy. Newly created files
+are mode 0600; symlink/non-file destinations are refused. It does not store model
+context or durable events. The portable suite exercises a 32 MiB line under a
+12 MiB heap; `NativeProcessLogInstrumentedTest` covers Android file semantics.
+
+`RuntimePrivateFiles` publishes host-selected files with mode 0600 and atomic
+replacement, and reads optional single-line UTF-8 inputs with host-selected byte
+bounds. The host supplies a real private parent, serialized writes and directory
+sync. A sync failure after rename means publication happened but durability is
+unknown. Portable tests cover concurrent readers and rejected inputs; Android
+instrumentation qualifies the real directory-sync adapter.

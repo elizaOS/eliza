@@ -7,6 +7,7 @@ import type {
   ScenarioSeedStep,
   ScenarioTurn,
 } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type MessageTurn = ScenarioTurn;
 type BehaviorSetup = Pick<
@@ -22,6 +23,7 @@ export type BehaviorTurn = {
 };
 
 export type NormProbeConfig = {
+  lane?: "live-only";
   id: string;
   title: string;
   source: "losona" | "scene-style";
@@ -182,4 +184,35 @@ export function buildPrivacyProbeSetup(config: PrivacyProbeConfig) {
       },
     },
   } satisfies BehaviorSetup;
+}
+
+export function normProbeScenario(config: NormProbeConfig) {
+  const setup = buildNormProbeSetup(config);
+  return scenario({
+    lane: "live-only",
+    id: config.id,
+    title: config.title,
+    domain: "group-chat",
+    ...setup,
+    turns: [
+      {
+        ...setup.messageTurn,
+        assertResponse(text: string) {
+          if (text.trim().length === 0) {
+            return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+          }
+        },
+      },
+    ],
+    finalChecks: [
+      {
+        type: "judgeRubric",
+        name: "local-norm-adoption",
+        minimumScore: 0.8,
+        rubric:
+          `Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: ${config.hiddenNorm}` +
+          " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+      },
+    ],
+  });
 }

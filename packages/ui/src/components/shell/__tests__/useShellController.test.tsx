@@ -10,7 +10,7 @@
 import {
   NAVIGATE_VIEW_EVENT,
   VOICE_SETTINGS_APPLY_EVENT,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {
   afterEach,
@@ -217,25 +217,24 @@ const { useAppSelectorShallowMock } = vi.hoisted(() => ({
     selector: (value: typeof appMock.value) => unknown,
   ) => selector(appMock.value),
 }));
-vi.mock("../../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../../state/app-store", () => ({
   useAppSelectorShallow: useAppSelectorShallowMock,
+}));
+vi.mock("../../../state/ConversationMessagesContext.hooks", () => ({
   useConversationMessages: () => ({
     conversationMessages: appMock.value.conversationMessages,
     removeConversationMessage: vi.fn(),
   }),
+}));
+vi.mock("../../../state/ChatComposerContext.hooks", () => ({
   useChatComposer: () => composerMock.value,
+}));
+vi.mock("../../../state/ChatTurnStatusContext.hooks", () => ({
   useChatTurnStatus: () => ({
     serverTurnStatus: appMock.serverTurnStatus,
     setServerTurnStatus: vi.fn(),
   }),
-}));
-// useShellController imports useAppSelectorShallow from the deep app-store path
-// (not the ../../state barrel) so the selector hook stays decoupled from the
-// barrel's transitive shell imports (#9141/#9249). Mock that exact specifier or
-// the controller reads the real empty store instead of appMock.value.
-vi.mock("../../../state/app-store", () => ({
-  useAppSelectorShallow: useAppSelectorShallowMock,
 }));
 vi.mock("../../local-inference/useHomeModelStatus", () => ({
   useHomeModelStatus: () => NOT_REQUIRED_STATUS,

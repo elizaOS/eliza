@@ -6,7 +6,7 @@ import {
   getAutonomousSourceRoot,
   getElizaCoreEntry,
   getUiSourceRoot,
-} from "@elizaos/testing/package-paths";
+} from "@elizaos/repository-tools";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";
 import {

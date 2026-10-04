@@ -60,7 +60,9 @@ def test_implementation_compile_check_does_not_mask_failure() -> None:
     assert "echo" not in command
 
 
-def test_documented_yaml_and_command_output_checks_are_supported(tmp_path: Path) -> None:
+def test_documented_yaml_and_command_output_checks_are_supported(
+    tmp_path: Path,
+) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("name: weather-cli\nversion: 1\n")
     scoring_config = {
@@ -100,3 +102,34 @@ def test_documented_yaml_and_command_output_checks_are_supported(tmp_path: Path)
     )
 
     assert score["score"] == 1.0
+
+
+def test_required_fields_reject_non_mapping_documents(tmp_path: Path) -> None:
+    from openclaw.scoring import evaluate_check
+
+    for kind, content, options in [
+        ("json", '["name"]', {"required_keys": ["name"]}),
+        ("json", '"name"', {"schema": {"required": ["name"]}}),
+        ("yaml", "name", {"required": ["name"]}),
+    ]:
+        (tmp_path / "data").write_text(content)
+        check = {"id": "shape", "type": f"file_valid_{kind}", "path": "data", **options}
+        assert not evaluate_check(check, {}, tmp_path)["passed"]
+
+
+def test_unsupported_json_schema_is_not_silently_ignored(tmp_path: Path) -> None:
+    import pytest
+    from openclaw.scoring import evaluate_check
+
+    (tmp_path / "data").write_text('{"name": 1}')
+    with pytest.raises(ValueError, match="general JSON Schema"):
+        evaluate_check(
+            {
+                "id": "shape",
+                "type": "file_valid_json",
+                "path": "data",
+                "schema": {"properties": {"name": {"type": "string"}}},
+            },
+            {},
+            tmp_path,
+        )

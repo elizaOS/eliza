@@ -4,7 +4,7 @@
  * while `ELIZA_CRASH_INJECT` hard-exits the process at a restore swap point.
  */
 import path from "node:path";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { restoreLocalAgentBackup } from "../../src/services/agent-backup.ts";
 
 const stateDir = process.env.ELIZA_STATE_DIR;

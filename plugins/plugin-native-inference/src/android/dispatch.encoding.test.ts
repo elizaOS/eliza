@@ -17,7 +17,8 @@ vi.mock("@elizaos/core", () => ({
   },
   ServiceType: { NOTIFICATION: "notification" },
 }));
-vi.mock("@elizaos/core/utils/env", () => ({
+vi.mock("@elizaos/core/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core/protocol")>()),
   readAliasedEnv: () => undefined,
 }));
 

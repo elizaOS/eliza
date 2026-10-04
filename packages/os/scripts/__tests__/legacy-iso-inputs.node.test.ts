@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -128,7 +129,7 @@ test("legacy builder enters the selected variant while resolving output from the
   assert.notEqual(result.status, 0);
   assert.equal(
     (await readFile(receipt, "utf8")).trim(),
-    join(directory, "variant"),
+    await realpath(join(directory, "variant")),
   );
   assert.deepEqual(await readdir(join(directory, "output")), []);
   assert.deepEqual(await readdir(join(directory, "variant")), [

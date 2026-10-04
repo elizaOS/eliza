@@ -30,14 +30,13 @@ import {
   normalizeCompletedActionHandoffId,
   parseClampedInteger,
   type RoleGateRole,
-  type RouteHelpers,
-  type RouteRequestMeta,
-  readJsonBody,
   type ShellNavigateViewPayload,
   STANDARD_CAPABILITIES,
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
+import { readJsonBody } from "@elizaos/host";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {

@@ -11,6 +11,12 @@
  * An adapter that throws `CalendarTimeZoneError` (invalid or unreadable owner
  * zone) gets a visible failure reply rather than another zone's day.
  */
+
+import {
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
+  normalizeTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionParameter,
@@ -25,10 +31,7 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
-  CALENDAR_TIME_ZONE_INVALID,
-  CalendarTimeZoneError,
   ModelType,
-  normalizeTimeZone,
   resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";

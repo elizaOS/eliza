@@ -49,11 +49,9 @@ from typing import Optional
 logger = logging.getLogger("eot.train_eot_lora")
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[2]
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from training.model_registry import get as get_model_entry  # noqa: E402
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.training.model_registry import get as get_model_entry  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Target tier registry

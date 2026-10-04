@@ -19,7 +19,7 @@ import {
   type SetStateAction,
   useContext,
 } from "react";
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 
 export interface ConversationMessagesValue {
   conversationMessages: ConversationMessage[];

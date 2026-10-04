@@ -28,14 +28,14 @@ mirrors the gate style of ``eliza1-hf-push.sh``:
 
 Usage:
   # dry-run (default): list would-be deletions, zero HF calls, exits 0
-  python3 -m scripts.publish.purge_legacy_eliza1_tiers
+  python3 -m eliza_training.publish.purge_legacy_eliza1_tiers
 
   # actually delete (irreversible):
-  HF_TOKEN=hf_xxx python3 -m scripts.publish.purge_legacy_eliza1_tiers \
+  HF_TOKEN=hf_xxx python3 -m eliza_training.publish.purge_legacy_eliza1_tiers \
       --yes-i-will-delete
 
   # limit to a subset of the legacy allowlist:
-  HF_TOKEN=hf_xxx python3 -m scripts.publish.purge_legacy_eliza1_tiers \
+  HF_TOKEN=hf_xxx python3 -m eliza_training.publish.purge_legacy_eliza1_tiers \
       --yes-i-will-delete --tier 0_8b
 """
 

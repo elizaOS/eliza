@@ -1,20 +1,7 @@
 /** Public entry point for `@elizaos/testing/scenario-runner`: re-exports the execution, discovery, reporting, and native-export surface. */
-export * from "./cli";
-export { runScenario } from "./executor.ts";
-export { attachInterceptor } from "./interceptor.ts";
+export { type ExecutorOptions, runScenario } from "./executor.ts";
+export { type ActionEffectCapture, attachInterceptor } from "./interceptor.ts";
 export { judgeTextWithLlm } from "./judge.ts";
-export {
-  countScenarioCorpus,
-  discoverScenarios,
-  expandScenarioDefinition,
-  expandScenarioMetadata,
-  listScenarioMetadata,
-  loadAllScenarios,
-  loadScenarioFile,
-  loadScenarioMetadataFile,
-  SCENARIO_EDGE_VARIANTS,
-  validateScenarioCorpus,
-} from "./loader.ts";
 export type {
   NativeBoundaryRow,
   ScenarioNativeExportManifest,
@@ -40,10 +27,16 @@ export {
   ScenarioRequiredServicePreflightError,
   waitForScenarioRequiredServices,
 } from "./required-services.ts";
+export {
+  type CreateScenarioRuntimeOptions,
+  createScenarioRuntime,
+  type RuntimeFactoryResult,
+} from "./runtime-factory.ts";
 export * from "./stability.ts";
 export * from "./stability-executor.ts";
 export * from "./stability-subprocess-adapter.ts";
 export * from "./synthetic-control.ts";
+export { runSyntheticScenario } from "./synthetic-scenario.ts";
 export type {
   AggregateReport,
   FinalCheckReport,

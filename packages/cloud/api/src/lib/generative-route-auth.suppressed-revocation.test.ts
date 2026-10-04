@@ -1,7 +1,7 @@
 /** A revocation displaced into `SuppressedError.suppressed` keeps the credential contract. */
 
 import { describe, expect, test } from "bun:test";
-import { InferenceCredentialRevokedError } from "@/lib/services/inference-credential-revocation";
+import { InferenceCredentialRevokedError } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { resolveInferenceCredentialAdmissionDenial } from "./generative-route-auth";
 
 function suppressedError(error: unknown, suppressed: unknown): Error {

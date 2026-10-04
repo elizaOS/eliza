@@ -9,7 +9,7 @@
 import {
   parseRemoteAgentPairingUri,
   type RemoteAgentPairingPayload,
-} from "@elizaos/core/contracts/remote-agent-pairing";
+} from "@elizaos/contracts";
 
 export type RemoteAgentPairingFailure =
   | "REMOTE_AGENT_ORIGIN_UNTRUSTED"

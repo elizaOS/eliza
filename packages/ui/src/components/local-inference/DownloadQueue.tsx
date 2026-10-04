@@ -1,9 +1,6 @@
 /** Renders resumable local-model downloads from the live inference snapshot. */
 
-import type {
-  CatalogModel,
-  DownloadJob,
-} from "../../api/client-local-inference";
+import type { CatalogModel, DownloadJob } from "@elizaos/contracts";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

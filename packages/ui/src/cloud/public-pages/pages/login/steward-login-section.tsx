@@ -17,13 +17,15 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import type {
-  LoginAuthResult,
-  LoginMfaRequiredResult,
-  LoginProviders,
-  LoginTelegramLoginPayload,
+import {
+  LoginApiError,
+  LoginAuth,
+  type LoginAuthResult,
+  type LoginMfaRequiredResult,
+  type LoginProviders,
+  type LoginTelegramLoginPayload,
 } from "@elizaos/auth";
-import { LoginApiError, LoginAuth } from "@elizaos/auth";
+
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
   clearStoredStewardToken,
@@ -31,9 +33,11 @@ import {
   hasStewardAuthedCookie,
   peekStewardOAuthState,
   readStoredStewardToken,
+  type StewardOAuthProvider,
   StewardSessionError,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
+
 import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {
@@ -56,7 +60,7 @@ import {
   DiscordIcon,
   TelegramIcon,
 } from "../../../../cloud-ui/components/icons";
-import { Alert, AlertDescription } from "../../../../components/primitives";
+import { Alert, AlertDescription } from "../../../../components/ui/alert";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import {
@@ -96,7 +100,6 @@ import {
   buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkcePair,
-  type StewardOAuthProvider,
   storeStewardPkceVerifier,
 } from "../../lib/steward-oauth-url";
 import {

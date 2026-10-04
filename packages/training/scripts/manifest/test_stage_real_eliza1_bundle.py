@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
 
-from scripts.manifest import stage_real_eliza1_bundle as stage  # noqa: E402
+from eliza_training.manifest import stage_real_eliza1_bundle as stage  # noqa: E402
 
 
 def _write(path: Path, payload: str | bytes) -> Path:
@@ -58,7 +55,7 @@ def _seed_assets(bundle: Path) -> None:
 
 def _seed_recipes(root: Path) -> Path:
     """Minimal recipe-sidecar outputs with the §3 kernel_manifest fragments."""
-    from scripts.quantization._kernel_manifest import kernel_manifest_fragment
+    from eliza_training.quantization._kernel_manifest import kernel_manifest_fragment
 
     for sub, fname, method in (
         ("turbo", "turboquant.json", "turboquant"),

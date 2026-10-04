@@ -39,6 +39,7 @@
  *     account policy validation.
  */
 import type http from "node:http";
+import { PostInboxMessageRequestSchema } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   type ConnectorAccount,
@@ -48,10 +49,8 @@ import {
   getConnectorAccountManager,
   type Memory,
   normalizeConnectorSource,
-  PostInboxMessageRequestSchema,
   type RoleGateRole,
   type Room,
-  type RouteHelpers,
   requireConfirmedSendHandlerDelivery,
   roleRank,
   toWellFormedUnicode,
@@ -59,6 +58,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 
 import {
   resolveEffectiveMuteState,

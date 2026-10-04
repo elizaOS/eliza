@@ -1,3 +1,5 @@
+import { getHostRequestTransport } from "./host-transport";
+
 /**
  * Authenticated fetch helper for dashboard API requests.
  *
@@ -13,19 +15,14 @@
  * omitted at the client before the Worker enforces the same boundary.
  */
 
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { resolveApiUrl } from "../utils/asset-url.js";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
-import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
-import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "./auth/sessions";
 import { lastActivityHeadersForUrl } from "./auth/user-activity";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
-import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
-import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import { type AgentRequestContext, fetchAgentTransport } from "./transport";
 
@@ -86,12 +83,7 @@ export async function requestViaAgentTransport(
   context: AgentRequestContext = {},
 ): Promise<Response> {
   const transport =
-    (await androidNativeAgentTransportForUrl(url)) ??
-    (await iosInProcessAgentTransportForUrl(url)) ??
-    (await desktopLocalAgentTransportForUrl(url)) ??
-    desktopHttpTransportForUrl(url) ??
-    nativeCloudHttpTransportForUrl(url) ??
-    fetchAgentTransport;
+    (await getHostRequestTransport(url, "csrf")) ?? fetchAgentTransport;
   return transport.request(url, init, {
     timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
     ...(context.responseType ? { responseType: context.responseType } : {}),

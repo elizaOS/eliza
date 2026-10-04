@@ -6,11 +6,11 @@
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ScenarioDefinition } from "@elizaos/testing";
-import { describe, expect, it } from "vitest";
 import {
   discoverScenarios,
   loadScenarioFile,
-} from "../../../packages/testing/scenario-runner/src/loader.ts";
+} from "@elizaos/testing/scenarios";
+import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scenarioDir = resolve(here, "scenarios");

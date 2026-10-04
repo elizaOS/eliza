@@ -7,7 +7,7 @@ import {
   type CapabilityHandoffRequest,
   capabilityHandoffTargetAgentId,
   parsePersonalWorkspaceCapabilityHandoff,
-} from "@elizaos/core/capability-catalog";
+} from "@elizaos/core/protocol";
 import type {
   ChatActionResultSummary,
   ConversationMessage,

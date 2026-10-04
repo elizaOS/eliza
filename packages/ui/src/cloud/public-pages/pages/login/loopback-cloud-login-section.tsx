@@ -38,7 +38,7 @@ export default function LoopbackCloudLoginSection() {
         clearCloudPairApiToken();
         savePersistedFirstRunComplete(false);
       }
-      const { client } = await import("../../../../api");
+      const { client } = await import("../../../../api/client");
       const { resolveDirectCloudWebBase } = await import(
         "../../../../api/client-cloud"
       );

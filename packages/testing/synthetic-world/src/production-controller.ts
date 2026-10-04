@@ -4,9 +4,9 @@
  * not claim atomicity between SQLite journal state and the PGlite domain store.
  */
 import path from "node:path";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
-import { type SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
+import type { SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
 import {
   SYNTHETIC_WORLD_CAPABILITIES,
   SYNTHETIC_WORLD_COMMAND_VERSION,

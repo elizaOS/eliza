@@ -11,17 +11,21 @@
 
 import {
   type AccountStoragePolicy,
+  applySubscriptionCredentials,
   resetAccountCredentialStorage,
-} from "@elizaos/auth/auth/account-storage";
-import { applySubscriptionCredentials } from "@elizaos/auth/auth/credentials";
-import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/auth/types";
+  SUBSCRIPTION_PROVIDER_MAP,
+} from "@elizaos/auth/auth";
+import type {
+  DeploymentTargetConfig,
+  LinkedAccountFlagsConfig,
+  ServiceCapability,
+  ServiceRoutingConfig,
+} from "@elizaos/contracts";
+import { asNonEmptyString, asObjectRecord as asRecord } from "@elizaos/core";
 import {
-  asNonEmptyString,
-  asObjectRecord as asRecord,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   DEFAULT_CEREBRAS_TEXT_MODEL,
-  type DeploymentTargetConfig,
   deriveFirstRunCredentialPersistencePlan,
   type ElizaConfig,
   type FirstRunConnection,
@@ -33,7 +37,6 @@ import {
   getFirstRunProviderSignalEnvKeys,
   getStoredFirstRunProviderId,
   getStoredSubscriptionProvider,
-  type LinkedAccountFlagsConfig,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
@@ -41,9 +44,7 @@ import {
   normalizeServiceRoutingConfig,
   normalizeSubscriptionProviderSelectionId,
   requiresAdditionalRuntimeProvider,
-  type ServiceCapability,
-  type ServiceRoutingConfig,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;

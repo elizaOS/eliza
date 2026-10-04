@@ -17,7 +17,8 @@ const calls = {
   streamOrchestratorTask: vi.fn(),
 };
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     getOrchestratorStatus: () => calls.getOrchestratorStatus(),
     listCodingAgentTaskThreads: (o: unknown) =>

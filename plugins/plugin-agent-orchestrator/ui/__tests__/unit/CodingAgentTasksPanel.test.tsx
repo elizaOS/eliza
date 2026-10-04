@@ -28,97 +28,14 @@ const mockAppValue = vi.hoisted(() => ({
   uiLanguage: "en-US",
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
-}));
-
-vi.mock("@elizaos/ui/api", async () => ({
-  ApiError: (
-    await import("../../../../../packages/ui/src/api/client-types-core.js")
-  ).ApiError,
-  client: {
-    listCodingAgentTaskThreads: (...a: unknown[]) =>
-      listCodingAgentTaskThreads(...a),
-    getCodingAgentTaskThread: (...a: unknown[]) =>
-      getCodingAgentTaskThread(...a),
-    archiveCodingAgentTaskThread: (...a: unknown[]) =>
-      archiveCodingAgentTaskThread(...a),
-    reopenCodingAgentTaskThread: (...a: unknown[]) =>
-      reopenCodingAgentTaskThread(...a),
-    listProjects: vi.fn(async () => ({ projects: [] })),
-  },
-  // Translate stub that mirrors the production i18n contract the view relies on:
-  // render the defaultValue and interpolate `{{var}}` placeholders from `vars`
-  // (this is exactly the count/preview interpolation the real catalog performs,
-  // so the rendered "2 sessions" / "2 changed files: …" strings are real).
-  useApp: () => mockAppValue,
-  useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector(mockAppValue),
-  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector(mockAppValue),
-  // Lightweight Button stub — the real one pulls a large dependency graph; the
-  // panel only needs a clickable button element.
-  Button: ({
-    children,
-    onClick,
-    disabled,
-    // Drop `@elizaos/ui` Button-only props that a raw <button> rejects, then
-    // forward EVERYTHING else (data-testid, aria-pressed, type, className, …)
-    // so tests can find controls by testid and assert their aria state.
-    unstyled: _unstyled,
-    variant: _variant,
-    size: _size,
-    ...rest
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-    disabled?: boolean;
-    unstyled?: boolean;
-    variant?: string;
-    size?: string;
-    [key: string]: unknown;
-  }) => (
-    <button type="button" onClick={onClick} disabled={disabled} {...rest}>
-      {children}
-    </button>
-  ),
-  Card: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  Input: (props: Record<string, unknown>) => <input {...props} />,
-  Separator: (props: Record<string, unknown>) => <div {...props} />,
-  StatusPulseDot: (props: Record<string, unknown>) => <span {...props} />,
-  DropdownMenu: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuContent: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  DropdownMenuItem: ({
-    children,
-    onSelect,
-    ...rest
-  }: {
-    children: ReactNode;
-    onSelect?: () => void;
-  } & Record<string, unknown>) => (
-    <button type="button" onClick={() => onSelect?.()} {...rest}>
-      {children}
-    </button>
-  ),
-}));
-
-vi.mock("@elizaos/ui", () => {
-  return {
+  ...(await (async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    ApiError: (
+      await import("../../../../../packages/ui/src/api/client-types-core")
+    ).ApiError,
     client: {
       listCodingAgentTaskThreads: (...a: unknown[]) =>
         listCodingAgentTaskThreads(...a),
@@ -130,10 +47,17 @@ vi.mock("@elizaos/ui", () => {
         reopenCodingAgentTaskThread(...a),
       listProjects: vi.fn(async () => ({ projects: [] })),
     },
+    useApp: () => mockAppValue,
+    useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
+      selector(mockAppValue),
+
     Button: ({
       children,
       onClick,
       disabled,
+      // Drop `@elizaos/ui` Button-only props that a raw <button> rejects, then
+      // forward EVERYTHING else (data-testid, aria-pressed, type, className, …)
+      // so tests can find controls by testid and assert their aria state.
       unstyled: _unstyled,
       variant: _variant,
       size: _size,
@@ -142,6 +66,9 @@ vi.mock("@elizaos/ui", () => {
       children: ReactNode;
       onClick?: () => void;
       disabled?: boolean;
+      unstyled?: boolean;
+      variant?: string;
+      size?: string;
       [key: string]: unknown;
     }) => (
       <button type="button" onClick={onClick} disabled={disabled} {...rest}>
@@ -150,37 +77,102 @@ vi.mock("@elizaos/ui", () => {
     ),
     Card: ({
       children,
-      variant: _variant,
       ...rest
-    }: { children: ReactNode; variant?: string } & Record<string, unknown>) => (
+    }: { children: ReactNode } & Record<string, unknown>) => (
       <div {...rest}>{children}</div>
     ),
-    Input: ({
-      variant: _variant,
-      density: _density,
-      adornment: _adornment,
-      ...rest
-    }: Record<string, unknown>) => <input {...rest} />,
-    Separator: () => <hr />,
-    StatusPulseDot: () => <span aria-hidden="true" />,
+    Input: (props: Record<string, unknown>) => <input {...props} />,
+    Separator: (props: Record<string, unknown>) => <div {...props} />,
+    StatusPulseDot: (props: Record<string, unknown>) => <span {...props} />,
     DropdownMenu: ({ children }: { children: ReactNode }) => (
       <div>{children}</div>
     ),
     DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
       <div>{children}</div>
     ),
-    DropdownMenuContent: ({ children }: { children: ReactNode }) => (
-      <div>{children}</div>
+    DropdownMenuContent: ({
+      children,
+      ...rest
+    }: { children: ReactNode } & Record<string, unknown>) => (
+      <div {...rest}>{children}</div>
     ),
-    DropdownMenuItem: ({ children }: { children: ReactNode }) => (
-      <div>{children}</div>
+    DropdownMenuItem: ({
+      children,
+      onSelect,
+      ...rest
+    }: {
+      children: ReactNode;
+      onSelect?: () => void;
+    } & Record<string, unknown>) => (
+      <button type="button" onClick={() => onSelect?.()} {...rest}>
+        {children}
+      </button>
     ),
-  };
-});
-
-vi.mock("@elizaos/ui/state", () => ({
-  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector(mockAppValue),
+    ...(await (() => {
+      return {
+        client: {
+          listCodingAgentTaskThreads: (...a: unknown[]) =>
+            listCodingAgentTaskThreads(...a),
+          getCodingAgentTaskThread: (...a: unknown[]) =>
+            getCodingAgentTaskThread(...a),
+          archiveCodingAgentTaskThread: (...a: unknown[]) =>
+            archiveCodingAgentTaskThread(...a),
+          reopenCodingAgentTaskThread: (...a: unknown[]) =>
+            reopenCodingAgentTaskThread(...a),
+          listProjects: vi.fn(async () => ({ projects: [] })),
+        },
+        Button: ({
+          children,
+          onClick,
+          disabled,
+          unstyled: _unstyled,
+          variant: _variant,
+          size: _size,
+          ...rest
+        }: {
+          children: ReactNode;
+          onClick?: () => void;
+          disabled?: boolean;
+          [key: string]: unknown;
+        }) => (
+          <button type="button" onClick={onClick} disabled={disabled} {...rest}>
+            {children}
+          </button>
+        ),
+        Card: ({
+          children,
+          variant: _variant,
+          ...rest
+        }: { children: ReactNode; variant?: string } & Record<
+          string,
+          unknown
+        >) => <div {...rest}>{children}</div>,
+        Input: ({
+          variant: _variant,
+          density: _density,
+          adornment: _adornment,
+          ...rest
+        }: Record<string, unknown>) => <input {...rest} />,
+        Separator: () => <hr />,
+        StatusPulseDot: () => <span aria-hidden="true" />,
+        DropdownMenu: ({ children }: { children: ReactNode }) => (
+          <div>{children}</div>
+        ),
+        DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+          <div>{children}</div>
+        ),
+        DropdownMenuContent: ({ children }: { children: ReactNode }) => (
+          <div>{children}</div>
+        ),
+        DropdownMenuItem: ({ children }: { children: ReactNode }) => (
+          <div>{children}</div>
+        ),
+      };
+    })()),
+    useAppSelectorShallow: (
+      selector: (s: Record<string, unknown>) => unknown,
+    ) => selector(mockAppValue),
+  }))(importOriginal)),
 }));
 
 import { CodingAgentTasksPanel } from "../../../src/ui/CodingAgentTasksPanel";

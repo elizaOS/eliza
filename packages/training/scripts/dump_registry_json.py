@@ -15,9 +15,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE / "training"))
 
-import model_registry  # noqa: E402  (after sys.path tweak)
+from eliza_training.training import model_registry  # noqa: E402  (after sys.path tweak)
 
 
 def main() -> int:

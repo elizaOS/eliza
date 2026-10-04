@@ -44,7 +44,7 @@ vi.mock("../hooks/useResolvedTtsDefault", () => ({
   },
 }));
 
-vi.mock("../state", () => ({
+vi.mock("../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof hoisted.appState) => unknown) =>
     selector(hoisted.appState),
 }));

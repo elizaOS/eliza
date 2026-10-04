@@ -28,19 +28,8 @@ public abstract class CalendarPlugin extends Plugin {
   Long begin=c.getLong("begin"),end=c.getLong("end");
   if(begin==null||end==null||begin<0||end<=begin||end-begin>370L*86400000){c.reject("A valid calendar range of at most 370 days is required");return;}
   try{
-   JSArray calendars=new JSArray(),events=new JSArray();
-   String[] fields={CalendarContract.Calendars._ID,CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,CalendarContract.Calendars.ACCOUNT_NAME,CalendarContract.Calendars.ACCOUNT_TYPE};
-   try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,fields,null,null,null)){
-    if(rows!=null)while(rows.moveToNext()){
-     JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("name",rows.getString(1));row.put("writable",rows.getInt(2)>=CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR);row.put("account",rows.getString(3));row.put("local",CalendarContract.ACCOUNT_TYPE_LOCAL.equals(rows.getString(4)));calendars.put(row);
-    }
-   }
-   Uri.Builder range=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(range,begin);ContentUris.appendId(range,end);
-   String[] projection={CalendarContract.Instances.EVENT_ID,CalendarContract.Instances.CALENDAR_ID,CalendarContract.Instances.TITLE,CalendarContract.Instances.DESCRIPTION,CalendarContract.Instances.EVENT_LOCATION,CalendarContract.Instances.BEGIN,CalendarContract.Instances.END,CalendarContract.Instances.ALL_DAY,CalendarContract.Instances.RRULE};
-   try(Cursor rows=getContext().getContentResolver().query(range.build(),projection,CalendarContract.Events.DELETED+"=0",null,CalendarContract.Instances.BEGIN+" ASC")){
-    if(rows!=null)while(rows.moveToNext()&&events.length()<2000){JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("calendarId",Long.toString(rows.getLong(1)));row.put("title",rows.getString(2));row.put("body",rows.getString(3));row.put("location",rows.getString(4));row.put("begin",rows.getLong(5));row.put("end",rows.getLong(6));row.put("allDay",rows.getInt(7)!=0);row.put("recurring",rows.getString(8)!=null&&!rows.getString(8).isEmpty());events.put(row);}
-   }
-   JSObject value=new JSObject();value.put("status","ready");value.put("calendars",calendars);value.put("events",events);value.put("truncated",events.length()>=2000);c.resolve(value);
+   ai.eliza.plugins.calendar.read.CalendarReadAccess reader=new ai.eliza.plugins.calendar.read.CalendarReadAccess(getContext().getContentResolver());
+   JSObject value=new JSObject();value.put("status","ready");value.put("calendars",reader.calendars());value.put("events",reader.events(begin,end));value.put("truncated",false);c.resolve(value);
   }catch(Exception e){c.reject("Calendar provider could not be read");}
  }
  private boolean workflowReadAllowed(){return androidx.core.content.ContextCompat.checkSelfPermission(getContext(),Manifest.permission.READ_CALENDAR)==android.content.pm.PackageManager.PERMISSION_GRANTED;}

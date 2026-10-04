@@ -41,7 +41,7 @@ export interface ScheduledTaskFireResult {
   task: ScheduledTaskView | null;
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     /**
      * List LifeOps scheduled tasks (`GET /api/lifeops/scheduled-tasks`).

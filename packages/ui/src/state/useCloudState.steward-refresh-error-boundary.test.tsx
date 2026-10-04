@@ -38,7 +38,7 @@ vi.mock("../api/client-cloud", () => ({
   resolveDirectCloudAuthApiBase: clientCloudMocks.resolveDirectCloudAuthApiBase,
 }));
 
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: () => "",
     getCloudStatus: async () => ({
@@ -49,8 +49,11 @@ vi.mock("../api", () => ({
   },
 }));
 
-vi.mock("../bridge", () => ({
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
   invokeDesktopBridgeRequestWithTimeout: vi.fn(),
+}));
+vi.mock("../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => true,
 }));
 

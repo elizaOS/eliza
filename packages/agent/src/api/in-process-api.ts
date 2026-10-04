@@ -1,4 +1,4 @@
-import type { RouteHandlerResult } from "@elizaos/core";
+import type { RouteHandlerResult } from "@elizaos/host/protocol";
 import {
   buildLegacyShim,
   capturedToResult,

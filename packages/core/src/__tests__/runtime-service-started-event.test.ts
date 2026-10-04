@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import { EventType } from "../types/events";

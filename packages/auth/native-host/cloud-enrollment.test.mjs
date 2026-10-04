@@ -100,10 +100,15 @@ function fixture(override = {}) {
     clearActive: async () => {
       active = null;
     },
-    activate: async (value, guard) => {
-      guard();
-      active = value;
-    },
+    activate: override.activate
+      ? (value, guard) =>
+          override.activate(value, guard, (next) => {
+            active = next;
+          })
+      : async (value, guard) => {
+          guard();
+          active = value;
+        },
     beforeStart: async () => {
       active = null;
     },
@@ -273,11 +278,11 @@ test("wrong attempt, malformed code, resend cooldown and unsupported MFA fail cl
 });
 
 test("active mobile disconnect journals before clearing, retries a lost response after restart", async () => {
-  const secret = "eliza_mobile_" + "a".repeat(64);
+  const secret = `eliza_mobile_${"a".repeat(64)}`;
   const failed = true;
   const f = fixture({
     active: secret,
-    fetch: async (path, body, init, state) => {
+    fetch: async (path, _body, _init, state) => {
       if (path.endsWith("/current")) {
         assert.equal(state.active, null);
         assert.equal(JSON.parse(state.pending).proof.secret, secret);
@@ -292,7 +297,7 @@ test("active mobile disconnect journals before clearing, retries a lost response
   const restarted = createNativeCloudAuth({
     pendingStore: f.pendingStore,
     activate: async () => assert.fail("must never reactivate"),
-    fetchImpl: async (url, init) => {
+    fetchImpl: async (_url, init) => {
       assert.equal(init.method, "DELETE");
       assert.equal(init.headers.Authorization, `Bearer ${secret}`);
       return Response.json({
@@ -308,7 +313,7 @@ test("active mobile disconnect journals before clearing, retries a lost response
   assert.equal(f.state.pending, null);
 });
 test("failed disconnect journal preserves active key and never dispatches revocation", async () => {
-  const secret = "eliza_mobile_" + "b".repeat(64);
+  const secret = `eliza_mobile_${"b".repeat(64)}`;
   const f = fixture({
     active: secret,
     pendingStore: {
@@ -323,7 +328,7 @@ test("failed disconnect journal preserves active key and never dispatches revoca
 });
 test("disconnect rejects malformed receipt and never revokes developer credentials", async () => {
   const f = fixture({
-    active: "eliza_mobile_" + "c".repeat(64),
+    active: `eliza_mobile_${"c".repeat(64)}`,
     fetch: (path) =>
       path.endsWith("/current")
         ? Response.json({
@@ -383,7 +388,7 @@ test("phone sign-in binds code to validated phone and uses the existing private 
   );
 });
 test("Google CLI credential logout is journalled and revoked, including retries", async () => {
-  const secret = "eliza_" + "e".repeat(64);
+  const secret = `eliza_${"e".repeat(64)}`;
   const f = fixture({
     active: secret,
     fetch: (path) =>
@@ -475,12 +480,18 @@ const ACCOUNT = {
 const sessionToken = (exp = Math.floor(Date.now() / 1000) + 900) =>
   [
     "eyJhbGciOiJub25lIn0",
-    Buffer.from(JSON.stringify({ exp })).toString("base64url"),
+    Buffer.from(
+      JSON.stringify({
+        exp,
+        userId: ACCOUNT.id,
+        tenantId: `personal-${ACCOUNT.id}`,
+      }),
+    ).toString("base64url"),
     "private-billing-signature",
   ].join(".");
 /** Steward codes for the billing check resolve to `sessionAccount`; the stored key to ACCOUNT. */
 function billingFixture({
-  active = "eliza_mobile_" + "f".repeat(64),
+  active = `eliza_mobile_${"f".repeat(64)}`,
   sessionAccount = ACCOUNT,
   token = sessionToken(),
   fetch,
@@ -564,7 +575,7 @@ test("billing re-verification defaults to the account's own email and never re-e
   assert.equal(authority.expiresAt, result.expiresAt);
   assert.match(authority.token, /private-billing-signature$/);
   // The stored inference credential and pending store are untouched.
-  assert.equal(f.state.active, "eliza_mobile_" + "f".repeat(64));
+  assert.equal(f.state.active, `eliza_mobile_${"f".repeat(64)}`);
   assert.deepEqual(f.writes, []);
   assert.equal(
     f.calls.some((c) => enrollmentPaths.some((p) => c.path.endsWith(p))),
@@ -650,7 +661,7 @@ test("billing authority is cleared by cancel, explicit clear and expiry", async 
 });
 
 test("billing authority follows the exact active credential, not just any credential", async () => {
-  let active = "eliza_mobile_" + "f".repeat(64);
+  let active = `eliza_mobile_${"f".repeat(64)}`;
   // The host can replace the stored key outside this module (account change).
   const swapped = createNativeCloudAuth({
     fetchImpl: async (url, init) => {
@@ -677,9 +688,9 @@ test("billing authority follows the exact active credential, not just any creden
     code: "123456",
   });
   assert.ok(await swapped.billingAuthority());
-  active = "eliza_mobile_" + "9".repeat(64);
+  active = `eliza_mobile_${"9".repeat(64)}`;
   assert.equal(await swapped.billingAuthority(), null);
-  active = "eliza_mobile_" + "f".repeat(64);
+  active = `eliza_mobile_${"f".repeat(64)}`;
   assert.equal(await swapped.billingAuthority(), null);
 });
 
@@ -712,4 +723,345 @@ test("billing MFA completes before authority and unknown billing operations are 
   assert.equal(result.status, "authorized");
   assert.ok(await f.auth.billingAuthority());
   await assert.rejects(f.auth.handle("billing-anything", {}), { status: 410 });
+});
+
+test("account inventory stays inside the private enrollment session and unlink clears it", async () => {
+  const privateToken = [
+    "header",
+    Buffer.from(
+      JSON.stringify({
+        exp: Math.floor(Date.now() / 1000) + 900,
+        mfaVerifiedAt: Date.now(),
+        userId: ACCOUNT.id,
+        tenantId: `personal-${ACCOUNT.id}`,
+      }),
+    ).toString("base64url"),
+    "signature",
+  ].join(".");
+  const f = billingFixture({
+    token: privateToken,
+    fetch: (path, _body, init) => {
+      if (path === "/user/me/accounts") {
+        assert.equal(init.headers.Authorization, `Bearer ${privateToken}`);
+        return Response.json({
+          ok: true,
+          data: {
+            accounts: [
+              {
+                id: "linked-google",
+                provider: "google",
+                providerAccountId: "private-subject",
+              },
+            ],
+            primaryLoginMethods: [
+              { provider: "email", providerAccountId: "relative@example.com" },
+            ],
+          },
+        });
+      }
+      if (path === "/user/me/accounts/google/private-subject") {
+        assert.equal(init.method, "DELETE");
+        assert.equal(init.headers.Authorization, `Bearer ${privateToken}`);
+        return Response.json({
+          ok: true,
+          data: { deleted: true, issuedBefore: Math.floor(Date.now() / 1000) },
+        });
+      }
+    },
+  });
+  await assert.rejects(f.auth.handle("account-methods"), { status: 428 });
+  await billingVerify(f, await billingStart(f));
+  const review = await f.auth.handle("account-methods");
+  assert.equal(review.securityCheckRequired, false);
+  assert.ok(!JSON.stringify(review).includes("private-subject"));
+  assert.deepEqual(
+    await f.auth.handle("account-unlink", {
+      reviewId: review.reviewId,
+      methodId: "linked-google",
+    }),
+    { status: "removed", reauthenticationRequired: true },
+  );
+  assert.equal(await f.auth.billingAuthority(), null);
+  assert.equal(f.writes.length, 0);
+});
+
+test("cancel during linked-account observation discards the result and never dispatches unlink", async () => {
+  let started, release;
+  const seen = new Promise((resolve) => {
+      started = resolve;
+    }),
+    held = new Promise((resolve) => {
+      release = resolve;
+    });
+  const f = billingFixture({
+    fetch: async (path) => {
+      if (path === "/user/me/accounts") {
+        started();
+        await held;
+        return Response.json({
+          ok: true,
+          data: {
+            accounts: [],
+            primaryLoginMethods: [
+              { provider: "email", providerAccountId: "relative@example.com" },
+            ],
+          },
+        });
+      }
+    },
+  });
+  await billingVerify(f, await billingStart(f));
+  const read = f.auth.handle("account-methods");
+  const rejected = assert.rejects(read, { status: 409 });
+  await seen;
+  await assert.rejects(f.auth.handle("account-methods"), { status: 409 });
+  const cancelled = f.auth.cancel();
+  release();
+  await rejected;
+  await cancelled;
+  assert.equal(await f.auth.billingAuthority(), null);
+  assert.equal(
+    f.calls.filter((call) => call.init.method === "DELETE").length,
+    0,
+  );
+});
+
+for (const mismatch of [false, true])
+  test(`account security replacement is private and account-bound: mismatch=${mismatch}`, async () => {
+    const replacement = [
+      "header",
+      Buffer.from(
+        JSON.stringify({
+          exp: Math.floor(Date.now() / 1000) + 900,
+          mfaVerifiedAt: Date.now(),
+          userId: ACCOUNT.id,
+          tenantId: `personal-${ACCOUNT.id}`,
+        }),
+      ).toString("base64url"),
+      "replacement",
+    ].join(".");
+    const f = billingFixture({
+      fetch: (path, _body, init) => {
+        if (path === "/auth/mfa/totp/status")
+          return Response.json({ ok: true, enabled: true });
+        if (path === "/auth/mfa/totp/step-up")
+          return Response.json({ ok: true, token: replacement });
+        if (
+          path === "/api/v1/user" &&
+          init.headers.Authorization === `Bearer ${replacement}`
+        )
+          return Response.json({
+            success: true,
+            ...ACCOUNT,
+            ...(mismatch ? { id: "different-account" } : {}),
+          });
+      },
+    });
+    await billingVerify(f, await billingStart(f));
+    const step = await f.auth.handle("account-security-start", {
+      method: "totp",
+    });
+    const operation = f.auth.handle("account-security-verify", {
+      sessionId: step.sessionId,
+      code: "123456",
+    });
+    if (mismatch) {
+      await assert.rejects(operation, {
+        code: "account_verification_mismatch",
+      });
+      assert.equal(await f.auth.billingAuthority(), null);
+    } else {
+      const result = await operation;
+      assert.deepEqual(result, { status: "verified" });
+      assert.equal((await f.auth.billingAuthority()).token, replacement);
+      assert.ok(!JSON.stringify(result).includes(replacement));
+    }
+    assert.equal(f.writes.length, 0);
+  });
+test("cancellation during security token account verification cannot restore authority", async () => {
+  let started, release;
+  const seen = new Promise((resolve) => {
+      started = resolve;
+    }),
+    held = new Promise((resolve) => {
+      release = resolve;
+    });
+  const replacement = [
+    "header",
+    Buffer.from(
+      JSON.stringify({
+        exp: Math.floor(Date.now() / 1000) + 900,
+        mfaVerifiedAt: Date.now(),
+        userId: ACCOUNT.id,
+        tenantId: `personal-${ACCOUNT.id}`,
+      }),
+    ).toString("base64url"),
+    "replacement",
+  ].join(".");
+  const f = billingFixture({
+    fetch: async (path, _body, init) => {
+      if (path === "/auth/mfa/totp/status")
+        return Response.json({ ok: true, enabled: true });
+      if (path === "/auth/mfa/totp/step-up")
+        return Response.json({ ok: true, token: replacement });
+      if (
+        path === "/api/v1/user" &&
+        init.headers.Authorization === `Bearer ${replacement}`
+      ) {
+        started();
+        await held;
+        return Response.json({ success: true, ...ACCOUNT });
+      }
+    },
+  });
+  await billingVerify(f, await billingStart(f));
+  const step = await f.auth.handle("account-security-start", {
+    method: "totp",
+  });
+  const operation = f.auth.handle("account-security-verify", {
+    sessionId: step.sessionId,
+    code: "123456",
+  });
+  const rejected = assert.rejects(operation, { status: 409 });
+  await seen;
+  const cancelled = f.auth.cancel();
+  release();
+  await rejected;
+  await cancelled;
+  assert.equal(await f.auth.billingAuthority(), null);
+  assert.equal(f.writes.length, 0);
+});
+
+for (const method of ["email", "phone"]) {
+  test(`account reauthentication requests personal authority for ${method}`, async () => {
+    const f = billingFixture();
+    await billingVerify(
+      f,
+      await billingStart(f, { purpose: "account", method }),
+    );
+    const requests = f.calls.filter(
+      ({ path }) =>
+        path === (method === "phone" ? "/auth/sms/send" : "/auth/email/send") ||
+        path ===
+          (method === "phone" ? "/auth/sms/verify" : "/auth/email/code/verify"),
+    );
+    assert.equal(requests.length, 2);
+    for (const request of requests)
+      assert.equal(Object.hasOwn(request.body, "tenantId"), false);
+    assert.ok(await f.auth.billingAuthority());
+    assert.equal(f.writes.length, 0);
+  });
+}
+
+for (const claims of [
+  { userId: ACCOUNT.id, tenantId: "elizacloud" },
+  { userId: "someone-else", tenantId: "personal-someone-else" },
+  { userId: ACCOUNT.id, tenantId: "personal-someone-else" },
+]) {
+  test(`account verification rejects mismatched personal claims ${JSON.stringify(claims)}`, async () => {
+    const token = [
+      "header",
+      Buffer.from(
+        JSON.stringify({ ...claims, exp: Math.floor(Date.now() / 1000) + 900 }),
+      ).toString("base64url"),
+      "signature",
+    ].join(".");
+    const f = billingFixture({ token });
+    await assert.rejects(
+      billingVerify(f, await billingStart(f, { purpose: "account" })),
+      { code: "billing_account_mismatch" },
+    );
+    assert.equal(await f.auth.billingAuthority(), null);
+  });
+}
+
+test("Cloud billing authority cannot be reused for personal account routes", async () => {
+  const token = [
+    "header",
+    Buffer.from(
+      JSON.stringify({
+        userId: ACCOUNT.id,
+        tenantId: "elizacloud",
+        exp: Math.floor(Date.now() / 1000) + 900,
+      }),
+    ).toString("base64url"),
+    "signature",
+  ].join(".");
+  const f = billingFixture({ token });
+  await billingVerify(f, await billingStart(f));
+  assert.ok(await f.auth.billingAuthority());
+  await assert.rejects(f.auth.handle("account-methods"), { status: 428 });
+  assert.equal(
+    f.calls.some(({ path }) => path === "/user/me/accounts"),
+    false,
+  );
+  const sent = f.calls.filter(
+    ({ path }) =>
+      path === "/auth/email/send" || path === "/auth/email/code/verify",
+  );
+  for (const request of sent) assert.equal(request.body.tenantId, "elizacloud");
+});
+
+test("account verification retains personal purpose through MFA", async () => {
+  const f = billingFixture({
+    fetch: (path) => {
+      if (path === "/auth/email/code/verify")
+        return Response.json({
+          mfaRequired: true,
+          mfa: {
+            type: "totp",
+            challengeId: "personal-challenge",
+            expiresAt: future(),
+          },
+        });
+      if (path === "/auth/mfa/totp/complete")
+        return Response.json({ ok: true, token: sessionToken() });
+    },
+  });
+  const step = await billingStart(f, { purpose: "account" });
+  assert.equal((await billingVerify(f, step)).status, "mfa");
+  assert.equal(await f.auth.billingAuthority(), null);
+  assert.equal(
+    (
+      await f.auth.handle("billing-mfa", {
+        sessionId: step.sessionId,
+        code: "123456",
+      })
+    ).status,
+    "authorized",
+  );
+  assert.ok(await f.auth.billingAuthority());
+});
+
+test("cancelling while the host activates the key leaves no revoked key active", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  let reached;
+  const activating = new Promise((resolve) => {
+    reached = resolve;
+  });
+  const f = fixture({
+    // A host that checks the guard, then persists the key asynchronously.
+    activate: async (value, guard, setActive) => {
+      guard();
+      reached();
+      await gate;
+      setActive(value);
+    },
+  });
+  const begun = await start(f);
+  const verifying = verify(f, begun);
+  await activating;
+  const cancelling = f.auth.cancel();
+  release();
+  await assert.rejects(verifying);
+  assert.deepEqual(await cancelling, { status: "cancelled" });
+  // Cancel revoked the key in Cloud; it must not stay the active credential.
+  assert.equal(f.state.active, null);
+  assert.equal(
+    f.calls.filter((call) => call.path.endsWith("/api-keys/current")).length,
+    1,
+  );
 });

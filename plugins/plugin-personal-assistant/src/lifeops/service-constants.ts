@@ -69,4 +69,4 @@ export {
   REMINDER_URGENCY_METADATA_KEY,
   type ReminderActivityGate,
   reminderProcessingQueues,
-} from "@elizaos/core/lifeops-constants/service-constants";
+} from "@elizaos/contracts";

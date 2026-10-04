@@ -60,53 +60,62 @@ const billUsage = mock(
 const addMessage = mock(async () => ({}));
 const usageCreate = mock(async () => ({ id: "u1" }));
 
-const languageModelActual = await import("@/lib/providers/language-model");
-mock.module("@/lib/providers/language-model", () => ({
+const languageModelActual = await import(
+  "@elizaos/cloud-shared/lib/providers/language-model"
+);
+mock.module("@elizaos/cloud-shared/lib/providers/language-model", () => ({
   ...languageModelActual,
   hasLanguageModelProviderConfigured: () => true,
   getLanguageModel: () => makeModel(),
 }));
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   getCurrentUser: async () => ({ id: "user-1", organization_id: "org-1" }),
 }));
-const rateLimitActual = await import("@/lib/middleware/rate-limit");
-mock.module("@/lib/middleware/rate-limit", () => ({
+const rateLimitActual = await import(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit"
+);
+mock.module("@elizaos/cloud-shared/lib/middleware/rate-limit", () => ({
   ...rateLimitActual,
   enforceOrgRateLimit: async () => null,
 }));
-mock.module("@/lib/services/content-moderation", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/content-moderation", () => ({
   contentModerationService: {
     shouldBlockUser: async () => false,
     moderateInBackground: () => Promise.resolve(),
   },
 }));
 const admissionActual = await import(
-  "@/lib/services/organization-inference-admission"
+  "@elizaos/cloud-shared/lib/services/organization-inference-admission"
 );
-mock.module("@/lib/services/organization-inference-admission", () => ({
-  ...admissionActual,
-  admitOrganizationInference: async () => ({
-    settle: async (cost: number) => {
-      settleCalls.push(`settle(${cost.toFixed(4)})`);
-      return null;
-    },
-    settleUnknown: async () => {
-      settleCalls.push("settleUnknown");
-      return null;
-    },
-    markProviderDispatched: async () => {},
-    reservation: undefined,
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-inference-admission",
+  () => ({
+    ...admissionActual,
+    admitOrganizationInference: async () => ({
+      settle: async (cost: number) => {
+        settleCalls.push(`settle(${cost.toFixed(4)})`);
+        return null;
+      },
+      settleUnknown: async () => {
+        settleCalls.push("settleUnknown");
+        return null;
+      },
+      markProviderDispatched: async () => {},
+      reservation: undefined,
+    }),
   }),
-}));
-const billingActual = await import("@/lib/services/ai-billing");
-mock.module("@/lib/services/ai-billing", () => ({
+);
+const billingActual = await import(
+  "@elizaos/cloud-shared/lib/services/ai-billing"
+);
+mock.module("@elizaos/cloud-shared/lib/services/ai-billing", () => ({
   ...billingActual,
   billUsage,
 }));
-mock.module("@/lib/services/conversations", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/conversations", () => ({
   conversationsService: { addMessageWithSequence: addMessage },
 }));
-mock.module("@/lib/services/usage", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/usage", () => ({
   usageService: { create: usageCreate },
 }));
 

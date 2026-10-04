@@ -1,9 +1,9 @@
 /**
  * Registers Docker node bootstrap callbacks from provisioned control-plane hosts.
  */
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Bootstrap callback: cloud-init on a fresh node POSTs here to self-
@@ -28,18 +28,18 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Required env: `CONTAINERS_BOOTSTRAP_SECRET`.
  */
 
-import { z } from "zod";
 import {
   dockerNodesRepository,
   stampDockerNodeEnvironmentMetadata,
-} from "@/db/repositories/docker-nodes";
-import { containersEnv } from "@/lib/config/containers-env";
+} from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
 import {
   attestHetznerCloudNode,
   isTypedHetznerCloudNode,
-} from "@/lib/services/containers/hetzner-node-attestation";
-import { resolveNodeCapacity } from "@/lib/services/docker-node-manager";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/containers/hetzner-node-attestation";
+import { resolveNodeCapacity } from "@elizaos/cloud-shared/lib/services/docker-node-manager";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { z } from "zod";
 
 /**
  * Used only when the node reports neither a capacity nor its RAM. Preserves the

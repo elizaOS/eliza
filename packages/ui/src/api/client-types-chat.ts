@@ -3,14 +3,15 @@
  * Emote*, Document*, Memory*, MCP*, Share*. One slice of the ElizaClient type
  * surface, re-exported through client-types.ts.
  */
-import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
+
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
   ChatToolCallEvent,
   ChatTurnStatus,
-} from "@elizaos/core/contracts/chat";
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/contracts";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import type { NativeToolCallEvent } from "./client-types-cloud";
 import type {
   ConversationMetadata,

@@ -5,23 +5,22 @@
  * connector account a request runs against. The external-API boundary for the
  * Google provider path.
  */
+
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarEventAttendee,
+  LifeOpsCalendarSummary,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGoogleCapability,
+  LifeOpsGoogleConnectorStatus,
+} from "@elizaos/contracts";
 import {
   type ConnectorAccount,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarEventAttendee,
-  type LifeOpsCalendarSummary,
-} from "@elizaos/core/contracts/calendar";
-import {
-  type LifeOpsConnectorGrant,
-  type LifeOpsConnectorMode,
-  type LifeOpsConnectorSide,
-  type LifeOpsGoogleCapability,
-  type LifeOpsGoogleConnectorStatus,
-} from "@elizaos/core/contracts/personal-assistant";
 import type {
   GoogleCalendarAttendee,
   GoogleCalendarAttendeeInput,

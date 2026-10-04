@@ -19,18 +19,18 @@
  * second project is registered. In the hidden case it reports a `null`
  * projectId to the host so the task list stays unfiltered exactly like today.
  */
-
 import {
   Button,
+  client,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  type ProjectSummary,
+  useAgentElement,
+  useAppSelectorShallow,
 } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
-import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
-import { useAppSelectorShallow } from "@elizaos/ui/state";
+
 import { Check, FolderGit2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 

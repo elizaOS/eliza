@@ -5,16 +5,16 @@
  * tier and public registrations from the local-inference API.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import type { AgentModelSlot } from "@elizaos/contracts";
 import type {
-  AgentModelSlot,
-  DeviceTierResult,
-  PublicRegistration,
   RoutingPolicy,
   RoutingPreferences,
-} from "../../api/client-local-inference";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { DeviceTierResult } from "../../api/client-local-inference";
+import type { PublicRegistration } from "../../api/local-inference-response-types";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";

@@ -3,7 +3,7 @@ import {
   assertEd25519Signature,
   loadPinnedEd25519PublicKey,
   publicKeyFingerprint,
-} from "../../../usb-installer/src/backend/ed25519-trust";
+} from "@elizaos/os-usb-installer/trust";
 import { assertFactoryBootLayout, type FactoryBootLayout } from "./boot-config";
 
 interface FactoryImageReference {

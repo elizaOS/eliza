@@ -7,12 +7,12 @@
  * callback. Blocked object keys are rejected to prevent prototype pollution.
  */
 import type http from "node:http";
-import {
-  type ConnectorConfig,
-  type IAgentRuntime,
-  PostConnectorRequestSchema,
-  type ReadJsonBodyOptions,
-} from "@elizaos/core";
+import { PostConnectorRequestSchema } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  ConnectorConfig,
+  ReadJsonBodyOptions,
+} from "@elizaos/host/protocol";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.ts";

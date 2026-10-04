@@ -70,6 +70,10 @@ export * from "./repository.js";
 export * from "./resource-capacity/index.js";
 export * from "./runtime.js";
 export * from "./schedule-sync-config.js";
+export {
+  describeHostExecutionCapabilities,
+  getHostExecutionCapabilities,
+} from "./scheduled-task/host-capabilities.js";
 export * from "./schema.js";
 export * from "./school/index.js";
 export * from "./screen-context.js";

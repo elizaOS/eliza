@@ -23,7 +23,7 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 import { redactedSensitiveActionResult } from "./redaction.js";
 import { toRecord } from "./utils.js";
 
@@ -46,6 +46,10 @@ interface WrappedHandler {
   [INTERCEPTOR_MARKER]?: true;
 }
 
+export type ActionEffectCapture = (
+  signal?: AbortSignal,
+) => Promise<() => Promise<string[]>>;
+
 export interface ActionInterceptor {
   readonly actions: CapturedAction[];
   readonly approvalRequests: CapturedApprovalRequest[];
@@ -53,6 +57,7 @@ export interface ActionInterceptor {
   readonly memoryWrites: CapturedMemoryWrite[];
   readonly stateTransitions: CapturedStateTransition[];
   readonly artifacts: CapturedArtifact[];
+  settleEffects(): Promise<void>;
   reset(): void;
   detach(): void;
 }
@@ -98,7 +103,11 @@ function toJsonSafe(
   }
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return value;
-  if (depth >= MAX_CAPTURED_PARAM_DEPTH) return null;
+  if (depth >= MAX_CAPTURED_PARAM_DEPTH) {
+    throw new RangeError(
+      `Captured action parameters exceed supported depth ${MAX_CAPTURED_PARAM_DEPTH}; refusing to truncate evidence`,
+    );
+  }
 
   const obj = value as object;
   if (seen.has(obj)) return null;
@@ -396,7 +405,11 @@ export function captureConnectorDispatchesFromAction(
   }
 }
 
-export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
+export function attachInterceptor(
+  runtime: IAgentRuntime,
+  captureActionEffects?: ActionEffectCapture,
+  abortSignal?: AbortSignal,
+): ActionInterceptor {
   // Idempotency: if a live interceptor is already attached to this runtime,
   // return that exact instance. Its closures are the ones the wrapped handlers
   // push into, so returning a new object here would observe nothing.
@@ -406,6 +419,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   }
 
   const actions: CapturedAction[] = [];
+  const pendingEffects: Array<() => Promise<void>> = [];
   const approvalRequests: CapturedApprovalRequest[] = [];
   const connectorDispatches: CapturedConnectorDispatch[] = [];
   const memoryWrites: CapturedMemoryWrite[] = [];
@@ -453,6 +467,12 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         }) as HandlerCallback;
       }
       try {
+        const finishObservation = await captureActionEffects?.(abortSignal);
+        if (finishObservation) {
+          pendingEffects.push(async () => {
+            entry.apiEffects = await finishObservation();
+          });
+        }
         const result = (await (
           original as (...inner: unknown[]) => unknown
         ).apply(action, wrappedArgs)) as unknown;
@@ -502,7 +522,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
             resultForReport,
           );
         } else {
-          entry.result = { success: true };
+          entry.result = typeof result === "boolean" ? { success: result } : {};
         }
         actions.push(entry);
         return result;
@@ -536,17 +556,24 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         tableName: string,
         unique?: boolean,
       ) => {
-        memoryWrites.push({
+        const write = {
           table: tableName,
           entityId:
             typeof memory.entityId === "string" ? memory.entityId : undefined,
           roomId: typeof memory.roomId === "string" ? memory.roomId : undefined,
           worldId:
             typeof memory.worldId === "string" ? memory.worldId : undefined,
-          content: memory.content,
+          content: structuredClone(memory.content),
           createdAt: new Date().toISOString(),
-        });
-        return originalCreateMemory.call(runtime, memory, tableName, unique);
+        };
+        const result = await originalCreateMemory.call(
+          runtime,
+          memory,
+          tableName,
+          unique,
+        );
+        memoryWrites.push(write);
+        return result;
       };
       Reflect.set(wrappedCreate, INTERCEPTOR_MARKER, true);
       Reflect.set(runtime, "createMemory", wrappedCreate);
@@ -592,7 +619,13 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     memoryWrites,
     stateTransitions,
     artifacts,
+    async settleEffects(): Promise<void> {
+      // Observe through turn quiescence, including tracked deferred writes.
+      // Overlapping actions share evidence conservatively; no write is ignored.
+      for (const finish of pendingEffects.splice(0)) await finish();
+    },
     reset(): void {
+      pendingEffects.length = 0;
       actions.length = 0;
       approvalRequests.length = 0;
       connectorDispatches.length = 0;

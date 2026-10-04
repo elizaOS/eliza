@@ -1,10 +1,4 @@
-/**
- * Owner-timezone rendering of reminder dispatch copy (#33172). Real exported
- * formatters and the real RemindersDomain body-rendering path; repository and
- * model collaborators are stubs. Proves the due time anchors to the explicit
- * definition timezone — invariant across host TZ — while callers that omit a
- * timezone keep the previous host-local behavior.
- */
+/** Reminder prompts retain owner timezone; delivery copy preserves saved text. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildReminderBody,
@@ -62,41 +56,19 @@ describe("buildReminderDispatchPrompt due line timezone", () => {
   });
 });
 
-describe("buildReminderBody due line timezone", () => {
-  it("renders Due in the explicit timezone regardless of host TZ", () => {
-    const bodies: string[] = [];
+describe("buildReminderBody saved message", () => {
+  it("preserves the exact saved text regardless of host TZ", () => {
     for (const hostZone of ["UTC", "America/New_York"]) {
       process.env.TZ = hostZone;
-      bodies.push(
-        buildReminderBody({
-          title: "Call dentist",
-          scheduledFor: DUE_AT,
-          dueAt: DUE_AT,
-          channel: "in_app",
-          lifecycle: "plan",
-          timezone: OWNER_TZ,
-        }),
+      expect(buildReminderBody({ title: 'Call "dentist"  today' })).toBe(
+        'Call "dentist"  today',
       );
     }
-    expect(bodies[0]).toContain("Due: 8/20/2026, 4:00:00 PM");
-    expect(bodies).toEqual([bodies[0], bodies[0]]);
-  });
-
-  it("keeps the host-local rendering when no timezone is supplied", () => {
-    process.env.TZ = "UTC";
-    const body = buildReminderBody({
-      title: "Call dentist",
-      scheduledFor: DUE_AT,
-      dueAt: DUE_AT,
-      channel: "in_app",
-      lifecycle: "plan",
-    });
-    expect(body).toContain("Due: 8/20/2026, 11:00:00 PM");
   });
 });
 
-describe("renderReminderBody owner-timezone threading", () => {
-  it("uses the threaded timezone in the deterministic fallback body", async () => {
+describe("renderReminderBody saved message", () => {
+  it("preserves saved text in the deterministic fallback body", async () => {
     process.env.TZ = "UTC";
     const domain = new RemindersDomain(
       {
@@ -122,12 +94,12 @@ describe("renderReminderBody owner-timezone threading", () => {
       subjectType: "owner",
       timezone: OWNER_TZ,
     });
-    expect(body).toContain("Due: 8/20/2026, 4:00:00 PM");
+    expect(body).toBe("Call dentist");
   });
 });
 
-describe("dispatchReminderAttempt owner-timezone threading", () => {
-  it("delivers the in_app fallback body in the owner's timezone", async () => {
+describe("dispatchReminderAttempt saved message", () => {
+  it("delivers the exact saved message with separate timing metadata", async () => {
     process.env.TZ = "UTC";
     const createReminderAttempt = vi.fn(async () => undefined);
     const domain = new RemindersDomain(
@@ -174,11 +146,10 @@ describe("dispatchReminderAttempt owner-timezone threading", () => {
     expect(attempt.outcome).toBe("delivered");
     expect(createReminderAttempt).toHaveBeenCalledTimes(1);
     const delivered = createReminderAttempt.mock.calls[0]?.[0] as {
+      scheduledFor: string;
       deliveryMetadata: { message?: string };
     };
-    expect(delivered.deliveryMetadata.message).toContain(
-      "Due: 8/20/2026, 4:00:00 PM",
-    );
-    expect(delivered.deliveryMetadata.message).not.toContain("11:00:00 PM");
+    expect(delivered.deliveryMetadata.message).toBe("Call dentist");
+    expect(delivered.scheduledFor).toBe(DUE_AT);
   });
 });

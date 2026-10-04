@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .runner import _DISCRIMINATORS, _TOOL_DESCRIPTIONS
+from .lifeworld.executor import _DISCRIMINATORS, _TOOL_DESCRIPTIONS
 
 # Bench umbrella verbs registered on the executor (``runner._ACTION_HANDLERS``)
 # that do not appear in the elizaOS-plugin-derived manifest. Each entry maps
@@ -39,7 +39,15 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
     "LIFE": {
         "domain": "domain:reminders",
         "capabilities": ["capability:read"],
-        "discriminator_values": ["create", "complete", "snooze", "review", "delete", "update", "skip"],
+        "discriminator_values": [
+            "create",
+            "complete",
+            "snooze",
+            "review",
+            "delete",
+            "update",
+            "skip",
+        ],
         "extra_properties": {
             "kind": {"type": "string"},
             "title": {"type": "string"},
@@ -118,7 +126,14 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
         "capabilities": ["capability:read"],
         # All spellings accepted by scorer._UMBRELLA_SUBACTIONS["HEALTH"] plus
         # "trend" (singular) used in health_batch_001 GT scenarios.
-        "discriminator_values": ["by_metric", "summary", "trends", "trend", "today", "status"],
+        "discriminator_values": [
+            "by_metric",
+            "summary",
+            "trends",
+            "trend",
+            "today",
+            "status",
+        ],
         "extra_properties": {
             "metric": {"type": "string"},
             "date": {"type": "string"},
@@ -459,7 +474,9 @@ def patch_manifest_file(path: Path) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         default = (
-            Path(__file__).resolve().parent.parent / "manifests" / "actions.manifest.json"
+            Path(__file__).resolve().parent.parent
+            / "manifests"
+            / "actions.manifest.json"
         )
         target = default
     else:

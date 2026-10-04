@@ -1,6 +1,8 @@
 package ai.elizaos.app;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.JSObject;
@@ -48,6 +50,29 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
     public void getReminderDataCapabilities(PluginCall call) {
         JSObject result = new JSObject();
         result.put("reminderDataNotifications", ElizaReminderMessagingService.isDeclaredHandler(getContext()));
+        result.put("reminderChannelSelection", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void resolveReminderChannel(PluginCall call) {
+        String priority = call.getString("priority");
+        String ownerType = call.getString("ownerType");
+        if ((!"occurrence".equals(ownerType) && !"calendar_event".equals(ownerType))
+            || (!"urgent".equals(priority) && !"high".equals(priority)
+                && !"normal".equals(priority) && !"low".equals(priority))) {
+            call.reject("Invalid reminder channel request");
+            return;
+        }
+        NotificationManager manager = getContext().getSystemService(NotificationManager.class);
+        if (manager == null) {
+            call.reject("Notification manager unavailable");
+            return;
+        }
+        NotificationChannel selected = ElizaReminderMessagingService.resolveReminderChannel(manager, priority, ownerType);
+        JSObject result = new JSObject();
+        result.put("channelId", selected.getId());
+        result.put("blocked", ElizaReminderMessagingService.isReminderChannelBlocked(manager, selected));
         call.resolve(result);
     }
 

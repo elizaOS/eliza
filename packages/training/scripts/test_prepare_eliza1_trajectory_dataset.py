@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
 
-from format_for_training import format_record  # noqa: E402
-from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+from eliza_training.format_for_training import format_record  # noqa: E402
+from eliza_training.prepare_eliza1_trajectory_dataset import (  # noqa: E402
     DEFAULT_BASE_MODEL,
     TARGET_CHAT_TEMPLATE,
     TARGET_MODEL_FAMILY,
@@ -550,3 +548,15 @@ def test_prepare_strict_privacy_fails_on_any_redaction(tmp_path: Path) -> None:
                 "--strict-privacy",
             ]
         )
+
+
+def test_dedup_rejects_conflicting_explicit_splits(tmp_path: Path) -> None:
+    import pytest
+    source = tmp_path / 'duplicates.jsonl'
+    first = _dup_native_row('trajectory-a')
+    second = _dup_native_row('trajectory-b')
+    first['split'] = 'train'
+    second['split'] = 'test'
+    _write_jsonl(source, [first, second])
+    with pytest.raises(ValueError, match='Conflicting explicit splits'):
+        prepare_main(['--input', str(source), '--output-dir', str(tmp_path / 'out')])

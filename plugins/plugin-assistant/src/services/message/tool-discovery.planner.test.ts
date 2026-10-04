@@ -12,7 +12,7 @@ import {
   CORE_PLANNER_TERMINALS,
   ModelType,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import { executeV5PlannedToolCall } from "./planned-tool.ts";

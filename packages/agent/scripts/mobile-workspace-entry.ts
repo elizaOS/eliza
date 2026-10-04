@@ -13,7 +13,7 @@ export function canUseWorkspaceEntry(
       readFileSync(path.join(packageDir, "package.json"), "utf8"),
     );
     const subpath = specifier.split("/").slice(2).join("/");
-    let exported;
+    let exported: ReturnType<typeof resolveExports> = [];
     try {
       exported = resolveExports(manifest, specifier, { browser: true });
     } catch (error) {
@@ -43,7 +43,7 @@ export function canUseWorkspaceEntry(
     );
   }
 
-  let resolved;
+  let resolved: string;
   try {
     resolved = Bun.resolveSync(specifier, packageDir);
   } catch (error) {
@@ -69,16 +69,19 @@ export function findWorkspaceSourceEntry(
 ) {
   // Export aliases can point into nested source directories; guessing src/<subpath>
   // loses those mappings in a clean checkout without distribution outputs.
-  if (target !== "browser") {
+  {
     const manifest = JSON.parse(
       readFileSync(path.join(packageDir, "package.json"), "utf8"),
     );
-    let exported;
+    let exported: ReturnType<typeof resolveExports> = [];
     try {
-      exported = resolveExports(manifest, subpath ? `./${subpath}` : ".", {
-        conditions: ["eliza-source", "bun", "node"],
-        unsafe: true,
-      });
+      exported = resolveExports(
+        manifest,
+        subpath ? `./${subpath}` : ".",
+        target === "browser"
+          ? { browser: true }
+          : { conditions: ["eliza-source", "bun", "node"], unsafe: true },
+      );
     } catch (error) {
       if (
         !(error instanceof Error) ||
@@ -87,7 +90,15 @@ export function findWorkspaceSourceEntry(
       )
         throw error;
     }
-    for (const candidate of exported ?? []) {
+    for (const exportedPath of exported ?? []) {
+      // Browser exports may name an unbuilt nested SDK rather than src/index.
+      // Preserve the browser-selected path instead of enabling Node conditions.
+      const candidate =
+        target === "browser" && exportedPath.startsWith("./dist/")
+          ? exportedPath
+              .replace(/^\.\/dist\//, "./src/")
+              .replace(/\.js$/, ".ts")
+          : exportedPath;
       const entry = path.resolve(packageDir, candidate);
       if (
         /\.(?:[cm]?ts|tsx)$/.test(candidate) &&

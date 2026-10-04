@@ -31,7 +31,7 @@ const {
   deleteWorkbenchTaskMock: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     createTrigger: createTriggerMock,
     updateTrigger: updateTriggerMock,

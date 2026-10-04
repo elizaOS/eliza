@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { createNativeAccountMethods } from "./account-methods.mjs";
 
 const fail = (message, status = 400, code) =>
   Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
@@ -34,6 +35,21 @@ function sessionExpiry(token) {
     return null;
   }
 }
+// Admission only: Auth and Cloud still verify the signature and account ownership.
+function personalSessionUser(token) {
+  try {
+    const claims = JSON.parse(
+      Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
+    );
+    return typeof claims.userId === "string" &&
+      claims.userId &&
+      claims.tenantId === `personal-${claims.userId}`
+      ? claims.userId
+      : null;
+  } catch {
+    return null;
+  }
+}
 const maskDestination = (method, value) =>
   method === "phone"
     ? `\u2022\u2022\u2022${value.slice(-4)}`
@@ -50,6 +66,7 @@ export function createNativeCloudAuth({
   auth = "https://eliza.steward.fi",
   tenant = "elizacloud",
   binding,
+  accountLinkRedirectUri,
   appName,
   deviceName = appName,
   messages = {},
@@ -84,7 +101,8 @@ export function createNativeCloudAuth({
     throw new TypeError("Invalid application callback");
   binding = Object.freeze({ ...binding });
   const message = (key, fallback) => messages[key] ?? fallback;
-  let attempt = null,
+  let accountMethods,
+    attempt = null,
     billingAttempt = null,
     billing = null,
     busy = false,
@@ -96,10 +114,10 @@ export function createNativeCloudAuth({
     if (ticket !== epoch)
       throw fail(message("error1", "Sign-in cancelled. Start again."), 409);
   };
-  async function call(base, path, input, token, ticket) {
+  async function call(base, path, input, token, ticket, method) {
     check(ticket);
     const response = await fetchImpl(base + path, {
-      method: input === undefined ? "GET" : "POST",
+      method: method ?? (input === undefined ? "GET" : "POST"),
       redirect: "error",
       signal: AbortSignal.timeout(30000),
       headers: {
@@ -135,6 +153,15 @@ export function createNativeCloudAuth({
           ),
           403,
         );
+      if (
+        response.status === 409 &&
+        (path.startsWith("/user/me/accounts") || path.startsWith("/auth/mfa/"))
+      )
+        throw fail(
+          "The account changed or this method cannot be linked. Review your sign-in methods again.",
+          409,
+          "account_method_conflict",
+        );
       throw fail(
         message("error5", "Account service is unavailable. Please try again."),
         502,
@@ -159,7 +186,7 @@ export function createNativeCloudAuth({
   async function config(ticket) {
     const value = await call(
       api,
-      "/api/v1/app-auth/mobile/config?" + new URLSearchParams(binding),
+      `/api/v1/app-auth/mobile/config?${new URLSearchParams(binding)}`,
       undefined,
       undefined,
       ticket,
@@ -183,6 +210,7 @@ export function createNativeCloudAuth({
     };
   }
   const clearBilling = () => {
+    accountMethods?.reset();
     billing = null;
     billingAttempt = null;
   };
@@ -272,7 +300,9 @@ export function createNativeCloudAuth({
     }
     if (
       verified.id !== expected.account.id ||
-      verified.organizationId !== expected.account.organizationId
+      verified.organizationId !== expected.account.organizationId ||
+      (expected.purpose === "account" &&
+        personalSessionUser(value.token) !== verified.id)
     ) {
       clearBilling();
       throw fail(
@@ -306,6 +336,12 @@ export function createNativeCloudAuth({
         : { status: "required" };
     }
     if (operation === "billing-start") {
+      if (
+        input.purpose !== undefined &&
+        !["billing", "account"].includes(input.purpose)
+      )
+        throw fail("Choose a supported verification purpose.");
+      const purpose = input.purpose ?? "billing";
       const active = await readActive();
       check(ticket);
       if (!active)
@@ -367,7 +403,10 @@ export function createNativeCloudAuth({
       const value = await call(
           auth,
           method === "phone" ? "/auth/sms/send" : "/auth/email/send",
-          { ...identity, tenantId: tenant },
+          {
+            ...identity,
+            ...(purpose === "account" ? {} : { tenantId: tenant }),
+          },
           undefined,
           ticket,
         ),
@@ -378,6 +417,7 @@ export function createNativeCloudAuth({
           502,
         );
       billingAttempt = {
+        purpose,
         id: opaque(),
         method,
         identity,
@@ -417,7 +457,13 @@ export function createNativeCloudAuth({
           billingAttempt.method === "phone"
             ? "/auth/sms/verify"
             : "/auth/email/code/verify",
-          { ...billingAttempt.identity, code: input.code, tenantId: tenant },
+          {
+            ...billingAttempt.identity,
+            code: input.code,
+            ...(billingAttempt.purpose === "account"
+              ? {}
+              : { tenantId: tenant }),
+          },
           undefined,
           ticket,
         ),
@@ -461,6 +507,45 @@ export function createNativeCloudAuth({
       expiresAt: new Date(held.expiresAt).toISOString(),
     };
   }
+  async function replaceAccountAuthority(token, expectedToken, ticket) {
+    const held = await currentBilling();
+    check(ticket);
+    if (!held || held.token !== expectedToken)
+      throw fail("Account session changed", 409);
+    const active = await readActive();
+    check(ticket);
+    const original = await account(active, ticket),
+      replacement = await account(token, ticket);
+    const latest = await currentBilling();
+    check(ticket);
+    if (
+      !latest ||
+      latest.token !== expectedToken ||
+      original.id !== replacement.id ||
+      original.organizationId !== replacement.organizationId ||
+      personalSessionUser(token) !== replacement.id
+    ) {
+      clearBilling();
+      throw fail(
+        "Account security check did not match the connected account",
+        409,
+        "account_verification_mismatch",
+      );
+    }
+    if (!retainBilling(token, active))
+      throw fail("Account security check expired", 410);
+  }
+  accountMethods = createNativeAccountMethods({
+    accountLinkRedirectUri,
+    getAuthority: async () => {
+      const held = await currentBilling();
+      return held && personalSessionUser(held.token) ? held : null;
+    },
+    clearAuthority: clearBilling,
+    replaceAuthority: replaceAccountAuthority,
+    request: (path, input, token, method, ticket) =>
+      call(auth, path, input, token, ticket, method),
+  });
   async function finish(ticket, pending, session) {
     if (!validTime(pending.acknowledgeBy))
       throw fail(message("error9", "Sign-in expired. Start again."), 410);
@@ -625,7 +710,7 @@ export function createNativeCloudAuth({
               409,
             );
           }
-          if (typeof saved.proof?.secret !== "string")
+          if (typeof saved?.proof?.secret !== "string")
             throw fail(
               message("error16", "Saved sign-in needs account recovery."),
               409,
@@ -650,7 +735,7 @@ export function createNativeCloudAuth({
                   409,
                 );
               }
-              if (saved.proof?.secret !== active)
+              if (saved?.proof?.secret !== active)
                 throw fail(
                   message(
                     "error17",
@@ -681,12 +766,12 @@ export function createNativeCloudAuth({
               409,
             );
           }
-          if (typeof saved.proof?.secret !== "string")
+          if (typeof saved?.proof?.secret !== "string")
             throw fail(
               message("error16", "Saved sign-in needs account recovery."),
               409,
             );
-          const response = await fetchImpl(api + "/api/v1/api-keys/current", {
+          const response = await fetchImpl(`${api}/api/v1/api-keys/current`, {
             method: "DELETE",
             redirect: "error",
             signal: AbortSignal.timeout(30000),
@@ -718,6 +803,12 @@ export function createNativeCloudAuth({
               message("error18", "Cancellation is not confirmed."),
               502,
             );
+          // The superseded attempt may have activated this key before cancel
+          // caught up with it. Cloud has now confirmed it is revoked, so it
+          // must not stay the host's active credential. (Until confirmation,
+          // an outage keeps it, as for any unconfirmed revocation.)
+          if (!disconnect && (await readActive()) === saved.proof.secret)
+            await clearActive();
         }
         await pendingStore.clear();
         return { status: "cancelled" };
@@ -738,6 +829,8 @@ export function createNativeCloudAuth({
       });
       const ticket = epoch;
       try {
+        if (typeof operation === "string" && operation.startsWith("account-"))
+          return await accountMethods.handle(operation, input, ticket);
         if (BILLING_OPERATIONS.includes(operation))
           return await billingOperation(operation, input, ticket);
         if (operation === "config") return await config(ticket);
@@ -754,7 +847,7 @@ export function createNativeCloudAuth({
               409,
             );
           }
-          if (pending.kind === "revocation")
+          if (pending?.kind === "revocation")
             throw fail(
               message(
                 "error21",
@@ -763,7 +856,7 @@ export function createNativeCloudAuth({
               409,
             );
           if (
-            pending.version !== 1 ||
+            pending?.version !== 1 ||
             !pending.proof ||
             Object.entries(binding).some(([k, v]) => pending.proof[k] !== v)
           )

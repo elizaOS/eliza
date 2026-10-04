@@ -14,7 +14,7 @@ import { CloudI18nProvider } from "../../shell/CloudI18nProvider";
 import type { UserProfile } from "../data/user";
 import { AccountPageClient } from "./account-page-client";
 
-vi.mock("../../../cloud-ui", () => ({
+vi.mock("../../../cloud-ui/components/layout/dashboard-page", () => ({
   DashboardPageContainer: ({ children }: { children: ReactNode }) => (
     <main>{children}</main>
   ),

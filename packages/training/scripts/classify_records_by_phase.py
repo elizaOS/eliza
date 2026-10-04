@@ -44,8 +44,7 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-from lib.runtime_phases import classify_phase as classify  # noqa: E402
+from eliza_training.lib.runtime_phases import classify_phase as classify  # noqa: E402
 
 log = logging.getLogger("classify")
 

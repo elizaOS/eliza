@@ -14,7 +14,6 @@
 
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -32,10 +31,7 @@ import { chromium } from "playwright";
 const here = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(here, "../../../..");
 const repoRoot = resolve(uiRoot, "../..");
-const require = createRequire(import.meta.url);
-const localInferenceRoot = dirname(
-  require.resolve("@elizaos/plugin-local-inference/package.json"),
-);
+const localInferenceRoot = join(repoRoot, "plugins/plugin-local-inference");
 
 const CLIP = join(
   localInferenceRoot,

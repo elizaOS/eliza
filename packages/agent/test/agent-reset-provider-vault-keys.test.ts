@@ -6,12 +6,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  createTestVault,
-  profileStorageKey,
-  setEntryMeta,
-  type TestVault,
-} from "@elizaos/auth/vault";
+import { createTestVault, type TestVault } from "@elizaos/auth/testing";
+import { profileStorageKey, setEntryMeta } from "@elizaos/auth/vault";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { handleAgentAdminRoutes } from "../src/api/agent-admin-routes.ts";
 import {

@@ -43,7 +43,7 @@ import {
   PgliteDatabaseAdapter,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
-import { createTestPgliteDataDir } from "@elizaos/testing";
+import { createTestPgliteDataDir } from "@elizaos/testing/runtime";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 

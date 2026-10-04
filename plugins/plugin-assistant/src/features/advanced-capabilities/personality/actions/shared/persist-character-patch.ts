@@ -19,7 +19,8 @@ import { getCharacterPersistenceService } from "../../character-persistence.ts";
  * semantics on top of it. Caller is responsible for computing the next value
  * of any array fields (`style`, `messageExamples`, `postExamples`, etc.).
  *
- * Updates `runtime.character` only after persistence succeeds.
+ * Updates `runtime.character` after success or a confirmed host config commit.
+ * A later storage failure remains visible to the caller.
  */
 export async function persistCharacterPatch(
   runtime: IAgentRuntime,
@@ -50,6 +51,10 @@ export async function persistCharacterPatch(
       source: "agent",
     });
     if (!result.success) {
+      // Config is the host's durable boot source. Keep the live character aligned
+      // with a confirmed config write even when a later sink failed.
+      if (result.persistence?.config === "committed")
+        Object.assign(runtime.character, patch);
       logger.warn(
         { error: result.error },
         "persistCharacterPatch: persistence service returned failure",

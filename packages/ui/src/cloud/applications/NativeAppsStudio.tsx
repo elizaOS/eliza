@@ -37,7 +37,7 @@ import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
 } from "../../api/client-cloud";
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 import { getBootConfig } from "../../config/boot-config";
 import { logger } from "../../logger.ts";
 import { decodeJwtPayload } from "../lib/jwt";

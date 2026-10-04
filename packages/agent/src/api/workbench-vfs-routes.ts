@@ -10,12 +10,9 @@
  */
 import crypto from "node:crypto";
 import {
-  type AgentRuntime,
-  buildStoreVariantBlockedMessage,
   CLOUD_CONTAINER_SERVICE_TYPE,
   type CloudCodingContainerService,
   type CloudVfsBundle,
-  isLocalCodeExecutionAllowed,
   PostWorkbenchVfsCompilePluginRequestSchema,
   PostWorkbenchVfsGitRequestSchema,
   PostWorkbenchVfsLoadPluginRequestSchema,
@@ -25,6 +22,11 @@ import {
   PostWorkbenchVfsSnapshotRequestSchema,
   type PromoteVfsToCloudContainerRequest,
   PutWorkbenchVfsFileRequestSchema,
+} from "@elizaos/contracts";
+import {
+  type AgentRuntime,
+  buildStoreVariantBlockedMessage,
+  isLocalCodeExecutionAllowed,
 } from "@elizaos/core";
 
 import {

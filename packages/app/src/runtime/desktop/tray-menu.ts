@@ -11,7 +11,7 @@
  * round-trip. DesktopTrayRuntime consumes these to build and dispatch the native
  * tray.
  */
-import type { DesktopClickAuditItem } from "@elizaos/ui/utils/desktop-workspace";
+import type { DesktopClickAuditItem } from "@elizaos/ui";
 
 interface DesktopTrayMenuItem {
   id: string;

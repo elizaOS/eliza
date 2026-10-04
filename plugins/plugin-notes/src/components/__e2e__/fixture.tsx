@@ -1,7 +1,7 @@
 import "@elizaos/ui/styles";
-import { AgentSurfaceProvider } from "@elizaos/ui/agent-surface";
-import { ApiError } from "@elizaos/ui/api/client-types-core";
 import { createRoot } from "react-dom/client";
+import { AgentSurfaceProvider } from "../../../../../packages/ui/src/agent-surface/index";
+import { ApiError } from "../../../../../packages/ui/src/api/client-types-core";
 import type { NotesSnapshot, StickyNote } from "../../types.js";
 import { NotesSurface } from "../NotesSurface.js";
 import "./fixture.css";

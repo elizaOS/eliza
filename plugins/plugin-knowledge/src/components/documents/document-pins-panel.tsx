@@ -1,7 +1,12 @@
 /** Reviews independent chat and agent pins against the current server revision without changing readers. */
-import { client, isApiError } from "@elizaos/ui/api";
-import { Button, Checkbox } from "@elizaos/ui/components";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
+import {
+  Button,
+  Checkbox,
+  client,
+  isApiError,
+  useActiveAgentAuthority,
+} from "@elizaos/ui";
+
 import { useEffect, useState } from "react";
 
 type Pins = Awaited<ReturnType<typeof client.getDocumentPins>>;

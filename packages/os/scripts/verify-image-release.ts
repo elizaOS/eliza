@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// Verifies canonical image-release bytes. On the isolated signing runner it
-// can publish those same held bytes into a fresh exclusive handoff tree.
 import { createHash, verify } from "node:crypto";
 import { constants } from "node:fs";
 import {
@@ -14,28 +12,14 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// Verifies canonical image-release bytes. On the isolated signing runner it
+// can publish those same held bytes into a fresh exclusive handoff tree.
+import { artifactSignaturePayload } from "../contracts/image-signature.ts";
 import { validateAgainstSchema } from "./json-schema-lite.ts";
 import { parseArgs } from "./os-release-lib.ts";
 import { loadReleaseKeyPolicy } from "./release-key-policy.ts";
 
 const architectures = ["x86_64", "arm64", "riscv64"];
-
-function artifactSignaturePayload(artifact) {
-  return Buffer.from(
-    [
-      "elizaOS-artifact-v1",
-      artifact.url,
-      artifact.architecture,
-      String(artifact.sequence),
-      String(artifact.compressedSize),
-      String(artifact.expandedSize),
-      artifact.sha256Compressed,
-      artifact.sha256Expanded,
-      "",
-    ].join("\n"),
-    "utf8",
-  );
-}
 
 function sameFileState(left, right) {
   return (

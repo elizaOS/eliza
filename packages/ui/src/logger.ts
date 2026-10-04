@@ -1,6 +1,6 @@
 /** Browser console sink using core's canonical credential redaction and logger contract. */
 import type { Logger, LoggerBindings } from "@elizaos/core";
-import { redactTrailingArgs } from "@elizaos/core/security/log-redaction";
+import { redactTrailingArgs } from "@elizaos/core/protocol";
 
 const ranks: Record<string, number> = {
   trace: 10,

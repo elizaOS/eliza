@@ -1,5 +1,5 @@
 /** Owner account-switch client boundary, shared by the review and recovery UI. */
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 import type { LifeOpsElizaClientMethods } from "../../api/client-lifeops.js";
 
 export type AccountHandoffAdapter = Pick<

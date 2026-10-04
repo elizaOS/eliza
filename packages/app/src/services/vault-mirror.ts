@@ -16,7 +16,7 @@ import {
   type Vault,
 } from "@elizaos/auth/vault";
 import { logger } from "@elizaos/core";
-import { asRecord } from "@elizaos/core/type-guards";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 
 // The process-wide SecretsManager facade, constructed once on first use. The
 // former circular-import chain (vault-bootstrap.ts → loadRegistry → … → back

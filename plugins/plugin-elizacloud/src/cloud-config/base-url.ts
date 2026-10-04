@@ -2,7 +2,7 @@
  * Pure URL normalizer for Eliza Cloud site/API base URLs. No host-layer deps.
  */
 
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,

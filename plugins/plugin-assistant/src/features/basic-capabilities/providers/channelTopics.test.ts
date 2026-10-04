@@ -17,7 +17,7 @@ import {
 import {
   createSQLiteTestRuntime,
   SQLiteDatabaseAdapter,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { channelTopicsProvider } from "./channelTopics.ts";
 

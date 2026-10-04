@@ -4,10 +4,13 @@
  * a newer mutation result, while explicit loading and error phases keep a
  * broken transport visually distinct from an empty notes collection.
  */
+import {
+  client,
+  useActiveAgentAuthority,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "@elizaos/ui";
 
-import { client } from "@elizaos/ui/api";
-import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NotesSnapshot } from "../types.js";
 import {

@@ -16,18 +16,20 @@
  * empty brief, distinct from an unreachable one.
  */
 
+import type {
+  WalletBalancesResponse,
+  WalletConfigStatus,
+  WalletNftsResponse,
+  WalletTradingProfileResponse,
+} from "@elizaos/contracts";
 import {
   type AppRunSummary,
-  createSelfApiRequestHeaders,
   type IAgentRuntime,
   logger,
   type RegistryAppInfo,
   toWellFormedUnicode,
-  type WalletBalancesResponse,
-  type WalletConfigStatus,
-  type WalletNftsResponse,
-  type WalletTradingProfileResponse,
 } from "@elizaos/core";
+import { createSelfApiRequestHeaders } from "@elizaos/host/protocol";
 
 import type { ConversationScope } from "../api/server-types.ts";
 

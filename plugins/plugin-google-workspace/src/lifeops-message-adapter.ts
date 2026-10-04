@@ -1,3 +1,4 @@
+import { gmailBriefSourceId } from "./gmail-message-id.js";
 /**
  * `GoogleGmailAdapter` — projects Gmail into the core message-triage adapter
  * shape consumed by assistant plugins such as LifeOps. Maps Gmail triage
@@ -91,10 +92,6 @@ function readInteger(value: number | undefined, fallback: number, maximum: numbe
   return value;
 }
 
-function refId(messageId: string): string {
-  return `gmail:${messageId}`;
-}
-
 function gmailId(messageId: string): string {
   return messageId.startsWith("gmail:") ? messageId.slice("gmail:".length) : messageId;
 }
@@ -124,10 +121,14 @@ function gmailReplyReferences(referencesHeader: string | null, messageIdHeader: 
   return `${referencesHeader} ${messageIdHeader}`;
 }
 
-function mapGmailMessage(accountId: string, message: GoogleGmailMessageSummary): MessageRef {
+function mapGmailMessage(
+  agentId: string,
+  accountId: string,
+  message: GoogleGmailMessageSummary
+): MessageRef {
   const fromIdentifier = message.fromEmail?.trim() || message.from.trim();
   return {
-    id: refId(message.externalId),
+    id: gmailBriefSourceId({ agentId, accountId, externalId: message.externalId }),
     source: "gmail",
     externalId: message.externalId,
     threadId: message.threadId,
@@ -216,6 +217,7 @@ async function emitCommittedGmailMutation(
   runtime: IAgentRuntime,
   receipt: {
     messageId: string;
+    accountId: string;
     operation: "mark_read" | "replied";
     domainEventId: string;
   }
@@ -224,7 +226,11 @@ async function emitCommittedGmailMutation(
     await runtime.emitEvent(EventType.MESSAGE_MUTATED, {
       runtime,
       messageSource: "gmail",
-      messageId: refId(receipt.messageId),
+      messageId: gmailBriefSourceId({
+        agentId: runtime.agentId,
+        accountId: receipt.accountId,
+        externalId: receipt.messageId,
+      }),
       operation: receipt.operation,
       domainEventId: receipt.domainEventId,
       committedAt: new Date().toISOString(),
@@ -297,16 +303,33 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       maxResults: opts.limit,
     });
     return this.cacheAndFilter(
-      messages.map((message) => mapGmailMessage(accountId, message)),
+      messages.map((message) => mapGmailMessage(String(runtime.agentId), accountId, message)),
       opts
     );
   }
 
   protected async getMessageImpl(runtime: IAgentRuntime, id: string): Promise<MessageRef | null> {
-    const cached = this.messageCache.get(id) ?? this.messageCache.get(refId(id));
-    if (cached) return cached;
-    const messages = await this.listMessages(runtime, {});
-    return messages.find((message) => message.id === id || message.id === refId(id)) ?? null;
+    const prefix = `${runtime.agentId}:`;
+    const cached = this.messageCache.get(id);
+    if (cached?.id.startsWith(prefix)) return cached;
+    const marker = id.lastIndexOf(":gmail:");
+    const scopedAccount = marker >= 0 ? id.slice(0, marker) : undefined;
+    if (scopedAccount && !scopedAccount.startsWith(prefix)) return null;
+    const accountId = scopedAccount?.slice(prefix.length);
+    const externalId = externalMessageId(id);
+    const matches = [...this.messageCache.values()].filter(
+      (message) =>
+        message.id.startsWith(prefix) &&
+        message.externalId === externalId &&
+        (!accountId || message.worldId === accountId)
+    );
+    if (matches.length > 1)
+      throw new ElizaError("Select the Gmail account for this message.", {
+        code: "GMAIL_MESSAGE_ACCOUNT_AMBIGUOUS",
+      });
+    if (matches[0]) return matches[0];
+    const messages = await this.listMessages(runtime, accountId ? { worldIds: [accountId] } : {});
+    return messages.find((message) => message.externalId === externalId) ?? null;
   }
 
   protected async readMessageImpl(
@@ -531,7 +554,9 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       includeSpamTrash: true,
       maxResults: filters.limit,
     });
-    const refs = messages.map((message) => mapGmailMessage(accountId, message));
+    const refs = messages.map((message) =>
+      mapGmailMessage(String(runtime.agentId), accountId, message)
+    );
     return this.cacheAndFilter(refs, {
       sinceMs: filters.sinceMs,
       limit: filters.limit,
@@ -625,6 +650,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {
         messageId: envelope.externalId,
+        accountId: envelope.accountId,
         operation: "replied",
         domainEventId: `gmail_reply:${envelope.accountId}:${sent.messageId}`,
       });
@@ -675,6 +701,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       const externalId = externalMessageId(messageId);
       await emitCommittedGmailMutation(runtime, {
         messageId: externalId,
+        accountId,
         operation: "mark_read",
         domainEventId: `gmail_mark_read:${accountId}:${externalId}`,
       });
@@ -713,7 +740,6 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         continue;
       }
       this.messageCache.set(message.id, message);
-      this.messageCache.set(gmailId(message.id), message);
       out.push(message);
     }
     return out.slice(0, opts.limit ?? out.length);

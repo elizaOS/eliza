@@ -1,12 +1,12 @@
 /** Owns schedule projections persistence for LifeOps. Keeps domain mutations and existing transaction or claim boundaries together. */
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
 import type {
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
   LifeOpsTaskDefinition,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import {
   executeRawSql,
   executeRawSqlTx,
@@ -425,9 +425,13 @@ export class ScheduleProjectionRepository {
       subjectType?: "owner" | "agent";
       definitionScopes?: readonly LifeOpsDefinitionScope[];
       limit?: number;
+      throughIso?: string;
     } = {},
   ): Promise<LifeOpsOccurrenceView[]> {
     const limit = options.limit ?? 24;
+    // Completion writers persist canonical UTC ISO strings. Do not treat a
+    // housekeeping update as a completion; unknown legacy dates are excluded.
+    const completedAt = `(occurrence.completion_payload_json::jsonb ->> 'completedAt')`;
     const subjectFilter = options.subjectType
       ? `AND occurrence.subject_type = ${sqlQuote(options.subjectType)}`
       : "";
@@ -453,9 +457,12 @@ export class ScheduleProjectionRepository {
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
           AND occurrence.state = 'completed'
-          AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
+          AND jsonb_typeof(occurrence.completion_payload_json::jsonb -> 'completedAt') = 'string'
+          AND ${completedAt} ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9][.][0-9]{3}Z$'
+          AND ${completedAt} >= ${sqlQuote(sinceIso)}
+          ${options.throughIso ? `AND ${completedAt} <= ${sqlQuote(options.throughIso)}` : ""}
           ${subjectFilter}${definitionScopeSetPredicate(options.definitionScopes)}
-        ORDER BY occurrence.updated_at DESC
+        ORDER BY ${completedAt} DESC, occurrence.id ASC
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseOccurrenceView);

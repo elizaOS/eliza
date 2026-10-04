@@ -11,7 +11,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import { defineActionParameters } from "../../../plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "../../../plugin-cloud-bootstrap/utils/native-planner-guards";

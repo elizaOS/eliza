@@ -8,7 +8,7 @@ import { formatDevSettingsTable } from "@elizaos/app/dev-settings-table";
 import {
   resolveDesktopApiPortPreference,
   resolveDesktopUiPortPreference,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 
 /**
  * @param {object} p

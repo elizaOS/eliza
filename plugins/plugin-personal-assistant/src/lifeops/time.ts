@@ -4,7 +4,7 @@
  * date-times use Temporal-compatible disambiguation so repeated and skipped
  * wall times remain deterministic across DST and date-line transitions.
  */
-import { normalizeTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
+import { normalizeTimeZone } from "@elizaos/contracts";
 export interface ZonedDateParts {
   year: number;
   month: number;

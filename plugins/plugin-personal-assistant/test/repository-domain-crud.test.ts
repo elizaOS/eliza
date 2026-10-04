@@ -148,12 +148,12 @@ describe("LifeOpsRepository domain CRUD", () => {
     await repository.updateOccurrence({
       ...occurrence,
       state: "completed",
-      completionPayload: { ok: true },
+      completionPayload: { completedAt: LATER, ok: true },
       updatedAt: LATER,
     });
     // Completed-today read (#16935): the completed occurrence surfaces with
     // its definition title inside the window, and drops out once `sinceIso`
-    // passes its completion bump.
+    // passes its actual completion instant.
     expect(
       await repository.listCompletedOccurrenceViewsSince(runtime.agentId, NOW),
     ).toEqual([
@@ -783,7 +783,7 @@ describe("LifeOpsRepository domain CRUD", () => {
         windowName: null,
         state: "completed",
         snoozedUntil: null,
-        completionPayload: { ok: true },
+        completionPayload: { completedAt: updatedAt, ok: true },
         derivedTarget: null,
         metadata: {},
         createdAt: NOW,

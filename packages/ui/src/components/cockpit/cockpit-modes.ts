@@ -11,11 +11,11 @@
  *   2. Claude / Codex via the TOS-safe subscription connector
  *   3. Experimental TOS-unsafe Claude / Codex (gated)
  */
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 import type {
   CodingAgentCreateTaskInput,
   CodingAgentTaskProviderPolicy,

@@ -3,16 +3,17 @@
  * through the runtime-service delegates and projects connector status into
  * assistant DTOs. Transport is owned by the Telegram connector plugin.
  */
-import type { SendHandlerReceipt } from "@elizaos/core";
-import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
+
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
+  type LifeOpsConnectorDegradation,
   type LifeOpsConnectorSide,
   type LifeOpsTelegramCapability,
   type LifeOpsTelegramConnectorStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
   type VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import type { SendHandlerReceipt } from "@elizaos/core";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   ConnectorDeliveryEvidenceError,

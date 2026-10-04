@@ -10,10 +10,11 @@
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/plugin-google-workspace/*": ["../plugin-google-workspace/src/*"]
+      "@elizaos/plugin-google-workspace/*": [
+        "../plugin-google-workspace/src/*"
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

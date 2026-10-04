@@ -9,7 +9,7 @@ import {
   collectKeywordTermMatches,
   splitKeywordDoc,
   VALIDATION_KEYWORD_DOCS,
-} from "@elizaos/core/i18n/keyword-matching";
+} from "@elizaos/core";
 
 type KeywordDoc = {
   base?: string;

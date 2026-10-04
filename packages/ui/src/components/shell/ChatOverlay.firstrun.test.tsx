@@ -45,8 +45,8 @@ import {
   readPendingFirstRunText,
 } from "../../first-run/first-run-pending-text";
 import { __setAppValueForTests } from "../../state/app-store";
-import type { AppContextValue } from "../../state/internal";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
+import type { AppContextValue } from "../../state/types";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { ChatOverlay } from "./ChatOverlay";
 import type { ShellController } from "./useShellController";

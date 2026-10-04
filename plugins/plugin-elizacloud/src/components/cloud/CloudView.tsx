@@ -16,27 +16,30 @@
 
 // Host-provided UI atoms and the narrow API singleton are both externalized by
 // the dynamic-view loader, so this bundle does not ship a second UI runtime.
-import {
-  Badge,
-  Button,
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@elizaos/ui";
-import { navigateBrowserPath } from "@elizaos/ui/app-navigate-view";
-import { client } from "@elizaos/ui/api";
-import type {
-  CloudApiKeys,
-  CloudBillingSummary,
-  CloudCompatAgent,
-  CloudCredits,
-  CloudStatus,
-} from "@elizaos/ui/api";
-import { openExternalUrl } from "@elizaos/ui/utils";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * CloudView — the in-app "Cloud" launcher view: the user's Eliza Cloud account
+ * at a glance (credits + top-up, hosted agents with status, API-key inventory,
+ * billing summary) rendered app-native in the dark launcher aesthetic.
+ *
+ * Served as this plugin's `cloud` view bundle (`vite.config.views.ts`) and
+ * mounted by the shell's DynamicViewLoader at `/cloud`. Data comes from the
+ * host `client` singleton's cloud wrappers, while navigation uses the host's
+ * scope broker and safe external-URL boundary.
+ *
+ * State machine honors the repo three-state rule: loading / signed-out
+ * (designed connect CTA) / error (with retry) / ready — and inside ready each
+ * secondary section (agents, keys, billing) degrades to its own designed
+ * "unavailable" note on fetch failure rather than a healthy-empty render.
+ */
+// Host-provided UI atoms and the narrow API singleton are both externalized by
+// the dynamic-view loader, so this bundle does not ship a second UI runtime.
+import { Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, navigateBrowserPath, client, type CloudApiKeys, type CloudBillingSummary, type CloudCompatAgent, type CloudCredits, type CloudStatus, openExternalUrl } from "@elizaos/ui";
+
+
+
+
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+
 
 // ---------------------------------------------------------------------------
 // Fetcher seam — defaults hit the host client; tests inject offline fakes.

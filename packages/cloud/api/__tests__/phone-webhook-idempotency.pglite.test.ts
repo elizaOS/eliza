@@ -17,21 +17,24 @@ process.env.NODE_ENV = "test";
 
 let routed = 0;
 let failNext = false;
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  RateLimitPresets: { AGGRESSIVE: {} },
-}));
-mock.module("@/lib/services/twilio-automation", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    RateLimitPresets: { AGGRESSIVE: {} },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/twilio-automation", () => ({
   twilioAutomationService: { getAuthToken: async () => null },
 }));
-mock.module("@/lib/services/blooio-automation", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/blooio-automation", () => ({
   blooioAutomationService: {
     getWebhookSecret: async () => null,
     getApiKey: async () => null,
     getFromNumber: async () => null,
   },
 }));
-mock.module("@/lib/services/agent-gateway-router", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: {
     routePhoneMessage: async () => {
       routed++;
@@ -46,8 +49,10 @@ mock.module("@/lib/services/agent-gateway-router", () => ({
 }));
 
 const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@/db/client");
-const { idempotencyKeys } = await import("@/db/schemas/idempotency-keys");
+  await import("@elizaos/cloud-shared/db/client");
+const { idempotencyKeys } = await import(
+  "@elizaos/cloud-shared/db/schemas/idempotency-keys"
+);
 const twilio = (await import("../webhooks/twilio/[orgId]/route")).default;
 const blooio = (await import("../webhooks/blooio/[orgId]/route")).default;
 

@@ -95,11 +95,11 @@ elif [[ -x "/opt/homebrew/bin/uv" ]]; then
 fi
 
 if [[ -n "${UV_BIN}" && -f "${TRAINING_ROOT}/pyproject.toml" ]]; then
-  RUNNER=("${UV_BIN}" run --with pyyaml --with huggingface_hub --with jinja2 python -m scripts.publish.orchestrator)
+  RUNNER=("${UV_BIN}" run --with pyyaml --with huggingface_hub --with jinja2 python -m eliza_training.publish.orchestrator)
 elif command -v python3 >/dev/null 2>&1; then
-  RUNNER=(python3 -m scripts.publish.orchestrator)
+  RUNNER=(python3 -m eliza_training.publish.orchestrator)
 else
-  RUNNER=(python -m scripts.publish.orchestrator)
+  RUNNER=(python -m eliza_training.publish.orchestrator)
 fi
 
 declare -i N_TOTAL=0 N_OK=0 N_FAILED=0

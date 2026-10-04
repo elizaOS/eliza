@@ -11,6 +11,11 @@
  * than aborting the whole context.
  */
 
+import type {
+  LifeOpsGmailTriageSummary,
+  LifeOpsGoalDefinition,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   evaluateOwnerExclusiveDisclosure,
@@ -24,11 +29,6 @@ import {
   type State,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import type {
-  LifeOpsGmailTriageSummary,
-  LifeOpsGoalDefinition,
-  LifeOpsNextCalendarEventContext,
-} from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
@@ -192,7 +192,7 @@ function summarizeActiveGoals(
  * replies claiming an empty day while completions sat in the store (#16935).
  */
 function summarizeCompletedToday(
-  occurrences: Array<{ title: string; updatedAt: string }>,
+  occurrences: Array<{ title: string }>,
 ): string[] {
   if (occurrences.length === 0) {
     return [];

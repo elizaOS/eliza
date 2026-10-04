@@ -25,7 +25,6 @@ import numpy as np
 import pytest
 
 from conftest import (
-    InMemoryVoiceProfileStore,
     SegmentDiarizer,
     SpeakerEncoder,
     load_fixture_audio,
@@ -151,7 +150,9 @@ class TestDiarization:
             f"F2 expected ≥{expected_speakers} speakers, diarizer detected {detected}"
         )
 
-    def test_three_speaker_minimum_count(self, diarizer: SegmentDiarizer, manifest: dict):
+    def test_three_speaker_minimum_count(
+        self, diarizer: SegmentDiarizer, manifest: dict
+    ):
         """F3: Three-speaker fixture → diarizer must detect ≥ 3 distinct speakers."""
         info = manifest["f3_three_speaker"]
         expected_speakers = info["speakers"]
@@ -203,6 +204,7 @@ class TestDiarization:
 
         def dominant(segs):
             from collections import Counter
+
             c = Counter(s["speaker_id"] for s in segs)
             return c.most_common(1)[0][0] if c else -1
 
@@ -215,7 +217,9 @@ class TestDiarization:
             f"F4 dominant first-half speaker {d1} not found in second half {second_ids}"
         )
 
-    def test_jill_scenario_detects_two_speakers(self, diarizer: SegmentDiarizer, manifest: dict):
+    def test_jill_scenario_detects_two_speakers(
+        self, diarizer: SegmentDiarizer, manifest: dict
+    ):
         """F5: Jill scenario → diarizer must detect ≥ 2 distinct speakers."""
         info = manifest["f5_jill_scenario"]
         pcm = load_fixture_audio(info["path"])
@@ -230,12 +234,16 @@ class TestDiarization:
             f"{[(s['start_ms'], s['end_ms'], s['speaker_id']) for s in results]}"
         )
 
-    def test_all_fixtures_produce_segments(self, diarizer: SegmentDiarizer, manifest: dict):
+    def test_all_fixtures_produce_segments(
+        self, diarizer: SegmentDiarizer, manifest: dict
+    ):
         """All 5 fixtures must produce at least 1 diarized segment (not empty output)."""
         for name, info in manifest.items():
             pcm = load_fixture_audio(info["path"])
             results = diarizer.diarize(pcm)
-            assert len(results) >= 1, f"Fixture '{name}' produced no diarization segments"
+            assert len(results) >= 1, (
+                f"Fixture '{name}' produced no diarization segments"
+            )
 
     def test_diarization_segment_timestamps_ordered(
         self, diarizer: SegmentDiarizer, manifest: dict

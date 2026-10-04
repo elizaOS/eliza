@@ -44,8 +44,8 @@ const mockState = {
   t: (k: string) => k,
 };
 
-vi.mock("../state", () => ({
-  useApp: () => mockState,
+vi.mock("../state/useApp", () => ({ useApp: () => mockState }));
+vi.mock("../state/app-store", () => ({
   useAppSelector: <T,>(sel: (s: typeof mockState) => T): T => sel(mockState),
   useAppSelectorShallow: <T,>(sel: (s: typeof mockState) => T): T =>
     sel(mockState),

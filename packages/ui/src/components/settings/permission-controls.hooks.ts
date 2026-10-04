@@ -5,19 +5,20 @@
  * notifications) whose true grant state the OS layer can't see. Exposes
  * `useDesktopPermissionsState` to the settings UI.
  */
-import { PERMISSION_IDS } from "@elizaos/core/contracts/permissions";
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,
-  client,
+  PERMISSION_IDS,
   type PermissionId,
   type PermissionState,
   type PermissionStatus,
-} from "../../api";
+} from "@elizaos/core/protocol";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { client } from "../../api/client";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
-} from "../../bridge";
+} from "../../bridge/electrobun-rpc";
 import { logger } from "../../logger.ts";
 import { isRendererPermissionAuthoritative } from "../../platform/desktop-permissions-client";
 import { SETTINGS_REFRESH_DELAYS_MS } from "./permission-types";

@@ -4,10 +4,10 @@
  * backend. Kept around so existing clients get a clear "gone" rather than 404.
  */
 
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

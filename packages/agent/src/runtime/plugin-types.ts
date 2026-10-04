@@ -10,7 +10,10 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { HttpPlugin as Plugin, PluginInstallRecord } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  PluginInstallRecord,
+} from "@elizaos/host/protocol";
 
 import type { ElizaConfig } from "../config/config.ts";
 import {

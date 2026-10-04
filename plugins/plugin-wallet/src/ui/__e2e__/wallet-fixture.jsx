@@ -1,5 +1,5 @@
 /** Deterministic populated Wallet surface for local mobile/desktop design QA. */
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MockAppProvider } from "../../../../../packages/ui/src/storybook/mock-providers";

@@ -30,10 +30,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
 OUT_DIR = ROOT / "data" / "synthesized" / "together-synth"
 DEFAULT_TOGETHER_MODEL = "google/gemma-4-31B-it"
@@ -155,7 +153,7 @@ async def main_async(args) -> int:
     elapsed = time.time() - t0
     print(f"\nDONE — {n_ok} ok, {n_fail} fail in {elapsed/60:.1f} min")
     print(f"output → {OUT_DIR}/")
-    return 0 if n_fail < len(scenarios) // 5 else 1
+    return 0 if n_ok > 0 and n_fail * 5 < len(scenarios) else 1
 
 
 def main() -> int:
