@@ -524,6 +524,47 @@ it("anchors an explicit one-shot reminder at its requested due time", async () =
   );
 }, 120000);
 
+it("anchors a one-shot alarm at its requested due time", async () => {
+  const created = await invoke(
+    {
+      action: "create",
+      kind: "definition",
+      confirmed: true,
+      intent: "Set an alarm for 2 minutes from now",
+      createPlan: {
+        mode: "create",
+        requestKind: "alarm",
+        nativeProjection: "in_app_only",
+        title: "Two-minute alarm",
+        cadenceKind: "once",
+        dueInMinutes: 2,
+        multiStep: false,
+      },
+    },
+    "Set an alarm for 2 minutes from now",
+  );
+  expect(created.result.success, JSON.stringify(created.result)).toBe(true);
+  const id = created.result.effectReceipts?.[0]?.resource.id;
+  if (!id) throw new Error("Missing created definition receipt");
+  const service = new LifeOpsService(runtime);
+  const definition = await service.repository.getDefinition(
+    runtime.agentId,
+    id,
+  );
+  if (definition?.cadence.kind !== "once")
+    throw new Error("Missing once definition");
+  const occurrence = materializeDefinitionOccurrences(definition, [])[0];
+  const schedule = service.remindersDomain.buildReminderPlanSchedule({
+    ownerType: "occurrence",
+    ownerId: occurrence.id,
+    occurrenceId: occurrence.id,
+    title: definition.title,
+    occurrence,
+    plan: { steps: [{ channel: "in_app", offsetMinutes: 0 }] } as never,
+  });
+  expect(schedule[0].scheduledFor).toBe(definition.cadence.dueAt);
+}, 120000);
+
 it("persists an explicit in-app-only reminder without native projection", async () => {
   const native = vi.spyOn(appleReminders, "createNativeAppleReminderLikeItem");
   try {
