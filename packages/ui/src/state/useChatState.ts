@@ -246,7 +246,7 @@ export interface ChatStateHook {
    * `conversationMessagesRef` in step with the reducer. Never trims the newest
    * tail (see the PREPEND_MESSAGES reducer note).
    */
-  prependConversationMessages: (older: ConversationMessage[]) => void;
+  prependConversationMessages: (older: ConversationMessage[]) => number;
   setAutonomousEvents: (v: StreamEventEnvelope[]) => void;
   setAutonomousLatestEventId: (v: string | null) => void;
   setAutonomousRunHealthByRunId: (v: AutonomyRunHealthMap) => void;
@@ -395,8 +395,8 @@ export function useChatState(): ChatStateHook {
   ) as React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
 
   const prependConversationMessages = useCallback(
-    (older: ConversationMessage[]) => {
-      if (older.length === 0) return;
+    (older: ConversationMessage[]): number => {
+      if (older.length === 0) return 0;
       const current = conversationMessagesRef.current;
       // Single-greeting invariant across pagination: on an already-poisoned
       // thread the duplicated greeting pair sits at the very HEAD, so both rows
@@ -409,12 +409,13 @@ export function useChatState(): ChatStateHook {
       const olderDeduped = current.some(isAgentGreetingMessage)
         ? older.filter((m) => !isAgentGreetingMessage(m))
         : dedupeGreetings(older);
-      if (olderDeduped.length === 0) return;
+      if (olderDeduped.length === 0) return 0;
       const existingIds = new Set(current.map((m) => m.id));
       const olderToAdd = olderDeduped.filter((m) => !existingIds.has(m.id));
-      if (olderToAdd.length === 0) return;
+      if (olderToAdd.length === 0) return 0;
       conversationMessagesRef.current = [...olderToAdd, ...current];
       dispatch({ type: "PREPEND_MESSAGES", value: olderDeduped });
+      return olderToAdd.length;
     },
     [],
   );
