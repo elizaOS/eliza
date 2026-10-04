@@ -75,22 +75,77 @@ test("source candidates are task-account scoped, exact-money and delivery indepe
   );
   assert.notEqual(other.candidates[0].billId, bill.billId);
 });
-test("addresses match regardless of letter case", async () => {
-  // Configured in mixed case, delivered lowercased by the provider.
+test("address domains ignore case without broadening local-part grants", async () => {
   const configured = await fixture().discovery.discover(
     {
       ...context,
-      recipient: "Person@Example.org",
-      senders: ["Bill@Example.org"],
+      recipient: "person@EXAMPLE.ORG",
+      senders: ["bill@EXAMPLE.ORG"],
     },
     signal(),
   );
   assert.equal(configured.status, "candidate");
-  // A recipient header kept as the sender wrote it.
   const delivered = await fixture({
-    messages: [{ ...message("m1"), to: ["PERSON@EXAMPLE.ORG"] }],
+    messages: [
+      {
+        ...message("m1"),
+        fromEmail: "bill@EXAMPLE.ORG",
+        to: ["person@EXAMPLE.ORG"],
+      },
+    ],
   }).discovery.discover(context, signal());
   assert.equal(delivered.status, "candidate");
+  for (const changed of [
+    { recipient: "Person@example.org" },
+    { senders: ["Bill@example.org"] },
+  ]) {
+    const f = fixture();
+    assert.equal(
+      (await f.discovery.discover({ ...context, ...changed }, signal())).status,
+      "missing",
+    );
+    assert.deepEqual(
+      f.calls.map(([kind]) => kind),
+      ["search"],
+    );
+  }
+  for (const changed of [
+    { fromEmail: "Bill@example.org" },
+    { to: ["Person@example.org"] },
+  ]) {
+    const f = fixture({ messages: [{ ...message("m1"), ...changed }] });
+    assert.equal(
+      (await f.discovery.discover(context, signal())).status,
+      "missing",
+    );
+    assert.deepEqual(
+      f.calls.map(([kind]) => kind),
+      ["search"],
+    );
+  }
+});
+test("reread cannot replace an admitted mailbox with a different local part", async () => {
+  for (const changed of [
+    { fromEmail: "Bill@example.org" },
+    { to: ["Person@example.org"] },
+  ]) {
+    let parsed = false;
+    const f = fixture({
+      parse: async () => {
+        parsed = true;
+        return null;
+      },
+    });
+    f.google.getGmailMessageDetail = async (input) => ({
+      message: { ...message(input.messageId), ...changed },
+      bodyText: body,
+    });
+    await assert.rejects(f.discovery.discover(context, signal()), {
+      name: "BillHostError",
+      code: "BILL_SOURCES_UNAVAILABLE",
+    });
+    assert.equal(parsed, false);
+  }
 });
 test("no bill, multiple invoices and conflicting invoice revisions stay distinct", async () => {
   assert.equal(
