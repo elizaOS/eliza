@@ -244,6 +244,7 @@ import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   type AndroidDeepLinkBuffer,
   createMobileLifecycle,
+  type DeepLinkApplicationResult,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
 import {
@@ -2279,7 +2280,9 @@ async function handleAuthCallbackDeepLink(
  * `mobile-lifecycle.ts`, gating its Android deep-link-buffer acknowledgement —
  * can await it instead of acking on dispatch alone.
  */
-function handleDeepLink(url: string): undefined | Promise<boolean> {
+function handleDeepLink(
+  url: string,
+): undefined | Promise<DeepLinkApplicationResult> {
   const remotePairing = parseRemoteControllerPairingDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2368,7 +2371,18 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
     path,
     parsed.searchParams,
   );
+  if (navigationIntent === false) return Promise.resolve({ rejected: true });
   if (navigationIntent) {
+    if (navigationIntent.payload?.kind === "notification-chat") {
+      let rejected = false;
+      return dispatchDeepLinkNavigation(navigationIntent, {
+        onRejected: () => {
+          rejected = true;
+        },
+      }).then((accepted) =>
+        accepted ? true : rejected ? ({ rejected: true } as const) : false,
+      );
+    }
     return dispatchDeepLinkNavigation(navigationIntent);
   }
 
@@ -2518,8 +2532,9 @@ function setHashRoute(route: string, params: URLSearchParams): void {
  */
 function dispatchDeepLinkNavigation(
   intent: DeepLinkNavigationIntent,
+  options?: { onRejected: () => void },
 ): Promise<boolean> {
-  return dispatchNavigateViewRequest(intent);
+  return dispatchNavigateViewRequest(intent, options);
 }
 
 async function initializeDesktopShell(): Promise<void> {

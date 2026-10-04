@@ -21,6 +21,7 @@ import {
   type ApprovalRequestsService,
   createApprovalRequestsService,
 } from "@/lib/services/approval-requests";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseApprovalRequestIdParam } from "../../approval-request-id";
@@ -50,8 +51,11 @@ app.post("/", async (c) => {
     }
     const { id } = parsedId;
 
-    const body = await c.req.json().catch(() => ({}));
-    const parsed = CancelSchema.safeParse(body ?? {});
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = CancelSchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

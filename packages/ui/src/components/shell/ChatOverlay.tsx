@@ -5,6 +5,7 @@
 
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/core/chat-upload-limits";
 import { transcriptPlainText } from "@elizaos/core/transcripts";
+import { validateUuid } from "@elizaos/core/utils/uuid";
 import {
   AudioLines,
   FileText,
@@ -47,8 +48,11 @@ import {
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
+  isNavigateViewRequestPending,
+  listenForNavigateViewRequests,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
+  rejectNavigateViewRequest,
 } from "../../events";
 import { registerPendingFirstRunTextConsumer } from "../../first-run/first-run-pending-text";
 import {
@@ -91,12 +95,15 @@ import {
   shouldInstallStandaloneBottomReclaim,
 } from "../../platform/standalone-bottom-reclaim";
 import { useAppSelectorShallow } from "../../state";
+import { loadAgentProfileRegistry } from "../../state/agent-profiles";
 import {
   clearChatDraft,
   useChatComposerOrLocal,
 } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
+import { readNotificationChatTarget } from "../../state/notifications/navigate-deep-link";
+import { markNotificationRead } from "../../state/notifications/notification-store";
 import { goHome } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
@@ -2037,6 +2044,7 @@ export function ChatOverlay({
   const loadOlderResumeRef = React.useRef<{
     conversationId: string | null;
     before?: number;
+    beforeId?: string;
   }>({ conversationId: activeConversationId });
   const fetchOlder = React.useCallback(async () => {
     const conversationId = activeConversationId;
@@ -2049,6 +2057,7 @@ export function ChatOverlay({
       conversationId,
       currentMessages: conversationMessages,
       before: loadOlderResumeRef.current.before,
+      beforeId: loadOlderResumeRef.current.beforeId,
       prependMessages: (older) => {
         if (loadOlderConversationIdRef.current === conversationId) {
           prependConversationMessages(older);
@@ -2059,6 +2068,7 @@ export function ChatOverlay({
       loadOlderResumeRef.current = {
         conversationId,
         before: result.resumeBefore,
+        beforeId: result.resumeBeforeId,
       };
     }
     return result;
@@ -2383,38 +2393,84 @@ export function ChatOverlay({
     [clearSearchHighlight, reduce],
   );
   const handleSearchJump = React.useCallback(
-    (result: ConversationMessageSearchResult) => {
+    async (
+      result: Pick<
+        ConversationMessageSearchResult,
+        "conversationId" | "messageId" | "role"
+      >,
+      isCurrent: () => boolean = () => true,
+      onMissing?: () => void,
+    ): Promise<boolean> => {
       const anchorId = getChatMessageAnchorId(result.messageId);
       const query = completedSearchQueryRef.current;
-      void (async () => {
+      try {
         // Select the hit's conversation and let its recent window load first, so
         // the in-window case (the common one) scrolls without a second fetch.
-        await handleSelectConversation(result.conversationId);
+        let rejected = false;
+        if (onMissing)
+          await handleSelectConversation(result.conversationId, {
+            onRejected: () => {
+              rejected = true;
+            },
+          });
+        else await handleSelectConversation(result.conversationId);
+        if (!isCurrent()) return false;
+        if (rejected) {
+          onMissing?.();
+          return false;
+        }
         let el = await waitForSearchAnchor(anchorId, 20);
+        if (!isCurrent()) return false;
         if (!el) {
           // The message may already be loaded but outside the deliberately
           // bounded render window. Reveal local history before fetching.
           renderWindow.revealFullWindow();
           el = await waitForSearchAnchor(anchorId, 2);
         }
+        if (!isCurrent()) return false;
         if (!el) {
           // A genuinely older hit needs a window centered on the message.
-          const loaded = await loadConversationMessagesAround(
-            result.conversationId,
-            result.messageId,
-          );
+          let missing: boolean | undefined;
+          const loaded = onMissing
+            ? await loadConversationMessagesAround(
+                result.conversationId,
+                result.messageId,
+                {
+                  onMessages: (messages) => {
+                    missing = !messages.some(
+                      (message) => message.id === result.messageId,
+                    );
+                  },
+                },
+              )
+            : await loadConversationMessagesAround(
+                result.conversationId,
+                result.messageId,
+              );
+          if (!isCurrent()) return false;
+          if (loaded && missing === true) {
+            onMissing?.();
+            return false;
+          }
           if (loaded) {
             el = await waitForSearchAnchor(anchorId, 20);
           }
         }
-        if (el)
-          scrollAndFlashSearchAnchor(
-            el,
-            result.messageId,
-            query,
-            result.role === "user",
-          );
-      })();
+        if (!el || !isCurrent()) return false;
+        scrollAndFlashSearchAnchor(
+          el,
+          result.messageId,
+          query,
+          result.role === "user",
+        );
+        return true;
+      } catch (error) {
+        logger.warn(
+          { error },
+          "[ChatOverlay] source-message navigation failed",
+        );
+        return false;
+      }
     },
     [
       handleSelectConversation,
@@ -4257,6 +4313,9 @@ export function ChatOverlay({
     pending.acknowledge();
     pendingFirstRunAcknowledgementRef.current = null;
   }, [acceptPendingFirstRunText, draft, firstRunOpen]);
+  const notificationChatRequestRevision = React.useRef(0);
+  const notificationChatRefs = React.useRef({ expand, jump: handleSearchJump });
+  notificationChatRefs.current = { expand, jump: handleSearchJump };
   // "Open chat" intent (the launcher's Messages tile). Land the user IN an open
   // conversation instead of the wordless home with a collapsed pill: un-pill to
   // the composer and reveal the thread (a no-op when there's nothing to reveal
@@ -4266,12 +4325,67 @@ export function ChatOverlay({
     const onOpen = () => {
       if (pinnedOpen) return;
       setMode((m) => (m === "pill" ? "input" : m));
-      expand();
+      notificationChatRefs.current.expand();
       requestAnimationFrame(() => inputRef.current?.focus());
     };
+    let mounted = true;
+    const unlisten = listenForNavigateViewRequests((event) => {
+      const detail = event.detail;
+      const payload = detail?.payload as
+        | {
+            kind?: unknown;
+            notificationId?: unknown;
+            target?: { conversationId: string; messageId: string };
+          }
+        | undefined;
+      if (
+        detail?.viewId !== "chat" ||
+        payload?.kind !== "notification-chat" ||
+        pinnedOpen
+      )
+        return false;
+      if (!Object.hasOwn(payload, "target")) {
+        onOpen();
+        return true;
+      }
+      const notificationId = payload.notificationId;
+      if (notificationId !== undefined && !validateUuid(notificationId))
+        return false;
+      const target = readNotificationChatTarget(payload.target);
+      if (!target) return false;
+      const revision = ++notificationChatRequestRevision.current;
+      const baseUrl = client.getBaseUrl?.();
+      const token = client.getRestAuthToken?.();
+      const profile = loadAgentProfileRegistry().activeProfileId;
+      const isCurrent = () =>
+        mounted &&
+        isNavigateViewRequestPending(event) &&
+        revision === notificationChatRequestRevision.current &&
+        baseUrl === client.getBaseUrl?.() &&
+        token === client.getRestAuthToken?.() &&
+        profile === loadAgentProfileRegistry().activeProfileId;
+      setMode("full");
+      inputRef.current?.blur();
+      return notificationChatRefs.current
+        .jump({ ...target, role: "assistant" }, isCurrent, () => {
+          if (isCurrent()) rejectNavigateViewRequest(event);
+        })
+        .then((applied) => {
+          if (!applied || !isCurrent()) return false;
+          // Reading the exact source consumes only its notification unread flag.
+          // The store rolls failed writes back without undoing navigation.
+          if (notificationId)
+            void markNotificationRead(notificationId as string);
+          return true;
+        });
+    });
     window.addEventListener(CHAT_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
-  }, [pinnedOpen, expand]);
+    return () => {
+      mounted = false;
+      unlisten();
+      window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
+    };
+  }, [pinnedOpen]);
   // Control-heavy views can explicitly ask the ambient sheet to yield focus.
   // Keep onboarding pinned: its chat choices are the active first-run UI and
   // must not be dismissed by background navigation.

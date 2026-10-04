@@ -15,6 +15,9 @@
     "name": "ElizaBunRuntime",
     "class": "ai.elizaos.plugins.bunruntime.ElizaBunRuntimePlugin"
   },
+  "plugin-native-calendar": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-camera": {
     "name": "ElizaCamera",
     "class": "ai.eliza.plugins.camera.CameraPlugin"
@@ -54,6 +57,9 @@
   "plugin-native-phone": {
     "name": "ElizaPhone",
     "class": "ai.eliza.plugins.phone.PhonePlugin"
+  },
+  "plugin-native-reminders": {
+    "kind": "host-configured-library"
   },
   "plugin-native-secure-store": {
     "name": "ElizaSecureStore",

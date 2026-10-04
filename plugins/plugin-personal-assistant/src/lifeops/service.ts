@@ -12,50 +12,50 @@ export {
   LifeOpsWorkflowRunFailedUncompensatedError,
 } from "./service-types.js";
 
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type CreateLifeOpsCalendarEventResponse,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarRecurrenceScope,
-  type LifeOpsCalendarSummary,
-  type LifeOpsNextCalendarEventContext,
-  type ListLifeOpsCalendarsRequest,
-  type SetLifeOpsCalendarIncludedRequest,
-  type SetLifeOpsCalendarIncludedResponse,
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  LifeOpsNextCalendarEventContext,
+  ListLifeOpsCalendarsRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
 } from "@elizaos/core/contracts/calendar";
-import {
-  type GetLifeOpsInboxRequest,
-  type LifeOpsCapabilitiesStatus,
-  type LifeOpsDiscordConnectorStatus,
-  type LifeOpsIMessageConnectorStatus,
-  type LifeOpsInbox,
-  type LifeOpsInboxMessage,
-  type LifeOpsMessageChannel,
-  type LifeOpsOwnerBrowserAccessSource,
-  type LifeOpsPersonalBaselineResponse,
-  type LifeOpsRelationship,
-  type LifeOpsRelationshipInteraction,
-  type LifeOpsSchedulingNegotiation,
-  type LifeOpsSchedulingProposal,
-  type LifeOpsScreenTimeDaily,
-  type LifeOpsScreenTimeHistoryResponse,
-  type LifeOpsScreenTimeRangeKey,
-  type LifeOpsScreenTimeSession,
-  type LifeOpsScreenTimeSource,
-  type LifeOpsScreenTimeSummary,
-  type LifeOpsSleepHistoryResponse,
-  type LifeOpsSleepRegularityResponse,
-  type LifeOpsTelegramConnectorStatus,
-  type LifeOpsWhatsAppConnectorStatus,
-  type LifeOpsXFeedItem,
-  type LifeOpsXFeedType,
-  type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  type LifeOpsSocialHabitSummary as SocialHabitSummary,
-  type VerifyLifeOpsTelegramConnectorRequest,
-  type VerifyLifeOpsTelegramConnectorResponse,
+import type {
+  GetLifeOpsInboxRequest,
+  LifeOpsCapabilitiesStatus,
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsIMessageConnectorStatus,
+  LifeOpsInbox,
+  LifeOpsInboxMessage,
+  LifeOpsMessageChannel,
+  LifeOpsOwnerBrowserAccessSource,
+  LifeOpsPersonalBaselineResponse,
+  LifeOpsRelationship,
+  LifeOpsRelationshipInteraction,
+  LifeOpsSchedulingNegotiation,
+  LifeOpsSchedulingProposal,
+  LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSession,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsSleepHistoryResponse,
+  LifeOpsSleepRegularityResponse,
+  LifeOpsTelegramConnectorStatus,
+  LifeOpsWhatsAppConnectorStatus,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  LifeOpsSocialHabitSummary as SocialHabitSummary,
+  VerifyLifeOpsTelegramConnectorRequest,
+  VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/core/contracts/personal-assistant";
 import type {
   BrowserBridgeCompanionStatus,
@@ -2026,8 +2026,11 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.healthDomain.getHealthSummary(request);
   }
 
-  getHealthDailySummary(date: string): Promise<HealthDailySummary> {
-    return this.healthDomain.getHealthDailySummary(date);
+  getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary> {
+    return this.healthDomain.getHealthDailySummary(date, window);
   }
 
   getHealthTrend(
@@ -2037,12 +2040,15 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.healthDomain.getHealthTrend(days, window);
   }
 
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
-    return this.healthDomain.getHealthDataPoints(opts);
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
+    return this.healthDomain.getHealthDataPoints(opts, window);
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.

@@ -1408,6 +1408,12 @@
 			"import": "./dist/types/primitives.js",
 			"default": "./dist/types/primitives.js"
 		},
+		"./utils/uuid": {
+			"eliza-source": "./src/utils/uuid.ts",
+			"types": "./dist/utils/uuid.d.ts",
+			"import": "./dist/utils/uuid.js",
+			"default": "./dist/utils/uuid.js"
+		},
 		"./utils/string-to-uuid": {
 			"eliza-source": "./src/utils/string-to-uuid.ts",
 			"types": "./dist/utils/string-to-uuid.d.ts",

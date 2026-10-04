@@ -1,0 +1,12 @@
+# Reproducible downloads, extracted dependencies, models and compilation outputs.
+/downloads/
+/native-source/
+/models/
+/reference/
+/onnxruntime/
+/build-*/
+/generated/
+/assets-ready/
+/source/
+/*.aar
+/__pycache__/

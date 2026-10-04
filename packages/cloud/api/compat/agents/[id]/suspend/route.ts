@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/compat-envelope";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import { requireCompatAuth } from "../../../_lib/auth";
 import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
@@ -41,11 +42,21 @@ async function __hono_POST(
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
 
-    const body = await request.json().catch(() => ({}));
-    const parsed = suspendSchema.safeParse(body);
-    const reason = parsed.success
-      ? parsed.data.reason
-      : "owner requested suspension";
+    const decodedBody = await decodeOptionalRequestJson(request);
+    if (!decodedBody.ok) {
+      return withCompatCors(
+        Response.json(errorEnvelope("Invalid JSON body"), { status: 400 }),
+        CORS_METHODS,
+      );
+    }
+    const parsed = suspendSchema.safeParse(decodedBody.value);
+    if (!parsed.success) {
+      return withCompatCors(
+        Response.json(errorEnvelope("Invalid request data"), { status: 400 }),
+        CORS_METHODS,
+      );
+    }
+    const { reason } = parsed.data;
 
     logger.info("[compat] Suspend requested", { agentId, reason });
 

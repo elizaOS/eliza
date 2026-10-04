@@ -26,7 +26,12 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
 } from "../../contracts/index.js";
-import { getLocalDateKey, getZonedDateParts } from "../time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getZonedDateParts,
+} from "../time.js";
 
 // Build a "Display Name <email@host>" string when both are available, or
 // fall back to whichever field is set. Without explicit email rendering the
@@ -200,13 +205,28 @@ export function detailArray(
   return Array.isArray(value) ? value : undefined;
 }
 
-export function dayRange(offset: number) {
-  const base = new Date();
-  base.setHours(0, 0, 0, 0);
-  const start = new Date(base.getTime() + offset * 86_400_000);
+/**
+ * The owner's local calendar day `offset` days from `now` in `timeZone`, as an
+ * instant range from local midnight to the next local midnight (23 or 25 hours
+ * on DST days). The host clock's midnight is not the owner's on a shared or
+ * UTC server.
+ */
+export function dayRange(
+  offset: number,
+  timeZone: string,
+  now: Date = new Date(),
+) {
+  const today = getZonedDateParts(now, timeZone);
+  const midnight = { hour: 0, minute: 0, second: 0 };
   return {
-    timeMin: start.toISOString(),
-    timeMax: new Date(start.getTime() + 86_400_000).toISOString(),
+    timeMin: buildUtcDateFromLocalParts(timeZone, {
+      ...addDaysToLocalDate(today, offset),
+      ...midnight,
+    }).toISOString(),
+    timeMax: buildUtcDateFromLocalParts(timeZone, {
+      ...addDaysToLocalDate(today, offset + 1),
+      ...midnight,
+    }).toISOString(),
   };
 }
 

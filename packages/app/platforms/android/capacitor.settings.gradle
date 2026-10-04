@@ -117,3 +117,6 @@ project(':elizaos-plugin-native-phone').projectDir = new File('../../../../plugi
 
 include ':elizaos-plugin-native-wifi'
 project(':elizaos-plugin-native-wifi').projectDir = new File('../../../../plugins/plugin-native-wifi/android')
+
+include ':elizaos-capacitor-calendar'
+project(':elizaos-capacitor-calendar').projectDir = new File('../../../../plugins/plugin-native-calendar/android')
