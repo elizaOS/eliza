@@ -144,15 +144,39 @@ test("pre-aborted and invalid durations never start a probe", async () => {
   assert.equal(calls, 0);
 });
 
-test("deadline during polling retains its typed failure", async () => {
+test("deadline during polling retains its typed failure", {
+  timeout: 2000,
+}, async () => {
+  const started = performance.now();
   await assert.rejects(
     waitForDevelopmentReady(async () => false, {
       label: "unready child",
       timeoutMs: 25,
-      intervalMs: 100,
+      intervalMs: 5000,
     }),
     (error) =>
       error instanceof DevelopmentReadinessError &&
       /unready child did not become ready/.test(error.message),
   );
+  assert.ok(
+    performance.now() - started < 1500,
+    "deadline must interrupt the polling interval",
+  );
+});
+
+test("deadline releases the waiter even when a probe ignores cancellation", {
+  timeout: 2000,
+}, async () => {
+  let signal;
+  await assert.rejects(
+    waitForDevelopmentReady(
+      (operation) => {
+        signal = operation;
+        return new Promise(() => {});
+      },
+      { label: "non-cooperating probe", timeoutMs: 25, intervalMs: 10 },
+    ),
+    DevelopmentReadinessError,
+  );
+  assert.equal(signal.aborted, true);
 });
