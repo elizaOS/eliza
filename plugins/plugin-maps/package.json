@@ -30,6 +30,18 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./client": {
+      "eliza-source": "./src/client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client/*": {
+      "eliza-source": "./src/client/*.ts",
+      "types": "./dist/client/*.d.ts",
+      "import": "./dist/client/*.js",
+      "default": "./dist/client/*.js"
     }
   },
   "files": [
@@ -41,12 +53,13 @@
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bun run test:client && vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:client": "node --test --experimental-transform-types test/device-client.test.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -69,10 +82,14 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
     "vitest": "^5.0.2",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@capacitor/core": "^8.5.2",
+    "maplibre-gl": "^6.11.2"
   },
   "peerDependencies": {
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@capacitor/core": "^8.5.2",
+    "maplibre-gl": "^6.11.2"
   },
   "publishConfig": {
     "access": "public"
@@ -86,6 +103,14 @@
     "app": {
       "displayName": "Maps",
       "category": "productivity"
+    }
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/core": {
+      "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
     }
   }
 }
