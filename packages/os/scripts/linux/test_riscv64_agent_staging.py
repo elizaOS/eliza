@@ -210,7 +210,8 @@ def test_fresh_riscv64_stage_writes_patch_bound_provenance() -> None:
         inputs = provenance.get("inputs", {})
         required_inputs = {
             "toolchains/bun-riscv64/bun-version.json",
-            "toolchains/bun-riscv64/bun-patches/0021-fix-riscv64-linux-open-flags.patch",
+            "toolchains/bun-riscv64/bun-patches/0001-riscv64-c-loop.patch",
+            "toolchains/bun-riscv64/webkit-patches/0001-riscv64-c-loop.patch",
         }
         missing = sorted(required_inputs - set(inputs))
         if missing:

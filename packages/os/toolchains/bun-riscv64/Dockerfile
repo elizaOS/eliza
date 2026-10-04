@@ -3,7 +3,7 @@
 FROM --platform=linux/amd64 alpine:3.24.2 AS sysroot
 RUN mkdir -p /sysroot/etc/apk/keys && \
     cp -L /usr/share/apk/keys/riscv64/*.pub /sysroot/etc/apk/keys/ && \
-    apk --root /sysroot --arch riscv64 --initdb --keys-dir /etc/apk/keys \
+    apk --root /sysroot --arch riscv64 --initdb \
     --repositories-file /etc/apk/repositories --no-cache --no-scripts add \
     musl-dev gcc libatomic libstdc++-dev libucontext-dev icu-dev icu-data-full \
     zlib-dev openssl-dev linux-headers libffi-dev libuv-dev libxml2-dev
