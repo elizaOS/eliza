@@ -73,10 +73,12 @@ export function createRuntimeJsonClient(options: {
     current(epoch);
     if (status.state === "running") return Promise.resolve();
     if (starting?.generation === epoch) return starting.promise;
-    const deadline = Date.now() + options.startupTimeoutMs;
+    const deadline = performance.now() + options.startupTimeoutMs;
+    let settled = false;
     const check = () => {
       current(epoch);
-      if (Date.now() >= deadline) throw new Error(options.messages.startup);
+      if (settled || performance.now() >= deadline)
+        throw new Error(options.messages.startup);
     };
     let timer: ReturnType<typeof setTimeout>;
     const expired = new Promise<never>((_, reject) => {
@@ -90,11 +92,14 @@ export function createRuntimeJsonClient(options: {
       (async () => {
         let state = status.state === "starting" ? status : await bridge.start();
         check();
-        while (state.state === "starting" && Date.now() < deadline) {
+        while (state.state === "starting" && performance.now() < deadline) {
           await new Promise((resolve) =>
             setTimeout(
               resolve,
-              Math.min(options.pollMs, Math.max(1, deadline - Date.now())),
+              Math.min(
+                options.pollMs,
+                Math.max(1, deadline - performance.now()),
+              ),
             ),
           );
           check();
@@ -104,7 +109,10 @@ export function createRuntimeJsonClient(options: {
         if (state.state !== "running")
           throw new Error(state.error || options.messages.startup);
       })(),
-    ]).finally(() => clearTimeout(timer));
+    ]).finally(() => {
+      settled = true;
+      clearTimeout(timer);
+    });
     const entry = {
       generation: epoch,
       promise: pending.finally(() => {

@@ -161,3 +161,23 @@ test("web transport serializes JSON and preserves structured HTTP errors", async
       error.code === "NO",
   );
 });
+
+test("late status after startup timeout cannot continue polling", async () => {
+  const native = bridge();
+  let statuses = 0;
+  let release: (value: { available: boolean; state: string }) => void =
+    () => {};
+  native.start = async () => ({ available: true, state: "starting" });
+  native.status = async () => {
+    statuses++;
+    if (statuses === 1) return { available: true, state: "stopped" };
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  };
+  const client = setup(native, { startupTimeoutMs: 30, pollMs: 1 });
+  await assert.rejects(client.request("/a"), /startup/);
+  release({ available: true, state: "starting" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(statuses, 2);
+});
