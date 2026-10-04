@@ -466,7 +466,14 @@ async function state(commandId: string) {
         "./organization-upgrade-recovery"
       );
       expect((await recover(f.identity)).status).toBe("applied");
-      expect((await record({ ...issue, issueCode: null })).resolved).toBe(1);
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.identity.commandId,
+          ])
+        ).rows,
+      ).toEqual([{ status: "resolved" }]);
+      expect((await record({ ...issue, issueCode: null })).resolved).toBe(0);
       expect((await record(issue)).recorded).toBe(false);
       expect(
         (
@@ -1083,6 +1090,11 @@ async function state(commandId: string) {
       writeFailure = true;
       await expect(dispatch(f.identity, f.claim, async () => {})).rejects.toThrow();
       historicalTargetEvent = historicalEvent();
+      const { recordOrganizationUpgradeRecoveryOutcome: record } = await import(
+        "../../db/repositories/organization-upgrade-recovery-incidents"
+      );
+      await record({ ...f.identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" });
+
       await expiredLease(f.identity.commandId);
       await Bun.sleep(
         Math.max(0, fixtureData.source.current_period_end.getTime() - Date.now() + 20),
@@ -1112,6 +1124,14 @@ async function state(commandId: string) {
       } as Parameters<typeof renew>[0];
       await renew(message);
       expect((await state(f.identity.commandId)).status).toBe("APPLIED");
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.identity.commandId,
+          ])
+        ).rows,
+      ).toEqual([{ status: "resolved" }]);
+
       const rows = (
         await db.query(
           "SELECT plan_key, lifecycle_revision, current_period_start FROM billing_subscriptions WHERE id=$1",

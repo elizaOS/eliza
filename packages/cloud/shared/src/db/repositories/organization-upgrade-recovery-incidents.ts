@@ -1,6 +1,7 @@
 /** Uses the existing financial incident journal under organization/command locks. */
 import { createHash } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, exists, isNull, sql } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import { organizations } from "../schemas/organizations";
 import {
@@ -48,28 +49,10 @@ export async function recordOrganizationUpgradeRecoveryOutcome(input: {
       reject("original_upgrade_unavailable");
     const now = await readPostLockDatabaseNow(tx);
     if (command.status === "APPLIED") {
-      const resolved = await tx
-        .update(incidents)
-        .set({
-          status: "resolved",
-          resolution: "Original upgrade result applied",
-          resolved_at: now,
-          resolved_by_user_id: null,
-          next_retry_at: null,
-          updated_at: now,
-        })
-        .where(
-          and(
-            eq(incidents.organization_id, input.organizationId),
-            eq(incidents.command_id, command.id),
-            isNull(incidents.billing_scope_id),
-            eq(incidents.status, "open"),
-            eq(incidents.kind, "reconciliation"),
-            sql`${incidents.context}->>'owner' = ${owner}`,
-          ),
-        )
-        .returning({ id: incidents.id });
-      return { recorded: false, resolved: resolved.length };
+      return {
+        recorded: false,
+        resolved: await resolveAppliedUpgradeIncidentsInTransaction(tx, input),
+      };
     }
     if (input.issueCode === null) return { recorded: false, resolved: 0 };
     const fingerprint = createHash("sha256")
@@ -117,4 +100,54 @@ export async function recordOrganizationUpgradeRecoveryOutcome(input: {
     }
     return { recorded: true, resolved: 0 };
   });
+}
+
+/** Caller holds the organization lock. Publication and replay close only proven applied original-command incidents. */
+export async function resolveAppliedUpgradeIncidentsInTransaction(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    commandId: string;
+  },
+) {
+  const now = await readPostLockDatabaseNow(tx);
+  const resolved = await tx
+    .update(incidents)
+    .set({
+      status: "resolved",
+      resolution: "Original upgrade result applied",
+      resolved_at: now,
+      resolved_by_user_id: null,
+      next_retry_at: null,
+      updated_at: now,
+    })
+    .where(
+      and(
+        eq(incidents.organization_id, input.organizationId),
+        eq(incidents.command_id, input.commandId),
+        isNull(incidents.billing_scope_id),
+        eq(incidents.status, "open"),
+        eq(incidents.kind, "reconciliation"),
+        exists(
+          tx
+            .select({ id: commands.id })
+            .from(commands)
+            .where(
+              and(
+                eq(commands.id, input.commandId),
+                eq(commands.organization_id, input.organizationId),
+                isNull(commands.app_id),
+                isNull(commands.billing_scope_id),
+                eq(commands.merchant_key, "platform"),
+                eq(commands.kind, "upgrade"),
+                eq(commands.organization_upgrade_dispatch_state, "started"),
+                eq(commands.status, "APPLIED"),
+              ),
+            ),
+        ),
+        sql`${incidents.context}->>'owner' = ${owner}`,
+      ),
+    )
+    .returning({ id: incidents.id });
+  return resolved.length;
 }
