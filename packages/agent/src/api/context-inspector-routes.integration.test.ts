@@ -183,6 +183,7 @@ async function harness(options: {
   }
   await persist(options.detail ?? trajectory(), ROOM);
   await persist(trajectory(OTHER_ROOM), OTHER_ROOM);
+  let authorization = options.authorization;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const handled = await handleContextInspectorRoute({
@@ -192,7 +193,7 @@ async function harness(options: {
       method: req.method ?? "GET",
       url,
       runtime,
-      authorization: options.authorization,
+      authorization,
       resolveConversationRoomId:
         options.resolveConversationRoomId ??
         (async (conversationId) => conversationId),
@@ -224,6 +225,9 @@ async function harness(options: {
       return { response, body: await response.text() };
     },
     setParticipantRooms,
+    setAuthorization(value: AgentHttpRequestAuthorization) {
+      authorization = value;
+    },
     runtime,
   };
 }
@@ -320,52 +324,26 @@ describe("context inspector HTTP integration", () => {
   });
 
   it("rejects unauthenticated, cross-room, revoked, and principal-free callers", async () => {
-    const unauthenticated = await harness({
+    const app = await harness({
       authorization: { ok: false, role: "NONE" },
     });
-    expect(
-      (
-        await unauthenticated.request(
-          `/api/context-inspector?conversationId=${ROOM}`,
-        )
-      ).response.status,
-    ).toBe(401);
+    const request = () =>
+      app.request(`/api/context-inspector?conversationId=${ROOM}`);
+    expect((await request()).response.status).toBe(401);
 
-    const crossRoom = await harness({
-      authorization: { ok: true, role: "USER", principal: USER },
-      participantRooms: [OTHER_ROOM],
-    });
-    expect(
-      (await crossRoom.request(`/api/context-inspector?conversationId=${ROOM}`))
-        .response.status,
-    ).toBe(403);
+    app.setAuthorization({ ok: true, role: "USER", principal: USER });
+    await app.setParticipantRooms([OTHER_ROOM]);
+    expect((await request()).response.status).toBe(403);
 
-    const revoked = await harness({
-      authorization: { ok: true, role: "USER", principal: USER },
-    });
-    expect(
-      (await revoked.request(`/api/context-inspector?conversationId=${ROOM}`))
-        .response.status,
-    ).toBe(200);
-    await revoked.setParticipantRooms([]);
-    expect(
-      (await revoked.request(`/api/context-inspector?conversationId=${ROOM}`))
-        .response.status,
-    ).toBe(403);
-    expect(await revoked.runtime.getRoomsForParticipant(USER)).not.toContain(
-      ROOM,
-    );
+    await app.setParticipantRooms([ROOM]);
+    expect((await request()).response.status).toBe(200);
+    await app.setParticipantRooms([]);
+    expect((await request()).response.status).toBe(403);
+    expect(await app.runtime.getRoomsForParticipant(USER)).not.toContain(ROOM);
 
-    const noPrincipal = await harness({
-      authorization: { ok: true, role: "USER" },
-    });
-    expect(
-      (
-        await noPrincipal.request(
-          `/api/context-inspector?conversationId=${ROOM}`,
-        )
-      ).response.status,
-    ).toBe(403);
+    app.setAuthorization({ ok: true, role: "USER" });
+    await app.setParticipantRooms([ROOM]);
+    expect((await request()).response.status).toBe(403);
   });
 
   it("rejects tampered query state and a trajectory whose room changes", async () => {
