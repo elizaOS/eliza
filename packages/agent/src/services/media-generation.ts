@@ -10,6 +10,7 @@
 import { Buffer } from "node:buffer";
 import {
   type AudioGenConfig,
+  getStreamingContext,
   type IAgentRuntime,
   IMediaGenerationService,
   type ImageConfig,
@@ -292,6 +293,12 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
   ): Promise<MediaGenerationResponse> {
     const config = loadEffectiveElizaConfig();
     const providerOptions = getMediaProviderOptions();
+    const signals = [
+      getStreamingContext()?.abortSignal,
+      this.runtime.getStopSignal?.(),
+    ].filter((value): value is AbortSignal => value !== undefined);
+    const signal = signals.length ? AbortSignal.any(signals) : undefined;
+    signal?.throwIfAborted();
 
     if (request.mediaType === "image") {
       if (mediaConfigUsesCloud(config.media?.image, providerOptions)) {
@@ -302,6 +309,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         config.media?.image,
         providerOptions,
       ).generate({
+        signal,
         prompt: request.prompt,
         size: request.size,
         quality: request.quality,
@@ -337,6 +345,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         config.media?.video,
         providerOptions,
       ).generate({
+        signal,
         prompt: request.prompt,
         duration: request.duration ?? config.media?.video?.defaultDuration,
         aspectRatio: request.aspectRatio,
@@ -365,7 +374,11 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
       config.media?.audio,
       providerOptions,
     ).generate({
+      signal,
       prompt: request.prompt,
+      audioKind: request.audioKind,
+      voiceId: request.voice,
+      seed: request.seed,
       duration: request.duration,
       instrumental: request.instrumental,
       genre: request.genre,
@@ -382,7 +395,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
       audioUrl: result.data.audioUrl,
       title: result.data.title,
       duration: result.data.duration,
-      mimeType: "audio/mpeg",
+      mimeType: result.data.mimeType ?? "audio/mpeg",
     };
   }
 }

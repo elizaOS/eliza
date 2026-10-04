@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from suites.bfcl.types import FunctionCall, FunctionDefinition
+from benchmarks.bfcl.types import FunctionCall, FunctionDefinition
 
 
 _JSON_SCHEMA_TYPE_ALIASES = {
@@ -174,7 +174,9 @@ def generate_function_schema(function: FunctionDefinition) -> dict[str, Any]:
     }
 
 
-def generate_openai_tools_format(functions: list[FunctionDefinition]) -> list[dict[str, Any]]:
+def generate_openai_tools_format(
+    functions: list[FunctionDefinition],
+) -> list[dict[str, Any]]:
     """Return function definitions in OpenAI ``tools`` format."""
     return [
         {
@@ -220,7 +222,9 @@ def create_function_action(function: FunctionDefinition) -> dict[str, Any]:
 class BFCLPluginFactory:
     """Runtime-neutral factory for BFCL function action descriptors."""
 
-    def create_actions(self, functions: list[FunctionDefinition]) -> list[dict[str, Any]]:
+    def create_actions(
+        self, functions: list[FunctionDefinition]
+    ) -> list[dict[str, Any]]:
         return [create_function_action(function) for function in functions]
 
     def create_tools(self, functions: list[FunctionDefinition]) -> list[dict[str, Any]]:

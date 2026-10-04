@@ -3,7 +3,7 @@
  * The application host supplies the persisted vault password before startup;
  * database migrations and authentication initialization finish before listening.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, registerScheduledProcessTask } from "@elizaos/core";
 
 let activeOwner: symbol | undefined;
 
@@ -87,20 +87,25 @@ async function startOwnedLogin(options: {
     );
   }
   const { setPGLiteOverride, closeDb, getDatabaseDriver } = await import(
-    "./db/src/client"
+    "./db/client"
   );
+  let releaseAuth: (() => void) | undefined;
+  let stopWebhookWorker: (() => Promise<void>) | undefined;
   let closeRedis: (() => Promise<void>) | undefined;
   let clearRateLimiter: (() => void) | undefined;
-  const { setEmbeddedAuthDatabase } = await import("./auth/src/store-backends");
-  const { setDatabaseRevocationStore } = await import("./auth/src/revocation");
+  const { clearConfiguredVaults } = await import(
+    "./api/services/vault-factory"
+  );
+  const { setEmbeddedAuthDatabase } = await import("./auth/store-backends");
+  const { setDatabaseRevocationStore } = await import("./auth/revocation");
   const { DatabaseRevocationStore } = await import(
-    "./auth/src/database-revocation"
+    "./auth/database-revocation"
   );
   try {
     if (options.mode === "embedded") {
       process.env.STEWARD_DB_MODE = "pglite";
       process.env.STEWARD_EMBEDDED = "true";
-      const { createPGLiteDb, getDataDir } = await import("./db/src/pglite");
+      const { createPGLiteDb, getDataDir } = await import("./db/pglite");
       if (process.env.STEWARD_PGLITE_MEMORY !== "true") {
         const { resolveEmbeddedSecrets } = await import("./embedded-secrets");
         const secrets = resolveEmbeddedSecrets(
@@ -126,42 +131,41 @@ async function startOwnedLogin(options: {
       }
       process.env.STEWARD_DB_MODE = "postgres";
       process.env.STEWARD_EMBEDDED = "false";
-      const { initializeLoginSchema } = await import(
-        "./db/src/schema-readiness"
-      );
+      const { initializeLoginSchema } = await import("./db/schema-readiness");
       await initializeLoginSchema();
     }
     setEmbeddedAuthDatabase(options.mode === "embedded");
     setDatabaseRevocationStore(new DatabaseRevocationStore());
     const { createLoginApp } = await import("./app");
-    const { initializeDefaultTenant } = await import(
-      "./api/src/services/context"
-    );
+    const { initializeDefaultTenant } = await import("./api/services/context");
     await initializeDefaultTenant();
-    const {
-      initAuthStores,
-      assertAuthStoresAreSafe,
-      setDatabaseAuthRateLimiter,
-    } = await import("./api/src/routes/auth");
-    const { initRedis, shutdownRedis } = await import(
-      "./api/src/middleware/redis"
+    const { initAuthStores, assertAuthStoresAreSafe, releaseAuthStores } =
+      await import("./api/services/auth-lifecycle");
+    const { setDatabaseAuthRateLimiter } = await import(
+      "./api/services/auth-rate-limit"
     );
-    const { getConfiguredVault } = await import(
-      "./api/src/services/vault-factory"
-    );
-    const { SOCKET_PEER_ENV_KEY } = await import(
-      "./api/src/services/runtime-gate"
-    );
+    const { initRedis, shutdownRedis } = await import("./api/middleware/redis");
+    const { getConfiguredVault } = await import("./api/services/vault-factory");
+    const { SOCKET_PEER_ENV_KEY } = await import("./api/services/runtime-gate");
     closeRedis = shutdownRedis;
+    releaseAuth = releaseAuthStores;
     clearRateLimiter = () => setDatabaseAuthRateLimiter(undefined);
     const redisAvailable = await initRedis();
     await initAuthStores(options.mode === "postgres" && !redisAvailable);
     assertAuthStoresAreSafe();
     const { checkDatabaseAuthRateLimit } = await import(
-      "./auth/src/database-rate-limit"
+      "./auth/database-rate-limit"
     );
     setDatabaseAuthRateLimiter(checkDatabaseAuthRateLimit);
     getConfiguredVault();
+    const { PersistentQueue } = await import("./webhooks/index");
+    const webhookQueue = new PersistentQueue();
+    stopWebhookWorker = registerScheduledProcessTask(
+      "login-webhook-delivery",
+      async (signal) => {
+        await webhookQueue.processQueue(signal);
+      },
+    );
     const app = createLoginApp();
     const server = Bun.serve({
       hostname: options.hostname,
@@ -182,6 +186,13 @@ async function startOwnedLogin(options: {
       stop(): Promise<void> {
         closing ??= (async () => {
           const listener = await Promise.allSettled([server.stop(true)]);
+          await stopWebhookWorker?.();
+          const { drainWebhookDeliveries } = await import(
+            "./api/services/webhook-dispatch"
+          );
+          await drainWebhookDeliveries();
+          releaseAuth?.();
+          clearConfiguredVaults();
           setDatabaseAuthRateLimiter(undefined);
           setEmbeddedAuthDatabase(false);
           setDatabaseRevocationStore(undefined);
@@ -204,6 +215,9 @@ async function startOwnedLogin(options: {
     };
   } catch (error) {
     // error-policy:J2 preserve the startup failure after closing the owned database.
+    await stopWebhookWorker?.();
+    releaseAuth?.();
+    clearConfiguredVaults();
     clearRateLimiter?.();
     setEmbeddedAuthDatabase(false);
     setDatabaseRevocationStore(undefined);

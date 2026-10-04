@@ -80,13 +80,9 @@ export function createRegionalMaps(options: RegionalOptions) {
     return region;
   }
   async function request(base: string, path: string, signal?: AbortSignal) {
-    const timeout = AbortSignal.timeout(15000);
     try {
       if (nativeRegion(base)) {
-        const response = await nativeRegionRequest(
-            path,
-            signal ? AbortSignal.any([signal, timeout]) : timeout,
-          ),
+        const response = await nativeRegionRequest(path, signal),
           result = JSON.parse(new TextDecoder().decode(response.bytes));
         if (response.status < 200 || response.status >= 300)
           throw new MapsFailure(
@@ -98,7 +94,7 @@ export function createRegionalMaps(options: RegionalOptions) {
         return result;
       }
       const response = await fetch(base + path, {
-        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        signal,
         credentials: "omit",
         referrerPolicy: "no-referrer",
         redirect: "error",
@@ -142,7 +138,7 @@ export function createRegionalMaps(options: RegionalOptions) {
       if (signal?.aborted)
         throw new MapsFailure("cancelled", "Maps request cancelled.");
       throw new MapsFailure(
-        timeout.aborted ? "timeout" : "offline",
+        "offline",
         "Regional Maps is unavailable. Check the configured service connection.",
       );
     }
@@ -182,7 +178,7 @@ export function createRegionalMaps(options: RegionalOptions) {
     }
   }
   /** Explicit build-time configuration. No endpoint discovery from user chat/storage. */
-  async function initializeRegionalMaps() {
+  async function initializeRegionalMaps(signal?: AbortSignal) {
     diagnostic.error = "";
     const raw = options.baseUrl;
     diagnostic.configured = !!raw;
@@ -221,7 +217,7 @@ export function createRegionalMaps(options: RegionalOptions) {
         throw new Error("Use the fixed debug regional gateway.");
       diagnostic.stage = "capabilities-request";
       const base = url.origin,
-        meta = await request(base, "/capabilities");
+        meta = await request(base, "/capabilities", signal);
       diagnostic.stage = "capabilities-validation";
       if (
         meta.providerId !== options.providerId ||

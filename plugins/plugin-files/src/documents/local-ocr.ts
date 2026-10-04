@@ -65,11 +65,6 @@ export async function recognizeLocalText(
   const aborted = () =>
     finish(new DOMException("Scan cancelled", "AbortError"));
   signal.addEventListener("abort", aborted, { once: true });
-  const timer = setTimeout(
-    () =>
-      finish(Error("Scanning took too long. Try a smaller, clearer image.")),
-    60000,
-  );
   worker.onerror = () =>
     finish(Error("The local scan engine could not start."));
   worker.onmessageerror = () =>
@@ -203,7 +198,6 @@ export async function recognizeLocalText(
     }
     return { text: result.text.trim(), confidence: result.confidence, lines };
   } finally {
-    clearTimeout(timer);
     signal.removeEventListener("abort", aborted);
     finish(new DOMException("Scan finished", "AbortError"));
   }

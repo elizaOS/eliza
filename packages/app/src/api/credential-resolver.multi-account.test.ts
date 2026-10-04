@@ -24,7 +24,7 @@ import path from "node:path";
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,

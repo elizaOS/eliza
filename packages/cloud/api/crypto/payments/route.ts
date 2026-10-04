@@ -21,6 +21,7 @@ import {
   cryptoPaymentsService,
 } from "@elizaos/cloud-shared/lib/services/crypto-payments";
 import { isOxaPayConfigured } from "@elizaos/cloud-shared/lib/services/oxapay";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -49,8 +50,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Crypto payments not available" }, 503);
     }
 
-    const body = await c.req.json();
-    const validation = createPaymentSchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const validation = createPaymentSchema.safeParse(decodedBody.value);
     if (!validation.success) {
       return c.json(
         {

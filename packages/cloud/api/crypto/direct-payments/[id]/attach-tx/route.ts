@@ -17,6 +17,7 @@ import {
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import { directWalletPaymentsService } from "@elizaos/cloud-shared/lib/services/direct-wallet-payments";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -42,8 +43,13 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    const body = await c.req.json().catch(() => null);
-    const parsed = bodySchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input, and a body
+      // stream fault stays a transport error instead of a fake-valid null.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = bodySchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

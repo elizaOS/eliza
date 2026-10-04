@@ -15,6 +15,7 @@ import {
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import { cryptoPaymentsService } from "@elizaos/cloud-shared/lib/services/crypto-payments";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -88,8 +89,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Payment has expired" }, 400);
     }
 
-    const body = await c.req.json();
-    const validation = confirmSchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const validation = confirmSchema.safeParse(decodedBody.value);
     if (!validation.success) {
       logger.warn("[Crypto Payments API] Invalid confirmation request", {
         paymentId: redact.paymentId(id),

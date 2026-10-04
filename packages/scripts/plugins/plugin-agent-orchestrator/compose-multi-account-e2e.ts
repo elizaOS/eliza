@@ -31,7 +31,7 @@ import path from "node:path";
 import {
   createRuntimeAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { AcpService } from "../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.ts";
 // Import the pool from app SRC, not the package barrel: app has no
 // `eliza-source` export condition, so the barrel resolves to (possibly stale)

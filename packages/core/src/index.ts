@@ -123,7 +123,11 @@ export {
 	type PinnedLookupFetchLike,
 	type PinnedLookupFetchParams,
 } from "./network/fetch-guard.js";
-export { nodeLookupFn, nodePinnedFetch } from "./network/node-pinned-fetch.js";
+export {
+	createValidatedLookup,
+	nodeLookupFn,
+	nodePinnedFetch,
+} from "./network/node-pinned-fetch.js";
 export {
 	assertPublicHostname,
 	createPinnedLookup,
@@ -252,6 +256,10 @@ export type {
 	TriggerSummary,
 	TriggerTaskMetadata,
 	UpdateTriggerRequest,
+} from "./api/agent-api-types.js";
+export {
+	DELTA_STREAM_PROTOCOL,
+	type DeltaStreamProtocol,
 } from "./api/agent-api-types.js";
 export { drainAppRoutePluginLoaders } from "./api/drain-app-route-plugins.js";
 export {
@@ -2702,9 +2710,16 @@ export {
 	markdownToIR,
 	markdownToIRWithMeta,
 } from "./markdown/ir.js";
+export * from "./media/provider.js";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";
+export {
+	assertPublicHttpsEndpoint,
+	assertPublicInternetAddress,
+	BLOCKED_PUBLIC_ENDPOINT_DNS_SUFFIXES,
+	isPublicInternetAddress,
+} from "./network/public-endpoint";
 export {
 	buildStoreVariantBlockedMessage,
 	isLocalCodeExecutionAllowed,
@@ -3247,6 +3262,7 @@ export {
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
+	registerScheduledProcessTask,
 	registerTaskSchedulerRuntime,
 	startTaskScheduler,
 	stopTaskScheduler,

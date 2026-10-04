@@ -19,6 +19,7 @@ try {
   );
   const shared = [
     "runtime/RuntimeBundleStore",
+    "runtime/NativeProcessSupervisor",
     "runtime/RuntimeRequestDeadline",
     "runtime/RuntimeInstallationIdentity",
     "updater/UpdateJournal",
@@ -42,6 +43,7 @@ try {
   });
   for (const [group, name] of [
     ["runtime.test", "RuntimeBundleStoreTest"],
+    ["runtime.test", "NativeProcessSupervisorTest"],
     ["runtime.test", "RuntimeRequestDeadlineTest"],
     ["updater", "UpdateJournalTest"],
     ["updater", "ProbationWindowTest"],

@@ -4,7 +4,12 @@ Python bridge that runs benchmark turns through OpenClaw's embedded agent and na
 
 ## Development
 
-Use a Python environment matching `pyproject.toml` and install the required dependencies.
+Use Python 3.11+ and install the shared support package with this harness
+from the repository root:
+
+```bash
+python -m pip install ./packages/benchmarks ./packages/benchmarks/harnesses/openclaw
+```
 
 No compilation or wheel build is required to run this suite from source.
 
