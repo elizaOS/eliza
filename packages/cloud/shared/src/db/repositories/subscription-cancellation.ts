@@ -94,7 +94,7 @@ async function lockActor(tx: DbTransaction, input: CancellationIdentity) {
 }
 async function currentSource(
   tx: DbTransaction,
-  input: PrepareCancellationInput,
+  input: Omit<PrepareCancellationInput, "idempotencyKey">,
   locked: Awaited<ReturnType<typeof lockActor>>,
 ) {
   if (
@@ -130,6 +130,47 @@ async function currentSource(
   )
     reject("source_changed_or_unsupported");
   return source;
+}
+/** Captures eligible undo authority without admitting a command or sending a provider mutation. */
+export async function readCancellationUndoReviewSource(
+  input: Omit<PrepareCancellationInput, "idempotencyKey">,
+) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockActor(tx, input);
+    const source = await currentSource(tx, input, locked);
+    const predecessor = await readLatestSubscriptionScheduleCommand(tx, source);
+    if (!source.cancel_at_period_end || predecessor?.kind !== "cancel")
+      reject("schedule_transition_unavailable");
+    const [live] = await tx
+      .select({ id: billingSubscriptionCommands.id })
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
+        ),
+      )
+      .limit(1);
+    if (live) reject("contradictory_command_pending");
+    const [projection] = await tx
+      .select()
+      .from(organizationEntitlements)
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+        ),
+      );
+    if (
+      !projection ||
+      projection.source_subscription_id !== source.id ||
+      projection.source_subscription_revision !== source.lifecycle_revision
+    )
+      reject("projection_unavailable");
+    return { source, organizationCustomerId: locked.organization.customer };
+  });
 }
 function intentDigest(
   input: PrepareCancellationInput,
@@ -277,7 +318,6 @@ export async function claimCancellation(
         ...input,
         subscriptionId: command.subscription_id,
         expectedSubscriptionRevision: command.expected_subscription_revision,
-        idempotencyKey: command.idempotency_key,
       },
       locked,
     );
@@ -385,7 +425,6 @@ export async function finalizeCancellation(
         ...input,
         subscriptionId: claim.source.id,
         expectedSubscriptionRevision: claim.source.lifecycle_revision,
-        idempotencyKey: command.idempotency_key,
       },
       locked,
     );
@@ -521,7 +560,6 @@ export async function assertCancellationClaimCurrent(
         ...input,
         subscriptionId: claim.source.id,
         expectedSubscriptionRevision: claim.source.lifecycle_revision,
-        idempotencyKey: command.idempotency_key,
       },
       locked,
     );
