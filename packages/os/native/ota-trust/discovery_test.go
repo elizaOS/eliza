@@ -36,19 +36,20 @@ func TestDiscoveryAuthenticatesThenDefers(t *testing.T) {
 	a, b := discoveryDirs(t)
 	r := fixture(t)
 	transport := &discoveryFixture{repository: r}
-	s := &DiscoverySession{transport: transport}
-	result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", now.UnixMilli(), 0)
+	s := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: transport}
+	result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", 0)
 	if err != nil || result.Status != "authenticated" || !bytes.Equal(result.Descriptor, r.body) || result.DelayMillis < 5*60*60*1000 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if transport.closeCount != 1 {
 		t.Fatal("transport leaked")
 	}
-	if _, err = s.Run(a, b, r.root, baseURL, "stable", "launcher", now.UnixMilli(), 0); err == nil {
+	if _, err = s.Run(a, b, r.root, baseURL, "stable", "launcher", 0); err == nil {
 		t.Fatal("session reused")
 	}
-	s = &DiscoverySession{transport: &discoveryFixture{repository: r}}
-	result, err = s.Run(a, b, r.root, baseURL, "stable", "launcher", now.UnixMilli()+time.Since(started).Milliseconds()+1000, 0)
+	later := now.UnixMilli() + time.Since(started).Milliseconds() + 1000
+	s = &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{later, later}}, transport: &discoveryFixture{repository: r}}
+	result, err = s.Run(a, b, r.root, baseURL, "stable", "launcher", 0)
 	if err != nil || result.Status != "deferred" || len(result.Descriptor) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -57,8 +58,8 @@ func TestDiscoveryFailurePersistsServerDelay(t *testing.T) {
 	a, b := discoveryDirs(t)
 	r := fixture(t)
 	r.files = map[string][]byte{}
-	s := &DiscoverySession{transport: &discoveryFixture{repository: r, hint: 120000}}
-	result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", now.UnixMilli(), 0)
+	s := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r, hint: 120000}}
+	result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", 0)
 	if err != nil || result.Status != "deferred" || len(result.Descriptor) != 0 || result.DelayMillis < 120000 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -73,7 +74,7 @@ func TestDiscoveryCancellationAndChannelRaceDiscardBytes(t *testing.T) {
 			a, b := discoveryDirs(t)
 			r := fixture(t)
 			transport := &discoveryFixture{repository: r}
-			s := &DiscoverySession{transport: transport}
+			s := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: transport}
 			transport.hook = func() {
 				switch change {
 				case "cancel":
@@ -88,7 +89,7 @@ func TestDiscoveryCancellationAndChannelRaceDiscardBytes(t *testing.T) {
 					}
 				}
 			}
-			result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", now.UnixMilli(), 0)
+			result, err := s.Run(a, b, r.root, baseURL, "stable", "launcher", 0)
 			if change == "corrupt" {
 				if err == nil || result != nil {
 					t.Fatal("exposed bytes without durable result")
@@ -108,7 +109,7 @@ func TestAuthenticatedDiscoveryPersistsAdmissionBeforeDelivery(t *testing.T) {
 	r := fixture(t)
 	r.body = v.Release
 	r.publish(t, 1)
-	session := &DiscoverySession{transport: &discoveryFixture{repository: r}}
+	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, err := session.RunAdmitted(schedule, cache, state, r.root, baseURL, v.Device, v.Policy, 0)
 	if err != nil || result.Status != "admitted" || result.Admission.Decision != "eligible" || !bytes.Equal(result.Descriptor, v.Release) {
 		t.Fatalf("%+v %v", result, err)
@@ -122,9 +123,9 @@ func TestAuthenticatedDiscoveryPersistsAdmissionBeforeDelivery(t *testing.T) {
 		d["rollout"].(map[string]any)["revision"] = 2
 	})
 	r.publish(t, 2)
-	policy := mutateAdmission(t, v.Policy, func(p map[string]any) { p["trustedNowMs"] = float64(now.UnixMilli() + 31000) })
-	session = &DiscoverySession{transport: &discoveryFixture{repository: r}}
-	result, err = session.RunAdmitted(schedule, cache, state, r.root, baseURL, v.Device, policy, 2)
+	later := now.UnixMilli() + 31000
+	session = &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{later, later}}, transport: &discoveryFixture{repository: r}}
+	result, err = session.RunAdmitted(schedule, cache, state, r.root, baseURL, v.Device, v.Policy, 2)
 	if err != nil || result.Status != "deferred" || result.Admission.Reason != "rollout-paused" || len(result.Descriptor) != 0 {
 		t.Fatalf("paused result exposed: %+v %v", result, err)
 	}
@@ -143,7 +144,7 @@ func TestAdmissionStorageFailureSchedulesFailureNotSuccess(t *testing.T) {
 	if err := os.WriteFile(state+"/admission.json", []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	session := &DiscoverySession{transport: &discoveryFixture{repository: r}}
+	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, err := session.RunAdmitted(schedule, cache, state, r.root, baseURL, v.Device, v.Policy, 0)
 	if err == nil || result != nil {
 		t.Fatal("persistence failure exposed update")
@@ -154,5 +155,31 @@ func TestAdmissionStorageFailureSchedulesFailureNotSuccess(t *testing.T) {
 	}
 	if saved.Failures != 1 || saved.Lease != "" || saved.Next > now.UnixMilli()+120000 {
 		t.Fatalf("admission failure recorded as successful check: %+v", saved)
+	}
+}
+
+func TestDiscoveryRejectsInvalidPolicyBeforeNetwork(t *testing.T) {
+	v := admissionVectors(t)[0]
+	for _, prepare := range []bool{false, true} {
+		for _, mutation := range []func(map[string]any){
+			func(p map[string]any) { p["trustedLowerMs"] = 0 },
+			func(p map[string]any) { p["trustedUpperMs"] = 1 },
+			func(p map[string]any) { delete(p, "trustedUpperMs") },
+			func(p map[string]any) { p["minimumSequence"] = 0 },
+		} {
+			transport := &discoveryFixture{repository: fixture(t), hook: func() { t.Fatal("invalid policy performed network I/O") }}
+			session := &DiscoverySession{transport: transport, source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}}
+			policy := mutateAdmission(t, v.Policy, mutation)
+			var err error
+			if prepare {
+				_, err = session.RunPrepared("", "", "", "", transport.root, baseURL, v.Device, policy, 0)
+			} else {
+				_, err = session.RunAdmitted("", "", "", transport.root, baseURL, v.Device, policy, 0)
+			}
+			session.Close()
+			if err == nil {
+				t.Fatal("invalid policy accepted")
+			}
+		}
 	}
 }

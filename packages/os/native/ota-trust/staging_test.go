@@ -54,14 +54,14 @@ func stageFixture(t *testing.T) *stagingFixture {
 	json.Unmarshal(v.Device, &device)
 	device.CohortID = enrolled.CohortID
 	f.device, _ = json.Marshal(device)
-	policy := admissionPolicy{Repository: c.Repository, Hosts: c.Hosts, Now: now.UnixMilli(), Sequence: 1, Revision: 1, SecurityFloor: 1}
+	policy := admissionPolicy{Repository: c.Repository, Hosts: c.Hosts, Lower: now.UnixMilli(), Upper: now.UnixMilli(), Sequence: 1, Revision: 1, SecurityFloor: 1}
 	p, _ := json.Marshal(policy)
 	release, _ := json.Marshal(f.descriptor)
 	// Use authentic discovery to produce the authorization, not a forged local record.
 	r.body = release
 	r.publish(t, 1)
 	schedule, cache := discoveryDirs(t)
-	session := &DiscoverySession{transport: &discoveryFixture{repository: r}}
+	session := &DiscoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, e := session.RunPrepared(schedule, cache, state, f.prepared, r.root, baseURL, f.device, p, 0)
 	if e != nil || result.Status != "admitted" {
 		t.Fatalf("%+v %v", result, e)
@@ -109,10 +109,11 @@ func (f *stagingFixture) newStager(t *testing.T) *PreparedStager {
 	if e != nil {
 		t.Fatal(e)
 	}
+	stager.source = &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}
 	return stager
 }
 func (f *stagingFixture) run(s *PreparedStager) (*StagedPair, error) {
-	return s.Stage(f.prepared, f.admission, f.cache, f.id, f.device, now.UnixMilli(), 1, 0, 1024)
+	return s.StageWithTimeSource(f.prepared, f.admission, f.cache, f.id, f.device, 1, 0, 1024)
 }
 func TestStagingDownloadsRecoveryFirstAndReusesVerifiedPair(t *testing.T) {
 	f := stageFixture(t)
@@ -209,7 +210,7 @@ func TestStagingNeverReturnsPartialOrRevokedPair(t *testing.T) {
 func TestStagingRejectsStaleGenerationAndUnsafeCache(t *testing.T) {
 	f := stageFixture(t)
 	s := f.newStager(t)
-	if result, e := s.Stage(f.prepared, f.admission, f.cache, f.id, f.device, now.UnixMilli(), 1, 1, 1024); e == nil || result != nil {
+	if result, e := s.StageWithTimeSource(f.prepared, f.admission, f.cache, f.id, f.device, 1, 1, 1024); e == nil || result != nil {
 		t.Fatal("stale generation accepted")
 	}
 	path := filepath.Join(f.cache, f.descriptor.Candidate.SHA256+".apk")
