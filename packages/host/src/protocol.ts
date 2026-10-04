@@ -50,6 +50,7 @@ export {
   buildPluginConfigUiSpec,
   buildPluginListUiSpec,
 } from "./config/plugin-ui-spec.js";
+export * from "./config/public-endpoints.js";
 export * from "./config/runtime-mode.js";
 export * from "./config/schema.js";
 export type {
