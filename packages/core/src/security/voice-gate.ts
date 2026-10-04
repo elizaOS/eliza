@@ -93,6 +93,11 @@ function joinLines(...parts: (string | undefined | false)[]): string {
  * the failure-reply hard-rules skeleton: no internal-mechanism words, no
  * em-dashes, preserve every exact value verbatim, return only the reply text.
  * Exported for direct unit testing of prompt content.
+ *
+ * The complete bio and voice/style directive lists are included, never an
+ * item-count cap: a dropped directive (for example a language or formality
+ * rule) would silently rewrite this literal against a persona the owner never
+ * configured. Only non-string and blank entries are filtered out.
  */
 export function buildVoiceGatePrompt(
 	character: IAgentRuntime["character"],
@@ -100,14 +105,12 @@ export function buildVoiceGatePrompt(
 ): string {
 	const name = character?.name?.trim() || "the assistant";
 	const bio = Array.isArray(character?.bio)
-		? character.bio.filter((b) => typeof b === "string" && b.trim()).slice(0, 4)
+		? character.bio.filter((b) => typeof b === "string" && b.trim())
 		: [];
 	const style = [
 		...(character?.style?.all ?? []),
 		...(character?.style?.chat ?? []),
-	]
-		.filter((s) => typeof s === "string" && s.trim())
-		.slice(0, 6);
+	].filter((s) => typeof s === "string" && s.trim());
 
 	return joinLines(
 		`You are ${name}. Rewrite the message below so it reads as if you, a real person, wrote it yourself in your own natural voice. It must sound human, never like a canned system string.`,
