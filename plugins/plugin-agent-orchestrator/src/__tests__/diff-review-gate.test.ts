@@ -385,6 +385,10 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["deploy/values.yaml", `password: !!str ${value}`],
     ["deploy/values.yaml", "password: !!str false"],
     ["deploy/values.yaml", "password: &db !!str null"],
+    ["deploy/values.yaml", `password: !custom ${value}`],
+    ["deploy/values.yaml", `password: !Sub "${value}"`],
+    ["deploy/values.yaml", 'password: !custom "false"'],
+    ["deploy/values.yaml", "password: !custom false"],
   ])("blocks %s line %s and keeps the value out of findings", (file, line) => {
     const result = review(file, line);
     expect(result.passed).toBe(false);
@@ -429,7 +433,7 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["chart/values.yaml", "max_tokens: 4096"],
     ["chart/values.yaml", "password: *dbPassword"],
     ["chart/values.yaml", "credentials: &defaults"],
-    // Local tags resolve a referenced secret instead of inlining one.
+    // Recognized lookup tags and encrypted block values do not inline plaintext.
     ["template.yaml", "      MasterUserPassword: !Ref DBPassword"],
     ["template.yaml", "      DbPassword: !GetAtt DbSecret.SecretString"],
     [

@@ -590,8 +590,9 @@ function namesCredentialValue(key: string): boolean {
  * YAML carries credentials as unquoted plain scalars (`password: hunter2`)
  * and as compose/Kubernetes env list items (`- NAME=value`); quoted values are
  * already classified above. Deploy-time references such as `${{ secrets.X }}`,
- * `${VAR}` and `$VAR`, block scalars, anchors, aliases, tags and YAML nulls or
- * booleans are not literal material. Only applied to `.yml`/`.yaml` files,
+ * `${VAR}` and `$VAR`, block scalars, bare anchors, aliases and YAML nulls or
+ * booleans are not literal material. Lookup tags may reference values; arbitrary
+ * tags can still wrap literals. Only applied to `.yml`/`.yaml` files,
  * where `name: value` is data rather than a source type annotation.
  */
 function hasSensitiveYamlScalar(line: string): boolean {
@@ -618,14 +619,18 @@ function isLiteralYamlScalar(value: string): boolean {
     .slice(properties.length)
     .replace(/\s+#.*$/, "")
     .trimEnd();
-  // A local tag asks the consumer to resolve the value (CloudFormation
-  // `!Ref`/`!GetAtt`/`!Sub`, Home Assistant `!secret`, Ansible `!vault`):
-  // a reference to a secret, never inline material. Core `!!` tags keep the
-  // scalar's own type.
-  if (/(?:^|\s)!(?!!)/.test(properties)) return false;
   const quoted = /^(["'])(.*)\1$/.exec(scalar);
   const unquoted = quoted?.[2] ?? scalar;
   if (!unquoted) return false;
+  // Only recognized lookup tags resolve a referenced value. An arbitrary
+  // local tag can still wrap inline material and does not establish a lookup.
+  const localTag = /(?:^|\s)!(?!!)(\S+)(?:\s|$)/.exec(properties)?.[1];
+  if (localTag && /^(?:Ref|GetAtt|secret)$/.test(localTag)) return false;
+  if (
+    localTag === "Sub" &&
+    /^\{\{resolve:(?:secretsmanager|ssm-secure):[^{}]+\}\}$/.test(unquoted)
+  )
+    return false;
   const explicitType = /(?:^|\s)!!(str|bool|null)(?:\s|$)/.exec(
     properties,
   )?.[1];
@@ -638,7 +643,7 @@ function isLiteralYamlScalar(value: string): boolean {
   // Quoted strings retain their literal type, except deployment interpolation.
   if (quoted) return !/^\$/.test(unquoted);
   if (/^[|>&*!{[$~#]/.test(unquoted)) return false;
-  if (explicitType === "str") return true;
+  if (explicitType === "str" || localTag) return true;
   return !/^(?:null|true|false|yes|no|on|off)$/i.test(unquoted);
 }
 
