@@ -59,6 +59,11 @@ export async function fetchPinnedResponse(
         headers: response.headers,
       },
     );
+  } catch (error) {
+    // Node may surface a body cancellation as ECONNRESET. Preserve the caller's
+    // cancellation or our typed deadline instead of leaking a transport error.
+    if (controller.signal.aborted) throw controller.signal.reason;
+    throw error;
   } finally {
     clearTimeout(deadline);
     init.signal?.removeEventListener("abort", abort);

@@ -74,7 +74,7 @@ test("pinned transport rejects both declared and streamed oversized responses", 
 test("pinned transport deadline covers a stalled response body", async () => {
   await expect(
     fetchPinnedResponse(url("/slow"), {}, { ...limits, timeoutMs: 50 }),
-  ).rejects.toThrow();
+  ).rejects.toMatchObject({ code: "LOGIN_HTTP_TIMEOUT" });
 }, 2000);
 
 test("pinned transport honors caller cancellation before and after headers", async () => {
@@ -84,11 +84,11 @@ test("pinned transport honors caller cancellation before and after headers", asy
     { signal: controller.signal },
     limits,
   );
-  setTimeout(() => controller.abort(), 50);
-  await expect(result).rejects.toThrow();
+  setTimeout(() => controller.abort(new Error("caller cancelled")), 50);
+  await expect(result).rejects.toThrow("caller cancelled");
   await expect(
     fetchPinnedResponse(url("/"), { signal: controller.signal }, limits),
-  ).rejects.toThrow();
+  ).rejects.toThrow("caller cancelled");
 }, 2000);
 
 test("pinned transport releases bodyless success responses", async () => {
