@@ -71,6 +71,16 @@ const openSubscriptionEventIncident = mock(
   async (_input: { reason: string; eventType: string }) => true,
 );
 
+const reconcileUpgradeInvoice = mock(async (_message: unknown) => ({
+  owned: true,
+}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-upgrade-invoice-event",
+  () => ({
+    reconcileOrganizationUpgradeInvoiceEvent: reconcileUpgradeInvoice,
+  }),
+);
+
 // Lifecycle owners have independent real-DB consumer coverage (subscription-dunning.pglite.test.ts); these fixtures own purchased-credit dispatch.
 mock.module(
   "@elizaos/cloud-shared/lib/services/stripe-scheduled-cancellation-lifecycle",
@@ -241,6 +251,9 @@ function delivery(
 }
 
 beforeEach(() => {
+  retrieveSubscription.mockClear();
+  reconcileUpgradeInvoice.mockReset();
+  reconcileUpgradeInvoice.mockResolvedValue({ owned: true });
   getTransactionByStripePaymentIntent.mockClear();
   getTransactionByStripePaymentIntent.mockResolvedValue(null);
   addCredits.mockClear();
@@ -1284,4 +1297,71 @@ test("retains disputes with expanded charges whose invoice linkage is absent", a
   expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
   expect(clawbackCredits).not.toHaveBeenCalled();
   expect(refundCredits).not.toHaveBeenCalled();
+});
+
+describe("original upgrade invoice routing", () => {
+  test("created and paid upgrade invoices reach their owner without purchased credits", async () => {
+    for (const type of ["invoice.created", "invoice.paid"]) {
+      const input = delivery(type, {
+        id: "in_upgrade",
+        subscription: "sub_upgrade",
+        billing_reason: "subscription_update",
+      });
+      expect(await processStripeEvent(input)).toBe("ack");
+      expect(reconcileUpgradeInvoice).toHaveBeenLastCalledWith(input.body);
+    }
+    expect(reconcileUpgradeInvoice).toHaveBeenCalledTimes(2);
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(retrieveSubscription).not.toHaveBeenCalled();
+  });
+  test("unattributed paid deliveries retry instead of entering renewal", async () => {
+    reconcileUpgradeInvoice.mockRejectedValueOnce(
+      new ElizaError("Original receipt pending", {
+        code: "SUBSCRIPTION_UPGRADE_EVENT_UNAVAILABLE",
+      }),
+    );
+    expect(
+      await processStripeEvent(
+        delivery("invoice.paid", {
+          id: "in_upgrade",
+          subscription: "sub_upgrade",
+          billing_reason: "subscription_update",
+        }),
+      ),
+    ).toBe("retry");
+    expect(addCredits).not.toHaveBeenCalled();
+  });
+  test("unowned upgrade invoice opens a durable incident and acknowledges", async () => {
+    reconcileUpgradeInvoice.mockResolvedValueOnce({ owned: false });
+    expect(
+      await processStripeEvent(
+        delivery("invoice.paid", {
+          id: "in_upgrade",
+          subscription: "sub_upgrade",
+          billing_reason: "subscription_update",
+        }),
+      ),
+    ).toBe("ack");
+    expect(openSubscriptionEventIncident).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "unowned_upgrade_invoice",
+        eventType: "invoice.paid",
+      }),
+    );
+    expect(addCredits).not.toHaveBeenCalled();
+  });
+  test("ordinary renewal remains with its existing lifecycle owner", async () => {
+    // Existing fixture rejects renewal I/O; the observed retry proves it was not swallowed by upgrade routing.
+    expect(
+      await processStripeEvent(
+        delivery("invoice.paid", {
+          id: "in_renewal",
+          subscription: "sub_upgrade",
+          billing_reason: "subscription_cycle",
+        }),
+      ),
+    ).toBe("retry");
+    expect(reconcileUpgradeInvoice).not.toHaveBeenCalled();
+    expect(addCredits).not.toHaveBeenCalled();
+  });
 });

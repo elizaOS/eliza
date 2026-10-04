@@ -557,6 +557,7 @@
     "./lib/services/stripe-paid-renewal": "./src/lib/services/stripe-paid-renewal.ts",
     "./lib/services/stripe-scheduled-cancellation-lifecycle": "./src/lib/services/stripe-scheduled-cancellation-lifecycle.ts",
     "./lib/services/stripe-terminal-lifecycle": "./src/lib/services/stripe-terminal-lifecycle.ts",
+    "./lib/services/organization-upgrade-invoice-event": "./src/lib/services/organization-upgrade-invoice-event.ts",
     "./lib/services/organization-upgrade-maintenance": "./src/lib/services/organization-upgrade-maintenance.ts",
     "./lib/services/subscription-cancellation": "./src/lib/services/subscription-cancellation.ts",
     "./lib/services/subscription-catalog": "./src/lib/services/subscription-catalog.ts",
