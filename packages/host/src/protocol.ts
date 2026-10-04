@@ -4,6 +4,7 @@ export * from "./api/http-plugin.js";
 export * from "./api/http-plugin-runtime.js";
 export * from "./api/route-helpers.js";
 export * from "./api/runtime-route-context.js";
+export * from "./automation-node-contributors.js";
 export * from "./boot-env.js";
 export * from "./character-presets.characters.js";
 
