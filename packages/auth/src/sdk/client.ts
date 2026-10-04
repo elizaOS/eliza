@@ -568,6 +568,8 @@ export interface UserOAuthAccountLinkChallenge {
   state: string;
   redirectUri: string;
   expiresIn: number;
+  /** Present for S256 challenges; the redirect must also be registered with the provider. */
+  authorizationUrl?: string;
 }
 
 export interface UserPhoneAccountLinkSendResult {
