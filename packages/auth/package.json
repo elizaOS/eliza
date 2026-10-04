@@ -14,7 +14,8 @@
   "files": [
     "dist",
     "LICENSE",
-    "native-host/cloud-enrollment.mjs"
+    "native-host/cloud-enrollment.mjs",
+    "native-host/account-methods.mjs"
   ],
   "exports": {
     ".": {
