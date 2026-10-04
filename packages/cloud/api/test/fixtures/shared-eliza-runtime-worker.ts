@@ -19,7 +19,7 @@ import type {
 import { searchKeylessWeb } from "@elizaos/plugin-web-search";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
-import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox-bridge";
+import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox";
 import { handleCanonicalScopedAgentStream } from "../../../shared/src/lib/services/shared-runtime/canonical-scoped-stream";
 import { isCanonicalPersonalSharedAgent } from "../../../shared/src/lib/services/shared-runtime/personal-shared-identity";
 import { runSharedAgentTurn } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";

@@ -1,9 +1,9 @@
 /** Proves fal.ai mutations stop at the shared standing gate before pricing or dispatch. */
 
 import { expect, mock, test } from "bun:test";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import * as aiPricingActual from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { Hono } from "hono";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import * as aiPricingActual from "@/lib/services/ai-pricing";
 
 let falResponseStatus = 200;
 let falProxyError: Error | null = null;
@@ -55,7 +55,7 @@ mock.module("@fal-ai/server-proxy", () => ({
 mock.module("@fal-ai/server-proxy/hono", () => ({
   createRouteHandler: () => invokeFalProxy,
 }));
-mock.module("@/lib/services/ai-pricing", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
   ...aiPricingActual,
   calculateVideoGenerationCostFromCatalog: async ({
     model,
@@ -80,7 +80,7 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   getGenerativeExecutionContext: () => undefined,
   requireGenerativeRouteCaller,
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { error: mock(() => undefined) },
 }));
 

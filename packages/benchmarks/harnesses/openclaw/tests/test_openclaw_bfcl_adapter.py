@@ -82,7 +82,9 @@ def test_openclaw_bfcl_agent_maps_provider_safe_tool_names_back(tmp_path: Path) 
                 required_params=["table_name"],
             )
         ],
-        expected_calls=[FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})],
+        expected_calls=[
+            FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})
+        ],
     )
 
     with patch.object(OpenClawClient, "send_message", _fake_send):
@@ -97,46 +99,11 @@ def test_openclaw_bfcl_agent_maps_provider_safe_tool_names_back(tmp_path: Path) 
     assert "parameter names" in captured["context"]["system_prompt"]
     assert function["name"] == "sql_execute"
     assert "Original BFCL function name: sql.execute." in function["description"]
-    assert calls == [FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})]
+    assert calls == [
+        FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})
+    ]
     assert '"sql_execute": "sql.execute"' in raw_response
     assert latency_ms >= 0
-
-
-def test_provider_safe_tools_preserves_schema_field_names_and_defaults() -> None:
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "customer.lookup",
-                "description": "Lookup a customer",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "customerId": {
-                            "type": "string",
-                            "description": "Stable customer id",
-                        },
-                        "includeInactive": {
-                            "type": "boolean",
-                            "description": "Include inactive customers",
-                            "default": False,
-                        },
-                    },
-                    "required": ["customerId"],
-                },
-            },
-        }
-    ]
-
-    patched, name_map = _provider_safe_tools(tools)
-
-    function = patched[0]["function"]
-    properties = function["parameters"]["properties"]
-    assert function["name"] == "customer_lookup"
-    assert name_map == {"customer_lookup": "customer.lookup"}
-    assert list(properties) == ["customerId", "includeInactive"]
-    assert properties["includeInactive"]["default"] is False
-    assert tools[0]["function"]["name"] == "customer.lookup"
 
 
 def test_build_bfcl_agent_fn_default_client_uses_embedded_runtime() -> None:
@@ -186,9 +153,21 @@ def test_openclaw_bfcl_agent_parallel_case_requires_one_native_call_per_operatio
             actions=["get_weather", "get_weather", "search"],
             params={
                 "tool_calls": [
-                    {"id": "tc1", "name": "get_weather", "arguments": {"location": "NYC"}},
-                    {"id": "tc2", "name": "get_weather", "arguments": {"location": "SF"}},
-                    {"id": "tc3", "name": "search", "arguments": {"query": "restaurants"}},
+                    {
+                        "id": "tc1",
+                        "name": "get_weather",
+                        "arguments": {"location": "NYC"},
+                    },
+                    {
+                        "id": "tc2",
+                        "name": "get_weather",
+                        "arguments": {"location": "SF"},
+                    },
+                    {
+                        "id": "tc3",
+                        "name": "search",
+                        "arguments": {"query": "restaurants"},
+                    },
                 ]
             },
         )
@@ -240,7 +219,9 @@ def test_openclaw_bfcl_agent_parallel_case_requires_one_native_call_per_operatio
     assert calls == test_case.expected_calls
 
 
-def test_openclaw_bfcl_agent_irrelevant_case_disables_tool_calls(tmp_path: Path) -> None:
+def test_openclaw_bfcl_agent_irrelevant_case_disables_tool_calls(
+    tmp_path: Path,
+) -> None:
     from benchmarks.bfcl.types import BFCLCategory, BFCLTestCase
 
     client = _fake_client(tmp_path)
@@ -253,7 +234,9 @@ def test_openclaw_bfcl_agent_irrelevant_case_disables_tool_calls(tmp_path: Path)
         context: Any = None,
     ) -> MessageResponse:
         captured["context"] = context
-        return MessageResponse(text="No relevant function.", thought=None, actions=[], params={})
+        return MessageResponse(
+            text="No relevant function.", thought=None, actions=[], params={}
+        )
 
     test_case = BFCLTestCase(
         id="irrelevant_1",

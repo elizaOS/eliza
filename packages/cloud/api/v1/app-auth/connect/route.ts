@@ -17,35 +17,38 @@
  * CORS_HEADERS from the Next version are intentionally dropped.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { appsRepository } from "@/db/repositories/apps";
+import {
+  requireUserOrApiKey,
+  requireUserWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import {
   ApiError,
   failureResponse,
   NotFoundError,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
-import {
-  requireUserOrApiKey,
-  requireUserWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import { isAllowedOrigin } from "@/lib/security/origin-validation";
-import { issueAppAuthCode } from "@/lib/services/app-auth-codes";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
+import { isAllowedOrigin } from "@elizaos/cloud-shared/lib/security/origin-validation";
+import { issueAppAuthCode } from "@elizaos/cloud-shared/lib/services/app-auth-codes";
 import {
   AppDelegationError,
   appDelegationBindingSchema,
-} from "@/lib/services/app-delegation";
-import { appsService } from "@/lib/services/apps";
+} from "@elizaos/cloud-shared/lib/services/app-delegation";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import {
   issueMobileAppAuthCode,
   MobileAppAuthProtocolError,
   validateMobileAppAuthPkceBinding,
-} from "@/lib/services/mobile-app-auth";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { runMobileAppAuthGrantAdmission } from "../mobile/_rate-limit";
 import { requireRegisteredMobileApp } from "../mobile/_registration";
 import { mobileAppAuthErrorResponse } from "../mobile/_response";
@@ -173,9 +176,9 @@ app.post("/", async (c) => {
       body.flow === "app_delegation"
     ) {
       const { appDelegationService } = await import(
-        "@/lib/services/app-delegation-adapter"
+        "@elizaos/cloud-shared/lib/services/app-delegation-adapter"
       );
-      const { requireUser } = await import("@/lib/auth/workers-hono-auth");
+      const { requireUser } = await import("@elizaos/cloud-shared/auth");
       const input = DelegationConnectSchema.parse(body);
       const binding = appDelegationBindingSchema.parse({
         clientId: input.clientId,

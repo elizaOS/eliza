@@ -27,10 +27,13 @@ export default defineConfig({
     ],
   },
   test: {
+    // Bound concurrent database-backed WASM fixtures, as in the shared test lane.
+    maxWorkers: 2,
     include: [
       "src/auth/**/*.test.ts",
       "src/vault/**/*.test.ts",
       "src/kms/**/*.test.ts",
+      "src/providers/**/*.test.ts",
       "test/*.test.ts",
     ],
     hookTimeout: 60_000,

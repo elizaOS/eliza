@@ -1,25 +1,29 @@
 /** Resolves owned wallets and submits identity-registry transactions for authenticated Cloud agents. */
-import { and, eq } from "drizzle-orm";
-import type { Context } from "hono";
-import { type Address, encodeFunctionData, type Hash, isAddress } from "viem";
-import { bscTestnet } from "viem/chains";
-import { dbWrite } from "@/db/helpers";
-import { agentIdentities } from "@/db/schemas/agent-identities";
-import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { resolveEvmRpc } from "@/lib/config/evm-rpc";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { agentIdentities } from "@elizaos/cloud-shared/db/schemas/agent-identities";
+import { agentServerWallets } from "@elizaos/cloud-shared/db/schemas/agent-server-wallets";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { resolveEvmRpc } from "@elizaos/cloud-shared/lib/config/evm-rpc";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   ERC8004_IDENTITY_REGISTRY_ADDRESSES,
   type ERC8004ChainId,
   ERC8004IdentityClient,
   identityRegistryAbi,
-} from "@/lib/services/erc8004/identity-client";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { createStewardClient } from "@/lib/services/steward-client";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/erc8004/identity-client";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { createStewardClient } from "@elizaos/cloud-shared/lib/services/steward-client";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { and, eq } from "drizzle-orm";
+import type { Context } from "hono";
+import { type Address, encodeFunctionData, type Hash, isAddress } from "viem";
+import { bscTestnet } from "viem/chains";
 import { resolveStewardAgentId } from "../wallet/[...path]/route";
 import type { StewardPolicyRule } from "./policy";
 

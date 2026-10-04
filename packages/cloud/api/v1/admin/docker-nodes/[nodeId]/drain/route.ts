@@ -1,7 +1,7 @@
 /** Handles the privileged Docker-node drain endpoint for the admin cloud API. */
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin: drain a Docker node.
@@ -18,12 +18,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * route returns 200 with `{ remaining: N }` in that case.
  */
 
+import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { HetznerCloudError } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
+import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { requireAdmin } from "@/lib/auth";
-import { HetznerCloudError } from "@/lib/services/containers/hetzner-cloud-api";
-import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
-import { logger } from "@/lib/utils/logger";
 
 const drainSchema = z.object({
   deprovision: z.boolean().optional().default(false),

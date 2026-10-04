@@ -4,8 +4,8 @@
  * schedule. The caller supplies duration from the provider response when
  * settling so estimated reservations reconcile to authoritative usage.
  */
-import { PLATFORM_MARKUP_MULTIPLIER } from "@/lib/pricing-constants";
-import type { FlatOperationCost } from "@/lib/services/ai-pricing";
+import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
+import type { FlatOperationCost } from "@elizaos/cloud-shared/lib/services/ai-pricing";
 
 const CARTESIA_STT_CREDITS_PER_SECOND = 0.5;
 const CARTESIA_PRICING_SOURCE = "https://www.cartesia.ai/pricing";

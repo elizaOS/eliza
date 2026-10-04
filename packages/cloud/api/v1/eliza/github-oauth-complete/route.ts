@@ -18,17 +18,17 @@
  * 4. The connection is validated against the org_id before reading
  */
 
-import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import {
   createLifeOpsGithubReturnResponse,
   normalizePostMessageTargetOrigin,
-} from "@/lib/services/agent-github-return";
-import { managedAgentGithubService } from "@/lib/services/agent-managed-github";
-import { readManagedAgentGithubBinding } from "@/lib/services/eliza-agent-config";
-import { oauthService } from "@/lib/services/oauth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-github-return";
+import { managedAgentGithubService } from "@elizaos/cloud-shared/lib/services/agent-managed-github";
+import { readManagedAgentGithubBinding } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
+import { oauthService } from "@elizaos/cloud-shared/lib/services/oauth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

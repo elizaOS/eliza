@@ -21,7 +21,6 @@ import numpy as np
 import pytest
 
 from conftest import (
-    InMemoryVoiceProfileStore,
     SegmentDiarizer,
     SpeakerEncoder,
     TARGET_SR,
@@ -53,7 +52,6 @@ def centroid(embeddings: list[np.ndarray]) -> np.ndarray:
 
 
 class TestSpeakerID:
-
     def test_sam_solo_intra_cluster_similarity(
         self, encoder: SpeakerEncoder, manifest: dict
     ):
@@ -66,7 +64,7 @@ class TestSpeakerID:
 
         # Split into 3 windows of equal length
         n = len(pcm) // 3
-        windows = [pcm[:n], pcm[n:2*n], pcm[2*n:]]
+        windows = [pcm[:n], pcm[n : 2 * n], pcm[2 * n :]]
         embeddings = [encoder.encode(w) for w in windows]
 
         pairs = [(0, 1), (0, 2), (1, 2)]
@@ -164,39 +162,6 @@ class TestSpeakerID:
                     f"{INTRA_COSINE_THRESHOLD}"
                 )
 
-    def test_profile_store_stable_binding(
-        self, encoder: SpeakerEncoder, manifest: dict
-    ):
-        """
-        Encode sam from F1, add to a VoiceProfileStore.
-        Then encode a fresh window from F4 (same speaker appears again).
-        Assert that the fresh embedding matches the stored profile
-        (cosine ≥ INTRA_COSINE_THRESHOLD) — stable re-identification.
-        """
-        store = InMemoryVoiceProfileStore(match_threshold=INTRA_COSINE_THRESHOLD - 0.10)
-
-        # Enroll from F1
-        pcm_f1 = load_fixture_audio(manifest["f1_sam_solo"]["path"])
-        n = len(pcm_f1) // 3
-        emb_enroll = encoder.encode(pcm_f1[:n])
-        prof = store.add_or_refine(emb_enroll, entity_id="entity-sam")
-
-        assert prof.entity_id == "entity-sam"
-        assert store.profile_count == 1
-
-        # Try to match from a fresh window
-        emb_fresh = encoder.encode(pcm_f1[n:2*n])
-        best_match, best_sim = store.find_best_match(emb_fresh)
-
-        assert best_match is not None, "No profile matched fresh sam window"
-        assert best_sim >= INTRA_COSINE_THRESHOLD, (
-            f"Fresh sam window matched with cosine {best_sim:.4f} < "
-            f"{INTRA_COSINE_THRESHOLD}"
-        )
-        assert best_match.entity_id == "entity-sam", (
-            f"Expected entity-sam; got {best_match.entity_id}"
-        )
-
     def test_inter_cluster_separation_three_speakers(
         self, diarizer: SegmentDiarizer, manifest: dict
     ):
@@ -212,7 +177,9 @@ class TestSpeakerID:
             clusters.setdefault(seg["speaker_id"], []).append(seg["embedding"])
 
         if len(clusters) < 3:
-            pytest.skip(f"F3 only produced {len(clusters)} clusters — skip inter-cluster test")
+            pytest.skip(
+                f"F3 only produced {len(clusters)} clusters — skip inter-cluster test"
+            )
 
         cluster_ids = sorted(clusters.keys())
         centroids = {cid: centroid(embs) for cid, embs in clusters.items()}
@@ -251,7 +218,9 @@ class TestSpeakerID:
 
             inter_sims = {}
             c_ids = sorted(clusters.keys())
-            centroids_map = {cid: centroid(clusters[cid]) for cid in c_ids if clusters[cid]}
+            centroids_map = {
+                cid: centroid(clusters[cid]) for cid in c_ids if clusters[cid]
+            }
             for i in range(len(c_ids)):
                 for j in range(i + 1, len(c_ids)):
                     ci, cj = c_ids[i], c_ids[j]

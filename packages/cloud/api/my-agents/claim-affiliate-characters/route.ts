@@ -1,19 +1,20 @@
 /** Handles ownership claims for affiliate characters discovered through chats or anonymous sessions. */
-import { Hono } from "hono";
-import { z } from "zod";
+
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   participantsRepository,
   roomsRepository,
   userCharactersRepository,
-} from "@/db/repositories";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { charactersService } from "@/lib/services/characters/characters";
-import { usersService } from "@/lib/services/users";
-import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/db/repositories";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 /**
  * POST /api/my-agents/claim-affiliate-characters

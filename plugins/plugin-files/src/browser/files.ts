@@ -1,6 +1,10 @@
 import { WebPlugin } from "@capacitor/core";
 import { type MailAttachment, reviewMailAttachment } from "./attachment.ts";
 import { fileArchive } from "./file-archive.ts";
+export class FilesSourceReadError extends Error {
+  override readonly name = "FilesSourceReadError";
+}
+
 export interface BrowserFilesOptions {
   databaseName: string;
   archiveName: string;
@@ -343,8 +347,11 @@ export class BrowserFiles extends WebPlugin {
           "application/javascript",
         ].includes(row.mimeType)
       ) {
-        if (row.size > 16000) contentStatus = "too-large";
-        else if (row.blob) {
+        if (row.size > 16000)
+          throw new FilesSourceReadError(
+            "A selected Files text source exceeds the 16,000-byte read limit. No partial source was returned.",
+          );
+        if (row.blob) {
           try {
             text = new TextDecoder("utf-8", { fatal: true }).decode(
               await waitForFileRead(row.blob.arrayBuffer(), signal),

@@ -17,15 +17,15 @@
  *   - IP-keyed rate limit (cf-connecting-ip — a forged XFF cannot evade it).
  */
 
-import { Hono } from "hono";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { adInventoryService } from "@/lib/services/ad-inventory";
-import { verifyAdTagToken } from "@/lib/services/ad-tag-token";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { adInventoryService } from "@elizaos/cloud-shared/lib/services/ad-inventory";
+import { verifyAdTagToken } from "@elizaos/cloud-shared/lib/services/ad-tag-token";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

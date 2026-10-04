@@ -10,21 +10,20 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc6 --noCheck -p tsconfig.json && node ../../scripts/prepare-package-dist.ts packages/cloud/routing",
+    "build": "tsc6 --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.ts packages/cloud/routing",
     "clean": "rm -rf dist",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe src",
     "lint:check": "bunx @biomejs/biome check src",
     "format": "bunx @biomejs/biome format --write src",
-    "format:check": "bunx @biomejs/biome format src"
+    "format:check": "bunx @biomejs/biome format src",
+    "test": "bun test src"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.0",
     "bun-types": "1.4.2",
-    "fast-check": "^4.10.2",
-    "vitest": "^5.0.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
@@ -39,7 +38,10 @@
   },
   "elizaos": {
     "scripts": {
-      "coreBuild": true
+      "coreBuild": true,
+      "testLanes": [
+        "server"
+      ]
     }
   }
 }

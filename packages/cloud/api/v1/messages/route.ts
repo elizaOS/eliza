@@ -8,6 +8,89 @@
  * This route lets them use elizaOS Cloud credits/auth without a custom proxy.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { getErrorStatusCode } from "@elizaos/cloud-shared/lib/api/errors";
+import {
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
+import {
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
+  type GatewayPreforwardTiming,
+  resolveElizaTraceId,
+  snapshotGatewayPreforwardTiming,
+  withGatewayPreforwardTelemetry,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import {
+  calculateCost,
+  estimateTokens,
+  getProviderFromModel,
+  getSafeModelParams,
+  normalizeModelName,
+} from "@elizaos/cloud-shared/lib/pricing";
+import {
+  mergeAnthropicCotProviderOptions,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  canonicalizeCerebrasModelId,
+  getLanguageModel,
+  isProviderConfigurationError,
+  resolveAiProviderSource,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import { getRequestIdempotencyKey } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import {
+  billUsage,
+  estimateInputTokens,
+  InsufficientCreditsError,
+  normalizeUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import {
+  type RecordSettledInferenceBillingInput,
+  recordSettledInferenceBilling,
+} from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
+import {
+  AiPricingCacheUnavailableError,
+  AiPricingCacheWarmingError,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
+import {
+  admitAppInferenceCacheOnly,
+  assertInferenceAppAffiliateSupported,
+  InferenceAppAffiliateUnsupportedError,
+} from "@elizaos/cloud-shared/lib/services/app-inference-admission";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { contentModerationService } from "@elizaos/cloud-shared/lib/services/content-moderation";
+import type {
+  CreditReconciliationResult,
+  CreditReservation,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { isInferenceAdmissionGateWarmingError } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import {
+  isKnownPreDispatchProviderConfigurationError,
+  isKnownUnacceptedProviderError,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { getRouteTimeoutMs } from "@elizaos/cloud-shared/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   type AssistantModelMessage,
   generateText,
@@ -15,13 +98,11 @@ import {
   type JSONValue,
   jsonSchema,
   type ModelMessage,
-  type StepResult,
   streamText,
   type TextPart,
   type ToolCallPart,
   type ToolContent,
   type ToolResultPart,
-  type ToolSet,
   type UserModelMessage,
 } from "ai";
 import { Hono } from "hono";
@@ -35,87 +116,6 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
-import { getErrorStatusCode } from "@/lib/api/errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import {
-  enforceOrgRateLimit,
-  OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
-import {
-  bindGatewayHandoffTelemetry,
-  type GatewayHandoffTelemetry,
-  type GatewayPreforwardTiming,
-  resolveElizaTraceId,
-  snapshotGatewayPreforwardTiming,
-  withGatewayPreforwardTelemetry,
-} from "@/lib/observability/http-telemetry";
-import {
-  calculateCost,
-  estimateTokens,
-  getProviderFromModel,
-  getSafeModelParams,
-  normalizeModelName,
-} from "@/lib/pricing";
-import {
-  mergeAnthropicCotProviderOptions,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  canonicalizeCerebrasModelId,
-  getLanguageModel,
-  isProviderConfigurationError,
-  resolveAiProviderSource,
-} from "@/lib/providers/language-model";
-import { getRequestIdempotencyKey } from "@/lib/runtime/request-context";
-import {
-  type AIUsage,
-  billUsage,
-  estimateInputTokens,
-  InsufficientCreditsError,
-  normalizeUsage,
-} from "@/lib/services/ai-billing";
-import {
-  type RecordSettledInferenceBillingInput,
-  recordSettledInferenceBilling,
-} from "@/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
-import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
-import { appCreditsService } from "@/lib/services/app-credits";
-import {
-  admitAppInferenceCacheOnly,
-  assertInferenceAppAffiliateSupported,
-  InferenceAppAffiliateUnsupportedError,
-} from "@/lib/services/app-inference-admission";
-import { appsService } from "@/lib/services/apps";
-import { contentModerationService } from "@/lib/services/content-moderation";
-import type {
-  CreditReconciliationResult,
-  CreditReservation,
-} from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { isInferenceAdmissionGateWarmingError } from "@/lib/services/inference-admission-gate";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import {
-  isKnownPreDispatchProviderConfigurationError,
-  isKnownUnacceptedProviderError,
-} from "@/lib/services/inference-provider-outcome";
-import {
-  admitOrganizationInference,
-  InferenceAdmissionUnavailableError,
-} from "@/lib/services/organization-inference-admission";
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
-import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -1258,7 +1258,9 @@ async function getRequestApiKeyId(
   const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return null;
-  const { apiKeysService } = await import("@/lib/services/api-keys");
+  const { apiKeysService } = await import(
+    "@elizaos/cloud-shared/lib/services/api-keys"
+  );
   const validated = await apiKeysService.validateApiKey(apiKey);
   return validated ? { id: validated.id } : null;
 }

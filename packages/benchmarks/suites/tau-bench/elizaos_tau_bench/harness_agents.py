@@ -35,23 +35,7 @@ from elizaos_tau_bench.upstream.envs.base import Env
 logger = logging.getLogger(__name__)
 
 
-# Per-million-token USD pricing for Cerebras gpt-oss-120b. Mirrors
-# ``hermes_adapter.lifeops_bench._CEREBRAS_PRICING`` so totals are comparable.
-_CEREBRAS_PRICING: dict[str, dict[str, float]] = {
-    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
-}
-
-
-def _cost_usd(model: str | None, prompt_tokens: int, completion_tokens: int) -> float:
-    if not model:
-        return 0.0
-    pricing = _CEREBRAS_PRICING.get(model.rsplit("/", 1)[-1])
-    if pricing is None:
-        return 0.0
-    return (
-        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
-        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
-    )
+from benchmarks.lib import CostAccumulator, cost_from_usage
 
 
 def _strip_cerebras_unsupported(message: dict[str, Any]) -> dict[str, Any]:
@@ -136,7 +120,7 @@ class _HarnessTauAgentBase(BaseTauAgent):
         reset = env.reset(task_index=task_index)
         info: dict[str, Any] = reset.info.model_dump()
         reward = 0.0
-        total_cost = 0.0
+        costs = CostAccumulator()
         num_tool_calls = 0
         actions_taken: list[Action] = []
 
@@ -148,11 +132,7 @@ class _HarnessTauAgentBase(BaseTauAgent):
         try:
             for _step in range(max_num_steps):
                 text, tool_calls, usage = self._chat_step(messages, env.tools_info)
-                total_cost += _cost_usd(
-                    self.model,
-                    int(usage.get("prompt_tokens") or 0),
-                    int(usage.get("completion_tokens") or 0),
-                )
+                costs.add(cost_from_usage(self.model, usage))
 
                 action = _action_from_response(text, tool_calls)
                 actions_taken.append(action)
@@ -205,22 +185,22 @@ class _HarnessTauAgentBase(BaseTauAgent):
             return AgentRunResult(
                 reward=reward,
                 messages=messages,
-                info=info,
+                info={**info, **costs.metadata()},
                 actions_taken=actions_taken,
                 num_tool_calls=num_tool_calls,
                 num_turns=len(messages),
-                agent_cost=total_cost,
+                agent_cost=costs.total,
                 error=str(exc),
             )
 
         return AgentRunResult(
             reward=reward,
             messages=messages,
-            info=info,
+            info={**info, **costs.metadata()},
             actions_taken=actions_taken,
             num_tool_calls=num_tool_calls,
             num_turns=len(messages),
-            agent_cost=total_cost,
+            agent_cost=costs.total,
         )
 
 
@@ -250,7 +230,11 @@ class HermesTauAgent(_HarnessTauAgentBase):
     ) -> tuple[str, list[dict[str, Any]], dict[str, int]]:
         cleaned = [_strip_cerebras_unsupported(m) for m in messages]
         last_user = next(
-            (m.get("content") or "" for m in reversed(cleaned) if m.get("role") == "user"),
+            (
+                m.get("content") or ""
+                for m in reversed(cleaned)
+                if m.get("role") == "user"
+            ),
             "",
         )
         context: dict[str, Any] = {"messages": cleaned}
@@ -263,10 +247,14 @@ class HermesTauAgent(_HarnessTauAgentBase):
         if not isinstance(tool_calls, list):
             tool_calls = []
         usage = params.get("usage") if isinstance(params.get("usage"), dict) else {}
-        return resp.text or "", list(tool_calls), {
-            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-            "completion_tokens": int(usage.get("completion_tokens") or 0),
-        }
+        return (
+            resp.text or "",
+            list(tool_calls),
+            {
+                "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                "completion_tokens": int(usage.get("completion_tokens") or 0),
+            },
+        )
 
 
 class OpenClawTauAgent(_HarnessTauAgentBase):
@@ -295,7 +283,11 @@ class OpenClawTauAgent(_HarnessTauAgentBase):
     ) -> tuple[str, list[dict[str, Any]], dict[str, int]]:
         cleaned = [_strip_cerebras_unsupported(m) for m in messages]
         last_user = next(
-            (m.get("content") or "" for m in reversed(cleaned) if m.get("role") == "user"),
+            (
+                m.get("content") or ""
+                for m in reversed(cleaned)
+                if m.get("role") == "user"
+            ),
             "",
         )
         context: dict[str, Any] = {"messages": cleaned}
@@ -313,10 +305,14 @@ class OpenClawTauAgent(_HarnessTauAgentBase):
             meta = params.get("_meta")
             if isinstance(meta, dict) and isinstance(meta.get("usage"), dict):
                 usage = meta["usage"]
-        return resp.text or "", list(tool_calls), {
-            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-            "completion_tokens": int(usage.get("completion_tokens") or 0),
-        }
+        return (
+            resp.text or "",
+            list(tool_calls),
+            {
+                "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                "completion_tokens": int(usage.get("completion_tokens") or 0),
+            },
+        )
 
 
 class ElizaTauAgent(_HarnessTauAgentBase):
@@ -352,7 +348,11 @@ class ElizaTauAgent(_HarnessTauAgentBase):
     ) -> tuple[str, list[dict[str, Any]], dict[str, int]]:
         cleaned = [_strip_cerebras_unsupported(m) for m in messages]
         last_user = next(
-            (m.get("content") or "" for m in reversed(cleaned) if m.get("role") == "user"),
+            (
+                m.get("content") or ""
+                for m in reversed(cleaned)
+                if m.get("role") == "user"
+            ),
             "",
         )
         context: dict[str, Any] = {
@@ -369,14 +369,18 @@ class ElizaTauAgent(_HarnessTauAgentBase):
         if not isinstance(tool_calls, list):
             tool_calls = []
         usage = params.get("usage") if isinstance(params.get("usage"), dict) else {}
-        return resp.text or "", list(tool_calls), {
-            "prompt_tokens": int(
-                usage.get("prompt_tokens") or usage.get("promptTokens") or 0
-            ),
-            "completion_tokens": int(
-                usage.get("completion_tokens") or usage.get("completionTokens") or 0
-            ),
-        }
+        return (
+            resp.text or "",
+            list(tool_calls),
+            {
+                "prompt_tokens": int(
+                    usage.get("prompt_tokens") or usage.get("promptTokens") or 0
+                ),
+                "completion_tokens": int(
+                    usage.get("completion_tokens") or usage.get("completionTokens") or 0
+                ),
+            },
+        )
 
 
 __all__ = [

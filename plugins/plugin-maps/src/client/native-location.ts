@@ -41,7 +41,6 @@ type Session = {
   handles: PluginListenerHandle[];
   watchId?: string;
   permissionRequestId?: string;
-  timer?: ReturnType<typeof setTimeout>;
   cancelForegroundWait?: () => void;
 };
 /** One owner per Maps controller. The upstream event contract has no watchId. */
@@ -66,7 +65,6 @@ export class NativeMapsLocation {
     this.session = undefined;
     if (!current) return;
     current.aborted = true;
-    clearTimeout(current.timer);
     current.cancelForegroundWait?.();
     const results = await Promise.allSettled([
       ...current.handles.map((handle) => handle.remove()),
@@ -134,27 +132,15 @@ export class NativeMapsLocation {
         // Android's permission surface may temporarily hide a launcher WebView.
         // Preserve the explicit request, but never start GPS while hidden.
         if (active() && permission.location === "granted" && document.hidden) {
-          await new Promise<void>((resolve, reject) => {
-            const finish = (error?: MapsFailure) => {
-              clearTimeout(timer);
+          await new Promise<void>((resolve) => {
+            const finish = () => {
               document.removeEventListener("visibilitychange", visible);
               current.cancelForegroundWait = undefined;
-              if (error) reject(error);
-              else resolve();
+              resolve();
             };
             const visible = () => {
               if (!document.hidden) finish();
             };
-            const timer = setTimeout(
-              () =>
-                finish(
-                  new MapsFailure(
-                    "timeout",
-                    "Return to Maps and retry location.",
-                  ),
-                ),
-              15000,
-            );
             current.cancelForegroundWait = () => finish();
             document.addEventListener("visibilitychange", visible);
           });
@@ -184,7 +170,6 @@ export class NativeMapsLocation {
               "invalid-response",
               "A fresh location fix is not available.",
             );
-          clearTimeout(current.timer);
           onFix({
             coordinate: position,
             accuracyMeters: coords.accuracy,
@@ -227,16 +212,6 @@ export class NativeMapsLocation {
         return;
       }
       current.handles.push(errors);
-      current.timer = setTimeout(
-        () =>
-          report(
-            new MapsFailure(
-              "timeout",
-              "No fresh location fix arrived. You can choose an origin manually.",
-            ),
-          ),
-        15000,
-      );
       const watch = await this.location.watchPosition({
         accuracy: "high",
         minInterval: 1000,

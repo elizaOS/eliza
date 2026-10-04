@@ -4,14 +4,10 @@ On-device (iOS + Android) resource profiling harness: battery, RSS, prefill/deco
 
 This directory is part of `packages/benchmarks`.
 
-Build from the repository root:
-
-```bash
-bun run --cwd packages/benchmarks build:plugin
-```
+This harness runs from source.
 
 Test from the repository root:
 
 ```bash
-bun run --cwd packages/benchmarks test:py
+node --test packages/benchmarks/suites/mobile-resource/metrics.test.mjs
 ```

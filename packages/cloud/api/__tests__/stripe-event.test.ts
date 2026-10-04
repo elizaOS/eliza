@@ -72,49 +72,70 @@ const openSubscriptionEventIncident = mock(
 );
 
 // Lifecycle owners have independent real-DB consumer coverage (subscription-dunning.pglite.test.ts); these fixtures own purchased-credit dispatch.
-mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
-  reconcileStripeScheduledCancellationLifecycle: async () => {
-    throw scheduledLifecycleFailure;
-  },
-}));
-mock.module("@/lib/services/stripe-dunning-lifecycle", () => ({
-  reconcileStripeDunningLifecycle: async () => {
-    throw new Error("Dunning lifecycle unavailable in legacy fixture");
-  },
-}));
-mock.module("@/lib/services/subscription-event-incidents", () => ({
-  openSubscriptionEventIncident,
-}));
-mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
-  reconcileStripeTerminalLifecycle: async () => {
-    throw new Error("Subscription lifecycle unavailable in legacy fixture");
-  },
-}));
-mock.module("@/db/helpers", () => ({ dbRead: {} }));
-mock.module("@/db/repositories/organizations", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-scheduled-cancellation-lifecycle",
+  () => ({
+    reconcileStripeScheduledCancellationLifecycle: async () => {
+      throw scheduledLifecycleFailure;
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-dunning-lifecycle",
+  () => ({
+    reconcileStripeDunningLifecycle: async () => {
+      throw new Error("Dunning lifecycle unavailable in legacy fixture");
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/subscription-event-incidents",
+  () => ({
+    openSubscriptionEventIncident,
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-terminal-lifecycle",
+  () => ({
+    reconcileStripeTerminalLifecycle: async () => {
+      throw new Error("Subscription lifecycle unavailable in legacy fixture");
+    },
+  }),
+);
+mock.module("@elizaos/cloud-shared/db/helpers", () => ({ dbRead: {} }));
+mock.module("@elizaos/cloud-shared/db/repositories/organizations", () => ({
   organizationsRepository: {
     findById: mock(async () => ({ name: "Org" })),
   },
 }));
-mock.module("@/db/repositories/users", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/users", () => ({
   usersRepository: { findById: mock(async () => ({ name: "User" })) },
 }));
-mock.module("@/db/schemas/agent-sandboxes", () => ({ agentSandboxes: {} }));
-mock.module("@/lib/security/safe-fetch", () => ({
+mock.module("@elizaos/cloud-shared/db/schemas/agent-sandboxes", () => ({
+  agentSandboxes: {},
+}));
+mock.module("@elizaos/cloud-shared/lib/security/safe-fetch", () => ({
   safeFetch: mock(async () => Response.json({ ok: true })),
 }));
-mock.module("@/db/repositories/payment-reversal-holds", () => ({
-  releaseShortfallHoldForReinstatement,
-}));
-mock.module("@/lib/services/billing-hold", () => ({
+mock.module(
+  "@elizaos/cloud-shared/db/repositories/payment-reversal-holds",
+  () => ({
+    releaseShortfallHoldForReinstatement,
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/billing-hold", () => ({
   billingHoldService: {
     settleOutstandingShortfalls,
     getState: getBillingHoldState,
   },
 }));
-mock.module("@/lib/services/app-credits", () => ({ appCreditsService: {} }));
-mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
-mock.module("@/lib/services/credits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/app-credits", () => ({
+  appCreditsService: {},
+}));
+mock.module("@elizaos/cloud-shared/lib/services/auto-top-up", () => ({
+  autoTopUpService: {},
+}));
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   creditsService: {
     getTransactionByStripePaymentIntent,
     addCredits,
@@ -123,46 +144,49 @@ mock.module("@/lib/services/credits", () => ({
   },
   ReservationNotFoundError: class extends Error {},
 }));
-mock.module("@/lib/services/discord", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/discord", () => ({
   discordService: {
     logPaymentReceived: mock(async () => undefined),
     logWarning,
   },
 }));
-mock.module("@/lib/services/invoices", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/invoices", () => ({
   invoicesService: { getByStripeInvoiceId, create: createInvoice },
 }));
-mock.module("@/lib/services/org-rate-limits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   CONTAINER_BACKED_TARGET_REJECTION_REASON:
     "agent_job_target_not_container_backed",
   provisioningJobService: {},
 }));
-mock.module("@/lib/services/redeemable-earnings", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/redeemable-earnings", () => ({
   redeemableEarningsService: {
     addEarnings: mock(async () => ({ success: true })),
   },
 }));
-mock.module("@/lib/services/referrals", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/referrals", () => ({
   referralsService: {
     calculateRevenueSplits: mock(async () => ({ splits: [] })),
   },
 }));
-mock.module("@/lib/services/stripe-checkout-orders", () => ({
-  stripeCheckoutOrdersService: {
-    getByPaymentIntent: mock(async () => null),
-  },
-}));
-mock.module("@/lib/stripe", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-checkout-orders",
+  () => ({
+    stripeCheckoutOrdersService: {
+      getByPaymentIntent: mock(async () => null),
+    },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
   requireStripe: () => ({
     invoices: { retrieve: retrieveInvoice },
     charges: { retrieve: retrieveCharge },
     subscriptions: { retrieve: retrieveSubscription },
   }),
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: {
     debug: mock(() => undefined),
     info: mock(() => undefined),
@@ -172,7 +196,7 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 const queueLists = new Map<string, string[]>();
-mock.module("@/lib/cache/client", () => ({
+mock.module("@elizaos/cloud-shared/lib/cache/client", () => ({
   cache: {
     pushQueueHead: async (key: string, value: string) => {
       const list = queueLists.get(key) ?? [];
@@ -183,7 +207,9 @@ mock.module("@/lib/cache/client", () => ({
     popQueueTail: async (key: string) => queueLists.get(key)?.pop() ?? null,
   },
 }));
-const { enqueue, drain } = await import("@/lib/queue/redis-queue");
+const { enqueue, drain } = await import(
+  "@elizaos/cloud-shared/lib/queue/redis-queue"
+);
 
 const {
   isInvoiceExpanded,

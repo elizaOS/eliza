@@ -4,27 +4,30 @@
  * app balances, redeemable earnings).
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
   ORGANIZATION_CREDIT_PRICING,
 } from "@elizaos/cloud-shared/billing";
-import { count, desc, eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { dbRead } from "@/db/client";
-import { apps } from "@/db/schemas/apps";
-import { userCharacters } from "@/db/schemas/user-characters";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { dbRead } from "@elizaos/cloud-shared/db/client";
+import { apps } from "@elizaos/cloud-shared/db/schemas/apps";
+import { userCharacters } from "@elizaos/cloud-shared/db/schemas/user-characters";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { agentBudgetService } from "@/lib/services/agent-budgets";
-import { creditsService } from "@/lib/services/credits";
-import { organizationsService } from "@/lib/services/organizations";
-import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { agentBudgetService } from "@elizaos/cloud-shared/lib/services/agent-budgets";
+import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
+import { organizationsService } from "@elizaos/cloud-shared/lib/services/organizations";
+import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { count, desc, eq } from "drizzle-orm";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

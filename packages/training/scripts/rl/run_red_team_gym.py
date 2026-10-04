@@ -19,7 +19,6 @@ import asyncio
 import json
 import logging
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -28,10 +27,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import (  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import (  # noqa: E402
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
@@ -44,7 +42,7 @@ env_path = PYTHON_ROOT.parent / ".env"
 if env_path.exists():
     load_dotenv(env_path)
 
-from src.training.red_team_gym import (
+from eliza_training.rl.red_team_gym import (
     HARD_ATTACK_TEMPLATES,
     RedTeamConfig,
     run_red_team_gym,
