@@ -37,6 +37,7 @@ import {
   extractJsonObjects,
   getModelFallbackChain,
   getStreamingContext,
+  isObjectRecord,
   MODEL_WINDOW_RESERVE_FRACTION,
   type ModelAttemptContext,
   type ModelRegistrationMetadata,
@@ -57,6 +58,10 @@ import {
   toWellFormedUnicode,
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
+import {
+  CALENDAR_READ_ACTIONS,
+  type CalendarReadBinding,
+} from "@elizaos/core/contracts/calendar";
 import {
   EVALUATOR_CONTEXT_ROUTES,
   type EvaluatorRestorableContext,
@@ -290,8 +295,9 @@ function finalizeEvaluatorOutput(
   raw: EvaluatorModelResult,
   context: ContextObject,
   trajectory: PlannerTrajectory,
+  redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): EvaluatorOutput {
-  const output = sanitizeOutputMessage(
+  let output = sanitizeOutputMessage(
     repairFinishWithUnservedDeclaredIntents(
       repairFinishWithProgressPromise(
         repairFinishedToolTurnWithoutUserMessage(
@@ -317,6 +323,33 @@ function finalizeEvaluatorOutput(
       trajectory,
     ),
   );
+  const calendarCoverage = calendarReadCoverage(output, context, trajectory);
+  if (!calendarCoverage.verified) {
+    const scoped = calendarCoverageSourceFacts(output, context, trajectory);
+    output = {
+      ...output,
+      success: false,
+      requestFullyCovered: false,
+      outcomeCoverage: output.outcomeCoverage?.map((entry) =>
+        calendarCoverage.unverifiedIntentIds.includes(entry.intentId)
+          ? { ...entry, status: "blocked" as const }
+          : entry,
+      ),
+      messageToUser: redactDiagnosticText(
+        [
+          ...scoped.facts,
+          "I couldn't confirm that Calendar request.",
+          ...(scoped.calendarScopeReported
+            ? [
+                "Those Calendar results cover only the connected sources and dates checked.",
+              ]
+            : []),
+        ]
+          .filter(Boolean)
+          .join(" "),
+      ),
+    };
+  }
   if (output.replyEffectStatus !== "applied") return output;
   const available = new Set(
     activeCommittedEffectReceipts(
@@ -809,7 +842,12 @@ async function runEvaluatorWithSelectedModel(
     throw error;
   }
   let output = enforceEvaluatorDecisionState(
-    finalizeEvaluatorOutput(raw, params.context, params.trajectory),
+    finalizeEvaluatorOutput(
+      raw,
+      params.context,
+      params.trajectory,
+      redactDiagnosticText,
+    ),
     decisionState,
   );
   if (!clipboardAvailable && output.copyToClipboard) {
@@ -1752,6 +1790,8 @@ export function validatedOutcomeCoverage(params: {
   hasUnresolvedToolFailure?: boolean;
 }): boolean {
   const { output, trajectory } = params;
+  if (!calendarReadCoverage(output, params.context, trajectory).verified)
+    return false;
   if (
     output.protocolFailure ||
     output.decision !== "FINISH" ||
@@ -1789,6 +1829,281 @@ export function validatedOutcomeCoverage(params: {
         );
       }),
   );
+}
+
+/** A requested operation needs a fresh, source-bound producer receipt, not another read's success. */
+export function calendarReadCoverage(
+  output: EvaluatorOutput,
+  context: ContextObject,
+  trajectory: PlannerTrajectory,
+): { verified: boolean; unverifiedIntentIds: string[] } {
+  if (output.decision !== "FINISH" || !output.success)
+    return { verified: true, unverifiedIntentIds: [] };
+  const original = trajectory.modelBaseContext ?? context;
+  const bindings = original.metadata?.calendarReadBindings;
+  if (
+    bindings === undefined ||
+    (Array.isArray(bindings) && bindings.length === 0)
+  )
+    return { verified: true, unverifiedIntentIds: [] };
+  if (!Array.isArray(bindings))
+    return { verified: false, unverifiedIntentIds: [] };
+  const evidence = new Map(
+    evaluatorEvidenceSteps(trajectory).map(({ id, step }) => [id, step]),
+  );
+  const verdicts = bindings.map((raw) => {
+    if (!isObjectRecord(raw)) return false;
+    const binding = raw as CalendarReadBinding;
+    if (
+      typeof binding.sourceMessageId !== "string" ||
+      !binding.sourceMessageId ||
+      typeof binding.roomId !== "string" ||
+      !binding.roomId ||
+      typeof binding.actorId !== "string" ||
+      !binding.actorId ||
+      binding.sourceMessageId !== original.metadata?.messageId ||
+      binding.roomId !== original.metadata?.roomId ||
+      binding.actorId !== original.metadata?.actorId ||
+      !Number.isFinite(binding.requestedAt) ||
+      !evaluatorIntentSources(original, trajectory).some(
+        (intent) => intent.id === binding.intentId,
+      )
+    )
+      return false;
+    const covered = output.outcomeCoverage?.filter(
+      (entry) => entry.intentId === binding.intentId,
+    );
+    if (covered?.length !== 1) return false;
+    const coverage = covered[0];
+    if (
+      coverage?.status !== "completed" ||
+      coverage.evidenceStepIds.length === 0
+    )
+      return false;
+    if (binding.execution === "conditional") {
+      // The existing semantic condition verdict remains authoritative; this
+      // binding selects an operation, never makes its prerequisite true.
+      return coverage.evidenceStepIds.every((id) => {
+        const step = evidence.get(id);
+        return Boolean(
+          step?.toolCall && !step.terminalOnly && step.result?.success === true,
+        );
+      });
+    }
+    if (binding.execution !== "required") return false;
+    return coverage.evidenceStepIds.some((id) => {
+      const step = evidence.get(id);
+      if (!step?.toolCall || step.terminalOnly || step.result?.success !== true)
+        return false;
+      const data = step.result.data;
+      if (!isObjectRecord(data)) return false;
+      const reply = data.replyContext;
+      if (!isObjectRecord(reply)) return false;
+      if (reply.domain !== "calendar") return false;
+      const expected = CALENDAR_READ_ACTIONS[binding.operation];
+      if (
+        !expected ||
+        (step.toolCall.name !== expected &&
+          !(
+            step.toolCall.name === "CALENDAR" &&
+            (step.toolCall.params?.action ??
+              step.toolCall.params?.subaction) === binding.operation
+          ))
+      )
+        return false;
+      if (binding.operation === "feed") {
+        const scope = reply.context;
+        return (
+          reply.scenario === "feed_results" &&
+          Boolean(isObjectRecord(scope) && scope.selection === "bounded_agenda")
+        );
+      }
+      if (binding.operation === "search_events")
+        return reply.scenario === "search_results";
+      if (binding.operation !== "next_event" || reply.scenario !== "next_event")
+        return false;
+      const scope = data.readScope;
+      const reference = data.timeReference;
+      if (
+        !isObjectRecord(scope) ||
+        scope.selection !== "next_event" ||
+        !isObjectRecord(reference)
+      )
+        return false;
+      if (
+        !step.result.effectReceipts?.some(
+          (receipt) =>
+            receipt.operation === "calendar.event.next.read" &&
+            receipt.resource.kind === "calendar.next_event" &&
+            receipt.outcome === "noop" &&
+            receipt.idempotency.replayed === false,
+        )
+      )
+        return false;
+      const asOf =
+        typeof reference.asOf === "string"
+          ? Date.parse(reference.asOf)
+          : Number.NaN;
+      const min =
+        typeof scope.timeMin === "string"
+          ? Date.parse(scope.timeMin)
+          : Number.NaN;
+      const max =
+        typeof scope.timeMax === "string"
+          ? Date.parse(scope.timeMax)
+          : Number.NaN;
+      if (
+        !Number.isFinite(asOf) ||
+        asOf < binding.requestedAt ||
+        !Number.isFinite(min) ||
+        !Number.isFinite(max) ||
+        min > asOf ||
+        asOf >= max ||
+        data.calendarFeedState !== "complete"
+      )
+        return false;
+      const sources = data.calendarSources;
+      if (
+        !Array.isArray(sources) ||
+        sources.length === 0 ||
+        sources.some(
+          (source) => !isObjectRecord(source) || source.status !== "fresh",
+        )
+      )
+        return false;
+      if (data.event === null) return scope.exhaustive === true;
+      const event = data.event;
+      if (!isObjectRecord(event)) return false;
+      const start =
+        typeof event.startAt === "string"
+          ? Date.parse(event.startAt)
+          : Number.NaN;
+      const end =
+        typeof event.endAt === "string" ? Date.parse(event.endAt) : Number.NaN;
+      return (
+        Number.isFinite(start) &&
+        Number.isFinite(end) &&
+        start < max &&
+        end > asOf
+      );
+    });
+  });
+  return {
+    verified: verdicts.every(Boolean),
+    unverifiedIntentIds: bindings.flatMap((binding, index) =>
+      !verdicts[index] &&
+      isObjectRecord(binding) &&
+      typeof binding.intentId === "string"
+        ? [binding.intentId]
+        : [],
+    ),
+  };
+}
+
+/** Scoped failure copy from current producer facts, never unsupported evaluator prose. */
+function calendarCoverageSourceFacts(
+  output: EvaluatorOutput,
+  context: ContextObject,
+  trajectory: PlannerTrajectory,
+): { facts: string[]; calendarScopeReported: boolean } {
+  const facts: string[] = [];
+  let calendarScopeReported = false;
+  const cited = new Set(
+    output.outcomeCoverage?.flatMap((entry) => entry.evidenceStepIds) ?? [],
+  );
+  const current = new Set(trajectory.steps);
+  const metadata = (trajectory.modelBaseContext ?? context).metadata;
+  const bindings = metadata?.calendarReadBindings;
+  const requestedAt = Array.isArray(bindings)
+    ? Math.max(
+        ...bindings.flatMap((binding) =>
+          isObjectRecord(binding) && typeof binding.requestedAt === "number"
+            ? [binding.requestedAt]
+            : [],
+        ),
+      )
+    : Number.NaN;
+  for (const { id, step } of evaluatorEvidenceSteps(trajectory)) {
+    if (
+      !current.has(step) ||
+      !cited.has(id) ||
+      !step.toolCall ||
+      step.terminalOnly ||
+      step.result?.success !== true
+    )
+      continue;
+    const result = step.result;
+    if (
+      result.verifiedUserFacing === true &&
+      typeof result.userFacingText === "string"
+    ) {
+      facts.push(result.userFacingText);
+      continue;
+    }
+    const data = result.data;
+    if (!isObjectRecord(data)) continue;
+    const navigation = data.navigation;
+    if (
+      isObjectRecord(navigation) &&
+      navigation.status === "delivered" &&
+      typeof navigation.label === "string"
+    ) {
+      facts.push(`${navigation.label} view is open.`);
+      continue;
+    }
+    if (
+      step.toolCall.name === "NOTES_LIST" ||
+      step.toolCall.name === "NOTES_GET"
+    ) {
+      if (
+        data.total === 0 &&
+        data.lookupMode === "all" &&
+        data.filterApplied === false
+      )
+        facts.push("No notes exist in Notes.");
+      const notes = isObjectRecord(data.note)
+        ? [data.note]
+        : Array.isArray(data.notes)
+          ? data.notes
+          : [];
+      for (const note of notes) {
+        if (
+          isObjectRecord(note) &&
+          typeof note.title === "string" &&
+          typeof note.body === "string"
+        )
+          facts.push(`${note.title}\n${note.body}`);
+      }
+      continue;
+    }
+    const reply = data.replyContext;
+    const scope = data.readScope;
+    const reference = data.timeReference;
+    const details = isObjectRecord(reply) ? reply.context : undefined;
+    const snapshot = isObjectRecord(reference)
+      ? reference.asOf
+      : isObjectRecord(details)
+        ? details.asOf
+        : undefined;
+    const asOf =
+      typeof snapshot === "string" ? Date.parse(snapshot) : Number.NaN;
+    if (
+      Number.isFinite(requestedAt) &&
+      Number.isFinite(asOf) &&
+      asOf >= requestedAt &&
+      isObjectRecord(reply) &&
+      reply.domain === "calendar" &&
+      typeof reply.facts === "string" &&
+      (reply.scenario === "feed_results" ||
+        (data.event === null &&
+          isObjectRecord(scope) &&
+          scope.exhaustive === false))
+    ) {
+      facts.push(reply.facts);
+      calendarScopeReported = true;
+    }
+  }
+  return { facts: [...new Set(facts)], calendarScopeReported };
 }
 
 function repairFinishWithUnservedDeclaredIntents(

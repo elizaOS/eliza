@@ -1520,6 +1520,12 @@ export async function runV5MessageRuntimeStage1(
         completionContext: { ...messageHandler.plan.completionContext },
       };
     }
+    if (Array.isArray(messageHandler.plan.calendarReadBindings)) {
+      plannerContext.metadata = {
+        ...plannerContext.metadata,
+        calendarReadBindings: messageHandler.plan.calendarReadBindings,
+      };
+    }
     const plannerDecisionEvent: ContextEvent = {
       id: `message-handler:${messageHandlerEndedAt}`,
       type: "message_handler",
