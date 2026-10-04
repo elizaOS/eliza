@@ -12,6 +12,9 @@
  *   primitives, stubbed to plain DOM exactly like CalendarSection.test.tsx.
  */
 
+// Preserve the public UI surface; only the explicit fixture seams below differ.
+export * from "../../../../ui/src/index.ts";
+
 import type {
   ButtonHTMLAttributes,
   CSSProperties,

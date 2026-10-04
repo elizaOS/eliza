@@ -19,7 +19,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 
-vi.mock("@elizaos/ui/state", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useApp: () => appMock.value,
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
@@ -32,21 +33,25 @@ const getDocumentFragments = vi.fn();
 const getTranscript = vi.fn();
 const updateTranscriptPrivacy = vi.fn();
 const deleteTranscriptSourceAudio = vi.fn();
-vi.mock("@elizaos/ui/api/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/ui/api/client")>()),
-  client: {
-    getDocument: (...args: unknown[]) => getDocument(...args),
-    getDocumentFragments: (...args: unknown[]) => getDocumentFragments(...args),
-    getTranscript: (...args: unknown[]) => getTranscript(...args),
-    updateTranscriptPrivacy: (...args: unknown[]) =>
-      updateTranscriptPrivacy(...args),
-    deleteTranscriptSourceAudio: (...args: unknown[]) =>
-      deleteTranscriptSourceAudio(...args),
-  },
-}));
+vi.mock(
+  "../../../../../packages/ui/src/api/client",
+  async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: {
+      getDocument: (...args: unknown[]) => getDocument(...args),
+      getDocumentFragments: (...args: unknown[]) =>
+        getDocumentFragments(...args),
+      getTranscript: (...args: unknown[]) => getTranscript(...args),
+      updateTranscriptPrivacy: (...args: unknown[]) =>
+        updateTranscriptPrivacy(...args),
+      deleteTranscriptSourceAudio: (...args: unknown[]) =>
+        deleteTranscriptSourceAudio(...args),
+    },
+  }),
+);
 
 const confirmDesktopAction = vi.fn();
-vi.mock("@elizaos/ui/utils/desktop-dialogs", () => ({
+vi.mock("../../../../../packages/ui/src/utils/desktop-dialogs", () => ({
   confirmDesktopAction: (...args: unknown[]) => confirmDesktopAction(...args),
 }));
 

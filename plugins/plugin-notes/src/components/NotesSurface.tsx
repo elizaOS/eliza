@@ -1,18 +1,23 @@
-import { reconstructNoteContent } from "../types.js";
 /**
  * Renders the authoritative Notes snapshot as a calm read-only collection.
  * Kept transport-agnostic so production, focused tests, and QA fixtures all
  * exercise the same presentation contract.
  */
-
-import { CompactCardSkeleton } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { isApiError } from "@elizaos/ui/api";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
+import {
+  CompactCardSkeleton,
+  isApiError,
+  PagePanel,
+  useAgentElement,
+  ViewHeader,
+} from "@elizaos/ui";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { type CSSProperties, useEffect } from "react";
-import type { NotesSnapshot, StickyNote as StickyNoteModel } from "../types.js";
+import {
+  type NotesSnapshot,
+  reconstructNoteContent,
+  type StickyNote as StickyNoteModel,
+} from "../types.js";
+
 import {
   AgentAction,
   COLOR_MATERIALS,

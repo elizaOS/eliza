@@ -5,7 +5,7 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
-import type { AccountStrategy } from "../../api/client-agent";
+import type { AccountStrategy } from "../../api/client-agent-accounts";
 import { useAppSelector } from "../../state/app-store";
 import {
   Select,

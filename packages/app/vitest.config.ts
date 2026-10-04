@@ -53,7 +53,7 @@ export default defineConfig({
         find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
         replacement: path.join(
           here,
-          "../app/src/api/ios-local-agent-transport.ts",
+          "src/renderer/transports/ios-local-agent-transport.ts",
         ),
       },
       {
@@ -70,18 +70,6 @@ export default defineConfig({
         // pipeline, where the test css handling stubs it.
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(here, "../ui/src/styles.ts"),
-      },
-      {
-        // Dev-gated ui platform helpers (e.g. onboarding-replay) read
-        // `import.meta.env.DEV`, which only exists when the module runs through
-        // vite's pipeline. Resolve ui subpath imports from source so the suite
-        // exercises the same dev semantics the renderer build ships.
-        find: /^@elizaos\/ui\/api$/,
-        replacement: path.join(here, "../ui/src/api/index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: path.join(here, "../ui/src/$1"),
       },
       {
         find: /^@elizaos\/ui$/,
@@ -140,6 +128,8 @@ export default defineConfig({
     setupFiles: [path.join(here, "test/setup.ts")],
     include: [
       "src/types/**/*.test.{ts,tsx,mjs}",
+      "src/renderer/**/*.test.{ts,tsx,mjs}",
+      "src/dev/**/*.test.{ts,tsx,mjs}",
       "src/native/**/*.test.{ts,tsx,mjs}",
       "src/*.test.{ts,tsx,mjs}",
       "src/__tests__/**/*.test.{ts,tsx,mjs}",

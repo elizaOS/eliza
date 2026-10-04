@@ -2,15 +2,16 @@
  * Pure helpers used by the Model Hub UI. Kept separate from components so
  * they can be covered by unit tests without a DOM.
  */
-import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+
 import type {
   CatalogModel,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
   ModelBucket,
-} from "../../api/client-local-inference";
-import { assessCatalogModelFit } from "../../services/local-inference/recommendation";
+} from "@elizaos/contracts";
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import { assessCatalogModelFit } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { formatByteSize } from "../../utils/format";
 export type FitLevel = "fits" | "tight" | "wontfit";
 export const formatBytes = (bytes: number): string =>

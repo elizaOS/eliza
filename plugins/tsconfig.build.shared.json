@@ -17,9 +17,6 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "paths": {
-      "@elizaos/ui/api/*": ["../packages/ui/dist/api/*"],
-      "@elizaos/ui/components/*": ["../packages/ui/dist/components/*"],
-      "@elizaos/ui/*": ["../packages/ui/dist/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "./plugin-agent-orchestrator/dist/ui/index.d.ts"
       ],

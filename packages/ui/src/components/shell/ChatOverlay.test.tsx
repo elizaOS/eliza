@@ -136,7 +136,8 @@ import {
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { ViewBackButton } from "../shared/ViewHeader";
-import { ChatOverlay, PillHandle } from "./ChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
+import { PillHandle } from "./chat-overlay-controls";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
@@ -4342,25 +4343,40 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     const snapHeight = viewportHeight * 0.9;
 
     fireEvent.pointerDown(grabber, { clientY: startY, pointerId: 71 });
-    fireEvent.pointerMove(grabber, {
-      clientY: startY - (snapHeight - 20),
-      pointerId: 71,
+    await act(async () => {
+      fireEvent.pointerMove(grabber, {
+        clientY: startY - (snapHeight - 20),
+        pointerId: 71,
+      });
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     });
     await waitFor(() =>
       expect(sheet.getAttribute("data-maximized")).toBeNull(),
     );
 
-    fireEvent.pointerMove(grabber, {
-      clientY: startY - (snapHeight + 20),
-      pointerId: 71,
+    await act(async () => {
+      fireEvent.pointerMove(grabber, {
+        clientY: startY - (snapHeight + 20),
+        pointerId: 71,
+      });
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     });
     await waitFor(() =>
       expect(sheet.getAttribute("data-maximized")).toBe("true"),
     );
 
-    fireEvent.pointerMove(grabber, {
-      clientY: startY - (snapHeight - 30),
-      pointerId: 71,
+    await act(async () => {
+      fireEvent.pointerMove(grabber, {
+        clientY: startY - (snapHeight - 30),
+        pointerId: 71,
+      });
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     });
     await waitFor(() =>
       expect(sheet.getAttribute("data-maximized")).toBeNull(),
@@ -6035,10 +6051,13 @@ describe("ChatOverlay notification source targets", () => {
     const view = render(
       <ChatOverlay controller={makeController({ messages: [messages[1]] })} />,
     );
-    const pending = navigateDeepLink("/chat", {
-      conversationId,
-      messageId: firstId,
-      notificationId,
+    let pending!: ReturnType<typeof navigateDeepLink>;
+    await act(async () => {
+      pending = navigateDeepLink("/chat", {
+        conversationId,
+        messageId: firstId,
+        notificationId,
+      });
     });
     let applied = false;
     void pending?.then(() => {
@@ -6068,10 +6087,13 @@ describe("ChatOverlay notification source targets", () => {
     view = render(
       <ChatOverlay controller={makeController({ messages: [messages[1]] })} />,
     );
-    const pending = navigateDeepLink("/chat", {
-      conversationId,
-      messageId: firstId,
-      notificationId,
+    let pending!: ReturnType<typeof navigateDeepLink>;
+    await act(async () => {
+      pending = navigateDeepLink("/chat", {
+        conversationId,
+        messageId: firstId,
+        notificationId,
+      });
     });
     let applied = false;
     void pending?.then(() => {

@@ -4,9 +4,8 @@
  * The compact task stream orients users before the rich workbench takes over
  * detailed task state, inspection, and mutations.
  */
+import { Escape, OrchestratorTaskWidget } from "@elizaos/ui";
 
-import { OrchestratorTaskWidget } from "@elizaos/ui/components";
-import { Escape } from "@elizaos/ui/spatial";
 import { OrchestratorWorkbench } from "./OrchestratorWorkbench.tsx";
 
 export function OrchestratorView() {

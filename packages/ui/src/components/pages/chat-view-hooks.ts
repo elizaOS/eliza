@@ -7,6 +7,7 @@
  * the file. See per-export JSDoc for the cloud-voice availability ordering.
  */
 
+import type { ElizaCloudStatusUpdatedDetail } from "@elizaos/core/protocol";
 import {
   useCallback,
   useEffect,
@@ -19,7 +20,6 @@ import type {
   ConversationChannelType,
   ConversationMessage,
 } from "../../api/client-types-chat";
-import type { ElizaCloudStatusUpdatedDetail } from "../../events";
 import { ELIZA_CLOUD_STATUS_UPDATED_EVENT } from "../../events";
 import {
   type ContinuousChatLatency,

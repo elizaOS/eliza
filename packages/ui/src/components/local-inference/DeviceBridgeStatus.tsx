@@ -4,7 +4,7 @@
  * loaded model filename. Renders nothing until a bridge status arrives.
  */
 
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
+import type { DeviceBridgeStatus } from "../../api/local-inference-response-types";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 

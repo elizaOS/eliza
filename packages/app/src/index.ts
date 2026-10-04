@@ -2,7 +2,6 @@
 export * from "./api/auth.ts";
 export * from "./api/compat-route-shared";
 export * from "./api/credential-tunnel-routes";
-export * from "./api/ios-local-agent-transport";
 export * from "./api/response";
 export * from "./api/secrets-inventory-routes";
 export * from "./api/secrets-manager-routes";

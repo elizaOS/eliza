@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import { testOutputPath } from "../scripts/lib/test-output.ts";
-import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
+import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/known-phrase";
 import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.ts";
 import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.ts";
 

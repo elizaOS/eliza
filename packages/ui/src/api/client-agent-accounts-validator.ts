@@ -19,7 +19,7 @@ import {
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
 } from "@elizaos/host/protocol";
-import type { AccountsListResponse } from "./client-agent";
+import type { AccountsListResponse } from "./client-agent-accounts";
 /** Stable classification for malformed account inventory responses. */
 export const ACCOUNTS_RESPONSE_INVALID_CODE = "ACCOUNTS_RESPONSE_INVALID";
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -41,7 +41,8 @@ const clientMock = vi.hoisted(() => ({
   getTranscript: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/state", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useApp: () => appMock.value,
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
@@ -52,11 +53,14 @@ vi.mock("@elizaos/ui/state", () => ({
     bindingMock.value = binding;
   },
 }));
-vi.mock("@elizaos/ui/api/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/ui/api/client")>()),
-  client: clientMock,
-}));
-vi.mock("@elizaos/ui/utils/desktop-dialogs", () => ({
+vi.mock(
+  "../../../../../packages/ui/src/api/client",
+  async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: clientMock,
+  }),
+);
+vi.mock("../../../../../packages/ui/src/utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
 }));
 

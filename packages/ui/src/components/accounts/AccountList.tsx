@@ -10,7 +10,7 @@
 import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 import { useAccounts } from "../../hooks/useAccounts";
 import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";

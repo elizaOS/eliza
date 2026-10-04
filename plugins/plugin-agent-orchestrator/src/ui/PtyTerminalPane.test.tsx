@@ -29,7 +29,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     subscribePtyOutput: mocks.subscribePtyOutput,
     unsubscribePtyOutput: mocks.unsubscribePtyOutput,

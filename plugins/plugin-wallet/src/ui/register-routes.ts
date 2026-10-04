@@ -7,8 +7,8 @@
  */
 
 import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { registerBuiltinWidgets } from "@elizaos/ui/widgets";
+import { registerAppShellPage, registerBuiltinWidgets } from "@elizaos/ui";
+
 // Keep route/widget metadata eager, but load the unified wallet view only when
 // the user opens /inventory. The view is the single `InventoryView` wrapper; in
 // GUI its `Escape` hatch renders the full inventory dashboard, the

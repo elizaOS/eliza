@@ -20,11 +20,6 @@
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/ui/api/client-types-cloud": [
-        "../ui/src/api/client-types-cloud.ts"
-      ],
-      "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],

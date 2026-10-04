@@ -5,6 +5,8 @@
  * client, including stale-list and overlapping-write races across accounts.
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarSummary,
   SetLifeOpsCalendarIncludedResponse,
@@ -21,18 +23,16 @@ const authorityState = vi.hoisted(() => ({
   value: "profile-a\u0000https://same-agent.test",
 }));
 
-vi.mock("@elizaos/ui", () => ({
-  client: uiClient,
-}));
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
 
-vi.mock("@elizaos/ui/api", () => ({
   client: uiClient,
   ElizaClient: class {
     fetch = vi.fn(async () => ({}));
   },
 }));
 
-vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
+vi.mock("../../../../packages/ui/src/hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
 }));
 

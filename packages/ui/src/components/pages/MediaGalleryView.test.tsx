@@ -33,15 +33,15 @@ const transferMock = vi.hoisted(() => ({
   shareAttachment: vi.fn(),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appMock) => unknown) =>
     selector(appMock),
 }));
-vi.mock("../../api", () => ({ client: clientMock }));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 vi.mock("../../state/view-chat-binding", () => ({
   useRegisterViewChatBinding: () => {},
 }));
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 vi.mock("../../utils/download-share", () => transferMock);

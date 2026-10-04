@@ -6,6 +6,8 @@
  * live feed).
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarSourceHealth,
@@ -17,8 +19,8 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UseCalendarWeekResult } from "../hooks/useCalendarWeek.js";
@@ -34,7 +36,9 @@ const calendarSectionAppValue = vi.hoisted(() => ({
   setActionNotice: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
   Button: ({
     children,
     ...props
@@ -44,7 +48,6 @@ vi.mock("@elizaos/ui", () => ({
     </button>
   ),
   Spinner: () => <span data-testid="spinner" />,
-  // Popover stub: render trigger + content inline so we can click and assert.
   Popover: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   PopoverTrigger: ({ children }: { children: ReactNode; asChild?: boolean }) =>
     children,
@@ -77,6 +80,7 @@ vi.mock("@elizaos/ui", () => ({
       ))}
     </div>
   ),
+
   useApp: () => calendarSectionAppValue,
   useAppSelector: <T,>(
     selector: (value: typeof calendarSectionAppValue) => T,
@@ -84,24 +88,6 @@ vi.mock("@elizaos/ui", () => ({
   useAppSelectorShallow: <T,>(
     selector: (value: typeof calendarSectionAppValue) => T,
   ) => selector(calendarSectionAppValue),
-}));
-
-vi.mock("@elizaos/ui/components", async () => {
-  return await vi.importMock<Record<string, unknown>>("@elizaos/ui");
-});
-
-vi.mock("@elizaos/ui/state", () => ({
-  useApp: () => calendarSectionAppValue,
-  useAppSelector: <T,>(
-    selector: (value: typeof calendarSectionAppValue) => T,
-  ) => selector(calendarSectionAppValue),
-  useAppSelectorShallow: <T,>(
-    selector: (value: typeof calendarSectionAppValue) => T,
-  ) => selector(calendarSectionAppValue),
-}));
-
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
 const calendarState = vi.hoisted(() => ({

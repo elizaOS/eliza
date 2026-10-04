@@ -15,45 +15,38 @@
  * `KnowledgeView` (the `/documents` route) and, controlled, inside the character
  * hub. Upload compresses large images before sending.
  */
-
-import { getCached, setCached } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
+  Button,
+  ConfirmDeleteControl,
   client,
+  confirmDesktopAction,
   type DocumentRecord,
   type DocumentScope,
   type DocumentSearchResult,
-  isApiError,
-} from "@elizaos/ui/api";
-import {
-  Button,
   FormSelect,
   FormSelectItem,
+  formatByteSize,
+  getCached,
   Input,
-} from "@elizaos/ui/components";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SettingsGroup } from "@elizaos/ui/components/composites/settings";
-import { ConfirmDeleteControl } from "@elizaos/ui/components/shared/confirm-delete-control";
-import { SectionTabStrip } from "@elizaos/ui/components/shared/SectionNav";
-import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
-import {
+  isApiError,
   isCapabilityWarmupAbort,
+  isDocumentImageFile,
+  isNative,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+  PagePanel,
+  SectionTabStrip,
+  SettingsGroup,
+  setCached,
   useAbortableCapabilityWarmup,
-} from "@elizaos/ui/hooks/runtime-capability-retry";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
-import { isNative } from "@elizaos/ui/platform";
-import {
+  useActiveAgentAuthority,
+  useAgentElement,
   useAppSelector,
   useRegisterViewChatBinding,
   useTranslation,
-} from "@elizaos/ui/state";
-import {
-  confirmDesktopAction,
-  formatByteSize,
-  isDocumentImageFile,
-  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
-  maybeCompressDocumentUploadImage,
-} from "@elizaos/ui/utils";
+  ViewHeader,
+} from "@elizaos/ui";
+
 import {
   AlertTriangle,
   ChevronRight,

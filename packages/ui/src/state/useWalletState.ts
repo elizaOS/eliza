@@ -17,6 +17,8 @@
  */
 
 import type {
+  DropStatus,
+  MintResult,
   WalletAddresses,
   WalletBalancesResponse,
   WalletChainKind,
@@ -28,14 +30,12 @@ import type {
   WalletSource,
 } from "@elizaos/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  client,
-  type DropStatus,
-  type MintResult,
-  type RegistryStatus,
-  type WalletExportResult,
-  type WhitelistStatus,
-} from "../api";
+import { client } from "../api/client";
+import type {
+  RegistryStatus,
+  WhitelistStatus,
+} from "../api/client-types-cloud";
+import type { WalletExportResult } from "../api/client-types-config";
 import { isApiError } from "../api/client-types-core";
 import type { PromptOptions } from "../components/ui/confirm-dialog";
 import {

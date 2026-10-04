@@ -14,13 +14,15 @@ import { logger } from "../logger.ts";
 
 const mocks = vi.hoisted(() => ({
   client: {
+    // This fixture keeps one stable runtime authority throughout each scenario.
+    onAuthorityChange: vi.fn(() => () => {}),
     getConversationMessages: vi.fn(),
     listConversations: vi.fn(),
     getConfig: vi.fn(async () => ({ ui: {} })),
   },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
 

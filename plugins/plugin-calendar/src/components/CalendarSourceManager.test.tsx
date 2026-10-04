@@ -6,6 +6,8 @@
  * ICS subscription create/remove against a spied calendar client.
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
@@ -44,15 +46,6 @@ vi.mock("../hooks/useCalendarSources.js", () => ({
   useCalendarSources: () => sourceState.current,
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
-}));
-
-vi.mock("@elizaos/ui/events", () => ({
-  dispatchFocusConnector,
-  dispatchNavigateViewEvent,
-}));
-
 const appValue = vi.hoisted(() => ({
   t: (key: string, opts?: Record<string, unknown>) => {
     const template =
@@ -63,139 +56,141 @@ const appValue = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/ui/state", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  dispatchFocusConnector,
+  dispatchNavigateViewEvent,
+  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
   useAppSelector: <T,>(selector: (value: typeof appValue) => T) =>
     selector(appValue),
+
+  client: uiClient,
+  ElizaClient: class {},
+  ...(await (async () => {
+    const React = await import("react");
+    const Button = React.forwardRef(
+      (
+        {
+          children,
+          unstyled: _unstyled,
+          ...props
+        }: ButtonHTMLAttributes<HTMLButtonElement> & {
+          children?: ReactNode;
+          unstyled?: boolean;
+        },
+        ref: ForwardedRef<HTMLButtonElement>,
+      ) => (
+        <button
+          ref={ref}
+          type={props.type === "submit" ? "submit" : "button"}
+          {...props}
+        >
+          {children}
+        </button>
+      ),
+    );
+    const Switch = React.forwardRef(
+      (
+        {
+          checked,
+          onCheckedChange,
+          ...props
+        }: ButtonHTMLAttributes<HTMLButtonElement> & {
+          checked?: boolean;
+          onCheckedChange?: (checked: boolean) => void;
+        },
+        ref: ForwardedRef<HTMLButtonElement>,
+      ) => (
+        <button
+          ref={ref}
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          onClick={() => onCheckedChange?.(!checked)}
+          {...props}
+        />
+      ),
+    );
+    const Input = React.forwardRef(
+      (
+        props: InputHTMLAttributes<HTMLInputElement>,
+        ref: ForwardedRef<HTMLInputElement>,
+      ) => <input ref={ref} {...props} />,
+    );
+    const Card = React.forwardRef(
+      (
+        {
+          asChild,
+          border: _border,
+          children,
+          padding: _padding,
+          radius: _radius,
+          surface: _surface,
+          variant: _variant,
+          ...props
+        }: React.HTMLAttributes<HTMLDivElement> & {
+          asChild?: boolean;
+          border?: string;
+          padding?: string;
+          radius?: string;
+          surface?: string;
+          variant?: string;
+        },
+        ref: ForwardedRef<HTMLDivElement>,
+      ) => {
+        if (asChild && React.isValidElement(children)) {
+          return React.cloneElement(
+            children as React.ReactElement<React.HTMLAttributes<HTMLElement>>,
+            { ...props, ref } as React.HTMLAttributes<HTMLElement>,
+          );
+        }
+        return (
+          <div ref={ref} {...props}>
+            {children}
+          </div>
+        );
+      },
+    );
+    const SemanticForm = React.forwardRef(
+      (
+        props: React.FormHTMLAttributes<HTMLFormElement>,
+        ref: ForwardedRef<HTMLFormElement>,
+      ) => <form ref={ref} {...props} />,
+    );
+    const ConfirmDialog = ({
+      open,
+      message,
+      confirmLabel = "Confirm",
+      onConfirm,
+      onCancel,
+    }: {
+      open: boolean;
+      message: string;
+      confirmLabel?: string;
+      onConfirm: () => void;
+      onCancel: () => void;
+    }) =>
+      open ? (
+        <div data-testid="confirm-dialog">
+          <span>{message}</span>
+          <button
+            type="button"
+            data-testid="confirm-remove"
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+          <button type="button" onClick={onCancel}>
+            cancel
+          </button>
+        </div>
+      ) : null;
+    return { Button, Card, Switch, Input, SemanticForm, ConfirmDialog };
+  })()),
 }));
 
 // Give the explicit Calendar client installer a prototype target while
 // these component tests exercise the spied transport client.
-vi.mock("@elizaos/ui", () => ({
-  ElizaClient: class {},
-}));
-
-vi.mock("@elizaos/ui/api", () => ({
-  client: uiClient,
-  ElizaClient: class {},
-}));
-
-vi.mock("@elizaos/ui/components", async () => {
-  const React = await import("react");
-  const Button = React.forwardRef(
-    (
-      {
-        children,
-        unstyled: _unstyled,
-        ...props
-      }: ButtonHTMLAttributes<HTMLButtonElement> & {
-        children?: ReactNode;
-        unstyled?: boolean;
-      },
-      ref: ForwardedRef<HTMLButtonElement>,
-    ) => (
-      <button
-        ref={ref}
-        type={props.type === "submit" ? "submit" : "button"}
-        {...props}
-      >
-        {children}
-      </button>
-    ),
-  );
-  const Switch = React.forwardRef(
-    (
-      {
-        checked,
-        onCheckedChange,
-        ...props
-      }: ButtonHTMLAttributes<HTMLButtonElement> & {
-        checked?: boolean;
-        onCheckedChange?: (checked: boolean) => void;
-      },
-      ref: ForwardedRef<HTMLButtonElement>,
-    ) => (
-      <button
-        ref={ref}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onCheckedChange?.(!checked)}
-        {...props}
-      />
-    ),
-  );
-  const Input = React.forwardRef(
-    (
-      props: InputHTMLAttributes<HTMLInputElement>,
-      ref: ForwardedRef<HTMLInputElement>,
-    ) => <input ref={ref} {...props} />,
-  );
-  const Card = React.forwardRef(
-    (
-      {
-        asChild,
-        border: _border,
-        children,
-        padding: _padding,
-        radius: _radius,
-        surface: _surface,
-        variant: _variant,
-        ...props
-      }: React.HTMLAttributes<HTMLDivElement> & {
-        asChild?: boolean;
-        border?: string;
-        padding?: string;
-        radius?: string;
-        surface?: string;
-        variant?: string;
-      },
-      ref: ForwardedRef<HTMLDivElement>,
-    ) => {
-      if (asChild && React.isValidElement(children)) {
-        return React.cloneElement(
-          children as React.ReactElement<React.HTMLAttributes<HTMLElement>>,
-          { ...props, ref } as React.HTMLAttributes<HTMLElement>,
-        );
-      }
-      return (
-        <div ref={ref} {...props}>
-          {children}
-        </div>
-      );
-    },
-  );
-  const SemanticForm = React.forwardRef(
-    (
-      props: React.FormHTMLAttributes<HTMLFormElement>,
-      ref: ForwardedRef<HTMLFormElement>,
-    ) => <form ref={ref} {...props} />,
-  );
-  const ConfirmDialog = ({
-    open,
-    message,
-    confirmLabel = "Confirm",
-    onConfirm,
-    onCancel,
-  }: {
-    open: boolean;
-    message: string;
-    confirmLabel?: string;
-    onConfirm: () => void;
-    onCancel: () => void;
-  }) =>
-    open ? (
-      <div data-testid="confirm-dialog">
-        <span>{message}</span>
-        <button type="button" data-testid="confirm-remove" onClick={onConfirm}>
-          {confirmLabel}
-        </button>
-        <button type="button" onClick={onCancel}>
-          cancel
-        </button>
-      </div>
-    ) : null;
-  return { Button, Card, Switch, Input, SemanticForm, ConfirmDialog };
-});
 
 import { CalendarSourceManager } from "./CalendarSourceManager.js";
 

@@ -3,7 +3,7 @@
  * rendering, attachments, and composer surfaces.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
 import { AccountRequiredCard } from "./AccountRequiredCard";
 
 const noop = () => {};

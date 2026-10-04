@@ -4,7 +4,7 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { PageHeaderProvider } from "../../cloud-ui";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 
 vi.mock("../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>

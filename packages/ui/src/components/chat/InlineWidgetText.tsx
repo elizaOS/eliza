@@ -6,7 +6,7 @@
 
 import { stripUnclaimedInteractionMarkup } from "@elizaos/core/protocol";
 import type { ReactNode } from "react";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { CodeBlock } from "../ui/code-block";
 import {

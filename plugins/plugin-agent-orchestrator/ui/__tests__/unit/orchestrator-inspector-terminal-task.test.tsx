@@ -26,7 +26,8 @@ const agentDescriptors = vi.hoisted(() => new Map<string, AgentDescriptor>());
 // elements (close button + priority select). Capture descriptors so tests can
 // exercise the agent-fill contract without depending on Radix portal behavior
 // in jsdom.
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: (descriptor: AgentDescriptor) => {
     agentDescriptors.set(descriptor.id, descriptor);
     return {

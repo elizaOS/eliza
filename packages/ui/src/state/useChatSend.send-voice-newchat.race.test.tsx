@@ -23,12 +23,12 @@ import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../api";
-import type { LoadConversationMessagesResult } from "./internal";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
+import type { LoadConversationMessagesResult } from "./types";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
 
 const mocks = vi.hoisted(() => ({
@@ -45,7 +45,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false, getPlatform: () => "web" },

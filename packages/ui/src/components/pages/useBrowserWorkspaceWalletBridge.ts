@@ -19,7 +19,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import type { BrowserWorkspaceTab } from "../../api";
+import type { BrowserWorkspaceTab } from "../../api/browser-contracts";
 import {
   BROWSER_WALLET_READY_TYPE,
   BROWSER_WALLET_RESPONSE_TYPE,

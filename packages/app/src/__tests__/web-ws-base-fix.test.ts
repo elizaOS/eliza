@@ -8,7 +8,9 @@ vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false },
 }));
-vi.mock("@elizaos/ui/bridge", () => ({ isElectrobunRuntime: () => false }));
+vi.mock("@elizaos/ui", () => ({
+  isElectrobunRuntime: () => false,
+}));
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();

@@ -10,25 +10,27 @@ import type {
   TranscriptCaptureSharingState,
 } from "@elizaos/core/protocol";
 import {
+  ArtifactPrivacyControls,
+  Button,
+  canShareFiles,
   client,
+  confirmDesktopAction,
+  DetailSkeleton,
   type DocumentDetail,
   type DocumentFragmentRecord,
-} from "@elizaos/ui/api";
-import { Button, DetailSkeleton, Textarea } from "@elizaos/ui/components";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SettingsGroup } from "@elizaos/ui/components/composites/settings";
-import { TranscriptPlayer } from "@elizaos/ui/components/transcripts/TranscriptPlayer";
-import { ArtifactPrivacyControls } from "@elizaos/ui/components/transcripts/TranscriptsView";
-import { useAppSelector } from "@elizaos/ui/state";
-import { formatByteSize, resolveAppAssetUrl } from "@elizaos/ui/utils";
-import { safeAttachmentUrl } from "@elizaos/ui/utils/attachment-url";
-import { confirmDesktopAction } from "@elizaos/ui/utils/desktop-dialogs";
-import {
-  canShareFiles,
   downloadAttachment,
   filenameForMime,
+  formatByteSize,
+  PagePanel,
+  resolveAppAssetUrl,
+  SettingsGroup,
+  safeAttachmentUrl,
   shareAttachment,
-} from "@elizaos/ui/utils/download-share";
+  Textarea,
+  TranscriptPlayer,
+  useAppSelector,
+} from "@elizaos/ui";
+
 import {
   AlertTriangle,
   Download,

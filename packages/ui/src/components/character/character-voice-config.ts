@@ -4,12 +4,13 @@
  * ElevenLabs model, and the helper that derives a `VoiceConfig` from a selected
  * character roster entry (honoring whether an API key is configured).
  */
+
 import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
 } from "@elizaos/host/protocol";
-import type { VoiceConfig } from "../../api/client";
+import type { VoiceConfig } from "../../api/client-types-config";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 /* ── Constants ─────────────────────────────────────────────────────── */
 export const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";

@@ -26,18 +26,23 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { type CharacterData, client } from "../../api/client";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { CharacterData } from "../../api/client-types-config";
 import {
   APP_EMOTE_EVENT,
   dispatchWindowEvent,
   VOICE_CONFIG_UPDATED_EVENT,
 } from "../../events/index";
-import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
+import { useVoiceChat } from "../../hooks/useVoiceChat";
+import {
+  FramedPage,
+  FramedPageBody,
+} from "../../layouts/framed-page/framed-page";
 import { logger } from "../../logger.ts";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";
 import {
   Dialog,

@@ -4,6 +4,7 @@
  * augmented `@elizaos/ui` client to the calendar routes. Mounted by the
  * calendar views when the owner adds or edits an event.
  */
+
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -12,13 +13,14 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsConnectorSide,
 } from "@elizaos/contracts";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
 import {
   Button,
   ConfirmDialog,
+  client,
   Dialog,
   DialogContent,
+  dispatchNavigateViewEvent,
+  getActiveAgentAuthority,
   Input,
   Select,
   SelectContent,
@@ -27,13 +29,11 @@ import {
   SelectValue,
   TagEditor,
   Textarea,
-} from "@elizaos/ui/components";
-import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
-import {
-  getActiveAgentAuthority,
   useActiveAgentAuthority,
-} from "@elizaos/ui/hooks/useActiveAgentAuthority";
-import { useAppSelector } from "@elizaos/ui/state";
+  useAgentElement,
+  useAppSelector,
+} from "@elizaos/ui";
+
 import {
   Check,
   Loader2,
@@ -52,8 +52,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CalendarClientMethods } from "../api/client-calendar.js";
-import { installCalendarClient } from "../api/client-calendar.js";
+import {
+  type CalendarClientMethods,
+  installCalendarClient,
+} from "../api/client-calendar.js";
+
 import { basicEmailValid } from "../internal/email.js";
 
 const calendarClient = client as typeof client & CalendarClientMethods;

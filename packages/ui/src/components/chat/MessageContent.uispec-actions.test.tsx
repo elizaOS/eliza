@@ -16,7 +16,7 @@ import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
-import { UiRenderer } from "../config-ui";
+import { UiRenderer } from "../config-ui/ui-renderer";
 import { MessageUiSpecBlock } from "./MessageContent";
 
 const { clientMock } = vi.hoisted(() => ({

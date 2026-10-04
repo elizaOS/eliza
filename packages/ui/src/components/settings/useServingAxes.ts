@@ -11,15 +11,15 @@
  */
 
 import { useEffect, useState } from "react";
-import { client } from "../../api";
 import { isLimitedCloudAgentApiBase } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import {
   type MobileRuntimeMode,
   readPersistedMobileRuntimeMode,
 } from "../../first-run/mobile-runtime-mode";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { loadPersistedActiveServer } from "../../state/persistence";
 import { subscribeRuntimeAuthoritySwitch } from "../../state/switch-runtime";
 import {

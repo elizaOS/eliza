@@ -5,17 +5,20 @@
  * round-trip. Equal-sequence disagreement is rejected as a conformance failure.
  */
 
-import type { TranscriptEvent, TranscriptViewModel } from "./contract";
+import type {
+  TranscriptEvent,
+  TranscriptViewModel,
+} from "@elizaos/core/contracts/native-transcript/contract";
 import {
   applyTranscriptEvent,
   initialReducerState,
   type TranscriptReducerState,
   toViewModel,
-} from "./reduce";
+} from "@elizaos/core/contracts/native-transcript/reduce";
 import {
   decodeTranscriptViewModel,
   type TranscriptViewModelDecodeError,
-} from "./view-model-decode";
+} from "@elizaos/core/contracts/native-transcript/view-model-decode";
 
 export type NativeTranscriptViewSource = "web" | "ios" | "android" | "desktop";
 

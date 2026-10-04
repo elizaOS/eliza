@@ -64,10 +64,7 @@ vi.mock("../../../utils/cloud-agent-base", () => ({
   directCloudSharedAgentIdFromBase,
 }));
 
-vi.mock("../../../api", () => ({
-  client,
-  ElizaClient: class {},
-}));
+vi.mock("../../../api/client", () => ({ client, ElizaClient: class {} }));
 
 const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
 const QUOTE = {

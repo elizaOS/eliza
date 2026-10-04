@@ -13,7 +13,7 @@
 
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core/protocol";
-import { getElizaApiToken } from "@elizaos/host/protocol";
+import { getElizaApiToken, hasConfiguredApiKey } from "@elizaos/host/protocol";
 import {
   useCallback,
   useEffect,
@@ -22,8 +22,8 @@ import {
   useRef,
   useState,
 } from "react";
-import type { VoiceConfig } from "../api/client";
 import { getCloudAuthToken } from "../api/client-cloud";
+import type { VoiceConfig } from "../api/client-types-config";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
@@ -38,7 +38,7 @@ import {
 } from "../bridge/native-plugins";
 import { APP_PAUSE_EVENT } from "../events";
 import { logger } from "../logger.ts";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   isTtsDebugEnabled,
@@ -46,7 +46,6 @@ import {
   ttsDebugTextPreview,
 } from "../utils/tts-debug";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
-import { hasConfiguredApiKey } from "../voice";
 import {
   isLocalAsrCaptureSupported,
   isSilentWav,

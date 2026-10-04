@@ -4,16 +4,17 @@
  * messages and custom-action params). No React, no I/O.
  */
 
+import type { CustomActionDef } from "@elizaos/contracts";
+
 import { parseChatFailureKind } from "@elizaos/contracts";
+import type { ConversationMessage } from "../api/client-types-chat";
 import type {
   AgentModelReadiness,
   AgentStartupDiagnostics,
   AgentStatus,
-  ConversationMessage,
-  CustomActionDef,
+  LocalModelReadiness,
   StreamEventEnvelope,
-} from "../api/client";
-import type { LocalModelReadiness } from "../api/client-types-core";
+} from "../api/client-types-core";
 import {
   computeStreamingDelta as computeStreamingDeltaInternal,
   mergeStreamingText,

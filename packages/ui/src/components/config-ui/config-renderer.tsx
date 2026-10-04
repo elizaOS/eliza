@@ -7,6 +7,7 @@
  * plugin theme tokens style the output; secret reveal is delegated to the caller.
  */
 
+import type { ConfigUiHint, PluginUiTheme } from "@elizaos/contracts";
 import type { JsonSchemaObject, ResolvedField } from "@elizaos/host/protocol";
 import {
   evaluateFieldVisibility,
@@ -27,9 +28,9 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
+
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
-import type { ConfigUiHint, PluginUiTheme } from "../../types";
+import { useAppSelector } from "../../state/app-store";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Banner } from "../ui/banner";

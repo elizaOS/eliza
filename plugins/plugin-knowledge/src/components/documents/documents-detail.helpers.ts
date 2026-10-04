@@ -3,9 +3,7 @@
  * from a content type, a translated source label (YouTube/URL/upload), and a
  * one-line summary (source, fragment count, byte size) for a document record.
  */
-
-import type { DocumentRecord } from "@elizaos/ui/api";
-import { formatByteSize } from "@elizaos/ui/utils";
+import { type DocumentRecord, formatByteSize } from "@elizaos/ui";
 
 export function getDocumentTypeLabel(contentType?: string): string {
   return contentType?.split("/").pop()?.toUpperCase() || "DOCUMENT";

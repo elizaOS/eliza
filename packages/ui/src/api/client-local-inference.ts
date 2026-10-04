@@ -224,7 +224,7 @@ export function classifyDeviceTierFromProbe(
   })();
   return { tier, reason, cpuOnly, mobile };
 }
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getLocalInferenceHub(): Promise<ModelHubSnapshot>;
     getLocalInferenceHardware(): Promise<HardwareProbe>;
