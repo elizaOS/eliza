@@ -21,7 +21,7 @@ function fixture(t) {
 const fs=require('node:fs');
 const args=process.argv.slice(2);
 fs.appendFileSync(process.env.TRACE,JSON.stringify({args,cwd:process.cwd(),ndk:process.env.ANDROID_NDK_HOME,toolchain:process.env.GOTOOLCHAIN})+'\\n');
-if(args[0]==='env'){console.log(process.env.GO_VERSION||'go1.26.8');process.exit(0);}
+if(args[0]==='env'){console.log(process.env.GO_VERSION||'go1.27.1');process.exit(0);}
 const output=args[args.indexOf('-o')+1];
 fs.writeFileSync(output,args[0]==='build'?'gobind':'new-aar');
 if(process.env.FAIL_BIND==='1'&&args[0]==='tool')process.exit(7);
@@ -32,7 +32,7 @@ if(process.env.FAIL_BIND==='1'&&args[0]==='tool')process.exit(7);
     source: path.join(root, "source"),
     output: path.join(root, "output/trust.aar"),
     toolchain: {
-      go: "1.26.8",
+      go: "1.27.1",
       ndk: "29.0.13113456",
       androidApi: 29,
       target: "android/arm64",
