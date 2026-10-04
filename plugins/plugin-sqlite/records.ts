@@ -2452,9 +2452,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   // ── World CRUD ────────────────────────────────────────────────────────
 
+  private worldIsVisibleToOwner(world: World): boolean {
+    // Worlds created without an agentId belong to this database. A stored
+    // agentId for someone else matches the SQL `worlds.agent_id` predicate.
+    return world.agentId === undefined || world.agentId === this.agentId;
+  }
+
   async getAllWorlds(): Promise<World[]> {
     const worlds = await this.storage.getAll<World>(COLLECTIONS.WORLDS);
-    return worlds.map((world) => structuredClone(world));
+    return worlds
+      .filter((world) => this.worldIsVisibleToOwner(world))
+      .map((world) => structuredClone(world));
   }
 
   async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
@@ -2513,7 +2521,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           COLLECTIONS.WORLDS,
           world.id,
         );
-        if (!existing) continue;
+        if (!existing || !this.worldIsVisibleToOwner(existing)) continue;
         const storedRevision = requireFreshWorldMetadataRevision(
           existing.metadata as Metadata | undefined,
           world.metadata as Metadata | undefined,
@@ -2538,6 +2546,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       for (const world of worlds) {
         const id = world.id as UUID;
         const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
+        if (existing && !this.worldIsVisibleToOwner(existing)) continue;
         if (!existing) {
           await this.storage.set(COLLECTIONS.WORLDS, id, {
             ...structuredClone(world),
@@ -2597,7 +2606,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.WORLDS,
       params.worldId,
     );
-    if (!stored) return { status: "not_found" };
+    if (!stored || !this.worldIsVisibleToOwner(stored))
+      return { status: "not_found" };
     const storedMetadata = (stored.metadata ?? {}) as Record<string, unknown>;
     if (
       !worldMetadataValueEquals(
