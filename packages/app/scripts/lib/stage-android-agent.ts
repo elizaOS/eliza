@@ -903,18 +903,8 @@ function copyIfDifferent(source, target) {
 }
 
 function resolveNativeLlamaAssetDir(androidAbi) {
-  // Look up an env-var-supplied prebuilt native llama asset dir for this
-  // ABI. Each env var may be either:
-  //   - a single absolute dir (legacy arm64-only contract — the prebuilt
-  //     lives directly inside; only honoured when androidAbi is arm64-v8a),
-  //   - a per-ABI suffixed variant `<KEY>_<ABI>` where ABI is the upper-
-  //     snake-cased androidAbi (e.g. ELIZA_AOSP_LLAMA_ASSET_DIR_ARM64_V8A,
-  //     _X86_64, _RISCV64),
-  //   - or a base dir that contains per-ABI subdirectories named after the
-  //     androidAbi (e.g. `<dir>/arm64-v8a/`, `<dir>/x86_64/`, `<dir>/riscv64/`).
-  // The first env key that resolves to a real dir for this ABI wins. We
-  // never fall back across ABIs (an arm64 prebuilt is not valid for x86_64
-  // or riscv64).
+  // Prefer the ABI-suffixed variable, then an ABI subdirectory of the base.
+  // Never reuse another architecture's native artifacts.
   const abiSuffix = androidAbi.replace(/-/g, "_").toUpperCase();
   for (const key of NATIVE_LLAMA_ASSET_ENV_KEYS) {
     // 1. Per-ABI env var wins outright.
@@ -937,12 +927,6 @@ function resolveNativeLlamaAssetDir(androidAbi) {
       fs.statSync(perAbiSubdir).isDirectory()
     ) {
       return { dir: perAbiSubdir, key: `${key}/${androidAbi}` };
-    }
-    // 3. Legacy: the env var points directly at the prebuilt dir; honour
-    //    it only for arm64-v8a since that's the only ABI the legacy
-    //    contract ever shipped a prebuilt for.
-    if (androidAbi === "arm64-v8a") {
-      return { dir: baseResolved, key };
     }
   }
   return null;
