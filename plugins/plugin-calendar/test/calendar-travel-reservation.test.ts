@@ -113,6 +113,7 @@ async function runCreate(
       debug: vi.fn(),
     },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
   const deps: CalendarActionDeps = {

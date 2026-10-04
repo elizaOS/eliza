@@ -154,6 +154,7 @@ function fakeRuntime(service: StubService): IAgentRuntime {
       debug: () => undefined,
     },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }

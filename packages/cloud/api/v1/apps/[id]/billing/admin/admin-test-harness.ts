@@ -134,6 +134,7 @@ export async function setupAdminTest() {
     "0511_organization_plan_change_quotes",
     "0512_organization_upgrade_dispatch",
     "0513_organization_upgrade_live_lease",
+    "0514_organization_upgrade_quote_binding",
   ])
     await migrate(tag);
   await db.query(
