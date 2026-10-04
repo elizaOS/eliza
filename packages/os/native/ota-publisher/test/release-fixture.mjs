@@ -1,0 +1,107 @@
+export const hash = (c) => c.repeat(64);
+export function fixture() {
+  const artifact = (digest, code, origin) => ({
+    sha256: hash(digest),
+    length: 1024,
+    url: `https://github.com/example-org/example-app/releases/download/v2/${code}.apk`,
+    mirrors: [],
+    versionCode: code,
+    versionName: "0.2.0",
+    signerSha256: hash("d"),
+    securityEpoch: 1,
+    android: {
+      sdk: { min: 35, max: 35 },
+      targetSdk: 36,
+      abis: ["arm64-v8a"],
+      models: ["Qualified tablet"],
+      buildFingerprints: ["vendor/model/product:15/build/release-keys"],
+      installerCapabilities: [
+        "device-owner",
+        "silent-install",
+        "forward-recovery",
+      ],
+    },
+    compatibility: {
+      agentProtocol: { min: 1, max: 1 },
+      database: { read: { min: 1, max: 2 }, write: { min: 2, max: 2 } },
+      minimumSupervisor: 1,
+      browserProtocol: { min: 1, max: 1 },
+      upgradeOrigins: [hash(origin)],
+    },
+    runtime: {
+      inventorySha256: hash("e"),
+      agentSha256: hash("e"),
+      gatewaySha256: hash("e"),
+      policySha256: hash("e"),
+      nativeLibraries: { "libeliza_bun.so": hash("e") },
+    },
+  });
+  const release = {
+    schemaVersion: 1,
+    product: "example-app",
+    packageId: "org.example.app",
+    distribution: "launcher",
+    channel: "stable",
+    releaseId: "v2",
+    sequence: 2,
+    securityFloor: 1,
+    source: {
+      repository: "example-org/example-app",
+      tag: "v2",
+      commit: "a".repeat(40),
+      upstreamCommit: "b".repeat(40),
+      patchSha256: [],
+    },
+    candidate: artifact("b", 2, "a"),
+    recovery: artifact("c", 3, "b"),
+    safety: {
+      recoveryForSha256: hash("b"),
+      minimumFreeBytes: 8192,
+      healthProfile: "native-agent-v1",
+      activationProfile: "idle-v1",
+    },
+    rollout: {
+      seed: hash("f"),
+      threshold: 10000,
+      starts: "2026-10-01T00:00:00.000Z",
+      expires: "2026-11-01T00:00:00.000Z",
+      revision: 1,
+      paused: false,
+      revokedSha256: [],
+    },
+  };
+  const device = {
+    requestedChannel: "stable",
+    distribution: "launcher",
+    quarantine: [],
+    installedSha256: hash("a"),
+    installedVersionCode: 1,
+    signerSha256: hash("d"),
+    sdk: 35,
+    abi: "arm64-v8a",
+    model: "Qualified tablet",
+    buildFingerprint: "vendor/model/product:15/build/release-keys",
+    installerCapabilities: [
+      "device-owner",
+      "silent-install",
+      "forward-recovery",
+    ],
+    supervisorVersion: 1,
+    agentProtocol: 1,
+    browserProtocol: 1,
+    databaseSchema: 1,
+    freeBytes: 16384,
+    healthProfiles: ["native-agent-v1"],
+    activationProfiles: ["idle-v1"],
+    opaqueCohortId: hash("1"),
+  };
+  const policy = {
+    repository: "example-org/example-app",
+    artifactHosts: new Set(["github.com", "updates.example.com"]),
+    trustedNowMs: Date.parse("2026-10-02T00:00:00Z"),
+    minimumSequence: 1,
+    minimumRolloutRevision: 1,
+    securityFloor: 1,
+  };
+  return { release, device, policy };
+}

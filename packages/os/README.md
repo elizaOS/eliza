@@ -69,3 +69,8 @@ parser. Hosts supply verified authorization, immutable storage and atomic timest
 CAS ports; the core has no default signer or publication destination. Run
 `bun run --cwd packages/os test:ota-publisher` for concurrency and real process-death
 recovery contracts. These tests do not authorize or perform production publication.
+The publisher's `releasePreflight` requires explicit descriptor-validation,
+local-artifact and public-release verifier ports. `createPublicationAuthorizer`
+requires graph-verification and preflight ports and binds fresh source approval
+to exact descriptor bytes. Neither module provides default host trust policy.
+The process graph verifier accepts a host-selected `timeoutMs`.
