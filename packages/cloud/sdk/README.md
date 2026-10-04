@@ -13,3 +13,31 @@ bun run --cwd packages/cloud/sdk test:e2e  # live integration tests
 ```
 
 Live tests use the configured Cloud endpoints. Set `ELIZAOS_CLOUD_API_KEY` for authenticated API checks and `ELIZA_CLOUD_SESSION_TOKEN` for session checks; tests without their credentials skip. Write/generation/container checks require separate explicit opt-in flags in `src/live.e2e.test.ts`.
+
+## Native Cloud service composition
+
+`@elizaos/cloud-sdk/native-host` is a Node source entrypoint for
+verified native gateway payloads. It shares private credential persistence,
+account epochs, Cloud login/billing transport, speech framing, account-bound
+Google reads and document-runtime authority/provenance checks. It does not
+provision a remote agent or expose account API credentials to the renderer.
+The checkout projection intentionally returns only provider-scoped payment UI
+fields. The document loader requires the host to supply the reviewed source commit and
+canvasVersion explicitly; artifact provenance must match both.
+
+Hosts supply explicit `hostPolicy` functions (projectAccountAccess,
+createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
+planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
+messages, plus speechVoice. These are trusted host settings, never renderer
+input. The host remains responsible for origin admission and authenticating
+requests before this route handler. Native enrollment keeps its own registered
+application identity. Document runtimes are reviewed host-owned artifacts.
+
+This Node source entrypoint is separate from the browser-safe root SDK. Run `bun run --cwd packages/cloud/sdk test:native-host` for transport and
+private-file tests with synthetic provider responses. Consumer tests cover
+product voice, privacy, account races and installed payload dependency closure.
+
+Service-only consumers set `hostPolicy.accountBilling: false` to exclude billing
+routes. Enrollment requires its factory when a pending credential store is supplied.
+Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`
+uses provider language detection. Omitting these choices retains policy validation.

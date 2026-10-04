@@ -29,39 +29,34 @@ import nodeCrypto from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
+  type AccountCredentialProvider,
   type AccountCredentialRecord,
   assertCanonicalAccountId,
-  createRuntimeAccountStoragePolicy,
-  deleteAccount,
-  listAccounts,
-  loadAccount,
-  saveAccount,
-  updateAccountMetadata,
-} from "@elizaos/auth/auth/account-storage";
-import { fetchCodexUsage } from "@elizaos/auth/auth/codex-usage";
-import { getAccessToken } from "@elizaos/auth/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
-import {
-  cancelFlow,
-  getFlowState,
-  startAnthropicOAuthFlow,
-  startCodexOAuthFlow,
-  submitFlowCode,
-  subscribeFlow,
-} from "@elizaos/auth/auth/oauth-flow";
-import {
-  type AccountCredentialProvider,
   CODING_PLAN_PROVIDER_BASE_URL,
+  cancelFlow,
+  createRuntimeAccountStoragePolicy,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
+  deleteAccount,
+  getAccessToken,
+  getFlowState,
   isAccountCredentialProvider,
   isCodingPlanKeySubscriptionProvider,
   isDirectAccountProvider,
   isOAuthSubscriptionProvider,
   isSubscriptionProvider,
   isUnavailableSubscriptionProvider,
+  listAccounts,
+  loadAccount,
   type SubscriptionProvider,
-} from "@elizaos/auth/auth/types";
+  saveAccount,
+  startAnthropicOAuthFlow,
+  startCodexOAuthFlow,
+  submitFlowCode,
+  subscribeFlow,
+  updateAccountMetadata,
+} from "@elizaos/auth/auth";
+import { fetchCodexUsage, probeDirectApiKey } from "@elizaos/auth/providers";
 import {
   type AccountPoolBrokerSnapshot,
   CODING_PROVIDER_DESCRIPTORS,
@@ -671,7 +666,7 @@ async function probeCodexUsage(
 }> {
   const start = Date.now();
   try {
-    // One canonical probe: `@elizaos/auth/auth/codex-usage` hits the ChatGPT/Codex
+    // One canonical probe: `@elizaos/auth/auth` hits the ChatGPT/Codex
     // backend the subscription token actually authenticates against (NOT
     // api.openai.com completions, which bills the API platform org and fails
     // healthy subscription accounts with billing errors), runtime-validates
