@@ -17,6 +17,8 @@
  * real `PluginConfigForm`/`ConfigRenderer` — renders for real.
  */
 
+// @vitest-environment jsdom
+
 import type { PluginParamDef } from "@elizaos/core/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

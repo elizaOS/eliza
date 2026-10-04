@@ -191,6 +191,7 @@ beforeAll(async () => {
       },
     })),
     adapter: { db },
+    getSetting: () => undefined,
     getService: (serviceType: string) =>
       serviceType === SECRETS_SERVICE_TYPE
         ? secretsService

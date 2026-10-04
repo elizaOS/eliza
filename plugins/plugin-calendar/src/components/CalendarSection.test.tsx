@@ -6,6 +6,8 @@
  * live feed).
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarSourceHealth,
@@ -313,6 +315,28 @@ describe("CalendarSection", () => {
     // The event block renders its formatted start time (e.g. "9:00 AM").
     expect(screen.getByText(/9:00\s*AM/i)).toBeTruthy();
     // The week range header is present.
+    expect(screen.getByText(/June 2026/)).toBeTruthy();
+  });
+
+  it("keeps the week grid when one feed event has an unparseable end", () => {
+    calendarState.current = makeResult({
+      events: [
+        evt({
+          id: "no-end",
+          title: "Imported hold",
+          startAt: new Date(2026, 5, 15, 8, 0, 0).toISOString(),
+          endAt: "",
+        }),
+        evt({
+          id: "e1",
+          title: "Design sync",
+          startAt: new Date(2026, 5, 15, 9, 0, 0).toISOString(),
+          endAt: new Date(2026, 5, 15, 10, 0, 0).toISOString(),
+        }),
+      ],
+    });
+    render(<CalendarSection {...noopProps} />);
+    expect(screen.getByText("Design sync")).toBeTruthy();
     expect(screen.getByText(/June 2026/)).toBeTruthy();
   });
 

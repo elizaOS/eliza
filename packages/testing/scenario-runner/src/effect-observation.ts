@@ -55,12 +55,9 @@ export function createRemoteMockEffectCapture(
   const read = async (callerSignal?: AbortSignal) =>
     Promise.all(
       Object.entries(endpoints).map(async ([service, endpoint]) => {
-        const timeout = AbortSignal.timeout(30_000);
         const activeSignal = callerSignal ?? signal;
         const response = await fetch(`${endpoint}/__mock/requests`, {
-          signal: activeSignal
-            ? AbortSignal.any([activeSignal, timeout])
-            : timeout,
+          signal: activeSignal,
         });
         if (!response.ok)
           throw new ElizaError(

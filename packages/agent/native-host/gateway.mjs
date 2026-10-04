@@ -107,7 +107,36 @@ export function createLocalAgentGateway({
       status: 409,
       code: "CONVERSATION_NOT_OWNED",
     });
+  const corsGrant = {
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    // Renderers authenticate with a bearer token, so they must be allowed to send it.
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "600",
+  };
   return http.createServer(async (req, res) => {
+    const origin = req.headers.origin;
+    // Host validation also rejects DNS rebinding requests without an Origin.
+    const trustedCaller =
+      /^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(
+        req.headers.host || "",
+      ) &&
+      (!origin || allowed.has(origin));
+    // Browsers never attach credentials to a CORS preflight. Answer one from an
+    // allowlisted origin before bearer authentication, or the renderer can
+    // never send its authenticated request. It reaches no route.
+    if (
+      req.method === "OPTIONS" &&
+      origin &&
+      req.headers["access-control-request-method"]
+    ) {
+      if (!trustedCaller) return json(res, 403, { error: message("error7") });
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": origin,
+        Vary: "Origin",
+        ...corsGrant,
+      });
+      return res.end();
+    }
     if (inboundToken) {
       const supplied = Buffer.from(req.headers.authorization || "");
       const expected = Buffer.from(`Bearer ${inboundToken}`);
@@ -117,25 +146,13 @@ export function createLocalAgentGateway({
       )
         return json(res, 401, { error: message("error6") });
     }
-    const origin = req.headers.origin;
-    // Host validation also rejects DNS rebinding requests without an Origin.
-    if (
-      !/^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(
-        req.headers.host || "",
-      ) ||
-      (origin && !allowed.has(origin))
-    )
-      return json(res, 403, { error: message("error7") });
+    if (!trustedCaller) return json(res, 403, { error: message("error7") });
     if (origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
     }
     if (req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Max-Age": "600",
-      });
+      res.writeHead(204, corsGrant);
       return res.end();
     }
     const controller = new AbortController();

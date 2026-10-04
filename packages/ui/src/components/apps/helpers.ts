@@ -15,7 +15,6 @@ import {
   packageNameToAppRouteSlug,
   type RegistryAppInfo,
 } from "@elizaos/core/protocol";
-
 import { getBootConfig } from "../../config/boot-config-store";
 import {
   getInternalToolAppCatalogOrder,

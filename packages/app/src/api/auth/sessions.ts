@@ -24,8 +24,8 @@ import {
   LAST_ACTIVITY_HEADER_NAME,
   SESSION_COOKIE_NAME,
 } from "@elizaos/auth";
-import { ElizaError, logger } from "@elizaos/core";
-import { isLoopbackBindHost } from "@elizaos/core/protocol";
+import { logger } from "@elizaos/core";
+import { ElizaError, isLoopbackBindHost } from "@elizaos/core/protocol";
 import {
   type RuntimeEnvRecord,
   resolveApiBindHost,

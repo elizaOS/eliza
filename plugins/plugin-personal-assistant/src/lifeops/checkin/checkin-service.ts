@@ -12,12 +12,17 @@ import type {
 import {
   type GetLifeOpsGmailTriageRequest,
   type GetLifeOpsInboxRequest,
+  LIFEOPS_INBOX_CHANNELS,
   LIFEOPS_OCCURRENCE_STATES,
   type LifeOpsCadence,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
   type LifeOpsGmailTriageFeed,
+  type LifeOpsGoogleConnectorStatus,
   type LifeOpsInbox,
   type LifeOpsOccurrence,
   type LifeOpsOccurrenceState,
+  type LifeOpsXConnectorStatus,
   type LifeOpsXDm,
   type LifeOpsXFeedItem,
   type LifeOpsXFeedType,
@@ -81,6 +86,16 @@ export function getCheckinSummaryTrajectoryPurpose(
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 export interface CheckinSourceService {
+  getGoogleConnectorAccounts?(
+    requestUrl: URL,
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsGoogleConnectorStatus[]>;
+  getXConnectorStatus?(
+    mode?: LifeOpsConnectorMode,
+    side?: LifeOpsConnectorSide,
+    accountId?: string | null,
+  ): Promise<LifeOpsXConnectorStatus>;
+
   getInbox?(request?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
   getGmailTriage?(
     requestUrl: URL,
@@ -203,8 +218,12 @@ function formatCheckinReportForPrompt(
           }
         : null,
     briefingSections: {
-      available: report.briefingSections.filter((section) => !section.error),
-      unavailable: report.briefingSections.filter((section) => section.error),
+      available: report.briefingSections.filter(
+        (section) => !section.error || section.coverage === "partial",
+      ),
+      unavailable: report.briefingSections.filter(
+        (section) => section.error && section.coverage !== "partial",
+      ),
     },
   };
   return JSON.stringify(modelReport, (_key, value: unknown) => {
@@ -381,7 +400,7 @@ export function renderMorningCheckinReport(
   const xUnavailable: { label: string; setupUnavailable: boolean }[] = [];
   let gmailDisconnected = false;
   for (const section of report.briefingSections) {
-    if (section.error) {
+    if (section.error && section.coverage !== "partial") {
       if (
         section.key === "gmail" &&
         section.error === "Google Gmail is not connected."
@@ -419,6 +438,8 @@ export function renderMorningCheckinReport(
           `- ${morningBriefExcerpt(item.title)}${item.detail ? `: ${morningBriefExcerpt(item.detail)}` : ""}`,
       );
     const extra = section.items.length - highlights.length;
+    if (section.coverage === "partial" && highlights.length === 0)
+      paragraphs.push("Some Gmail inboxes couldn't be checked.");
     if (highlights.length > 0) {
       paragraphs.push(
         `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more items.` : ""}`,
@@ -779,9 +800,11 @@ async function collectOverdueTodos(
               COALESCE(def.title, '') AS title,
               occ.due_at AS due_at
          FROM app_lifeops.life_task_occurrences occ
-         LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
+         JOIN app_lifeops.life_task_definitions def
+           ON def.id = occ.definition_id AND def.agent_id = occ.agent_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
-          AND occ.state IN ('pending', 'active', 'in_progress')
+          AND def.kind = 'task'
+          AND occ.state IN ('pending', 'visible')
           AND occ.due_at IS NOT NULL
           AND occ.due_at < ${sqlQuote(nowIso)}
         ORDER BY occ.due_at ASC
@@ -1050,7 +1073,14 @@ async function collectInboxSection(
     );
   }
   try {
-    const inbox = await source.getInbox({ limit: 50 });
+    // Gmail/X have dedicated status-gated collectors. Keep other cached
+    // channels without re-reading those accounts through the aggregate inbox.
+    const inbox = await source.getInbox({
+      limit: 50,
+      channels: LIFEOPS_INBOX_CHANNELS.filter(
+        (channel) => channel !== "gmail" && channel !== "x_dm",
+      ),
+    });
     const counts = Object.entries(inbox.channelCounts)
       .filter(([, count]) => count.total > 0)
       .map(
@@ -1097,51 +1127,105 @@ async function collectInboxSection(
 async function collectGmailSection(
   source: CheckinSourceService | undefined,
   now: Date,
-): Promise<CheckinBriefingSection> {
-  if (!source?.getGmailTriage) {
-    return unavailableSection(
-      "gmail",
-      "Gmail",
-      "Gmail triage reader is not registered on this runtime.",
-    );
-  }
+): Promise<CheckinBriefingSection | undefined> {
+  if (!source?.getGoogleConnectorAccounts) return undefined;
   try {
-    const feed = await source.getGmailTriage(
-      INTERNAL_URL,
-      { maxResults: 25 },
-      now,
+    const accounts = (
+      await source.getGoogleConnectorAccounts(INTERNAL_URL, "owner")
+    ).filter(
+      (account) =>
+        account.configured &&
+        (account.connected || account.reason === "needs_reauth") &&
+        account.grantedCapabilities.includes("google.gmail.triage"),
+    );
+    if (accounts.length === 0) return undefined;
+    if (!source.getGmailTriage)
+      return unavailableSection(
+        "gmail",
+        "Gmail",
+        "The configured Gmail triage reader is not registered.",
+      );
+    const getGmailTriage = source.getGmailTriage.bind(source);
+    const results = await Promise.all(
+      accounts.map(async (account) => {
+        try {
+          if (!account.grant?.id || !account.grant.connectorAccountId)
+            throw new ElizaError(
+              "The configured Gmail account reference is unavailable.",
+              { code: "CHECKIN_GMAIL_ACCOUNT_REFERENCE_UNAVAILABLE" },
+            );
+          return {
+            feed: await getGmailTriage(
+              INTERNAL_URL,
+              { maxResults: 25, side: "owner", grantId: account.grant.id },
+              now,
+            ),
+            error: null,
+          };
+        } catch (error) {
+          return {
+            feed: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }),
+    );
+    const feeds = results.flatMap((result) =>
+      result.feed ? [result.feed] : [],
+    );
+    const errors = results.flatMap((result) =>
+      result.error ? [result.error] : [],
     );
     const items = sortBriefingItems(
-      feed.messages.map((message) => {
-        const ranked = buildBriefingSignals({
-          occurredAt: message.receivedAt,
-          unread: message.isUnread,
-          inbound: true,
-          replyNeeded: message.likelyReplyNeeded,
-          important: message.isImportant,
-          sourcePriority: message.triageScore,
-        });
-        return {
-          title: `${message.from || "Unknown"}${message.subject ? `: ${message.subject}` : ""}`,
-          detail: clip(message.snippet || message.triageReason),
-          occurredAt: message.receivedAt,
-          href: message.htmlLink,
-          reason: ranked.reason ?? (message.triageReason || null),
-          signals: ranked.signals,
-          sort: { ...ranked.signals, occurredAt: message.receivedAt },
-        };
+      feeds
+        .flatMap((feed) => feed.messages)
+        .map((message) => {
+          const ranked = buildBriefingSignals({
+            occurredAt: message.receivedAt,
+            unread: message.isUnread,
+            inbound: true,
+            replyNeeded: message.likelyReplyNeeded,
+            important: message.isImportant,
+            sourcePriority: message.triageScore,
+          });
+          return {
+            title: `${message.from || "Unknown"}${message.subject ? `: ${message.subject}` : ""}`,
+            detail: clip(message.snippet || message.triageReason),
+            occurredAt: message.receivedAt,
+            href: message.htmlLink,
+            reason: ranked.reason ?? (message.triageReason || null),
+            signals: ranked.signals,
+            sort: { ...ranked.signals, occurredAt: message.receivedAt },
+          };
+        }),
+    );
+    const counts = feeds.reduce(
+      (sum, feed) => ({
+        unread: sum.unread + feed.summary.unreadCount,
+        important: sum.important + feed.summary.importantNewCount,
+        reply: sum.reply + feed.summary.likelyReplyNeededCount,
       }),
+      { unread: 0, important: 0, reply: 0 },
     );
     return {
       key: "gmail",
       title: "Gmail",
-      summary: `${feed.summary.unreadCount} unread, ${feed.summary.importantNewCount} important, ${feed.summary.likelyReplyNeededCount} likely needing reply.`,
+      summary:
+        feeds.length > 0
+          ? `${counts.unread} unread, ${counts.important} important, ${counts.reply} likely needing reply${errors.length ? "; some connected inboxes couldn't be checked" : ""}.`
+          : "Connected Gmail inboxes couldn't be checked.",
       items,
-      error: null,
+      error: errors.length ? errors.join("; ") : null,
+      ...(errors.length > 0 && feeds.length > 0
+        ? { coverage: "partial" as const }
+        : {}),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return unavailableSection("gmail", "Gmail", message);
+    return unavailableSection(
+      "gmail",
+      "Gmail",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 async function collectCalendarChangeSection(
@@ -1454,15 +1538,43 @@ async function collectBriefingSections(args: {
   now: Date;
   timezone: string;
 }): Promise<CheckinBriefingSection[]> {
-  return Promise.all([
-    collectXDmSection(args.source),
-    collectXFeedSection(
-      args.source,
-      "x_timeline",
-      "home_timeline",
-      "X timeline",
-    ),
-    collectXFeedSection(args.source, "x_mentions", "mentions", "X mentions"),
+  let xStatus: LifeOpsXConnectorStatus | undefined;
+  let xError: string | null = null;
+  if (args.source?.getXConnectorStatus) {
+    try {
+      xStatus = await args.source.getXConnectorStatus(
+        undefined,
+        "owner",
+        undefined,
+      );
+    } catch (error) {
+      xError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (xStatus?.reason === "needs_reauth")
+    xError = "The configured X connection needs reauthorization.";
+  const readableX = xStatus?.connected;
+  const sections = await Promise.all([
+    ...(xError
+      ? [Promise.resolve(unavailableSection("x_dms", "X", xError))]
+      : []),
+    ...(readableX && xStatus?.dmRead ? [collectXDmSection(args.source)] : []),
+    ...(readableX && xStatus?.feedRead
+      ? [
+          collectXFeedSection(
+            args.source,
+            "x_timeline",
+            "home_timeline",
+            "X timeline",
+          ),
+          collectXFeedSection(
+            args.source,
+            "x_mentions",
+            "mentions",
+            "X mentions",
+          ),
+        ]
+      : []),
     collectInboxSection(args.source),
     collectGmailSection(args.source, args.now),
     collectGitHubSection(args.runtime, args.now, args.timezone),
@@ -1470,6 +1582,9 @@ async function collectBriefingSections(args: {
     collectContactSection(args.runtime, args.now, args.timezone),
     collectPromiseSection(args.runtime, args.now),
   ]);
+  return sections.filter(
+    (section): section is CheckinBriefingSection => section !== undefined,
+  );
 }
 export class CheckinService {
   constructor(

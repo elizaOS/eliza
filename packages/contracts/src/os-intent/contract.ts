@@ -324,3 +324,9 @@ export type IntentOutcome =
     };
 
 export type IntentOutcomeStatus = IntentOutcome["status"];
+
+/** One applied launch: its id and the epoch-ms it was first routed. */
+export interface AppliedIntentRecord {
+  intentId: string;
+  appliedAt: number;
+}

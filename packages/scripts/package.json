@@ -19,7 +19,8 @@
   },
   "devDependencies": {
     "elizaos-benchmarks": "workspace:*",
-    "@elizaos/plugin-local-inference": "workspace:*"
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/voice": "workspace:*"
   },
   "scripts": {
     "test:real-llm:attachment": "node provider-smokes/real-llm-attachment-smoke.ts",

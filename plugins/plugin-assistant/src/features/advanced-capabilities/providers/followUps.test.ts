@@ -1,6 +1,7 @@
 /** Exercises contact batching at the real FOLLOW_UPS provider boundary. */
+import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { followUpsProvider } from "./followUps.js";
 
 const message = { roomId: "room-1" as UUID } as Memory;
@@ -29,6 +30,40 @@ function harness(items: ReturnType<typeof followUp>[]) {
   } as unknown as IAgentRuntime;
   return { runtime, service, getEntitiesByIds, getEntityById, reportError };
 }
+
+describe("followUpsProvider upcoming day labels", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const scheduled = (id: string, scheduledAt: string) => ({
+    task: { id: id as UUID, metadata: { scheduledAt } },
+    contact: { entityId: `entity-${id}` as UUID },
+  });
+
+  it("labels upcoming follow-ups by the owner's calendar day", async () => {
+    // 10:00 on Oct 4 in Denver.
+    vi.useFakeTimers({ now: new Date("2026-10-04T16:00:00.000Z") });
+    const h = harness([
+      scheduled("later-today", "2026-10-04T21:00:00.000Z"), // 15:00 Oct 4
+      scheduled("tomorrow-am", "2026-10-05T14:00:00.000Z"), // 08:00 Oct 5
+      scheduled("in-two", "2026-10-06T22:00:00.000Z"), // 16:00 Oct 6
+    ] as unknown as ReturnType<typeof followUp>[]);
+    const runtime = Object.assign(h.runtime, { getSetting: () => undefined });
+    registerCalendarTimeZoneResolver(runtime, async () => "America/Denver");
+
+    const result = await followUpsProvider.get(runtime, message, state);
+
+    const lines = (result.text ?? "")
+      .split("\n")
+      .filter((line) => line.startsWith("- "));
+    expect(lines).toEqual([
+      "- Unknown (today)",
+      "- Unknown (tomorrow)",
+      "- Unknown (in 2 days)",
+    ]);
+  });
+});
 
 describe("followUpsProvider", () => {
   it("reads contacts once and preserves every label when batch rows arrive out of order", async () => {

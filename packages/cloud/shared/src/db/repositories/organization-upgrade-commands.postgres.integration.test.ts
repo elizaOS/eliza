@@ -374,6 +374,29 @@ async function count(organizationId: string) {
       ).rows[0].organization_upgrade_dispatch_state,
     ).toBe("ready");
   });
+  test("dispatch cannot revive an expired lease in the same write", async () => {
+    const f = await dispatchCandidate();
+    await leaseCandidate(f.commandId);
+    await db.query(
+      `UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`,
+      [f.commandId],
+    );
+    await expect(
+      db.query(
+        `UPDATE billing_subscription_commands SET organization_upgrade_dispatch_state='started',
+        lease_expires_at=clock_timestamp()+interval '1 minute' WHERE id=$1`,
+        [f.commandId],
+      ),
+    ).rejects.toThrow();
+    expect(
+      (
+        await db.query(
+          `SELECT organization_upgrade_dispatch_state FROM billing_subscription_commands WHERE id=$1`,
+          [f.commandId],
+        )
+      ).rows[0].organization_upgrade_dispatch_state,
+    ).toBe("ready");
+  });
   test("a consumed quote must still be live when the first dispatch starts", async () => {
     const f = await dispatchCandidate(2000);
     await leaseCandidate(f.commandId);

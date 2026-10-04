@@ -27,11 +27,15 @@ export function calendarEventOccursOn(
     return day >= start && day < end;
   }
   const startInstant = new Date(event.startAt);
+  // An unparseable timestamp must not throw out of a render-time day filter:
+  // without a start the event has no day, and without an end it keeps its
+  // start day, as the day grid and next-event line already treat it.
+  if (!Number.isFinite(startInstant.getTime())) return false;
   const start = localDay(startInstant, timeZone);
+  const endMs = Date.parse(event.endAt);
+  if (!Number.isFinite(endMs)) return day === start;
   // The interval is end-exclusive. Subtracting one millisecond also handles
   // fractional-second midnight boundaries and DST without civil-date math.
-  const lastInstant = new Date(
-    Math.max(startInstant.getTime(), Date.parse(event.endAt) - 1),
-  );
+  const lastInstant = new Date(Math.max(startInstant.getTime(), endMs - 1));
   return day >= start && day <= localDay(lastInstant, timeZone);
 }

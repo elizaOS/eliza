@@ -5,6 +5,8 @@
  * across day/week/month modes in jsdom against a stubbed calendar client.
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,

@@ -48,8 +48,21 @@ public class RuntimeBundleStore {
   public static Path prepare(Path root, byte[] manifest, Source source, Path nativeLibraries, Durability durability, Faults faults, String format) throws IOException {
     List<Entry> entries = parse(manifest, format);
     String identity = digest(manifest);
-    root = root.toAbsolutePath().normalize();
-    privateDirectory(root);
+    Path requested = root.toAbsolutePath().normalize();
+    // Resolve parent aliases before creating or restricting the root. Its leaf
+    // remains un-followed and is validated under the same physical-root monitor.
+    Path parent = requested.getParent();
+    Path real = parent == null ? requested : parent.toRealPath().resolve(requested.getFileName());
+    synchronized (ROOT_LOCKS.computeIfAbsent(real, key -> new Object())) {
+      privateDirectory(real);
+      return prepareLocked(real, entries, identity, source, nativeLibraries, durability, faults);
+    }
+  }
+
+  private static final java.util.concurrent.ConcurrentMap<Path, Object> ROOT_LOCKS =
+    new java.util.concurrent.ConcurrentHashMap<>();
+
+  private static Path prepareLocked(Path root, List<Entry> entries, String identity, Source source, Path nativeLibraries, Durability durability, Faults faults) throws IOException {
     Path lockPath = root.resolve(".lock");
     try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, NOFOLLOW);
          FileLock lock = channel.lock()) {
@@ -131,7 +144,15 @@ public class RuntimeBundleStore {
     for (String part : value.split("/", -1)) if (part.isEmpty() || part.equals(".") || part.equals("..")) throw new IOException("Unsafe runtime path");
   }
   private static void privateDirectory(Path directory) throws IOException {
-    if (!Files.exists(directory, NOFOLLOW)) Files.createDirectory(directory);
+    if (!Files.exists(directory, NOFOLLOW)) {
+      // Another process can create the root before opening its file lock.
+      // Re-check the actual leaf after a creation collision.
+      try {
+        Files.createDirectory(directory);
+      } catch (FileAlreadyExistsException created) {
+        // error-policy:J4 another creator won the race; the leaf is re-validated below.
+      }
+    }
     if (!Files.isDirectory(directory, NOFOLLOW)) throw new IOException("Runtime directory is not a real directory");
     restrict(directory);
   }

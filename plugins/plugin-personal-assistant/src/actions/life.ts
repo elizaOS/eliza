@@ -1653,7 +1653,9 @@ function summarizeCadence(cadence: LifeOpsCadence, timeZone?: string): string {
       if (Number.isNaN(dueAt.getTime()) || !zone) {
         return "once";
       }
-      return `once on ${dueAt.toLocaleString(undefined, {
+      // English prose whose am/pm clock tokens resolveDuplicateByTimeHint
+      // reads back, so it must not follow a 24-hour host locale.
+      return `once on ${dueAt.toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -5107,7 +5109,12 @@ async function runLifeOperationHandlerInner(
       const timedRequestKind = llmRequestKind;
       // A one-shot reminder fires at its requested time, not the generic
       // task visibility window. Preserve explicitly configured lead time.
-      if (timedRequestKind === "reminder" && cadence?.kind === "once") {
+      if (
+        cadence?.kind === "once" &&
+        (timedRequestKind === "reminder" ||
+          timedRequestKind === "alarm" ||
+          ownerSurfaceActionName === "OWNER_REMINDERS")
+      ) {
         cadence = {
           ...cadence,
           visibilityLeadMinutes: cadence.visibilityLeadMinutes ?? 0,

@@ -5,6 +5,7 @@
  * notifications) whose true grant state the OS layer can't see. Exposes
  * `useDesktopPermissionsState` to the settings UI.
  */
+
 import {
   type AllPermissionsState,
   PERMISSION_IDS,

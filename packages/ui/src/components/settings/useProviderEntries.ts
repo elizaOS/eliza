@@ -7,6 +7,7 @@
  */
 
 import type { ConfigUiHint } from "@elizaos/contracts";
+
 import type { PluginParamDef } from "@elizaos/core/protocol";
 import type { SubscriptionProviderStatus } from "@elizaos/host/protocol";
 import { Cloud, Cpu, KeyRound } from "lucide-react";

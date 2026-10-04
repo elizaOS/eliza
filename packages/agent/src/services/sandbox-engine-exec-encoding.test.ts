@@ -18,8 +18,9 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, spawn: spawnMock };
 });
 
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
+// sandbox-engine resolves host executables through @elizaos/host.
+vi.mock("@elizaos/host", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/host")>();
   return { ...actual, resolveHostExecutable: () => "/usr/local/bin/docker" };
 });
 

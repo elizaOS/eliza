@@ -74,6 +74,9 @@
     },
     "@elizaos/ui#build": {
       "dependsOn": [
+        "@elizaos/host#build",
+        "@elizaos/contracts#build",
+        "@elizaos/voice#build",
         "@elizaos/core#build",
         "@elizaos/cloud-sdk#build",
         "@elizaos/capacitor-secure-store#build"
@@ -408,12 +411,7 @@
       ]
     },
     "@elizaos/plugin-anthropic#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build",
-        "@elizaos/host#build",
-        "@elizaos/contracts#build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-assistant#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]

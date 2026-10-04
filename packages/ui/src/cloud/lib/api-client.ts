@@ -33,7 +33,6 @@ import {
   truncateWellFormed,
 } from "@elizaos/core/protocol";
 import { getElizaApiToken } from "@elizaos/host/protocol";
-
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   resolveDirectCloudAuthApiBase,

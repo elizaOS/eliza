@@ -5,6 +5,8 @@
  * API transport, device services and EventSource are deterministic fixtures.
  */
 
+// @vitest-environment jsdom
+
 import type { ModelHubSnapshot } from "@elizaos/contracts";
 import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import {
