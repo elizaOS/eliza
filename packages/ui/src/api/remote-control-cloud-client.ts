@@ -3,7 +3,7 @@ import {
   RemoteControlCloudClient as HostClient,
   type RemoteControlCloudClientOptions,
 } from "@elizaos/plugin-browser/remote-control/cloud-client";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
+import { getHostRequestTransport } from "./host-transport";
 import { fetchAgentTransport } from "./transport";
 
 export * from "@elizaos/plugin-browser/remote-control/cloud-client";
@@ -15,7 +15,8 @@ export class RemoteControlCloudClient extends HostClient {
         options.request ??
         (async (url, init) => {
           const transport =
-            desktopHttpTransportForUrl(url) ?? fetchAgentTransport;
+            (await getHostRequestTransport(url, "cloud")) ??
+            fetchAgentTransport;
           return transport.request(url, init, { timeoutMs: 30000 });
         }),
     });

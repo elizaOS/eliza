@@ -6,7 +6,7 @@
  * and actions to the surface the user can actually see.
  */
 
-import { client } from "../api";
+import { client } from "../api/client";
 import { readSettingsHashSectionId } from "../components/settings/settings-route";
 import { logger } from "../logger.ts";
 

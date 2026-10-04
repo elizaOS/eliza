@@ -4,10 +4,7 @@
  * contributes the renderer surface for hosts that cannot load remote bundles.
  */
 
-import {
-  listAppShellPages,
-  registerAppShellPage,
-} from "@elizaos/ui/app-shell-registry";
+import { listAppShellPages, registerAppShellPage } from "@elizaos/ui";
 
 // The web host owns the authenticated /cloud/* account route family. Its
 // registration can finish before this deferred plugin module loads; replacing

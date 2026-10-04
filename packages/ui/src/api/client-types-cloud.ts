@@ -11,6 +11,7 @@ import type {
   TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
   TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
   TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
+  TrajectoryExportFormat,
   TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 import type {
@@ -44,7 +45,6 @@ import type {
   AppViewerConfig,
   RegistryAppInfo,
 } from "@elizaos/core/protocol";
-import type { TrajectoryExportFormat } from "./client-types-core";
 
 export type {
   AppLaunchDiagnostic,

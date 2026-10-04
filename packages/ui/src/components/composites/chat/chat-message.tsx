@@ -35,8 +35,8 @@ import {
 import {
   COPY_HOLD_MS,
   TOUCH_TAP_MOVE_SLOP as TAP_REVEAL_MOVE_CANCEL_PX,
-  usePointerPressAndHold,
-} from "../../../gestures";
+} from "../../../gestures/constants";
+import { usePointerPressAndHold } from "../../../gestures/usePointerPressAndHold";
 import { cn } from "../../../lib/utils";
 import { findChoiceRegions } from "../../chat/message-choice-parser";
 import { findConnectorCardRegions } from "../../chat/message-connector-parser";

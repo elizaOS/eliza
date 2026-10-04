@@ -15,6 +15,7 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "noEmit": true,
+    "outDir": "./dist",
     "rootDir": "../..",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "bun-types"],
@@ -23,7 +24,6 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },

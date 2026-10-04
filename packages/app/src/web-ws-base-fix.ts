@@ -3,7 +3,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { setElizaApiBase } from "@elizaos/host/protocol";
-import { isElectrobunRuntime } from "@elizaos/ui/bridge";
+import { isElectrobunRuntime } from "@elizaos/ui";
 
 declare global {
   interface Window {

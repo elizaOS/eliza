@@ -1,15 +1,12 @@
 /** Verifies root @elizaos/ui import is broker-scoped, not an escape hatch (#14237) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
-// The root `@elizaos/ui` host-external must not be a broker escape hatch
-// (#14237). The barrel re-exports the RAW navigation/storage helpers, so a view
-// importing them from `@elizaos/ui` — instead of the wrapped `@elizaos/ui/*`
-// subpaths — could reach host `window.history` / `window.localStorage` outside
-// the surface-realm scope. These tests drive the real `hostImport` seam a served
-// view-bundle factory receives and prove the root barrel now hands back the SAME
-// scope-brokered wrappers as the subpaths. Unit/element level only (no <App/>).
+// View bundles receive navigation and storage wrappers bound to the importing
+// view's scope. Host bootstrap and raw privileged channels remain private.
+import "./view-public-api";
 
 import { resolveSurfaceManifest } from "@elizaos/core/protocol";
+import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   SurfaceRealmDeniedError,
@@ -18,39 +15,13 @@ import {
 } from "../../surface-realm-broker";
 import { hostImport } from "./DynamicViewLoader";
 
-// In-memory Storage so the scope's façade runs against a real Storage-shaped
-// backing that is NOT the jsdom global localStorage — a wrapped write lands
-// here, a raw (escape-hatch) write would land in window.localStorage instead.
-class MemoryStorage implements Storage {
-  private map = new Map<string, string>();
-  get length(): number {
-    return this.map.size;
-  }
-  clear(): void {
-    this.map.clear();
-  }
-  getItem(key: string): string | null {
-    return this.map.has(key) ? (this.map.get(key) as string) : null;
-  }
-  key(index: number): string | null {
-    return [...this.map.keys()][index] ?? null;
-  }
-  removeItem(key: string): void {
-    this.map.delete(key);
-  }
-  setItem(key: string, value: string): void {
-    this.map.set(key, value);
-  }
-  [name: string]: unknown;
-}
-
 const VIEW_ID = "root.import.view";
 
 describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)", () => {
-  let backing: MemoryStorage;
+  let backing: Storage;
 
   beforeEach(() => {
-    backing = new MemoryStorage();
+    backing = createMemoryStorage();
     // A no-grants scope: storage is confined to the view namespace, navigation
     // is denied. The raw navigate must never be reached — if the wrapper falls
     // through to it, this throws a distinct error and fails the assertion.
@@ -71,7 +42,7 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
   });
 
   it("does not adopt a replacement scope while an external import is awaiting", async () => {
-    const pending = hostImport("@elizaos/ui/app-navigate-view");
+    const pending = hostImport("@elizaos/ui");
     setActiveSurfaceRealmScope(
       new SurfaceRealmScope(
         resolveSurfaceManifest({ surface: { capabilities: ["navigate"] } }),
@@ -87,7 +58,7 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
     expect(() => navigate("/borrowed")).toThrow(SurfaceRealmDeniedError);
   });
 
-  it("root navigateBrowserPath is the scope-brokered wrapper (denied without the grant), like the subpath", async () => {
+  it("root navigation requires the view navigation grant", async () => {
     const rootMod = await hostImport("@elizaos/ui");
     const navigate = rootMod.navigateBrowserPath as (path: string) => void;
     expect(typeof navigate).toBe("function");
@@ -96,10 +67,6 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
     // driving host history. The RAW barrel export would pushState and not throw.
     expect(() => navigate("/hijack")).toThrow(SurfaceRealmDeniedError);
 
-    // Parity with the wrapped subpath specifier: same brokered behavior.
-    const subMod = await hostImport("@elizaos/ui/app-navigate-view");
-    const subNavigate = subMod.navigateBrowserPath as (path: string) => void;
-    expect(() => subNavigate("/hijack")).toThrow(SurfaceRealmDeniedError);
     // Resolving the whole `@elizaos/ui` barrel graph in jsdom is slow (~25s).
   }, 120_000);
 
@@ -127,8 +94,8 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
   }, 120_000);
 
   it("cached broker helpers cannot borrow the next active view's scope", async () => {
-    const firstNavigateMod = await hostImport("@elizaos/ui/app-navigate-view");
-    const firstBridgeMod = await hostImport("@elizaos/ui/bridge");
+    const firstNavigateMod = await hostImport("@elizaos/ui");
+    const firstBridgeMod = await hostImport("@elizaos/ui");
     const firstNavigate = firstNavigateMod.navigateBrowserPath as (
       path: string,
     ) => void;
@@ -136,7 +103,7 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
       key: string,
       value: string,
     ) => Promise<void>;
-    const secondBacking = new MemoryStorage();
+    const secondBacking = createMemoryStorage();
     const secondScope = new SurfaceRealmScope(
       resolveSurfaceManifest({
         surface: { capabilities: ["navigate", "storage"] },
@@ -167,7 +134,7 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
     expect(() => rawNavigate("/raw-path")).not.toThrow();
   });
 
-  it("neither the root nor the bridge barrel hands a view the shell-privileged raw-global channel", async () => {
+  it("does not hand a view host-only configuration or realm ownership", async () => {
     // `shellLocalStorage` / `shellHistory` / `runAsPrivilegedShell` disarm the
     // raw-global guards; handing them to a view bundle lets it write reserved
     // shell keys and drive shell navigation unscoped. The bridge barrel
@@ -177,25 +144,28 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
     // destructures the channel out of `root` too (not just `bridge`); this is
     // the regression guard for that.
     const rootMod = await hostImport("@elizaos/ui");
-    const bridgeMod = await hostImport("@elizaos/ui/bridge");
-    for (const mod of [rootMod, bridgeMod]) {
+    for (const mod of [rootMod]) {
       expect(mod.shellLocalStorage).toBeUndefined();
       expect(mod.shellHistory).toBeUndefined();
       expect(mod.runAsPrivilegedShell).toBeUndefined();
+      expect(mod.configureHostTransport).toBeUndefined();
+      expect(mod.configureHostAgentCapabilities).toBeUndefined();
+      expect(mod.configureRuntimeManagement).toBeUndefined();
+      expect(mod.setActiveSurfaceRealmScope).toBeUndefined();
+      expect(mod.SurfaceRealmScope).toBeUndefined();
+      expect(mod.registerHostExternalImporter).toBeUndefined();
     }
   }, 120_000);
 
-  it("provides the stable shared chrome and settings composite subpaths", async () => {
-    const shared = await hostImport("@elizaos/ui/components/shared");
+  it("provides shared chrome and settings composites through the root", async () => {
+    const shared = await hostImport("@elizaos/ui");
     expect(shared.ViewHeader).toEqual(expect.any(Function));
     expect(shared.ViewBackButton).toEqual(expect.any(Function));
     expect(shared.SectionNav).toEqual(expect.any(Function));
     expect(shared.ActionListRow).toEqual(expect.any(Function));
     expect(shared.AppPageSidebar).toBeDefined();
 
-    const settings = await hostImport(
-      "@elizaos/ui/components/composites/settings",
-    );
+    const settings = await hostImport("@elizaos/ui");
     expect(settings.SettingsStack).toEqual(expect.any(Function));
     expect(settings.SettingsGroup).toEqual(expect.any(Function));
     expect(settings.SettingsRow).toBeDefined();

@@ -94,14 +94,7 @@ import type {
 } from "@elizaos/plugin-browser";
 import { installCalendarClient } from "@elizaos/plugin-calendar/api/client-calendar";
 import type { GetLifeOpsScheduleMergedStateResponse } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-// Import the ElizaClient CLASS from the `/api` subpath (not the root barrel):
-// app/api/client.ts imports this file (LifeOps extension) as a side-effect
-// before re-exporting `ElizaClient` from its root barrel, so a root-barrel
-// import here resolves to `undefined` at module-init time (and the root barrel
-// does not re-export the class value). The `/api` subpath is the class's home
-// and is the pattern the sibling client extensions use (see
-// plugins/plugin-calendar/src/api/client-calendar.ts).
-import { ElizaClient } from "@elizaos/ui/api/client-base";
+import { ElizaClient } from "@elizaos/ui";
 import type { AccountHandoffRetirementCandidate } from "../lifeops/account-handoff-approval-inventory.js";
 import type {
   AccountHandoffCalendarEntry,
@@ -397,10 +390,6 @@ export interface LifeOpsElizaClientMethods {
   verifyTelegramConnector(
     data?: VerifyLifeOpsTelegramConnectorRequest,
   ): Promise<VerifyLifeOpsTelegramConnectorResponse>;
-}
-
-declare module "@elizaos/ui/api/client-base" {
-  interface ElizaClient extends LifeOpsElizaClientMethods {}
 }
 
 const lifeOpsClientPrototype = ElizaClient.prototype as ElizaClient &

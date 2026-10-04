@@ -6,7 +6,8 @@
  * than duplicating another top-level Settings destination.
  */
 
-import { useAppSelector, useContentPack } from "../../state";
+import { useAppSelector } from "../../state/app-store";
+import { useContentPack } from "../../state/useContentPack";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadedPacksList } from "./LoadedPacksList";

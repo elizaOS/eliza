@@ -4,6 +4,7 @@
  * iOS, Android, or Electrobun reducer result after that host round-trip.
  */
 
+import type { TranscriptItem, TranscriptViewModel } from "@elizaos/contracts";
 import { ChevronDown } from "lucide-react";
 import {
   type ReactNode,
@@ -14,7 +15,6 @@ import {
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { cn } from "../lib/utils";
-import type { TranscriptItem, TranscriptViewModel } from "./contract";
 import {
   getNativeTranscriptSnapshot,
   type NativeTranscriptSnapshot,

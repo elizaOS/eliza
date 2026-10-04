@@ -4,8 +4,8 @@
  * this module owns transcript-only presentation policy.
  */
 
+import type { ChatTurnStatus } from "@elizaos/contracts";
 import { stripUnclaimedInteractionMarkup } from "@elizaos/core/protocol";
-import type { ChatTurnStatus } from "../../api/client-types-chat";
 import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,

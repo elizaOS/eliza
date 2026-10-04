@@ -8,7 +8,7 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { client } from "../api";
+import { client } from "../api/client";
 import { getBootConfig } from "../config/boot-config-store";
 import { upsertAndActivateAgentProfile } from "../state/agent-profiles";
 import {

@@ -270,23 +270,6 @@ describe("workspace package resolution", () => {
     },
   );
 
-  test("resolves the canonical UI terminal palette from workspace source while serving", async () => {
-    const { server } = await createAppResolutionServer("serve");
-
-    try {
-      const resolved =
-        await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/ui/terminal/palette",
-          path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
-        );
-      expect(resolved?.id).toBe(
-        normalizePath(path.resolve(appRoot, "../ui/src/terminal/palette.ts")),
-      );
-    } finally {
-      await server.close();
-    }
-  });
-
   test("keeps browser conditional exports on their browser entry", async () => {
     const { server } = await createAppResolutionServer("serve");
 

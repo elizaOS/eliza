@@ -27,22 +27,25 @@ const cloudTokenMock = vi.hoisted(() =>
   vi.fn(() => "steward.jwt.native-session" as string | null),
 );
 
-vi.mock("../api", () => ({ client: clientMock }));
+vi.mock("../api/client", () => ({ client: clientMock }));
 
 vi.mock("../api/client-cloud", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/client-cloud")>()),
   getCloudAuthToken: cloudTokenMock,
 }));
 
-vi.mock("../api/android-native-agent-transport", () => ({
-  getAndroidLocalAgentBootStateForUrl: vi.fn(async () => ({
-    state: "unknown",
-  })),
-  requestAndroidLocalAgentStartForUrl: vi.fn(async () => false),
-}));
+vi.mock(
+  "../../../app/src/renderer/transports/android-native-agent-transport",
+  () => ({
+    getAndroidLocalAgentBootStateForUrl: vi.fn(async () => ({
+      state: "unknown",
+    })),
+    requestAndroidLocalAgentStartForUrl: vi.fn(async () => false),
+  }),
+);
 
-vi.mock("../platform", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../platform")>()),
+vi.mock("../platform/init", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../platform/init")>()),
   isAndroid: false,
   isIOS: false,
 }));
@@ -51,7 +54,10 @@ vi.mock("../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => false,
 }));
 
-import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+import type { PollingBackendDeps } from "../../../app/src/renderer/startup/startup-phase-poll";
+import { runPollingBackend } from "../../../app/src/renderer/startup/startup-phase-poll";
+import type { RestoringSessionCtx } from "../../../app/src/renderer/startup/startup-phase-restore";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { useAgentSessionRecovery } from "../hooks/useAgentSessionRecovery";
 import { getActiveProfile, loadAgentProfileRegistry } from "./agent-profiles";
@@ -64,9 +70,6 @@ import {
   type StartupState,
   startupReducer,
 } from "./startup-coordinator";
-import type { PollingBackendDeps } from "./startup-phase-poll";
-import { runPollingBackend } from "./startup-phase-poll";
-import type { RestoringSessionCtx } from "./startup-phase-restore";
 
 const originalFetch = globalThis.fetch;
 const originalCapacitor = (globalThis as Record<string, unknown>).Capacitor;

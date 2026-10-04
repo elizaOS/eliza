@@ -32,7 +32,7 @@ import type {
   UpdateLifeOpsIcsCalendarSourceRequest,
   UpdateLifeOpsLinkedCalendarControlRequest,
 } from "@elizaos/contracts";
-import { ElizaClient } from "@elizaos/ui/api";
+import { ElizaClient } from "@elizaos/ui";
 import type {
   MeetingAutoJoinPolicy,
   MeetingAutoJoinSettings,
@@ -124,10 +124,6 @@ export interface CalendarClientMethods {
 // and already installed on this same prototype via the `@elizaos/ui/api`
 // side-effect import. Do NOT re-declare meeting join/list methods here — call
 // the ui client's `requestMeetingBot` / `listMeetings` directly.
-
-declare module "@elizaos/ui/api/client-base" {
-  interface ElizaClient extends CalendarClientMethods {}
-}
 
 let installed = false;
 

@@ -16,7 +16,7 @@ import type {
   ConnectorAccountRecord,
   ConnectorAccountStatus,
   ConnectorAccountUpdateInput,
-} from "../../api/client-agent";
+} from "../../api/client-agent-connector-accounts";
 import { useModalState } from "../../hooks/useModalState";
 import {
   type TranslationContextValue,

@@ -20,7 +20,7 @@ vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appState) => unknown) =>
     selector(appState),
 }));

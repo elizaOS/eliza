@@ -11,7 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { useSetPageHeader } from "../../cloud-ui/components/layout";
+import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
 const invoiceRouteParam = vi.hoisted(() => ({

@@ -6,7 +6,7 @@ import {
   FrameBudgetSampler,
   type FrameBudgetSummary,
 } from "../hooks/frame-budget";
-import { cumulativeLayoutShift } from "../testing/layout-stability";
+import { cumulativeLayoutShift } from "./layout-stability";
 import { PERF_TOGGLE_EVENT } from "./perf-hud-control";
 
 declare global {

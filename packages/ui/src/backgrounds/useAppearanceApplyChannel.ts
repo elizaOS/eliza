@@ -6,12 +6,13 @@
  * same persisted preference setters used by the Appearance settings section.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import {
   APPEARANCE_APPLY_EVENT,
   type AppearanceApplyPayload,
 } from "@elizaos/core/protocol";
 import { useViewEvent } from "../hooks/useViewEvent";
-import { UI_LANGUAGES, type UiLanguage } from "../i18n";
+import { UI_LANGUAGES } from "../i18n";
 import { useAppSelector } from "../state/app-store";
 import { ACCENT_PRESETS, type UiThemeMode } from "../state/ui-preferences";
 

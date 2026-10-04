@@ -8,7 +8,6 @@
     "sourceMap": false,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/plugin-health/*": ["./src/*"],
       "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }

@@ -21,6 +21,7 @@
  * instead of O(len) — #15280) while producing byte-identical output.
  */
 
+import type { ConfigUiHint } from "@elizaos/contracts";
 import { stripAssistantStageDirections } from "@elizaos/core/protocol";
 import type {
   JsonSchemaObject,
@@ -29,7 +30,6 @@ import type {
 } from "@elizaos/host/protocol";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
-import type { ConfigUiHint } from "../../types";
 import {
   type PermissionCardPayload,
   parsePermissionRequestFromText,

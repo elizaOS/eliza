@@ -1,7 +1,6 @@
 /** Registers the native Messages page with the app shell on the ElizaOS fork. */
+import { isElizaOS, registerAppShellPage } from "@elizaos/ui";
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { isElizaOS } from "@elizaos/ui/platform/init";
 import { MESSAGES_VIEW_CAPABILITIES } from "./view-capabilities";
 
 if (isElizaOS()) {

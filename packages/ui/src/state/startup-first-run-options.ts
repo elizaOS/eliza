@@ -4,12 +4,12 @@
  * the server-driven options arrive.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
+  type FirstRunOptions,
   getStylePresets,
 } from "@elizaos/host/protocol";
-import type { FirstRunOptions } from "../api";
-import type { UiLanguage } from "../i18n";
 export function buildStaticFirstRunOptions(
   uiLanguage: UiLanguage,
 ): FirstRunOptions {

@@ -1,6 +1,6 @@
 /** Supported UI languages (flag + native label) and shared trigger styling for the LanguageDropdown. */
 
-import type { UiLanguage } from "../../i18n/messages";
+import type { UiLanguage } from "@elizaos/core/protocol";
 
 /** Language metadata with flag emoji and native label. */
 export const LANGUAGES: { id: UiLanguage; flag: string; label: string }[] = [

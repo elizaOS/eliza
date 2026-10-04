@@ -1,5 +1,8 @@
 /** Restart-safe setup and removal coordinator for verified SSH runtimes. */
-import type { AgentProfile, AgentProfileRegistry } from "../state";
+import type {
+  AgentProfile,
+  AgentProfileRegistry,
+} from "../state/agent-profile-types";
 import { shellLocalStorage } from "../surface-realm-channel";
 import type { SshRuntimeEnrollment } from "./ssh-runtime";
 

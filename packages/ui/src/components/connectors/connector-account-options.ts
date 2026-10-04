@@ -22,7 +22,7 @@ import type {
   ConnectorAccountPrivacy,
   ConnectorAccountPurpose,
   ConnectorAccountRole,
-} from "../../api/client-agent";
+} from "../../api/client-agent-connector-accounts";
 export interface ConnectorAccountOption<T extends string> {
   value: T;
   label: string;

@@ -31,16 +31,6 @@ import {
   formatUSD,
   getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@elizaos/ui/cloud-ui";
 import { useQuery } from "@tanstack/react-query";
 import {
   ExternalLink,
@@ -54,9 +44,19 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { client, ElizaClient } from "../../../api";
+import { client, ElizaClient } from "../../../api/client";
 import { toast } from "../../../bridge/toast";
 import { Alert } from "../../../components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
 import { dispatchCloudHandoffPhase } from "../../../events";

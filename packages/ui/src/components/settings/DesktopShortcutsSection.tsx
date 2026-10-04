@@ -12,7 +12,7 @@
 import { ElizaError } from "@elizaos/core/protocol";
 import { AlertTriangle, Keyboard, RotateCcw } from "lucide-react";
 import * as React from "react";
-import { invokeDesktopBridgeRequest } from "../../bridge";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { cn } from "../../lib/utils";
 import {
   DEFAULT_PUSH_TO_TALK_ACCELERATOR,

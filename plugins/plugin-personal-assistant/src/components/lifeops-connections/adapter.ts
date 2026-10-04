@@ -9,8 +9,8 @@ import type {
   SeedLifeOpsCalendarRequest,
 } from "@elizaos/contracts";
 import type { CalendarClientMethods } from "@elizaos/plugin-calendar";
-import { client } from "@elizaos/ui/api";
-import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
+import { client, dispatchNavigateViewEvent } from "@elizaos/ui";
+
 import type { LifeOpsElizaClientMethods } from "../../api/client-lifeops.js";
 import type {
   LifeOpsConnectionsAdapter,

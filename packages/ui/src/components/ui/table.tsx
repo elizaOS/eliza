@@ -31,7 +31,8 @@ TableFrame.displayName = "TableFrame";
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
   ({ className, density = "default", layout = "auto", ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users must be able to focus and scroll overflowing tables.
+    <div className="relative w-full overflow-auto" tabIndex={0}>
       <table
         ref={ref}
         className={cn(

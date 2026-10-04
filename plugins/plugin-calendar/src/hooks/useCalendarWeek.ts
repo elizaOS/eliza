@@ -10,12 +10,18 @@ import type {
   LifeOpsCalendarFeedState,
   LifeOpsCalendarSourceHealth,
 } from "@elizaos/contracts";
-import { client, isApiError } from "@elizaos/ui/api";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
-import { useAppSelector } from "@elizaos/ui/state";
+import {
+  client,
+  isApiError,
+  useActiveAgentAuthority,
+  useAppSelector,
+} from "@elizaos/ui";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CalendarClientMethods } from "../api/client-calendar.js";
-import { installCalendarClient } from "../api/client-calendar.js";
+import {
+  type CalendarClientMethods,
+  installCalendarClient,
+} from "../api/client-calendar.js";
 
 const calendarClient = client as typeof client & CalendarClientMethods;
 

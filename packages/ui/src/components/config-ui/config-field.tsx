@@ -13,7 +13,7 @@ import type {
   FieldRenderProps,
 } from "../../config/config-catalog";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Alert } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";

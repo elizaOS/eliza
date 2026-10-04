@@ -16,8 +16,8 @@ import {
   CLOUD_PAIR_SESSION_STORAGE_KEY,
 } from "../components/auth/CloudPairRelay";
 import { shellLocalStorage } from "../surface-realm-channel";
+import type { AgentProfile } from "./agent-profile-types";
 import {
-  type AgentProfile,
   loadAgentProfileRegistry,
   saveAgentProfileRegistry,
 } from "./agent-profiles";

@@ -45,7 +45,7 @@ vi.mock("./components/eliza-connect-button", () => ({
   ElizaConnectButton: () => <button type="button">Open Web UI</button>,
 }));
 
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 import { ApiError } from "../lib/api-client";
 import AgentDetailPage from "./AgentDetailPage";
 

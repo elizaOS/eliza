@@ -13,8 +13,9 @@ import {
   isViewVisible,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
+  type RegistryAppInfo,
 } from "@elizaos/core/protocol";
-import type { RegistryAppInfo } from "../../api";
+
 import { getBootConfig } from "../../config/boot-config-store";
 import {
   getInternalToolAppCatalogOrder,

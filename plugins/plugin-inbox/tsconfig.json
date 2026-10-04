@@ -10,7 +10,6 @@
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/plugin-google-workspace/*": [
         "../plugin-google-workspace/src/*"

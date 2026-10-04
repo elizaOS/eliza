@@ -55,36 +55,25 @@ const calendarWeekAppValue = vi.hoisted(() => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("@elizaos/ui", () => ({
-  client: uiClient,
-  useApp: () => calendarWeekAppValue,
-  useAppSelector: <T>(selector: (value: typeof calendarWeekAppValue) => T) =>
-    selector(calendarWeekAppValue),
-  useAppSelectorShallow: <T>(
-    selector: (value: typeof calendarWeekAppValue) => T,
-  ) => selector(calendarWeekAppValue),
-}));
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
 
-vi.mock("@elizaos/ui/api", () => ({
   client: uiClient,
   ApiError: apiErrors.MockApiError,
   ElizaClient: class {
     fetch = vi.fn(async () => ({}));
   },
   isApiError: (value: unknown) => value instanceof apiErrors.MockApiError,
-}));
-
-vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
-  useActiveAgentAuthority: () => authorityState.value,
-}));
-
-vi.mock("@elizaos/ui/state", () => ({
   useApp: () => calendarWeekAppValue,
   useAppSelector: <T>(selector: (value: typeof calendarWeekAppValue) => T) =>
     selector(calendarWeekAppValue),
   useAppSelectorShallow: <T>(
     selector: (value: typeof calendarWeekAppValue) => T,
   ) => selector(calendarWeekAppValue),
+}));
+
+vi.mock("../../../../packages/ui/src/hooks/useActiveAgentAuthority", () => ({
+  useActiveAgentAuthority: () => authorityState.value,
 }));
 
 import { useCalendarWeek } from "./useCalendarWeek.js";

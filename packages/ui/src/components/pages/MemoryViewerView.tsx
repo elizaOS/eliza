@@ -18,7 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type {
   MemoryBrowseItem,
@@ -40,12 +40,12 @@ import {
   FramedPage,
   FramedPageBody,
   FramedPageHeader,
-} from "../../layouts/framed-page";
-import { WorkspaceLayout } from "../../layouts/workspace-layout";
+} from "../../layouts/framed-page/framed-page";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   type TranslationContextValue,
   useTranslation,

@@ -36,6 +36,14 @@ import type {
   ReleaseChannel,
   SolanaNft,
   SolanaTokenBalance,
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardPolicyResult,
+  StewardTokenBalancesResponse,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
   VerificationResult,
   VideoConfig,
   VideoProvider,
@@ -91,28 +99,16 @@ import type {
 import { ElizaClient as _ElizaClient, type ElizaClient } from "./client-base";
 import type {
   StewardApprovalActionResponse,
-  StewardApprovalInfo,
-  StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingApproval,
   StewardPendingResponse,
-  StewardPolicyResult,
   StewardSignRequest,
   StewardSignResponse,
   StewardStatusResponse,
-  StewardTokenBalancesResponse,
   StewardTxRecord,
   StewardTxStatus,
-  StewardWalletAddressesResponse,
-  StewardWebhookEvent,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
 } from "./client-types-steward";
 
-export type {
-  NativeAgentRequestOptions,
-  NativeAgentRequestResult,
-} from "./android-native-agent-transport";
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
 export {

@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AccountsListProvider,
   AccountWithCredentialFlag,
-} from "../../api/client-agent";
+} from "../../api/client-agent-accounts";
 import { ACCOUNT_PROVIDER_OPTIONS } from "./account-provider-options";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 

@@ -6,10 +6,10 @@
  */
 
 import { useEffect, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
-import { startFreshFirstRunReload } from "../../platform";
-import { useAppSelectorShallow } from "../../state";
+import { startFreshFirstRunReload } from "../../platform/first-run-reset";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import {

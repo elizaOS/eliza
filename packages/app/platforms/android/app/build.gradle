@@ -238,7 +238,7 @@ android {
     sourceSets {
         test.resources.srcDir new File(
             elizaRepoRoot,
-            'packages/ui/src/native-transcript/fixtures'
+            'packages/core/src/contracts/native-transcript/fixtures'
         )
     }
 

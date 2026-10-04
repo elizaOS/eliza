@@ -11,7 +11,7 @@ import {
   PULSE_STATUSES,
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 
 /** Session statuses the canonical pty serializer turns into useful text. */

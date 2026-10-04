@@ -17,7 +17,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { ContentState } from "../composites/page-panel/content-state";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";

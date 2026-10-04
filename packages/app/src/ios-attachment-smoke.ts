@@ -17,7 +17,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core/protocol";
-import { shellLocalStorage } from "@elizaos/ui/bridge";
+import { shellLocalStorage } from "@elizaos/ui";
 
 const IOS_ATTACHMENT_SMOKE_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const IOS_ATTACHMENT_SMOKE_RESULT_KEY = "eliza:ios-attachment-smoke:result";

@@ -5,6 +5,101 @@ import type { AuthCallbackDeepLinkOutcome } from "./native-smoke";
 // that client-base reads first; on a reverse-proxied web page the socket must
 // be same-origin (wss://<host>/ws). No-op on desktop / native. See module.
 import "./web-ws-base-fix";
+import "./renderer/transports/configure";
+import {
+  AGENT_READY_EVENT,
+  type AppBootConfig,
+  applyLaunchConnection,
+  applyLaunchConnectionFromUrl,
+  applyUiTheme,
+  type BrandingConfig,
+  COMMAND_PALETTE_EVENT,
+  clearStandaloneBottomReclaim,
+  client,
+  completeAndroidCloudSignIn,
+  createPersistedActiveServer,
+  createTranslator,
+  dedicatedCloudAgentIdFromBase,
+  dispatchAppEvent,
+  dispatchConnectRequest,
+  dispatchNavigateViewRequest,
+  dispatchOpenNotificationCenter,
+  dispatchRemoteControllerPairingIntent,
+  ELIZA_DEFAULT_THEME,
+  ElizaClient,
+  ErrorBoundary,
+  exchangeRemoteAgentPairing,
+  FIRST_RUN_CLOUD_LOGIN_ACTION,
+  getBootConfig,
+  getChatOverlayHotkey,
+  getPushToTalkAccelerator,
+  getWindowNavigationPath,
+  IOS_LOCAL_AGENT_IPC_BASE,
+  initializeCapacitorBridge,
+  initializeStorageBridge,
+  initOcrBridge,
+  initScreenCaptureBridge,
+  initStartupTrace,
+  installDesktopPermissionsClientPatch,
+  installLocalProviderCloudPreferencePatch,
+  installStandaloneBottomReclaim,
+  invokeDesktopBridgeRequest,
+  isAndroidCloudBuild,
+  isAppWindowRoute,
+  isChatOverlayWindowShell,
+  isDedicatedCloudAgentBase,
+  isDetachedWindowShell,
+  isDeveloperWorkspaceRoute,
+  isElectrobunRuntime,
+  isStandalonePwa,
+  isStandaloneWindowShell,
+  isTrustedBuildConfiguredRemoteApiBaseUrl,
+  loadAppWindowRenderer,
+  loadCloudRouterShell,
+  loadDeveloperWorkspace,
+  loadManagedCloudPage,
+  loadPersistedActiveServer,
+  loadShellViewAgentSurface,
+  loadUiLanguage,
+  loadUiThemeMode,
+  logger,
+  MOBILE_LOCAL_AGENT_API_BASE,
+  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  markStartup,
+  measureStartup,
+  normalizeMobileRuntimeMode,
+  PUSH_TO_TALK_HOLD_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
+  parseFirstRunRemoteConnectDeepLink,
+  parseRemoteAgentPairingDeepLink,
+  parseRemoteControllerPairingDeepLink,
+  preSeedAndroidLocalRuntimeIfFresh,
+  RemoteAgentPairingError,
+  RenderTelemetryProfiler,
+  resolveDedicatedAgentId,
+  resolveUiTheme,
+  resolveWindowShellRoute,
+  routeFirstRunDeepLink,
+  SHARE_TARGET_EVENT,
+  type ShareTargetPayload,
+  ShellModalityProvider,
+  ShellRoleProvider,
+  savePersistedActiveServer,
+  setBootConfig,
+  setStorageValue,
+  shellLocalStorage,
+  shouldAcknowledgeAndroidCloudCallback,
+  shouldInstallMainWindowFirstRunPatches,
+  shouldInstallStandaloneBottomReclaim,
+  startRendererServiceHost,
+  subscribeDesktopBridgeEvent,
+  syncDetachedShellLocation,
+  TRAY_ACTION_EVENT,
+  tryHandleFirstRunAction,
+  upsertAndActivateAgentProfile,
+} from "@elizaos/ui";
+import { installAndroidNativeAgentFetchBridge } from "./renderer/transports/android-native-agent-transport";
 /**
  * Renderer boot entry and composition root for the cross-platform Eliza app
  * shell (web browser, Electrobun desktop, and Capacitor iOS/Android). Runs
@@ -18,7 +113,7 @@ import "./web-ws-base-fix";
  * shells, then the per-platform bridge stack (storage + Capacitor bridges, iOS
  * local-agent fetch/native-request bridges, Android native agent fetch bridge,
  * screen-capture / OCR / voice harnesses) — before mounting the React tree
- * (`@elizaos/ui` App, optionally wrapped by the web-only CloudRouterShell) and
+ * (app renderer App, optionally wrapped by the web-only CloudRouterShell) and
  * running `initializePlatform()` concurrently after paint.
  *
  * Also owns deep-link handling (custom `<scheme>://` + `eliza.app` universal
@@ -29,7 +124,7 @@ import "./web-ws-base-fix";
  * global-shortcut / chat-overlay wiring. Modules not needed for first paint are
  * deferred onto the idle path. Exports the resolved platform flags.
  */
-import { ErrorBoundary } from "@elizaos/ui";
+
 import "@elizaos/ui/styles";
 // Relationships owns the canonical /apps/relationships route. Its registration
 // metadata is tiny and must be available before the first route capture; the
@@ -48,12 +143,6 @@ import "./renderer-build-stamp";
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-// #18056: desktop shell is loaded only via dynamic import / React.lazy so the
-// cold anonymous /login entry does not static-import app/ui browser graphs.
-import {
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
-} from "@elizaos/app/api/ios-local-agent-transport";
 import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type {
@@ -66,126 +155,11 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
-import { getStylePresets } from "@elizaos/host/protocol";
+
+import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
 import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
-import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
-import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
-import { client, ElizaClient } from "@elizaos/ui/api";
-import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
-import {
-  invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
-  shellLocalStorage,
-  subscribeDesktopBridgeEvent,
-} from "@elizaos/ui/bridge";
-import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
-import {
-  initializeStorageBridge,
-  setStorageValue,
-} from "@elizaos/ui/bridge/storage-bridge";
-import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
-import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
-import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
-import type { BrandingConfig } from "@elizaos/ui/config";
-import {
-  type AppBootConfig,
-  getBootConfig,
-  setBootConfig,
-} from "@elizaos/ui/config";
-import {
-  AGENT_READY_EVENT,
-  COMMAND_PALETTE_EVENT,
-  dispatchAppEvent,
-  dispatchConnectRequest,
-  dispatchNavigateViewRequest,
-  dispatchOpenNotificationCenter,
-  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-  PUSH_TO_TALK_HOLD_EVENT,
-  PUSH_TO_TALK_TOGGLE_EVENT,
-  type PushToTalkHoldDetail,
-  SHARE_TARGET_EVENT,
-  TRAY_ACTION_EVENT,
-} from "@elizaos/ui/events";
-import {
-  parseFirstRunRemoteConnectDeepLink,
-  routeFirstRunDeepLink,
-} from "@elizaos/ui/first-run/deep-link-handler";
-
-import {
-  IOS_LOCAL_AGENT_IPC_BASE,
-  MOBILE_LOCAL_AGENT_API_BASE,
-  MOBILE_RUNTIME_MODE_STORAGE_KEY,
-  normalizeMobileRuntimeMode,
-} from "@elizaos/ui/first-run/mobile-runtime-mode";
-import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/first-run/pre-seed-local-runtime";
-import { createTranslator } from "@elizaos/ui/i18n";
-import { logger } from "@elizaos/ui/logger";
-import {
-  getWindowNavigationPath,
-  isAppWindowRoute,
-  isDeveloperWorkspaceRoute,
-} from "@elizaos/ui/navigation";
-import type { ShareTargetPayload } from "@elizaos/ui/platform";
-import { isStandalonePwa } from "@elizaos/ui/platform";
-import { isAndroidCloudBuild } from "@elizaos/ui/platform/android-runtime";
-import {
-  applyLaunchConnection,
-  applyLaunchConnectionFromUrl,
-} from "@elizaos/ui/platform/browser-launch";
-import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
-import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
-import {
-  exchangeRemoteAgentPairing,
-  parseRemoteAgentPairingDeepLink,
-  RemoteAgentPairingError,
-} from "@elizaos/ui/platform/remote-agent-pairing";
-import {
-  dispatchRemoteControllerPairingIntent,
-  parseRemoteControllerPairingDeepLink,
-} from "@elizaos/ui/platform/remote-target-pairing-intent";
-import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
-import {
-  clearStandaloneBottomReclaim,
-  installStandaloneBottomReclaim,
-  shouldInstallStandaloneBottomReclaim,
-} from "@elizaos/ui/platform/standalone-bottom-reclaim";
-import {
-  isChatOverlayWindowShell,
-  isDetachedWindowShell,
-  isStandaloneWindowShell,
-  resolveWindowShellRoute,
-  shouldInstallMainWindowFirstRunPatches,
-  syncDetachedShellLocation,
-} from "@elizaos/ui/platform/window-shell";
-import { AppProvider } from "@elizaos/ui/state/AppContext";
-import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
-import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
-import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
-import {
-  applyUiTheme,
-  createPersistedActiveServer,
-  loadPersistedActiveServer,
-  loadUiLanguage,
-  loadUiThemeMode,
-  resolveUiTheme,
-  savePersistedActiveServer,
-} from "@elizaos/ui/state/persistence";
-import { getPushToTalkAccelerator } from "@elizaos/ui/state/push-to-talk-hotkey";
-import { isTrustedBuildConfiguredRemoteApiBaseUrl } from "@elizaos/ui/state/runtime-url-trust";
-import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
-import {
-  initStartupTrace,
-  markStartup,
-  measureStartup,
-} from "@elizaos/ui/state/startup-telemetry";
-import { getChatOverlayHotkey } from "@elizaos/ui/state/useChatOverlayHotkey";
-import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
-import {
-  dedicatedCloudAgentIdFromBase,
-  isDedicatedCloudAgentBase,
-} from "@elizaos/ui/utils/cloud-agent-base";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import {
@@ -250,6 +224,13 @@ import {
 } from "./plugin-registrations";
 import { isRemoteControllerPairingRuntimeAllowed } from "./remote-controller-deep-link";
 import { isAlreadyPairedRemoteTarget } from "./remote-deep-link-connection";
+import { AppProvider } from "./renderer/AppProvider";
+// #18056: desktop shell is loaded only via dynamic import / React.lazy so the
+// cold anonymous /login entry does not static-import app/ui browser graphs.
+import {
+  installIosLocalAgentFetchBridge,
+  installIosLocalAgentNativeRequestBridge,
+} from "./renderer/transports/ios-local-agent-transport";
 import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
@@ -357,12 +338,12 @@ function lazyNamedComponent<TProps>(
  * under the same Suspense boundary as the rest of the tree.
  */
 const App = lazy(async () => {
-  const mod = await import("@elizaos/ui/App");
+  const mod = await import("./renderer/App");
   return { default: mod.App };
 });
 
 const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
-  const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
+  const mod = await loadAppWindowRenderer();
   return mod.AppWindowRenderer;
 });
 
@@ -371,9 +352,7 @@ const ShellViewAgentSurface = lazyNamedComponent<{
   surfaceKind: "app-shell";
   children: ReactNode;
 }>(async () => {
-  const mod = await import(
-    "@elizaos/ui/components/views/ShellViewAgentSurface"
-  );
+  const mod = await loadShellViewAgentSurface();
   return mod.ShellViewAgentSurface;
 });
 
@@ -1540,7 +1519,7 @@ function setHashRoute(route: string, params: URLSearchParams): void {
 
 /**
  * Dispatch a top-level-surface deep link on the in-app `eliza:navigate:view`
- * bus (consumed in packages/ui App.tsx: `viewPath` → `tabFromPath` → `setTab`,
+ * bus (consumed in renderer/App.tsx: `viewPath` → `tabFromPath` → `setTab`,
  * `subview` → Settings section). This is the platform-agnostic navigation path
  * the rest of the app uses; a raw `window.location.hash` write does not open a
  * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
@@ -1861,13 +1840,11 @@ const CloudRouterShell = lazy(async () => {
   // no cloud/auth/payment route resolves. Both imports live inside this
   // `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops them
   // statically.
-  // Progressive public boot (#18056): import register-public, NOT register-all.
-  // register-all remains the synchronous full-table contract for unmodified
-  // consumers; this entrypoint only registers public/auth routes so idle
-  // /login never pulls private dashboard chunks.
+  // Load public routes without loading private Cloud domains.
+  // The app owns registration for this renderer.
   const [{ registerPublicCloudSurfaces }, mod] = await Promise.all([
-    import("@elizaos/ui/cloud/register-public"),
-    import("@elizaos/ui/cloud/shell/CloudRouterShell"),
+    import("./renderer/cloud-registration"),
+    loadCloudRouterShell(),
   ]);
   // Public/auth only on shell boot. Private dashboard domains are loaded by
   // CloudRouterShell when a /cloud/* path is visited — never from idle /login.
@@ -1880,7 +1857,7 @@ const ManagedCloudPage = lazy(async () => {
   if (__ELIZA_WEB_SHELL__ !== true) {
     throw new Error("ManagedCloudPage is web-build-only");
   }
-  return import("@elizaos/ui/cloud/shell/ManagedCloudPage");
+  return loadManagedCloudPage();
 });
 
 /**
@@ -1892,15 +1869,13 @@ const ChatWidgetHarness = lazy(async () => {
   if (__ELIZA_CHAT_UI_HARNESS__ !== true) {
     throw new Error("ChatWidgetHarness is disabled in this build");
   }
-  const mod = await import("@elizaos/ui/components/chat/ChatWidgetHarness");
+  const mod = await import("./dev/ChatWidgetHarness");
   return { default: mod.ChatWidgetHarness };
 });
 
 // Only local developer routes mount the inspector; normal routes ignore the old session opt-in.
 const DeveloperWorkspace = lazy(async () => {
-  const mod = await import(
-    "@elizaos/ui/components/developer/DeveloperWorkspace"
-  );
+  const mod = await loadDeveloperWorkspace();
   return { default: mod.DeveloperWorkspace };
 });
 const developerWorkspaceEnabled = isDeveloperWorkspaceRoute();

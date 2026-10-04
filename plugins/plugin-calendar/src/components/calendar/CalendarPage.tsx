@@ -4,7 +4,7 @@
  * registered plugin surface.
  */
 
-import { ViewHeader } from "@elizaos/ui/components";
+import { ViewHeader } from "@elizaos/ui";
 import { type JSX, useState } from "react";
 import { CalendarSection } from "../CalendarSection.tsx";
 

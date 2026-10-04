@@ -18,10 +18,7 @@ import { ElizaClient } from "../../api/client-base";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { Button } from "../../components/ui/button";
 import { isAndroid } from "../../platform/init";
-import {
-  EXPECTED_PHRASE,
-  KNOWN_PHRASE_WAV_DATA_URL,
-} from "./fixtures/known-phrase";
+import { EXPECTED_PHRASE, KNOWN_PHRASE_WAV_DATA_URL } from "./known-phrase";
 import {
   runVoiceSelfTest,
   type VoiceSelfTestMode,

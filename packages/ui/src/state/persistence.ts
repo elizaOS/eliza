@@ -4,19 +4,16 @@
  * read/write layer the state modules go through.
  */
 
-import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
+import type { UiLanguage } from "@elizaos/core/protocol";
+import { asRecord } from "@elizaos/core/protocol";
 import { fetchWithCsrf } from "../api/csrf-client";
-import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
+import { isTerminalHostAgentBootError } from "../api/host-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import { normalizeUniforms } from "../backgrounds/shader-schema";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { removeStorageValue, setStorageValue } from "../bridge/storage-bridge";
 import { getBootConfig } from "../config/boot-config-store";
-import {
-  DEFAULT_UI_LANGUAGE,
-  normalizeLanguage,
-  type UiLanguage,
-} from "../i18n";
+import { DEFAULT_UI_LANGUAGE, normalizeLanguage } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
@@ -775,7 +772,7 @@ export async function fetchServerFavoriteApps(): Promise<string[] | null> {
     const message = describePersistenceError(err);
     // error-policy:J4 `null` is the documented failure signal (caller keeps
     // the local cache); iOS mode-gated boot logs debug, real failures warn.
-    if (isTerminalIosNativeAgentBootErrorMessage(message)) {
+    if (isTerminalHostAgentBootError(message)) {
       logger.debug(
         `[persistence] server favorite apps unavailable while the native transport is mode-gated (will retry after agent-ready): ${message}`,
       );

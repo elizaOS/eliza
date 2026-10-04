@@ -3,7 +3,7 @@
  * automation-scoped rooms and the legacy page-chat titles so only real user
  * threads appear in the transcript list.
  */
-import type { Conversation } from "../api";
+import type { Conversation } from "../api/client-types-chat";
 
 const MAIN_CHAT_HIDDEN_SCOPES = new Set([
   "automation-coordinator",

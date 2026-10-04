@@ -42,8 +42,8 @@ const mocks = vi.hoisted(() => ({
     saveComputerUseEnabled: vi.fn(),
   },
 }));
-vi.mock("../api", () => ({ client: mocks.client }));
 vi.mock("../api/client", () => ({ client: mocks.client }));
+
 vi.mock("./agent-profiles", () => ({
   loadAgentProfileRegistry: () => ({
     version: 1,

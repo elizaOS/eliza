@@ -15,10 +15,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyColorScheme,
   applyContentPack,
+} from "../content-packs/apply-pack";
+import {
   loadContentPackFromFiles,
   loadContentPackFromUrl,
   releaseLoadedContentPack,
-} from "../content-packs";
+} from "../content-packs/load-pack";
 import { useAppSelectorShallow } from "./app-store";
 import {
   loadPersistedActivePackUrl,

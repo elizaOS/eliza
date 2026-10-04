@@ -18,7 +18,7 @@
  * `max`/`ultra` for some models — offering those would be a guaranteed 400.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type {
   ModelCatalog,
   ModelCatalogEntry,

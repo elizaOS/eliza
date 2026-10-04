@@ -24,8 +24,6 @@
       "@elizaos/cloud-sdk/cloud-setup-session/*": [
         "../cloud/sdk/src/cloud-setup-session/*"
       ],
-      "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
-      "@elizaos/ui/*": ["./src/*"],
       "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },

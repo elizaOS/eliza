@@ -27,7 +27,7 @@ import {
 } from "@elizaos/core/protocol";
 import { AudioLines } from "lucide-react";
 import type * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { cn } from "../../lib/utils";
 import { PagePanel } from "../composites/page-panel";
 import { RedactedBadge } from "../RedactedBadge";

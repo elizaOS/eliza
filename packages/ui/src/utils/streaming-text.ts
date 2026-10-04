@@ -3,11 +3,6 @@
  * snapshots, or overlapping suffix/prefix fragments.
  */
 
-export {
-  DELTA_STREAM_PROTOCOL,
-  type DeltaStreamProtocol,
-} from "@elizaos/core/protocol";
-
 /**
  * Remove an NFC-space overlap while preserving raw input beyond the sequence
  * that contains the cut. Canonical ordering can make an exact raw boundary

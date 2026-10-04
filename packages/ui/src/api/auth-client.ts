@@ -20,7 +20,7 @@ import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
-import { isNative } from "../platform";
+import { isNative } from "../platform/init";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
 import {
   isDedicatedCloudAgentBase,

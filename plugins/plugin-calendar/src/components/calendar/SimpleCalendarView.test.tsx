@@ -22,15 +22,13 @@ vi.mock("../../hooks/useCalendarWeek.js", () => ({
   useCalendarWeek: fixtures.calendar,
 }));
 
-vi.mock("@elizaos/ui/events", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   NETWORK_STATUS_CHANGE_EVENT: "eliza:network-status-change",
   VIEW_EVENTS: { VIEW_REFRESH: "view:refresh" },
   useViewEvent: (eventType: string, callback: () => void) => {
     fixtures.viewEvents.set(eventType, callback);
   },
-}));
-
-vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 

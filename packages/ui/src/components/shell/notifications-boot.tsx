@@ -13,7 +13,7 @@ import { client } from "../../api/client";
 import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";
 import { APP_RESUME_EVENT, OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { logger } from "../../logger.ts";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
 import { initNotifications } from "../../state/notifications/notification-store";
 import {

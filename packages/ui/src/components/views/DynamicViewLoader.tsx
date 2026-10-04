@@ -11,7 +11,6 @@ import {
   type HostModuleImporter,
   resolveSurfaceManifest,
 } from "@elizaos/core/protocol";
-import { resolveAppBranding } from "@elizaos/host/protocol";
 import {
   type ComponentType,
   memo,
@@ -43,19 +42,24 @@ import {
  * click-element, fill-input) are handled by the loader itself even when the
  * module has no interact export.
  */
-import * as AgentSurfaceHost from "../../agent-surface";
+import { AgentElementOverlay } from "../../agent-surface/AgentElementOverlay";
+import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
 import {
-  AgentElementOverlay,
-  AgentSurfaceElementReporter,
-  AgentSurfaceProvider,
-  getViewRegistry,
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,
+} from "../../agent-surface/capabilities";
+import { AgentSurfaceElementReporter } from "../../agent-surface/element-reporter";
+import {
+  getViewRegistry,
+  setNativeFieldValue as setNativeInputValue,
+  type ViewAgentRegistry,
+} from "../../agent-surface/registry";
+import {
   isSensitiveAgentElement,
   SENSITIVE_AGENT_ELEMENT_REASON,
-  type ViewAgentRegistry,
-} from "../../agent-surface";
-import { client } from "../../api/index.ts";
+} from "../../agent-surface/sensitive";
+
+import { client } from "../../api/client";
 import {
   registeredHostExternalSpecifiers,
   resolveRegisteredHostExternalImporter,
@@ -67,7 +71,7 @@ import {
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
-import { SpatialSurface } from "../../spatial/index.ts";
+import { SpatialSurface } from "../../spatial/dom";
 import {
   HEAP_PRESSURE_EVENT,
   isUnderMemoryPressure,
@@ -348,9 +352,6 @@ const CORE_VIEW_COMPAT = Object.freeze({
 async function importCoreViewCompat(): Promise<Record<string, unknown>> {
   return CORE_VIEW_COMPAT;
 }
-async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
-  return import("../index.ts");
-}
 function resolveSurfaceRealmScopeForHostExternal(
   boundScope: SurfaceRealmScope | null,
   vector: "storage" | "navigate",
@@ -371,7 +372,7 @@ async function importUiRootCompat(
   // bridge adapters remain bound to the requesting view; raw shell-global
   // channels are never exposed to view bundles.
   const [rootModule, appNavigateView, bridge] = await Promise.all([
-    import("../../index.ts"),
+    import("./view-public-api.ts"),
     importUiAppNavigateViewCompat(boundScope),
     importUiBridgeCompat(boundScope),
   ]);
@@ -400,19 +401,37 @@ async function importUiAppNavigateViewCompat(
 async function importUiBridgeCompat(
   boundScope = getActiveSurfaceRealmScope(),
 ): Promise<Record<string, unknown>> {
-  const bridge = await import("../../bridge/index.ts");
-  // The bridge barrel carries the shell-privileged raw-global channel for shell
-  // code outside packages/ui; handing it to a view bundle would let the view
-  // disarm the raw-global guards on itself. Views get the scoped storage
-  // overrides below and nothing privileged.
-  const {
-    runAsPrivilegedShell: _runAsPrivilegedShell,
-    shellHistory: _shellHistory,
-    shellLocalStorage: _shellLocalStorage,
-    ...viewSafeBridge
-  } = bridge;
+  const [
+    capacitor,
+    rpc,
+    runtime,
+    windowBridge,
+    nativePlugins,
+    pluginBridge,
+    storage,
+  ] = await Promise.all([
+    import("../../bridge/capacitor-bridge"),
+    import("../../bridge/electrobun-rpc"),
+    import("../../bridge/electrobun-runtime"),
+    import("../../bridge/eliza-window-bridge"),
+    import("../../bridge/native-plugins"),
+    import("../../bridge/plugin-bridge"),
+    import("../../bridge/storage-bridge"),
+  ]);
+  // Only view-facing bridge leaves are projected; raw shell channels never enter
+  // this object. Storage methods below bind authority to the importing view.
+  const bridge = {
+    ...capacitor,
+    ...rpc,
+    ...runtime,
+    ...windowBridge,
+    ...nativePlugins,
+    ...pluginBridge,
+    ...storage,
+    SurfaceRealmDeniedError,
+  };
   return {
-    ...viewSafeBridge,
+    ...bridge,
     async getStorageValue(key: string): Promise<string | null> {
       const scope = resolveSurfaceRealmScopeForHostExternal(
         boundScope,
@@ -464,76 +483,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/contracts": () => import("@elizaos/contracts"),
   "@elizaos/host/protocol": () => import("@elizaos/host/protocol"),
   "@elizaos/ui": importUiRootCompat,
-  "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
-  "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,
-  "@elizaos/ui/api": () => import("../../api/index.ts"),
-  "@elizaos/ui/api/csrf-client": () => import("../../api/csrf-client.ts"),
-  "@elizaos/ui/bridge": importUiBridgeCompat,
-  "@elizaos/ui/components": importUiComponentsCompat,
-  "@elizaos/ui/config": () => import("../../config/index.ts"),
-  "@elizaos/ui/events": () => import("../../events/index.ts"),
-  "@elizaos/ui/hooks": () => import("../../hooks/index.ts"),
-  "@elizaos/ui/layouts": () => import("../../layouts/index.ts"),
-  "@elizaos/ui/platform": () => import("../../platform/index.ts"),
-  "@elizaos/ui/platform/ios-runtime": () =>
-    import("../../platform/ios-runtime.ts"),
-  "@elizaos/ui/spatial": () => import("../../spatial/index.ts"),
-  "@elizaos/ui/state": () => import("../../state/index.ts"),
-  "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
-  "@elizaos/ui/utils": () => import("../../utils/index.ts"),
-  "@elizaos/ui/hooks/resource-cache": () =>
-    import("../../hooks/resource-cache.ts"),
-  "@elizaos/ui/hooks/runtime-capability-retry": () =>
-    import("../../hooks/runtime-capability-retry.ts"),
-  "@elizaos/ui/hooks/useActiveAgentAuthority": () =>
-    import("../../hooks/useActiveAgentAuthority.ts"),
-  "@elizaos/ui/utils/attachment-url": () =>
-    import("../../utils/attachment-url.ts"),
-  "@elizaos/ui/utils/desktop-dialogs": () =>
-    import("../../utils/desktop-dialogs.ts"),
-  "@elizaos/ui/utils/download-share": () =>
-    import("../../utils/download-share.ts"),
-  "@elizaos/ui/components/composites/page-panel": () =>
-    import("../composites/page-panel/index.ts"),
-  "@elizaos/ui/components/composites/settings": () =>
-    import("../composites/settings/index.ts"),
-  "@elizaos/ui/components/shared/confirm-delete-control": () =>
-    import("../shared/confirm-delete-control.tsx"),
-  "@elizaos/ui/components/shared/SectionNav": () =>
-    import("../shared/SectionNav.tsx"),
-  "@elizaos/ui/components/shared/ViewHeader": () =>
-    import("../shared/ViewHeader.tsx"),
-  "@elizaos/ui/components/transcripts/TranscriptPlayer": () =>
-    import("../transcripts/TranscriptPlayer.tsx"),
-  "@elizaos/ui/components/transcripts/TranscriptsView": () =>
-    import("../transcripts/TranscriptsView.tsx"),
-  "@elizaos/ui/components/views/ShellViewAgentSurface": () =>
-    import("./ShellViewAgentSurface.tsx"),
-  "@elizaos/ui/components/composites/sidebar/sidebar-content": () =>
-    import("../composites/sidebar/sidebar-content.tsx"),
-  "@elizaos/ui/components/composites/sidebar/sidebar-panel": () =>
-    import("../composites/sidebar/sidebar-panel.tsx"),
-  "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region": () =>
-    import("../composites/sidebar/sidebar-scroll-region.tsx"),
-  "@elizaos/ui/components/pages/MemoryDetailPanel": () =>
-    import("../pages/MemoryDetailPanel.tsx"),
-  "@elizaos/ui/components/pages/vector-browser-utils": () =>
-    import("../pages/vector-browser-utils.ts"),
-  "@elizaos/ui/components/shared/AppPageSidebar": () =>
-    import("../shared/AppPageSidebar.tsx"),
-  "@elizaos/ui/components/shared": () => import("../shared/index.ts"),
-  "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
-  "@elizaos/ui/components/ui/input": () => import("../ui/input.tsx"),
-  "@elizaos/ui/components/ui/select": () => import("../ui/select.tsx"),
-  "@elizaos/ui/components/ui/settings-controls": () =>
-    import("../ui/settings-controls.tsx"),
-  "@elizaos/ui/components/ui/spinner": () => import("../ui/spinner.tsx"),
-  "@elizaos/ui/components/ui/skeleton-layouts": () =>
-    import("../ui/skeleton-layouts.tsx"),
-  "@elizaos/ui/components/ui/tabs": () => import("../ui/tabs.tsx"),
-  "@elizaos/ui/components/ui/textarea": () => import("../ui/textarea.tsx"),
-  "@elizaos/ui/components/ui/tooltip-extended": () =>
-    import("../ui/tooltip-extended.tsx"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),
@@ -996,21 +945,7 @@ function resolveInteractTarget(
     null;
   return { target, selector: selector ?? name };
 }
-function setNativeInputValue(
-  target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
-  value: string,
-): void {
-  const prototype =
-    target instanceof HTMLTextAreaElement
-      ? HTMLTextAreaElement.prototype
-      : target instanceof HTMLSelectElement
-        ? HTMLSelectElement.prototype
-        : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-  setter?.call(target, value);
-  target.dispatchEvent(new Event("input", { bubbles: true }));
-  target.dispatchEvent(new Event("change", { bubbles: true }));
-}
+
 function agentSelector(id: string): string {
   return `[data-agent-id="${CSS.escape(id)}"]`;
 }
