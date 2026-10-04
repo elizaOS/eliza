@@ -14,8 +14,8 @@ import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { ElizaError } from "@elizaos/core";
+import { parseOptimizedPromptArtifact } from "@elizaos/plugin-assistant";
 import { z } from "zod";
-import { parseOptimizedPromptArtifact } from "../../../../../plugins/plugin-assistant/src/services/optimized-prompt.ts";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import {
   type GepaPlannerCase,
@@ -57,11 +57,15 @@ async function executeGepaPlannerOptimization(
     adapterSourcePaths: string[];
     signal?: AbortSignal;
     timeoutMs?: number;
+    caseTimeoutMs?: number;
     onEngineStarted?: (process: { pid: number; stateRoot: string }) => void;
     onCaseWorkerStarted?: (process: { pid: number; stateRoot: string }) => void;
   },
 ) {
   z.string().min(1).parse(options.python);
+  const caseTimeoutMs = options.caseTimeoutMs ?? 30_000;
+  if (!Number.isSafeInteger(caseTimeoutMs) || caseTimeoutMs <= 0)
+    throw fail("Positive case timeout required");
   const manifest = manifestSchema.parse(value);
   const partitions = {
     train: manifest.train.map(parseGepaPlannerCase),
@@ -113,6 +117,7 @@ async function executeGepaPlannerOptimization(
     validation: datasetHashes.validation,
     test: datasetHashes.test,
     upstream: GEPA_REVISION,
+    caseTimeoutMs,
     producerSourceProofSha256: gepaHash(producerSourceProof),
   });
   const controller = new AbortController();
@@ -247,7 +252,7 @@ async function executeGepaPlannerOptimization(
           throw fail("Candidate failed canonical artifact validation");
         const evidence = await runIsolatedGepaPlannerCase(
           { ...row, candidate },
-          30_000,
+          caseTimeoutMs,
           {
             signal: controller.signal,
             onWorkerStarted: options.onCaseWorkerStarted,
@@ -406,6 +411,7 @@ async function executeGepaPlannerOptimization(
       adapterAttestation:
         "Trusted host asserts API callback association with these tracked sources; callable identity is not independently attested",
       manifest,
+      caseTimeoutMs,
       proposerCost: null,
       targetCost: null,
       qualification: "deterministic-fixture-optimizer-execution",

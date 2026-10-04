@@ -51,4 +51,10 @@ export async function applyAppBillingTestMigrations(
         );
       }
   }
+  const upgradeDispatch = await readFile(
+    new URL("../migrations/0512_organization_upgrade_dispatch.sql", import.meta.url),
+    "utf8",
+  );
+  const column = upgradeDispatch.split("--> statement-breakpoint")[0]!;
+  await execute(column.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"));
 }

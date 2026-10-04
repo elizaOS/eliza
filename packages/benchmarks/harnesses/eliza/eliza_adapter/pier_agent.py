@@ -12,7 +12,7 @@ from pier.agents.base import BaseAgent
 from pier.environments.base import BaseEnvironment
 from pier.models.agent.context import AgentContext
 from pier.models.agent.network import NetworkAllowlist
-from benchmarks.swe_bench.native import parse_native_result, validate_native_trajectory
+from benchmarks.suites.swe_bench.native import parse_native_result, validate_native_trajectory
 
 
 class ElizaAgent(BaseAgent):

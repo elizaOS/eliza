@@ -2,12 +2,12 @@
 """
 REALM-Bench entry point.
 
-Allows running the benchmark as: python -m benchmarks.realm
+Allows running the benchmark as: python -m benchmarks.suites.realm
 """
 
 import sys
 
-from benchmarks.realm.cli import main
+from benchmarks.suites.realm.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

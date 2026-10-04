@@ -5182,6 +5182,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1SubscriptionsUpgradeReview<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/review"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/upgrade/review", TResponse>(
+      "POST /api/v1/subscriptions/upgrade/review",
+      options,
+    );
+  }
+
   postApiV1TelegramConnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/telegram/connect"> = {},
   ): Promise<TResponse> {
@@ -9449,6 +9458,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/portal"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/subscriptions/portal", options);
+  }
+
+  postApiV1SubscriptionsUpgradeReviewRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/review"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/upgrade/review", options);
   }
 
   postApiV1TelegramConnectRaw(

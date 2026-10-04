@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { createNativeCloudAuth as createEnrollment } from "./cloud-enrollment.mjs";
 
@@ -1065,3 +1069,219 @@ test("cancelling while the host activates the key leaves no revoked key active",
     1,
   );
 });
+
+// Exercise the trusted host against real HTTP responses and a disk-backed active credential.
+for (const phase of [
+  "send",
+  "verify",
+  "mfa-challenge",
+  "mfa-complete",
+  "owner-read",
+  "replace",
+  "finish",
+  "uncleared",
+]) {
+  test(`explicit billing clear fences in-flight ${phase}`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-billing-clear-"));
+    const activePath = join(directory, "active"),
+      pendingPath = join(directory, "pending");
+    const enrolled = phase === "finish";
+    const activeKey = `eliza_${"a".repeat(64)}`,
+      token = sessionToken();
+    const replacement = [
+      "header",
+      Buffer.from(
+        JSON.stringify({
+          exp: Math.floor(Date.now() / 1000) + 900,
+          mfaVerifiedAt: Date.now(),
+          userId: ACCOUNT.id,
+          tenantId: `personal-${ACCOUNT.id}`,
+        }),
+      ).toString("base64url"),
+      "replacement",
+    ].join(".");
+    if (!enrolled) await writeFile(activePath, activeKey, { mode: 0o600 });
+    let paused = false,
+      entered,
+      release,
+      blockPath = null;
+    const seen = new Promise((resolve) => {
+      entered = resolve;
+    });
+    const future = () => new Date(Date.now() + 300000).toISOString();
+    const server = createServer(async (request, response) => {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const body = chunks.length
+        ? JSON.parse(Buffer.concat(chunks).toString())
+        : {};
+      if (request.url === blockPath && !paused) {
+        paused = true;
+        entered();
+        await new Promise((resolve) => {
+          release = resolve;
+        });
+      }
+      let value;
+      if (new URL(request.url, "http://127.0.0.1").pathname.endsWith("/config"))
+        value = {
+          clientId: "org.example.billing",
+          environment: "test",
+          redirectUri: "https://example.org/native/callback",
+          codeChallengeMethod: "S256",
+          scopes: ["cloud:user"],
+        };
+      else if (request.url === "/api/v1/user") value = ACCOUNT;
+      else if (request.url === "/auth/email/send")
+        value = { ok: true, expiresAt: future() };
+      else if (request.url === "/auth/email/code/verify")
+        value = ["mfa-challenge", "mfa-complete"].includes(phase)
+          ? {
+              mfaRequired: true,
+              mfa: {
+                type: "totp",
+                challengeId: "disposable-factor",
+                expiresAt: future(),
+              },
+            }
+          : { ok: true, token };
+      else if (request.url === "/auth/mfa/totp/complete")
+        value = { ok: true, token };
+      else if (request.url === "/auth/mfa/totp/status")
+        value = { ok: true, enabled: true };
+      else if (request.url === "/auth/mfa/totp/step-up")
+        value = { ok: true, token: replacement };
+      else if (request.url.endsWith("/connect"))
+        value = {
+          success: true,
+          codeType: "mobile_app_auth_code",
+          code: "disposable-grant",
+          expiresAt: future(),
+        };
+      else if (request.url.endsWith("/token"))
+        value = {
+          success: true,
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          secret: activeKey,
+          tokenType: "Bearer",
+          acknowledgementRequired: true,
+          acknowledgeBy: future(),
+        };
+      else if (request.url.endsWith("/ack")) {
+        assert.ok(await readFile(pendingPath, "utf8"));
+        value = {
+          success: true,
+          status: "acknowledged",
+          credentialId: body.credentialId,
+          expiresAt: future(),
+        };
+      } else {
+        response.writeHead(404);
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(value));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const read = async (path) => {
+      try {
+        return await readFile(path, "utf8");
+      } catch (error) {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      }
+    };
+    const auth = createEnrollment({
+      binding: {
+        clientId: "org.example.billing",
+        environment: "test",
+        redirectUri: "https://example.org/native/callback",
+      },
+      appName: "Disposable Billing",
+      api: base,
+      auth: base,
+      readActive: () => read(activePath),
+      pendingStore: {
+        read: () => read(pendingPath),
+        write: (value) => writeFile(pendingPath, value, { mode: 0o600 }),
+        clear: () => rm(pendingPath, { force: true }),
+      },
+      activate: async (secret, guard) => {
+        guard();
+        await writeFile(activePath, secret, { mode: 0o600 });
+      },
+    });
+    try {
+      let operation, input;
+      if (enrolled) {
+        const step = await auth.handle("start", { email: ACCOUNT.email });
+        operation = "verify";
+        input = { sessionId: step.sessionId, code: "123456" };
+        blockPath = "/api/v1/app-auth/mobile/ack";
+      } else if (phase === "send") {
+        operation = "billing-start";
+        input = {};
+        blockPath = "/auth/email/send";
+      } else {
+        const step = await auth.handle("billing-start");
+        operation = "billing-verify";
+        input = { sessionId: step.sessionId, code: "123456" };
+        if (phase === "mfa-complete") {
+          const mfa = await auth.handle(operation, input);
+          operation = "billing-mfa";
+          input = { sessionId: mfa.sessionId, code: "123456" };
+          blockPath = "/auth/mfa/totp/complete";
+        } else if (phase === "replace") {
+          await auth.handle(operation, input);
+          const security = await auth.handle("account-security-start", {
+            method: "totp",
+          });
+          operation = "account-security-verify";
+          input = { sessionId: security.sessionId, code: "123456" };
+          blockPath = "/api/v1/user";
+        } else
+          blockPath =
+            phase === "owner-read" ? "/api/v1/user" : "/auth/email/code/verify";
+      }
+      const pending = auth.handle(operation, input);
+      const outcome = pending.then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      );
+      await seen;
+      if (phase !== "uncleared") auth.clearBillingAuthority();
+      release();
+      const result = await outcome;
+      if (enrolled) {
+        assert.deepEqual(result.value, {
+          status: "authenticated",
+          connected: true,
+        });
+        assert.equal(await read(activePath), activeKey);
+        assert.equal(await read(pendingPath), null);
+      } else if (phase === "uncleared") {
+        assert.equal(result.value.status, "authorized");
+        assert.equal((await auth.billingAuthority()).token, token);
+      } else {
+        assert.ok(result.error instanceof Error);
+        assert.ok(!(result.error instanceof TypeError));
+        assert.equal(result.error.status, 409);
+        assert.equal(await read(activePath), activeKey);
+        assert.equal(await read(pendingPath), null);
+      }
+      if (phase !== "uncleared")
+        assert.equal(await auth.billingAuthority(), null);
+      if (phase === "send") {
+        blockPath = null;
+        const fresh = await auth.handle("billing-start");
+        assert.equal(fresh.status, "code");
+      }
+    } finally {
+      release?.();
+      await new Promise((resolve) => server.close(resolve));
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}

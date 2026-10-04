@@ -99,6 +99,9 @@ export const billingSubscriptionCommands = pgTable(
     lease_token: uuid("lease_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     cancellation_dispatch_state: text("cancellation_dispatch_state").$type<"ready" | "started">(),
+    organization_upgrade_dispatch_state: text("organization_upgrade_dispatch_state").$type<
+      "ready" | "started"
+    >(),
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_response_digest: text("provider_response_digest"),
     error_code: text("error_code"),
@@ -186,13 +189,17 @@ export const billingSubscriptionCommands = pgTable(
       ],
       name: "billing_subscription_commands_result_revision_tenant_fk",
     }).onDelete("restrict"),
+    organization_upgrade_dispatch_check: check(
+      "billing_commands_org_upgrade_dispatch_check",
+      sql`${table.organization_upgrade_dispatch_state} IS NULL OR (${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.kind} = 'upgrade' AND ${table.organization_upgrade_dispatch_state} IN ('ready','started'))`,
+    ),
     cancellation_dispatch_check: check(
       "billing_subscription_commands_cancellation_dispatch_check",
       sql`${table.cancellation_dispatch_state} IS NULL OR (${table.kind} IN ('cancel','resume') AND ${table.cancellation_dispatch_state} IN ('ready','started'))`,
     ),
     cancellation_result_check: check(
       "billing_subscription_commands_cancellation_result_check",
-      sql`${table.app_id} IS NOT NULL OR ((${table.kind} IN ('cancel','resume') AND ${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id} = ${table.subscription_id} AND ${table.result_subscription_revision} IS NOT NULL AND ${table.result_subscription_revision} > 0) OR ((${table.kind} NOT IN ('cancel','resume') OR ${table.status} <> 'APPLIED') AND ${table.result_subscription_revision} IS NULL))`,
+      sql`${table.app_id} IS NOT NULL OR ((${table.kind} IN ('cancel','resume','upgrade') AND ${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id} = ${table.subscription_id} AND ${table.result_subscription_revision} IS NOT NULL AND ${table.result_subscription_revision} > 0) OR ((${table.kind} NOT IN ('cancel','resume','upgrade') OR ${table.status} <> 'APPLIED') AND ${table.result_subscription_revision} IS NULL))`,
     ),
     id_organization_unique: uniqueIndex("billing_subscription_commands_id_org_idx").on(
       table.id,
@@ -259,7 +266,7 @@ export const billingSubscriptionCommands = pgTable(
     ),
     status_shape_check: check(
       "billing_subscription_commands_status_shape_check",
-      sql`(${table.status} = 'PREPARED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'OUTCOME_UNKNOWN' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUCCEEDED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'APPLIED' AND (${table.billing_scope_id} IS NOT NULL OR ${table.kind} IN ('checkout','cancel','resume')) AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND (${table.result_subscription_id} IS NOT NULL OR ${table.kind} = 'import') AND ${table.applied_at} IS NOT NULL) OR (${table.status} = 'FAILED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUPERSEDED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL)`,
+      sql`(${table.status} = 'PREPARED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'OUTCOME_UNKNOWN' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUCCEEDED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'APPLIED' AND (${table.billing_scope_id} IS NOT NULL OR ${table.kind} IN ('checkout','cancel','resume','upgrade')) AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND (${table.result_subscription_id} IS NOT NULL OR ${table.kind} = 'import') AND ${table.applied_at} IS NOT NULL) OR (${table.status} = 'FAILED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUPERSEDED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL)`,
     ),
   }),
 );

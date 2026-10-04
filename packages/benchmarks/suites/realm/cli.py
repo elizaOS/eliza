@@ -12,9 +12,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.runner import REALMRunner
-from benchmarks.realm.types import (
+from benchmarks.suites.realm.dataset import REALMDataset
+from benchmarks.suites.realm.runner import REALMRunner
+from benchmarks.suites.realm.types import (
     LEADERBOARD_NOTE,
     LEADERBOARD_SCORES,
     ExecutionModel,

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from benchmarks.bfcl.types import FunctionCall, FunctionDefinition
+from benchmarks.suites.bfcl.types import FunctionCall, FunctionDefinition
 
 
 _JSON_SCHEMA_TYPE_ALIASES = {

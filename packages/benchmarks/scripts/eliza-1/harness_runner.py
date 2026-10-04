@@ -105,14 +105,6 @@ def _load_fixture_bundle(
     return cases, provenance
 
 
-def _load_fixtures(
-    limit: int | None,
-    fixture_set: str = "manual",
-) -> list[dict[str, Any]]:
-    cases, _provenance = _load_fixture_bundle(limit, fixture_set)
-    return cases
-
-
 def _build_user_prompt(case: dict[str, Any]) -> str:
     channel = str(case.get("channelType") or "unspecified")
     incoming = json.dumps(str(case.get("input") or ""), ensure_ascii=False)

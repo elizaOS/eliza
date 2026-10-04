@@ -2,7 +2,7 @@ import json
 from typing import List, Optional
 
 import numpy as np
-from benchmarks.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
+from benchmarks.suites.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
 

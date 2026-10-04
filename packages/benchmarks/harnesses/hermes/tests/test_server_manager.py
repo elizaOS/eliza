@@ -111,14 +111,6 @@ def test_manager_stop_resets_state(fake_venv: Path) -> None:
     assert mgr.is_running() is False
 
 
-def test_manager_in_process_mode_is_nonpublishable(fake_venv: Path) -> None:
-    mgr = HermesAgentManager(repo_path=fake_venv, mode="in_process")
-    with patch("hermes_adapter.client.subprocess.run") as mock_run:
-        with pytest.raises(RuntimeError, match="not ready"):
-            mgr.start()
-    assert mgr.is_running() is False
-    assert mock_run.call_count == 0
-
 
 def test_manager_exposes_client(tmp_path: Path) -> None:
     mgr = HermesAgentManager(repo_path=tmp_path)

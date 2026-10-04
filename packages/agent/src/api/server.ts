@@ -42,6 +42,7 @@ import {
   resolveServerOnlyPort,
 } from "@elizaos/host/protocol";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
+import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import {
   canUseLocalTradeExecution,
@@ -158,7 +159,6 @@ import {
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
-import { persistConfigEnv } from "./config-env.ts";
 import { replaceConfigInPlace } from "./config-state.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handleContextInspectorRoute } from "./context-inspector-routes.ts";

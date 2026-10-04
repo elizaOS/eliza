@@ -1,6 +1,6 @@
 """Mind2Web agent backed by the eliza benchmark server.
 
-The ``benchmarks.mind2web.types`` import lives outside this package and is
+The ``benchmarks.suites.mind2web.types`` import lives outside this package and is
 imported lazily so consumers can ``from eliza_adapter.mind2web import
 ElizaMind2WebAgent`` without forcing ``benchmarks/`` onto ``sys.path`` at
 module-import time. The types are only needed when the agent is actually
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from eliza_adapter.client import ElizaClient
 
 if TYPE_CHECKING:
-    from benchmarks.mind2web.types import (
+    from benchmarks.suites.mind2web.types import (
         Mind2WebAction,
         Mind2WebConfig,
         Mind2WebTask,
@@ -147,7 +147,7 @@ class ElizaMind2WebAgent:
 
     async def process_task(self, task: "Mind2WebTask") -> list["Mind2WebAction"]:
         """Process a Mind2Web task and return predicted actions."""
-        from benchmarks.mind2web.types import (
+        from benchmarks.suites.mind2web.types import (
             Mind2WebAction,
             Mind2WebOperation,
             Mind2WebRankerMode,
@@ -166,7 +166,7 @@ class ElizaMind2WebAgent:
 
             current_step = task.actions[step_idx]
 
-            from benchmarks.mind2web.eliza_agent import select_candidates_for_step
+            from benchmarks.suites.mind2web.eliza_agent import select_candidates_for_step
 
             previous_action_reprs = task.action_reprs[:step_idx] if task.action_reprs else []
             all_candidates, ranker_recall = await asyncio.to_thread(
@@ -195,7 +195,7 @@ class ElizaMind2WebAgent:
                     )
                 )
                 continue
-            from benchmarks.mind2web.eliza_agent import _format_element
+            from benchmarks.suites.mind2web.eliza_agent import _format_element
 
             action_surface = _format_element(step_idx, task, all_candidates)
             previous = "\n".join(f"- {action}" for action in previous_action_reprs)

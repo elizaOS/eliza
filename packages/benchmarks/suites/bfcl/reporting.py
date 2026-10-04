@@ -12,8 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from benchmarks.bfcl.metrics import MetricsCalculator
-from benchmarks.bfcl.types import (
+from benchmarks.suites.bfcl.metrics import MetricsCalculator
+from benchmarks.suites.bfcl.types import (
     BFCLBenchmarkResults,
     BFCLCategory,
     BFCLConfig,

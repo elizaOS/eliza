@@ -29,7 +29,6 @@ def build_review_package(
     latest_dir: Path | None = None,
     reviewed_by: str,
     reviewer_note: str,
-    tolerance: float = 0.08,
     check_runtime_gates: bool = True,
     include_benchmarks: set[str] | None = None,
     exclude_benchmarks: set[str] | None = None,
@@ -54,7 +53,6 @@ def build_review_package(
     inventory = build_inventory_report(repo_root)
     readiness = validate_latest_readiness(
         workspace_root,
-        tolerance=tolerance,
         latest_dir=target_dir,
         check_runtime_gates=check_runtime_gates,
         include_benchmarks=include_benchmarks,
@@ -86,7 +84,6 @@ def build_review_package(
             "include_benchmarks": sorted(include_benchmarks or []),
             "exclude_benchmarks": sorted(exclude_benchmarks or []),
             "runtime_gates_checked": check_runtime_gates,
-            "tolerance": tolerance,
         },
         "summary": {
             "ok": not blocking_findings,

@@ -286,6 +286,14 @@ export class XDomain {
       executionTarget: "local",
       sourceOfTruth: "local_storage",
       configured: runtimeStatus.status === "handled",
+      ...(runtimeStatus.status === "unavailable" && runtimeStatus.error
+        ? {
+            probeError:
+              runtimeStatus.error instanceof Error
+                ? runtimeStatus.error.message
+                : String(runtimeStatus.error),
+          }
+        : {}),
       connected: runtimeConnected,
       reason: normalizeXReason(
         runtimeStatus.status === "handled"

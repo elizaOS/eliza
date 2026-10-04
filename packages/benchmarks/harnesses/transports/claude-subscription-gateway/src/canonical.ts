@@ -64,8 +64,12 @@ function isJsonValue(value: unknown): value is JsonValue {
   return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
+export function isJsonObject(value: unknown): value is JsonObject {
+  return isRecord(value) && Object.values(value).every(isJsonValue);
+}
+
 function asJsonObject(value: unknown, parameter: string): JsonObject {
-  if (!isRecord(value) || !isJsonValue(value)) {
+  if (!isJsonObject(value)) {
     throw new GatewayRequestError("Expected a JSON object.", {
       code: "invalid_json_object",
       parameter,

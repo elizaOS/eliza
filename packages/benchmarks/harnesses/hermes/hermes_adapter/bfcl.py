@@ -11,11 +11,9 @@ callable matching the duck-typed shape BFCL runners expect.
 
 from __future__ import annotations
 
-from benchmarks.bfcl import (
+from benchmarks.suites.bfcl import (
     call_from_record as _call_from_record,
-    coerce_arguments as _coerce_arguments,
     iter_call_records as _iter_call_records,
-    provider_safe_tool_name as _provider_safe_tool_name,
     provider_safe_tools as _provider_safe_tools,
     restore_original_call_names as _restore_original_call_names,
 )
@@ -25,14 +23,12 @@ import logging
 import os
 import re
 import time
-from copy import deepcopy
-from hashlib import sha1
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from hermes_adapter.client import HermesClient
 
 if TYPE_CHECKING:
-    from benchmarks.bfcl.types import ArgumentValue, BFCLTestCase, FunctionCall
+    from benchmarks.suites.bfcl.types import BFCLTestCase, FunctionCall
 
 logger = logging.getLogger(__name__)
 
@@ -53,19 +49,19 @@ _DEFAULT_SYSTEM_PROMPT = (
 
 
 def _bfcl_types():
-    from benchmarks.bfcl.types import ArgumentValue, BFCLTestCase, FunctionCall
+    from benchmarks.suites.bfcl.types import ArgumentValue, BFCLTestCase, FunctionCall
 
     return ArgumentValue, BFCLTestCase, FunctionCall
 
 
 def _bfcl_tools_formatter():
-    from benchmarks.bfcl.plugin import generate_openai_tools_format
+    from benchmarks.suites.bfcl.plugin import generate_openai_tools_format
 
     return generate_openai_tools_format
 
 
 def _bfcl_parser():
-    from benchmarks.bfcl.parser import FunctionCallParser
+    from benchmarks.suites.bfcl.parser import FunctionCallParser
 
     return FunctionCallParser
 

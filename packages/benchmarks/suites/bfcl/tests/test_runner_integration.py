@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.bfcl.dataset import BFCLDataset
-from benchmarks.bfcl.runner import BFCLRunner
-from benchmarks.bfcl.types import (
+from benchmarks.suites.bfcl.dataset import BFCLDataset
+from benchmarks.suites.bfcl.runner import BFCLRunner
+from benchmarks.suites.bfcl.types import (
     BFCLCategory,
     BFCLConfig,
     TestStatus,

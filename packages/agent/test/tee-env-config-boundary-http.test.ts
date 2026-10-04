@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { persistConfigEnv } from "../src/api/config-env.ts";
 import { startApiServer } from "../src/api/server.ts";
 import { loadElizaConfig } from "../src/config/config.ts";
 

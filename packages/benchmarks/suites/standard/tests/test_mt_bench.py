@@ -11,13 +11,13 @@ import pytest
 
 import argparse
 
-from benchmarks.standard._base import (
+from benchmarks.suites.standard._base import (
     ENDPOINT_ENV_CHAIN,
     HTTPOpenAICompatibleClient,
     MockClient,
 )
-from benchmarks.standard._cli import main_entry
-from benchmarks.standard.mt_bench import (
+from benchmarks.suites.standard._cli import main_entry
+from benchmarks.suites.standard.mt_bench import (
     BENCHMARK_ID,
     DEFAULT_JUDGE_MAX_TOKENS,
     DEFAULT_MAX_TOKENS,
