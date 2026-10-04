@@ -37,10 +37,10 @@ it("allows a caller-owned body to complete after the former shared deadline", as
     expect(await body).toEqual({ value: '{"complete":true}' });
   } finally {
     controller.abort();
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections();
+    });
   }
 }, 60_000);
 
@@ -67,10 +67,10 @@ it.each(["deadline", "caller"])(
       if (mode === "caller") controller.abort();
       await expect(body).rejects.toThrow();
     } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeAllConnections();
+      });
     }
   },
 );
@@ -129,10 +129,10 @@ it("preserves audio kind, voice, seed and MIME type through the configured servi
     );
   } finally {
     vi.unstubAllEnvs();
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections();
+    });
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
