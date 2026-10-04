@@ -307,8 +307,15 @@ function forbiddenReason(
  * removal) is not something this PR is introducing, and flagging it would make
  * the gate block on pre-existing debt it can't fix.
  */
-function addedLines(diff: string): { file: string; line: string }[] {
-  const out: { file: string; line: string }[] = [];
+/**
+ * Lines of each file's new version in hunk order: added lines, plus context
+ * lines so a structured check can read an unchanged neighbour (a YAML env
+ * entry's `- name:`). Only added lines are scanned for secrets.
+ */
+function newFileLines(
+  diff: string,
+): { file: string; line: string; added: boolean }[] {
+  const out: { file: string; line: string; added: boolean }[] = [];
   let file = "";
   for (const line of diff.split("\n")) {
     // `+++ b/file` header lines start with `+++`; skip those, keep real adds.
@@ -316,7 +323,9 @@ function addedLines(diff: string): { file: string; line: string }[] {
       const target = line.slice(3).trim();
       file = target.startsWith("b/") ? target.slice(2) : target;
     } else if (line.startsWith("+")) {
-      out.push({ file, line: line.slice(1) });
+      out.push({ file, line: line.slice(1), added: true });
+    } else if (line.startsWith(" ")) {
+      out.push({ file, line: line.slice(1), added: false });
     }
   }
   return out;
@@ -406,8 +415,28 @@ export function reviewDiff(
 
   // 3) Secrets in ADDED lines — HARD.
   const seenSecretLines = new Set<string>();
-  for (const { file, line } of addedLines(diff)) {
-    if (matchesSecret(line, file)) {
+  // Kubernetes env entries put the name and the literal on separate lines:
+  // `- name: DB_PASSWORD` then `value: …`. Remember the pending name per file.
+  let envName: { file: string; name: string } | null = null;
+  for (const { file, line, added } of newFileLines(diff)) {
+    let secret = added && matchesSecret(line, file);
+    if (YAML_FILE.test(file)) {
+      const named = YAML_ENV_NAME.exec(line);
+      if (named) {
+        envName = { file, name: named[1] };
+      } else if (envName?.file === file && line.trim() && !/^\s*#/.test(line)) {
+        const value = YAML_ENV_VALUE.exec(line);
+        if (
+          added &&
+          value &&
+          namesCredentialValue(envName.name) &&
+          isLiteralYamlScalar(value[1])
+        )
+          secret = true;
+        envName = null;
+      }
+    }
+    if (secret) {
       // Never echo the secret itself into the finding; report a redacted
       // fingerprint (leading chars) so the reviewer can locate it without the
       // gate re-leaking the credential into the events stream / PR body.
@@ -471,9 +500,14 @@ function compileExtraForbidden(patterns?: string[]): RegExp[] {
   return out;
 }
 
+const YAML_FILE = /\.ya?ml$/i;
+const YAML_ENV_NAME =
+  /^\s*-\s+name:\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?\s*$/;
+const YAML_ENV_VALUE = /^\s*value:\s*(\S.*?)\s*$/;
+
 function matchesSecret(line: string, file: string): boolean {
   if (hasSensitiveLiteralAssignment(line)) return true;
-  if (/\.ya?ml$/i.test(file) && hasSensitiveYamlScalar(line)) return true;
+  if (YAML_FILE.test(file) && hasSensitiveYamlScalar(line)) return true;
   for (const pattern of SECRET_PATTERNS) {
     pattern.lastIndex = 0;
     if (pattern.test(line)) return true;
@@ -523,13 +557,14 @@ function hasSensitiveLiteralAssignment(line: string): boolean {
   // Dockerfile ENV/ARG defaults bake the literal into image layers, including
   // multi-pair `ENV A=1 B=2` and legacy `ENV NAME value`. `$VAR` forwards a
   // build argument or environment value rather than introducing one.
-  const dockerInstruction = /^\s*(?:ENV|ARG)\s+(.+)$/.exec(line);
+  // Docker parses instruction keywords case-insensitively.
+  const dockerInstruction = /^\s*(?:ENV|ARG)\s+(.+)$/i.exec(line);
   if (!dockerInstruction) return false;
   const pairs = /(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=(?!\$)\S/g;
   for (const match of dockerInstruction[1].matchAll(pairs)) {
     if (namesCredentialValue(match[1])) return true;
   }
-  const legacyEnv = /^\s*ENV\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?!\$)\S/.exec(line);
+  const legacyEnv = /^\s*ENV\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?!\$)\S/i.exec(line);
   return legacyEnv ? namesCredentialValue(legacyEnv[1]) : false;
 }
 
@@ -569,10 +604,16 @@ function hasSensitiveYamlScalar(line: string): boolean {
 }
 
 function isLiteralYamlScalar(value: string): boolean {
-  if (/^[|>&*!{[$~#]/.test(value)) return false;
-  return !/^(?:null|true|false|yes|no|on|off)$/i.test(
-    value.replace(/\s+#.*$/, "").trimEnd(),
-  );
+  // An anchor or tag can prefix the literal itself (`&db hunter2`,
+  // `!!str hunter2`); an alias (`*db`) or a bare anchor/tag is not one.
+  // A trailing comment is not part of the scalar.
+  const scalar = value
+    .replace(/^(?:[&!]\S*\s+)+/, "")
+    .replace(/\s+#.*$/, "")
+    .trimEnd();
+  const unquoted = /^(["'])(.*)\1$/.exec(scalar)?.[2] ?? scalar;
+  if (!unquoted || /^[|>&*!{[$~#]/.test(unquoted)) return false;
+  return !/^(?:null|true|false|yes|no|on|off)$/i.test(unquoted);
 }
 
 /**

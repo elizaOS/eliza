@@ -380,6 +380,9 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["deploy/values.yaml", `  api_key: ${value}`],
     ["docker-compose.yml", `      - POSTGRES_PASSWORD=${value}`],
     ["config/app.yml", `  jwt_secret: ${value} # rotate monthly`],
+    ["Dockerfile", `env DB_PASSWORD=${value}`],
+    ["deploy/values.yaml", `password: &dbPassword ${value}`],
+    ["deploy/values.yaml", `password: !!str ${value}`],
   ])("blocks %s line %s and keeps the value out of findings", (file, line) => {
     const result = review(file, line);
     expect(result.passed).toBe(false);
@@ -418,11 +421,70 @@ describe("reviewDiff — unquoted infrastructure credentials", () => {
     ["chart/values.yaml", "  secret: |"],
     ["chart/values.yaml", "automountServiceAccountToken: false"],
     ["chart/values.yaml", "max_tokens: 4096"],
+    ["chart/values.yaml", "password: *dbPassword"],
+    ["chart/values.yaml", "credentials: &defaults"],
     ["src/client.ts", "  password: options.password,"],
   ])("allows %s line %s", (file, line) => {
     const result = review(file, line);
     expect(result.passed).toBe(true);
     expect(result.blocking).toEqual([]);
+  });
+
+  const envEntry = (valueLine: string) => [
+    "        env:",
+    "        - name: DB_PASSWORD",
+    `          ${valueLine}`,
+  ];
+
+  it.each([
+    ["unquoted", `value: ${value}`],
+    ["quoted", `value: "${value}"`],
+  ])(
+    "blocks a Kubernetes env entry with a %s literal value",
+    (_case, valueLine) => {
+      const result = reviewDiff({
+        diff: addedFileDiff("k8s/deployment.yaml", envEntry(valueLine)),
+        changedFiles: ["k8s/deployment.yaml"],
+      });
+      expect(result.passed).toBe(false);
+      expect(JSON.stringify(result)).not.toContain(value);
+    },
+  );
+
+  it("blocks a literal value added under an unchanged env name", () => {
+    const diff = [
+      "diff --git a/k8s/deployment.yaml b/k8s/deployment.yaml",
+      "--- a/k8s/deployment.yaml",
+      "+++ b/k8s/deployment.yaml",
+      "@@ -10,3 +10,3 @@",
+      "         - name: DB_PASSWORD",
+      "-          value: old-placeholder",
+      `+          value: ${value}`,
+    ].join("\n");
+    const result = reviewDiff({ diff, changedFiles: ["k8s/deployment.yaml"] });
+    expect(result.passed).toBe(false);
+  });
+
+  it.each([
+    ["a secret reference", "valueFrom:"],
+    ["an interpolated value", "value: $(DB_PASSWORD)"],
+  ])("allows a Kubernetes env entry with %s", (_case, valueLine) => {
+    const result = reviewDiff({
+      diff: addedFileDiff("k8s/deployment.yaml", envEntry(valueLine)),
+      changedFiles: ["k8s/deployment.yaml"],
+    });
+    expect(result.passed).toBe(true);
+  });
+
+  it("allows a literal value under a non-credential env name", () => {
+    const result = reviewDiff({
+      diff: addedFileDiff("k8s/deployment.yaml", [
+        "        - name: LOG_LEVEL",
+        "          value: debug",
+      ]),
+      changedFiles: ["k8s/deployment.yaml"],
+    });
+    expect(result.passed).toBe(true);
   });
 });
 
