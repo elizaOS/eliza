@@ -9,7 +9,6 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
-export * from "./platform/ios-runtime-backends";
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/build-character-from-config";
 export * from "./runtime/eliza";
