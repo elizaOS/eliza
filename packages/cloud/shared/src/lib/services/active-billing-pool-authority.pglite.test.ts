@@ -19,7 +19,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
-import { provisioningJobService } from "@elizaos/cloud-shared/node";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
