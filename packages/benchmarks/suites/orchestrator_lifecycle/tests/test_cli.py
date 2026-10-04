@@ -6,9 +6,9 @@ import sys
 
 import pytest
 
-import benchmarks.orchestrator_lifecycle.cli as lifecycle_cli
-from benchmarks.orchestrator_lifecycle.cli import parse_args
-from benchmarks.orchestrator_lifecycle.types import LifecycleMetrics
+import benchmarks.suites.orchestrator_lifecycle.cli as lifecycle_cli
+from benchmarks.suites.orchestrator_lifecycle.cli import parse_args
+from benchmarks.suites.orchestrator_lifecycle.types import LifecycleMetrics
 
 
 def test_strict_publication_contract_is_the_safe_default() -> None:

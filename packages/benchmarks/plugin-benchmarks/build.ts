@@ -1,16 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Build script for @elizaos/plugin-benchmarks. Bundles the single `index.ts`
+ * Build script for @elizaos/plugin-benchmarks. Bundles the public source barrel
  * entry for Node (ESM, external sourcemap) with all @elizaos/* dependencies
  * externalized, then emits type declarations via tsconfig.build.json.
  */
 import { rmSync } from "node:fs";
 import { $ } from "bun";
 
+process.chdir(import.meta.dirname);
 rmSync("dist", { recursive: true, force: true });
 
 const result = await Bun.build({
-  entrypoints: ["index.ts"],
+  entrypoints: ["src/index.ts"],
   outdir: "dist",
   target: "node",
   format: "esm",
@@ -23,10 +24,6 @@ if (!result.success) {
   process.exit(1);
 }
 
-// error-policy:J6 declaration emit is best-effort; the JS bundle is the artifact
-const tsc = await $`bunx tsc -p tsconfig.build.json`.nothrow();
-if (tsc.exitCode !== 0) {
-  console.warn("[build] declaration emit failed (tolerated)");
-}
+await $`bun x --no-install tsc -p tsconfig.build.json`;
 
 console.log("[build] @elizaos/plugin-benchmarks built to dist/");

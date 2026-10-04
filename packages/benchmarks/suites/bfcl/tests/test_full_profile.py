@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-import benchmarks.bfcl.dataset as dataset_module
+import benchmarks.suites.bfcl.dataset as dataset_module
 from benchmarks.bench_cli_types import ModelSpec
-from benchmarks.bfcl.dataset import BFCLDataset
-from benchmarks.bfcl.types import (
+from benchmarks.suites.bfcl.dataset import BFCLDataset
+from benchmarks.suites.bfcl.types import (
     BFCLCategory,
     BFCLConfig,
     BFCLTestCase,

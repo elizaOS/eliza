@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_command import run_sandboxed_command
-from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
+from benchmarks.suites.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
 DATASET_VERSION = "app-eval-coding-v1"

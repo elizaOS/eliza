@@ -22,7 +22,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from benchmarks.visualwebbench.types import (
+from benchmarks.suites.visualwebbench.types import (
     BBox,
     VISUALWEBBENCH_TASK_TYPES,
     VisualWebBenchTask,

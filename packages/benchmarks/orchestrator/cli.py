@@ -487,7 +487,6 @@ def _cmd_validate_latest_comparability(args: argparse.Namespace) -> int:
     latest_dir = Path(args.latest_dir).expanduser() if args.latest_dir else None
     report = validate_latest_comparability(
         workspace_root,
-        tolerance=float(args.tolerance),
         latest_dir=latest_dir,
         include_benchmarks=set(_split_csv(args.include_benchmarks)) or None,
         exclude_benchmarks=set(_split_csv(args.exclude_benchmarks)) or None,
@@ -504,7 +503,6 @@ def _cmd_validate_latest_readiness(args: argparse.Namespace) -> int:
     latest_dir = Path(args.latest_dir).expanduser() if args.latest_dir else None
     report = validate_latest_readiness(
         workspace_root,
-        tolerance=float(args.tolerance),
         latest_dir=latest_dir,
         check_runtime_gates=not bool(args.skip_runtime_gates),
         include_benchmarks=set(_split_csv(args.include_benchmarks)) or None,
@@ -636,7 +634,6 @@ def _cmd_review(args: argparse.Namespace) -> int:
     # --- 3. Validate gates: latest readiness (publishability + comparability). --
     print("[review] step 3/5: validate gates (latest readiness)")
     readiness_args = argparse.Namespace(
-        tolerance=float(args.tolerance),
         latest_dir=None,
         skip_runtime_gates=bool(args.skip_runtime_gates),
         include_benchmarks=_review_selected_benchmarks_csv(args),
@@ -659,7 +656,6 @@ def _cmd_review(args: argparse.Namespace) -> int:
         out_dir=str(out_dir),
         reviewed_by=args.reviewed_by,
         reviewer_note=args.reviewer_note,
-        tolerance=float(args.tolerance),
         skip_runtime_gates=bool(args.skip_runtime_gates),
         include_benchmarks=_review_selected_benchmarks_csv(args),
         exclude_benchmarks=None,
@@ -764,7 +760,6 @@ def _cmd_review_package(args: argparse.Namespace) -> int:
         latest_dir=latest_dir,
         reviewed_by=args.reviewed_by,
         reviewer_note=args.reviewer_note,
-        tolerance=float(args.tolerance),
         check_runtime_gates=not bool(args.skip_runtime_gates),
         include_benchmarks=set(_split_csv(args.include_benchmarks)) or None,
         exclude_benchmarks=set(_split_csv(args.exclude_benchmarks)) or None,
@@ -1200,12 +1195,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Manual note confirming trajectories/replays were opened and spot-reviewed",
     )
     p_review.add_argument(
-        "--tolerance",
-        type=float,
-        default=0.08,
-        help="Deprecated compatibility option; outcome scores are not compared",
-    )
-    p_review.add_argument(
         "--skip-runtime-gates",
         action="store_true",
         help="Package latest artifacts without probing host runtime prerequisites",
@@ -1289,12 +1278,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--reviewer-note",
         required=True,
         help="Manual note confirming trajectories/replays were opened and spot-reviewed",
-    )
-    p_review_all.add_argument(
-        "--tolerance",
-        type=float,
-        default=0.08,
-        help="Deprecated compatibility option; outcome scores are not compared",
     )
     p_review_all.add_argument(
         "--skip-runtime-gates",
@@ -1465,12 +1448,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if required latest real-harness rows are missing or use different inputs/config",
     )
     p_latest_comparability.add_argument(
-        "--tolerance",
-        type=float,
-        default=0.08,
-        help="Deprecated compatibility option; outcome scores are not compared",
-    )
-    p_latest_comparability.add_argument(
         "--latest-dir",
         default=None,
         help="Explicit latest snapshot directory to validate (default: test-results/benchmark-orchestrator/latest)",
@@ -1493,12 +1470,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_latest_readiness = sub.add_parser(
         "validate-latest-readiness",
         help="Fail unless latest rows prove the full real harness matrix is complete, publishable, and comparable",
-    )
-    p_latest_readiness.add_argument(
-        "--tolerance",
-        type=float,
-        default=0.08,
-        help="Deprecated compatibility option; outcome scores are not compared",
     )
     p_latest_readiness.add_argument(
         "--latest-dir",

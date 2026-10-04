@@ -899,7 +899,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.swe_bench.cli",
+            "benchmarks.suites.swe_bench.cli",
             "--variant",
             swe_variant,
             "--orchestrated",
@@ -971,7 +971,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.mind2web",
+            "benchmarks.suites.mind2web",
             "--sample" if smoke else "--hf",
             "--provider",
             "eliza",
@@ -993,7 +993,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.visualwebbench",
+            "benchmarks.suites.visualwebbench",
             "--provider",
             "eliza",
             "--model",
@@ -1063,7 +1063,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.nl2repo.adapter_matrix",
+            "benchmarks.suites.nl2repo.adapter_matrix",
             "--agent-harness",
             "eliza",
             "--task-agent",
@@ -1105,7 +1105,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.standard.code_agent_humaneval",
+            "benchmarks.suites.standard.code_agent_humaneval",
             "--task-agent",
             adapter,
             "--model-provider",
@@ -1131,7 +1131,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.mint.code_agent_matrix",
+            "benchmarks.suites.mint.code_agent_matrix",
             "--task-agent",
             adapter,
             "--model-provider",
@@ -1168,7 +1168,7 @@ def default_command(
         cmd = [
             python,
             "-m",
-            "benchmarks.agentbench.code_agent_matrix",
+            "benchmarks.suites.agentbench.code_agent_matrix",
             "--task-agent",
             adapter,
             "--model-provider",

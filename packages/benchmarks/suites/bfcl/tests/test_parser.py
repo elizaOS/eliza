@@ -4,9 +4,9 @@ Tests for BFCL Function Call Parser
 
 import pytest
 
-from benchmarks.bfcl.dataset import BFCLDataset, _infer_default_from_description
-from benchmarks.bfcl.parser import FunctionCallParser
-from benchmarks.bfcl.types import BFCLConfig
+from benchmarks.suites.bfcl.dataset import BFCLDataset, _infer_default_from_description
+from benchmarks.suites.bfcl.parser import FunctionCallParser
+from benchmarks.suites.bfcl.types import BFCLConfig
 
 
 class TestFunctionCallParser:

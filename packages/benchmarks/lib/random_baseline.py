@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import string
 import sys
@@ -371,20 +372,29 @@ def lift_over_random(
     mean "perfect zero latency" and is treated as missing rather than
     infinite to keep the report robust to noisy inputs.
     """
-    if score is None or random_score is None:
+    if (
+        score is None
+        or random_score is None
+        or isinstance(score, bool)
+        or isinstance(random_score, bool)
+    ):
         return None
     try:
         score_f = float(score)
         random_f = float(random_score)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(score_f) or not math.isfinite(random_f):
+        return None
     if higher_is_better:
         if random_f == 0.0:
             return None
-        return score_f / random_f
-    if score_f == 0.0:
-        return None
-    return random_f / score_f
+        lift = score_f / random_f
+    else:
+        if score_f == 0.0:
+            return None
+        lift = random_f / score_f
+    return lift if math.isfinite(lift) else None
 
 
 def is_better_than_random(
@@ -401,6 +411,8 @@ def is_better_than_random(
     when lift is undefined (missing inputs, zero denominator) so a
     broken pipeline is never reported as "better than random".
     """
+    if isinstance(min_lift, bool) or not math.isfinite(min_lift) or min_lift <= 0:
+        raise ValueError("min_lift must be finite and positive")
     lift = lift_over_random(
         score,
         random_score,

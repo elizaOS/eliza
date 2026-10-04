@@ -16,9 +16,11 @@ import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  parseOptimizedPromptArtifact,
+  plannerTemplate,
+} from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { plannerTemplate } from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
-import { parseOptimizedPromptArtifact } from "../../../../../plugins/plugin-assistant/src/services/optimized-prompt.ts";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import { gepaHash } from "../src/gepa-planner-case.ts";
 import type * as Producer from "../src/gepa-producer.ts";

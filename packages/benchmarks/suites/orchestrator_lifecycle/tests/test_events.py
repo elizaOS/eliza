@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
+from benchmarks.suites.orchestrator_lifecycle.events import extract_lifecycle_events
 
 
 def test_leaf_action_names_map_to_events() -> None:

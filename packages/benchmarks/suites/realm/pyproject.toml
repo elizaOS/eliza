@@ -31,7 +31,7 @@ dev = [
 ]
 
 [project.scripts]
-realm-bench = "benchmarks.realm.__main__:main"
+realm-bench = "benchmarks.suites.realm.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

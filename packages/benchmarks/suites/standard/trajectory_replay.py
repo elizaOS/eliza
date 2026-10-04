@@ -49,7 +49,7 @@ verifiable correctness in GRPO training:
 
 CLI:
 
-    python -m benchmarks.standard.trajectory_replay \\
+    python -m benchmarks.suites.standard.trajectory_replay \\
         --model-endpoint http://localhost:8000/v1 \\
         --traj-set ~/.eliza/trajectories \\
         --baseline meta-llama/Llama-3.1-8B-Instruct \\
@@ -78,7 +78,7 @@ from ._base import (
 )
 from ._cli import RunnerFactory, cli_dispatch
 
-log = logging.getLogger("benchmarks.standard.trajectory_replay")
+log = logging.getLogger("benchmarks.suites.standard.trajectory_replay")
 
 BENCHMARK_ID = "trajectory_replay"
 DATASET_VERSION = "eliza_native_v1@replay"
@@ -807,7 +807,7 @@ def _expand_traj_set(raw: str) -> Path:
 
 
 class _TrajectoryReplayFactory(RunnerFactory):
-    prog = "benchmarks.standard.trajectory_replay"
+    prog = "benchmarks.suites.standard.trajectory_replay"
     description = (
         "Trajectory replay regression benchmark. Replays a curated set of "
         "eliza_native_v1 trajectories against a candidate endpoint, scoring "

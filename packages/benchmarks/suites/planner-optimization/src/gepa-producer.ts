@@ -14,8 +14,8 @@ import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { ElizaError } from "@elizaos/core";
+import { parseOptimizedPromptArtifact } from "@elizaos/plugin-assistant";
 import { z } from "zod";
-import { parseOptimizedPromptArtifact } from "../../../../../plugins/plugin-assistant/src/services/optimized-prompt.ts";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 import {
   type GepaPlannerCase,

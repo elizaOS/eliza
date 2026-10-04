@@ -37,12 +37,8 @@ async function main() {
   const { ModelType, resolveOptimizedPromptForRuntime } = await import(
     "@elizaos/core"
   );
-  const { plannerTemplate } = await import(
-    "../../../../../plugins/plugin-assistant/src/prompts/planner.ts"
-  );
-  const { runPlannerLoop } = await import(
-    "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts"
-  );
+  const { plannerTemplate } = await import("@elizaos/plugin-assistant");
+  const { runPlannerLoop } = await import("@elizaos/plugin-assistant");
   const { createTestRuntime } = await import("@elizaos/testing/runtime");
   if (input.candidate.baseline !== plannerTemplate)
     throw new Error("Candidate baseline differs from the current planner");

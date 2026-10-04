@@ -167,11 +167,6 @@ def parse_args() -> argparse.Namespace:
         help="Use mock agent instead of real LLM (for testing)",
     )
     parser.add_argument(
-        "--real-llm",
-        action="store_true",
-        help="Deprecated alias for --provider eliza when no provider is specified",
-    )
-    parser.add_argument(
         "--provider",
         type=str,
         choices=[
@@ -299,8 +294,6 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
     split = split_map.get(args.split, Mind2WebSplit.TEST_TASK)
 
     provider = args.provider if args.provider != "auto" else None
-    if args.real_llm and provider is None and not args.mock:
-        provider = "eliza"
 
     ranker_mode_map = {
         "real": Mind2WebRankerMode.REAL,

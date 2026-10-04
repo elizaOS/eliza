@@ -10,7 +10,7 @@ import pytest
 @pytest.fixture
 def sample_function_definitions():
     """Sample function definitions for testing."""
-    from benchmarks.bfcl.types import FunctionDefinition, FunctionParameter
+    from benchmarks.suites.bfcl.types import FunctionDefinition, FunctionParameter
 
     return [
         FunctionDefinition(
@@ -60,7 +60,7 @@ def sample_function_definitions():
 @pytest.fixture
 def sample_test_case(sample_function_definitions):
     """Sample BFCL test case for testing."""
-    from benchmarks.bfcl.types import BFCLCategory, BFCLTestCase, FunctionCall
+    from benchmarks.suites.bfcl.types import BFCLCategory, BFCLTestCase, FunctionCall
 
     return BFCLTestCase(
         id="sample_001",
@@ -80,7 +80,7 @@ def sample_test_case(sample_function_definitions):
 @pytest.fixture
 def sample_parallel_test_case(sample_function_definitions):
     """Sample parallel function call test case."""
-    from benchmarks.bfcl.types import BFCLCategory, BFCLTestCase, FunctionCall
+    from benchmarks.suites.bfcl.types import BFCLCategory, BFCLTestCase, FunctionCall
 
     return BFCLTestCase(
         id="parallel_001",
@@ -108,7 +108,7 @@ def sample_parallel_test_case(sample_function_definitions):
 @pytest.fixture
 def sample_irrelevant_test_case(sample_function_definitions):
     """Sample test case where no function is relevant."""
-    from benchmarks.bfcl.types import BFCLCategory, BFCLTestCase
+    from benchmarks.suites.bfcl.types import BFCLCategory, BFCLTestCase
 
     return BFCLTestCase(
         id="relevance_001",

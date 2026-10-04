@@ -7,7 +7,7 @@ registry shape.
 Each adapter exposes:
 
 * A ``BenchmarkRunner`` class (the actual runner)
-* A ``main`` function used as the ``python -m benchmarks.standard.<name>``
+* A ``main`` function used as the ``python -m benchmarks.suites.standard.<name>``
   CLI entrypoint
 * A common result schema:
 
