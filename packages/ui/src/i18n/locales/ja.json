@@ -161,6 +161,7 @@
   "appsview.Stopped": "停止",
   "appsview.URL": "URL",
   "appsview.Viewer": "ビューア",
+  "appwindow.ExternalOpenFailed": "このアプリをブラウザで開けませんでした: {{url}}",
   "appwindow.LaunchedNoViewer": "このアプリはビューアURLなしで起動しました。アプリカタログから開いてください。",
   "appwindow.RetryingLaunch": "起動を再試行中...",
   "aria.advancedNavigation": "高度なナビゲーション",

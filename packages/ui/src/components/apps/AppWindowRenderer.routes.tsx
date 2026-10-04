@@ -243,10 +243,23 @@ export function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
         }
         const launchUrl = result.launchUrl ?? resolvedApp.launchUrl;
         if (launchUrl) {
-          try {
-            await openExternalUrl(launchUrl);
-          } catch {
-            /* ignore — we still surface the link state */
+          // openExternalUrl resolves false when nothing was opened (URL fails
+          // the navigation allowlist, or the desktop bridge refused); only a
+          // real navigation may report "opened in your browser".
+          const opened = await openExternalUrl(launchUrl).catch(() => false);
+          if (cancelled) return;
+          if (!opened) {
+            setRunState({
+              status: "error",
+              run: run ?? null,
+              launchUrl: null,
+              message: t("appwindow.ExternalOpenFailed", {
+                url: launchUrl,
+                defaultValue:
+                  "Could not open this app in your browser: {{url}}",
+              }),
+            });
+            return;
           }
           setRunState({
             status: "external",
