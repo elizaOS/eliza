@@ -22,3 +22,10 @@ full AOSP boot, production trust enrollment or real-device acceptance.
 Hosts retain trust-root provisioning, signing authority, repository/package
 binding, update UI, permitted hardware and release/rollout policy. Native callers
 must independently recheck current device state and installation authority.
+
+Android hosts can call `buildAndroidTrust` from `scripts/build-android.mjs` with
+their composed source directory, output AAR, pinned toolchain, Java namespace and
+reviewed linker policy. The host supplies SDK/JDK environment paths and serializes
+builds to that output. A failed build preserves the previous AAR. Run the build
+contracts with `node --test scripts/build-android.test.mjs`; qualify the resulting
+AAR in the consuming Android host before release.
