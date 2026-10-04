@@ -707,6 +707,14 @@ export class GoogleGmailClient {
       references?: string | null;
     }
   ): Promise<GoogleGmailDraftResult> {
+    const threadId = params.threadId?.trim();
+    const isReply = Boolean(params.inReplyTo?.trim() || params.references?.trim());
+    if (isReply && !threadId) {
+      throw new ElizaError("Gmail reply draft requires the original thread id.", {
+        code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED",
+        severity: "fatal",
+      });
+    }
     const gmail = await this.clientFactory.gmail(params, ["gmail.compose"], "gmail.createDraft");
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
@@ -722,7 +730,7 @@ export class GoogleGmailClient {
     ]);
     const response = await gmail.users.drafts.create({
       userId: "me",
-      requestBody: { message: { raw, threadId: params.threadId } },
+      requestBody: { message: threadId ? { raw, threadId } : { raw } },
     });
     const draftId = response.data.id?.trim();
     if (!draftId) {

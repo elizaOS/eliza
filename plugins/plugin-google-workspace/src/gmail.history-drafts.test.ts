@@ -169,7 +169,59 @@ describe("Gmail provider drafts", () => {
         }),
       })
     );
+    expect(create.mock.calls[0]?.[0]?.requestBody?.message?.threadId).toBeUndefined();
   });
+
+  it("puts the original Gmail threadId on users.drafts.create for reply drafts", async () => {
+    const create = vi.fn(async () => ({
+      data: {
+        id: "draft-1",
+        message: { id: "message-1", threadId: "thread-abc", labelIds: ["DRAFT"] },
+      },
+    }));
+    const client = clientFor({ users: { drafts: { create } } });
+
+    await client.createGmailDraft({
+      accountId: "account",
+      to: ["sender@example.com"],
+      subject: "Re: Review",
+      bodyText: "Tomorrow works.",
+      threadId: "thread-abc",
+      inReplyTo: "<id@x>",
+      references: "<id@x>",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      userId: "me",
+      requestBody: {
+        message: {
+          raw: expect.any(String),
+          threadId: "thread-abc",
+        },
+      },
+    });
+  });
+
+  it.each([undefined, "   "] as const)(
+    "refuses a reply draft with threadId %j before calling users.drafts.create",
+    async (threadId) => {
+      const create = vi.fn();
+      const client = clientFor({ users: { drafts: { create } } });
+
+      await expect(
+        client.createGmailDraft({
+          accountId: "account",
+          to: ["sender@example.com"],
+          subject: "Re: Review",
+          bodyText: "Tomorrow works.",
+          ...(threadId === undefined ? {} : { threadId }),
+          inReplyTo: "<id@x>",
+          references: "<id@x>",
+        })
+      ).rejects.toMatchObject({ code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED" });
+      expect(create).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("Gmail mutation receipts", () => {

@@ -44,3 +44,32 @@ describe("sanitizeSpeechText numero sign normalization", () => {
 		expect(sanitizeSpeechText("１２３")).toBe("123");
 	});
 });
+
+describe("sanitizeSpeechText numeric separators", () => {
+	it("keeps decimal points inside a number", () => {
+		expect(sanitizeSpeechText("The total is 3.14 today.")).toBe(
+			"The total is 3.14 today.",
+		);
+		expect(sanitizeSpeechText("Version 2.0.1 shipped")).toBe(
+			"Version 2.0.1 shipped",
+		);
+	});
+
+	it("keeps thousands separators and clock times inside a number", () => {
+		expect(sanitizeSpeechText("It costs $1,299.99 now.")).toBe(
+			"It costs $1,299.99 now.",
+		);
+		expect(sanitizeSpeechText("Population: 1,234,567 people")).toBe(
+			"Population: 1,234,567 people",
+		);
+		expect(sanitizeSpeechText("Meet at 10:30, ok?")).toBe("Meet at 10:30, ok?");
+	});
+
+	it("still spaces marks that end a clause or sit next to words", () => {
+		expect(sanitizeSpeechText("It was 3.Then 4,next")).toBe(
+			"It was 3. Then 4, next",
+		);
+		expect(sanitizeSpeechText("Pick 1,2 or 3")).toBe("Pick 1, 2 or 3");
+		expect(sanitizeSpeechText("Note:4 items.Done")).toBe("Note: 4 items. Done");
+	});
+});

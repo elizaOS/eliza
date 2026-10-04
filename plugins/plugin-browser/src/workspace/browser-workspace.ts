@@ -831,10 +831,14 @@ export async function executeBrowserWorkspaceCommand(
         : findWebBrowserWorkspaceTargetTabId(command);
       clearBrowserWorkspaceElementRefs(getBrowserWorkspaceMode(env), id);
       clearBrowserWorkspaceRuntimeState(getBrowserWorkspaceMode(env), id);
+      // Web mode reports a missing tab as `false`; desktop already 404s.
+      if (!(await closeBrowserWorkspaceTab(id, env))) {
+        throw createBrowserWorkspaceNotFoundError(id);
+      }
       return {
         mode: getBrowserWorkspaceMode(env),
         subaction: command.subaction,
-        closed: await closeBrowserWorkspaceTab(id, env),
+        closed: true,
       };
     }
     case "eval": {
@@ -1142,10 +1146,13 @@ export async function executeBrowserWorkspaceCommand(
           "Eliza browser workspace tab close requires a valid id or index.",
         );
       }
+      if (!(await closeBrowserWorkspaceTab(targetId, env))) {
+        throw createBrowserWorkspaceNotFoundError(targetId);
+      }
       return {
         mode: getBrowserWorkspaceMode(env),
         subaction: command.subaction,
-        closed: await closeBrowserWorkspaceTab(targetId, env),
+        closed: true,
       };
     }
     case "window":
