@@ -866,6 +866,9 @@ async function finalGithubCheck(): Promise<string | undefined> {
         repo: "repo",
         state: "open",
         per_page: 100,
+        page: 1,
+        sort: "created",
+        direction: "asc",
       },
     },
     {
@@ -875,6 +878,9 @@ async function finalGithubCheck(): Promise<string | undefined> {
         repo: "repo",
         state: "open",
         per_page: 100,
+        page: 1,
+        sort: "created",
+        direction: "asc",
       },
     },
     {
