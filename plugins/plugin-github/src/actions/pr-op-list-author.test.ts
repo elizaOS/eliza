@@ -1,8 +1,8 @@
 /**
  * GITHUB_PR list author-filter tests drive the real action handler through a
- * structural GitHubOctokitClient with canonical-cased logins: the repo (REST)
- * branch must match authors case-insensitively, mirroring GitHub's
- * case-insensitive `author:` search qualifier used by the no-repo branch.
+ * structural GitHubOctokitClient: an author filter, with or without a repo,
+ * runs server-side through GitHub's (case-insensitive) `author:` search
+ * qualifier, while an unfiltered repo list uses the REST pulls endpoint.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -34,11 +34,34 @@ const OPEN_PRS = [
   },
 ];
 
+const OTHER_AUTHORS_PAGE = Array.from({ length: 100 }, (_, index) => ({
+  number: 1000 + index,
+  title: `other ${index}`,
+  state: "open",
+  html_url: `https://github.test/org/repo/pull/${1000 + index}`,
+  user: { login: "someone-else" },
+}));
+
 describe("GITHUB_PR list author filter", () => {
-  it("matches authors case-insensitively in the repo branch", async () => {
-    const pullsList = vi.fn().mockResolvedValue({ data: OPEN_PRS });
+  it("finds a repo's PRs by author beyond the newest REST page", async () => {
+    const pullsList = vi.fn().mockResolvedValue({ data: OTHER_AUTHORS_PAGE });
+    const search = vi.fn().mockResolvedValue({
+      data: {
+        items: [
+          {
+            number: 7,
+            title: "older octocat change",
+            state: "open",
+            html_url: "https://github.test/org/repo/pull/7",
+            repository_url: "https://api.github.test/repos/org/repo",
+            user: { login: "octocat" },
+          },
+        ],
+      },
+    });
     const octokit = {
       pulls: { list: pullsList },
+      search: { issuesAndPullRequests: search },
     } as unknown as GitHubOctokitClient;
 
     const result = await prOpAction.handler(
@@ -48,32 +71,49 @@ describe("GITHUB_PR list author filter", () => {
       { op: "list", repo: "org/repo", author: "OctoCat" },
     );
 
-    expect(pullsList).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: "org", repo: "repo" }),
+    expect(search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: "is:pr is:open repo:org/repo author:OctoCat",
+      }),
     );
-    expect(result.success).toBe(true);
+    expect(pullsList).not.toHaveBeenCalled();
     if (result.success && "prs" in result.data) {
-      expect(result.data.prs).toHaveLength(1);
-      expect(result.data.prs[0]?.author).toBe("octocat");
+      expect(result.data.prs).toEqual([
+        expect.objectContaining({
+          repo: "org/repo",
+          number: 7,
+          author: "octocat",
+        }),
+      ]);
+    } else {
+      throw new Error("expected a successful list result");
     }
   });
 
-  it("keeps exact-case matches working in the repo branch", async () => {
+  it("lists a repo without an author filter through the REST endpoint", async () => {
     const pullsList = vi.fn().mockResolvedValue({ data: OPEN_PRS });
+    const search = vi.fn();
     const octokit = {
       pulls: { list: pullsList },
+      search: { issuesAndPullRequests: search },
     } as unknown as GitHubOctokitClient;
 
     const result = await prOpAction.handler(
       createRuntime(octokit),
       {} as never,
       undefined,
-      { op: "list", repo: "org/repo", author: "hubot" },
+      { op: "list", repo: "org/repo" },
     );
 
+    expect(pullsList).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "org", repo: "repo" }),
+    );
+    expect(search).not.toHaveBeenCalled();
     if (result.success && "prs" in result.data) {
-      expect(result.data.prs).toHaveLength(1);
-      expect(result.data.prs[0]?.author).toBe("hubot");
+      expect(result.data.prs.map((pr) => pr.author)).toEqual([
+        "octocat",
+        "hubot",
+      ]);
     } else {
       throw new Error("expected a successful list result");
     }
