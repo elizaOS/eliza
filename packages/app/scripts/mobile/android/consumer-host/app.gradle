@@ -38,8 +38,14 @@ android {
  }
  kotlinOptions { jvmTarget = String.valueOf(profile.toolchain.java) }
  if (profile.runtimeMain) {
-  sourceSets.main.assets.srcDir(new File(profile.runtimeMain, 'assets'))
-  sourceSets.main.assets.exclude('agent/arm64-v8a/**', 'agent/x86_64/**', 'agent/riscv64/**')
+  // AGP's asset merger does not honor AndroidSourceDirectorySet exclusions.
+  def runtimeAssets = tasks.register('stageElizaConsumerRuntimeAssets', Sync) {
+   from new File(profile.runtimeMain, 'assets')
+   exclude 'agent/arm64-v8a/**', 'agent/x86_64/**', 'agent/riscv64/**'
+   into layout.buildDirectory.dir('generated/eliza-consumer-runtime-assets')
+  }
+  sourceSets.main.assets.srcDir(runtimeAssets.map { it.destinationDir })
+  tasks.named('preBuild').configure { dependsOn runtimeAssets }
   sourceSets.main.jniLibs.srcDir(new File(profile.runtimeMain, 'jniLibs'))
   packaging.jniLibs.useLegacyPackaging = true
  }
