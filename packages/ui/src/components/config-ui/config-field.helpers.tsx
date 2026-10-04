@@ -9,9 +9,9 @@
  */
 
 import type { DynamicValue } from "@elizaos/contracts";
+import { resolveDynamic } from "@elizaos/host/protocol";
 import { ChevronDown, X } from "lucide-react";
-import React from "react";
-import {
+import React, {
   useCallback,
   useDeferredValue,
   useEffect,
@@ -25,7 +25,6 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
-import { resolveDynamic } from "../../config/config-catalog";
 import {
   CONFIG_SELECT_FLOATING_LAYER_NAME,
   CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,

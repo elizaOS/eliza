@@ -13,10 +13,9 @@ import type {
   LifeOpsConnectorSide,
 } from "@elizaos/contracts";
 import {
-  useAgentElement,
-  client,
   Button,
   ConfirmDialog,
+  client,
   Dialog,
   DialogContent,
   dispatchNavigateViewEvent,
@@ -30,6 +29,7 @@ import {
   TagEditor,
   Textarea,
   useActiveAgentAuthority,
+  useAgentElement,
   useAppSelector,
 } from "@elizaos/ui";
 

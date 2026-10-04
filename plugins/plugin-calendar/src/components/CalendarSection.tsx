@@ -13,13 +13,13 @@
 
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import {
-  useAgentElement,
   Button,
   Popover,
   PopoverContent,
   PopoverTrigger,
   SegmentedControl,
   Spinner,
+  useAgentElement,
   useAppSelector,
   useViewEvent,
   VIEW_EVENTS,

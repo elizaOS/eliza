@@ -14,14 +14,14 @@ import type {
   LifeOpsIcsCalendarSource,
 } from "@elizaos/contracts";
 import {
-  useAgentElement,
-  client,
   Button,
   Card,
   ConfirmDialog,
+  client,
   Input,
   SemanticForm,
   Switch,
+  useAgentElement,
   useAppSelector,
 } from "@elizaos/ui";
 
