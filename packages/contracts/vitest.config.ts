@@ -5,5 +5,9 @@ export default defineConfig({
     conditions: ["eliza-source"],
     alias: buildWorkspaceSourceAliases(),
   },
-  test: { include: ["src/**/*.test.ts"], testTimeout: 60_000, hookTimeout: 60_000 },
+  test: {
+    include: ["src/**/*.test.ts"],
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
+  },
 });

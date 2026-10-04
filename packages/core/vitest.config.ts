@@ -1,9 +1,9 @@
 /** Configures the deterministic Vitest harness for @elizaos/core test suites. */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 import { repoRoot } from "../../packages/scripts/vitest/repo-root.ts";
 import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases.ts";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 
 const pluginSqlRoot = path.join(
 	getElizaWorkspaceRoot(repoRoot),
