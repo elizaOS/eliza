@@ -2833,11 +2833,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Room CRUD ─────────────────────────────────────────────────────────
 
+  private roomIsVisibleToOwner(room: Room): boolean {
+    // Rooms created without an agentId belong to this database. A stored
+    // agentId for someone else matches the SQL room `agent_id` predicate.
+    return room.agentId === undefined || room.agentId === this.agentId;
+  }
+
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
     const rooms: Room[] = [];
     for (const id of roomIds) {
       const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, id);
-      if (room) rooms.push(room);
+      if (room && this.roomIsVisibleToOwner(room)) rooms.push(room);
     }
     return rooms;
   }
@@ -2846,7 +2852,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (worldIds.length === 0) return;
     const worldSet = new Set(worldIds);
     const rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
-      r.worldId ? worldSet.has(r.worldId as UUID) : false,
+      Boolean(
+        r.worldId &&
+          worldSet.has(r.worldId as UUID) &&
+          this.roomIsVisibleToOwner(r),
+      ),
     );
     const roomIds = rooms
       .map((r) => r.id)
@@ -2861,7 +2871,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => entitySet.has(p.entityId as UUID),
     );
-    return [...new Set(participants.map((p) => p.roomId as UUID))];
+    const roomIds = [...new Set(participants.map((p) => p.roomId as UUID))];
+    const rooms = await this.getRoomsByIds(roomIds);
+    return rooms.flatMap((room) => (room.id ? [room.id] : []));
   }
 
   async getRoomsByWorlds(
@@ -2872,7 +2884,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (worldIds.length === 0) return [];
     const worldSet = new Set(worldIds);
     let rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
-      r.worldId ? worldSet.has(r.worldId as UUID) : false,
+      Boolean(
+        r.worldId &&
+          worldSet.has(r.worldId as UUID) &&
+          this.roomIsVisibleToOwner(r),
+      ),
     );
     const off = offset ?? 0;
     if (off > 0) rooms = rooms.slice(off);
