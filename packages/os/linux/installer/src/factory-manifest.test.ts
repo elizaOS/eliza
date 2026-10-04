@@ -1,10 +1,10 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RELEASE_PUBLIC_KEY_ENV,
   RELEASE_PUBLIC_KEY_FINGERPRINT_ENV,
   RELEASE_REVOKED_KEY_FINGERPRINTS_ENV,
-} from "../../../usb-installer/src/backend/ed25519-trust";
+} from "@elizaos/os-usb-installer/trust";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FactoryManifestError,
   verifyFactoryManifest,

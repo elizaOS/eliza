@@ -1,4 +1,5 @@
 // Safe, streaming raw.zst preparation/write/readback foundation.
+
 import { createHash, type KeyObject } from "node:crypto";
 import { createReadStream, createWriteStream, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,6 +13,7 @@ import {
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { createZstdDecompress } from "node:zlib";
+import { artifactSignaturePayload } from "../../../contracts/image-signature";
 import {
   assertEd25519Signature,
   loadPinnedEd25519PublicKey,
@@ -225,22 +227,6 @@ async function boundedResponseBytes(
     offset += chunk.byteLength;
   }
   return bytes;
-}
-
-function artifactSignaturePayload(image: CanonicalRawImage): Uint8Array {
-  return new TextEncoder().encode(
-    [
-      "elizaOS-artifact-v1",
-      image.url,
-      image.architecture,
-      String(image.sequence),
-      String(image.compressedSize),
-      String(image.expandedSize),
-      image.sha256Compressed,
-      image.sha256Expanded,
-      "",
-    ].join("\n"),
-  );
 }
 
 export function createArtifactSignaturePayload(

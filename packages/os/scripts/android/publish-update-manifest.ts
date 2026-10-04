@@ -2,7 +2,6 @@
 import { spawnSync } from "node:child_process";
 /** Publish only authenticated exact-target contracts; never infer hardware from filenames. */
 import fs from "node:fs";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   loadPolicy,
@@ -90,10 +89,7 @@ export function generateUpdateManifest({
   // them with current local trust/revocation policy, not trust this index alone.
   return { schemaVersion: 2, version, channel, tag, artifacts };
 }
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (import.meta.main) {
   try {
     const [directory, version, channel, tag, repository, output] =
       process.argv.slice(2);
