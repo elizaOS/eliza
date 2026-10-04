@@ -14,8 +14,7 @@
  * and this behaves exactly as it did before.
  */
 
-import { IntentDedupeStore } from "@elizaos/contracts";
-import { routeIntent } from "@elizaos/contracts";
+import { IntentDedupeStore, routeIntent } from "@elizaos/contracts";
 import * as React from "react";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import {

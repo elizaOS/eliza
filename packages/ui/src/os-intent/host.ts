@@ -4,11 +4,11 @@
  * event that keeps untrusted launch text reviewable instead of auto-sending it.
  */
 
+import type { AppliedIntentRecord } from "@elizaos/contracts";
 import {
   decodeDeepLinkIntent,
   type IntentDecodeResult,
 } from "@elizaos/contracts";
-import type { AppliedIntentRecord } from "@elizaos/contracts";
 import { shellLocalStorage } from "../surface-realm-channel";
 
 const DEDUPE_STORAGE_KEY = "eliza:os-intent:applied:v1";
