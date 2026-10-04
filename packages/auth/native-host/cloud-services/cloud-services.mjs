@@ -198,7 +198,9 @@ export function createCloudRoutes({
       } catch {
         throw fail(message("savedSignInNeedsAccountRecovery"), 409);
       }
-      if (saved.kind === "revocation")
+      // A JSON-null or primitive journal carries no revocation to apply; the
+      // per-request readers treat the same bytes as benign ("/cloud/status").
+      if (saved?.kind === "revocation")
         await mutateCredential(() => store.clear());
     }
   })();
@@ -212,7 +214,7 @@ export function createCloudRoutes({
       } catch {
         throw fail(message("savedSignInNeedsAccountRecovery"), 409);
       }
-      if (saved.kind === "revocation")
+      if (saved?.kind === "revocation")
         throw fail(message("finishDisconnectingBeforeUsingCloudServices"), 401);
     }
     return store.read();
@@ -305,8 +307,18 @@ export function createCloudRoutes({
     await credentialWrites;
     const pending = await pendingCredentialStore?.read();
     current(epoch);
-    if (pending && JSON.parse(pending).kind === "revocation")
-      return { state: "signed_out", disconnectPending: true };
+    if (pending) {
+      let saved;
+      try {
+        saved = JSON.parse(pending);
+      } catch {
+        // error-policy:J3 an unparseable saved sign-in is an explicit invalid
+        // state (account recovery), never a fake-valid default or an outage.
+        throw fail(message("savedSignInNeedsAccountRecovery"), 409);
+      }
+      if (saved?.kind === "revocation")
+        return { state: "signed_out", disconnectPending: true };
+    }
     const key = await usableCredential();
     current(epoch);
     if (!key) return { state: "signed_out" };
