@@ -554,6 +554,9 @@ export function createCloudRoutes({
         "/cloud/account/methods/phone/start": "account-phone-start",
         "/cloud/account/methods/phone/verify": "account-phone-verify",
         "/cloud/account/security/status": "account-security-status",
+        "/cloud/account/security/enroll/start": "account-security-enroll-start",
+        "/cloud/account/security/enroll/verify":
+          "account-security-enroll-verify",
         "/cloud/account/security/start": "account-security-start",
         "/cloud/account/security/verify": "account-security-verify",
       };
