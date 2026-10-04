@@ -126,42 +126,30 @@ def normalize_eliza_jsonl(
 # ---------------------------------------------------------------------------
 
 
-def _coerce_tool_call(raw: Any) -> dict[str, Any] | None:
-    """Coerce a tool-call-like dict into our canonical shape.
-
-    Accepts the OpenAI ``function``-wrapper shape and the flat shape;
-    drops anything without a ``name``.
-    """
-    if not isinstance(raw, dict):
-        return None
-    if "function" in raw and isinstance(raw["function"], dict):
-        fn = raw["function"]
-        name = fn.get("name")
-        if not name:
-            return None
-        args = fn.get("arguments", {})
-        if isinstance(args, str):
+def _normalize_tool_calls(raw: Any) -> list[dict[str, Any]]:
+    """Normalize flat/OpenAI calls without silently dropping invalid evidence."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise TrajectoryFormatError("Tool calls must be a list")
+    calls = []
+    for call in raw:
+        if not isinstance(call, dict):
+            raise TrajectoryFormatError("Tool calls must contain objects")
+        function = call.get("function", call)
+        if not isinstance(function, dict) or not isinstance(function.get("name"), str) or not function["name"]:
+            raise TrajectoryFormatError("Tool call requires a nonempty function name")
+        arguments = function.get("arguments", {})
+        if "function" in call and isinstance(arguments, str):
             try:
-                args = json.loads(args)
+                arguments = json.loads(arguments)
             except json.JSONDecodeError:
-                # Keep the raw string — the schema does not constrain
-                # the type of `arguments`.
-                pass
-        return {
-            "name": name,
-            "arguments": args,
-            "id": raw.get("id", ""),
-            "result": raw.get("result"),
-        }
-    name = raw.get("name")
-    if not name:
-        return None
-    return {
-        "name": name,
-        "arguments": raw.get("arguments", {}),
-        "id": raw.get("id", ""),
-        "result": raw.get("result"),
-    }
+                pass  # Incomplete generated JSON remains exact model evidence.
+        calls.append({
+            "name": function["name"], "arguments": arguments,
+            "id": call.get("id", ""), "result": call.get("result"),
+        })
+    return calls
 
 
 def normalize_openclaw_response(
@@ -173,20 +161,19 @@ def normalize_openclaw_response(
 ) -> list[CanonicalEntry]:
     """Normalize OpenClaw ``agent --json`` output.
 
-    Emits one ``CanonicalEntry`` per assistant turn. The conversation
+    Emits one ``CanonicalEntry`` per assistant turn and an explicit incomplete
+    entry for a pending tail. The conversation
     prefix (every message before the assistant turn) is folded into
     ``request.messages``; the assistant ``content`` populates
     ``response.text``; ``tool_calls`` (if any) populate
     ``response.toolCalls`` after coercion.
     """
     messages = response_json.get("messages")
-    if not isinstance(messages, list) or any(not isinstance(msg, dict) for msg in messages):
-        raise TrajectoryFormatError("OpenClaw messages must be a list of objects")
+    if not isinstance(messages, list) or not messages or any(not isinstance(msg, dict) for msg in messages):
+        raise TrajectoryFormatError("OpenClaw messages must be a nonempty list of objects")
     entries: list[CanonicalEntry] = []
     step = 0
     for idx, msg in enumerate(messages):
-        if not isinstance(msg, dict):
-            continue
         if msg.get("role") != "assistant":
             continue
 
@@ -195,12 +182,7 @@ def normalize_openclaw_response(
         if "tools" in response_json:
             request["tools"] = response_json["tools"]
 
-        raw_tool_calls = msg.get("tool_calls") or []
-        tool_calls: list[dict[str, Any]] = []
-        for tc in raw_tool_calls:
-            coerced = _coerce_tool_call(tc)
-            if coerced is not None:
-                tool_calls.append(coerced)
+        tool_calls = _normalize_tool_calls(msg.get("tool_calls"))
 
         response: dict[str, Any] = {}
         text = msg.get("content")
@@ -214,7 +196,7 @@ def normalize_openclaw_response(
         entries.append(
             CanonicalEntry(
                 boundary="openclaw_agent_v1",
-                metadata={"native": response_json},
+                metadata={"native": response_json, "complete": True},
                 request=request,
                 response=response,
                 agent_id="openclaw",
@@ -225,6 +207,16 @@ def normalize_openclaw_response(
             )
         )
         step += 1
+    if messages[-1].get("role") != "assistant":
+        request = {"messages": [dict(message) for message in messages]}
+        if "tools" in response_json:
+            request["tools"] = response_json["tools"]
+        entries.append(CanonicalEntry(
+            boundary="openclaw_agent_v1",
+            metadata={"native": response_json, "complete": False},
+            request=request, response={}, agent_id="openclaw",
+            benchmark_id=benchmark_id, task_id=task_id, step_index=step, model=model,
+        ))
     return entries
 
 
@@ -298,15 +290,12 @@ def normalize_hermes_samples_jsonl(
         response: dict[str, Any] = {}
         if split_idx != -1:
             final = msgs[split_idx]
-            text_value = _stringify_tool_value(final.get("value"))
-            if text_value:
-                response["text"] = text_value
-            raw_calls = final.get("tool_calls") or final.get("toolCalls") or []
-            tool_calls = [
-                coerced
-                for raw_call in raw_calls
-                if (coerced := _coerce_tool_call(raw_call)) is not None
-            ] if isinstance(raw_calls, list) else []
+            value = final.get("value", "")
+            if isinstance(value, str):
+                response["text"] = value
+            elif value is not None:
+                response["content"] = value
+            tool_calls = _normalize_tool_calls(final.get("tool_calls", final.get("toolCalls")))
             if tool_calls:
                 response["toolCalls"] = tool_calls
 

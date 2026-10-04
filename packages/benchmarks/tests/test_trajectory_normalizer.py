@@ -533,3 +533,30 @@ def test_alignment_uses_recorded_step_indices() -> None:
     assert align_by_step([left], [right]) == [(left, None), (None, right)]
     with pytest.raises(TrajectoryFormatError, match="Duplicate"):
         align_by_step([left, left], [])
+
+
+@pytest.mark.parametrize("prefix", [[], [{"role": "assistant", "content": "working"}]])
+def test_openclaw_unfinished_transcript_remains_explicit(prefix) -> None:
+    row = {"messages": prefix + [{"role": "user", "content": "still pending"}], "tools": []}
+    entries = normalize_openclaw_response(row, benchmark_id="b", task_id="t")
+    assert entries[-1].request == row
+    assert entries[-1].response == {}
+    assert entries[-1].metadata == {"native": row, "complete": False}
+
+
+@pytest.mark.parametrize("calls", [{}, [None], [{"arguments": {}}], [{"function": {"name": 4}}]])
+def test_malformed_tool_calls_fail_explicitly(calls, tmp_path: Path) -> None:
+    with pytest.raises(TrajectoryFormatError):
+        normalize_openclaw_response({"messages": [{"role": "assistant", "tool_calls": calls}]}, benchmark_id="b", task_id="t")
+    path = tmp_path / "samples.jsonl"
+    _write_jsonl(path, [{"messages": [{"from": "gpt", "tool_calls": calls}]}])
+    with pytest.raises(TrajectoryFormatError):
+        normalize_hermes_samples_jsonl(path, benchmark_id="b", task_id="t")
+
+
+def test_hermes_structured_assistant_content_stays_structured(tmp_path: Path) -> None:
+    content = [{"type": "text", "text": "answer"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}]
+    path = tmp_path / "samples.jsonl"
+    _write_jsonl(path, [{"messages": [{"from": "gpt", "value": content}]}])
+    entry = normalize_hermes_samples_jsonl(path, benchmark_id="b", task_id="t")[0]
+    assert entry.response == {"content": content}
