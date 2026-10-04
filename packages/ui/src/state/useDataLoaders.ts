@@ -80,6 +80,26 @@ function hasConversationBootstrapMessage(
       message.role === "assistant" && shouldKeepConversationMessage(message),
   );
 }
+const STORE_MESSAGE_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * Same-millisecond order for streamed rows. Two store rows follow the store's
+ * UUID tie-break; any client-generated id (`local-*`, `temp-*`) keeps arrival
+ * order, since a local command and its reply share one timestamp and
+ * `local-assistant-*` sorts before `local-user-*`.
+ */
+function compareStreamedConversationMessages(
+  left: ConversationMessage,
+  right: ConversationMessage,
+): number {
+  if (left.timestamp !== right.timestamp)
+    return left.timestamp - right.timestamp;
+  if (!STORE_MESSAGE_ID_RE.test(left.id) || !STORE_MESSAGE_ID_RE.test(right.id))
+    return 0;
+  const leftId = left.id.toLowerCase();
+  const rightId = right.id.toLowerCase();
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+}
 function localConversationMessageLineage(
   message: ConversationMessage,
 ): string | null {
@@ -1203,13 +1223,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       for (const row of changed) rows.set(row.id, row);
       // Streamed durable rows follow the store's UUID tie-break order. Local
       // optimistic rows retain insertion order in mergeMessagesChronologically.
-      const orderedRows = [...rows.values()].sort((left, right) => {
-        if (left.timestamp !== right.timestamp)
-          return left.timestamp - right.timestamp;
-        const leftId = left.id.toLowerCase();
-        const rightId = right.id.toLowerCase();
-        return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
-      });
+      const orderedRows = [...rows.values()].sort(
+        compareStreamedConversationMessages,
+      );
       setConversationMessages(
         mergeMessagesChronologically(
           orderedRows.filter((row) => row.assistantEphemeral !== true),
