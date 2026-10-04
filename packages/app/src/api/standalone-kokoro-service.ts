@@ -65,9 +65,12 @@ export class StandaloneKokoroService {
     const work = new Promise<void>((resolve, reject) => {
       this.rejectBoot = reject;
       let text = "";
+      // Cold model loading and first-use compute compilation can exceed 15 seconds.
+      // Readiness stays false until the worker completes its synthesis probe;
+      // cancellation and pipe failure still retire this bounded wait immediately.
       const timer = setTimeout(() => {
         if (this.child === child) this.stop();
-      }, 15000);
+      }, 60000);
       const failed = () => {
         clearTimeout(timer);
         if (this.child === child) this.stop();
