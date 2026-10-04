@@ -6,7 +6,7 @@
  * setters are returned so AppContext can wire them.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../api";
 import { resumeRemoteFirstRunAfterPairing } from "../first-run/adopt-remote-first-run";

@@ -4,7 +4,7 @@
  */
 // @vitest-environment jsdom
 
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
+import type { UiSpec } from "@elizaos/host/protocol";
 import {
   cleanup,
   fireEvent,

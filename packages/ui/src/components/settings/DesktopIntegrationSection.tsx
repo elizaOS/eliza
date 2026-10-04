@@ -6,7 +6,7 @@
  * state.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";
 import { useAppSelector } from "../../state";

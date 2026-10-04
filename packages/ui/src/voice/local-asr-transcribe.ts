@@ -15,7 +15,7 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";

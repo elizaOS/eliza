@@ -16,8 +16,6 @@ import {
   type MeetingJoinRequest,
   type MeetingPlatform,
   type MeetingSession,
-} from "@elizaos/core/meetings";
-import {
   type Transcript,
   type TranscriptCapturePrivacyState,
   type TranscriptConsentState,
@@ -26,7 +24,7 @@ import {
   type TranscriptStatus,
   type TranscriptSummary,
   transcriptCapturePrivacyState,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import { AudioLines } from "lucide-react";
 import type * as React from "react";
 import { useAgentElement } from "../../agent-surface";

@@ -14,8 +14,8 @@ import type {
   MessageExample,
   MessageExampleGroup,
 } from "@elizaos/core";
+import * as fs from "@elizaos/core";
 import { ElizaError, logger, resolveStateDir, Service } from "@elizaos/core";
-import * as fs from "@elizaos/core/utils/filesystem";
 import { z } from "zod";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";

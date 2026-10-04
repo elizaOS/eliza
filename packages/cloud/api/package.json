@@ -55,7 +55,10 @@
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-scheduling": "workspace:*"
+    "@elizaos/plugin-scheduling": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",

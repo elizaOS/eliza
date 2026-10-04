@@ -22,7 +22,7 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import dotenv from "dotenv";
 import {

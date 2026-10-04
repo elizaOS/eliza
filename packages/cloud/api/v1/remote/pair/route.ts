@@ -20,7 +20,7 @@ import {
   isRemoteControllerPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import { Hono } from "hono";
 import {
   deriveRemotePairingCodeVerifier,
@@ -29,7 +29,7 @@ import {
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const PAIRING_CODE_TTL_SECONDS = 5 * 60;
 const DEFAULT_GRANT_TTL_SECONDS = 8 * 60 * 60;

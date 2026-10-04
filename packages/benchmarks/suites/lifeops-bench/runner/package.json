@@ -22,18 +22,20 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-groq": "beta",
     "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "dotenv": "^17.2.3",
     "zod": "^4.6.5",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/plugin-relationships": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-anthropic": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "25.6.2",

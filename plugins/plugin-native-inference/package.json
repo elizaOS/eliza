@@ -214,12 +214,15 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "ws": "^8.21.3",
-    "llama-cpp-capacitor": "^0.1.5",
-    "@huggingface/tokenizers": "0.1.3",
+    "@elizaos/host": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@huggingface/tokenizers": "0.1.3",
+    "llama-cpp-capacitor": "^0.1.5",
+    "ws": "^8.21.3",
     "yaml": "^2.8.2",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.12.2",

@@ -8,8 +8,8 @@
  * exported fallback builders directly with real core envelope fixtures.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { userReferenceLogView, wrapExternalContent } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import {
   buildCalendarEventDisambiguationFallback,

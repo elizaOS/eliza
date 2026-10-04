@@ -52,12 +52,12 @@
  * EVM/Solana wallet surface, mirroring the /api/wallet route gate).
  */
 
+import type { WalletBalancesResponse } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   logger,
   type NotificationInput,
   ServiceType,
-  type WalletBalancesResponse,
 } from "@elizaos/core";
 
 import type { DispatchResult } from "@elizaos/plugin-scheduling";

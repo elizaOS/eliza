@@ -7,8 +7,8 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AgentRuntime, type Memory } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import type { AgentRuntime, Memory } from "@elizaos/core";
 import {
   type EntityStore,
   type RelationshipStore,

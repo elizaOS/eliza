@@ -30,7 +30,7 @@ import {
   EchoReferenceBuffer,
   NlmsEchoCanceller,
   platformPlaybackDelaySamples,
-} from "@elizaos/core/voice/aec";
+} from "@elizaos/plugin-local-inference/protocol";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,

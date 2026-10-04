@@ -5,7 +5,7 @@
  * Barrel-exported from components/index.ts for consumers outside the Settings
  * section registry.
  */
-import { ASR_PROVIDERS } from "@elizaos/core/voice";
+import { ASR_PROVIDERS } from "@elizaos/host/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {

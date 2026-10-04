@@ -24,7 +24,7 @@ import {
   collectPluginNames as upstreamCollectPluginNames,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 import {

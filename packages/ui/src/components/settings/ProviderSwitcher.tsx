@@ -4,8 +4,8 @@
  * runtime state; this surface keeps the provider panels presentational.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
-import { VOICE_PROVIDERS } from "@elizaos/core/voice";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
+import { VOICE_PROVIDERS } from "@elizaos/host/protocol";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import {

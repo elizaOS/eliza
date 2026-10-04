@@ -4,10 +4,7 @@
  * tokens; surfaces select one variant at render time.
  */
 
-import {
-  trimEndCharacters,
-  trimStartCharacters,
-} from "@elizaos/core/utils/string-boundaries";
+import { trimEndCharacters, trimStartCharacters } from "@elizaos/core/protocol";
 import { LOGO_FILES } from "../brand/index.js";
 
 export const BRAND_ASSET_BASE_PATH = "/brand" as const;

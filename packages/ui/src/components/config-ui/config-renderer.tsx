@@ -6,6 +6,14 @@
  * `ConfigRendererHandle` so a parent form can gate submission. Group icons and
  * plugin theme tokens style the output; secret reveal is delegated to the caller.
  */
+
+import type { JsonSchemaObject, ResolvedField } from "@elizaos/host/protocol";
+import {
+  evaluateFieldVisibility,
+  matchesSafeUntrustedRegexPattern,
+  resolveFields,
+  runValidation,
+} from "@elizaos/host/protocol";
 import type React from "react";
 import {
   forwardRef,
@@ -18,14 +26,6 @@ import type {
   FieldRegistry,
   FieldRenderer,
   FieldRenderProps,
-  JsonSchemaObject,
-  ResolvedField,
-} from "../../config/config-catalog";
-import {
-  evaluateFieldVisibility,
-  matchesSafeUntrustedRegexPattern,
-  resolveFields,
-  runValidation,
 } from "../../config/config-catalog";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";

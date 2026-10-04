@@ -6,7 +6,6 @@
  * callers.
  */
 
-export { defaultOwnerEntityId } from "@elizaos/core/lifeops-normalize/owner-entity";
 export {
   fail,
   lifeOpsErrorMessage,
@@ -31,4 +30,5 @@ export {
   normalizeValidTimeZone,
   requireAgentId,
   requireNonEmptyString,
-} from "@elizaos/core/lifeops-normalize/service-normalize";
+} from "@elizaos/contracts";
+export { defaultOwnerEntityId } from "@elizaos/host";

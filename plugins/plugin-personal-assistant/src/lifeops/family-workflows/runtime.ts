@@ -6,8 +6,8 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   CalendarService,

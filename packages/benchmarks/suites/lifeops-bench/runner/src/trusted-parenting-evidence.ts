@@ -8,8 +8,8 @@
  * claims about the world state.
  */
 
-import { type AgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   createHouseholdCoordinationService,
   createParentingSubjectLocationAttribute,
@@ -21,7 +21,7 @@ import {
 } from "@elizaos/plugin-personal-assistant";
 import { resolveOwnerFactStore } from "@elizaos/plugin-personal-assistant/lifeops/owner/fact-store";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { type BenchmarkSession } from "./server-utils.js";
+import type { BenchmarkSession } from "./server-utils.js";
 export const TRUSTED_PARENTING_STATE_SCHEMA =
   "lifeops.trusted-parenting-state.v1" as const;
 export const G35_PARENTING_SCENARIO_ID =

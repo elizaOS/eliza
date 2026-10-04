@@ -4,7 +4,7 @@
  * provisional semantics. Turn admission and durable delivery remain with routes.
  */
 import type http from "node:http";
-import type { ChatToolCallEvent, ChatTurnStatus } from "@elizaos/core";
+import type { ChatToolCallEvent, ChatTurnStatus } from "@elizaos/contracts";
 import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
 
 export function initSse(res: http.ServerResponse): void {

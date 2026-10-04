@@ -7,13 +7,13 @@
  * can land here without a chunk fetch.
  */
 
-import { getStylePresets } from "@elizaos/core/character-presets";
-import { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character-message-examples";
+import { normalizeCharacterMessageExamples } from "@elizaos/core/protocol";
 import {
+  getStylePresets,
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 import {
   type ChangeEvent,
   type ComponentPropsWithoutRef,

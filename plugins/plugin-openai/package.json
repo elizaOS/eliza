@@ -48,7 +48,8 @@
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",
     "js-tiktoken": "^1.0.21",
-    "gpt-tokenizer": "^4.0.0"
+    "gpt-tokenizer": "^4.0.0",
+    "@elizaos/host": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

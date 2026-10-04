@@ -11,8 +11,10 @@ import {
   OPTIMIZED_PROMPT_SERVICE,
   type Plugin,
 } from "@elizaos/core";
-import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  installHttpPluginLifecycle,
+} from "@elizaos/host/protocol";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import {
   createTestPgliteDataDir,

@@ -2,7 +2,7 @@
  * Defines shell reducer state for overlays, launcher mode, notifications, and
  * surface coordination.
  */
-import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,

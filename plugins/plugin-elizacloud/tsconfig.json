@@ -25,7 +25,7 @@
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

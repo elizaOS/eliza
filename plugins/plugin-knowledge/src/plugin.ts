@@ -16,13 +16,13 @@ import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import {
-  type HttpPlugin as Plugin,
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/host/protocol";
 import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {

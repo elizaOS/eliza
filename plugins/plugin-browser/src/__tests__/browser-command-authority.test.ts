@@ -5,11 +5,11 @@
 
 import {
   computeInteractionActionDigest,
-  type IAgentRuntime,
   INTERACTION_CONTRACT_VERSION,
   InteractionConfirmationCoordinator,
   type InteractionSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts/node";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createBrowserUploadInteractionAction,

@@ -3,13 +3,13 @@
  * and selection metadata without coupling those contracts to agent controls.
  */
 
-import type { ProviderRuntimeEligibility } from "@elizaos/core/contracts/coding-agent-capabilities";
+import type { ProviderRuntimeEligibility } from "@elizaos/contracts";
 import type {
   AccountsListProvider,
   AccountsListResponse,
 } from "./client-agent";
 
-export type { ProviderRuntimeEligibility } from "@elizaos/core/contracts/coding-agent-capabilities";
+export type { ProviderRuntimeEligibility } from "@elizaos/contracts";
 export interface ProviderSelectionState {
   activeAccountId: string | null;
   reason:

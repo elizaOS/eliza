@@ -3,7 +3,7 @@
  * re-exported language-code primitives owned by @elizaos/core.
  */
 
-import { normalizeLanguage } from "@elizaos/core/i18n/language";
+import { normalizeLanguage } from "@elizaos/core/protocol";
 import {
   DEFAULT_UI_LANGUAGE,
   ensureLanguageLoaded,

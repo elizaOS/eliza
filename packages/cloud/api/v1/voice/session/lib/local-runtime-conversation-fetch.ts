@@ -11,7 +11,7 @@ import {
   parseVoiceUiContext,
   REALTIME_VOICE_CLIENT_TRANSPORT,
   type VoiceUiContext,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 import {
   VOICE_CHANNEL_TYPE,
   VOICE_STREAM_PROTOCOL,

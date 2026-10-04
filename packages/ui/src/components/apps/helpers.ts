@@ -10,10 +10,10 @@ import type { EnabledViewKinds } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,
+  isViewVisible,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
-} from "@elizaos/core/contracts/apps";
-import { isViewVisible } from "@elizaos/core/views/view-kind";
+} from "@elizaos/core/protocol";
 import type { RegistryAppInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config-store";
 import {

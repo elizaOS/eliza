@@ -15,10 +15,10 @@ import type {
   ViewKind,
 } from "@elizaos/core";
 import {
+  isViewVisible,
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
-} from "@elizaos/core/views/surface-manifest";
-import { isViewVisible } from "@elizaos/core/views/view-kind";
+} from "@elizaos/core/protocol";
 import { hasStewardAuthedCookie } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { X } from "lucide-react";
 import {

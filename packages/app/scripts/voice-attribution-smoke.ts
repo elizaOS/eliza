@@ -37,7 +37,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { buildVoiceTurnSignal } from "@elizaos/core/voice/respond-gate";
+import { buildVoiceTurnSignal } from "@elizaos/plugin-local-inference/protocol";
 import { handleLiveVoiceAttribution } from "@elizaos/plugin-local-inference/runtime/voice-entity-binding";
 import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
 import {

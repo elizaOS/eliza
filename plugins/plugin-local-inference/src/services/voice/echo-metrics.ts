@@ -8,8 +8,8 @@
 import {
 	computeErle,
 	computeFarActiveErle,
-	NlmsEchoCanceller,
-} from "@elizaos/core/voice/aec";
+} from "./echo-metrics-calculation.js";
+import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
 
 export { computeErle, computeFarActiveErle };
 

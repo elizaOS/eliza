@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-wallet",
   "version": "2.0.3-beta.7",
-  "description": "Non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
+  "description": "Non-custodial wallet for elizaOS agents \u2014 EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/eliza-ai/eliza/tree/main/eliza/plugins/plugin-wallet",
@@ -80,9 +80,10 @@
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@lifi/sdk": "^3.7.9",
-    "lucide-react": "^1.0.0",
     "@meteora-ag/dlmm": "^1.9.7",
     "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
     "@solana/spl-token": "0.4.14",
@@ -93,11 +94,12 @@
     "bs58": "^6.0.0",
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0",
+    "lucide-react": "^1.0.0",
     "tweetnacl": "^1.0.3",
     "uuid": "^11.1.0",
     "viem": "^2.56.9",
     "zod": "^4.6.5",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

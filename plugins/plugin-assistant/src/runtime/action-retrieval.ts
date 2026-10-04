@@ -5,12 +5,13 @@
  * fusion into a complete relevance-ranked catalog.
  */
 
-import { logger, matchActionWildcardParts } from "@elizaos/core";
 import {
   collectPreparedKeywordTermMatches,
+  logger,
+  matchActionWildcardParts,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
-} from "@elizaos/core/i18n/keyword-matching";
+} from "@elizaos/core";
 import {
   type ActionCatalog,
   type ActionCatalogParent,

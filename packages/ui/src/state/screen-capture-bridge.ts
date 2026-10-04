@@ -7,7 +7,7 @@ import { Capacitor } from "@capacitor/core";
 import {
   normalizeScreenCaptureRequestContract,
   type ScreenCaptureRequestContract,
-} from "@elizaos/core/contracts/screen-capture";
+} from "@elizaos/contracts";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
 import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 

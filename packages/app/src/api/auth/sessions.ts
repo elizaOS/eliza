@@ -20,11 +20,11 @@ import {
   protectedTeeEnvironment,
 } from "@elizaos/agent/security/protected-profile-state";
 import { ElizaError, logger } from "@elizaos/core";
+import { isLoopbackBindHost } from "@elizaos/core/protocol";
 import {
-  isLoopbackBindHost,
   type RuntimeEnvRecord,
   resolveApiBindHost,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import {
   CSRF_COOKIE_NAME,
   LAST_ACTIVITY_HEADER_NAME,

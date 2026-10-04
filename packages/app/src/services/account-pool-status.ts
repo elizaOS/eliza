@@ -22,7 +22,7 @@ import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import {
   type AccountPool,
   getDefaultAccountPool,

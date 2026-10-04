@@ -4,8 +4,10 @@
  */
 
 import { logger, promoteSubactionsToActions } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { isAndroidMobile } from "@elizaos/core/runtime-env";
+import {
+  isAndroidMobile,
+  type HttpPlugin as Plugin,
+} from "@elizaos/host/protocol";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
 import { OcrBridgeService } from "./ocr-bridge";

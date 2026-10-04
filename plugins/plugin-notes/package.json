@@ -36,10 +36,12 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "react": "^19.3.0",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"

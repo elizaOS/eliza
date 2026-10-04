@@ -1,4 +1,5 @@
 import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
+
 /**
  * Authentication and proxy boundary for dedicated-agent subdomains.
  *
@@ -17,8 +18,8 @@ import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
  * entrypoint stays thin (Cloudflare startup-CPU budget).
  */
 
+import { renderCloudPairHandoffHtml } from "@elizaos/contracts";
 import { isInferenceTraceId } from "@elizaos/core";
-import { renderCloudPairHandoffHtml } from "@elizaos/core/contracts/cloud-pair";
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,

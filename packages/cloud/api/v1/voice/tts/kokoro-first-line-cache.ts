@@ -11,7 +11,7 @@
  * unit-testable in isolation; the route wires these into the existing
  * `getCloudFirstLineCacheService` get/put paths.
  */
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/core/voice/first-sentence-snip";
+import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/plugin-local-inference/protocol";
 import {
   type CloudFirstLineCacheKey,
   fingerprintCloudVoiceSettings,

@@ -24,11 +24,12 @@
     "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/testing/progressive-content-target": [
         "../../packages/testing/src/progressive-content-target.ts"
-      ]
-    }
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+    },
+    "customConditions": ["eliza-source"]
   },
   "include": ["./**/*"],
   "exclude": [

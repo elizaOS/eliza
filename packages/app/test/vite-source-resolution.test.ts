@@ -343,16 +343,11 @@ describe("workspace package resolution", () => {
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core/views/view-interact-protocol",
+            "@elizaos/core/protocol",
             path.join(appRoot, "src/main.tsx"),
           );
         expect(resolved?.id).toBe(
-          normalizePath(
-            path.resolve(
-              appRoot,
-              "../core/src/views/view-interact-protocol.ts",
-            ),
-          ),
+          normalizePath(path.resolve(appRoot, "../core/src/protocol.ts")),
         );
         for (const runtimeImport of [
           "@elizaos/core",

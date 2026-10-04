@@ -18,6 +18,11 @@
  */
 
 import type {
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+} from "@elizaos/contracts";
+import { calendarDateKey, resolveCalendarTimeZone } from "@elizaos/contracts";
+import type {
   Action,
   ActionExample,
   ActionResult,
@@ -33,20 +38,12 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import {
-  calendarDateKey,
-  resolveCalendarTimeZone,
-} from "@elizaos/core/lifeops-normalize/calendar-time-zone";
 import type { MessageRef } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import {
   resolveCalendarWindow,
   resolveNextCalendarEventWindow,
 } from "@elizaos/plugin-calendar";
-import type {
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-} from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,

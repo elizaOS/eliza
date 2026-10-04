@@ -9,7 +9,7 @@
  * affordance for reauth-required accounts (#19884).
  */
 
-import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/connector-account-catalog";
+import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/protocol";
 import { KeyRound, RefreshCw, Star, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {

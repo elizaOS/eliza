@@ -10,7 +10,7 @@
 import {
   type CloudPairExchangeResponse,
   isCloudPairAgentId,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/contracts";
 import { Hono } from "hono";
 import { AuthenticationError, errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -20,7 +20,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));

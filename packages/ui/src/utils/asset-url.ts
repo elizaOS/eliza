@@ -7,7 +7,7 @@
  * initial startup and resolve assets against that stable base.
  */
 
-import { getElizaApiBase } from "@elizaos/core/utils/eliza-globals";
+import { getElizaApiBase } from "@elizaos/host/protocol";
 import { getBootConfig } from "../config/boot-config.js";
 
 type AssetUrlResolveOptions = {

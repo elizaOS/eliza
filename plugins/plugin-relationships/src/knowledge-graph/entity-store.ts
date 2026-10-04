@@ -7,26 +7,26 @@
  * SQLite operations are atomic and refuse selection of another agent's graph.
  */
 import crypto from "node:crypto";
-import { type IAgentRuntime } from "@elizaos/core";
 import {
-  type Entity,
-  type EntityAttribute,
+  type KnowledgeGraphEntity as Entity,
+  type LifeOpsEntityAttribute as EntityAttribute,
   type EntityFilter,
-  type EntityIdentity,
-  type EntityIdentityAddedVia,
+  type LifeOpsEntityIdentity as EntityIdentity,
+  type LifeOpsEntityIdentityAddedVia as EntityIdentityAddedVia,
   type EntityResolveCandidate,
-  type EntityState,
-  type EntityVisibility,
+  type LifeOpsEntityState as EntityState,
+  type LifeOpsEntityVisibility as EntityVisibility,
   normalizeEntityConnectorAccountId,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   AUTO_MERGE_CONFIDENCE_THRESHOLD,
   decideIdentityOutcome,
   findIdentityMatches,
   foldIdentity,
   mergeEntities,
-} from "@elizaos/core/knowledge-graph/merge";
+} from "../identity-merge.js";
 import {
   type ConfirmEmailRecipientInput,
   type ConfirmedEmailRecipient,

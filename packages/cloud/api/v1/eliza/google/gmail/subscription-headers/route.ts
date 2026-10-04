@@ -5,7 +5,7 @@
  * matching the query — used by the subscription-cleanup tooling.
  */
 
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";

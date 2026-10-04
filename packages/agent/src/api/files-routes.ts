@@ -8,10 +8,10 @@
 import {
   type IAgentRuntime,
   type IFileStorageService,
-  type Route,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import type { Route } from "@elizaos/host/protocol";
 
 import { selectFilesForViewer } from "./files-disclosure.ts";
 

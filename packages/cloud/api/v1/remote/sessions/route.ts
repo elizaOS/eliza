@@ -5,13 +5,13 @@
  * scoped to the caller's organization.
  */
 
-import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/core/contracts/remote-control";
+import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/contracts";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../host-auth";
 
 const PAIRING_CODE_TTL_SECONDS = 5 * 60;

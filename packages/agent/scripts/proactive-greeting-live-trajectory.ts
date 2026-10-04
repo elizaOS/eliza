@@ -12,11 +12,8 @@
  *      bun packages/agent/scripts/proactive-greeting-live-trajectory.ts
  */
 
-import {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  type IAgentRuntime,
-  type ViewSwitchedPayload,
-} from "@elizaos/core";
+import type { IAgentRuntime, ViewSwitchedPayload } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 
 import { renderLiveStateForScope } from "../src/providers/page-scoped-live-state.ts";
 import {

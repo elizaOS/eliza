@@ -21,7 +21,7 @@ import type {
 	ProviderId,
 	ProviderMeta,
 	ProviderStatus,
-} from "@elizaos/core/contracts/local-inference-providers";
+} from "@elizaos/contracts";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";

@@ -2,6 +2,19 @@
  * Formatting helpers that render Google calendar/Gmail feed DTOs into the text
  * projections the assistant's providers inject into the model prompt.
  */
+
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsGmailBatchReplyDraftsFeed,
+  LifeOpsGmailMessageSummary,
+  LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendationsFeed,
+  LifeOpsGmailReplyDraft,
+  LifeOpsGmailSearchFeed,
+  LifeOpsGmailTriageFeed,
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+} from "@elizaos/contracts";
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -14,18 +27,6 @@ import {
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsGmailBatchReplyDraftsFeed,
-  LifeOpsGmailMessageSummary,
-  LifeOpsGmailNeedsResponseFeed,
-  LifeOpsGmailRecommendationsFeed,
-  LifeOpsGmailReplyDraft,
-  LifeOpsGmailSearchFeed,
-  LifeOpsGmailTriageFeed,
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-} from "../../contracts/index.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

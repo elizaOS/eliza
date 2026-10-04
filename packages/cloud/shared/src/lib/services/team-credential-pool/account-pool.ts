@@ -8,7 +8,7 @@
  * runtime dependency on app.
  */
 
-import { type LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
+import { type LinkedAccountConfig } from "@elizaos/host/protocol";
 import {
   type AccountPool,
   type AccountPoolDeps,

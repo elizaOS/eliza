@@ -17,13 +17,14 @@
     "rootDir": "./src",
     "types": ["node"],
     "paths": {
-      "@elizaos/core/*": ["../../packages/core/dist/*"],
       "@elizaos/ui/api/*": ["../../packages/ui/dist/api/*"],
       "@elizaos/ui/components/*": ["../../packages/ui/dist/components/*"],
       "@elizaos/ui/state/*": ["../../packages/ui/dist/state/*"],
       "@elizaos/ui/utils/*": ["../../packages/ui/dist/utils/*"],
-      "@elizaos/ui/*": ["../../packages/ui/dist/*"]
-    }
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
+      "@elizaos/core/protocol": ["../../packages/core/dist/protocol"]
+    },
+    "customConditions": ["eliza-source"]
   },
   "include": ["src/ui", "src/ui.ts", "src/register.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]

@@ -15,11 +15,11 @@
     "paths": {
       "@elizaos/app": ["./src/index.ts"],
       "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
-      "@elizaos/core/*": ["../core/dist/*"],
       "@elizaos/plugin-elizacloud/*": [
         "../../plugins/plugin-elizacloud/dist/*"
       ],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"]
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/core/protocol": ["../core/dist/protocol"]
     }
   },
   "exclude": [

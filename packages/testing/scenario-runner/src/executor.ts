@@ -31,12 +31,12 @@ import {
   validateUuid,
 } from "@elizaos/core";
 import {
+  getHttpRuntime,
   type RouteBodyValue,
   type RouteRequest,
   type RouteResponse,
-} from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
-import { type VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
+} from "@elizaos/host/protocol";
+import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import { computeIdentityRequestDigest } from "@elizaos/plugin-sql";
 import {
   type CapturedAction,
@@ -87,10 +87,10 @@ import {
 } from "./scenario-background-memory";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import { resolveScenarioTurnSender } from "./turn-sender.ts";
-import {
-  type FinalCheckReport,
-  type RunnerContext,
-  type ScenarioReport,
+import type {
+  FinalCheckReport,
+  RunnerContext,
+  ScenarioReport,
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
 import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";

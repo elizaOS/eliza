@@ -12,7 +12,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/core/meetings";
+import { MEETING_PLATFORM_LABELS } from "@elizaos/core/protocol";
 import type { MeetingService } from "../service.js";
 import {
   MEETING_URL_PARAMETER,

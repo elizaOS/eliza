@@ -27,19 +27,21 @@ import { Readable } from "node:stream";
 import {
   type AccessContext,
   type AgentRuntime,
-  assertPublicRouteIntent,
   ElizaError,
-  getHttpRuntime,
   type IAgentRuntime,
-  type LegacyRouteHandler,
   logger,
+} from "@elizaos/core";
+import {
+  assertPublicRouteIntent,
+  getHttpRuntime,
+  type LegacyRouteHandler,
   type PaymentEnabledRoute,
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import type { X402PluginModule } from "./x402-contract.ts";

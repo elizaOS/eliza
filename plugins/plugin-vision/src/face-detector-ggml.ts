@@ -11,7 +11,8 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, resolveAliasedEnvValue } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { getSharp } from "./image/sharp-compat";
 import type { BoundingBox } from "./types";
 

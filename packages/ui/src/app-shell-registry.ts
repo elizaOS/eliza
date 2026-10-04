@@ -12,7 +12,7 @@ import type {
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
-import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
+import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
 import type { ComponentType } from "react";
 import type { OverlayApp } from "./apps/overlay-app-api.js";
 import { getAllOverlayApps } from "./apps/overlay-app-registry.js";

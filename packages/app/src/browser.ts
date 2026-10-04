@@ -9,7 +9,11 @@
 // Registration-surface contracts live in @elizaos/core (React-free canonical
 // home); import them from there rather than the React package.
 
-export { resolveAppBranding } from "@elizaos/core/config/app-config";
+export {
+  type AutomationNodeContributorContext,
+  registerAutomationNodeContributor,
+  resolveAppBranding,
+} from "@elizaos/host/protocol";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
@@ -48,10 +52,6 @@ export {
   resolveIosRuntimeConfig,
 } from "@elizaos/ui/platform/ios-runtime";
 export { useApp } from "@elizaos/ui/state/useApp";
-export {
-  type AutomationNodeContributorContext,
-  registerAutomationNodeContributor,
-} from "./api/automation-node-contributors";
 export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,
@@ -67,7 +67,7 @@ export {
 } from "./runtime/desktop";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 
 function unsupportedServerOperation(): never {
   throw new ElizaError(

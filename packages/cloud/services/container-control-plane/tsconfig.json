@@ -11,9 +11,9 @@
       "@/db/*": ["../../shared/src/db/*"],
       "@/types/*": ["../../shared/src/types/*"],
       "@elizaos/cloud-shared/*": ["../../shared/src/*"],
-      "@elizaos/core/*": ["../../../../packages/core/src/*"],
       "@/*": ["../../../*"],
-      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"]
+      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
+      "@elizaos/core/protocol": ["../../../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*", "../../shared/src/types/**/*.d.ts"],

@@ -11,9 +11,9 @@
 
 import {
   isPermissionId,
+  isViewVisible,
   type PermissionId,
-} from "@elizaos/core/contracts/permissions";
-import { isViewVisible } from "@elizaos/core/views/view-kind";
+} from "@elizaos/core/protocol";
 import {
   Suspense,
   useCallback,

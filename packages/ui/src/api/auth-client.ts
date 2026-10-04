@@ -9,7 +9,7 @@
  */
 
 import type { RoleGateRole } from "@elizaos/core";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,

@@ -19,7 +19,7 @@
 import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 import * as zod from "zod";
 import {
   type EffectiveElizaConfigSnapshot,

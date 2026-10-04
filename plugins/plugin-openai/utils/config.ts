@@ -7,7 +7,7 @@
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 
 function getEnvValue(key: string): string | undefined {
   const value = process.env[key];

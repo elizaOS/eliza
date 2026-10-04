@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { setCloudRuntimeRequestIdentity } from '@elizaos/core/contracts/cloud-runtime-request';
+import { setCloudRuntimeRequestIdentity } from '@elizaos/contracts';
 import { workflowRoutePlugin } from '../src/plugin-routes';
 
 const endpoints = [

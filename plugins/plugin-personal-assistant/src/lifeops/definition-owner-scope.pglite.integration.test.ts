@@ -6,8 +6,9 @@
  * The harness is a real AgentRuntime with the personal-assistant plugin's
  * schema migrated into PGlite — no mocked repository.
  */
+
+import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { type LifeOpsTaskDefinition } from "@elizaos/core/contracts/personal-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

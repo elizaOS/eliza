@@ -26,7 +26,7 @@ import type {
   WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,

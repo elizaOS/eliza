@@ -49,6 +49,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   ChannelType,
   createMessageMemory,
@@ -57,7 +58,6 @@ import {
   type UUID,
   type VoiceEntityBoundPayload,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   allUtterances,

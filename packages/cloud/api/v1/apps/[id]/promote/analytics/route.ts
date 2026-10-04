@@ -2,16 +2,16 @@
  * Serves authenticated app-promotion analytics with a bounded reporting window.
  */
 
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
-import { type RouteContext } from "@/lib/api/hono-next-style-params";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { advertisingService } from "@/lib/services/advertising";
 import { appsService } from "@/lib/services/apps";
 import { conversionTrackingService } from "@/lib/services/conversion-tracking";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_ANALYTICS_DAYS = 90;
 async function __hono_GET(

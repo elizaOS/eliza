@@ -11,24 +11,24 @@
  * language so life.ts can stay on an LLM-driven extraction path.
  */
 
+import {
+  LIFEOPS_REMINDER_INTENSITIES,
+  type LifeOpsReminderIntensity,
+} from "@elizaos/contracts";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
   ElizaError,
   getTrajectoryContext,
   ModelType,
+  normalizeKeywordMatchText,
   parseJsonModelRecord,
   readTaskExtractionContext,
   recentConversationTexts,
   runExtractorPipeline,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import { normalizeKeywordMatchText } from "@elizaos/core/i18n/keyword-matching";
-import { textStatesExplicitRecurrence } from "@elizaos/core/i18n/recurrence-markers";
-import {
-  LIFEOPS_REMINDER_INTENSITIES,
-  type LifeOpsReminderIntensity,
-} from "../../contracts/index.js";
+import { textStatesExplicitRecurrence } from "@elizaos/core/protocol";
 import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
 import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
 import { getZonedDateParts } from "../../lifeops/time.js";

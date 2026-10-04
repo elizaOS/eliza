@@ -4,10 +4,11 @@
  */
 
 import {
+  hasConfiguredApiKey,
+  PREMADE_VOICES,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-} from "@elizaos/core/character-presets";
-import { hasConfiguredApiKey, PREMADE_VOICES } from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 import type { VoiceConfig } from "../api/client";
 import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";

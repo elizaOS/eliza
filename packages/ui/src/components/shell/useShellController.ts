@@ -14,11 +14,11 @@
  * and the overlay stay in lock-step without double-mounting this hook.
  */
 
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/core/events";
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import * as React from "react";
 import type {
   ChatTurnStatus,

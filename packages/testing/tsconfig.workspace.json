@@ -7,7 +7,6 @@
       "@elizaos/app": ["../app/src/index.ts"],
       "@elizaos/app/*": ["../app/src/*"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
-      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-computeruse/mobile/*": [
         "../../plugins/plugin-computeruse/src/mobile/*"
       ],
@@ -88,7 +87,8 @@
       "@elizaos/plugin-relationships/*": [
         "../../plugins/plugin-relationships/src/*"
       ],
-      "@elizaos/plugin-pty/*": ["../../plugins/plugin-pty/*"]
+      "@elizaos/plugin-pty/*": ["../../plugins/plugin-pty/*"],
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   }
 }

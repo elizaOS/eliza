@@ -1,7 +1,7 @@
 /** Races a generation rollover from an independent OS process. */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/contracts";
 import { SqliteSyntheticEnvironmentLeaseStore } from "../../src/synthetic-environment/sqlite-lease-store";
 
 const [databasePath, authorityPath, readyPath, goPath] = process.argv.slice(2);

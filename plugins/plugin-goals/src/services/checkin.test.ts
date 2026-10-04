@@ -16,8 +16,8 @@
  * `checkin.real.test.ts`.
  */
 
+import type { LifeOpsGoalDefinition } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsGoalDefinition } from "@elizaos/core/contracts/personal-assistant";
 import {
   createAnchorRegistry,
   createCompletionCheckRegistry,

@@ -1,12 +1,12 @@
 /** Owns schedule projections persistence for LifeOps. Keeps domain mutations and existing transaction or claim boundaries together. */
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
 import type {
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
   LifeOpsTaskDefinition,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import {
   executeRawSql,
   executeRawSqlTx,

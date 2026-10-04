@@ -62,24 +62,27 @@
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
     "test:templates": "node --test test/templates/*.test.js",
-    "test:clock-review-export": "node ../../packages/scripts/run-vitest.ts run --config vitest.clock-review.config.ts"
+    "test:clock-review-export": "node ../../packages/scripts/run-vitest.ts run --config vitest.clock-review.config.ts",
+    "perf:providers": "bun run scripts/provider-latency-report.ts"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
     "@ai-sdk/anthropic": "^3.0.13",
     "@ai-sdk/google": "^3.0.130",
     "@ai-sdk/openai": "^3.0.9",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@openrouter/ai-sdk-provider": "^2.0.0",
     "ai": "^6.0.30",
-    "drizzle-orm": "0.45.3",
     "dedent": "^1.7.1",
+    "drizzle-orm": "0.45.3",
+    "handlebars": "^4.7.8",
     "mammoth": "^1.9.0",
     "unpdf": "^1.4.0",
-    "zod": "^4.6.5",
     "uuid": "^14.0.0",
     "yaml": "^2.7.0",
-    "handlebars": "^4.7.8",
-    "@elizaos/plugin-sql": "workspace:*"
+    "zod": "^4.6.5",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

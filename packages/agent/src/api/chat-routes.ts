@@ -7,16 +7,20 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isDeepStrictEqual } from "node:util";
 import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
+import {
   type ActionReplyFailure,
   type ActionResult,
   type AgentRuntime,
   asObjectRecord as asRecord,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
   type Content,
   createMessageMemory,
   type EffectReceipt,
@@ -34,10 +38,8 @@ import {
   inheritIncomingMessagePersistence,
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
-  isLinkedAccountProviderId,
   isRateLimitError,
   isTextGenerationModelType,
-  type LinkedAccountProviderId,
   type AgentLogEntry as LogEntry,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
@@ -48,14 +50,9 @@ import {
   normalizeCharacterLanguage,
   normalizeEffectReceipts,
   PRIVACY_DENIED_TEXT,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-  type ReadJsonBodyOptions,
   type RolesWorldMetadata,
   type RoomHandlerLease,
-  type RouteRequestContext,
   readActionReplyFailure,
-  readAliasedEnv,
   recordOwnerGrant,
   recordRoleGrant,
   renderInteractionsAsPlainText,
@@ -74,6 +71,13 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
+import {
+  isLinkedAccountProviderId,
+  type LinkedAccountProviderId,
+  type ReadJsonBodyOptions,
+  type RouteRequestContext,
+  readAliasedEnv,
+} from "@elizaos/host/protocol";
 
 import {
   persistInferenceTimingSummary,

@@ -24,16 +24,16 @@
  */
 
 import {
-	type OwnerObservation,
-	resolveOwnerCandidate,
-} from "@elizaos/core/voice/owner-inference";
-import { buildVoiceTurnSignal } from "@elizaos/core/voice/respond-gate";
-import { scoreEndOfTurnHeuristic } from "@elizaos/core/voice-eot";
-import {
 	OnlineSpeakerClusterer,
 	selfVoiceSimilarity,
 } from "./acoustic-speaker-attribution";
 import type { CorpusGroundTruth } from "./corpus-generator";
+import {
+	type OwnerObservation,
+	resolveOwnerCandidate,
+} from "./owner-inference.js";
+import { buildVoiceTurnSignal } from "./respond-gate.js";
+import { scoreEndOfTurnHeuristic } from "./voice-eot.js";
 import type {
 	VoiceTurnObservation,
 	VoiceWorkbenchServices,

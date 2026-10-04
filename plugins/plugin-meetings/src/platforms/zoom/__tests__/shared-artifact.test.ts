@@ -3,7 +3,7 @@
  * shared MeetingArtifact schema, including source-loss and entity provenance.
  */
 
-import { validateMeetingArtifact } from "@elizaos/core/meeting-artifacts";
+import { validateMeetingArtifact } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
 import { buildZoomBotMeetingArtifact } from "../shared-artifact.js";
 

@@ -2,7 +2,7 @@
   "extends": "../../packages/core/tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     },
     "outDir": "./dist"
   },

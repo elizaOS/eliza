@@ -2,7 +2,7 @@
  * Atomically releases browser-persisted mirrors of an account-scoped shared
  * Cloud agent when its Steward account session ends.
  */
-import { clearElizaApiBase } from "@elizaos/core/utils/eliza-globals";
+import { clearElizaApiBase } from "@elizaos/host/protocol";
 import { client } from "../api";
 import {
   removeManagedCloudAgentProfilesDurably,

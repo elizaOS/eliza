@@ -611,7 +611,7 @@ const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
   "@elizaos/ui/brand",
-  "@elizaos/core/voice/aec",
+  "@elizaos/plugin-local-inference/protocol",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-wallet",
@@ -651,14 +651,12 @@ const dedupeTargets = {
   // keeping its consumers — on device the live-diarization status route then
   // dies with `EchoReferenceBuffer is not defined` at session construction
   // (invisible to the module-load smoke, which never constructs the session).
-  "@elizaos/core/voice/aec": path.resolve(
+  "@elizaos/plugin-local-inference/protocol": path.resolve(
     repoRoot,
-    "packages",
-    "core",
+    "plugins",
+    "plugin-local-inference",
     "src",
-    "voice",
-    "aec",
-    "index.ts",
+    "protocol.ts",
   ),
   "@elizaos/ui": path.resolve(repoRoot, "packages", "ui", "src", "index.ts"),
   // Graph services run in the background agent; renderer registration and

@@ -5,7 +5,7 @@ import {
   isRemoteControlIdentifier,
   isRemoteTargetPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import { Hono } from "hono";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
@@ -16,7 +16,7 @@ import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 import { enrollManagedNetwork, managedNetworkConfig } from "../managed-network";
 
 const app = new Hono<AppEnv>();

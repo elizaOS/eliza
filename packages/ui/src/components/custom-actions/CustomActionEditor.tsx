@@ -7,10 +7,7 @@
  * the client's action generation, then let the user refine the parsed result.
  */
 
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-} from "@elizaos/core/contracts/config";
+import type { CustomActionDef, CustomActionHandler } from "@elizaos/contracts";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../api/client";

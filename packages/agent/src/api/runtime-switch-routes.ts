@@ -35,14 +35,14 @@
 
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
+import type { ProviderId } from "@elizaos/contracts";
+import { logger } from "@elizaos/core";
+import { readJsonBody } from "@elizaos/host";
 import {
   createSelfApiRequestHeaders,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  logger,
-  type ProviderId,
-  readJsonBody,
-} from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,

@@ -1,4 +1,5 @@
 import { requestReminderWake } from "../reminder-wake.js";
+
 /**
  * Task-definition domain for LifeOps: CRUD over LifeOps task definitions and
  * their occurrences (the recurring reminders/check-ins/routines the scheduler
@@ -6,7 +7,6 @@ import { requestReminderWake } from "../reminder-wake.js";
  * scoring.
  */
 
-import { ElizaError } from "@elizaos/core";
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
@@ -24,11 +24,12 @@ import type {
   RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   type DefinitionCreationContext,

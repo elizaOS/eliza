@@ -9,7 +9,7 @@ export {
   sanitizeApiKey,
   VOICE_PROVIDERS,
   type VoicePreset,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 export {
   type AecLoopControl,
   type AecLoopResult,

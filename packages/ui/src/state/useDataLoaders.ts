@@ -9,7 +9,7 @@
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/core/character-presets";
+} from "@elizaos/host/protocol";
 import {
   type RefObject,
   useCallback,

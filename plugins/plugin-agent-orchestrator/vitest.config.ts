@@ -7,14 +7,9 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
+    conditions: ["eliza-source"],
     alias: [
       ...Object.entries({
-        "@elizaos/core/host-execution-env": fileURLToPath(
-          new URL(
-            "../../packages/core/src/host-execution-env.ts",
-            import.meta.url,
-          ),
-        ),
         "@elizaos/auth/auth/token-expiry": fileURLToPath(
           new URL(
             "../../packages/auth/src/auth/token-expiry.ts",

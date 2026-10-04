@@ -7,7 +7,7 @@
  * sequential PATCH calls (no drag-drop dependency).
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";

@@ -18,10 +18,7 @@ import {
   type AgentHostBridge,
   setAgentHostBridge,
 } from "@elizaos/agent/runtime/host-bridge";
-import {
-  getBuildVariant,
-  isStoreBuild,
-} from "@elizaos/core/platform/build-variant";
+import { getBuildVariant, isStoreBuild } from "@elizaos/core";
 import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
 import {
   resolveAuthorizedRouteRole,

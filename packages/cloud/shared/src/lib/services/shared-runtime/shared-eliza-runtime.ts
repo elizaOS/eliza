@@ -35,7 +35,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
-import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog";
+import { type AgentCapabilityTransport } from "@elizaos/core/protocol";
 import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";

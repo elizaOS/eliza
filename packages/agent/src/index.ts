@@ -21,7 +21,7 @@ export {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/host";
 export interface CloudConfigLike {
   apiKey?: string | null;
   baseUrl?: string | null;
@@ -66,10 +66,9 @@ export type {
   CustomActionDef,
   CustomActionHandler,
   DatabaseProviderType,
-  ElizaConfig,
   ReleaseChannel,
-  RolesConfig,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+export type { RolesConfig } from "@elizaos/core";
 // Config contract types are exported from core above; the host config module
 // supplies its own runtime functions.
 export {
@@ -77,7 +76,6 @@ export {
   type AwarenessContributor,
   type AwarenessInvalidationEvent,
   AwarenessRegistry,
-  CONNECTOR_PLUGINS,
   type CreateIntegrationSpanOptions,
   collectKeywordTermMatches,
   createIntegrationTelemetrySpan,
@@ -95,8 +93,6 @@ export {
   type IntegrationSpanSuccessArgs,
   type IntegrationTelemetrySpan,
   type IPermissionsRegistry,
-  isCloudExecutionMode,
-  type LocalExecutionMode,
   type ParseClampedIntegerOptions,
   type ParseClampedNumberOptions,
   type ParsePositiveNumberOptions,
@@ -105,23 +101,29 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
-  RESTART_EXIT_CODE,
   type RegistryAppInfo,
+  resolveFallbackOwnerEntityId,
+  resolveOwnerEntityId,
+  SELF_STATUS_SCHEMA_VERSION,
+  SUMMARY_CHAR_LIMIT,
+  SUMMARY_TOTAL_CHAR_LIMIT,
+  textIncludesKeywordTerm,
+} from "@elizaos/core";
+export type { ElizaConfig } from "@elizaos/host/protocol";
+export {
+  CONNECTOR_PLUGINS,
+  isCloudExecutionMode,
+  type LocalExecutionMode,
+  RESTART_EXIT_CODE,
   type RestartHandler,
   type RuntimeExecutionMode,
   type RuntimeExecutionModeSource,
   requestRestart,
-  resolveFallbackOwnerEntityId,
   resolveLocalExecutionMode,
-  resolveOwnerEntityId,
   resolveRuntimeExecutionMode,
-  SELF_STATUS_SCHEMA_VERSION,
-  SUMMARY_CHAR_LIMIT,
-  SUMMARY_TOTAL_CHAR_LIMIT,
   setRestartHandler,
   shouldUseSandboxExecution,
-  textIncludesKeywordTerm,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

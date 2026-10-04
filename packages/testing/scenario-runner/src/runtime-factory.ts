@@ -19,7 +19,7 @@ import {
   ModelType,
   NotificationService,
 } from "@elizaos/core";
-import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 import {
   createAssistantPlugin,
   documentsPlugin,

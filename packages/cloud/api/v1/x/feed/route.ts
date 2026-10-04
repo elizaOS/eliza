@@ -4,7 +4,7 @@
  * maxResults, connectionRole.
  */
 
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getXFeed } from "@/lib/services/x";

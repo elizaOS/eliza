@@ -22,7 +22,7 @@ import type {
 import {
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,
-} from "@elizaos/core/types/notification";
+} from "@elizaos/core/protocol";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";

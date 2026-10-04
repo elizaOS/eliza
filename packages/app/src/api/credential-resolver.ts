@@ -34,7 +34,7 @@ import {
   getFirstRunProviderOption,
   getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/host/protocol";
 import { getDefaultAccountPool } from "../account-pool.js";
 
 // ── Credential source registry ───────────────────────────────────────

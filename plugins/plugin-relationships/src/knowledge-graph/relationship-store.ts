@@ -12,15 +12,15 @@
  * `(from, to, type)` exists.
  */
 import crypto from "node:crypto";
-import { type IAgentRuntime } from "@elizaos/core";
-import {
-  type Relationship,
-  type RelationshipFilter,
-  type RelationshipSentiment,
-  type RelationshipSource,
-  type RelationshipState,
-  type RelationshipStatus,
-} from "@elizaos/core/knowledge-graph/relationship-types";
+import type {
+  KnowledgeGraphRelationship as Relationship,
+  RelationshipFilter,
+  RelationshipSentiment,
+  LifeOpsGraphRelationshipSource as RelationshipSource,
+  LifeOpsGraphRelationshipState as RelationshipState,
+  LifeOpsGraphRelationshipStatus as RelationshipStatus,
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   type GraphRecordRepository,
   graphRecordRepository,

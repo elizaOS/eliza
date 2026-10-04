@@ -3,7 +3,7 @@
  * and permission state and lets the owner configure and start/stop hosts-file
  * (SelfControl) blocking. Exported via the plugin's ui module.
  */
-import { type PermissionStatus } from "@elizaos/core/contracts/permissions";
+import type { PermissionStatus } from "@elizaos/core/protocol";
 // Leaf subpath, not the root barrel — see AppBlockerSettingsCard.
 import { Button } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";

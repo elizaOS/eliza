@@ -2,6 +2,8 @@
  * Plugin list utilities — pure functions, constants, and type aliases
  * shared across the plugin management UI.
  */
+
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import {
   Binary,
   Bird,
@@ -77,7 +79,6 @@ import {
   Zap,
 } from "lucide-react";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
 import { autoLabel } from "../../utils/labels.js";

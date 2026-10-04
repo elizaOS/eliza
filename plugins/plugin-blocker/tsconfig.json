@@ -12,7 +12,7 @@
         "../../packages/ui/src/agent-surface/index.ts"
       ],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

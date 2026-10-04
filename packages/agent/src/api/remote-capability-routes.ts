@@ -24,9 +24,8 @@ import {
   type JsonObject,
   logger,
   normalizeHostLike,
-  type RouteHelpers,
-  type RouteRequestMeta,
 } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import {
   type ConnectCloudCapabilitySandboxOptions,

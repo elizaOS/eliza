@@ -15,7 +15,7 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 
 export type {
   StewardApprovalInfo,

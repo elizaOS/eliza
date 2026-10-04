@@ -5,18 +5,18 @@
  * `@elizaos/plugin-health`; this domain assembles the assistant projection.
  */
 import crypto from "node:crypto";
-import {
-  type LifeOpsScreenTimeDaily,
-  type LifeOpsScreenTimeHistoryPoint,
-  type LifeOpsScreenTimeHistoryResponse,
-  type LifeOpsScreenTimeRangeKey,
-  type LifeOpsScreenTimeSession,
-  type LifeOpsScreenTimeSource,
-  type LifeOpsScreenTimeSummary,
-  type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  type LifeOpsScreenTimeBucket as ScreenTimeBucket,
-  type LifeOpsSocialHabitSummary as SocialHabitSummary,
-} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeHistoryPoint,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSession,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  LifeOpsScreenTimeBucket as ScreenTimeBucket,
+  LifeOpsSocialHabitSummary as SocialHabitSummary,
+} from "@elizaos/contracts";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,

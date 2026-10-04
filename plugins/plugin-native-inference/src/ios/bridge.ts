@@ -28,11 +28,7 @@ import {
   validateUuid,
 } from "@elizaos/core";
 import {
-  getBootConfig,
-  setBootConfig,
-} from "@elizaos/core/config/boot-config-store";
-import { buildBrandEnvAliases } from "@elizaos/core/config/brand-env-aliases";
-import {
+  parseCanonicalInteger,
   summarizeTranscript,
   type Transcript,
   type TranscriptScope,
@@ -42,9 +38,13 @@ import {
   transcriptDurationMs,
   transcriptPreview,
   transcriptSpeakerCount,
-} from "@elizaos/core/transcripts";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
+} from "@elizaos/core/protocol";
+import {
+  buildBrandEnvAliases,
+  getBootConfig,
+  readAliasedEnv,
+  setBootConfig,
+} from "@elizaos/host/protocol";
 import {
   closeDownloadWriter,
   teardownFailedDownload,

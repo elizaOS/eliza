@@ -12,21 +12,23 @@
  * - "own-key" mode uses the user's own API keys
  */
 
+import type {
+  AudioGenConfig,
+  AudioGenProvider,
+  AudioKind,
+  ImageConfig,
+  MediaConfig,
+  VideoConfig,
+  VisionConfig,
+} from "@elizaos/contracts";
 import {
-  type AudioGenConfig,
-  type AudioGenProvider,
-  type AudioKind,
   ElizaError,
   fetchRemoteMedia,
-  type ImageConfig,
   isElizaError,
   logger,
-  type MediaConfig,
   nodeLookupFn,
   nodePinnedFetch,
   VISION_IMAGE_MAX_BYTES,
-  type VideoConfig,
-  type VisionConfig,
 } from "@elizaos/core";
 
 // ============================================================================

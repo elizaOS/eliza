@@ -4,19 +4,17 @@
  */
 
 import {
-  type FirstRunCredentialInputs,
-  type FirstRunLocalProviderId,
-  normalizeFirstRunProviderId,
-  requiresAdditionalRuntimeProvider,
-} from "@elizaos/core/contracts/first-run-options";
-import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   type DeploymentTargetConfig,
+  type FirstRunCredentialInputs,
+  type FirstRunLocalProviderId,
   type LinkedAccountFlagsConfig,
+  normalizeFirstRunProviderId,
+  requiresAdditionalRuntimeProvider,
   type ServiceRouteConfig,
   type ServiceRoutingConfig,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import type { FirstRunRuntime } from "./first-run";
 import {
   type FirstRunRuntimeTarget,

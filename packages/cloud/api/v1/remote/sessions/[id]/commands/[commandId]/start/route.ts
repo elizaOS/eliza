@@ -1,11 +1,11 @@
 /** Persists the host-signed receipt that crosses the no-retry boundary. */
 
-import { parseEncryptedRemoteControlEnvelope } from "@elizaos/core/contracts/remote-control";
+import { parseEncryptedRemoteControlEnvelope } from "@elizaos/contracts";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteCommandEnvelopesRepository } from "@/db/repositories/remote-command-envelopes";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../../../host-auth";
 
 const app = new Hono<AppEnv>();

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 const pluginFile = "packages/core/src/types/plugin.ts";
-const capabilityFile = "packages/core/src/capabilities/index.ts";
+const capabilityFile = "packages/core/src/capabilities/protocol.ts";
 const conformanceFile =
   "packages/agent/scripts/lib/remote-capability-endpoint-conformance.ts";
 const fixtureServerFile =
@@ -83,7 +83,7 @@ const remoteManifestKeys = new Set(
 );
 const pluginKeys = [
   ...readInterfaceMembers(pluginFile, "Plugin"),
-  ...readInterfaceMembers("packages/core/src/api/http-plugin.ts", "HttpPlugin"),
+  ...readInterfaceMembers("packages/host/src/api/http-plugin.ts", "HttpPlugin"),
 ];
 const failures: string[] = [];
 

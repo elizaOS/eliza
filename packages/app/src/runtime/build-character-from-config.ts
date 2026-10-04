@@ -9,13 +9,15 @@
  */
 import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
 import {
-  getDefaultStylePreset,
   normalizeCharacterLanguage,
+  normalizeCharacterMessageExamples,
+} from "@elizaos/core/protocol";
+import {
+  getDefaultStylePreset,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/core/character-presets";
-import { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character-message-examples";
+} from "@elizaos/host/protocol";
 
 function resolveAppPreset(
   config: Parameters<typeof upstreamBuildCharacterFromConfig>[0],

@@ -14,6 +14,16 @@
 
 import { createHash } from "node:crypto";
 import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
+import type {
   Action,
   ActionExample,
   ActionResult,
@@ -32,20 +42,10 @@ import {
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
 import {
   selectUserAuthorizedRecurrence,
   textStatesExplicitRecurrence,
-} from "@elizaos/core/i18n/recurrence-markers";
+} from "@elizaos/core/protocol";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import {
   CALENDAR_DETAIL_ALIASES,

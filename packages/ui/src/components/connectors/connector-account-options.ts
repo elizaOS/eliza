@@ -16,7 +16,7 @@ import {
   type ConnectorOAuthCapabilityDeclaration,
   getConnectorAccountCatalogEntry,
   normalizeConnectorCatalogId as normalizeConnectorCatalogIdShared,
-} from "@elizaos/core/connector-account-catalog";
+} from "@elizaos/core/protocol";
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountPrivacy,

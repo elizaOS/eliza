@@ -8,7 +8,7 @@ import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 import type { VoiceConfig } from "../../api/client";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 /* ── Constants ─────────────────────────────────────────────────────── */

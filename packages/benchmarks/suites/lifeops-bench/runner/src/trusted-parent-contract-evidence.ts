@@ -7,11 +7,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { type AgentRuntime } from "@elizaos/core";
 import {
-  type EntityAttribute,
+  type LifeOpsEntityAttribute as EntityAttribute,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   getHouseholdOperationsService,
   getSchoolSourceFactRuntimeService,
@@ -21,7 +21,7 @@ import {
   type SourceArtifactInput,
 } from "@elizaos/plugin-personal-assistant";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { type BenchmarkSession } from "./server-utils.js";
+import type { BenchmarkSession } from "./server-utils.js";
 export const TRUSTED_PARENT_CONTRACT_STATE_SCHEMA =
   "lifeops.trusted-parent-contract-state.v1" as const;
 export const G15_SCENARIO_ID = "m1.g15.school_source_correction" as const;

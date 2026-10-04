@@ -3,13 +3,11 @@
 import type {
   LifeOpsCalendarProvider,
   LifeOpsCalendarSummary,
-  SeedLifeOpsCalendarRequest,
-} from "@elizaos/core/contracts/calendar";
-import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/core/contracts/personal-assistant";
+  SeedLifeOpsCalendarRequest,
+} from "@elizaos/contracts";
 import type { CalendarClientMethods } from "@elizaos/plugin-calendar";
 import { client } from "@elizaos/ui/api";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";

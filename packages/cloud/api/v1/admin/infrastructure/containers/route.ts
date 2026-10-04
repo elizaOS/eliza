@@ -9,13 +9,13 @@
  * Requires admin role.
  */
 
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 import { containersRepository } from "@/db/repositories/containers";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 app.get("/", async (c) => {

@@ -18,7 +18,7 @@ export type {
 	SurfaceManifest,
 	SurfaceManifestBearer,
 	ViewHeaderPolicy,
-} from "@elizaos/core";
+} from "../types/surface-manifest.js";
 
 /**
  * How a view is separated from the host realm and from other views. Ordered

@@ -19,6 +19,44 @@ import {
   registerEscalationChannel,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
+import type {
+  AcknowledgeLifeOpsReminderRequest,
+  CaptureLifeOpsActivitySignalRequest,
+  CaptureLifeOpsManualOverrideRequest,
+  CaptureLifeOpsPhoneConsentRequest,
+  LifeOpsActivitySignal,
+  LifeOpsCalendarEvent,
+  LifeOpsChannelPolicy,
+  LifeOpsCircadianState,
+  LifeOpsManualOverrideResult,
+  LifeOpsOccurrence,
+  LifeOpsOccurrenceView,
+  LifeOpsOwnership,
+  LifeOpsReminderAttempt,
+  LifeOpsReminderAttemptOutcome,
+  LifeOpsReminderChannel,
+  LifeOpsReminderInspection,
+  LifeOpsReminderIntensity,
+  LifeOpsReminderPlan,
+  LifeOpsReminderPreference,
+  LifeOpsReminderProcessingResult,
+  LifeOpsReminderStep,
+  LifeOpsReminderUrgency,
+  LifeOpsScheduleMealLabel,
+  LifeOpsSubjectType,
+  LifeOpsTaskDefinition,
+  LifeOpsWorkflowDefinition,
+  LifeOpsWorkflowRun,
+  SetLifeOpsReminderPreferenceRequest,
+  SnoozeLifeOpsOccurrenceRequest,
+  UpsertLifeOpsChannelPolicyRequest,
+} from "@elizaos/contracts";
+import {
+  LIFEOPS_CHANNEL_TYPES,
+  LIFEOPS_CIRCADIAN_STATES,
+  LIFEOPS_MANUAL_OVERRIDE_KINDS,
+  LIFEOPS_UNCLEAR_REASONS,
+} from "@elizaos/contracts";
 import {
   createReminderPresentation,
   ElizaError,
@@ -35,7 +73,6 @@ import {
   ServiceType,
   unwrapUserMessageText,
 } from "@elizaos/core";
-import type { LifeOpsScheduleMealLabel } from "@elizaos/core/contracts/personal-assistant";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -61,43 +98,6 @@ import {
 import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
 import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../../activity-profile/types.js";
-import type {
-  AcknowledgeLifeOpsReminderRequest,
-  CaptureLifeOpsActivitySignalRequest,
-  CaptureLifeOpsManualOverrideRequest,
-  CaptureLifeOpsPhoneConsentRequest,
-  LifeOpsActivitySignal,
-  LifeOpsCalendarEvent,
-  LifeOpsChannelPolicy,
-  LifeOpsCircadianState,
-  LifeOpsManualOverrideResult,
-  LifeOpsOccurrence,
-  LifeOpsOccurrenceView,
-  LifeOpsOwnership,
-  LifeOpsReminderAttempt,
-  LifeOpsReminderAttemptOutcome,
-  LifeOpsReminderChannel,
-  LifeOpsReminderInspection,
-  LifeOpsReminderIntensity,
-  LifeOpsReminderPlan,
-  LifeOpsReminderPreference,
-  LifeOpsReminderProcessingResult,
-  LifeOpsReminderStep,
-  LifeOpsReminderUrgency,
-  LifeOpsSubjectType,
-  LifeOpsTaskDefinition,
-  LifeOpsWorkflowDefinition,
-  LifeOpsWorkflowRun,
-  SetLifeOpsReminderPreferenceRequest,
-  SnoozeLifeOpsOccurrenceRequest,
-  UpsertLifeOpsChannelPolicyRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_CHANNEL_TYPES,
-  LIFEOPS_CIRCADIAN_STATES,
-  LIFEOPS_MANUAL_OVERRIDE_KINDS,
-  LIFEOPS_UNCLEAR_REASONS,
-} from "../../contracts/index.js";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,

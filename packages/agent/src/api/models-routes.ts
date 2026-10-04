@@ -10,11 +10,8 @@
  * transport-agnostic and unit-testable.
  */
 
-import {
-  parseBooleanValue,
-  type RouteHelpers,
-  type RouteRequestMeta,
-} from "@elizaos/core";
+import { parseBooleanValue } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
 import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";

@@ -8,7 +8,7 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
 import { getMcpServerDetails, searchMcpMarketplace } from "./mcp-marketplace.js";
 import { MCP_SERVICE_NAME } from "./types";
 // ---------------------------------------------------------------------------

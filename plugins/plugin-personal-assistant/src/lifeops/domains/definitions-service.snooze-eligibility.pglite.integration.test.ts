@@ -1,11 +1,12 @@
 /** Real saved occurrences and in-app delivery; no model or external provider calls. */
+
+import type { SnoozeLifeOpsOccurrenceRequest } from "@elizaos/contracts";
 import { TaskService } from "@elizaos/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../../test/helpers/runtime.js";
-import type { SnoozeLifeOpsOccurrenceRequest } from "../../contracts/index.js";
 import { nextReminderWakeAt } from "../reminder-wake.js";
 import { LifeOpsService } from "../service.js";
 

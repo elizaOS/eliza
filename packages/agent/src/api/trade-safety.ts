@@ -3,9 +3,9 @@
  * Extracted so they can be unit-tested without pulling in the full server.
  */
 
-export type { TradePermissionMode } from "@elizaos/core";
+export type { TradePermissionMode } from "@elizaos/contracts";
 
-import type { TradePermissionMode } from "@elizaos/core";
+import type { TradePermissionMode } from "@elizaos/contracts";
 
 /** Maximum number of autonomous agent trades allowed per calendar day. */
 export const AGENT_AUTO_MAX_DAILY_TRADES = 25;

@@ -56,15 +56,13 @@ import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-st
 import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import {
-  type AgentRuntime,
   getHttpRuntime,
   isElizaSettingsDebugEnabled,
-  logger,
   resolveLinkedAccountsInConfig,
-  resolveStateDir,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";

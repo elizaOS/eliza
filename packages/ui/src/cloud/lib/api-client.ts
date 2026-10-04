@@ -25,11 +25,11 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,

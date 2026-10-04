@@ -17,7 +17,6 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "paths": {
-      "@elizaos/core/*": ["../packages/core/dist/*"],
       "@elizaos/ui/api/*": ["../packages/ui/dist/api/*"],
       "@elizaos/ui/components/*": ["../packages/ui/dist/components/*"],
       "@elizaos/ui/*": ["../packages/ui/dist/*"],
@@ -32,7 +31,8 @@
       "@elizaos/plugin-discord/*": ["./plugin-discord/dist/*"],
       "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
       "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
-      "@elizaos/plugin-elizacloud": ["./plugin-elizacloud/dist/index.d.ts"]
+      "@elizaos/plugin-elizacloud": ["./plugin-elizacloud/dist/index.d.ts"],
+      "@elizaos/core/protocol": ["../packages/core/dist/protocol"]
     }
   },
   "include": []

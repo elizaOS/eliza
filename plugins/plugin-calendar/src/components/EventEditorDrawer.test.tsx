@@ -9,7 +9,7 @@
 import type {
   LifeOpsCalendarEvent,
   ListLifeOpsCalendarsResponse,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 import { client as authorityClient } from "@elizaos/ui/api/client";
 import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import { getActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";

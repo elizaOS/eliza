@@ -7,7 +7,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 import {
   addDaysToLocalDate,
   getTimeZoneOffsetMinutes,

@@ -5,18 +5,20 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  type AgentRuntime,
+  isJsonObjectBody,
+  readRequestBodyBuffer,
+  writeJsonError,
+} from "@elizaos/host";
+import {
   assertPublicRouteIntent,
   getHttpRuntime,
-  isJsonObjectBody,
   type PaymentEnabledRoute,
   type Route,
   type RuntimeRouteHostContext,
-  readRequestBodyBuffer,
   setRuntimeRouteHostContext,
-  writeJsonError,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import type { X402PluginModule } from "./x402-contract.ts";

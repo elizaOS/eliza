@@ -4,25 +4,22 @@
  * account manager into assistant DTOs. Shared root for the Gmail/Drive domains.
  */
 
+import type {
+  DisconnectLifeOpsGoogleConnectorRequest,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGoogleConnectorStatus,
+  StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsGoogleConnectorResponse,
+} from "@elizaos/contracts";
 import {
   type ConnectorAccount,
   getConnectorAccountManager,
 } from "@elizaos/core";
-import {
-  DEFAULT_SERVER_ONLY_PORT,
-  isLoopbackBindHost,
-  isWildcardBindHost,
-} from "@elizaos/core/runtime-env";
+import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/core/protocol";
+import { DEFAULT_SERVER_ONLY_PORT } from "@elizaos/host/protocol";
 import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
-import {
-  type DisconnectLifeOpsGoogleConnectorRequest,
-  type LifeOpsConnectorGrant,
-  type LifeOpsConnectorMode,
-  type LifeOpsConnectorSide,
-  type LifeOpsGoogleConnectorStatus,
-  type StartLifeOpsGoogleConnectorRequest,
-  type StartLifeOpsGoogleConnectorResponse,
-} from "../../contracts/index.js";
 import { INTERNAL_URL } from "../access.js";
 import {
   disconnectedGoogleStatus,
@@ -35,7 +32,7 @@ import {
   listGoogleConnectorAccounts,
   resolveGoogleConnectorAccount,
 } from "../google-plugin-delegates.js";
-import { type LifeOpsContext } from "../lifeops-context.js";
+import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   fail,
   normalizeOptionalBoolean,

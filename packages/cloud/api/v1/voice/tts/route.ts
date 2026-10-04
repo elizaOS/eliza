@@ -3,7 +3,7 @@
 import {
   FIRST_SENTENCE_SNIP_VERSION,
   firstSentenceSnip,
-} from "@elizaos/core/voice/first-sentence-snip";
+} from "@elizaos/plugin-local-inference/protocol";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -34,7 +34,7 @@ import {
 import { usageService } from "@/lib/services/usage";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
-import { type AppContext, type AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,

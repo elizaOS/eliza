@@ -11,7 +11,7 @@
  * onboarding UI can always render an actionable affordance.
  */
 
-import type { PermissionStatus } from "@elizaos/core/contracts/permissions";
+import type { PermissionStatus } from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../api";
 

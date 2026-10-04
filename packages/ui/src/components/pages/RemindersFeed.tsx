@@ -4,7 +4,7 @@ import type {
   LifeOpsOccurrence,
   LifeOpsReminderAttempt,
   LifeOpsTaskDefinition,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 import { Bell, CalendarClock, ChevronDown } from "lucide-react";
 import {
   type ReactNode,

@@ -16,18 +16,20 @@ import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
   type AppLaunchSessionContext,
-  type AppPackageRouteContext,
   type AppRunSessionContext,
   type AppSessionState,
   type AppViewerAuthMessage,
   ElizaError,
   hasAppInterface,
-  isMobilePlatform,
-  type HttpPlugin as Plugin,
   packageNameToAppRouteSlug,
   readJsonFile,
   resolveStateDir,
 } from "@elizaos/core";
+import {
+  type AppPackageRouteContext,
+  isMobilePlatform,
+  type HttpPlugin as Plugin,
+} from "@elizaos/host/protocol";
 
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";

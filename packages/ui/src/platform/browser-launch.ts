@@ -3,7 +3,7 @@
  * profile and persists the active-server record so the app opens pointed at it.
  */
 
-import { isCloudPairAgentId } from "@elizaos/core/contracts/cloud-pair";
+import { isCloudPairAgentId } from "@elizaos/contracts";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,

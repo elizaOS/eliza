@@ -16,13 +16,12 @@ import {
   loadRegistry,
   logger,
 } from "@elizaos/core";
+import { formatErrorWithStack } from "@elizaos/core/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   isOptionalAppRoutePluginUnavailableError,
   OptionalAppRoutePluginUnavailableError,
-} from "@elizaos/core/api/app-route-plugin-registry";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-
-import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
+} from "@elizaos/host/protocol";
 import {
   type AppRoutePluginRegistryEntry,
   drainAppRoutePluginLoaders,

@@ -33,7 +33,6 @@
  * suppress (via `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
  */
 
-import { scoreEndOfTurnHeuristic } from "@elizaos/core/voice-eot";
 import type {
 	Eliza1EotScoreResult,
 	Eliza1EotScorerOptions,
@@ -47,6 +46,7 @@ import {
 	reserveOrRamPressure,
 	type VoiceBudget,
 } from "./voice-budget";
+import { scoreEndOfTurnHeuristic } from "./voice-eot.js";
 
 // ---------------------------------------------------------------------------
 // Interface

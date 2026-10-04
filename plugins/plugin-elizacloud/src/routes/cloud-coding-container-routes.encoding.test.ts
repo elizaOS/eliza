@@ -4,18 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 
 const CLOUD_CONTAINER_SERVICE_TYPE = "cloud-container-service";
 
-vi.mock("@elizaos/core/contracts/cloud-coding-containers", () => ({
-	CLOUD_CONTAINER_SERVICE_TYPE,
-	PromoteVfsToCloudContainerRequestSchema: {
+vi.mock("@elizaos/core/protocol", async (importOriginal) => ({ ...await importOriginal<typeof import("@elizaos/core/protocol")>(), CLOUD_CONTAINER_SERVICE_TYPE, PromoteVfsToCloudContainerRequestSchema: {
 		safeParse: (body: unknown) => ({ success: true, data: body }),
-	},
-	RequestCodingAgentContainerRequestSchema: {
+	}, RequestCodingAgentContainerRequestSchema: {
 		safeParse: (body: unknown) => ({ success: true, data: body }),
-	},
-	SyncCloudCodingContainerRequestSchema: {
+	}, SyncCloudCodingContainerRequestSchema: {
 		safeParse: (body: unknown) => ({ success: true, data: body }),
-	},
-}));
+	} }));
 
 const { handleCloudCodingContainerRoute } = await import(
 	"./cloud-coding-container-routes"

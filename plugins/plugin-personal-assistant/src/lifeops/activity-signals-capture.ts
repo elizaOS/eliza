@@ -23,6 +23,10 @@ import {
 // prototype extension — without this import, boot-batch signals are lost and
 // surface as spurious capture_error until the idle facade load lands.
 import "../api/client-lifeops.js";
+import type {
+  CaptureLifeOpsActivitySignalRequest,
+  LifeOpsActivitySignal,
+} from "@elizaos/contracts";
 // Narrow @elizaos/ui subpaths only — the root barrel drags react-router and
 // the full component tree into this headless register chunk, which both
 // bloats the renderer bundle and breaks under node module resolution in test
@@ -42,10 +46,6 @@ import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/ui/events";
 import type { LifeOpsElizaClientMethods } from "../api/client-lifeops.js";
-import type {
-  CaptureLifeOpsActivitySignalRequest,
-  LifeOpsActivitySignal,
-} from "../contracts/index.js";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
 
 // client-lifeops (imported above for its side effect) installs the LifeOps

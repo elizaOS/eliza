@@ -17,7 +17,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";

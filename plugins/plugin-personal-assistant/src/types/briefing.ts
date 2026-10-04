@@ -1,7 +1,7 @@
 import type {
   LifeOpsOccurrenceState,
   LifeOpsOverviewSummary,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 
 /**
  * `LifeOpsBriefing` domain type.

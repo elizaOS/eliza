@@ -4,7 +4,7 @@
  * built-in union).
  */
 
-import type { ThemeDefinition } from "@elizaos/core/contracts/theme";
+import type { ThemeDefinition } from "@elizaos/contracts";
 import { EXTERNAL_URLS } from "../brand/index.js";
 /**
  * Custom provider that apps can inject into the first-run setup.

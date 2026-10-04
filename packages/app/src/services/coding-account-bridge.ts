@@ -57,6 +57,7 @@ import {
   isDirectAccountProvider,
   isSubscriptionProvider,
 } from "@elizaos/auth/auth/types";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/contracts";
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
@@ -65,8 +66,7 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/core/contracts/coding-agent-capabilities";
-import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,

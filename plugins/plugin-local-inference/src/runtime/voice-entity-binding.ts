@@ -25,15 +25,15 @@ import {
 	type VoiceEntityBoundPayload,
 	type VoiceSpeakerNameInferencePayload,
 } from "@elizaos/core";
-import {
-	AGENT_SELF_VOICE_THRESHOLD,
-	ECHO_WINDOW_MS,
-} from "@elizaos/core/voice/respond-gate";
 import type {
 	VoiceNextSpeaker,
 	VoiceTurnSignal,
 } from "../services/voice/eot-classifier.js";
 import { VoiceProfileStore } from "../services/voice/profile-store.js";
+import {
+	AGENT_SELF_VOICE_THRESHOLD,
+	ECHO_WINDOW_MS,
+} from "../services/voice/respond-gate.js";
 import type { VoiceAttributionOutput } from "../services/voice/speaker/attribution-pipeline.js";
 
 // ---------------------------------------------------------------------------

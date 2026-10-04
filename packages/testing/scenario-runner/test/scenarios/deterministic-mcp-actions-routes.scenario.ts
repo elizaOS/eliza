@@ -12,8 +12,8 @@ import type {
   HttpPlugin as Plugin,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core/api/http-plugin";
-import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
+} from "@elizaos/host/protocol";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import {
   type CapturedAction,
   type DeterministicModelCall,

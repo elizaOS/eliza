@@ -4,7 +4,7 @@
  * read/write layer the state modules go through.
  */
 
-import { asRecord } from "@elizaos/core/type-guards";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";

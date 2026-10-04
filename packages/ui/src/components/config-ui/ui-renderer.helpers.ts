@@ -10,11 +10,11 @@ import type {
   AuthState,
   UiSpecValidationCheck,
   UiSpecVisibilityCondition,
-} from "@elizaos/core/config/ui-spec";
+} from "@elizaos/host/protocol";
 import {
   getByPath,
   matchesSafeUntrustedRegexPattern,
-} from "../../config/config-catalog";
+} from "@elizaos/host/protocol";
 
 const BLOCKED_LINK_PROTOCOLS = new Set([
   "javascript",

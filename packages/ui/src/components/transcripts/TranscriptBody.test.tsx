@@ -5,7 +5,7 @@
  * read + word-sync surface for a given transcript and playback position.
  */
 
-import type { Transcript } from "@elizaos/core/transcripts";
+import type { Transcript } from "@elizaos/core/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TranscriptBody } from "./TranscriptBody";

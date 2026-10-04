@@ -8,7 +8,6 @@
  * authoritative empty calendar.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCalendarSourceAdministrationEntry,
   LifeOpsCalendarSourceAdministrationSnapshot,
@@ -17,7 +16,8 @@ import type {
   LifeOpsCalendarSourceSelectionReceipt,
   LifeOpsCalendarSummary,
   SetLifeOpsCalendarSourceSelectionRequest,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { CalendarServiceError } from "../internal/errors.js";
 import { CalendarService } from "../service/CalendarService.js";
 

@@ -3,10 +3,7 @@
  * family and thus eligible for the first-run local path.
  */
 
-import type {
-  CatalogModel,
-  InstalledModel,
-} from "@elizaos/core/contracts/local-inference";
+import type { CatalogModel, InstalledModel } from "@elizaos/contracts";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   isCatalogModelOfferable,

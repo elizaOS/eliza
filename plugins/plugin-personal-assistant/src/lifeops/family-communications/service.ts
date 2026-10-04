@@ -5,8 +5,8 @@
  * sends a message, mutates a calendar, purchases, or replies automatically.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,

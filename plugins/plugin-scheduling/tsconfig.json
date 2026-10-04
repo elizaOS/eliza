@@ -13,8 +13,8 @@
       "@elizaos/ui/spatial": ["../../packages/ui/src/spatial/index.ts"],
       "@elizaos/ui/spatial/*": ["../../packages/ui/src/spatial/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"]
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

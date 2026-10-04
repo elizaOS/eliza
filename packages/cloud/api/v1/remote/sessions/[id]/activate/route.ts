@@ -3,12 +3,12 @@
  * idempotent commit or rollback after the target durably installs authority.
  */
 
-import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/core/contracts/remote-control";
+import { REMOTE_TARGET_PAIRING_CAPABILITIES } from "@elizaos/contracts";
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { type AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../host-auth";
 
 const app = new Hono<AppEnv>();

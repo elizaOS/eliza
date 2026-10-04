@@ -19,7 +19,7 @@ import {
   type NavigateViewDetail,
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 import { logger } from "../logger.ts";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
@@ -53,7 +53,7 @@ export {
   TRAY_ACTION_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
 
 export function createNavigateViewEvent(
