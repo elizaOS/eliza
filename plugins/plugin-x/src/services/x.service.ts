@@ -161,6 +161,24 @@ function explicitConnectorLimit(value: number | undefined): number | undefined {
   return value;
 }
 
+/**
+ * The other participant of a 1:1 DM: the sender of an inbound message, and
+ * the first non-sender participant of the account's own outbound message.
+ */
+function dmCounterpartId(message: {
+  senderId: string;
+  isInbound?: boolean;
+  participantIds?: string[];
+}): string {
+  if (message.isInbound !== false) {
+    return message.senderId;
+  }
+  return (
+    message.participantIds?.find((id) => id && id !== message.senderId) ??
+    message.senderId
+  );
+}
+
 function readContentString(
   content: Content,
   keys: string[],
@@ -1152,8 +1170,15 @@ export class XService extends Service {
     // empty inbox.
     const messages = await this.listRecentDirectMessages(accountId);
 
+    // A conversation with the target includes the account's own replies,
+    // whose sender is the account itself.
     const matches = messages
-      .filter((message) => !targetUserId || message.senderId === targetUserId)
+      .filter(
+        (message) =>
+          !targetUserId ||
+          message.senderId === targetUserId ||
+          message.participantIds.includes(targetUserId),
+      )
       .map((message) =>
         this.buildXDirectMessageMemory(
           runtime,
@@ -1206,17 +1231,25 @@ export class XService extends Service {
     // Propagates like fetchConnectorMessages: an empty list would read as no
     // recent DM partners.
     const messages = await this.listRecentDirectMessages(accountId);
+    const usernames = new Map<string, string>();
+    for (const message of messages) {
+      if (message.senderId && message.senderUsername) {
+        usernames.set(message.senderId, message.senderUsername);
+      }
+    }
     const seen = new Set<string>();
     const targets: MessageConnectorTarget[] = [];
     for (const message of messages) {
-      if (!message.senderId || seen.has(message.senderId)) {
+      // The account's own DMs name the person it wrote to, not itself.
+      const partnerId = dmCounterpartId(message);
+      if (!partnerId || seen.has(partnerId)) {
         continue;
       }
-      seen.add(message.senderId);
+      seen.add(partnerId);
       targets.push(
         this.buildUserTarget(
-          message.senderId,
-          message.senderUsername ?? undefined,
+          partnerId,
+          usernames.get(partnerId),
           0.8,
           accountId,
         ),
@@ -1541,12 +1574,15 @@ export class XService extends Service {
     const createdAt = message.createdAt
       ? Date.parse(message.createdAt)
       : Date.now();
-    const roomId =
-      target?.roomId ??
-      createUniqueUuid(runtime, `x:${normalizedAccountId}:dm:${senderId}`);
     // `senderId` is an X user id, never the agent's UUID; the account's own
     // DMs are the ones listRecentDirectMessages marked as not inbound.
     const fromAccount = message.isInbound === false;
+    // Key the room on the other participant so both directions of a 1:1
+    // conversation share it; an outbound DM's sender is the account itself.
+    const counterpartId = dmCounterpartId({ ...message, senderId });
+    const roomId =
+      target?.roomId ??
+      createUniqueUuid(runtime, `x:${normalizedAccountId}:dm:${counterpartId}`);
     const entityId = fromAccount
       ? runtime.agentId
       : createUniqueUuid(runtime, `x:user:${senderId}`);
