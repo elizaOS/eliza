@@ -2098,6 +2098,129 @@ export class ProvisioningJobQueue {
   }
 
   /**
+   * Re-arm stuck `deletion_failed` sandboxes (and orphaned `deletion_pending`
+   * rows whose agent_delete job was lost mid-claim) so a delete that failed or
+   * was stranded eventually completes.
+   *
+   * `deletion_failed` is otherwise a dead-end: the agent_delete job exhausted
+   * its retries (e.g. the core was down for a deploy), so the row sits forever
+   * — visible to ops but never auto-recovered, and any container that survived
+   * the failed teardown keeps leaking on its node. This low-frequency sweep
+   * finds rows that have been `deletion_failed` longer than `minAgeMs` and
+   * enqueues a FRESH agent_delete for each. `enqueueAgentDeleteOnce` is
+   * idempotent (it dedups an in-flight delete and re-flips the row to
+   * `deletion_pending`), so a node that has since come back will finally drop
+   * the container + row. `minAgeMs` keeps this from fighting the live retry
+   * loop right after a failure.
+   *
+   * Circuit-breaker: a permanently-dead node would otherwise be re-armed every
+   * sweep forever. Each exhausted agent_delete bumps the sandbox's `error_count`
+   * (see the AGENT_DELETE failure handler), so a row that has already been
+   * re-enqueued `maxReEnqueues` times is SKIPPED — logged once as
+   * `event: "deletion.abandoned_candidate"` for ops to investigate (the
+   * container likely needs a manual node-level teardown) rather than looping.
+   *
+   * Capacity: `deletion_failed`/`deletion_pending` rows do NOT count toward the
+   * org's agent ceiling (`QUOTA_COUNTED_STATUSES` in eliza-sandbox.ts), so a
+   * stuck delete never blocks the org from creating a replacement. This sweep —
+   * together with the orphan-container reconciler, which treats
+   * `deletion_failed` as reapable — is what eventually reclaims the container
+   * behind that freed slot, so the exclusion cannot compound into unbounded
+   * live containers.
+   */
+  async reEnqueueFailedDeletions(params?: {
+    minAgeMs?: number;
+    maxAgents?: number;
+    maxReEnqueues?: number;
+  }): Promise<{
+    scanned: number;
+    reEnqueued: number;
+    failed: number;
+    abandoned: number;
+  }> {
+    const minAgeMs = params?.minAgeMs ?? 30 * 60 * 1000; // 30m
+    const maxAgents = params?.maxAgents ?? 50;
+    const maxReEnqueues = params?.maxReEnqueues ?? 5;
+    const cutoff = new Date(Date.now() - minAgeMs);
+
+    const stuck = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
+        userId: agentSandboxes.user_id,
+        errorCount: agentSandboxes.error_count,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          // deletion_failed: the agent_delete job exhausted its retries (e.g. a
+          // node was down for a deploy). deletion_pending with NO active
+          // agent_delete job: the worker CLAIMED the delete job then died before
+          // completing it, so recoverStaleJobs marked the JOB failed with no
+          // dependent-row writeback (jobs.ts) — stranding the sandbox in
+          // deletion_pending forever. Re-arm both; enqueueAgentDeleteOnce is
+          // idempotent and re-flips the row to deletion_pending.
+          sql`${agentSandboxes.status} IN ('deletion_failed', 'deletion_pending')`,
+          sql`${agentSandboxes.updated_at} < ${cutoff}`,
+          // REQUIRED now that deletion_pending is in scope: never re-arm a delete
+          // that is legitimately in-flight. (deletion_failed rows never have an
+          // active job, so this is a no-op for the original case.)
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${jobs}
+            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+            AND    ${jobs.type} = ${JOB_TYPES.AGENT_DELETE}
+            AND    ${jobs.status} IN ('pending', 'in_progress')
+          )`,
+        ),
+      )
+      .limit(maxAgents);
+
+    let reEnqueued = 0;
+    let failed = 0;
+    let abandoned = 0;
+    for (const agent of stuck) {
+      // Circuit-breaker: a row that has burned through maxReEnqueues sweeps is a
+      // probably-dead node — stop re-arming it and surface it for ops once.
+      if ((agent.errorCount ?? 0) >= maxReEnqueues) {
+        abandoned += 1;
+        logger.warn("[provisioning-jobs] deletion abandoned — exceeded re-enqueue budget", {
+          event: "deletion.abandoned_candidate",
+          agentId: agent.id,
+          orgId: agent.organizationId,
+          errorCount: agent.errorCount,
+          maxReEnqueues,
+        });
+        continue;
+      }
+      try {
+        await this.enqueueAgentDeleteOnce({
+          agentId: agent.id,
+          organizationId: agent.organizationId,
+          userId: agent.userId,
+        });
+        reEnqueued += 1;
+      } catch (error) {
+        failed += 1;
+        logger.warn("[provisioning-jobs] re-enqueue of failed deletion failed", {
+          agentId: agent.id,
+          error: jobErrorText(error),
+        });
+      }
+    }
+
+    if (stuck.length > 0) {
+      logger.info("[provisioning-jobs] Re-enqueued stuck deletions", {
+        scanned: stuck.length,
+        reEnqueued,
+        failed,
+        abandoned,
+      });
+    }
+    return { scanned: stuck.length, reEnqueued, failed, abandoned };
+  }
+
+  /**
    * Scan running agents and enqueue an `auto` snapshot for any whose last
    * backup is older than `minIntervalMs` (or who have never been backed up).
    * Drives the scheduled-backups cron. Per-agent dedup is handled by the
