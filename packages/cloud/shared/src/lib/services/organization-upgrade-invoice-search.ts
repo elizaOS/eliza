@@ -2,10 +2,6 @@
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { projectAuthenticatedUpgradeInvoiceOrigin } from "./organization-upgrade-invoice-origin";
-import {
-  createOrganizationUpgradeReadBudget,
-  type OrganizationUpgradeReadBudget,
-} from "./organization-upgrade-read-budget";
 
 type Request = Parameters<typeof projectAuthenticatedUpgradeInvoiceOrigin>[0]["originalRequest"];
 export interface UpgradeOriginEventReader {
@@ -16,7 +12,7 @@ export interface UpgradeOriginEventReader {
       created: { gte: number; lte: number };
       starting_after?: string;
     },
-    options: { apiVersion: "2024-11-20.acacia"; timeout: number; maxNetworkRetries: number },
+    options: { apiVersion: "2024-11-20.acacia" },
   ): Promise<unknown>;
 }
 const pageSchema = z.object({
@@ -40,9 +36,7 @@ export async function findOriginalUpgradeInvoiceEvent(input: {
   reader: UpgradeOriginEventReader;
   originalRequest: Request;
   observedAt: Date;
-  budget?: OrganizationUpgradeReadBudget;
 }) {
-  const budget = input.budget ?? createOrganizationUpgradeReadBudget();
   const end = Math.floor(input.observedAt.getTime() / 1000),
     start = input.originalRequest.prorationDate;
   if (!Number.isSafeInteger(end) || !Number.isSafeInteger(start) || start <= 0 || start > end)
@@ -53,7 +47,7 @@ export async function findOriginalUpgradeInvoiceEvent(input: {
   let match:
     | { raw: unknown; origin: ReturnType<typeof projectAuthenticatedUpgradeInvoiceOrigin> }
     | undefined;
-  for (let index = 0; index < 100; index++) {
+  for (;;) {
     const parsed = pageSchema.safeParse(
       await input.reader.list(
         {
@@ -62,10 +56,9 @@ export async function findOriginalUpgradeInvoiceEvent(input: {
           created: { gte: start, lte: end },
           ...(cursor ? { starting_after: cursor } : {}),
         },
-        budget.requestOptions(),
+        { apiVersion: "2024-11-20.acacia" },
       ),
     );
-    budget.remainingMs();
     if (!parsed.success) unavailable("invalid_event_page");
     const page = parsed.data;
     if (page.data.length > 100 || (page.has_more && page.data.length === 0))
@@ -99,5 +92,4 @@ export async function findOriginalUpgradeInvoiceEvent(input: {
       return match;
     }
   }
-  unavailable("event_search_limit_reached");
 }

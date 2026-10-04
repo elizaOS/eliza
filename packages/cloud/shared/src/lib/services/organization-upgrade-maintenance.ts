@@ -4,21 +4,15 @@ import { listOrganizationUpgradeRecovery } from "../../db/repositories/organizat
 import { recordOrganizationUpgradeRecoveryOutcome } from "../../db/repositories/organization-upgrade-recovery-incidents";
 import { reconcileOriginalOrganizationUpgrade } from "./organization-upgrade-recovery";
 export async function recoverOrganizationUpgrades(limit = 5) {
-  const deadline = performance.now() + 25_000;
   const result = { inspected: 0, applied: 0, pending: 0, unavailable: 0, deferred: 0 };
   const due = await listOrganizationUpgradeRecovery(limit);
   for (let index = 0; index < due.length; index++) {
-    const remaining = Math.floor(deadline - performance.now());
-    if (remaining < 1_000) {
-      result.deferred = due.length - index;
-      break;
-    }
     const command = due[index]!;
     const identity = { organizationId: command.organization_id, commandId: command.id };
     result.inspected++;
     let observed: Awaited<ReturnType<typeof reconcileOriginalOrganizationUpgrade>>;
     try {
-      observed = await reconcileOriginalOrganizationUpgrade(identity, Math.min(20_000, remaining));
+      observed = await reconcileOriginalOrganizationUpgrade(identity);
     } catch (error) {
       // error-policy:J4 Per-command uncertainty is retained in the durable journal;
       // a failure to record it fails the maintenance lane rather than hiding loss.
