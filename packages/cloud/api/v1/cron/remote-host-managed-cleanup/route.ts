@@ -1,11 +1,11 @@
 /** Bounded retry of stranded managed-network host compensation. */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { remoteHostsRepository } from "@elizaos/cloud-shared/db/repositories/remote-hosts";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   managedNetworkConfig,
   reconcileManagedNetworkCleanup,

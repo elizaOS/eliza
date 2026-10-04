@@ -15,6 +15,7 @@
  * never-settling lookup or caller abort still settles as a typed 504.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   calculateCreditMarkup,
   DEFAULT_PLATFORM_FEE_RATE,
@@ -22,30 +23,31 @@ import {
   mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_UNIT,
 } from "@elizaos/cloud-shared/billing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  CORS_ALLOW_HEADERS,
+  CORS_ALLOW_METHODS,
+} from "@elizaos/cloud-shared/lib/cors-constants";
+import { assertSafeOutboundUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
+import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
+import { affiliatesService } from "@elizaos/cloud-shared/lib/services/affiliates";
+import { containersService } from "@elizaos/cloud-shared/lib/services/containers";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { assertInferenceCredentialActive } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import {
+  RETIRED_MCP_LISTING_PRICE_POINTS,
+  userMcpsService,
+} from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
 import {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
-import { safeFetch } from "@/lib/security/safe-fetch";
-import { affiliatesService } from "@/lib/services/affiliates";
-import { containersService } from "@/lib/services/containers";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { assertInferenceCredentialActive } from "@/lib/services/inference-credential-revocation";
-import {
-  RETIRED_MCP_LISTING_PRICE_POINTS,
-  userMcpsService,
-} from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   createMcpProxyHopDeadline,
   isMcpProxyHopDeadline,

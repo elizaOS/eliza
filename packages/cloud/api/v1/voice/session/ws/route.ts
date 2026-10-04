@@ -3,17 +3,17 @@
  * first hello frame because embedded WebViews cannot attach upgrade headers;
  * provider sockets and metering remain closed until that frame is verified.
  */
-import { Hono } from "hono";
-import { hasDbCacheContext } from "@/db/client";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
-import { hasCloudBindingsContext } from "@/lib/runtime/cloud-bindings";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+
+import { hasDbCacheContext } from "@elizaos/cloud-shared/db/client";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { hasCloudBindingsContext } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
   createDurableVoiceUsageStore,
   InMemoryVoiceUsageStore,
   type VoiceUsageStore,
-} from "@/lib/services/voice-usage-meter";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   isFishAudioDataGovernanceApproved,
   isFishRealtimeTtsEnabled,
@@ -26,18 +26,22 @@ import {
   resolveMaxSessions,
   resolveVoiceUsageLimits,
   type VoiceRealtimeEnv,
-} from "@/lib/voice-session/config";
+} from "@elizaos/cloud-shared/lib/voice-session/config";
 import {
   claimVoiceSessionToken,
   isVoiceSessionTokenRevoked,
   verifyVoiceSessionToken,
-} from "@/lib/voice-session/jwt";
-import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
+} from "@elizaos/cloud-shared/lib/voice-session/jwt";
+import { getVoiceSessionRegistry } from "@elizaos/cloud-shared/lib/voice-session/session-registry";
 import {
   attachVoiceWsHandler,
   type ServerWebSocketLike,
-} from "@/lib/voice-session/ws-handler";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/voice-session/ws-handler";
+import type {
+  AppEnv,
+  Bindings,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { createInternalElizaConversationFetchFactory } from "../lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,

@@ -1,13 +1,14 @@
 // Handles v1 cloud API v1 telegram scan chats route traffic with route-local auth expectations.
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { telegramChatsRepository } from "@elizaos/cloud-shared/db/repositories/telegram-chats";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { telegramAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { Update } from "telegraf/types";
-import { telegramChatsRepository } from "@/db/repositories/telegram-chats";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { telegramAutomationService } from "@/lib/services/telegram-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

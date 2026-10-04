@@ -12,15 +12,18 @@
  * daemon (the only context with SSH keys).
  */
 
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -1,11 +1,12 @@
 /** Routes delegated app-customer chat through Cloud inference with independent developer funding authority. */
+
+import { requireAppActor } from "@elizaos/cloud-shared/lib/auth/app-delegation-auth";
+import { AppDelegationError } from "@elizaos/cloud-shared/lib/services/app-delegation";
+import { appInferenceErrorResponse } from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireAppActor } from "@/lib/auth/app-delegation-auth";
-import { AppDelegationError } from "@/lib/services/app-delegation";
-import { appInferenceErrorResponse } from "@/lib/services/app-subscription-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { handleChatCompletionsPOST } from "../../../../../chat/completions/route";
 
 const scopeHeaders = z.object({

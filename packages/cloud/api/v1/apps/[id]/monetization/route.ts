@@ -1,15 +1,15 @@
 /** Handles monetization settings for an authenticated cloud application. */
 
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { appCreditsService } from "@/lib/services/app-credits";
-import { appsService } from "@/lib/services/apps";
-import { CreatorMonetizationRetiredError } from "@/lib/services/creator-monetization-retirement";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const UpdateMonetizationSchema = z.object({
   monetizationEnabled: z.boolean().optional(),

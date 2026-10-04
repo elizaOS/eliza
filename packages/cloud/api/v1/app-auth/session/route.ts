@@ -8,24 +8,24 @@
  * CORS is handled globally in src/index.ts.
  */
 
-import { eq } from "drizzle-orm";
-import type { Context } from "hono";
-import { Hono } from "hono";
-import { dbRead } from "@/db/client";
-import { apps } from "@/db/schemas/apps";
+import { requireUserOrApiKey } from "@elizaos/cloud-shared/auth";
+import { dbRead } from "@elizaos/cloud-shared/db/client";
+import { apps } from "@elizaos/cloud-shared/db/schemas/apps";
 import {
   AuthenticationError,
   ForbiddenError,
   failureResponse,
-} from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   consumeAppAuthCode,
   looksLikeAppAuthCode,
-} from "@/lib/services/app-auth-codes";
-import { usersService } from "@/lib/services/users";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/app-auth-codes";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { eq } from "drizzle-orm";
+import type { Context } from "hono";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
