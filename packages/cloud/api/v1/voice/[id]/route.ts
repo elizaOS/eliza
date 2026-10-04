@@ -1,9 +1,8 @@
 /** Manages an authenticated user's individual cloned voice. */
 
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Voice Management API (v1)
@@ -27,11 +26,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  *    of underlying voice synthesis provider.
  */
 
+import {
+  getErrorStatusCode,
+  nextJsonFromCaughtError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { voiceCloningService } from "@elizaos/cloud-shared/lib/services/voice-cloning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
-import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { voiceCloningService } from "@/lib/services/voice-cloning";
-import { logger } from "@/lib/utils/logger";
 
 const VoiceUpdateBody = z.object({
   name: z.string().optional(),

@@ -172,6 +172,38 @@ function gmailHeader(
   return null;
 }
 
+function gmailReplyReferences(
+  referencesHeader: string | null,
+  messageIdHeader: string,
+): string {
+  if (!referencesHeader) return messageIdHeader;
+  if (referencesHeader.includes(messageIdHeader)) return referencesHeader;
+  return `${referencesHeader} ${messageIdHeader}`;
+}
+
+function requireGmailReplyThreading(message: LifeOpsGmailMessageSummary): {
+  threadId: string;
+  inReplyTo: string;
+  references: string;
+} {
+  const threadId = message.threadId?.trim();
+  if (!threadId) {
+    fail(400, "Gmail reply send requires the original thread id.");
+  }
+  const inReplyTo = gmailHeader(message, "Message-Id");
+  if (!inReplyTo) {
+    fail(400, "Gmail reply send requires the original Message-ID header.");
+  }
+  return {
+    threadId,
+    inReplyTo,
+    references: gmailReplyReferences(
+      gmailHeader(message, "References"),
+      inReplyTo,
+    ),
+  };
+}
+
 /** Canonical source id emitted by GoogleGmailAdapter into BRIEF's MessageRef. */
 export function gmailBriefSourceId(externalMessageId: string): string {
   return `gmail:${externalMessageIdFromInput(externalMessageId)}`;
@@ -1357,15 +1389,16 @@ export class GmailDomain {
       this.ctx.runtime,
       "createGmailDraft",
     );
+    const threading = requireGmailReplyThreading(read.message);
     const receipt = await createGmailDraft({
       accountId: accountIdForGrant(grant),
       to: draft.to,
       cc: draft.cc,
       subject: draft.subject,
       bodyText: draft.bodyText,
-      threadId: read.message.threadId,
-      inReplyTo: gmailHeader(read.message, "Message-Id"),
-      references: gmailHeader(read.message, "References"),
+      threadId: threading.threadId,
+      inReplyTo: threading.inReplyTo,
+      references: threading.references,
     });
     return {
       ...draft,
@@ -1457,27 +1490,31 @@ export class GmailDomain {
       request.side,
       request.grantId,
     );
-    const sendEmail = requireGoogleServiceMethod(this.ctx.runtime, "sendEmail");
-    const sent = await sendEmail(
-      googleSendEmailInput({
-        accountId: accountIdForGrant(grant),
-        to: request.to?.length
-          ? request.to
-          : read.message.fromEmail
-            ? [read.message.fromEmail]
-            : [],
-        cc: request.cc,
-        subject:
-          request.subject ??
-          `Re: ${read.message.subject.replace(/^Re:\\s*/i, "")}`,
-        bodyText: normalizeGmailReplyBody(request.bodyText),
-        threadId: read.message.threadId,
-      }),
+    const sendGmailReply = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "sendGmailReply",
     );
+    const threading = requireGmailReplyThreading(read.message);
+    const sent = await sendGmailReply({
+      accountId: accountIdForGrant(grant),
+      to: request.to?.length
+        ? request.to
+        : read.message.fromEmail
+          ? [read.message.fromEmail]
+          : [],
+      cc: request.cc,
+      subject:
+        request.subject ??
+        `Re: ${read.message.subject.replace(/^Re:\s*/i, "")}`,
+      bodyText: normalizeGmailReplyBody(request.bodyText),
+      threadId: threading.threadId,
+      inReplyTo: threading.inReplyTo,
+      references: threading.references,
+    });
     await this.attributeBriefMessageOutcome({
       messageId: gmailBriefSourceId(read.message.externalId),
       eventType: "replied",
-      domainEventId: `gmail_reply:${grant.id}:${sent.id}`,
+      domainEventId: `gmail_reply:${grant.id}:${sent.messageId}`,
       weight: 1,
     });
     return { ok: true };

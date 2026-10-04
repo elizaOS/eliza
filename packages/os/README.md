@@ -14,7 +14,8 @@ Install workspace dependencies with Bun 1.4.2 at the repository root. Use Node
 
 ```bash
 bun run --cwd packages/os build                 # installer web frontends only
-bun run --cwd packages/os verify                # installer and release checks
+bun run --cwd packages/os verify:portable       # checks without native installer qualification
+bun run --cwd packages/os verify                # Linux native and release checks
 bun run --cwd packages/os verify:linux          # Linux configuration checks
 make -C packages/os/linux/elizaos build ARCH=amd64 PROFILE=gui
 make -C packages/os/android bootstrap AOSP_ROOT=/path/to/aosp
@@ -55,10 +56,20 @@ fetches inputs nor qualifies runtime behavior. Escaping dependencies and empty r
 generated stamps and Python package markers remain in the hashed closure. Run its isolated tests
 with `python3 packages/os/scripts/linux/test_assemble_browser_payload.py`.
 
-Release-script tests (`test:release`) require e2fsprogs (`mkfs.ext4` and
-`debugfs`) on `PATH` for real Android partition-image fixtures.
+Release-script tests (`test:release`) require Python 3.11+, cryptography, binutils
+(`readelf`) and e2fsprogs (`mkfs.ext4`, `debugfs`) on `PATH`. Linux CI owns the
+complete native and release lane; portable checks do not qualify device writes.
+Browser tests additionally require a JDK, C++20 compiler and OpenSSL development
+headers/libraries on the compiler search path.
 
 The retained release tools use canonical JSON fixtures mirrored from
 [`elizaOS/os` at `735afc708eb3`](https://github.com/elizaOS/os/tree/735afc708eb3e7a76050c0c918c916bb5545b0bf/packages/os/release).
 Preserve hashed policy metadata verbatim; its historical proving command is
 part of the signed digest, not a current script entrypoint.
+
+`native/ota-publisher` contains the provisioned OTA publisher's durable version
+allocator, metadata transaction journal, rollback floors and strict descriptor
+parser. Hosts supply verified authorization, immutable storage and atomic timestamp
+CAS ports; the core has no default signer or publication destination. Run
+`bun run --cwd packages/os test:ota-publisher` for concurrency and real process-death
+recovery contracts. These tests do not authorize or perform production publication.

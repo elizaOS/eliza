@@ -403,6 +403,29 @@ describe("KnowledgeDocumentsView — root file drop drives the real upload path"
     });
   });
 
+  it("uploads uppercase markdown with an empty MIME type as decoded text", async () => {
+    const { root } = await renderView();
+    const markdown = "# owner notes";
+    const file = new File([markdown], "README.MD") as DocumentUploadFile;
+
+    fireEvent.drop(root, { dataTransfer: makeDataTransfer([file]) });
+
+    await waitFor(() =>
+      expect(clientMock.uploadDocumentsBulk).toHaveBeenCalledTimes(1),
+    );
+    const payload = clientMock.uploadDocumentsBulk.mock.calls[0][0] as {
+      documents: Array<{ content: string; filename: string }>;
+    };
+    expect(payload.documents).toHaveLength(1);
+    expect(payload.documents[0]).toMatchObject({
+      content: markdown,
+      filename: "README.MD",
+    });
+    expect(payload.documents[0]?.content).not.toBe(
+      Buffer.from(markdown, "utf8").toString("base64"),
+    );
+  });
+
   it("batches multiple dropped files into one bulk upload request", async () => {
     clientMock.uploadDocumentsBulk.mockResolvedValue({
       results: [

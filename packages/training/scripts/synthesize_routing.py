@@ -42,13 +42,12 @@ from pathlib import Path
 from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import (  # noqa: E402
+from eliza_training.lib.eliza_record import (  # noqa: E402
     ACTION_IGNORE, ACTION_RESPOND, ACTION_STOP,
     build, stable_id,
 )
-from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = ROOT / "data" / "synthesized" / "dialogue_routing.jsonl"

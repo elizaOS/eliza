@@ -1,8 +1,13 @@
 /** Verifies useDesktopTabs through the package's configured test harness. */
 // @vitest-environment jsdom
 
+import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+} from "../surface-realm-broker";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 import { LAUNCHER_DOCK_LIMIT, useDesktopTabs } from "./useDesktopTabs";
 
@@ -36,6 +41,7 @@ describe("useDesktopTabs", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    setActiveSurfaceRealmScope(null);
     window.localStorage.clear();
   });
 
@@ -144,6 +150,40 @@ describe("useDesktopTabs", () => {
       },
     ]);
 
+    unmount();
+    const next = renderHook(() => useDesktopTabs());
+
+    expect(next.result.current.tabs).toEqual([
+      {
+        viewId: "remote.ledger",
+        label: "Remote Ledger",
+        path: "/apps/remote-ledger",
+        pinned: true,
+        pinnedAt: expect.any(Number),
+      },
+    ]);
+  });
+
+  it("restores pinned tabs saved while a view surface scope is active", () => {
+    setActiveSurfaceRealmScope(
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({ surface: { capabilities: [] } }),
+        "chat",
+        window.localStorage,
+        () => undefined,
+      ),
+    );
+    const { result, unmount } = renderHook(() => useDesktopTabs());
+
+    act(() => {
+      result.current.openTab(
+        view("remote.ledger", {
+          label: "Remote Ledger",
+          path: "/apps/remote-ledger",
+        }),
+        { pinned: true },
+      );
+    });
     unmount();
     const next = renderHook(() => useDesktopTabs());
 

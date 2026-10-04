@@ -1,3 +1,8 @@
+import type {
+  LifeOpsOccurrenceState,
+  LifeOpsOverviewSummary,
+} from "../contracts/index.js";
+
 /**
  * `LifeOpsBriefing` domain type.
  *
@@ -33,11 +38,18 @@ export interface LifeOpsBriefingInboxItem {
   readonly classification: string;
 }
 
+export interface LifeOpsBriefingLifeCollection {
+  readonly items: readonly LifeOpsBriefingLifeItem[];
+  readonly summary: LifeOpsOverviewSummary;
+}
+
 export interface LifeOpsBriefingLifeItem {
   readonly id: string;
   readonly kind: "todo" | "reminder" | "habit" | "goal";
   readonly title: string;
   readonly dueAt: string | null;
+  /** Canonical occurrence lifecycle; absent for unattested reminder projections. */
+  readonly state?: LifeOpsOccurrenceState;
 }
 
 export interface LifeOpsBriefingMoneyItem {
@@ -118,6 +130,12 @@ export interface LifeOpsBriefing {
   readonly period: LifeOpsBriefingPeriod;
   readonly generatedAt: string;
   readonly sections: LifeOpsBriefingSections;
+  /** Counts copied from the requested owner's canonical LifeOps overview snapshot. */
+  readonly lifeSummary?: LifeOpsOverviewSummary;
+  /** Requested collectors that failed; empty sections without a marker are healthy. */
+  readonly sourceErrors?: Partial<
+    Record<keyof LifeOpsBriefingSections, "unavailable">
+  >;
   readonly editorial: LifeOpsBriefingEditorialContract;
   /** Free-form narrative composed by the LLM compose pass. */
   readonly narrative?: string;

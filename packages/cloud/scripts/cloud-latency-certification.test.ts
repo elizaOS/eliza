@@ -34,6 +34,65 @@ import {
 
 const SHA = "a".repeat(40);
 
+test("intentional targeted placement admits remote headers without relaxing proof or identity checks", () => {
+  const policy = { mode: "targeted", region: "gcp:us-west2", deploySha: SHA };
+  const records = Array.from({ length: 44 }, (_, index) =>
+    pairedRecord(index, { headers: { "cf-placement": "remote-LAX" } }),
+  );
+  assert.equal(
+    validatePairedEvidence(jsonl(records), SHA, SHA, policy).counts.gateway,
+    22,
+  );
+  assert.throws(
+    () => validatePairedEvidence(jsonl(records), SHA),
+    /remote Worker placement/,
+  );
+  assert.throws(
+    () =>
+      validatePairedEvidence(jsonl(records), SHA, SHA, {
+        ...policy,
+        deploySha: "b".repeat(40),
+      }),
+    /placement policy/,
+  );
+  assert.throws(
+    () => validatePairedEvidence(jsonl(records), SHA, SHA, { mode: "smart" }),
+    /placement policy/,
+  );
+  for (const change of [
+    { temperature: 1 },
+    { temperature: undefined },
+    { proofMatched: false },
+    { transportOk: false },
+    { ci: { sha: "b".repeat(40), gatewayDeploySha: SHA } },
+    { headers: { "cf-placement": "banana" } },
+    { headers: { "cf-placement": "remote-XX" } },
+  ]) {
+    const invalid = records.map((record, index) =>
+      index === 1 ? { ...record, ...change } : record,
+    );
+    assert.throws(() =>
+      validatePairedEvidence(jsonl(invalid), SHA, SHA, policy),
+    );
+  }
+  const missingLocation = records.map((record) => ({
+    ...record,
+    headers: { "cf-placement": "remote-" },
+  }));
+  const result = validatePairedEvidence(
+    jsonl(missingLocation),
+    SHA,
+    SHA,
+    policy,
+  );
+  assert.deepEqual(result.placementLocations, { reported: 0, unavailable: 22 });
+  assert.equal(result.records[1].headers["cf-placement"], "remote-");
+  assert.throws(
+    () => validatePairedEvidence(jsonl(missingLocation), SHA),
+    /invalid Worker placement/,
+  );
+});
+
 function pairedRecord(index, overrides = {}) {
   return {
     schemaVersion: 1,
@@ -41,6 +100,7 @@ function pairedRecord(index, overrides = {}) {
     ok: true,
     transportOk: true,
     proofMatched: true,
+    temperature: 0,
     ci: { sha: SHA, gatewayDeploySha: SHA },
     headers: index % 2 === 0 ? {} : { "cf-placement": "local-ORD" },
     ...overrides,
@@ -134,6 +194,7 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
     ]),
     {
       deploySha: SHA,
+      probeCase: "qwen-3.8-27b@none@512",
       outputDir: join(process.cwd(), "artifacts/cert"),
       acknowledgedContractDigest: "",
       runAuth: true,
@@ -554,4 +615,50 @@ test("trace API denial survives private cleanup without retaining upstream secre
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("explicit probe controls retain the selected reasoning policy and token budget", async () => {
+  const { buildOpenAiRequestBody, parseProbeCase } = await import(
+    "./chat-latency.ts"
+  );
+  const defaults = parseCertificationArgs([
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+  ]);
+  const body = buildOpenAiRequestBody(
+    parseProbeCase(defaults.probeCase),
+    "synthetic proof",
+    "synthetic-cache-key",
+  );
+  assert.equal(Reflect.get(body, "reasoning_effort"), "none");
+  assert.equal(body.max_tokens, 512);
+  const selected = parseCertificationArgs([
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+    "--probe-case",
+    "qwen-3.8-27b@high@4096",
+  ]);
+  const selectedBody = buildOpenAiRequestBody(
+    parseProbeCase(selected.probeCase),
+    "synthetic proof",
+    "synthetic-cache-key",
+  );
+  assert.equal(Reflect.get(selectedBody, "reasoning_effort"), "high");
+  assert.equal(selectedBody.max_tokens, 4096);
+  assert.throws(
+    () =>
+      parseCertificationArgs([
+        "--deploy-sha",
+        SHA,
+        "--output-dir",
+        "artifacts/cert",
+        "--probe-case",
+        "qwen-3.8-27b@none@invalid",
+      ]),
+    /max_tokens/,
+  );
 });

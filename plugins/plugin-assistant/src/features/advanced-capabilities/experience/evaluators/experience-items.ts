@@ -279,6 +279,7 @@ function hasExplicitExperienceRequest(text: string): boolean {
 /** Outcome metadata alone is not a lesson. Inspect values for failure or
  * learning evidence without treating JSON keys such as success/error as prose. */
 function hasActionExperienceSignal(result: unknown): boolean {
+  const actionResult = isRecord(result) ? result : undefined;
   const pending = [result];
   const seen = new Set<object>();
   while (pending.length > 0) {
@@ -304,7 +305,17 @@ function hasActionExperienceSignal(result: unknown): boolean {
         (typeof value.error === "string" && value.error.trim() !== "")
       )
         return true;
-      for (const entry of Object.values(value)) pending.push(entry);
+      for (const [key, entry] of Object.entries(value)) {
+        // Canonical deferred reply metadata contains character instructions,
+        // not operational evidence. Keep nested domain fields eligible.
+        if (
+          key === "replyGrounding" &&
+          typeof entry === "string" &&
+          (value === actionResult?.data || value === actionResult?.promptData)
+        )
+          continue;
+        pending.push(entry);
+      }
     }
   }
   return false;

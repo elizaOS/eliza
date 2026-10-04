@@ -1147,17 +1147,10 @@ export class XService extends Service {
       target?.channelId ??
       target?.threadId;
     const limit = explicitConnectorLimit(params.limit);
-    const messages = await this.listRecentDirectMessages(accountId).catch(
-      (error) => {
-        // error-policy:J7 a DM fetch failure (expired token, rate limit) must
-        // surface to the agent rather than reading as an empty inbox; degrade to
-        // no messages after reporting.
-        runtime.reportError("XService.fetchConnectorMessages", error, {
-          accountId,
-        });
-        return [];
-      },
-    );
+    // A DM fetch failure (expired token, rate limit) propagates: callers
+    // translate it at their boundary, and an empty list would read as an
+    // empty inbox.
+    const messages = await this.listRecentDirectMessages(accountId);
 
     const matches = messages
       .filter((message) => !targetUserId || message.senderId === targetUserId)
@@ -1210,17 +1203,9 @@ export class XService extends Service {
     _context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
     const accountId = this.resolveAccountId(_context.target, _context);
-    const messages = await this.listRecentDirectMessages(accountId).catch(
-      (error) => {
-        // error-policy:J7 a DM fetch failure must surface to the agent rather
-        // than reading as no recent targets; degrade to an empty list after
-        // reporting.
-        this.runtime.reportError("XService.listRecentConnectorTargets", error, {
-          accountId,
-        });
-        return [];
-      },
-    );
+    // Propagates like fetchConnectorMessages: an empty list would read as no
+    // recent DM partners.
+    const messages = await this.listRecentDirectMessages(accountId);
     const seen = new Set<string>();
     const targets: MessageConnectorTarget[] = [];
     for (const message of messages) {
@@ -1559,10 +1544,12 @@ export class XService extends Service {
     const roomId =
       target?.roomId ??
       createUniqueUuid(runtime, `x:${normalizedAccountId}:dm:${senderId}`);
-    const entityId =
-      senderId === runtime.agentId
-        ? runtime.agentId
-        : createUniqueUuid(runtime, `x:user:${senderId}`);
+    // `senderId` is an X user id, never the agent's UUID; the account's own
+    // DMs are the ones listRecentDirectMessages marked as not inbound.
+    const fromAccount = message.isInbound === false;
+    const entityId = fromAccount
+      ? runtime.agentId
+      : createUniqueUuid(runtime, `x:user:${senderId}`);
 
     return {
       id: createUniqueUuid(runtime, `x:dm:${message.id}`),
@@ -1581,7 +1568,7 @@ export class XService extends Service {
         accountId: normalizedAccountId,
         provider: "x",
         timestamp: createdAt,
-        fromBot: entityId === runtime.agentId,
+        fromBot: fromAccount,
         messageIdFull: message.id,
         chatType: ChannelType.DM,
         sender: {

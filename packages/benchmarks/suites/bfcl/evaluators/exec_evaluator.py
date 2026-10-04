@@ -34,7 +34,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Optional
 
-from suites.bfcl.executable_runtime import (
+from benchmarks.bfcl.executable_runtime import (
     CLASS_FILE_PATH_MAPPING,
     NETWORK_REQUIRED_CLASSES,
     ExecutableRuntime,
@@ -45,7 +45,7 @@ from suites.bfcl.executable_runtime import (
     RuntimeNetworkRequired,
     agentic_checker,
 )
-from suites.bfcl.types import (
+from benchmarks.bfcl.types import (
     ArgumentValue,
     BFCLCategory,
     FunctionCall,
@@ -98,10 +98,7 @@ class MockFunctionRegistry:
         return self._results.get(name.lower())
 
     def has_function(self, name: str) -> bool:
-        return (
-            name.lower() in self._functions
-            or name.lower() in self._results
-        )
+        return name.lower() in self._functions or name.lower() in self._results
 
     def clear(self) -> None:
         self._functions.clear()
@@ -289,9 +286,7 @@ class ExecutionEvaluator:
             key = f"prereq_msg_{i:02d}"
             try:
                 if backend == "rec_sum":
-                    runtime.execute_calls(
-                        [f"memory_append(text={msg!r})"]
-                    )
+                    runtime.execute_calls([f"memory_append(text={msg!r})"])
                 else:
                     runtime.execute_calls(
                         [f"core_memory_add(key={key!r}, value={msg!r})"]
@@ -343,9 +338,7 @@ class ExecutionEvaluator:
         it to ``SKIPPED_RATE_LIMITED``.
         """
         if not self.enable_network:
-            raise RuntimeNetworkRequired(
-                "REST execution requires enable_network=True"
-            )
+            raise RuntimeNetworkRequired("REST execution requires enable_network=True")
 
         rest_runner = runner or RESTRunner(
             enable_network=True,
@@ -363,10 +356,7 @@ class ExecutionEvaluator:
             "elapsed_seconds": response.elapsed_seconds,
             "response_preview": response.text[:512],
         }
-        passed = (
-            200 <= response.status_code < 300
-            and response.matches(expected)
-        )
+        passed = 200 <= response.status_code < 300 and response.matches(expected)
         details["expected_matched"] = passed
         return passed, details
 
@@ -432,7 +422,9 @@ class ExecutionEvaluator:
         self,
         arguments: dict[str, ArgumentValue],
     ) -> dict[str, str | int | float | bool | list[object] | dict[str, object]]:
-        prepared: dict[str, str | int | float | bool | list[object] | dict[str, object]] = {}
+        prepared: dict[
+            str, str | int | float | bool | list[object] | dict[str, object]
+        ] = {}
         for key, value in arguments.items():
             prepared[key] = self._convert_argument_value(value)
         return prepared

@@ -45,28 +45,29 @@
  * refuse tokens issued before it, so logging out stays logged out across the
  * pair; a marker-store failure fails CLOSED (503 → normal per-origin login).
  */
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { Hono } from "hono";
+
 import {
   mintStewardTokenFromClaims,
   STEWARD_ACCESS_TOKEN_TTL_SECONDS,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
-} from "@/lib/auth/steward-client";
+} from "@elizaos/cloud-shared/lib/auth/steward-client";
 import {
   getIpKey,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   consumeSsoBridgeCode,
   isBlockedBySsoBridgeLogout,
   issueSsoBridgeCode,
   looksLikeSsoBridgeChallenge,
   looksLikeSsoBridgeCode,
-} from "@/lib/services/sso-bridge-codes";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { Hono } from "hono";
 
 /** Public/auth hosts that may MINT codes. Exact hosts only — no suffix match. */
 const MINT_ORIGIN_HOSTS = new Set<string>([

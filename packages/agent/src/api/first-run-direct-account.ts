@@ -9,8 +9,8 @@ import {
   createRuntimeAccountStoragePolicy,
   deleteAccount,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
-import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
+} from "@elizaos/auth/auth";
+import { probeDirectApiKey } from "@elizaos/auth/providers";
 import {
   ElizaError,
   type LinkedAccountConfig,

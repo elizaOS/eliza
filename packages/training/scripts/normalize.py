@@ -40,10 +40,9 @@ from typing import Any, Iterator
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.adapters import REGISTRY  # noqa: E402
-from lib.expected_response import ExpectedResponseEncoder, make_expected_response_encoder  # noqa: E402
+from eliza_training.lib.adapters import REGISTRY
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, make_expected_response_encoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw"
 OUT_DIR = ROOT / "data" / "normalized"

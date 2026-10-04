@@ -11,10 +11,10 @@
 
 import {
   type AccountStoragePolicy,
+  applySubscriptionCredentials,
   resetAccountCredentialStorage,
-} from "@elizaos/auth/auth/account-storage";
-import { applySubscriptionCredentials } from "@elizaos/auth/auth/credentials";
-import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/auth/types";
+  SUBSCRIPTION_PROVIDER_MAP,
+} from "@elizaos/auth/auth";
 import {
   asNonEmptyString,
   asObjectRecord as asRecord,

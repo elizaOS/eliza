@@ -132,8 +132,9 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
   const shouldUpdatePresetVoice =
     selectedCharacterVoice.voiceId !== currentVoiceId &&
     (!currentVoiceId ||
-      currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
-      currentVoiceId === legacyVoiceId);
+      (!isExplicitElevenLabsChoice(storedVoiceConfig) &&
+        (currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
+          currentVoiceId === legacyVoiceId)));
   if (!releaseLegacyProvider && !shouldUpdatePresetVoice) {
     return storedVoiceConfig;
   }

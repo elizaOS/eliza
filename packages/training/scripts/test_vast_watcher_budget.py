@@ -4,7 +4,7 @@ Verifies the bash watcher's contract by:
   1. Constructing an isolated ELIZA_STATE_DIR.
   2. Pointing the watcher at a fixture `train_vast.sh` (which always succeeds)
      and pre-seeding ``.vast_instance_id`` so the watcher reads it.
-  3. Replacing the python ``scripts.lib.vast_budget enforce`` invocation
+  3. Replacing the python ``eliza_training.lib.vast_budget enforce`` invocation
      with one that returns the hard-cap exit code (11).
   4. Running the watcher with ``ELIZA_VAST_BUDGET_DRY_RUN=1`` and a tiny
      ``ELIZA_VAST_WATCH_INTERVAL_S=1`` so a single poll happens then
@@ -62,7 +62,7 @@ def fake_repo(tmp_path: Path) -> Path:
     fake_train_vast.chmod(0o755)
 
     # Stub python module: shim that always reports the hard-cap exit
-    # code via the same -m scripts.lib.vast_budget path the watcher uses.
+    # code via the same -m eliza_training.lib.vast_budget path the watcher uses.
     # We accomplish this by interposing a python wrapper that the
     # watcher will pick up first on PATH.
     return root
@@ -71,13 +71,13 @@ def fake_repo(tmp_path: Path) -> Path:
 def _make_python_shim(tmp_path: Path, exit_code: int) -> Path:
     """A python3 shim that prints a one-line summary and exits with
     ``exit_code``. Placed first on PATH so the watcher's invocation of
-    ``python3 -m scripts.lib.vast_budget enforce ...`` hits our shim.
+    ``python3 -m eliza_training.lib.vast_budget enforce ...`` hits our shim.
     """
     bindir = tmp_path / "bin"
     bindir.mkdir()
     real_python = shutil.which("python3") or "/usr/bin/python3"
     shim = bindir / "python3"
-    # The watcher calls: `python3 -m scripts.lib.vast_budget enforce <id>`.
+    # The watcher calls: `python3 -m eliza_training.lib.vast_budget enforce <id>`.
     # The shim detects the vast_budget enforce path, prints a fake
     # summary line, exits with the desired code. Anything else falls
     # through to the real python so unrelated callers (e.g. shellcheck
@@ -86,7 +86,7 @@ def _make_python_shim(tmp_path: Path, exit_code: int) -> Path:
         f"""#!/usr/bin/env bash
 for arg in "$@"; do
   case "$arg" in
-    scripts.lib.vast_budget)
+    eliza_training.lib.vast_budget)
       echo "pipeline=test gpu=B200x2 runtime=6:00:00 \\$/hr=\\$3.00 total=\\$18.00 STATE=OVER_HARD_CAP"
       exit {exit_code}
       ;;

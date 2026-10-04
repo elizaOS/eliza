@@ -17,7 +17,8 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "types": ["bun", "node", "react"],
-    "paths": {}
+    "paths": {},
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src",

@@ -1411,8 +1411,9 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).toMatchObject({ itemId: item.itemId, eventType: "opened" });
   });
 
-  it("attributes Gmail mark-read through the production MESSAGE adapter path", async () => {
+  it("attributes Gmail mark-read and reply through the production MESSAGE adapter path", async () => {
     const externalId = "provider-production-message";
+    const messageIdHeader = "<provider-production-message@example.com>";
     await repository.recordBriefItemEngagement({
       agentId: runtime.agentId,
       briefingId: "brief-production-gmail",
@@ -1449,7 +1450,7 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
                   likelyReplyNeeded: true,
                   labels: ["INBOX", "UNREAD"],
                   htmlLink: null,
-                  metadata: {},
+                  metadata: { messageIdHeader },
                 },
               ]),
               searchGmailMessages: vi.fn(),
@@ -1466,7 +1467,7 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
                 likelyReplyNeeded: true,
                 labels: ["INBOX", "UNREAD"],
                 htmlLink: null,
-                metadata: {},
+                metadata: { messageIdHeader },
               })),
               getGmailMessageDetail: vi.fn(),
               getGmailMessageRevision: vi.fn(async () => {
@@ -1516,6 +1517,12 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     );
     expect(reply).toMatchObject({ success: true });
     expect(sendGmailReply).toHaveBeenCalledTimes(1);
+    expect(sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inReplyTo: messageIdHeader,
+        threadId: "provider-production-thread",
+      }),
+    );
     expect(
       (await allRows()).filter((row) => row.eventType === "replied"),
     ).toHaveLength(1);

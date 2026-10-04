@@ -20,24 +20,27 @@
  * build blowout all exit non-zero.
  */
 import { spawnSync } from "node:child_process";
-import {
-  HERE,
-  join,
-  mkdirSync,
-  RESULTS_ROOT,
-  readLatest,
-  writeFileSync,
-} from "./lib.mjs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { HERE, RESULTS_ROOT, readLatest } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
 const JSON_ONLY = process.argv.includes("--json");
 const BUN_BIN = process.env.BUN_PATH || "bun";
 
 function runHarness() {
-  const res = spawnSync(BUN_BIN, [join(HERE, "searchbench-kpi.ts")], {
-    stdio: JSON_ONLY ? ["ignore", "ignore", "inherit"] : "inherit",
-    env: process.env,
-  });
+  const res = spawnSync(
+    BUN_BIN,
+    [
+      "--conditions=eliza-source",
+      "--conditions=development",
+      join(HERE, "searchbench-kpi.ts"),
+    ],
+    {
+      stdio: JSON_ONLY ? ["ignore", "ignore", "inherit"] : "inherit",
+      env: process.env,
+    },
+  );
   if (res.error) {
     console.error(`[searchbench] failed to spawn bun: ${res.error.message}`);
     return 2;

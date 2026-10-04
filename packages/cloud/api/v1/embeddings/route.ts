@@ -8,19 +8,12 @@
  * admission/settle chain runs either way, only the middle hop changes.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { APICallError, embed, embedMany, RetryError } from "ai";
-import { Hono } from "hono";
-import {
-  resolveInferenceAuthStandingDenial,
-  resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
 import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
@@ -29,57 +22,67 @@ import {
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
   withInferenceAuthTelemetry,
-} from "@/lib/observability/http-telemetry";
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
 import {
   calculateCost,
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
-} from "@/lib/pricing";
-import { validateBgeInput } from "@/lib/providers/bge-embeddings";
+} from "@elizaos/cloud-shared/lib/pricing";
+import { validateBgeInput } from "@elizaos/cloud-shared/lib/providers/bge-embeddings";
 import {
   getAiProviderConfigurationError,
   getTextEmbeddingModel,
   hasTextEmbeddingProviderConfigured,
   resolveEmbeddingProviderSource,
   resolvePassthroughEmbeddingsUpstream,
-} from "@/lib/providers/language-model";
-import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  billUsage,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
 import {
   admitAppSubscriptionInference,
   appInferenceDeveloperScope,
-} from "@/lib/services/app-subscription-inference-admission";
-import type { CreditReservation } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import { requireInferenceApiKeyWithOrg } from "@/lib/services/inference-api-key-auth";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+} from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
+import type { CreditReservation } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import { requireInferenceApiKeyWithOrg } from "@elizaos/cloud-shared/lib/services/inference-api-key-auth";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+} from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
-} from "@/lib/services/inference-credential-revocation";
-import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
-import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isPassthroughEmbeddingsEnabled } from "@elizaos/cloud-shared/lib/services/inference-passthrough";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
   nativeApplicationInferenceErrorResponse,
   prepareNativeApplicationInference,
-} from "@/lib/services/native-application-inference";
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
 import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
   InferenceAffiliateCacheUnavailableError,
   InferencePricingCacheUnavailableError,
   type OrganizationInferenceAdmission,
-} from "@/lib/services/organization-inference-admission";
-import { settlementDigest } from "@/lib/services/settlement-digest";
-import { usageService } from "@/lib/services/usage";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ElizaError } from "@elizaos/core";
+import { APICallError, embed, embedMany, RetryError } from "ai";
+import { Hono } from "hono";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 
 interface EmbeddingsRequest {
   input: string | string[];

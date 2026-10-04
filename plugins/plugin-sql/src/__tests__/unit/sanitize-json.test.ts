@@ -496,3 +496,34 @@ describe("document content serialization", () => {
     );
   });
 });
+
+describe("lone UTF-16 surrogates", () => {
+  const truncatedEmoji = "hi \ud83d";
+
+  it("rejects them in strict writes with a typed error", () => {
+    for (const write of [
+      () => serializeJsonb({ text: truncatedEmoji }, { memoryContent: true }),
+      () => serializeJsonb({ note: "tail \udc00" }),
+      () => serializeJsonb({ "k\ud800": 1 }),
+      () => serializeJsonb(JSON.stringify({ text: truncatedEmoji })),
+    ]) {
+      expect(write).toThrowError(
+        expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_SURROGATE" })
+      );
+    }
+  });
+
+  it("keeps well-formed pairs unchanged", () => {
+    const text = "launch 😀 done";
+    expect(JSON.parse(serializeJsonb({ text }, { memoryContent: true }) as string)).toEqual({
+      text,
+    });
+  });
+
+  it("replaces them with U+FFFD in lenient sanitization", () => {
+    expect(sanitizeJsonObject({ t: truncatedEmoji, "k\ud800": 1 })).toEqual({
+      t: "hi \ufffd",
+      "k\ufffd": 1,
+    });
+  });
+});

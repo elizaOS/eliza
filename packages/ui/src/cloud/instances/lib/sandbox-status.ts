@@ -1,21 +1,4 @@
-/**
- * Status dot + badge color maps and relative-time helpers for agent / sandbox
- * status display.
- *
- * Ported from `@elizaos/cloud-shared/lib/constants/sandbox-status.ts` and
- * converted to the app's semantic status tokens (see DESIGN-SYSTEM.md §2). The
- * shared version emitted raw Tailwind palette classes (`emerald`/`amber`/`red`)
- * plus `white/NN` ladders that bypass theming and break light mode. Here each
- * state maps to the theme-aware status token set:
- *   running       → status-success (the only non-brand hue permitted)
- *   provisioning  → accent (brand orange, reads as "work in progress")
- *   pending       → status-warning (orange by design)
- *   stopped       → muted / neutral surface
- *   sleeping      → muted-strong / neutral surface
- *   disconnected  → status-danger (orange by design)
- *   error         → status-danger (orange by design)
- * No blue anywhere; every class resolves correctly in light and dark.
- */
+/** Theme-aware status colors and relative-time labels for sandbox displays. */
 
 export const STATUS_DOT_COLORS: Record<string, string> = {
   running: "bg-status-success",

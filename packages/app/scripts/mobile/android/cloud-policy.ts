@@ -305,6 +305,8 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ElizaWorkSchedulerPolicyTest.java",
   "InferenceMemoryPolicyTest.java",
   "NativeTranscriptReducerTest.java",
+  "ResidentStopOwnershipInstrumentedTest.java",
+  "ResidentStreamTransportInstrumentedTest.java",
 ];
 
 export function isAndroidLp3ColorPolicyEnabled(env = process.env) {
@@ -471,10 +473,19 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
   return {
     ...stripPolicy,
     safePushNotifications: false,
+    components: [
+      ...stripPolicy.components,
+      "ElizaReminderMessagingService",
+      "com.capacitorjs.plugins.pushnotifications.MessagingService",
+    ],
     // This wrapper subclasses the native FCM plugin. The dedicated fallback
     // intentionally excludes that dependency because it has no Firebase
     // project, so its Java wrapper must leave the generated tree with it.
-    javaFiles: [...stripPolicy.javaFiles, "SafePushNotificationsPlugin.java"],
+    javaFiles: [
+      ...stripPolicy.javaFiles,
+      "SafePushNotificationsPlugin.java",
+      "ElizaReminderMessagingService.java",
+    ],
   };
 }
 
@@ -552,6 +563,9 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
   ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
+  // CalendarProvider requires a registered host subclass; the thin Cloud host
+  // has none and must not inherit its calendar permissions through auto-linking.
+  ["@elizaos/capacitor-calendar", "elizaos-capacitor-calendar"],
   ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/plugin-native-contacts", "elizaos-plugin-native-contacts"],
   ["@elizaos/capacitor-gateway", "elizaos-capacitor-gateway"],
@@ -693,7 +707,7 @@ export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
   "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
   "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
   "receiver:androidx.profileinstaller.ProfileInstallReceiver",
-  "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+  `service:${APP.appId}.ElizaReminderMessagingService`,
   "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
   "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
   "service:com.google.firebase.components.ComponentDiscoveryService",
@@ -934,16 +948,19 @@ export function createAndroidPlayManifestPolicy({
   };
   if (!firebaseIndependent) return policy;
   const firebaseComponents = [
+    "activity:com.google.android.gms.common.api.GoogleApiActivity",
     "provider:com.google.firebase.provider.FirebaseInitProvider",
     "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
     "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
     "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+    `service:${APP.appId}.ElizaReminderMessagingService`,
     "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
     "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
     "service:com.google.firebase.components.ComponentDiscoveryService",
     "service:com.google.firebase.messaging.FirebaseMessagingService",
   ];
   const firebaseMetadata = [
+    "com.google.android.gms.version",
     "backend:com.google.android.datatransport.cct.CctBackendFactory",
     "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
     "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
@@ -989,10 +1006,13 @@ export const ANDROID_SMS_GATEWAY_PERMISSIONS = new Set([
   "RECEIVE_WAP_PUSH",
 ]);
 
-export const ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS =
-  ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
+export const ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS = [
+  ...ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
     (component) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(component),
-  );
+  ),
+  "ElizaReminderMessagingService",
+  "com.capacitorjs.plugins.pushnotifications.MessagingService",
+];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
   ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
@@ -1004,6 +1024,7 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
     (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
   ),
   "SafePushNotificationsPlugin.java",
+  "ElizaReminderMessagingService.java",
 ];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [

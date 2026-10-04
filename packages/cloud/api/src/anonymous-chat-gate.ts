@@ -6,13 +6,13 @@
  * recovery snapshots to Postgres asynchronously by monotonic revision.
  */
 
-import { runWithDbCacheAsync } from "@/db/client";
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
 import {
   type AnonymousChatGateCounterSnapshot,
   anonymousSessionsRepository,
-} from "@/db/repositories/anonymous-sessions";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/db/repositories/anonymous-sessions";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 interface ActiveLease {
   hourlyResetAtMs: number;
