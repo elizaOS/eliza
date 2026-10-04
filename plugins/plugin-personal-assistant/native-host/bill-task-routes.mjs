@@ -282,6 +282,7 @@ export function createBillTaskRoutes({
         decision = await withChoice(decision);
         const current = await authenticate();
         if (
+          request.signal.aborted ||
           requestEpoch !== currentEpoch() ||
           current.actorId !== owner.actorId
         )

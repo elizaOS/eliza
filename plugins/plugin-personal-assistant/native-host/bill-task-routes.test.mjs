@@ -332,3 +332,148 @@ test("source selection gates the workflow, rereads before committing and reuses 
     await rm(directory, { recursive: true, force: true });
   }
 });
+async function routeFixture(t, workflowFactory) {
+  const directory = await mkdtemp(join(tmpdir(), "bill-route-evidence-"));
+  const bundlePath = join(directory, "runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let route, stores;
+  const gateway = await createGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => "owner",
+    actuator: { capabilities: [] },
+    extensionFactory: (context) => {
+      stores = {
+        ...context,
+        outcomeStore: createBillOutcomeStore(context.db, context.store),
+        sourceStore: createBillSourceStore(context.db, context.store),
+      };
+      route = createBillTaskRoutes({ ...stores, copy, workflowFactory });
+      return route;
+    },
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const runtime = await gateway.forCurrentOwner();
+  const task = runtime.create({
+    id: "bill",
+    goalRef: "bill",
+    authorization: {
+      decisionId: "grant",
+      policyRevision: "policy",
+      state: "active",
+      decidedAt: new Date().toISOString(),
+      revokedAt: null,
+    },
+    allowedCapabilities: [],
+    allowedOrigins: ["https://example.test"],
+  });
+  return {
+    route,
+    stores,
+    runtime,
+    task,
+    context: {
+      owner: runtime.owner,
+      runtime,
+      requestEpoch: 0,
+      currentEpoch: () => 0,
+      authenticate: async () => runtime.owner,
+    },
+  };
+}
+
+test("route suppresses a completed workflow response after actor, epoch or cancellation changes", async (t) => {
+  for (const change of ["actor", "epoch", "abort"])
+    await t.test(change, async (t) => {
+      const controller = new AbortController();
+      let epoch = 0;
+      const f = await routeFixture(t, () => ({
+        refresh: async () => ({ kind: "human-sign-in" }),
+      }));
+      f.context.currentEpoch = () => epoch;
+      f.context.authenticate = async () => {
+        if (change === "epoch") epoch++;
+        if (change === "abort") controller.abort();
+        return change === "actor"
+          ? { ...f.runtime.owner, actorId: "different" }
+          : f.runtime.owner;
+      };
+      const response = await f.route(
+        new Request("http://localhost/tasks/bill/bill", {
+          signal: controller.signal,
+        }),
+        f.context,
+      );
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), { code: "TASK_UNAUTHORIZED" });
+    });
+});
+
+test("repeat choice POST restores the stored outcome without another workflow effect", async (t) => {
+  let refreshes = 0,
+    choices = 0;
+  const f = await routeFixture(t, () => ({
+    refresh: async () => {
+      refreshes++;
+      return { kind: "human-sign-in" };
+    },
+    chooseExistingMethod: async () => {
+      choices++;
+      return { kind: "human-sign-in" };
+    },
+  }));
+  f.stores.store.transition(
+    f.task.id,
+    {
+      owner: f.runtime.owner,
+      expectedRevision: f.task.revision,
+      now: Date.now(),
+    },
+    {
+      type: "observe",
+      observation: {
+        id: "receipt",
+        pageId: "page",
+        origin: "https://example.test",
+        version: 1,
+        inputRevision: 0,
+        observedAt: Date.now(),
+      },
+    },
+  );
+  const saved = f.stores.outcomeStore.forTask(f.runtime, f.task.id).save(
+    {
+      kind: "outcome",
+      status: "paid",
+      reference: "FIXTURE-RECEIPT",
+      source: "https://example.test/receipt",
+      billSource: "mail:fixture",
+      totalMinor: 1200,
+      paymentDate: "2026-10-01",
+      currency: "USD",
+      currencyDigits: 2,
+    },
+    "receipt",
+  );
+  assert.equal(saved.saveStatus, "saved");
+  const response = await f.route(
+    new Request("http://localhost/tasks/bill/bill", {
+      method: "POST",
+      body: JSON.stringify({
+        callbackData: `is1:${"a".repeat(32)}`,
+        contextKey: "b".repeat(64),
+        value: "existing",
+      }),
+    }),
+    f.context,
+  );
+  assert.equal(response.status, 200);
+  const result = (await response.json()).decision;
+  assert.equal(result.reference, "FIXTURE-RECEIPT");
+  assert.equal(result.saveStatus, "saved");
+  assert.equal(refreshes, 0);
+  assert.equal(choices, 0);
+});
