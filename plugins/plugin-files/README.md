@@ -14,7 +14,8 @@ The `documents/*` exports provide scan correction and edge suggestions, reviewed
 text-layer validation, PDF generation, local OCR and revisioned draft persistence.
 The host supplies PDF metadata, an OCR worker/assets URL and language, and the
 draft database name. OCR uses the Tesseract 7 worker protocol; host the worker,
-WASM and language data together. No remote OCR service is selected implicitly.
+WASM and language data together. The caller owns scan cancellation; no elapsed-time
+deadline or remote OCR service is selected implicitly.
 
 Run `bun run typecheck`, `bun run test`, `bun run lint:check`, and `bun run build`
 in this package. Consumer qualification

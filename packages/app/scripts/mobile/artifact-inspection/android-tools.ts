@@ -1,9 +1,40 @@
 /** Invokes Android artifact inspection tools and decodes their manifest evidence. */
 
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
+
+const executeFile = promisify(execFile);
+
+/** Async inspection preserves caller cancellation and optional command deadlines. */
+export async function dumpAndroidArtifactBadgingAsync(
+  aapt,
+  artifact,
+  options = {},
+) {
+  return (
+    await executeFile(aapt, ["dump", "badging", artifact], {
+      ...options,
+      encoding: "utf8",
+    })
+  ).stdout;
+}
+
+export async function dumpAndroidArtifactManifestAsync(
+  aapt,
+  artifact,
+  options = {},
+) {
+  return (
+    await executeFile(
+      aapt,
+      ["dump", "xmltree", artifact, "AndroidManifest.xml"],
+      { ...options, encoding: "utf8" },
+    )
+  ).stdout;
+}
 
 export function resolveAndroidBuildTool(
   sdkRoot,
@@ -84,8 +115,7 @@ export function parseAaptAttributeValue(encodedValue) {
   return String(Number.parseInt(typedValue[2], 16));
 }
 
-/** Converts AAPT's indented xmltree output into the policy evidence shape. */
-export function androidPlayManifestEvidenceFromAapt(manifestText) {
+function androidManifestTagsFromAapt(manifestText) {
   const tags = [];
   const stack = [];
   for (const line of String(manifestText).split(/\r?\n/)) {
@@ -116,6 +146,26 @@ export function androidPlayManifestEvidenceFromAapt(manifestText) {
       );
   }
 
+  return tags;
+}
+
+/** Instrumentation identity is checked before installing external consumer APKs. */
+export function androidInstrumentationEvidenceFromAapt(manifestText) {
+  return androidManifestTagsFromAapt(manifestText)
+    .filter(
+      (tag) =>
+        tag.name === "instrumentation" &&
+        tag.ancestors.join("/") === "manifest",
+    )
+    .map((tag) => ({
+      name: tag.attributes.get("name"),
+      targetPackage: tag.attributes.get("targetPackage"),
+    }));
+}
+
+/** Converts AAPT's indented xmltree output into the policy evidence shape. */
+export function androidPlayManifestEvidenceFromAapt(manifestText) {
+  const tags = androidManifestTagsFromAapt(manifestText);
   const values = (names, attributeName = "name") =>
     [
       ...new Set(

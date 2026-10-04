@@ -147,7 +147,36 @@ captures it when constructing the secure store; an unset or empty value uses
 The embedding app must start the corresponding app-UID-only Keystore broker;
 this option changes client routing, not broker permissions or availability.
 
+External development hosts can use `scripts/lib/dev-process-lifecycle.ts`'s
+`waitForDevelopmentReady` with their own health predicate, startup/poll budgets,
+child-liveness check and cancellation signal. Probes receive that signal and
+must release their resources on cancellation. `scripts/lib/shutdown-drain.ts`
+handles owned-child teardown; use process-group delivery and liveness from
+`kill-process-tree.ts` when children can outlive their launcher. Product ports,
+account matching, inference policy and renderer environment stay with the host.
+
 ## External Android consumers
+
+`scripts/mobile/android/consumer-host.mjs` generates an owned external Gradle
+project from explicit identity, manifest, variant, source and dependency data.
+It copies no product UI or native service tree. Input paths use declared consumer,
+upstream or dependency roots; selected native files can be copied without admitting
+whole plugin source directories. Existing unmarked projects, identity changes,
+unowned-file collisions and symlink escapes are rejected. Generated ownership
+permits regeneration and removal of formerly selected generated files while
+preserving other build outputs. Hosts keep authored manifests/resources outside
+the generated project and supply already-verified optional runtime payloads. The
+generator owns the non-translatable `app_name` brand string; host resources must
+not redefine it. Other UI strings can use the host's localized resource directories.
+
+The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /
+JDK 21, independently of the full app's newer default wrapper. The distribution
+and shared wrapper JAR are hash pinned. Run the filesystem contract with
+`node --test scripts/mobile/android/consumer-host.test.mjs`; with SDK 36 and
+build-tools 36.0.0, `node scripts/mobile/android/qualify-consumer-host.mjs` builds
+two independent identities and checks all eight debug/release variant APKs.
+Reports go to root `test-results/android-consumer-host`. This is build/manifest
+qualification, not installed service, HOME-role, AOSP or device acceptance.
 
 Shared local speech sources and reproducible runtime/model tooling are documented
 in [local speech](scripts/local-speech/README.md). The source-export resolver in
@@ -189,3 +218,36 @@ lease and caller-cancelled transport. Its explicit start/stop lifecycle preserve
 consent and current-owner fences; importing it starts no collection. Run the
 native-host tests for real SQLite/HTTP evidence, including stop during an
 unanswered request. These modules do not authorize enrolling real participants.
+
+`native-host/research-configuration.mjs` owns private research configuration
+initialization and offline key rotation. Hosts supply retention, capacity,
+operator identity and the existing measurement-policy store factory. Rotation
+uses the canonical database lease and retains previous/next recovery files before
+changing encrypted SQLite records; it refuses to overwrite prior recovery files.
+The helper never enrolls participants or returns plaintext operator credentials.
+After validating the new key against retained data and backups, the operator
+must retire the private recovery files explicitly. Until then they retain old
+key material and block another rotation; rotation alone does not remove it.
+
+External product APK tests can compose `scripts/lib/isolated-android-test.mjs`.
+Supply explicit package/test identities, ABI, fixture AVD name, Android user, APK
+paths and a report directory. The host must own the disposable AVD and any
+secondary-user/provider fixtures; an emulator property alone is not ownership.
+It validates both APK identities and the instrumentation target before installing,
+leases the emulator, refuses existing package data across users, requires complete
+instrumentation, removes its packages after each variant and checks unchanged HOME.
+There are no default command/instrumentation deadlines: callers may supply
+`commandTimeoutMs`, `instrumentationTimeoutMs`, `cleanupTimeoutMs` and an
+AbortSignal. ADB/AAPT work is cancellable; cleanup ignores the aborted operation
+signal, force-stops owned targets and uses its separate caller deadline. Callbacks
+receive the signal and must cooperate with cancellation before returning. The
+lease follows the caller environment and remains held for a live process, rather
+than expiring during long instrumentation. Product callbacks own controlled
+fixture provisioning; this runner does not authorize live integrations. Use `testOutputPath` for reports produced inside this checkout.
+
+The isolated Android harness also accepts an explicit unique `testClasses` list
+instead of `testClass`, with the complete `expectedTests` count across that suite.
+It freezes the selection before asynchronous work, checks every requested class
+through the same strict instrumentation parser, and rejects missing or unexpected
+classes while retaining owned-installation cleanup. This supports product
+platform profiles without duplicating APK admission, leasing or teardown.

@@ -38,7 +38,7 @@
     "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun --conditions=eliza-source packages/app/scripts/dev-platform.ts",
     "dev:desktop:watch": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun --conditions=eliza-source packages/app/scripts/dev-platform.ts",
     "dev:all": "bun packages/scripts/dev-all.ts",
-    "publish:eliza1": "cd packages/training && node ../scripts/run-python.ts -m scripts.publish.publish_eliza1_all",
+    "publish:eliza1": "uv run --project packages/training python -m eliza_training.publish.publish_eliza1_all",
     "dev:agent": "bun run --cwd packages/agent dev",
     "build": "node packages/scripts/run-turbo.ts run build --concurrency=8 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.ts",
     "build:client": "node packages/scripts/run-turbo.ts run build --filter=@elizaos/app",

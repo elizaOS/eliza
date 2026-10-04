@@ -16,10 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-try:
-    from scripts.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS
-except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS  # type: ignore
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS
 
 
 DEFAULT_LOCAL_DIR = Path("/tmp/eliza-1-bundles")

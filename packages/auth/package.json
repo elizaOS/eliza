@@ -339,7 +339,7 @@
     "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
     "test:credentials": "node ../scripts/run-vitest.ts run",
     "test:login": "bun test --timeout 30000 --isolate src/sdk/__tests__ src/server/__tests__ && bun run test:railpack",
-    "test:native-host": "node --test native-host/*.test.mjs",
+    "test:native-host": "node --test native-host/*.test.mjs native-host/staging-acceptance.process-test.mjs",
     "test:postgres": "LOGIN_REQUIRE_POSTGRES_TESTS=1 bun test src/server/__tests__/postgres-login.integration.test.ts",
     "test:integration": "bun run test:browser && bun run test:postgres"
   },

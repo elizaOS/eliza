@@ -1,7 +1,18 @@
 name: CI
 on:
-  workflow_call: null
-  workflow_dispatch: null
+  workflow_call:
+    inputs:
+      base_sha:
+        type: string
+        required: false
+        default: ''
+  workflow_dispatch:
+    inputs:
+      base_sha:
+        description: Previously reviewed commit; blank scans the full repository history
+        type: string
+        required: false
+        default: ''
 concurrency:
   group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
@@ -17,7 +28,7 @@ jobs:
   secret-scan:
     uses: ./.github/workflows/gitleaks.yml
     with:
-      base_sha: ${{ github.event.before || '' }}
+      base_sha: ${{ github.event.before || inputs.base_sha || '' }}
       head_sha: ${{ github.sha }}
   os:
     name: OS verification

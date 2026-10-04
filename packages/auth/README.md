@@ -54,3 +54,9 @@ short-lived in-memory Steward session; billing step-up restores it after restart
 without re-enrollment. Never return that token to the renderer. Native cloud service
 composition belongs to the [Cloud SDK](../cloud/sdk/README.md), which accepts the
 authentication flow through host callbacks.
+
+The protected App Live E2E workflow also offers an explicit staging credential
+fixture. It verifies single-use session PKCE, native credential acknowledgement,
+encrypted vault reopening, restored API access and exact-key revocation. Only a
+closed receipt is uploaded. It does not establish external provider sign-in,
+OS secure-store integration, or physical-device acceptance.
