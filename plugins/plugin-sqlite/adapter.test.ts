@@ -1290,6 +1290,67 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
   );
 });
 
+it("keeps another agent's tasks out of name lookup, id lookup, and writes", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const ownedId = id();
+  const unscopedId = id();
+  const foreignId = id();
+  await adapter.createTasks([
+    {
+      id: ownedId,
+      agentId,
+      name: "Check in",
+      tags: ["queue"],
+      metadata: { status: "pending" },
+    },
+    {
+      id: unscopedId,
+      name: "Check in",
+      tags: ["queue"],
+      metadata: { status: "pending" },
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("tasks", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "Check in",
+    tags: ["queue"],
+    metadata: { status: "pending" },
+  });
+
+  const named = await adapter.getTasksByName("Check in");
+  expect(named.map((task) => task.id).sort()).toEqual(
+    [ownedId, unscopedId].sort(),
+  );
+  expect(await adapter.getTasksByIds([foreignId, ownedId])).toEqual([
+    expect.objectContaining({ id: ownedId }),
+  ]);
+
+  expect(
+    await adapter.updatePendingTask(foreignId, {
+      metadata: { status: "executing", leaseOwner: "intruder" },
+    }),
+  ).toBe(false);
+  await adapter.updateTasks([
+    { id: foreignId, task: { description: "rewritten" } },
+  ]);
+  expect(
+    await adapter.patchTaskMetadata(foreignId, { set: { reason: "nope" } }),
+  ).toBe(false);
+  await adapter.deleteTasks([foreignId]);
+
+  const foreign = await storage.get("tasks", foreignId);
+  expect(foreign).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "Check in",
+    metadata: { status: "pending" },
+  });
+  expect(foreign).not.toMatchObject({ description: "rewritten" });
+});
+
 it("keeps another agent's rooms out of lookup and world deletion", async () => {
   const adapter = await open();
   const worldId = id();
