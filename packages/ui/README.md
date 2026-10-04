@@ -29,3 +29,8 @@ responses; the durable runtime remains authoritative. Hosts that pass
 an in-flight or expired choice cannot be used, and hide options once the choice
 is no longer pending. `voice/speech-segments`
 shares lossless caption/playback chunks without importing the voice runtime.
+
+The `voice/pcm-wave` leaf shares mono PCM16 WAV encoding for single buffers or
+cumulative chunks without importing capture, desktop bridge or provider code.
+Hosts own recording lifecycle, sample-rate selection and playback/transcription.
+Nonfinite samples encode as silence; finite samples are clipped and rounded.
