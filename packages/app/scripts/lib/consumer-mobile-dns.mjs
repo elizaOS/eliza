@@ -96,11 +96,25 @@ export function verifyConsumerMobileDns(file, { sourceRoot, sourceCommit }) {
     spec.bundleSha256 !== digest(fs.readFileSync(file))
   )
     throw new ConsumerSourceError("Mobile DNS bundle provenance mismatch");
-  for (const name of sources)
-    if (
-      spec.sourceHashes[name] !==
-      digest(fs.readFileSync(path.join(sourceRoot, name)))
-    )
-      throw new ConsumerSourceError(`Mobile DNS source mismatch: ${name}`);
-  return spec;
+  // The adjacent sidecar is not an authority. Rebuild from the reviewed commit
+  // with the pinned host toolchain to bind executable bytes to source bytes.
+  const temporary = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-mobile-dns-verify-"),
+  );
+  try {
+    const expected = buildConsumerMobileDns(
+      path.join(temporary, "resolver.mjs"),
+      { sourceRoot, sourceCommit },
+    );
+    for (const name of sources)
+      if (spec.sourceHashes[name] !== expected.sourceHashes[name])
+        throw new ConsumerSourceError(`Mobile DNS source mismatch: ${name}`);
+    if (spec.bundleSha256 !== expected.bundleSha256)
+      throw new ConsumerSourceError(
+        "Mobile DNS bundle differs from reviewed source build",
+      );
+    return spec;
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 }

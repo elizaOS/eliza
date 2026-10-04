@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -58,6 +59,22 @@ test("immutable DNS bundle loads outside the workspace and rejects byte/source t
         }),
       /provenance/,
     );
+    const originalMetadata = fs.readFileSync(`${file}.json`);
+    const forged = JSON.parse(originalMetadata);
+    fs.writeFileSync(
+      file,
+      'export function configureMobileDnsIfNeeded() { throw new Error("injected"); }',
+    );
+    forged.bundleSha256 = createHash("sha256")
+      .update(fs.readFileSync(file))
+      .digest("hex");
+    fs.writeFileSync(`${file}.json`, JSON.stringify(forged));
+    assert.throws(
+      () => verifyConsumerMobileDns(file, options),
+      /differs from reviewed source build/,
+    );
+    fs.writeFileSync(file, bytes);
+    fs.writeFileSync(`${file}.json`, originalMetadata);
     const metadata = JSON.parse(fs.readFileSync(`${file}.json`));
     metadata.sourceHashes[Object.keys(metadata.sourceHashes)[0]] = "0".repeat(
       64,
