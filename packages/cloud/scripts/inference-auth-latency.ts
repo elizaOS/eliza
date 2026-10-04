@@ -665,7 +665,7 @@ export async function probeAuthSample({
   };
 }
 
-class AuthProbeHttpStatusError extends Error {
+export class AuthProbeHttpStatusError extends Error {
   constructor(status) {
     super(`Auth probe returned HTTP ${status}`);
     this.name = "AuthProbeHttpStatusError";

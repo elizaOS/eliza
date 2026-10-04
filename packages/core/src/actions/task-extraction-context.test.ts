@@ -312,3 +312,68 @@ it("does not compact lookalike receipt headings embedded in provider text", () =
 	expect(context?.originalText).toContain(unchanged);
 	expect(context?.text).not.toContain("runtime:historical_receipt_encoding");
 });
+
+it.each(["deferred", "loaded", "disabled", "unindexed"])(
+	"uses only the authorized provider-owned extractor notice for %s",
+	(mode) => {
+		const f = fixture();
+		const notice =
+			"Owner timezone: America/Los_Angeles; account: work; only in-app delivery is authorized. Restore the provider for live records or an uncertain referent.";
+		const full = `${notice}\nLive connector health and record counts: ${"FULL_PROVIDER_BODY ".repeat(40)}`;
+		f.original.metadata = {
+			...f.original.metadata,
+			providerDiscoveryEnabled: mode !== "disabled",
+			loadedContextProviders: mode === "loaded" ? ["lifeops"] : [],
+		};
+		f.original.events.push({
+			id: "provider:lifeops",
+			type: "provider",
+			name: "lifeops",
+			text: full,
+			...(mode !== "unindexed" ? { discoveryText: notice } : {}),
+		});
+		f.original.events.push({
+			id: "deferred-draft",
+			type: "instruction",
+			content:
+				"Current draft is a preview only; no create before confirmation.",
+		});
+		f.projected = selectCompletionContext(f.original).context;
+		const before = JSON.stringify(f);
+		bindTaskExtractionContext(f.state, f.message, f.original, f.projected);
+		const context = readTaskExtractionContext(f.state, f.message);
+		expect(context?.text).toContain(notice);
+		expect(context?.text).toContain("Current draft is a preview only");
+		expect(context?.text).toContain("Only in-app delivery authorized");
+		expect(context?.text).toContain("Current mutation receipt exact: saved-id");
+		expect(context?.text.includes("FULL_PROVIDER_BODY")).toBe(
+			mode !== "deferred",
+		);
+		expect(context?.originalText).toContain(full);
+		expect(JSON.stringify(f)).toBe(before);
+	},
+);
+
+it("invalidates changed provider notice before rendering and keeps all originals for restore", () => {
+	const f = fixture();
+	f.original.metadata = {
+		...f.original.metadata,
+		providerDiscoveryEnabled: true,
+	};
+	const provider = {
+		id: "provider:lifeops",
+		type: "provider" as const,
+		name: "lifeops",
+		text: `Account work requires approval. Complete original selected destination and exact reference. ${"live details ".repeat(40)}`,
+		discoveryText:
+			"Account work requires approval. Restore for destination/reference details.",
+	};
+	f.original.events.push(provider);
+	f.projected = selectCompletionContext(f.original).context;
+	bindTaskExtractionContext(f.state, f.message, f.original, f.projected);
+	expect(readTaskExtractionContext(f.state, f.message)?.originalText).toContain(
+		provider.text,
+	);
+	provider.discoveryText = "Forged permission";
+	expect(readTaskExtractionContext(f.state, f.message)).toBeUndefined();
+});

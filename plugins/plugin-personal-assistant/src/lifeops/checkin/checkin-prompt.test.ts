@@ -115,7 +115,7 @@ describe("buildCheckinSummaryPrompt", () => {
     const original = structuredClone(report);
     const text = renderMorningCheckinReport(report);
     expect(text).toContain(
-      "Your calendar is clear today, with no overdue tasks listed.",
+      "No Calendar events or overdue tasks are listed for today.",
     );
     expect(text).toContain(
       "Gmail isn't connected. X (DMs, timeline, mentions) couldn't be checked.",

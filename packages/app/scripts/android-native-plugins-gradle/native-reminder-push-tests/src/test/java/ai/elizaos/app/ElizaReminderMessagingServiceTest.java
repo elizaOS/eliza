@@ -83,7 +83,7 @@ public class ElizaReminderMessagingServiceTest {
         assertNotEquals(delivered[0].getTag(), delivered[1].getTag());
         for (StatusBarNotification row : delivered) {
             assertEquals(0, row.getId());
-            assertEquals("eliza_updates", row.getNotification().getChannelId());
+            assertEquals("eliza_notifications", row.getNotification().getChannelId());
             Intent tap = shadowOf(row.getNotification().contentIntent).getSavedIntent();
             assertEquals(context.getPackageName(), tap.getComponent().getPackageName());
             assertNull(tap.getData());
@@ -171,6 +171,40 @@ public class ElizaReminderMessagingServiceTest {
         receiver().onMessageReceived(message(data, "urgent"));
         assertEquals(5, manager.getNotificationChannel("eliza_alerts").getImportance());
         assertFalse(manager.getNotificationChannel("eliza_alerts").canBypassDnd());
+    }
+    @Test public void normalTimedReminderUsesExistingHeadsUpTierWithoutBypassingDnd() {
+        receiver().onMessageReceived(message(data(A), "normal-alert"));
+        NotificationChannel channel = manager.getNotificationChannel("eliza_notifications");
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.getImportance());
+        assertFalse(channel.canBypassDnd());
+    }
+    @Test public void explicitLowReminderStaysQuiet() {
+        Map<String, String> quiet = data(A); quiet.put("priority", "low");
+        receiver().onMessageReceived(message(quiet, "quiet"));
+        assertEquals("eliza_quiet", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel("eliza_quiet").getImportance());
+    }
+    @Test public void existingQuietUpdatesChoiceIsPreserved() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Quiet", NotificationManager.IMPORTANCE_LOW));
+        receiver().onMessageReceived(message(data(A), "user-quiet"));
+        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Test @Config(sdk = {26, 29}) public void legacyDefaultImportanceCustomSoundIsPreserved() {
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        android.net.Uri sound = android.net.Uri.parse("content://media/internal/audio/media/42");
+        updates.setSound(sound, new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build());
+        manager.createNotificationChannel(updates);
+        receiver().onMessageReceived(message(data(A), "legacy-sound"));
+        assertEquals("eliza_updates", manager.getActiveNotifications()[0].getNotification().getChannelId());
+        assertEquals(sound, manager.getNotificationChannel("eliza_updates").getSound());
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Test public void existingBlockedAlertChannelIsNotOverridden() {
+        manager.createNotificationChannel(new NotificationChannel("eliza_notifications", "Blocked", NotificationManager.IMPORTANCE_NONE));
+        receiver().onMessageReceived(message(data(A), "blocked-alert"));
+        assertEquals(0, manager.getActiveNotifications().length);
+        assertFalse(context.getSharedPreferences("eliza_reminder_push_receipts", Context.MODE_PRIVATE).contains(A));
     }
     @Test public void mutedChannelDoesNotPostOrConsumeReceipt() {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Muted", NotificationManager.IMPORTANCE_NONE));

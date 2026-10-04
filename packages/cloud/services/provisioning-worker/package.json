@@ -11,6 +11,7 @@
     "test": "bun test tests"
   },
   "dependencies": {
+    "@elizaos/auth": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-services-common": "workspace:*"
   },

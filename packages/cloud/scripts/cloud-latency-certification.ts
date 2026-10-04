@@ -26,6 +26,7 @@ import {
   collectInferenceTraceEvidence,
 } from "./cloudflare-inference-trace-evidence.ts";
 import {
+  AuthProbeHttpStatusError,
   inferenceAuthTailFailureCode,
   isCloudflarePlacement,
   sanitizeInferenceAuthTail,
@@ -632,11 +633,65 @@ export async function runTraces(
   }, privateRoot);
 }
 
+type InferenceAuthPhase =
+  | "tail_start"
+  | "tail_readiness"
+  | "auth_samples"
+  | "tail_evidence"
+  | "tail_teardown";
+
+export class InferenceAuthPhaseFailure extends Error {
+  readonly phase: InferenceAuthPhase;
+
+  constructor(phase: InferenceAuthPhase, cause: unknown) {
+    super(`Inference auth ${phase} failed`, { cause });
+    this.name = "InferenceAuthPhaseFailure";
+    this.phase = phase;
+  }
+}
+
+export async function retainAuthFailure(outputDir: string, failure: unknown) {
+  const phases = new Set([
+    "tail_start",
+    "tail_readiness",
+    "auth_samples",
+    "tail_evidence",
+    "tail_teardown",
+  ]);
+  const phase =
+    failure instanceof InferenceAuthPhaseFailure && phases.has(failure.phase)
+      ? failure.phase
+      : "unknown";
+  const status =
+    failure instanceof InferenceAuthPhaseFailure &&
+    failure.cause instanceof AuthProbeHttpStatusError
+      ? failure.cause.status
+      : null;
+  await writeFile(
+    join(outputDir, "auth-failure.json"),
+    `${JSON.stringify({
+      kind: "inference_auth_phase_failure",
+      phase,
+      category: status === null ? "phase_failed" : "unexpected_http_status",
+      httpStatus: status,
+    })}\n`,
+    { mode: 0o600, flag: "wx" },
+  );
+}
+
 async function runAuth({ deploySha, outputDir, env, runSuspended }) {
   const secrets = requireAuthSecrets(env, runSuspended);
   const privateRoot = env.RUNNER_TEMP?.trim() || tmpdir();
   return await withPrivateTailDirectory(async (directory) => {
-    const { child, rawPath } = await startPrivateTail(directory, env);
+    let tail: Awaited<ReturnType<typeof startPrivateTail>>;
+    try {
+      tail = await startPrivateTail(directory, env);
+    } catch (cause) {
+      // error-policy:J2 retain the actual startup cause without publishing Tail bytes.
+      throw new InferenceAuthPhaseFailure("tail_start", cause);
+    }
+    const { child, rawPath } = tail;
+    let phase: InferenceAuthPhase = "tail_readiness";
     let failure;
     let result;
     try {
@@ -651,6 +706,7 @@ async function runAuth({ deploySha, outputDir, env, runSuspended }) {
           readTail: () => readFileSync(rawPath, "utf8"),
         }),
       );
+      phase = "auth_samples";
       const outputPath = join(outputDir, "inference-auth.jsonl");
       const stderrPath = join(directory, "inference-auth.stderr");
       const scriptPath = new URL(
@@ -695,6 +751,7 @@ async function runAuth({ deploySha, outputDir, env, runSuspended }) {
         deploySha,
         runSuspended,
       );
+      phase = "tail_evidence";
       const workerRecords = await raceTailLifetime(
         child,
         waitForSanitizedTail(rawPath, validation.traceIds, deploySha),
@@ -712,16 +769,19 @@ async function runAuth({ deploySha, outputDir, env, runSuspended }) {
         deferredCacheWriteMs: summarizeDeferredCacheWrites(workerRecords),
       };
     } catch (error) {
-      // error-policy:J5 the same failure is rethrown after the Tail subprocess
+      // error-policy:J5 the original cause is retained after the Tail subprocess
       // is stopped and withPrivateTailDirectory removes every raw byte.
-      failure = error;
+      failure = new InferenceAuthPhaseFailure(phase, error);
     } finally {
       try {
         await stopTail(child);
       } catch (cause) {
         // error-policy:J2 a Tail process that cannot be terminated invalidates
         // the certification rather than leaving credentialed observation alive.
-        failure = new Error("Worker Tail teardown failed", { cause });
+        failure = new InferenceAuthPhaseFailure(
+          "tail_teardown",
+          failure ? new AggregateError([failure, cause]) : cause,
+        );
       }
     }
     if (failure) throw failure;
@@ -790,6 +850,17 @@ export async function runCertification(
         // error-policy:J5 the same auth failure is rethrown after the concurrent
         // trace capture has finished and removed all raw telemetry.
         authFailure = error;
+        try {
+          await retainAuthFailure(options.outputDir, error);
+        } catch (cause) {
+          // error-policy:J2 evidence retention failure cannot hide the original auth failure.
+          authFailure = new Error(
+            "Inference auth failure evidence could not be retained",
+            {
+              cause: new AggregateError([error, cause]),
+            },
+          );
+        }
       } finally {
         traceOutcome = await traceOutcomePromise;
       }
