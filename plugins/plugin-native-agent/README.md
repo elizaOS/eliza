@@ -62,3 +62,15 @@ bundle for PGlite. Hosts supply exact directory exclusions and package the
 returned inventory plus assets. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
+
+
+`NativeHealthService`, `NativeHealthEvidence` and updater `NativeHealthClient`
+share native observation IPC on API 29+: signature/sender-UID checks,
+nonce/version/deadline binding, bounded worker admission and installed-identity
+rechecks. Hosts declare the signature-protected service, supply component
+identities, positive request/UI budgets and runtime/storage/UI observation ports.
+The client enforces its absolute deadline independently of the service. Schema 5
+supports standalone/launcher distributions and fixed runtime/UI observation states;
+reports never mark a journal healthy or authorize recovery. The Android contract
+checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
+IPC, process death and observation providers in their packaged applications.
