@@ -17,6 +17,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  compareMemoryIds,
   ElizaError,
   type ElizaErrorOptions,
   logger,
@@ -359,7 +360,7 @@ export class VirtualFilesystemService {
         const aTime = Date.parse(a.createdAt);
         const bTime = Date.parse(b.createdAt);
         if (bTime !== aTime) return bTime - aTime;
-        return a.id.localeCompare(b.id);
+        return compareMemoryIds(b.id, a.id);
       });
     });
   }
