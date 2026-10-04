@@ -42,12 +42,6 @@ type RelationshipsServiceLike = {
   acceptMerge: (candidateId: UUID) => Promise<void>;
 };
 
-type RelationshipsFeatureRuntime = AgentRuntime & {
-  enableRelationships?: () => Promise<void>;
-  isRelationshipsEnabled?: () => boolean;
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-};
-
 export const CANONICAL_IDENTITY_PLATFORMS = [
   "gmail",
   "telegram",
@@ -168,26 +162,10 @@ async function ensureDirectRoom(args: {
 async function resolveRelationshipsService(
   runtime: AgentRuntime,
 ): Promise<RelationshipsServiceLike> {
-  const featureRuntime = runtime as RelationshipsFeatureRuntime;
-  if (
-    typeof featureRuntime.isRelationshipsEnabled === "function" &&
-    !featureRuntime.isRelationshipsEnabled() &&
-    typeof featureRuntime.enableRelationships === "function"
-  ) {
-    await featureRuntime.enableRelationships();
-  }
-
-  const fromLoadPromise =
-    typeof featureRuntime.getServiceLoadPromise === "function"
-      ? await featureRuntime.getServiceLoadPromise("relationships")
-      : null;
-  const service =
-    (fromLoadPromise as RelationshipsServiceLike | null) ??
-    (runtime.getService("relationships") as RelationshipsServiceLike | null);
-  if (!service) {
-    throw new Error("relationships service unavailable");
-  }
-  return service;
+  // Throws when the runtime has no "relationships" service registered.
+  return (await runtime.getServiceLoadPromise(
+    "relationships",
+  )) as unknown as RelationshipsServiceLike;
 }
 
 export async function seedCanonicalIdentityFixture(args: {
