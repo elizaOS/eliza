@@ -35,6 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "setuptools>=77",
   "pytest>=8.0.0", "pytest-asyncio>=1.0.0", "hypothesis>=6.100.0",
   "ruff>=0.15.0", "ty>=0.0.1", "jsonschema>=4.0",
   "torch>=2.13.0,<2.15", "transformers>=4.46.0",
