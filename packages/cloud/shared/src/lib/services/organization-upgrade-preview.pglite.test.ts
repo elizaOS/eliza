@@ -1,10 +1,7 @@
 /** Provider-observed upgrade review through migrated authority and quote persistence. No live requests. */
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
-import { readFile } from "node:fs/promises";
-import {
-  installCancellationTestSchema,
-  seedCancellationTestAccount,
-} from "../../db/repositories/subscription-cancellation-test-fixture";
+import { installOrganizationUpgradeTestSchema } from "../../db/repositories/organization-upgrade-test-fixture";
+import { seedCancellationTestAccount } from "../../db/repositories/subscription-cancellation-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -128,13 +125,7 @@ let client: typeof import("../../db/client");
 let service: typeof import("./organization-upgrade-preview");
 beforeAll(async () => {
   client = await import("../../db/client");
-  await installCancellationTestSchema((q) => client.getPgliteClientForTests().exec(q));
-  const sql = await readFile(
-    new URL("../../db/migrations/0511_organization_plan_change_quotes.sql", import.meta.url),
-    "utf8",
-  );
-  for (const q of sql.split("--> statement-breakpoint"))
-    if (q.trim()) await client.getPgliteClientForTests().exec(q);
+  await installOrganizationUpgradeTestSchema((q) => client.getPgliteClientForTests().exec(q));
   service = await import("./organization-upgrade-preview");
 }, 120000);
 afterAll(async () => {
