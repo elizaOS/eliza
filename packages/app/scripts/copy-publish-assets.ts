@@ -36,6 +36,8 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/audit-ios-cloud-artifact.ts",
   "scripts/benchmark-preflight.ts",
   "scripts/build-capacitor-app.ts",
+  "scripts/build-consumer-task-runtime.mjs",
+  "scripts/lib/committed-source.mjs",
   "scripts/build-electrobun-preload.ts",
   "scripts/build-experimental-exact-window-helper.ts",
   "scripts/build-flatpak.ts",
