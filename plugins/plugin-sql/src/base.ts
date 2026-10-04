@@ -3357,6 +3357,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const textContains = params.textContains?.trim();
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
+    // `0` is an explicit empty page. A truthy check skipped LIMIT and returned
+    // every matching row.
     const effectiveLimit = params.limit ?? params.count;
     // Default newest-first; `orderDirection: "asc"` powers around-message paging
     // (load the messages immediately *after* an anchor, not the newest tail).
@@ -3527,9 +3529,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           // meant any caller passing only `limit` got NO limit clause and the
           // whole table back (e.g. evaluator recent-message fetches returning
           // thousands of rows instead of 10).
-          if (effectiveLimit && offset !== undefined && offset > 0) {
+          if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
             return baseQuery.limit(effectiveLimit).offset(offset);
-          } else if (effectiveLimit) {
+          } else if (effectiveLimit !== undefined) {
             return baseQuery.limit(effectiveLimit);
           } else if (offset !== undefined && offset > 0) {
             return baseQuery.offset(offset);
@@ -3549,9 +3551,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...conditions))
         .orderBy(...order);
       const rows = await (async () => {
-        if (effectiveLimit && offset !== undefined && offset > 0) {
+        if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
-        } else if (effectiveLimit) {
+        } else if (effectiveLimit !== undefined) {
           return baseQuery.limit(effectiveLimit);
         } else if (offset !== undefined && offset > 0) {
           return baseQuery.offset(offset);
