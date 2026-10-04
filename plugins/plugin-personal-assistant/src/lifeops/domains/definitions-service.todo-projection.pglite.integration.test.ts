@@ -2,6 +2,7 @@ import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { expect, it } from "vitest";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
 import { buildNativeAppleReminderMetadata } from "../apple-reminders.js";
+import { CheckinService } from "../checkin/checkin-service.js";
 import { createLifeOpsReminderAttempt } from "../repository.js";
 import { LifeOpsService } from "../service.js";
 import { buildReminderBody } from "./reminders-service.js";
@@ -242,3 +243,105 @@ it("projects only the latest attempt for each displayed reminder while retaining
     await fixture.cleanup();
   }
 }, 120_000);
+
+it("morning overdue todos use canonical occurrence states and matching agent definitions", async () => {
+  const fixture = await createLifeOpsTestRuntime();
+  try {
+    const { runtime } = fixture;
+    const service = new LifeOpsService(runtime);
+    const now = new Date();
+    const dueAt = new Date(now.getTime() - 30 * 60_000).toISOString();
+    const task = await service.createDefinition({
+      title: "Overdue owner todo",
+      kind: "task",
+      cadence: { kind: "once", dueAt },
+      timezone: "UTC",
+      reminderPlan: null,
+    });
+    const [visible] = await service.repository.listOccurrencesForDefinition(
+      runtime.agentId,
+      task.definition.id,
+    );
+    if (!visible)
+      throw new Error("Real engine did not persist once occurrence");
+    expect(visible.state).toBe("visible");
+    const included = [visible.id];
+    const seeded = [visible];
+    for (const state of [
+      "pending",
+      "snoozed",
+      "completed",
+      "skipped",
+      "expired",
+      "muted",
+    ] as const) {
+      const occurrence = {
+        ...visible,
+        id: crypto.randomUUID(),
+        occurrenceKey: `persisted-${state}`,
+        state,
+      };
+      await service.repository.upsertOccurrence(occurrence);
+      seeded.push(occurrence);
+      if (state === "pending") included.push(occurrence.id);
+    }
+    await service.createDefinition({
+      title: "Habit is not a todo",
+      kind: "habit",
+      cadence: { kind: "once", dueAt },
+      timezone: "UTC",
+      reminderPlan: null,
+    });
+    await service.createDefinition({
+      title: "Future todo",
+      kind: "task",
+      cadence: {
+        kind: "once",
+        dueAt: new Date(now.getTime() + 60 * 60_000).toISOString(),
+      },
+      timezone: "UTC",
+      reminderPlan: null,
+    });
+    const foreignDefinition = {
+      ...task.definition,
+      id: crypto.randomUUID(),
+      agentId: crypto.randomUUID(),
+      title: "Other agent definition",
+    };
+    await service.repository.createDefinition(foreignDefinition);
+    const mismatched = {
+      ...visible,
+      id: crypto.randomUUID(),
+      occurrenceKey: "mismatched-agent",
+      definitionId: foreignDefinition.id,
+    };
+    await service.repository.upsertOccurrence(mismatched);
+    const before = await service.repository.listOccurrencesForDefinition(
+      runtime.agentId,
+      task.definition.id,
+    );
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      now,
+      timezone: "UTC",
+      persist: false,
+    });
+    expect(report.collectorErrors.overdueTodos).toBeNull();
+    expect(report.overdueTodos.map((todo) => todo.id).sort()).toEqual(
+      included.sort(),
+    );
+    expect(
+      report.overdueTodos.every(
+        (todo) => todo.title === task.definition.title && todo.dueAt === dueAt,
+      ),
+    ).toBe(true);
+    expect(
+      await service.repository.listOccurrencesForDefinition(
+        runtime.agentId,
+        task.definition.id,
+      ),
+    ).toEqual(before);
+    expect(before).toHaveLength(seeded.length);
+  } finally {
+    await fixture.cleanup();
+  }
+});
