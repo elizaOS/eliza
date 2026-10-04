@@ -10,6 +10,7 @@ import type {
   IAgentRuntime,
   Plugin,
 } from "@elizaos/core";
+import { RelationshipsService } from "@elizaos/plugin-assistant";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
@@ -37,7 +38,8 @@ const knowledgeGraphPlugin: Plugin = {
   name: "eliza",
   description: "Test-only knowledge-graph schema + service registration.",
   schema: knowledgeGraphSchema,
-  services: [KnowledgeGraphService],
+  // The identity-merge fixtures resolve the "relationships" service.
+  services: [KnowledgeGraphService, RelationshipsService],
   actions: [entityAction],
 };
 
@@ -55,11 +57,14 @@ function handler() {
   return entityAction.handler;
 }
 
+// This runtime has no reply model, so the action keeps its receipt but
+// publishes no user-facing text or user-facing receipt ids.
 function receipt(result: ActionResult | undefined): EffectReceipt {
   expect(result?.effectReceipts).toHaveLength(1);
   const value = result?.effectReceipts?.[0];
   if (!value) throw new Error("Expected one entity effect receipt");
-  expect(result?.userFacingEffectReceiptIds).toEqual([value.receiptId]);
+  expect(result?.transcriptVisibility).toBe("internal");
+  expect(result?.userFacingEffectReceiptIds).toBeUndefined();
   return value;
 }
 
