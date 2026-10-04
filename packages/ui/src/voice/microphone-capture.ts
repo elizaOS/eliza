@@ -98,10 +98,16 @@ export async function startCumulativeMicrophoneCapture(
         !(data instanceof Float32Array)
       )
         return;
-      chunks.push(data);
-      samples += data.length;
+      const remaining = Math.max(
+        0,
+        Math.floor(context.sampleRate * options.maximumSeconds) - samples,
+      );
+      if (!remaining || !data.length) return;
+      const chunk = data.length > remaining ? data.slice(0, remaining) : data;
+      chunks.push(chunk);
+      samples += chunk.length;
       const energy = Math.sqrt(
-        data.reduce((sum, sample) => sum + sample * sample, 0) / data.length,
+        chunk.reduce((sum, sample) => sum + sample * sample, 0) / chunk.length,
       );
       if (energy >= options.speechThreshold) heardSpeech = true;
     };

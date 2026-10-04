@@ -250,3 +250,25 @@ test("the real worklet batches channel zero without monitoring audio", () => {
   expect(posted[0].transfer[0]).toBe(posted[0].data.buffer);
   expect([...output].every((value) => value === 0)).toBe(true);
 });
+
+test("capture clips the final worklet batch to the requested maximum duration", async () => {
+  vi.useFakeTimers();
+  const env = audio(),
+    receive = vi.fn(async () => {});
+  const close = await startCumulativeMicrophoneCapture(
+    {},
+    receive,
+    () => true,
+    { ...policy, maximumSeconds: 0.25, minimumNewSeconds: 0.1 },
+  );
+  env.emit(8000);
+  await vi.advanceTimersByTimeAsync(1200);
+  expect(receive).toHaveBeenCalledOnce();
+  expect(
+    receive.mock.calls[0][0].reduce((count, chunk) => count + chunk.length, 0),
+  ).toBe(4000);
+  env.emit(8000);
+  await vi.advanceTimersByTimeAsync(1200);
+  expect(receive).toHaveBeenCalledOnce();
+  close();
+});
