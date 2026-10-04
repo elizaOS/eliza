@@ -1,4 +1,4 @@
-/** Reads current renewal estimates without admitting or dispatching an undo command. */
+/** Confirms reviewed renewal terms under durable manager intent and a fresh dispatch fence. */
 import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -7,27 +7,36 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import { readOrganizationSubscriptionRenewalReview } from "@elizaos/cloud-shared/lib/services/subscription-renewal-review";
+import { submitReviewedOrganizationSubscriptionCancellationUndo } from "@elizaos/cloud-shared/lib/services/subscription-cancellation";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { cancellationFailure } from "../../_boundary";
 
-const querySchema = z
+const requestSchema = z
   .object({
     subscriptionId: z.string().uuid(),
-    expectedSubscriptionRevision: z
-      .string()
-      .regex(/^[1-9]\d*$/)
-      .transform(Number)
-      .pipe(z.number().int().positive().safe()),
+    expectedSubscriptionRevision: z.number().int().positive().safe(),
+    expectedRenewalTermsDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/),
   })
   .strict();
 const app = new Hono<AppEnv>();
-app.get("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   c.header("Cache-Control", "no-store");
   try {
     const user = await requireCurrentBillingManagerSession(c);
-    const input = querySchema.parse(c.req.query());
-    const data = await readOrganizationSubscriptionRenewalReview(
+    const decoded = await decodeRequestJson(c.req);
+    if (!decoded.ok)
+      return c.json(
+        {
+          success: false,
+          code: "validation_error",
+          error: "Invalid JSON body",
+        },
+        400,
+      );
+    const input = requestSchema.parse(decoded.value);
+    const data = await submitReviewedOrganizationSubscriptionCancellationUndo(
       {
         ...input,
         organizationId: user.organization_id,
@@ -44,7 +53,7 @@ app.get("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
     );
     return c.json({ success: true as const, data });
   } catch (error) {
-    // error-policy:J1 expose sanitized domain errors without provider details.
+    // error-policy:J1 The HTTP boundary exposes only sanitized command errors.
     return cancellationFailure(c, error);
   }
 });

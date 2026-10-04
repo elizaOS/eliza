@@ -25,6 +25,7 @@ export function cancellationFailure(c: AppContext, error: unknown): Response {
           "Subscription cancellation command not found",
         ),
       );
+    case "SUBSCRIPTION_RENEWAL_TERMS_CHANGED":
     case "SUBSCRIPTION_CANCELLATION_CONFLICT":
       return failureResponse(
         c,

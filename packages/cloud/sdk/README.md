@@ -45,3 +45,10 @@ uses provider language detection. Omitting these choices retains policy validati
 
 Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
 setup-session mock exports remain compatible; the client root does not load them.
+
+Organization cancellation reversal can use `readOrganizationSubscriptionRenewalReview`
+and `submitReviewedOrganizationSubscriptionCancellationUndo` with the returned
+terms digest. These require the current billing-manager session. Display the
+estimate and obtain explicit confirmation; on an unknown outcome use
+`readOrganizationSubscriptionCancellationUndo` instead of inventing another intent.
+The review is short-lived and does not lock a future invoice price.

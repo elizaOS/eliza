@@ -24,9 +24,10 @@ const previewRead = mock(async () => {
   await beforePreviewReturn();
   return preview;
 });
-const update = mock(async () => {
+let updateImpl = async (): Promise<unknown> => {
   throw new Error("Review must never mutate");
-});
+};
+const update = mock(async (..._args: unknown[]) => updateImpl());
 mock.module("../stripe", () => ({
   requireStripe: () => ({
     customers: { retrieve: customerRead },
@@ -37,11 +38,13 @@ mock.module("../stripe", () => ({
 let client: typeof import("../../db/client");
 let repo: typeof import("../../db/repositories/subscription-cancellation");
 let service: typeof import("./subscription-renewal-review");
+let cancellation: typeof import("./subscription-cancellation");
 beforeAll(async () => {
   client = await import("../../db/client");
   await installCancellationTestSchema((q) => client.getPgliteClientForTests().exec(q));
   repo = await import("../../db/repositories/subscription-cancellation");
   service = await import("./subscription-renewal-review");
+  cancellation = await import("./subscription-cancellation");
 }, 120_000);
 afterAll(async () => {
   await client.closeDatabaseConnectionsForTests();
@@ -50,15 +53,20 @@ afterAll(async () => {
 
 async function fixture() {
   beforePreviewReturn = async () => {};
+  update.mockClear();
+  updateImpl = async () => {
+    throw new Error("Review must never mutate");
+  };
   const f = await seedCancellationTestAccount();
   const command = await repo.prepareCancellation(f.input);
   const claim = await repo.claimCancellation({ ...f.input, commandId: command.id });
-  subscription = {
+  const scheduled = {
     ...f.provider,
     cancel_at_period_end: true,
     cancel_at: f.provider.current_period_end,
     canceled_at: Math.floor(Date.now() / 1000),
   };
+  subscription = scheduled;
   if (!claim) throw new Error("Missing fixture claim");
   await repo.finalizeCancellation(f.input, claim, subscription);
   customer = { id: f.source.stripe_customer_id, object: "customer", livemode: false };
@@ -105,7 +113,7 @@ async function fixture() {
   preview = invoice;
   const input = { ...f.input, expectedSubscriptionRevision: 2 };
   const captured = await repo.readCancellationUndoReviewSource(input);
-  return { ...f, input, invoice, captured };
+  return { ...f, input, invoice, captured, scheduled };
 }
 const session = async () => {};
 
@@ -244,4 +252,207 @@ test("an active uncancelled subscription or missing entitlement cannot receive a
     service.readOrganizationSubscriptionRenewalReview(f.input, session),
   ).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELLATION_CONFLICT" });
   expect(customerRead.mock.calls.length).toBe(count);
+});
+
+async function reviewedFixture() {
+  const f = await fixture();
+  const review = await service.readOrganizationSubscriptionRenewalReview(f.input, session);
+  const confirm = {
+    ...f.input,
+    idempotencyKey: randomUUID(),
+    expectedRenewalTermsDigest: review.termsDigest,
+  };
+  updateImpl = async () => {
+    subscription = { ...f.scheduled, cancel_at_period_end: false, cancel_at: null };
+    return subscription;
+  };
+  return { ...f, review, confirm };
+}
+test("reviewed confirmation persists terms, dispatches once and replays after the source revision changes", async () => {
+  const f = await reviewedFixture();
+  const result = await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(
+    f.confirm,
+    session,
+  );
+  expect(result).toMatchObject({ status: "APPLIED", resultSubscriptionRevision: "3" });
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(update.mock.calls[0]).toEqual([
+    f.source.stripe_subscription_id,
+    { cancel_at_period_end: false },
+    { idempotencyKey: `organization-cancellation:${result.commandId}` },
+  ]);
+  const receipt = await repo.readCancellationRenewalReview(f.input, result.commandId);
+  expect(receipt?.termsDigest).toBe(f.review.termsDigest);
+  expect(receipt?.amountDueCents).toBe(2640);
+  const reads = previewRead.mock.calls.length;
+  expect(
+    await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(f.confirm, session),
+  ).toEqual(result);
+  expect(previewRead.mock.calls.length).toBe(reads);
+  expect(update).toHaveBeenCalledTimes(1);
+  await expect(
+    cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(
+      { ...f.confirm, expectedRenewalTermsDigest: "b".repeat(64) },
+      session,
+    ),
+  ).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELLATION_CONFLICT" });
+});
+test("terms changed before admission produce no new command or provider mutation", async () => {
+  const f = await reviewedFixture();
+  preview = { ...f.invoice, starting_balance: -500, amount_due: 2740 };
+  await expect(
+    cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(f.confirm, session),
+  ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_TERMS_CHANGED" });
+  expect(update).not.toHaveBeenCalled();
+  const commands = await client
+    .getPgliteClientForTests()
+    .query("SELECT kind FROM billing_subscription_commands WHERE organization_id=$1", [
+      f.input.organizationId,
+    ]);
+  expect(commands.rows).toEqual([{ kind: "cancel" }]);
+});
+test("pre-dispatch drift is durable FAILED and requires new terms and explicit new intent", async () => {
+  const f = await reviewedFixture();
+  let previews = 0;
+  beforePreviewReturn = async () => {
+    if (++previews === 2) preview = { ...f.invoice, starting_balance: -500, amount_due: 2740 };
+  };
+  const failed = await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(
+    f.confirm,
+    session,
+  );
+  expect(failed.status).toBe("FAILED");
+  expect(update).not.toHaveBeenCalled();
+  expect(
+    await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(f.confirm, session),
+  ).toEqual(failed);
+  const state = await client
+    .getPgliteClientForTests()
+    .query(
+      "SELECT error_code,cancellation_dispatch_state FROM billing_subscription_commands WHERE id=$1",
+      [failed.commandId],
+    );
+  expect(state.rows).toEqual([
+    { error_code: "RENEWAL_REVIEW_REJECTED_BEFORE_DISPATCH", cancellation_dispatch_state: "ready" },
+  ]);
+  const fresh = await service.readOrganizationSubscriptionRenewalReview(f.input, session);
+  expect(fresh.termsDigest).not.toBe(f.review.termsDigest);
+  const retried = await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(
+    { ...f.confirm, idempotencyKey: randomUUID(), expectedRenewalTermsDigest: fresh.termsDigest },
+    session,
+  );
+  expect(retried.status).toBe("APPLIED");
+  expect(update).toHaveBeenCalledTimes(1);
+});
+test("lost provider response remains unknown and recovery observes without redispatch", async () => {
+  const f = await reviewedFixture();
+  updateImpl = async () => {
+    subscription = { ...f.scheduled, cancel_at_period_end: false, cancel_at: null };
+    throw new Error("controlled lost response after provider effect");
+  };
+  const uncertain = await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(
+    f.confirm,
+    session,
+  );
+  expect(uncertain.status).toBe("OUTCOME_UNKNOWN");
+  expect(
+    await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(f.confirm, session),
+  ).toEqual(uncertain);
+  expect(update).toHaveBeenCalledTimes(1);
+  await cancellation.recoverOrganizationSubscriptionCancellations(100);
+  expect(
+    (
+      await cancellation.readOrganizationSubscriptionCancellationUndo({
+        ...f.input,
+        commandId: uncertain.commandId,
+      })
+    ).status,
+  ).toBe("APPLIED");
+  expect(update).toHaveBeenCalledTimes(1);
+});
+test("fresh prepared review stays live; expired prepared review fails during read-only recovery", async () => {
+  const f = await reviewedFixture();
+  const fresh = await repo.prepareCancellation(
+    { ...f.input, idempotencyKey: f.confirm.idempotencyKey, renewalReview: f.review },
+    "resume",
+  );
+  await cancellation.recoverOrganizationSubscriptionCancellations(100);
+  expect((await repo.readCancellation({ ...f.input, commandId: fresh.id }, "resume")).status).toBe(
+    "PREPARED",
+  );
+  const older = await reviewedFixture();
+  const command = await repo.prepareCancellation(
+    { ...older.input, idempotencyKey: randomUUID() },
+    "resume",
+  );
+  // A retained historical receipt whose deadline has passed; recovery must never reconstruct a dispatch.
+  const expired = {
+    ...older.review,
+    observedAt: new Date(Date.now() - 120000).toISOString(),
+    expiresAt: new Date(Date.now() - 60000).toISOString(),
+  };
+  await client
+    .getPgliteClientForTests()
+    .query(
+      "INSERT INTO billing_subscription_renewal_reviews(command_id,organization_id,payload,expires_at) VALUES($1,$2,$3::jsonb,$4)",
+      [command.id, older.input.organizationId, JSON.stringify(expired), expired.expiresAt],
+    );
+  await cancellation.recoverOrganizationSubscriptionCancellations(100);
+  expect(
+    (await repo.readCancellation({ ...older.input, commandId: command.id }, "resume")).status,
+  ).toBe("FAILED");
+  expect(update).not.toHaveBeenCalled();
+});
+test("a started or expired lease cannot be labelled a proven pre-dispatch failure", async () => {
+  const f = await reviewedFixture();
+  const command = await repo.prepareCancellation(
+    { ...f.input, idempotencyKey: f.confirm.idempotencyKey, renewalReview: f.review },
+    "resume",
+  );
+  const claim = await repo.claimCancellation({ ...f.input, commandId: command.id }, "resume");
+  if (!claim) throw new Error("Missing review claim");
+  await repo.assertCancellationClaimCurrent(f.input, claim, true);
+  expect(await repo.failReviewedCancellationBeforeDispatch(f.input, claim)).toBe(false);
+  await client
+    .getPgliteClientForTests()
+    .query(
+      "UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [command.id],
+    );
+  expect(await repo.failReviewedCancellationBeforeDispatch(f.input, claim)).toBe(false);
+  expect(
+    (await repo.readCancellation({ ...f.input, commandId: command.id }, "resume")).status,
+  ).toBe("OUTCOME_UNKNOWN");
+});
+test("review receipts cannot be rewritten, deleted, transplanted or attached to a cancellation", async () => {
+  const f = await reviewedFixture();
+  const command = await repo.prepareCancellation(
+    { ...f.input, idempotencyKey: f.confirm.idempotencyKey, renewalReview: f.review },
+    "resume",
+  );
+  const query = (sql: string, values: unknown[]) =>
+    client.getPgliteClientForTests().query(sql, values);
+  await expect(
+    query(
+      "UPDATE billing_subscription_renewal_reviews SET payload=jsonb_set(payload,'{amountDueCents}','1'::jsonb) WHERE command_id=$1",
+      [command.id],
+    ),
+  ).rejects.toThrow();
+  await expect(
+    query("DELETE FROM billing_subscription_renewal_reviews WHERE command_id=$1", [command.id]),
+  ).rejects.toThrow();
+  const other = await seedCancellationTestAccount();
+  const cancel = await repo.prepareCancellation(other.input);
+  await expect(
+    query(
+      "INSERT INTO billing_subscription_renewal_reviews(command_id,organization_id,payload,expires_at) VALUES($1,$2,$3::jsonb,($3::jsonb->>'expiresAt')::timestamptz)",
+      [cancel.id, other.input.organizationId, JSON.stringify(f.review)],
+    ),
+  ).rejects.toThrow();
+  await expect(
+    query(
+      "INSERT INTO billing_subscription_renewal_reviews(command_id,organization_id,payload,expires_at) VALUES($1,$2,$3::jsonb,($3::jsonb->>'expiresAt')::timestamptz)",
+      [cancel.id, f.input.organizationId, JSON.stringify(f.review)],
+    ),
+  ).rejects.toThrow();
 });

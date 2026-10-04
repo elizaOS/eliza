@@ -6,7 +6,7 @@
  */
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const USER = {
   id: "user-1",
@@ -47,17 +47,17 @@ class CryptoPaymentError extends Error {
   }
 }
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async () => USER,
   requireUserWithOrg: async () => USER,
 }));
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+mock.module("@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {}, STRICT: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
   moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
     next(),
 }));
-mock.module("@/lib/services/direct-wallet-payments", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/direct-wallet-payments", () => ({
   directWalletPaymentsService: {
     createPayment: async (...input: unknown[]) => {
       calls.directCreate.push(input);
@@ -87,13 +87,13 @@ mock.module("@/lib/services/direct-wallet-payments", () => ({
     },
   },
 }));
-mock.module("@/db/repositories/crypto-payments", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/crypto-payments", () => ({
   cryptoPaymentsRepository: {
     findById: async (id: string) =>
       id === OXA_PAYMENT.id ? OXA_PAYMENT : DIRECT_PAYMENT,
   },
 }));
-mock.module("@/lib/services/crypto-payments", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/crypto-payments", () => ({
   CryptoPaymentError,
   cryptoPaymentsService: {
     createPayment: async (...input: unknown[]) => {
@@ -113,10 +113,10 @@ mock.module("@/lib/services/crypto-payments", () => ({
     listPaymentsByOrganization: async () => [],
   },
 }));
-mock.module("@/lib/services/oxapay", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/oxapay", () => ({
   isOxaPayConfigured: () => true,
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
   redact: {
     paymentId: (value: string) => value,
