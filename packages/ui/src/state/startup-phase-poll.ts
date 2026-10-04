@@ -412,6 +412,7 @@ export async function runPollingBackend(
     current: ReturnType<typeof setTimeout> | null;
   },
   target: RuntimeTarget = "embedded-local",
+  signal?: AbortSignal,
 ): Promise<void> {
   const completionAtPollStart = deps.firstRunCompletionCommittedRef.current;
   const describeBackendFailure = (
@@ -535,11 +536,14 @@ export async function runPollingBackend(
           onPublished,
         );
         clearTimeout(tid);
-        resolve(client.hasToken());
+        signal?.removeEventListener("abort", settle);
+        resolve(!signal?.aborted && client.hasToken());
       };
       const onPublished = () => settle();
       const tid = setTimeout(settle, Math.max(0, deadline - Date.now()));
       window.addEventListener("eliza:desktop-api-base-updated", onPublished);
+      signal?.addEventListener("abort", settle, { once: true });
+      if (signal?.aborted) settle();
     });
   };
   // One-shot recovery to the bundled ON-DEVICE agent (issue: iOS icon-tap
@@ -1234,17 +1238,18 @@ export async function runPollingBackend(
         return;
       }
       if (ae?.status === 401 && !client.hasToken()) {
-        if (
-          isElectrobunRuntime() &&
-          !awaitedDesktopCredentialPublication &&
-          (await waitForDesktopCredentialPublication())
-        ) {
-          // Publication race: the desktop bearer landed after this probe was
-          // already sent without it — re-probe with the bearer instead of
-          // dead-ending on the pairing gate (see
-          // waitForDesktopCredentialPublication).
+        if (isElectrobunRuntime() && !awaitedDesktopCredentialPublication) {
+          const published = await waitForDesktopCredentialPublication();
           if (cancelled.current || effectRunRef.current !== effectRunId) return;
-          continue;
+          if (published) {
+            // Publication race: the desktop bearer landed after this probe was
+            // already sent without it — re-probe with the bearer instead of
+            // dead-ending on the pairing gate (see
+            // waitForDesktopCredentialPublication).
+            if (cancelled.current || effectRunRef.current !== effectRunId)
+              return;
+            continue;
+          }
         }
         // On Capacitor native the bearer token is injected asynchronously by
         // the native Agent plugin after the WebView boots. The first poll can

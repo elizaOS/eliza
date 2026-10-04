@@ -170,4 +170,33 @@ describe("startup auth gate vs the desktop token publication race", () => {
     expect(events).toEqual([{ type: "BACKEND_AUTH_REQUIRED" }]);
     expect(elapsed).toBeLessThan(200);
   });
+  it("removes the credential waiter when startup is cancelled", async () => {
+    clientMock.getAuthStatus.mockResolvedValue({ ...UNAUTHENTICATED });
+    const controller = new AbortController();
+    const cancelled = { current: false };
+    const events: StartupEvent[] = [];
+    const polling = runPollingBackend(
+      createPollingDeps(),
+      (event) => events.push(event),
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 30_000,
+        agentReadyTimeoutMs: 30_000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      null,
+      1,
+      { current: 1 },
+      cancelled,
+      { current: null },
+      "embedded-local",
+      controller.signal,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    cancelled.current = true;
+    controller.abort();
+    await polling;
+    expect(events).toEqual([]);
+  });
 });
