@@ -1,6 +1,6 @@
 """eval_checkpoint.py — score one local checkpoint against a small val set.
 
-Wraps `scripts/benchmark/native_tool_call_bench.py` via subprocess so we get
+Wraps `scripts/eval/native_tool_call_bench.py` via subprocess so we get
 bucketed native function-calling structure/content numbers without duplicating
 its scoring or model-loading logic. Reads the bench `summary.json` and emits a
 small per-checkpoint result JSON the eval-loop appends to `_progress.jsonl`.

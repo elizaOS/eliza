@@ -31,7 +31,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
 logger = logging.getLogger(__name__)
 

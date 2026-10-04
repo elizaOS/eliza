@@ -17,8 +17,8 @@ import sys
 import time
 from pathlib import Path
 
-from scripts.training import instrumentation
-from scripts.training.instrumentation import _git_head, _hash_paths, log_environment
+from eliza_training.training import instrumentation
+from eliza_training.training.instrumentation import _git_head, _hash_paths, log_environment
 
 
 def _read_env(out_dir: Path) -> dict:
@@ -140,18 +140,16 @@ def test_git_head_preserves_head_when_real_status_subprocess_is_slow(
         encoding="utf-8",
     )
     fake_git = bin_dir / "git"
+    # Keep the quick probe independent of Python startup and code-signature latency.
+    import shlex
     fake_git.write_text(
-        (
-            f"#!{sys.executable}\n"
-            "import subprocess\n"
-            "import sys\n"
-            "import time\n"
-            "if 'rev-parse' in sys.argv:\n"
-            "    print('abc123')\n"
-            "else:\n"
-            f"    subprocess.Popen([{sys.executable!r}, {str(child)!r}, {str(leaked_child_marker)!r}])\n"
-            "    time.sleep(10)\n"
-        ),
+        "#!/bin/sh\n"
+        'if [ "$1" = "rev-parse" ]; then\n'
+        "  echo abc123\n"
+        "else\n"
+        f"  {shlex.quote(sys.executable)} {shlex.quote(str(child))} {shlex.quote(str(leaked_child_marker))} &\n"
+        "  /bin/sleep 10\n"
+        "fi\n",
         encoding="utf-8",
     )
     fake_git.chmod(0o755)

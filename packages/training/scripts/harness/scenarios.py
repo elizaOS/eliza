@@ -23,10 +23,8 @@ from typing import Any
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from scripts.lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
 CATALOG_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 POOL_DIR = ROOT / "scripts" / "harness" / "scenario_pool"
