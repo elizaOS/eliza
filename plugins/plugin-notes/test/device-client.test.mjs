@@ -108,3 +108,107 @@ test("encrypted compare-exchange rejection faults the editor without overwriting
   assert.equal(JSON.parse(saved.currentRaw).records[0].body, "Exact content");
   await assert.rejects(notes.target(note.id), /another view/);
 });
+
+test("a delayed current-state read cannot race the same editor's delete and undo", async () => {
+  let saved = null,
+    pauseRead = false,
+    releaseRead,
+    readStarted;
+  let writes = 0;
+  const started = new Promise((resolve) => {
+    readStarted = resolve;
+  });
+  const vault = {
+    read: async () => {
+      const snapshot = structuredClone(saved);
+      if (pauseRead) {
+        pauseRead = false;
+        readStarted();
+        await new Promise((resolve) => {
+          releaseRead = resolve;
+        });
+      }
+      return snapshot;
+    },
+    compareExchange: async (_key, expected, next) => {
+      assert.deepEqual(saved, expected);
+      saved = structuredClone(next);
+      writes++;
+      return { status: "saved" };
+    },
+  };
+  const notes = await SecureNotesStore.open(config, vault, memory(), [note]);
+  pauseRead = true;
+  const read = notes.assertCurrent();
+  await started;
+  const before = writes;
+  const deletion = notes.replace([]);
+  await new Promise((resolve) => setImmediate(resolve));
+  try {
+    assert.equal(
+      writes,
+      before,
+      "commit waits for the in-flight consistency read",
+    );
+  } finally {
+    releaseRead();
+    await Promise.allSettled([read, deletion]);
+  }
+  await Promise.all([read, deletion]);
+  await notes.replace([note]);
+  assert.equal(notes.needsRecovery, false);
+  assert.deepEqual(
+    (await SecureNotesStore.open(config, vault, memory())).list,
+    [note],
+  );
+});
+
+test("a genuine external change during a consistency read still fences queued edits", async () => {
+  let saved = null,
+    pauseRead = false,
+    releaseRead,
+    readStarted;
+  let writes = 0;
+  const started = new Promise((resolve) => {
+    readStarted = resolve;
+  });
+  const vault = {
+    read: async () => {
+      if (pauseRead) {
+        pauseRead = false;
+        readStarted();
+        await new Promise((resolve) => {
+          releaseRead = resolve;
+        });
+      }
+      return structuredClone(saved);
+    },
+    compareExchange: async (_key, expected, next) => {
+      if (JSON.stringify(saved) !== JSON.stringify(expected))
+        return { status: "conflict" };
+      saved = structuredClone(next);
+      writes++;
+      return { status: "saved" };
+    },
+  };
+  const notes = await SecureNotesStore.open(config, vault, memory(), [note]);
+  pauseRead = true;
+  const read = notes.assertCurrent();
+  await started;
+  const external = { ...note, body: "Another editor's exact content" };
+  saved.currentRaw = JSON.stringify({
+    ...JSON.parse(saved.currentRaw),
+    records: [external],
+  });
+  const before = writes;
+  const edit = notes.replace([]);
+  const rejected = Promise.all([
+    assert.rejects(read, /changed in another view/),
+    assert.rejects(edit, /changed in another view/),
+  ]);
+  releaseRead();
+  await rejected;
+  assert.equal(notes.needsRecovery, true);
+  assert.equal(writes, before);
+  assert.deepEqual(JSON.parse(saved.currentRaw).records, [external]);
+});
