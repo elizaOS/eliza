@@ -29,3 +29,8 @@ responses; the durable runtime remains authoritative. Hosts that pass
 an in-flight or expired choice cannot be used, and hide options once the choice
 is no longer pending. `splitSpeechSegments`
 shares lossless caption/playback chunks without importing the voice runtime.
+
+The browser-safe `api/task-lifecycle` leaf projects authoritative task status and
+reconciles start/pause/resume/cancel requests without optimistically reporting
+success. Hosts provide transport, localized failure messages and view updates.
+The durable runtime remains authoritative; this projection grants no task authority.
