@@ -54,3 +54,9 @@ observation without owning microphone tracks, transcription or message submissio
 Hosts supply timing/energy policy and the URL of `voice/microphone-samples.worklet.mjs`
 (or a compatible mono worklet). Previews are single-flight and are not replayed;
 unsupported capture returns no observer so the host can retain final-recording UX.
+
+`createRuntimeJsonClient` shares JSON request handling and coalesced native
+startup for host-selected runtime bridges. Hosts supply URLs, native HTTP
+fallback, budgets and messages. Once native availability is established, failures
+never fall back or replay requests. Account refresh fences earlier responses;
+cancelling their publication does not undo native effects already dispatched.
