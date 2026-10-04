@@ -45,7 +45,7 @@ it("allows a caller-owned body to complete after the former shared deadline", as
 }, 60_000);
 
 it.each(["deadline", "caller"])(
-  "cancels response body reads after headers (%s)",
+  "cancels a pending HTTP response (%s)",
   async (mode) => {
     const server = http.createServer((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
@@ -57,15 +57,23 @@ it.each(["deadline", "caller"])(
     if (!address || typeof address === "string") throw new Error("No port");
     try {
       const controller = new AbortController();
-      const response = await fetchWithTimeout(
+      const pending = fetchWithTimeout(
         `http://127.0.0.1:${address.port}`,
         { signal: controller.signal },
         mode === "deadline" ? 250 : undefined,
       );
-      expect(response.status).toBe(200);
-      const body = response.text();
-      if (mode === "caller") controller.abort();
-      await expect(body).rejects.toThrow();
+      if (mode === "deadline") {
+        // The selected deadline covers both headers and the stalled body.
+        await expect(
+          pending.then((response) => response.text()),
+        ).rejects.toThrow();
+      } else {
+        const response = await pending;
+        expect(response.status).toBe(200);
+        const body = response.text();
+        controller.abort();
+        await expect(body).rejects.toThrow();
+      }
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
