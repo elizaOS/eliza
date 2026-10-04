@@ -5,7 +5,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveWalletNetworkMode } from "./wallet-rpc.ts";
 
 type NetworkConfig = Parameters<typeof resolveWalletNetworkMode>[0];
@@ -14,8 +14,18 @@ function configWith(network: unknown): NetworkConfig {
   return { wallet: { network } } as unknown as NetworkConfig;
 }
 
-afterEach(() => {
+const inheritedNetwork = process.env.ELIZA_WALLET_NETWORK;
+
+beforeEach(() => {
   delete process.env.ELIZA_WALLET_NETWORK;
+});
+
+afterEach(() => {
+  if (inheritedNetwork === undefined) {
+    delete process.env.ELIZA_WALLET_NETWORK;
+  } else {
+    process.env.ELIZA_WALLET_NETWORK = inheritedNetwork;
+  }
 });
 
 describe("resolveWalletNetworkMode", () => {
@@ -43,6 +53,14 @@ describe("resolveWalletNetworkMode", () => {
     expect(resolveWalletNetworkMode(configWith(" testnet "))).toBe("testnet");
     process.env.ELIZA_WALLET_NETWORK = " testnet ";
     expect(resolveWalletNetworkMode()).toBe("testnet");
+  });
+
+  it("skips blank sources instead of letting them hide a later value", () => {
+    process.env.ELIZA_WALLET_NETWORK = "testnet";
+    expect(resolveWalletNetworkMode(configWith(""))).toBe("testnet");
+    expect(resolveWalletNetworkMode(configWith("   "))).toBe("testnet");
+    expect(resolveWalletNetworkMode(configWith("mainnet"), "")).toBe("mainnet");
+    expect(resolveWalletNetworkMode(undefined, "  ")).toBe("testnet");
   });
 
   it("prefers fallback over config and config over the environment", () => {

@@ -198,24 +198,19 @@ export function resolveWalletNetworkMode(
   config?: WalletCapableConfig | null,
   fallback?: string | null,
 ): "mainnet" | "testnet" {
-  const rawValue =
-    fallback ??
-    config?.wallet?.network ??
-    process.env.ELIZA_WALLET_NETWORK ??
-    "";
-  const source =
-    fallback != null
-      ? "fallback"
-      : config?.wallet?.network != null
-        ? "config.wallet.network"
-        : process.env.ELIZA_WALLET_NETWORK != null
-          ? "ELIZA_WALLET_NETWORK"
-          : "default";
-  const normalized = (
-    typeof rawValue === "string" ? rawValue : String(rawValue)
-  )
-    .trim()
-    .toLowerCase();
+  // A blank source counts as unset, so it cannot hide a later source: a
+  // `"network": ""` in config must not override ELIZA_WALLET_NETWORK=testnet.
+  const [source, rawValue] = (
+    [
+      ["fallback", fallback],
+      ["config.wallet.network", config?.wallet?.network],
+      ["ELIZA_WALLET_NETWORK", process.env.ELIZA_WALLET_NETWORK],
+    ] as const
+  ).find(([, value]) => value != null && String(value).trim() !== "") ?? [
+    "default",
+    "",
+  ];
+  const normalized = String(rawValue).trim().toLowerCase();
   // Explicit default: unset or blank across all three sources resolves to
   // mainnet. Only a blank value takes this path; anything else must match.
   if (normalized === "") return "mainnet";
