@@ -34,185 +34,23 @@ export function seedFetch(
   });
 }
 
-type LifeOpsOccurrenceState =
-  | "completed"
-  | "visible"
-  | "pending"
-  | "expired"
-  | "snoozed"
-  | "skipped"
-  | "muted";
-
-type LifeOpsTaskDefinitionInput = Record<string, unknown>;
-
-type LifeOpsTaskDefinition = LifeOpsTaskDefinitionInput & {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LifeOpsOccurrence = Record<string, unknown> & {
-  occurrenceKey: string;
-  state: LifeOpsOccurrenceState;
-};
-
-type LifeOpsScheduledTask = Record<string, unknown> & {
-  taskId: string;
-  kind: string;
-  promptInstructions: string;
-  trigger: Record<string, unknown>;
-  priority: "low" | "medium" | "high";
-  respectsGlobalPause: boolean;
-  state: { status: string; followupCount: number };
-  source: string;
-  createdBy: string;
-  ownerVisible: boolean;
-  metadata?: Record<string, unknown>;
-};
-
-type LifeOpsBrowserSessionSeedInput = {
-  id: string;
-  agentId: string;
-  domain: string;
-  subjectType: string;
-  subjectId: string;
-  visibilityScope: string;
-  contextPolicy: string;
-  workflowId: string | null;
-  browser: string | null;
-  companionId: string | null;
-  profileId: string | null;
-  windowId: string | null;
-  tabId: string | null;
-  title: string;
-  status: string;
-  actions: Record<string, unknown>[];
-  currentActionIndex: number;
-  awaitingConfirmationForActionId: string | null;
-  result: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-  finishedAt: string | null;
-};
-
-type LifeOpsReminderAttempt = Record<string, unknown> & {
-  id: string;
-  agentId: string;
-  planId: string;
-  ownerType: "occurrence" | "calendar_event";
-  ownerId: string;
-  occurrenceId: string | null;
-  channel: string;
-  stepIndex: number;
-  scheduledFor: string;
-  attemptedAt: string | null;
-  outcome: string;
-  connectorRef: string | null;
-  deliveryMetadata: Record<string, unknown>;
-  reviewAt?: string | null;
-  reviewStatus?: string | null;
-};
-
-type LifeOpsCalendarEventSeedInput = {
-  id: string;
-  externalId: string;
-  agentId: string;
-  provider: "google" | "apple_calendar";
-  side: "owner" | "agent";
-  calendarId: string;
-  title: string;
-  description: string;
-  location: string;
-  status: string;
-  startAt: string;
-  endAt: string;
-  isAllDay: boolean;
-  timezone: string | null;
-  htmlLink: string | null;
-  conferenceLink: string | null;
-  organizer: Record<string, unknown> | null;
-  attendees: Record<string, unknown>[];
-  metadata: Record<string, unknown>;
-  syncedAt: string;
-  updatedAt: string;
-  connectorAccountId?: string;
-  grantId?: string;
-  accountEmail?: string;
-};
-
-type LifeOpsCalendarEvent = {
-  id: string;
-  externalId: string;
-  startAt: string;
-};
-
-type LifeOpsRepositoryInstance = {
-  createDefinition: (definition: LifeOpsTaskDefinition) => Promise<unknown>;
-  upsertOccurrence: (occurrence: LifeOpsOccurrence) => Promise<unknown>;
-  upsertScheduledTask: (
-    agentId: string,
-    task: LifeOpsScheduledTask,
-    options?: { nextFireAtIso?: string | null },
-  ) => Promise<unknown>;
-  listScheduledTasks: (
-    agentId: string,
-    filter?: Record<string, unknown>,
-  ) => Promise<LifeOpsScheduledTask[]>;
-  createReminderAttempt: (attempt: LifeOpsReminderAttempt) => Promise<unknown>;
-  listReminderAttempts: (
-    agentId: string,
-    options?: Record<string, unknown>,
-  ) => Promise<LifeOpsReminderAttempt[]>;
-  createBrowserSession: (
-    session: LifeOpsBrowserSessionSeedInput,
-  ) => Promise<unknown>;
-  listBrowserSessions: (
-    agentId: string,
-  ) => Promise<LifeOpsBrowserSessionSeedInput[]>;
-  upsertCalendarEvent: (
-    event: LifeOpsCalendarEventSeedInput,
-    side?: LifeOpsCalendarEventSeedInput["side"],
-  ) => Promise<unknown>;
-  listCalendarEvents: (
-    agentId: string,
-    provider: LifeOpsCalendarEventSeedInput["provider"],
-    timeMin?: string,
-    timeMax?: string,
-    side?: LifeOpsCalendarEventSeedInput["side"],
-  ) => Promise<LifeOpsCalendarEvent[]>;
-};
-
-type LifeOpsRepositoryConstructor = {
-  new (runtime: AgentRuntime): LifeOpsRepositoryInstance;
-  bootstrapSchema: (runtime: AgentRuntime) => Promise<void>;
-};
-
-type LifeOpsDefaultsModule = Pick<
-  typeof import("@elizaos/plugin-personal-assistant/lifeops/index"),
-  "resolveDefaultWindowPolicy"
+type LifeOpsRepository = InstanceType<
+  typeof import("@elizaos/plugin-personal-assistant/lifeops/index").LifeOpsRepository
 >;
+type LifeOpsCalendarEventSeedInput = Parameters<
+  LifeOpsRepository["upsertCalendarEvent"]
+>[0];
 
-type LifeOpsEngineModule = {
-  materializeDefinitionOccurrences: (
-    definition: LifeOpsTaskDefinition,
-    existingOccurrences: LifeOpsOccurrence[],
-    options?: { now?: Date; lookbackDays?: number; lookaheadDays?: number },
-  ) => LifeOpsOccurrence[];
-};
-
-type LifeOpsRepositoryModule = {
-  createLifeOpsTaskDefinition: (
-    params: LifeOpsTaskDefinitionInput,
-  ) => LifeOpsTaskDefinition;
-  LifeOpsRepository: LifeOpsRepositoryConstructor;
-};
+type ScenarioScheduledTask = Parameters<
+  LifeOpsRepository["upsertScheduledTask"]
+>[1];
+type ScenarioReminderAttempt = Parameters<
+  LifeOpsRepository["createReminderAttempt"]
+>[0];
 
 // Domain operations stay with their owner; the runner interprets scenario seeds.
 async function loadLifeOps() {
-  return import("@elizaos/plugin-personal-assistant/lifeops/index") as Promise<
-    LifeOpsDefaultsModule & LifeOpsEngineModule & LifeOpsRepositoryModule
-  >;
+  return import("@elizaos/plugin-personal-assistant/lifeops/index");
 }
 
 type TodoSeed = {
@@ -1288,11 +1126,11 @@ async function upsertScenarioScheduledTask(
   args: {
     seedKind: string;
     title: string;
-    taskKind?: string;
+    taskKind?: ScenarioScheduledTask["kind"];
     dueAt?: Date;
     priority?: unknown;
-    status?: string;
-    subjectKind?: string;
+    status?: ScenarioScheduledTask["state"]["status"];
+    subjectKind?: NonNullable<ScenarioScheduledTask["subject"]>["kind"];
     subjectId?: string;
     metadata?: Record<string, unknown>;
   },
@@ -1313,7 +1151,7 @@ async function upsertScenarioScheduledTask(
       priority: normalizeScheduledTaskPriority(args.priority),
       respectsGlobalPause: true,
       state: { status: args.status ?? "scheduled", followupCount: 0 },
-      source: "scenario_seed",
+      source: "plugin",
       createdBy: String(runtime.agentId),
       ownerVisible: true,
       subject:
@@ -1424,7 +1262,7 @@ async function seedDeviceIntentMemory(
   return undefined;
 }
 
-function normalizeReminderAttemptChannel(value: unknown): string {
+function normalizeReminderAttemptChannel(value: unknown) {
   const channel = readNonEmptyString(value)?.toLowerCase();
   if (
     channel === "desktop" ||
@@ -1442,7 +1280,7 @@ function normalizeReminderAttemptChannel(value: unknown): string {
 
 function normalizeReminderAttemptOutcome(
   seed: ReminderAttemptMemorySeed,
-): string {
+): ScenarioReminderAttempt["outcome"] {
   const result = readNonEmptyString(seed.result)?.toLowerCase();
   if (result === "failed" || result === "blocked") {
     return "blocked_connector";
@@ -1498,7 +1336,10 @@ async function seedReminderAttemptMemory(
     ownerType: "occurrence",
     ownerId: planId,
     occurrenceId: null,
-    channel,
+    channel:
+      channel === "desktop" || channel === "mobile" || channel === "ntfy"
+        ? "push"
+        : channel,
     stepIndex: index,
     scheduledFor,
     attemptedAt: attemptedAt.toISOString(),
@@ -1511,6 +1352,7 @@ async function seedReminderAttemptMemory(
       scenarioId: ctx.scenarioId ?? null,
       title,
       urgency,
+      channel,
       priority: readNonEmptyString(seed.priority) ?? urgency,
       readAt: readNonEmptyString(seed.readAt),
       statusCode: readOptionalNumber(seed.statusCode),
@@ -1590,7 +1432,7 @@ async function seedScheduledPushLadderMemory(
       taskKind: "reminder",
       dueAt,
       priority: "medium",
-      status: status === "cancelled" ? "cancelled" : "scheduled",
+      status: status === "cancelled" ? "dismissed" : "scheduled",
       subjectKind: "calendar_event",
       subjectId: eventId,
       metadata: {
@@ -1651,13 +1493,26 @@ function normalizeIsoDate(value: unknown): string | null {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
-function normalizeCalendarAttendees(value: unknown): Record<string, unknown>[] {
+function normalizeCalendarAttendees(
+  value: unknown,
+): LifeOpsCalendarEventSeedInput["attendees"] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       return [];
     }
-    return [entry as Record<string, unknown>];
+    const attendee = entry as Record<string, unknown>;
+    return [
+      {
+        ...attendee,
+        email: readNonEmptyString(attendee.email),
+        displayName: readNonEmptyString(attendee.displayName),
+        responseStatus: readNonEmptyString(attendee.responseStatus),
+        self: readOptionalBoolean(attendee.self) ?? false,
+        organizer: readOptionalBoolean(attendee.organizer) ?? false,
+        optional: readOptionalBoolean(attendee.optional) ?? false,
+      },
+    ];
   });
 }
 
@@ -1925,7 +1780,7 @@ async function seedFollowupMemory(
     priority:
       readNonEmptyString(seed.priority) ?? readNonEmptyString(seed.urgency),
     status,
-    subjectKind: seedKind.includes("thread") ? "thread" : "owner",
+    subjectKind: seedKind.includes("thread") ? "thread" : "entity",
     subjectId:
       readNonEmptyString(seed.counterparty) ??
       readNonEmptyString(seed.attendee) ??
