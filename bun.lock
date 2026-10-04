@@ -128,7 +128,6 @@
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "@noble/curves": "2.2.0",
         "@noble/hashes": "2.2.0",
         "drizzle-orm": "0.45.3",
