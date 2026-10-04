@@ -1386,7 +1386,11 @@ export async function handleDocumentsRoutes(
       content = `[Image: ${document.filename}]\n\n${descText}`;
       contentType = "text/plain";
     }
-    if (document.filename.toLowerCase().endsWith(".mdx")) {
+    // The upload client reads .md and .mdx files as text whatever their MIME
+    // (browsers often send none for Markdown), so the service must not decode
+    // them as base64 "application/octet-stream" bytes.
+    const lowerFilename = document.filename.toLowerCase();
+    if (lowerFilename.endsWith(".md") || lowerFilename.endsWith(".mdx")) {
       contentType = "text/markdown";
     }
     const textBacked =
