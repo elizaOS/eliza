@@ -31,3 +31,10 @@ lifetime. Storage failures return a generic error without credential logging.
 the same contract has a `main` entrypoint for JDK 21 with `org.json` on the classpath.
 Consumers should additionally test their real encrypted-store adapter and restart
 lifecycle. This transport does not authenticate a Cloud account by itself.
+
+`LocalRuntimeHttp` supplies bounded JSON HTTP exchange with an absolute socket
+deadline and injected monotonic clock. It only connects to loopback; the host
+must authorize its route and provide its private token and response-size limit.
+It deliberately contains no product route catalog. The instrumented contract
+also covers this client with real fixed-length, chunked, close-delimited,
+oversized, truncated and delayed responses.
