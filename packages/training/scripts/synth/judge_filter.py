@@ -89,10 +89,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]  # packages/training/scripts/
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from eliza_reward_fn import (  # noqa: E402
+from eliza_training.eliza_reward_fn import (  # noqa: E402
     RewardComponents,
     compute_reward_components,
 )

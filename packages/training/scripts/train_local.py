@@ -23,6 +23,10 @@ Usage:
 
 from __future__ import annotations
 
+from eliza_training.training.gemma_capacity import MODEL_BY_KEY
+
+_DEFAULT_MODEL_ID = MODEL_BY_KEY["gemma4_e2b"].model_id
+
 import argparse
 import json
 import logging
@@ -32,13 +36,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from training.tokenization import tokenize_with_explicit_limit
+from eliza_training.training.tokenization import tokenize_with_explicit_limit
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from format_for_training import format_record  # noqa: E402
-from lib.attn import select_attn_impl  # noqa: E402
+from eliza_training.format_for_training import format_record  # noqa: E402
+from eliza_training.lib.attn import select_attn_impl  # noqa: E402
 
 
 def _split_named(
@@ -304,7 +307,7 @@ _SUPPORTED_TRAIN_DTYPES = {"bf16"}
 _LIGER_SUPPORTED_MODEL_TYPES = {"gemma4"}
 
 _FALLBACK_DEFAULTS: dict[str, Any] = {
-    "model": "google/gemma-4-E2B",
+    "model": _DEFAULT_MODEL_ID,
     "batch_size": 4,
     "grad_accum": 8,
     "max_seq_len": 4096,
@@ -469,7 +472,7 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
     """
     user_passed = {dest: getattr(args, dest) is not None for dest in _TRACKED_DESTS}
 
-    from training.model_registry import get as _registry_get  # noqa: E402
+    from eliza_training.training.model_registry import get as _registry_get  # noqa: E402
     if args.registry_key:
         entry = _registry_get(args.registry_key)
         if (
@@ -781,7 +784,7 @@ def main() -> int:
     # cross-entropy + fused RMSNorm/SwiGLU/RoPE replace the HF defaults.
     # This is what makes the longer training seq_lens (8k–16k locally,
     # 16k+ on cloud) actually fit in VRAM.
-    from training.model_registry import get as _registry_get  # noqa: E402
+    from eliza_training.training.model_registry import get as _registry_get  # noqa: E402
     use_liger = args.use_liger == "on" or (
         args.use_liger == "auto"
         and (args.registry_key is None
@@ -929,7 +932,7 @@ def main() -> int:
         run_name=args.run_name,
     )
 
-    from training.optimizer import (
+    from eliza_training.training.optimizer import (
         _NON_LOWRANK_NAME_HINTS,
         build_apollo_mini_optimizer_from_groups,
         build_apollo_optimizer_from_groups,
@@ -980,7 +983,7 @@ def main() -> int:
     # below. Master weights stay bf16, gradients stay bf16 — see te_fp8.py.
     fp8_handle = None
     if os.environ.get("ELIZA_DISABLE_FP8") != "1":
-        from training.te_fp8 import maybe_enable_fp8
+        from eliza_training.training.te_fp8 import maybe_enable_fp8
         fp8_handle = maybe_enable_fp8(model)
         if fp8_handle.enabled:
             log.info("TE FP8 enabled — %d Linear modules swapped", fp8_handle.n_replaced)
@@ -991,7 +994,7 @@ def main() -> int:
     # which fails when Liger fused chunked-CE returns logits=None. When the
     # model already produces `outputs.loss` (Liger or model-side loss), use
     # that directly. Also handles the FSDP+APOLLO `create_optimizer` rebuild.
-    from training.instrumentation import assert_finite_loss
+    from eliza_training.training.instrumentation import assert_finite_loss
 
     class _ElizaSFTTrainer(SFTTrainer):
         def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -1058,7 +1061,7 @@ def main() -> int:
 
         trainer.training_step = _fp8_training_step  # type: ignore[assignment]
 
-    from training.instrumentation import (
+    from eliza_training.training.instrumentation import (
         InstrumentationConfig,
         assert_finite_checkpoint,
         log_environment,
