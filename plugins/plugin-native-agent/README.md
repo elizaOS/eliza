@@ -97,3 +97,15 @@ origin and supplies `visible(element)` for ancestor CSS and viewport checks. Res
 renderer replacement, URL changes and late callbacks fence results. It never
 launches an Activity, navigates a WebView or declares an update healthy. Hosts
 must qualify their actual Activity lifecycle and expression in instrumentation.
+
+`NativeProcessSupervisor` owns a host's direct child processes, bounded readiness,
+restart budget, per-launch cleanup and generation fences. Hosts supply commands,
+credentials, readiness probes and timing policy. Cancelled or retired scopes refuse
+late spawns and readiness; a group death retires every child before restarting.
+Probes must release their own resources when interrupted; a daemon probe that ignores
+interruption cannot publish readiness after its deadline. Detached processes and
+process descendants require the host's existing ownership protocol. The canonical
+Android service shares the direct-child termination helper while retaining its
+detached-agent policy. Portable real-process tests run in `test:native-host`;
+`NativeProcessSupervisorInstrumentedTest` checks the primitive with app-domain
+processes on Android. Neither suite establishes full agent or foreground-service lifetime.
