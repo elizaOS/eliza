@@ -187,31 +187,13 @@ export function createFetchHandler(
       return Response.json(result, { headers: cors });
     }
 
-    // POST /dependencies/:id/install — trigger auto-install (canonical path)
+    // POST /dependencies/:id/install — trigger auto-install
     if (
       url.pathname.startsWith("/dependencies/") &&
       url.pathname.endsWith("/install") &&
       req.method === "POST"
     ) {
       const id = parseDepId(url.pathname, "/install");
-      if (!id) {
-        return new Response("Unknown dependency", {
-          status: 400,
-          headers: cors,
-        });
-      }
-      const result = await depManager.autoInstall(id);
-      return Response.json(result, { headers: cors });
-    }
-
-    // POST /dependencies/:id — legacy alias (kept for the brief window where
-    // the old client may still be running against a new server).
-    if (
-      url.pathname.startsWith("/dependencies/") &&
-      !url.pathname.endsWith("/install") &&
-      req.method === "POST"
-    ) {
-      const id = parseDepId(url.pathname, "");
       if (!id) {
         return new Response("Unknown dependency", {
           status: 400,
