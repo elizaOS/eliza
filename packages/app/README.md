@@ -161,3 +161,14 @@ and `native-host/android-documents.mjs`; consumers supply reviewed source identi
 canvas version and locked package records. Run `bun run test:consumer-host` here.
 The renderer gateway and Cloud services remain owned by `packages/agent/native-host`
 and `packages/auth/native-host`; these build helpers do not provide device acceptance.
+
+Native hosts can compose `native-host/trace-queue.mjs`, `trace-transport.mjs` and
+`database-lease.mjs` for opt-in, encrypted research uploads. Hosts must supply an
+explicit `validateEvent` policy, private database path/key, authenticated collector
+and lifecycle/cancellation ownership. The queue retains events until the collector
+acknowledges the exact batch durably; overflow records a visible gap and withdrawal
+persists across restart. Event IDs remain database indexes, so validators must keep
+identifiers free of private content. Study definitions, consent/role decisions,
+collector storage, reporting and operator UI belong to the host. Uploads never
+start merely by importing these modules. Caller-owned abort signals cancel HTTP
+work; the owner should abort pending transport before awaiting worker shutdown.
