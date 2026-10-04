@@ -485,6 +485,92 @@ async function count(organizationId: string) {
       ).rows[0].organization_upgrade_dispatch_state,
     ).toBe("ready");
   });
+  test("a current manager can review after an expired unstarted intent's actor is revoked", async () => {
+    const f = await seed();
+    const expiry = new Date(Date.now() + 2000);
+    const quote = await quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      review: { ...f.review, expiresAt: expiry.toISOString() },
+    });
+    const admitted = await commands.prepareOrganizationUpgrade({ ...f.confirm, quoteId: quote.id });
+    const administrator = randomUUID();
+    await db.query("INSERT INTO users(id,organization_id,role) VALUES($1,$2,'admin')", [
+      administrator,
+      f.input.organizationId,
+    ]);
+    await db.query("UPDATE users SET role='member' WHERE id=$1", [f.input.actorId]);
+    await Bun.sleep(Math.max(0, expiry.getTime() - Date.now()) + 50);
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await expect(
+      readOrganizationPlanChangeSource({ ...f.input, actorId: administrator }),
+    ).resolves.toMatchObject({ source: { id: f.input.subscriptionId } });
+    expect(
+      (
+        await db.query(
+          "SELECT status,organization_upgrade_dispatch_state FROM billing_subscription_commands WHERE id=$1",
+          [admitted.command.id],
+        )
+      ).rows[0],
+    ).toEqual({ status: "SUPERSEDED", organization_upgrade_dispatch_state: "ready" });
+    expect(
+      (
+        await db.query(
+          "SELECT consumed_by_command_id,actor_id FROM organization_plan_change_quotes WHERE id=$1",
+          [quote.id],
+        )
+      ).rows[0],
+    ).toEqual({ consumed_by_command_id: admitted.command.id, actor_id: f.input.actorId });
+  });
+  for (const state of ["live lease", "started effect", "released unstarted lease"] as const) {
+    test(`fresh manager review preserves ${state} after original actor revocation`, async () => {
+      const f = await seed();
+      const expiry = new Date(Date.now() + 2000);
+      const quote = await quotes.saveOrganizationUpgradeQuote({
+        identity: f.input,
+        captured: f.captured,
+        review: { ...f.review, expiresAt: expiry.toISOString() },
+      });
+      const admitted = await commands.prepareOrganizationUpgrade({
+        ...f.confirm,
+        quoteId: quote.id,
+      });
+      const identity = {
+        organizationId: f.input.organizationId,
+        actorId: f.input.actorId,
+        commandId: admitted.command.id,
+      };
+      const claim = (await execution.claimOrganizationUpgrade(identity))!;
+      if (state === "started effect")
+        await execution.markOrganizationUpgradeDispatch(identity, claim);
+      if (state !== "live lease") await execution.releaseOrganizationUpgrade(identity, claim);
+      const administrator = randomUUID();
+      await db.query("INSERT INTO users(id,organization_id,role) VALUES($1,$2,'admin')", [
+        administrator,
+        f.input.organizationId,
+      ]);
+      await db.query("UPDATE users SET role='member' WHERE id=$1", [f.input.actorId]);
+      await Bun.sleep(Math.max(0, expiry.getTime() - Date.now()) + 50);
+      const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+      const review = readOrganizationPlanChangeSource({ ...f.input, actorId: administrator });
+      if (state === "released unstarted lease")
+        await expect(review).resolves.toMatchObject({ source: { id: f.input.subscriptionId } });
+      else await expect(review).rejects.toThrow();
+      const persisted = (
+        await db.query(
+          "SELECT status,organization_upgrade_dispatch_state,lease_token FROM billing_subscription_commands WHERE id=$1",
+          [identity.commandId],
+        )
+      ).rows[0];
+      expect(persisted.status).toBe(
+        state === "released unstarted lease" ? "FAILED" : "OUTCOME_UNKNOWN",
+      );
+      expect(persisted.organization_upgrade_dispatch_state).toBe(
+        state === "started effect" ? "started" : "ready",
+      );
+      expect(persisted.lease_token).toBe(state === "live lease" ? claim.command.lease_token : null);
+    });
+  }
   test("changed customer blocks dispatch but a ready lease can retire the command", async () => {
     const f = await executionCandidate();
     const claim = (await execution.claimOrganizationUpgrade(f.identity))!;

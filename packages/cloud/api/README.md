@@ -67,6 +67,8 @@ The current billing manager session is required and revalidated after provider
 reads. The no-store response contains `quoteId` and `review`, separating due-now
 proration/tax/discount/customer-balance terms from a long-term recurring estimate.
 The exact reviewed timestamp and prorated additional allowance are retained.
-Apply migration `0511_organization_plan_change_quotes` before deployment.
+Apply migrations `0511_organization_plan_change_quotes` and
+`0512_organization_upgrade_dispatch` and
+`0513_organization_upgrade_live_lease` before deployment.
 Saving a quote creates no charge, command or allowance grant. Upgrade confirmation
 and scheduled downgrade are separate lifecycle work and are not exposed here.
