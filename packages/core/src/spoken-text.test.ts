@@ -72,4 +72,17 @@ describe("sanitizeSpeechText numeric separators", () => {
 		expect(sanitizeSpeechText("Pick 1,2 or 3")).toBe("Pick 1, 2 or 3");
 		expect(sanitizeSpeechText("Note:4 items.Done")).toBe("Note: 4 items. Done");
 	});
+
+	it("leaves a digit group that a streamed frame cut off unspaced", () => {
+		// Streaming playback commits text up to the last space, so a partial
+		// `$1,2` spaced as `$1, 2` would commit `$1,` before `$1,299` arrives.
+		expect(sanitizeSpeechText("The final price comes to $1,2")).toBe(
+			"The final price comes to $1,2",
+		);
+		expect(sanitizeSpeechText("Population: 1,234,5")).toBe(
+			"Population: 1,234,5",
+		);
+		expect(sanitizeSpeechText("Pick 1,2 or 3")).toBe("Pick 1, 2 or 3");
+		expect(sanitizeSpeechText("Rows 1,2345")).toBe("Rows 1, 2345");
+	});
 });
