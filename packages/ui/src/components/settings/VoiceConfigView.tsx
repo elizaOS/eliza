@@ -23,10 +23,8 @@ import type {
 } from "../../api/client-types-config";
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import {
-  getSwabblePlugin,
-  type SwabbleConfig,
-} from "../../bridge/native-plugins";
+import type { SwabbleConfig } from "../../bridge/native-plugins";
+import { getSwabblePlugin } from "../../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import { useResolvedTtsDefault } from "../../hooks/useResolvedTtsDefault";

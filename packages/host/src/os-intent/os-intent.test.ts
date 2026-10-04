@@ -1,5 +1,5 @@
+import { decodeOsIntent } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
-import { decodeOsIntent } from "./decode";
 import { IntentDedupeStore } from "./dedupe";
 import { type RoutingContext, routeIntent } from "./router";
 

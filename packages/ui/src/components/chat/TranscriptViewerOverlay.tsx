@@ -10,10 +10,8 @@
  * z-layer.
  */
 
-import {
-  type TranscriptSegment,
-  transcriptPlainText,
-} from "@elizaos/core/protocol";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
+import { transcriptPlainText } from "@elizaos/core/protocol";
 import {
   Check,
   Copy,

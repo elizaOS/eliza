@@ -30,7 +30,6 @@ import {
   ElizaClient,
   ErrorBoundary,
   exchangeRemoteAgentPairing,
-  FIRST_RUN_CLOUD_LOGIN_ACTION,
   getBootConfig,
   getChatOverlayHotkey,
   getPushToTalkAccelerator,
@@ -97,7 +96,6 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-  tryHandleFirstRunAction,
   upsertAndActivateAgentProfile,
 } from "@elizaos/ui";
 import { installAndroidNativeAgentFetchBridge } from "./renderer/transports/android-native-agent-transport";
