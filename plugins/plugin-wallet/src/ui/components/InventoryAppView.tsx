@@ -41,6 +41,7 @@ import {
   ListSkeleton,
   PagePanel,
   setStorageValue,
+  shellLocalStorage,
   useActiveAgentAuthority,
   useActivityEvents,
   useAgentElement,

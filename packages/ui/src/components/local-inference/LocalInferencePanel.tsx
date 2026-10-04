@@ -39,11 +39,11 @@ import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { findInstalled } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
-import {
-  ModelUpdatesPanel,
-  type VoiceModelInstallationView,
-  type VoiceUpdatePreferencesView,
+import type {
+  VoiceModelInstallationView,
+  VoiceUpdatePreferencesView,
 } from "./ModelUpdatesPanel";
+import { ModelUpdatesPanel } from "./ModelUpdatesPanel";
 import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 
 type HubTab = "curated" | "downloads";

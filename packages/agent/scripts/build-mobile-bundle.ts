@@ -609,7 +609,6 @@ const iosFsSandboxPlugin = {
 const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
-  "@elizaos/ui/brand",
   "@elizaos/voice",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
@@ -634,14 +633,6 @@ const dedupeTargets = {
     "packages",
     "core",
     "src",
-    "index.ts",
-  ),
-  "@elizaos/ui/brand": path.resolve(
-    repoRoot,
-    "packages",
-    "ui",
-    "src",
-    "brand",
     "index.ts",
   ),
   // Pin portable voice processing to one source identity in the mobile bundle.
