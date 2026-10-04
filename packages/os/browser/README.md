@@ -204,3 +204,14 @@ must explicitly select Android, arm64 or x64, Desktop Android, and package
 Ninja, and records APK and GN-input hashes. It does not sign a release, install an
 APK, provision AOSP or qualify a device. Preserve `chromium-build.json` alongside
 the overlay and use the existing signed-artifact admission flow for release.
+
+The optional shared protection engine is in `protection/`. Build an unpacked test
+artifact with `node packages/os/browser/protection/build.mjs OUTPUT`.
+`buildBrowserProtection(output, {warningDirectory})` accepts only product HTML/CSS
+warning overrides; worker and messaging behavior remain shared. Host applications
+may import `createWebsiteReputation` from `protection/website-reputation.mjs` and
+supply their private `cacheDir`; the default keeps no disk cache. Both adapters
+share bounded feed decoding and immutable fallback provenance. The worker retains
+stale deny rules through outages; host verdicts report unavailable for stale data.
+Run `bun run --cwd packages/os test:browser:protection` for controlled regressions.
+This engine does not certify arbitrary websites or replace installed-browser tests.
