@@ -251,3 +251,9 @@ It freezes the selection before asynchronous work, checks every requested class
 through the same strict instrumentation parser, and rejects missing or unexpected
 classes while retaining owned-installation cleanup. This supports product
 platform profiles without duplicating APK admission, leasing or teardown.
+
+Consumer Android hosts can use `scripts/lib/consumer-android-runtime.mjs` to build
+and stage a pinned mobile runtime with byte provenance, supplying their own
+skills and gateway callback. Development checkout inspection lives in
+`scripts/lib/committed-source.mjs`; APK document integrity verification lives in
+`native-host/android-documents.mjs`.
