@@ -524,6 +524,84 @@ it("anchors an explicit one-shot reminder at its requested due time", async () =
   );
 }, 120000);
 
+it.each([
+  { requestKind: "alarm", ownerSurface: "OWNER_TODOS", minutesEarly: 0 },
+  {
+    requestKind: "unspecified",
+    ownerSurface: "OWNER_REMINDERS",
+    minutesEarly: 0,
+  },
+  { requestKind: "unspecified", ownerSurface: "OWNER_TODOS", minutesEarly: 15 },
+])(
+  "anchors a one-shot $requestKind on $ownerSurface with its expected lead",
+  async ({ requestKind, ownerSurface, minutesEarly }) => {
+    const intent =
+      requestKind === "alarm"
+        ? "Set an alarm for 2 minutes from now"
+        : "Add check the notification as a task due in 2 minutes";
+    const created = await invoke(
+      {
+        action: "create",
+        ownerSurface,
+        kind: "definition",
+        confirmed: true,
+        intent,
+        createPlan: {
+          mode: "create",
+          requestKind,
+          nativeProjection: "in_app_only",
+          title: `${ownerSurface} two-minute ${requestKind}`,
+          cadenceKind: "once",
+          dueInMinutes: 2,
+          multiStep: false,
+        },
+      },
+      intent,
+    );
+    expect(created.result.success, JSON.stringify(created.result)).toBe(true);
+    const id = created.result.effectReceipts?.[0]?.resource.id;
+    if (!id) throw new Error("Missing created definition receipt");
+    const service = new LifeOpsService(runtime);
+    const definition = await service.repository.getDefinition(
+      runtime.agentId,
+      id,
+    );
+    if (definition?.cadence.kind !== "once")
+      throw new Error("Missing once definition");
+    const occurrence = materializeDefinitionOccurrences(definition, [])[0];
+    const schedule = service.remindersDomain.buildReminderPlanSchedule({
+      ownerType: "occurrence",
+      ownerId: occurrence.id,
+      occurrenceId: occurrence.id,
+      title: definition.title,
+      occurrence,
+      plan: { steps: [{ channel: "in_app", offsetMinutes: 0 }] } as never,
+    });
+    expect(Date.parse(schedule[0].scheduledFor)).toBe(
+      Date.parse(definition.cadence.dueAt) - minutesEarly * 60_000,
+    );
+    const explicit = materializeDefinitionOccurrences(
+      {
+        ...definition,
+        cadence: { ...definition.cadence, visibilityLeadMinutes: 7 },
+      },
+      [],
+    )[0];
+    const explicitSchedule = service.remindersDomain.buildReminderPlanSchedule({
+      ownerType: "occurrence",
+      ownerId: explicit.id,
+      occurrenceId: explicit.id,
+      title: definition.title,
+      occurrence: explicit,
+      plan: { steps: [{ channel: "in_app", offsetMinutes: 0 }] } as never,
+    });
+    expect(Date.parse(explicitSchedule[0].scheduledFor)).toBe(
+      Date.parse(definition.cadence.dueAt) - 7 * 60_000,
+    );
+  },
+  120000,
+);
+
 it("persists an explicit in-app-only reminder without native projection", async () => {
   const native = vi.spyOn(appleReminders, "createNativeAppleReminderLikeItem");
   try {
