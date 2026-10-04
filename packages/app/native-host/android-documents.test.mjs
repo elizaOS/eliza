@@ -117,6 +117,17 @@ test("Android document admission checks bytes and task source before packaging",
     const task = path.join(main, prefix, "task-runtime.mjs.json");
     fs.writeFileSync(task, JSON.stringify({ sourceCommit: commit }));
     assert.equal(verifyAndroidDocuments(temp).sourceCommit, commit);
+    const stale = path.join(
+      main,
+      prefix,
+      "node_modules/@napi-rs/canvas/stale.js",
+    );
+    fs.writeFileSync(stale, "export {};");
+    assert.throws(
+      () => verifyAndroidDocuments(temp),
+      /Unlisted document runtime file/,
+    );
+    fs.rmSync(stale);
     fs.writeFileSync(task, JSON.stringify({ sourceCommit: "b".repeat(40) }));
     assert.throws(() => verifyAndroidDocuments(temp), /source mismatch/);
     fs.writeFileSync(task, JSON.stringify({ sourceCommit: commit }));

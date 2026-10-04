@@ -110,6 +110,20 @@ export function verifyAndroidDocuments(output) {
   ])
     if (!names.has(required))
       throw new NativeHostError("Incomplete document runtime manifest");
+  // This package directory is exclusively owned by the document packager.
+  // Refuse stale/unlisted files as well as symlinks inside it.
+  const canvasRoot = "assets/agent/gateway/node_modules/@napi-rs/canvas";
+  const inspect = (relative) => {
+    const entry = path.join(main, relative);
+    const stat = fs.lstatSync(entry);
+    if (stat.isDirectory()) {
+      for (const child of fs.readdirSync(entry))
+        inspect(`${relative}/${child}`);
+    } else if (!stat.isFile() || !names.has(relative)) {
+      throw new NativeHostError("Unlisted document runtime file");
+    }
+  };
+  inspect(canvasRoot);
   assertArm64Library(
     fs.readFileSync(path.join(main, "jniLibs/arm64-v8a/libeliza_canvas.so")),
   );
@@ -213,7 +227,7 @@ export async function stageAndroidDocuments(
         if (fs.statSync(file).isDirectory()) visit(file);
         else
           files.push({
-            path: path.relative(main, file),
+            path: path.relative(main, file).split(path.sep).join("/"),
             sha256: digest(fs.readFileSync(file)),
           });
       }
@@ -245,6 +259,14 @@ export async function stageAndroidDocuments(
       throw new NativeHostError(
         "Stage the current task gateway before document services",
       );
+    fs.rmSync(
+      path.join(
+        output,
+        mainPath,
+        "assets/agent/gateway/node_modules/@napi-rs/canvas",
+      ),
+      { recursive: true, force: true },
+    );
     fs.cpSync(main, path.join(output, mainPath), { recursive: true });
     verifyAndroidDocuments(output);
     return manifest;

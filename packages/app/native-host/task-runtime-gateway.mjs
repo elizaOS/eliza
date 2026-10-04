@@ -117,9 +117,14 @@ export async function createTaskGateway({
       failure = error;
     }
     // A late credential result must not change ownership or revoke a newer task.
-    if (closed || startedEpoch !== epoch || sequence < settledAuthSequence)
+    if (
+      closed ||
+      startedEpoch !== epoch ||
+      (sequence < settledAuthSequence &&
+        (failure || !account || account !== activeOwner))
+    )
       throw new NativeHostError("Task authentication superseded");
-    settledAuthSequence = sequence;
+    settledAuthSequence = Math.max(settledAuthSequence, sequence);
     if (failure || !account) {
       epoch++;
       activeOwner = null;
@@ -134,7 +139,7 @@ export async function createTaskGateway({
     activeOwner = account;
     const committedEpoch = epoch;
     await settle();
-    if (closed || committedEpoch !== epoch || sequence < settledAuthSequence)
+    if (closed || committedEpoch !== epoch || activeOwner !== account)
       throw new NativeHostError("Task authentication superseded");
     const owner = ownerFor(account);
     authenticatedEpochs.set(owner, epoch);

@@ -318,3 +318,43 @@ test("an extension cannot publish a former-account result after an owner change"
   assert.equal(denied.status, 401);
   assert.doesNotMatch(await denied.text(), /former-owner-result/);
 });
+
+test("concurrent same-account reads and planner access remain authorized", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-concurrent-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let gate = async () => "account";
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: () => gate(),
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const request = () =>
+    gateway.handle(new Request("http://localhost/tasks/current"));
+  const responses = await Promise.all([request(), request(), request()]);
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [200, 200, 200],
+  );
+  const [response, runtime] = await Promise.all([
+    request(),
+    gateway.forCurrentOwner(),
+  ]);
+  assert.equal(response.status, 200);
+  assert.equal(typeof runtime.current, "function");
+  // An older successful check may finish last when it confirms the same owner.
+  let release;
+  gate = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const older = request();
+  gate = async () => "account";
+  assert.equal((await request()).status, 200);
+  release("account");
+  assert.equal((await older).status, 200);
+});
