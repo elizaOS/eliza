@@ -237,6 +237,12 @@ describe("LP3 direct Cloud build flag", () => {
     expect(manifestPolicy.components).not.toContain(
       "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
     );
+    expect(manifestPolicy.components).not.toContain(
+      "activity:com.google.android.gms.common.api.GoogleApiActivity",
+    );
+    expect(manifestPolicy.metadataNames).not.toContain(
+      "com.google.android.gms.version",
+    );
     expect(manifestPolicy.application.debuggable).toBe("true");
   });
 
