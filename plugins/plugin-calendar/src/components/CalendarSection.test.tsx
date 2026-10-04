@@ -6,6 +6,8 @@
  * live feed).
  */
 
+// @vitest-environment jsdom
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarSourceHealth,

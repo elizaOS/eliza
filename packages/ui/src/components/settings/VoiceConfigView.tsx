@@ -5,6 +5,7 @@
  * Barrel-exported from components/index.ts for consumers outside the Settings
  * section registry.
  */
+
 import {
   ASR_PROVIDERS,
   hasConfiguredApiKey,

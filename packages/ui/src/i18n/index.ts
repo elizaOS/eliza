@@ -2,6 +2,7 @@
  * Barrel for i18n: message catalogs, translator factory, region helpers, and
  * re-exported language-code primitives owned by @elizaos/core.
  */
+
 import { normalizeLanguage, type UiLanguage } from "@elizaos/core/protocol";
 
 import {

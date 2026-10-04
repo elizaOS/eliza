@@ -3,6 +3,7 @@
  * and the typed bridge-request helpers other modules call. The seam between the
  * web renderer and the native host.
  */
+
 import type { ExistingElizaInstallInfo } from "@elizaos/contracts";
 
 export type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;

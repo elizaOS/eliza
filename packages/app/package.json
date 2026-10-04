@@ -326,7 +326,8 @@
     "use-sync-external-store": "1.7.0",
     "tar": "7.5.22",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/voice": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
@@ -369,8 +370,7 @@
     "viem": "^2.56.9",
     "vite": "^8.3.0",
     "vitest": "^5.0.2",
-    "yaml": "^2.9.0",
-    "@elizaos/voice": "workspace:*"
+    "yaml": "^2.9.0"
   },
   "elizaos": {
     "app": {

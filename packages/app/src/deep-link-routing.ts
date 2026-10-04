@@ -14,6 +14,7 @@
  * unrecognized paths, so an unknown deep link is non-routable rather than
  * silently opening chat.
  */
+
 import { validateUuid } from "@elizaos/core/protocol";
 import {
   type NotificationChatRequest,

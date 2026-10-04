@@ -1,3 +1,8 @@
+import {
+  AGENT_TRANSFER_MAX_PASSWORD_BYTES,
+  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+  agentTransferPasswordByteLength,
+} from "@elizaos/contracts";
 import { getHostRequestTransport } from "./host-transport";
 import { nativeJsonRequestData as directCloudBodyData } from "./native-http-codec";
 /**
@@ -6,11 +11,6 @@ import { nativeJsonRequestData as directCloudBodyData } from "./native-http-code
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import {
-  AGENT_TRANSFER_MAX_PASSWORD_BYTES,
-  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
-  agentTransferPasswordByteLength,
-} from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core/protocol";
 import {
   DEFAULT_DIRECT_CLOUD_APP_BASE_URL,

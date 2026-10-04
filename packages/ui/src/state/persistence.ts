@@ -5,7 +5,7 @@
  */
 
 import type { UiLanguage } from "@elizaos/core/protocol";
-import { asRecord } from "@elizaos/core/protocol";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalHostAgentBootError } from "../api/host-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";

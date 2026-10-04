@@ -4,8 +4,10 @@
  * authoritative; loading, empty, and failed reads render as distinct states.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/contracts";
-import type { SubscriptionProviderSelectionId } from "@elizaos/host/protocol";
+import type {
+  LinkedAccountProviderId,
+  SubscriptionProviderSelectionId,
+} from "@elizaos/host/protocol";
 import { AlertTriangle, ChevronRight, Plus, RotateCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type {

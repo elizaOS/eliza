@@ -11,8 +11,7 @@ import "./view-public-api";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ElizaError } from "@elizaos/core";
-import { resolveSurfaceManifest } from "@elizaos/core/protocol";
+import { ElizaError, resolveSurfaceManifest } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,
