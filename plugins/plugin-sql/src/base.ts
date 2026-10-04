@@ -6164,6 +6164,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  private taskRowCreatedAtMs(value: Date | string | null | undefined): number | undefined {
+    if (value == null) return undefined;
+    const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+
   /**
    * Maps a listed task row while keeping one unreadable `scheduledAt` from
    * hiding every other task of the agent. The scheduler tick lists all tasks in
@@ -6193,6 +6199,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       scheduleError = error.message;
     }
+    const createdAt = this.taskRowCreatedAtMs(row.createdAt);
     return {
       id: row.id as UUID,
       agentId: row.agentId as UUID,
@@ -6203,6 +6210,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId: row.entityId as UUID,
       tags: row.tags || [],
       dueAt,
+      ...(createdAt === undefined ? {} : { createdAt }),
       ...(scheduleError === undefined ? {} : { scheduleError }),
       metadata,
     };
@@ -6246,6 +6254,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         const row = result[0];
         const metadata = (row.metadata || {}) as TaskMetadata;
+        const createdAt = this.taskRowCreatedAtMs(row.createdAt);
         return {
           id: row.id as UUID,
           agentId: row.agentId as UUID,
@@ -6256,6 +6265,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           entityId: row.entityId as UUID,
           tags: row.tags || [],
           dueAt: readTaskDueAt(metadata),
+          ...(createdAt === undefined ? {} : { createdAt }),
           metadata,
         };
       });
