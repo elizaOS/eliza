@@ -158,10 +158,17 @@ async function bundleFixture() {
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [stubAppState, stubElizaCore, stubNodeBuiltins],
     write: false,
+    outfile: join(here, "fixture.js"),
     absWorkingDir: repoRoot,
     logLevel: "silent",
   });
-  return result.outputFiles[0].text;
+  const js = result.outputFiles.find((file) => file.path.endsWith(".js"));
+  if (!js) throw new Error("Accounts fixture JavaScript was not emitted");
+  return {
+    js: js.text,
+    css:
+      result.outputFiles.find((file) => file.path.endsWith(".css"))?.text ?? "",
+  };
 }
 
 async function compileCss(bundleJsPath) {
@@ -186,10 +193,10 @@ const elizaHome = join(workDir, "eliza-home");
 await mkdir(fixtureDir, { recursive: true });
 await mkdir(elizaHome, { recursive: true });
 
-const js = await bundleFixture();
+const { js, css: importedCss } = await bundleFixture();
 const jsPath = join(fixtureDir, "fixture.js");
 await writeFile(jsPath, js);
-const css = await compileCss(jsPath);
+const css = `${await compileCss(jsPath)}\n${importedCss}`;
 await writeFile(join(fixtureDir, "fixture.css"), css);
 await writeFile(
   join(fixtureDir, "index.html"),

@@ -39,3 +39,8 @@ export function useAppSelectorShallow<T>(
 ): T {
   return selector(fixtureState);
 }
+
+// This isolated surface has no shell notice sink; use the viewport fallback.
+export function getActionNoticeSink(): null {
+  return null;
+}

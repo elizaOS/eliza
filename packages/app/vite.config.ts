@@ -2836,6 +2836,9 @@ export const INVALID_TRACER_PROVIDER = {};
     // CloudRouterShell + login chunk tree).
     modulePreload: false,
     rolldownOptions: {
+      // Vite 8 prefers this block over rollupOptions; both bundlers need the
+      // same startup-safe vendor boundaries.
+      output: { manualChunks: resolveManualChunk },
       plugins: [
         // Rolldown build-phase resolver for @opentelemetry/api.
         // The `ai` package imports @opentelemetry/api but it is not hoisted to
@@ -2908,10 +2911,8 @@ export const INVALID_TRACER_PROVIDER = {};
         main: path.resolve(here, "index.html"),
       },
     },
-    // rollupOptions is the only bundle-options key Vite reads. The sibling
-    // `rolldownOptions` block above configures Rolldown-specific checks only;
-    // chunk-splitting and the otel fallback must live under rollupOptions so
-    // classic Rollup builds receive them too.
+    // Vite 7 uses Rollup while Vite 8 uses Rolldown. Keep the chunk rules
+    // and telemetry resolver in both blocks so both production paths agree.
     rollupOptions: {
       output: {
         // Manual chunk-splitting. `@elizaos/vitest-vite` builds with classic
