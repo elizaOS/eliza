@@ -8,8 +8,8 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
 import { dirname } from "node:path";
-import { stableJson } from "./canonical.js";
-import type { JsonObject, JsonValue } from "./types.js";
+import { isJsonObject, stableJson } from "./canonical.js";
+import type { JsonObject } from "./types.js";
 
 const PRIVATE_FILE_MODE = 0o600;
 const GENESIS_HASH = "0".repeat(64);
@@ -352,28 +352,6 @@ function requiredStringField(record: JsonObject, field: string): string {
     );
   }
   return value;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.values(value).every(isJsonValue)
-  );
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    (typeof value === "number" && Number.isFinite(value))
-  ) {
-    return true;
-  }
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return isJsonObject(value);
 }
 
 function sha256(value: string): string {

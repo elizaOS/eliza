@@ -4,17 +4,12 @@
  * scraper in `@elizaos/plugin-discord`. This layer owns the LifeOps connector
  * grant/degradation projection only; capture and send happen in the discord plugin.
  */
-import {
-  ElizaError,
-  logger,
-  requireConfirmedSendHandlerDelivery,
-  type SendHandlerReceipt,
-  type TargetInfo,
-} from "@elizaos/core";
-import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
+
+import type { CreateLifeOpsBrowserSessionRequest } from "@elizaos/contracts";
 import {
   LIFEOPS_DISCORD_CAPABILITIES,
   type LifeOpsBrowserSession,
+  type LifeOpsConnectorDegradation,
   type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
   type LifeOpsDiscordCapability,
@@ -25,7 +20,14 @@ import {
   type LifeOpsOwnerBrowserAuthState,
   type LifeOpsOwnerBrowserNextAction,
   type LifeOpsOwnerBrowserTabState,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import {
+  ElizaError,
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  type SendHandlerReceipt,
+  type TargetInfo,
+} from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -47,7 +49,6 @@ import {
   searchDiscordMessages,
   sendDiscordViaDesktopCdp,
 } from "@elizaos/plugin-discord";
-import type { CreateLifeOpsBrowserSessionRequest } from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   ConnectorDeliveryEvidenceError,

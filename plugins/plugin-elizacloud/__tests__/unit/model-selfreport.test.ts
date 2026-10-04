@@ -12,7 +12,7 @@ import {
   type ModelRegistrationMetadata,
   ModelType,
 } from "@elizaos/core";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/host/protocol";
 import { runtimeModelContextProvider } from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerTextInferenceModels } from "../../src/index";

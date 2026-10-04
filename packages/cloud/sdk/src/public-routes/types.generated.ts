@@ -842,6 +842,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/subscriptions/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/checkout/confirm": Record<never, never>;
   "POST /api/v1/subscriptions/portal": Record<never, never>;
+  "POST /api/v1/subscriptions/upgrade/review": Record<never, never>;
   "POST /api/v1/telegram/connect": Record<never, never>;
   "POST /api/v1/telegram/scan-chats": Record<never, never>;
   "POST /api/v1/topup/10": Record<never, never>;
@@ -1498,6 +1499,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/subscriptions/checkout": never;
   "POST /api/v1/subscriptions/checkout/confirm": never;
   "POST /api/v1/subscriptions/portal": never;
+  "POST /api/v1/subscriptions/upgrade/review": never;
   "POST /api/v1/telegram/connect": never;
   "POST /api/v1/telegram/scan-chats": never;
   "POST /api/v1/topup/10": never;

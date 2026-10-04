@@ -1,11 +1,7 @@
 /** Stateless own-key vision adapter with explicit provider output-budget validation. */
-import {
- ElizaError, type VisionConfig,
- type VisionAnalysisOptions, type VisionAnalysisProvider, type VisionAnalysisResult,
- type MediaProviderResult, fetchMediaProviderResponse as fetchWithTimeout,
- withMediaProviderErrorBoundary as withProviderErrorBoundary,
- resolveVisionImageInput, isMediaProviderResult,
-} from "@elizaos/core";
+import {type VisionAnalysisOptions, type VisionAnalysisProvider, type VisionAnalysisResult, type MediaProviderResult, fetchMediaProviderResponse as fetchWithTimeout, withMediaProviderErrorBoundary as withProviderErrorBoundary, resolveVisionImageInput, isMediaProviderResult} from "@elizaos/host/protocol";
+import {ElizaError} from "@elizaos/core";
+import { type VisionConfig } from "@elizaos/contracts";
 export class AnthropicVisionProvider implements VisionAnalysisProvider {
   name = "anthropic";
   private apiKey: string;

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from benchmarks.bfcl.types import FunctionCall
+from benchmarks.suites.bfcl.types import FunctionCall
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,6 @@
 "use client";
 
 import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
-import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   Box,
@@ -28,7 +27,9 @@ import {
   AlertDialogTrigger,
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import { openCloudBillingConsole } from "../../billing-console";

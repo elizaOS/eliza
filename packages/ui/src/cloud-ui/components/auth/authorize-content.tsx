@@ -28,12 +28,9 @@ import {
 } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
-import {
-  DiscordIcon,
-  GoogleIcon,
-  LoginForm,
-  useAuth,
-} from "../../../login/index";
+import { LoginForm } from "../../../login/components/LoginForm";
+import { useAuth } from "../../../login/hooks/useAuth";
+import { DiscordIcon, GoogleIcon } from "../../../login/icons/index";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { CornerBrackets } from "../primitives";
@@ -792,7 +789,6 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
               width={64}
               height={64}
               className="object-cover"
-              unoptimized
             />
           </AvatarImage>
         </Avatar>

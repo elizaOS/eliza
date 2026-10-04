@@ -27,11 +27,11 @@ export interface ThroughputStats {
 
 export interface PipelineBreakdown {
   compose_state_avg_ms: number;
-  provider_execution_avg_ms: number;
-  should_respond_avg_ms: number;
+  provider_execution_avg_ms: number | null;
+  should_respond_avg_ms: number | null;
   model_call_avg_ms: number;
-  action_dispatch_avg_ms: number;
-  evaluator_avg_ms: number;
+  action_dispatch_avg_ms: number | null;
+  evaluator_avg_ms: number | null;
   memory_create_avg_ms: number;
   memory_get_avg_ms: number;
   /** Total time spent in model calls (only meaningful in real-LLM mode) */
@@ -106,6 +106,7 @@ export class MemoryMonitor {
   private startHeap = 0;
 
   start(): void {
+    if (this.intervalId !== null) return;
     const mem = process.memoryUsage();
     this.startRss = mem.rss;
     this.startHeap = mem.heapUsed;
@@ -145,6 +146,13 @@ export class MemoryMonitor {
 // ─── Pipeline instrumentation ───────────────────────────────────────────────
 
 export class PipelineTimer {
+  private modelIntervals: Array<[number, number]> = [];
+
+  recordInterval(category: string, start: number, end: number): void {
+    this.record(category, end - start);
+    if (category === "model_call") this.modelIntervals.push([start, end]);
+  }
+
   private timings: Record<string, number[]> = {
     compose_state: [],
     provider_execution: [],
@@ -166,17 +174,23 @@ export class PipelineTimer {
   getBreakdown(): PipelineBreakdown {
     const avg = (arr: number[]): number =>
       arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const total = (arr: number[]): number => arr.reduce((a, b) => a + b, 0);
-
-    const modelTimeTotal = total(this.timings.model_call);
+    // Union model intervals: concurrent or nested calls consume overlapping wall time.
+    let modelTimeTotal = 0;
+    let previousEnd = -Infinity;
+    for (const [start, end] of [...this.modelIntervals].sort(
+      (a, b) => a[0] - b[0],
+    )) {
+      modelTimeTotal += Math.max(0, end - Math.max(start, previousEnd));
+      previousEnd = Math.max(previousEnd, end);
+    }
 
     return {
       compose_state_avg_ms: avg(this.timings.compose_state),
-      provider_execution_avg_ms: avg(this.timings.provider_execution),
-      should_respond_avg_ms: avg(this.timings.should_respond),
+      provider_execution_avg_ms: null,
+      should_respond_avg_ms: null,
       model_call_avg_ms: avg(this.timings.model_call),
-      action_dispatch_avg_ms: avg(this.timings.action_dispatch),
-      evaluator_avg_ms: avg(this.timings.evaluator),
+      action_dispatch_avg_ms: null,
+      evaluator_avg_ms: null,
       memory_create_avg_ms: avg(this.timings.memory_create),
       memory_get_avg_ms: avg(this.timings.memory_get),
       model_time_total_ms: modelTimeTotal,
@@ -185,6 +199,7 @@ export class PipelineTimer {
   }
 
   reset(): void {
+    this.modelIntervals = [];
     for (const key of Object.keys(this.timings)) {
       this.timings[key] = [];
     }
@@ -264,7 +279,8 @@ export function getSystemInfo(): SystemInfo {
 
 // ─── Pretty print ───────────────────────────────────────────────────────────
 
-export function formatDuration(ms: number): string {
+export function formatDuration(ms: number | null): string {
+  if (ms === null) return "unmeasured";
   if (ms < 1) return `${(ms * 1000).toFixed(0)}us`;
   if (ms < 1000) return `${ms.toFixed(2)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;

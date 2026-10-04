@@ -2,7 +2,7 @@
 
 Benchmark subprocesses may run concurrently, but campaign ordering and shared
 ``latest`` artifacts are single-writer resources. These locks combine an
-in-process reentrant lock with the host's advisory file lock so threads and
+in-process lock with the host's advisory file lock so threads and
 separate orchestrator processes obey the same boundary.
 """
 
@@ -17,16 +17,21 @@ from pathlib import Path
 from typing import ParamSpec, TypeVar
 
 _LOCKS_GUARD = threading.Lock()
-_THREAD_LOCKS: dict[Path, threading.RLock] = {}
+_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+_HELD_LOCKS = threading.local()
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def _thread_lock(path: Path) -> threading.RLock:
+class BenchmarkLockError(RuntimeError):
+    """A thread attempted to acquire a benchmark lock it already owns."""
+
+
+def _thread_lock(path: Path) -> threading.Lock:
     resolved = path.resolve()
     with _LOCKS_GUARD:
-        return _THREAD_LOCKS.setdefault(resolved, threading.RLock())
+        return _THREAD_LOCKS.setdefault(resolved, threading.Lock())
 
 
 def _acquire_platform_lock(handle) -> None:
@@ -61,17 +66,27 @@ def _release_platform_lock(handle) -> None:
 
 @contextmanager
 def exclusive_file_lock(path: Path) -> Iterator[None]:
-    """Hold a blocking advisory lock for ``path`` until the context exits."""
+    """Hold a blocking advisory lock; reject same-thread nested acquisition."""
 
+    path = path.resolve()
+    held = getattr(_HELD_LOCKS, "paths", None)
+    if held is None:
+        held = _HELD_LOCKS.paths = set()
+    if path in held:
+        raise BenchmarkLockError(f"Benchmark lock already held by this thread: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     local_lock = _thread_lock(path)
     with local_lock:
         with path.open("a+b") as handle:
             _acquire_platform_lock(handle)
+            held.add(path)
             try:
                 yield
             finally:
-                _release_platform_lock(handle)
+                try:
+                    _release_platform_lock(handle)
+                finally:
+                    held.remove(path)
 
 
 def latest_publication_lock(output_root: Path) -> AbstractContextManager[None]:

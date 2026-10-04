@@ -4,10 +4,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-	RouteRequest,
-	RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { discordDataRoutes } from "../data-routes";
 import { DISCORD_LOCAL_SERVICE_NAME } from "../discord-local-service";

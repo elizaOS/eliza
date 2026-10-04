@@ -8,12 +8,8 @@
  */
 
 import type http from "node:http";
-import type {
-  AgentRuntime,
-  ReadJsonBodyOptions,
-  Task,
-  UUID,
-} from "@elizaos/core";
+import type { AgentRuntime, Task, UUID } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
 
 import type { TriggerSummary } from "../triggers/types.ts";
 

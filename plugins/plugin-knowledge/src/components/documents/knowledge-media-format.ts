@@ -11,7 +11,7 @@
  * client display/narrowing facet and the two agree on the same names.
  */
 
-import type { DocumentRecord } from "@elizaos/ui/api";
+import type { DocumentRecord } from "@elizaos/ui";
 import {
   AudioLines,
   FileText,

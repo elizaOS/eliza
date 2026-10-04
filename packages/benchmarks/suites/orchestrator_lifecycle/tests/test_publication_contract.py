@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-import benchmarks.orchestrator_lifecycle.contract as lifecycle_contract
+import benchmarks.suites.orchestrator_lifecycle.contract as lifecycle_contract
 import benchmarks.registry.scores as scores_module
-from benchmarks.orchestrator_lifecycle.dataset import LifecycleDataset
-from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
-from benchmarks.orchestrator_lifecycle.reporting import save_report
-from benchmarks.orchestrator_lifecycle.runner import _simulate_turn
-from benchmarks.orchestrator_lifecycle.types import LifecycleConfig
+from benchmarks.suites.orchestrator_lifecycle.dataset import LifecycleDataset
+from benchmarks.suites.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+from benchmarks.suites.orchestrator_lifecycle.reporting import save_report
+from benchmarks.suites.orchestrator_lifecycle.runner import _simulate_turn
+from benchmarks.suites.orchestrator_lifecycle.types import LifecycleConfig
 from benchmarks.registry.scores import _score_from_orchestrator_lifecycle_json
 
 

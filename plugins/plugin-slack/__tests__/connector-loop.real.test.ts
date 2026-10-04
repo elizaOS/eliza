@@ -10,7 +10,7 @@ import { SlackService } from "@elizaos/plugin-slack";
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveSlackAccount } from "../src/accounts.ts";
 import {

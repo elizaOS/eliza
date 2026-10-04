@@ -6,9 +6,9 @@
  */
 
 import type { ReactElement, ReactNode } from "react";
-import type { SidebarProps } from "../../components/composites/sidebar";
+import type { SidebarProps } from "../../components/composites/sidebar/sidebar-types";
 import { cn } from "../../lib/utils";
-import { WorkspaceLayout } from "../workspace-layout";
+import { WorkspaceLayout } from "../workspace-layout/workspace-layout";
 
 export interface ContentLayoutProps {
   /** Optional header rendered above the content (e.g. SegmentedControl nav). */

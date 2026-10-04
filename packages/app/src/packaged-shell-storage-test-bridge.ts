@@ -9,7 +9,7 @@ import {
   removeStorageValue,
   setStorageValue,
   shellLocalStorage,
-} from "@elizaos/ui/bridge";
+} from "@elizaos/ui";
 
 const DESKTOP_TEST_BRIDGE_MARKER = "__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__";
 const PACKAGED_SHELL_STORAGE_TEST_GLOBAL =

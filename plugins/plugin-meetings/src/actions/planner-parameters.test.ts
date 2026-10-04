@@ -14,9 +14,9 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { type MeetingSession, parseMeetingUrl } from "@elizaos/core/meetings";
+import { validateToolArgs } from "@elizaos/core";
+import { type MeetingSession, parseMeetingUrl } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
-import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
 import type { MeetingService } from "../service.js";
 import { getMeetingTranscriptAction } from "./get-meeting-transcript.js";
 import { joinMeetingAction } from "./join-meeting.js";

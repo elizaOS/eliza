@@ -37,12 +37,12 @@ try:
 except ImportError:
     print("⚠️  python-dotenv not installed, using system environment")
 
-from benchmarks.bfcl.agent import (
+from benchmarks.suites.bfcl.agent import (
     BFCLAgent,
     get_model_provider_plugin,
     ELIZAOS_AVAILABLE,
 )  # noqa: E402
-from benchmarks.bfcl.types import (  # noqa: E402
+from benchmarks.suites.bfcl.types import (  # noqa: E402
     BFCLCategory,
     BFCLConfig,
     BFCLTestCase,
@@ -50,8 +50,8 @@ from benchmarks.bfcl.types import (  # noqa: E402
     FunctionDefinition,
     FunctionParameter,
 )
-from benchmarks.bfcl.parser import FunctionCallParser  # noqa: E402
-from benchmarks.bfcl.evaluators import ASTEvaluator  # noqa: E402
+from benchmarks.suites.bfcl.parser import FunctionCallParser  # noqa: E402
+from benchmarks.suites.bfcl.evaluators import ASTEvaluator  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -274,8 +274,8 @@ async def run_mini_benchmark() -> bool:
         print("  ⚠️  No model provider available, skipping mini benchmark")
         return True
 
-    from benchmarks.bfcl.runner import BFCLRunner
-    from benchmarks.bfcl.types import BFCLConfig
+    from benchmarks.suites.bfcl.runner import BFCLRunner
+    from benchmarks.suites.bfcl.types import BFCLConfig
 
     config = BFCLConfig(
         max_tests_per_category=1,

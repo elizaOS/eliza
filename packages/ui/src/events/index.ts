@@ -2,58 +2,63 @@
  * Typed constants for eliza:* custom events dispatched across the app.
  *
  * The cross-platform event names and detail payloads live in
- * `@elizaos/core/events` (the single source of truth, also consumed by the
+ * `@elizaos/core/protocol` (the single source of truth, also consumed by the
  * server). This module owns DOM event dispatch and adds UI-only events with no
  * server producer (focus-connector, voice-control, tutorial chat-control, and
  * the shared→dedicated cloud-agent handoff phases). The `Eliza*EventName` unions
  * here widen the shared unions with those UI-only events, so the local
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
+
+import type {
+  AppEmoteEventDetail,
+  ElizaCloudStatusUpdatedDetail,
+  NavigateViewDetail,
+  ElizaDocumentEventName as SharedDocumentEventName,
+  ElizaWindowEventName as SharedWindowEventName,
+} from "@elizaos/core/protocol";
 import {
   APP_EMOTE_EVENT,
-  type AppEmoteEventDetail,
   CONNECT_EVENT,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  type ElizaCloudStatusUpdatedDetail,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-  type ElizaDocumentEventName as SharedDocumentEventName,
-  type ElizaWindowEventName as SharedWindowEventName,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 import { logger } from "../logger.ts";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
+export type {
+  AppEmoteEventDetail,
+  ChatAvatarVoiceEventDetail,
+  ElizaCloudStatusUpdatedDetail,
+  NavigateViewDetail,
+  NavigateViewType,
+  NetworkStatusChangeDetail,
+  PushToTalkHoldDetail,
+} from "@elizaos/core/protocol";
 export {
   AGENT_READY_EVENT,
   APP_EMOTE_EVENT,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
-  type AppEmoteEventDetail,
   BRIDGE_READY_EVENT,
   CHAT_AVATAR_VOICE_EVENT,
-  type ChatAvatarVoiceEventDetail,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  type ElizaCloudStatusUpdatedDetail,
   EMOTE_PICKER_EVENT,
   FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-  type NavigateViewType,
   NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
-  type PushToTalkHoldDetail,
   SELF_STATUS_SYNC_EVENT,
   SHARE_TARGET_EVENT,
   STOP_EMOTE_EVENT,
   TRAY_ACTION_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
 
 export function createNavigateViewEvent(

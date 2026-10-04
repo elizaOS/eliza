@@ -14,7 +14,7 @@
  */
 
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
-import { logger } from "@elizaos/ui/logger";
+import { logger } from "@elizaos/ui";
 
 const DIR = "agent/vision-bridge";
 const REQUEST_PATH = `${DIR}/capture.req`;

@@ -2,10 +2,11 @@
  * Exercises retained stored-session claims and checkpoints against the real PGlite
  * repository so concurrent workers cannot share or rewind durable sessions.
  */
+
+import type { LifeOpsBrowserSession } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
 import type { BrowserBridgeCompanionStatus } from "@elizaos/plugin-browser";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import type { LifeOpsBrowserSession } from "../src/contracts/index.js";
 import {
   createLifeOpsBrowserSession,
   LifeOpsRepository,

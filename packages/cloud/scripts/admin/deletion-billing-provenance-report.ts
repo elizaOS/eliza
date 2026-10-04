@@ -158,13 +158,20 @@ export async function readGuardedFailedDeleteJobFacts(
     import("../../shared/src/lib/services/provisioning-job-policy"),
   ]);
   const selector = unresolvedAgentSelector(migration);
-  const { rows } = await client.query(`
+  let rows: Awaited<ReturnType<DeletionBillingReportClient["query"]>>["rows"];
+  try {
+    ({ rows } = await client.query(`
     WITH unresolved_agents AS (${selector})
     SELECT j.* FROM jobs j JOIN unresolved_agents a
       ON j.organization_id = a.organization_id AND j.agent_id = a.id::text
     WHERE j.type = 'agent_delete' AND j.status = 'failed'
     ORDER BY j.created_at, j.id
-  `);
+    `));
+  } catch (cause) {
+    throw new DeletionBillingProvenanceReportError("failed_job_query_failed", {
+      cause,
+    });
+  }
   const facts = {
     scope: "migration_0398_unresolved_agents_failed_delete_jobs",
     status: "failed" as const,

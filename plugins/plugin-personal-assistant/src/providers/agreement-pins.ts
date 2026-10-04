@@ -4,13 +4,13 @@
  * participate in guest authorization or widen a resource grant.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   ElizaError,
   hasRoleAccess,
   type Memory,
   type Provider,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { getAgreementKnowledgeService } from "../lifeops/household/agreement-knowledge.js";
 
 export const agreementPinsProvider: Provider = {

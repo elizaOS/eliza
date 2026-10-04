@@ -2,10 +2,12 @@
  * Vite config for the view screenshot harness that renders app views for
  * visual evidence.
  */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../../../..");
@@ -138,7 +140,7 @@ export default defineConfig({
     ],
   },
   build: {
-    outDir: path.join(here, "dist"),
+    outDir: testOutputPath("view-screenshots-build"),
     emptyOutDir: true,
     chunkSizeWarningLimit: 4000,
   },

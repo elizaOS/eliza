@@ -5,7 +5,7 @@
  * uses AgentRuntime and the real in-memory database adapter.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../character.ts";
 import { ElizaError } from "../../errors.js";

@@ -44,3 +44,10 @@ credentials, proves vault readiness or changes defaults silently. It adds no
 checks independent host policy against Android observations while capturing
 navigation instead of launching screens or changing roles. Real settings/provider
 journeys and physical-device behavior require separate acceptance.
+
+Android hosts can use `SystemLauncherApps.list(context)` and
+`SystemLauncherApps.launchIntent(context, packageName)` for launcher discovery
+and intent resolution. Declare an `ACTION_MAIN`/`CATEGORY_LAUNCHER` package
+visibility query in the host manifest. Discovery excludes the host, disabled
+apps and unexported activities, and deduplicates packages. Intent resolution does
+not launch an activity; the host retains its user-intent and foreground policy.

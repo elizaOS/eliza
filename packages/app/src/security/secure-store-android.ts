@@ -7,7 +7,7 @@ import type {
   SecureStoreGetResult,
   SecureStoreSecretKind,
   SecureStoreSetResult,
-} from "./platform-secure-store";
+} from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 
 const MAX_FRAME = 4 * 1024 * 1024;
 type Reply =

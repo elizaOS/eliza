@@ -3,7 +3,9 @@
  * malformed-event isolation, and the untrusted-source boundary are exercised.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
+import { calendarEventOccursOn } from "../components/calendar/event-days.js";
 import { parseIcsCalendar } from "./parser.js";
 
 function calendar(...body: string[]): string {
@@ -100,9 +102,59 @@ describe("parseIcsCalendar", () => {
 
     expect(parsed.events[0]).toMatchObject({
       isAllDay: true,
-      startAt: "2026-11-01T04:00:00.000Z",
-      endAt: "2026-11-02T05:00:00.000Z",
+      startAt: "2026-11-01T00:00:00.000Z",
+      endAt: "2026-11-02T00:00:00.000Z",
       timezone: "America/New_York",
+    });
+  });
+
+  it("places an all-day event from a feed east of UTC on its own date", () => {
+    const parsed = parseIcsCalendar(
+      calendar(
+        "X-WR-TIMEZONE:Europe/Berlin",
+        "BEGIN:VEVENT",
+        "UID:holiday@example.test",
+        "DTSTART;VALUE=DATE:20260308",
+        "SUMMARY:Holiday",
+        "END:VEVENT",
+      ),
+    );
+    const [event] = parsed.events;
+
+    expect(event).toMatchObject({
+      isAllDay: true,
+      startAt: "2026-03-08T00:00:00.000Z",
+      endAt: "2026-03-09T00:00:00.000Z",
+    });
+    const viewEvent = event as unknown as LifeOpsCalendarEvent;
+    expect(
+      calendarEventOccursOn(viewEvent, "2026-03-07", "Europe/Berlin"),
+    ).toBe(false);
+    expect(
+      calendarEventOccursOn(viewEvent, "2026-03-08", "Europe/Berlin"),
+    ).toBe(true);
+    expect(
+      calendarEventOccursOn(viewEvent, "2026-03-09", "Europe/Berlin"),
+    ).toBe(false);
+  });
+
+  it("ends a multi-day all-day DURATION on a date boundary across DST", () => {
+    const parsed = parseIcsCalendar(
+      calendar(
+        "X-WR-TIMEZONE:Europe/Berlin",
+        "BEGIN:VEVENT",
+        "UID:vacation@example.test",
+        "DTSTART;VALUE=DATE:20261023",
+        "DURATION:P7D",
+        "SUMMARY:Vacation",
+        "END:VEVENT",
+      ),
+    );
+
+    expect(parsed.events[0]).toMatchObject({
+      isAllDay: true,
+      startAt: "2026-10-23T00:00:00.000Z",
+      endAt: "2026-10-30T00:00:00.000Z",
     });
   });
 

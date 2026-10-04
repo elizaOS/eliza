@@ -3,12 +3,13 @@
  * output, with the optimized-prompt resolver pinned to identity so it runs
  * deterministically without a live model.
  */
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+
 import {
   CALENDAR_TIME_ZONE_INVALID,
   CALENDAR_TIME_ZONE_UNAVAILABLE,
   CalendarTimeZoneError,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 // The health planner routes its instructions through

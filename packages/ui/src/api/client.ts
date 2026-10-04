@@ -1,3 +1,10 @@
+import type {
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
+} from "@elizaos/contracts";
 /**
  * API client for the backend.
  *
@@ -13,52 +20,6 @@
 import type {
   AudioGenConfig,
   AudioGenProvider,
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ImageConfig,
-  ImageProvider,
-  MediaConfig,
-  MediaMode,
-  ReleaseChannel,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
-} from "@elizaos/core/contracts/config";
-import type { DropStatus, MintResult } from "@elizaos/core/contracts/drop";
-import type {
-  CloudProviderOption,
-  FirstRunConnectorConfig as ConnectorConfig,
-  FirstRunConnection,
-  FirstRunOptions,
-  InventoryProviderOption,
-  MessageExample,
-  MessageExampleContent,
-  ModelOption,
-  OpenRouterModelOption,
-  ProviderOption,
-  RpcProviderOption,
-  StylePreset,
-  SubscriptionProviderStatus,
-  SubscriptionStatusResponse,
-} from "@elizaos/core/contracts/first-run-options";
-import type {
-  AllPermissionsState,
-  PermissionId,
-  PermissionState,
-  PermissionStatus,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/core/contracts/permissions";
-import type { VerificationResult } from "@elizaos/core/contracts/verification";
-import {
-  DEFAULT_WALLET_RPC_SELECTIONS,
-  normalizeWalletRpcProviderId,
-  normalizeWalletRpcSelections,
-  WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/core/contracts/wallet";
-import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -67,11 +28,29 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  DropStatus,
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
+  ImageConfig,
+  ImageProvider,
+  MediaConfig,
+  MediaMode,
+  MintResult,
+  ReleaseChannel,
   SolanaNft,
   SolanaTokenBalance,
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardPolicyResult,
+  StewardTokenBalancesResponse,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -83,7 +62,37 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+  WALLET_RPC_PROVIDER_OPTIONS,
+} from "@elizaos/contracts";
+import type {
+  AllPermissionsState,
+  PermissionId,
+  PermissionState,
+  PermissionStatus,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@elizaos/core/protocol";
+import type {
+  CloudProviderOption,
+  FirstRunConnectorConfig as ConnectorConfig,
+  FirstRunConnection,
+  FirstRunOptions,
+  InventoryProviderOption,
+  FirstRunMessageExample as MessageExample,
+  MessageExampleContent,
+  ModelOption,
+  OpenRouterModelOption,
+  ProviderOption,
+  RpcProviderOption,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+} from "@elizaos/host/protocol";
 import { getBootConfig as getBootConfigForNativeUpdate } from "../config/boot-config-store";
 import type {
   BrowserWorkspaceSnapshot,
@@ -92,28 +101,16 @@ import type {
 import { ElizaClient as _ElizaClient, type ElizaClient } from "./client-base";
 import type {
   StewardApprovalActionResponse,
-  StewardApprovalInfo,
-  StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingApproval,
   StewardPendingResponse,
-  StewardPolicyResult,
   StewardSignRequest,
   StewardSignResponse,
   StewardStatusResponse,
-  StewardTokenBalancesResponse,
   StewardTxRecord,
   StewardTxStatus,
-  StewardWalletAddressesResponse,
-  StewardWebhookEvent,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
 } from "./client-types-steward";
 
-export type {
-  NativeAgentRequestOptions,
-  NativeAgentRequestResult,
-} from "./android-native-agent-transport";
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
 export {

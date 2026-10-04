@@ -3,11 +3,12 @@
  * helper: occurrences that share an anchor timestamp must sort by id so the
  * reported streaks do not depend on the caller's incoming array order.
  */
-import { describe, expect, it } from "vitest";
+
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import { describe, expect, it } from "vitest";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 
 const definition = {

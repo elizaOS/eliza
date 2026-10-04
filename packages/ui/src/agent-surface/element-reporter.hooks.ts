@@ -74,7 +74,7 @@ export function useAgentSurfaceElementReporter(
       void (async () => {
         try {
           const [{ client }, { getWindowNavigationPath }] = await Promise.all([
-            import("../api"),
+            import("../api/client"),
             import("../navigation"),
           ]);
           if (cancelled) return;

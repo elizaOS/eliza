@@ -14,6 +14,8 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
+  findKeywordTermMatch,
+  getCatalogValidationKeywordTerms as getValidationKeywordTerms,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -24,10 +26,6 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import {
-  findKeywordTermMatch,
-  getValidationKeywordTerms,
-} from "@elizaos/core/i18n/keyword-matching-core";
 import {
   setRoomMuteUntil,
   setWorldMuteState,

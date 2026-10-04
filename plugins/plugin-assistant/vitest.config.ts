@@ -8,7 +8,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     exclude: [
       ...(process.env.VITEST_LANE === "post-merge"
         ? ["src/features/trust/should-respond-risk-gate.real.test.ts"]

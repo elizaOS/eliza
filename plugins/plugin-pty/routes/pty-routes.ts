@@ -12,11 +12,11 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import {
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/host/protocol";
 import {
   buildElizaCodeCerebrasSpec,
   ELIZA_CLOUD_DEFAULT_BASE_URL,
@@ -31,8 +31,8 @@ import {
   resolveClaudeCliBin,
   resolveCodexCliBin,
 } from "../lib/vendor-cli-spec";
-import { type PtyService } from "../services/pty-service";
-import { type PtySpawnSpec } from "../services/pty-types";
+import type { PtyService } from "../services/pty-service";
+import type { PtySpawnSpec } from "../services/pty-types";
 
 // --- small helpers -------------------------------------------------------
 function json(status: number, body: unknown): RouteHandlerResult {

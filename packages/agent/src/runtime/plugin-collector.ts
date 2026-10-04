@@ -15,22 +15,24 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import {
   channelPluginMap,
+  isGoogleChatConfigured,
+  providerPluginMap,
+  shortIdPluginMap,
+} from "@elizaos/core";
+import {
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
-  isGoogleChatConfigured,
   isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
-  providerPluginMap,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
-  shortIdPluginMap,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import type { ElizaConfig } from "../config/config.ts";
 import {
@@ -191,22 +193,6 @@ function telegramStandaloneRequested(
 // Constants
 // ---------------------------------------------------------------------------
 
-/**
- * Legacy package names that were merged or renamed. Config allow-lists and
- * `plugins.installs` may still reference the old id.
- */
-const PLUGIN_PACKAGE_ALIASES: Readonly<Record<string, string>> = {
-  "@elizaos/plugin-task-coordinator": "@elizaos/plugin-agent-orchestrator/ui",
-  "@elizaos/plugin-coding-agent": "@elizaos/plugin-coding-tools",
-  "@elizaos/plugin-shell": "@elizaos/plugin-coding-tools",
-  "@elizaos/plugin-discord-local": "@elizaos/plugin-discord",
-  "@elizaos/plugin-telegram-standalone": "@elizaos/plugin-telegram",
-};
-
-export function resolvePluginPackageAlias(packageName: string): string {
-  return PLUGIN_PACKAGE_ALIASES[packageName] ?? packageName;
-}
-
 function packageNameFromPluginConfigId(pluginId: string): string {
   if (pluginId.includes("/")) return pluginId;
   if (pluginId.startsWith("app-") || pluginId.startsWith("plugin-")) {
@@ -216,9 +202,7 @@ function packageNameFromPluginConfigId(pluginId: string): string {
 }
 
 function providerPluginNameFromBackend(backend: string): string {
-  const explicitPluginName = resolvePluginPackageAlias(
-    packageNameFromPluginConfigId(backend),
-  );
+  const explicitPluginName = packageNameFromPluginConfigId(backend);
   if (
     DIRECT_MODEL_PROVIDER_PLUGINS.has(explicitPluginName) ||
     LOCAL_MODEL_PROVIDER_PLUGINS.has(explicitPluginName)
@@ -229,7 +213,7 @@ function providerPluginNameFromBackend(backend: string): string {
   if (providerId && providerId !== "elizacloud") {
     const provider = getFirstRunProviderOption(providerId);
     if (provider) {
-      return resolvePluginPackageAlias(provider.pluginName);
+      return provider.pluginName;
     }
   }
   return explicitPluginName;
@@ -249,7 +233,7 @@ function isDirectlyRoutableProviderPlugin(
   return (
     provider !== null &&
     provider.id !== "elizacloud" &&
-    resolvePluginPackageAlias(provider.pluginName) === pluginName
+    provider.pluginName === pluginName
   );
 }
 
@@ -260,9 +244,7 @@ function isTruthyCloudEnvValue(raw: string | undefined): boolean {
 }
 
 function isStoreBuildVariant(): boolean {
-  const raw =
-    process.env.ELIZA_BUILD_VARIANT?.trim() ||
-    process.env.ELIZA_BUILD_VARIANT?.trim();
+  const raw = process.env.ELIZA_BUILD_VARIANT?.trim();
   return raw?.toLowerCase() === "store";
 }
 
@@ -333,54 +315,9 @@ function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
   removeDirectModelProviderSurfaces(pluginsToLoad);
 }
 
-/**
- * Legacy host-owned short-id aliases for optional plugins that do NOT yet ship a
- * `registry-entry.json` (so their aliases cannot be derived at registry-build
- * time like {@link CHANNEL_PLUGIN_MAP} / {@link PROVIDER_PLUGIN_MAP}). Each key
- * is a bare short id that `plugins.allow`, `plugins.entries`, or
- * `config.features` may carry; without an entry here collectPluginNames() would
- * fall through to loading the short id as a literal package name (`import("obsidian")`),
- * which silently fails inside the loader's error boundary. This is the shrinking
- * legacy tail — when one of these plugins adds a registry entry, move its aliases
- * into that entry's `shortIds` and delete the row here.
- */
-const LEGACY_HOST_OWNED_SHORT_ID_MAP: Readonly<Record<string, string>> = {
-  // plugin-obsidian (no registry-entry.json yet).
-  obsidian: "@elizaos/plugin-obsidian",
-  // plugin-repoprompt (no registry-entry.json yet).
-  repoprompt: "@elizaos/plugin-repoprompt",
-  repoPrompt: "@elizaos/plugin-repoprompt",
-  // plugin-x402 (no registry-entry.json yet).
-  x402: "@elizaos/plugin-x402",
-  // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities.
-  // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST.
-  // Steward wallet plugin — short ID used by auto-enable; third-party npm scope,
-  // no first-party registry entry.
-  "stwd-eliza-plugin": "@stwd/eliza-plugin",
-};
-
-/**
- * Optional feature plugins keyed by short id.
- *
- * Mappings here support short IDs in allow-lists and feature toggles. Short ids
- * must resolve to real package names or optional plugins silently fail inside
- * the loader's error boundary (`import("evm")` -> "Cannot find module").
- *
- * The registry-owned aliases (wallet, browser, polymarket, vision, …) are
- * generated at registry-build time from each entry's `shortIds` field — see
- * `collectShortIdPluginMap` in packages/core/src/catalog/generate.ts.
- * To add or rename one of those aliases, edit the owning plugin's
- * registry-entry.json `shortIds` and regenerate — not this map. The generator
- * fails loudly if two plugins claim the same short id, so drift cannot ship.
- *
- * {@link LEGACY_HOST_OWNED_SHORT_ID_MAP} is the shrinking tail of plugins that
- * do not yet declare a registry entry; it is layered underneath the generated
- * map so a registry entry always wins over a stale hand-maintained row.
- */
-export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
-  ...LEGACY_HOST_OWNED_SHORT_ID_MAP,
-  ...(shortIdPluginMap as Readonly<Record<string, string>>),
-};
+/** First-party feature names come from the generated package catalog. */
+export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> =
+  shortIdPluginMap;
 
 // ---------------------------------------------------------------------------
 // Main function
@@ -684,22 +621,17 @@ export function collectPluginNames(
       // same way plugins.entries does — addToAllowlist() pushes both the
       // short ID and the full package name, so bare short IDs must be
       // expanded to avoid importing the raw SDK package (e.g. "openai").
-      const pluginName = resolvePluginPackageAlias(
+      const pluginName =
         CHANNEL_PLUGIN_MAP[item] ??
-          OPTIONAL_PLUGIN_MAP[item] ??
-          packageNameFromPluginConfigId(item),
-      );
+        OPTIONAL_PLUGIN_MAP[item] ??
+        packageNameFromPluginConfigId(item);
       pluginsToLoad.add(pluginName);
       track(pluginName, `plugins.allow[${JSON.stringify(item)}]`);
     }
   }
 
   // Connector plugins — load when connector has config entries
-  // Prefer config.connectors, fall back to config.channels for backward compatibility
-  const connectors =
-    config.connectors ??
-    ((config as Record<string, unknown>).channels as Record<string, unknown>) ??
-    {};
+  const connectors = config.connectors ?? {};
   for (const [channelName, channelConfig] of Object.entries(connectors)) {
     if (
       !channelConfig ||
@@ -847,11 +779,10 @@ export function collectPluginNames(
       if (!entry || typeof entry !== "object") continue;
       // Connector keys (telegram, discord, etc.) must use CHANNEL_PLUGIN_MAP
       // so the correct variant loads.
-      const pluginName = resolvePluginPackageAlias(
+      const pluginName =
         CHANNEL_PLUGIN_MAP[key] ??
-          OPTIONAL_PLUGIN_MAP[key] ??
-          packageNameFromPluginConfigId(key),
-      );
+        OPTIONAL_PLUGIN_MAP[key] ??
+        packageNameFromPluginConfigId(key);
       const isOptionalCore = OPTIONAL_CORE_PLUGIN_NAMES.has(pluginName);
       const entryEnabled = (entry as Record<string, unknown>).enabled;
       const shouldAdd = isOptionalCore
@@ -876,9 +807,8 @@ export function collectPluginNames(
       if (isEnabled) {
         const pluginName = OPTIONAL_PLUGIN_MAP[featureName];
         if (pluginName) {
-          const resolved = resolvePluginPackageAlias(pluginName);
-          pluginsToLoad.add(resolved);
-          track(resolved, `features.${featureName}`);
+          pluginsToLoad.add(pluginName);
+          track(pluginName, `features.${featureName}`);
         }
       }
     }
@@ -896,9 +826,8 @@ export function collectPluginNames(
   if (installs && typeof installs === "object") {
     for (const [packageName, record] of Object.entries(installs)) {
       if (record && typeof record === "object") {
-        const resolved = resolvePluginPackageAlias(packageName);
-        pluginsToLoad.add(resolved);
-        track(resolved, "plugins.installs");
+        pluginsToLoad.add(packageName);
+        track(packageName, "plugins.installs");
       }
     }
   }
@@ -908,9 +837,8 @@ export function collectPluginNames(
   // cloud/remote/local-only precedence sweep, allowing a stale ambient API key
   // to resurrect a provider that the canonical route matrix had suppressed.
   for (const pluginName of forceIncludePluginNames) {
-    const resolved = resolvePluginPackageAlias(pluginName);
-    pluginsToLoad.add(resolved);
-    track(resolved, "host-selected provider");
+    pluginsToLoad.add(pluginName);
+    track(pluginName, "host-selected provider");
   }
 
   // Re-apply provider precedence so later additive paths (entries, features,

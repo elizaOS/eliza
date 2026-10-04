@@ -9,9 +9,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
-import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
+import { client } from "../../api/client";
+import type { ComputerUseApprovalSnapshot } from "../../api/client-computeruse";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";

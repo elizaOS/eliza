@@ -9,11 +9,6 @@ import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-
-import {
-  ELIZA_AGENT_VAULT_SERVICE,
-  keychainAccountForSecretKind,
-} from "./agent-vault-id";
 import type {
   PlatformSecureStore,
   PlatformSecureStoreBackend,
@@ -22,7 +17,11 @@ import type {
   SecureStoreGetResult,
   SecureStoreSecretKind,
   SecureStoreSetResult,
-} from "./platform-secure-store";
+} from "@elizaos/plugin-browser/remote-control/secure-store-contract";
+import {
+  ELIZA_AGENT_VAULT_SERVICE,
+  keychainAccountForSecretKind,
+} from "./agent-vault-id";
 
 const execFileAsync = promisify(execFile);
 const LINUX_SECRET_WIRE_PREFIX = "eliza-v1:";

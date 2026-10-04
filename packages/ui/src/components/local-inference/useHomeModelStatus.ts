@@ -4,11 +4,13 @@
  * model placement are separate: a local agent may still send text to Cerebras.
  */
 
-import { normalizeServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import {
+  getElizaApiToken,
+  normalizeServiceRoutingConfig,
+} from "@elizaos/host/protocol";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import { isDesktopExternalApiBaseUrl } from "../../api/desktop-external-api-base";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";

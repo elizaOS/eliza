@@ -3,11 +3,11 @@ import {
   type AgentRuntime,
   ElizaError,
   type IDatabaseAdapter,
-  installHttpPluginLifecycle,
   isExactTrueEnvFlag,
   type Plugin,
   type PluginOwnership,
 } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 
 import {
   beginViewInstallation,

@@ -1,17 +1,16 @@
-/**
- * Data-free character-language helpers.
- *
- * Split out of `character-presets.ts` so that importing `normalizeCharacterLanguage`
- * (used by the i18n keyword matcher, which is on the eager renderer path via the
- * `@elizaos/core` barrel) does NOT execute `character-presets.ts`'s module-level
- * `CHARACTER_DEFINITIONS.map(...)` builders — which would otherwise pull ~49KB of
- * character preset data (catchphrases/postExamples/bios) into the eager bundle.
- * This module depends only on the language enum + a tiny rules table.
- */
-import {
-	CHARACTER_LANGUAGES,
-	type CharacterLanguage,
-} from "./contracts/first-run-options.js";
+/** Data-free character language normalization and authored reply rules. */
+export const CHARACTER_LANGUAGES = [
+	"en",
+	"zh-CN",
+	"ko",
+	"es",
+	"pt",
+	"vi",
+	"tl",
+] as const;
+
+export type CharacterLanguage = (typeof CHARACTER_LANGUAGES)[number];
+
 export const DEFAULT_CHARACTER_LANGUAGE: CharacterLanguage = "en";
 export const LANGUAGE_REPLY_RULES: Record<CharacterLanguage, string> = {
 	en: "Default to natural English unless the user clearly switches languages.",

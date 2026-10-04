@@ -1,3 +1,4 @@
+import { resolveWallpaperUrl } from "../utils/asset-url";
 /**
  * Cover-image background layer for the unified app background, given a data or
  * /api/media URL.
@@ -6,7 +7,6 @@
 import type * as React from "react";
 import { Card } from "../components/ui/card";
 import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
-import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url.js";
 export interface ImageBackgroundProps {
   /** Cover-image source — a data URL or a served `/api/media/…` URL. */
   imageUrl: string;
@@ -34,20 +34,7 @@ export interface ImageBackgroundProps {
  *    would resolve to `file:///wallpapers` and fail. This is the same
  *    URL-resolution trap `resolveTileImageUrl` handles for launcher hero art.
  */
-export function resolveWallpaperUrl(url: string): string {
-  if (
-    url.startsWith("data:") ||
-    url.startsWith("blob:") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
-    url.startsWith("//")
-  ) {
-    return url;
-  }
-  if (url.startsWith("/api/") || url.startsWith("api/")) {
-    return resolveApiUrl(url);
-  }
-  return resolveAppAssetUrl(url);
-}
+
 /**
  * A full-bleed cover image for the unified app background. Centered, cover-fit,
  * no repeat — the user's uploaded or generated wallpaper sits behind the home

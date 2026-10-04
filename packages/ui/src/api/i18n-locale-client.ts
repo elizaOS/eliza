@@ -7,8 +7,9 @@
  * `packages/cloud/api/src/bootstrap-app.ts`.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { getBootConfig } from "../config/boot-config";
-import { normalizeLanguage, type UiLanguage } from "../i18n";
+import { normalizeLanguage } from "../i18n";
 import { supportsFullAppShellRoutes } from "./app-shell-capabilities";
 import { fetchWithCsrf } from "./csrf-client";
 

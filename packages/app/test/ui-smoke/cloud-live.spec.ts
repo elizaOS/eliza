@@ -8,7 +8,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { isPersonalSharedElizaId } from "@elizaos/ui/utils/cloud-agent-base";
 import {
   type BrowserContext,
   expect,
@@ -16,6 +15,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { isPersonalSharedElizaId } from "../../../ui/src/utils/cloud-agent-base";
 import {
   resolveCloudLiveBrowserAuthSeed,
   seedCloudLiveBrowserAuth,

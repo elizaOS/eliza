@@ -764,6 +764,10 @@ const STUB_RULES: StubRule[] = [
       },
     },
   },
+  {
+    match: path_("/api/v1/billing/hold"),
+    body: { success: true, data: { status: "clear" } },
+  },
   { match: path_("/api/invoices/list"), body: { invoices: [] } },
   {
     // InvoiceDetailPage: GET /api/invoices/:id → camelCase InvoiceApiPayload

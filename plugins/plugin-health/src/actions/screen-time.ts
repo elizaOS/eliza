@@ -6,6 +6,8 @@
  * `resolveTimeZone` adapter returns, matching the local-day keys screen-time
  * rows are stored under.
  */
+
+import { normalizeTimeZone } from "@elizaos/contracts";
 import type {
   Action,
   ActionParameter,
@@ -19,7 +21,6 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
-  normalizeTimeZone,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";

@@ -6,7 +6,8 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "ignoreDeprecations": "6.0",
-    "paths": {}
+    "paths": {},
+    "outDir": "./dist"
   },
   "include": ["src"],
   "exclude": [

@@ -5,7 +5,7 @@
  */
 
 import { type AgentRuntime, ElizaError, type Service } from "@elizaos/core";
-import type { ScenarioDefinition } from "@elizaos/testing";
+import type { ScenarioDefinition } from "../schema/index.ts";
 
 type RequiredServiceFailure = {
   serviceType: string;

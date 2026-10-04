@@ -5,7 +5,7 @@
  * the exact source snapshot consumed by Dedicated cutover.
  */
 
-import { type SharedTodoMutationCutoverRecord } from "@elizaos/core/todo-cutover";
+import { type SharedTodoMutationCutoverRecord } from "@elizaos/core";
 import {
   createTodosSqlStore,
   serializeTodoMutationRecord,

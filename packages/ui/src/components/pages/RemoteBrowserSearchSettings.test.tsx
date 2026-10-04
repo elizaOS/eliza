@@ -14,7 +14,7 @@ const boundary = vi.hoisted(() => ({
   directory: vi.fn(),
   authority: "cloud-one",
 }));
-vi.mock("../../api", () => ({ client: { fetch: boundary.fetch } }));
+vi.mock("../../api/client", () => ({ client: { fetch: boundary.fetch } }));
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   getActiveAgentAuthority: () => boundary.authority,
 }));

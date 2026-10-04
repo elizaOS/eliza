@@ -2046,7 +2046,7 @@ async def _run(args: argparse.Namespace) -> int:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        prog="benchmarks.swe_bench.cli",
+        prog="benchmarks.suites.swe_bench.cli",
         description="Run SWE-bench through the eliza TS benchmark bridge.",
     )
     p.add_argument(

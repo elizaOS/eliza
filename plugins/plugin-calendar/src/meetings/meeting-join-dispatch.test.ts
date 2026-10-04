@@ -6,10 +6,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type MeetingJoinRequest,
-  type MeetingSession,
-} from "@elizaos/core/meetings";
+import type {
+  MeetingJoinRequest,
+  MeetingSession,
+} from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
 import { writeMeetingAutoJoinPolicy } from "./auto-join-settings.js";
 import {

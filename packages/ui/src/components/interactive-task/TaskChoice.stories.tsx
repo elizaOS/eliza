@@ -1,5 +1,5 @@
 /** Default and `explainUnavailable` states for the neutral task choice leaf. */
-import type { TaskChoiceWidget } from "@elizaos/core/messaging/task-widgets";
+import type { TaskChoiceWidget } from "@elizaos/core/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
 import { expect, userEvent, within } from "storybook/test";
 import { TaskChoice } from "./TaskChoice";

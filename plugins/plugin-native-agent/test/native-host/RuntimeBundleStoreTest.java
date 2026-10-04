@@ -111,10 +111,60 @@ public final class RuntimeBundleStoreTest {
     Path links = Files.createDirectory(suite.resolve("links")); libraries(links);
     Files.createSymbolicLink(links.resolve("versions"), hostile.resolve("versions"));
     rejects(() -> prepare(links, next));
+    Path coldLeaf = Files.createDirectory(suite.resolve("cold-leaf-link")); libraries(coldLeaf);
+    Path missingRoot = suite.resolve("uncreated-runtime-root");
+    Files.createSymbolicLink(coldLeaf.resolve("versions"), missingRoot);
+    rejects(() -> prepare(coldLeaf, next));
+    check(Files.isSymbolicLink(coldLeaf.resolve("versions")) && !Files.exists(missingRoot, LinkOption.NOFOLLOW_LINKS), "Cold preparation must not follow or replace a dangling root leaf");
     Path natives = Files.createDirectory(suite.resolve("natives")); libraries(natives);
     Files.writeString(natives.resolve("native/libeliza_bun.so"), "wrong native binary");
     rejects(() -> prepare(natives, next));
     check(!Files.exists(natives.resolve("versions").resolve(hash(correct))), "Native mismatch must not publish");
+
+    // One process, two threads, one root: the JVM-wide FileChannel lock must
+    // make the second preparer wait, not fail with OverlappingFileLockException.
+    for (boolean aliased : new boolean[]{false, true}) {
+      Path shared = Files.createDirectory(suite.resolve(aliased ? "threads-aliased" : "threads")); libraries(shared);
+      Path secondRoot = aliased ? Files.createSymbolicLink(suite.resolve("thread-link"), shared) : shared;
+      java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1), resume = new java.util.concurrent.CountDownLatch(1);
+      java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+      try {
+        java.util.concurrent.Future<Path> first = pool.submit(() -> RuntimeBundleStore.prepare(shared.resolve("versions"), manifest(next), source(next), shared.resolve("native"), SYNC, name -> {
+          if (!name.equals("staging-created")) return;
+          inside.countDown();
+          try { resume.await(); } catch (InterruptedException interrupted) { throw new InterruptedIOException(); }
+        }));
+        check(inside.await(10, java.util.concurrent.TimeUnit.SECONDS), "First preparer must hold the root");
+        java.util.concurrent.Future<Path> second = pool.submit(() -> prepare(secondRoot, next));
+        Thread.sleep(200); // the second preparer reaches the lock while the first holds it
+        resume.countDown();
+        Path a = first.get(30, java.util.concurrent.TimeUnit.SECONDS), b = second.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        check(a.equals(b), "Concurrent preparers in one process must share one complete bundle");
+        check(Files.readString(b.resolve("agent-bundle.js")).startsWith("new"), "Shared bundle must be complete");
+      } finally { resume.countDown(); pool.shutdownNow(); }
+    }
+
+    // Cold roots reached through canonical and parent-alias paths must share
+    // one preparation owner before any directory or permission mutation.
+    for (int round = 0; round < 40; round++) {
+      Path cold = Files.createDirectory(suite.resolve("cold-" + round)); libraries(cold);
+      Path alias = Files.createSymbolicLink(suite.resolve("cold-link-" + round), cold);
+      java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(4);
+      java.util.concurrent.ExecutorService racers = java.util.concurrent.Executors.newFixedThreadPool(4);
+      try {
+        List<java.util.concurrent.Future<Path>> results = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+          Path requested = i % 2 == 0 ? cold : alias;
+          results.add(racers.submit(() -> {
+            start.await();
+            return prepare(requested, next);
+          }));
+        }
+        Path expected = results.get(0).get();
+        for (java.util.concurrent.Future<Path> result : results)
+          check(result.get().equals(expected), "Cold-start preparers must share one physical bundle");
+      } finally { racers.shutdownNow(); }
+    }
     System.out.println("RuntimeBundleStore: " + assertions + " assertions passed, including 6 real process-death boundaries");
   }
 }

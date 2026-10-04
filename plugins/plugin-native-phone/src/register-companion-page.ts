@@ -10,7 +10,7 @@
  * Load this module once during app startup to register the page.
  */
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 
 registerAppShellPage({
   id: "phone-companion",

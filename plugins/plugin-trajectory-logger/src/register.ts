@@ -5,7 +5,7 @@
  * Load once during app startup.
  */
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 
 // iOS/Android disable DynamicViewLoader, so register this view's already-bundled
 // component as an in-process app-shell page. Web/desktop dedupe it against the

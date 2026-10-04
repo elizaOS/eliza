@@ -24,7 +24,7 @@
  * keeps Back from re-entering a completed bridge leg.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";

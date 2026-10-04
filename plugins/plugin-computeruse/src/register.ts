@@ -3,7 +3,7 @@
  * component is the packaged fallback when the opt-in runtime has not supplied
  * its richer remote view bundle, so readiness and failure states remain visible.
  */
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 
 registerAppShellPage({
   id: "computer-use-sessions",

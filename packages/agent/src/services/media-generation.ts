@@ -8,19 +8,21 @@
  */
 
 import { Buffer } from "node:buffer";
+import type {
+  AudioGenConfig,
+  ImageConfig,
+  VideoConfig,
+} from "@elizaos/contracts";
 import {
-  type AudioGenConfig,
   getStreamingContext,
   type IAgentRuntime,
   IMediaGenerationService,
-  type ImageConfig,
-  isElizaCloudServiceSelectedInConfig,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
   ModelType,
   ServiceType,
-  type VideoConfig,
 } from "@elizaos/core";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/host/protocol";
 
 import { loadEffectiveElizaConfig } from "../config/config.ts";
 import {

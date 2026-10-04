@@ -64,10 +64,10 @@ async function withHttp(
   try {
     await run(mappedFetch, origin);
   } finally {
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections();
+    });
   }
 }
 function json(response: ServerResponse, value: unknown, status = 200) {

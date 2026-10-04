@@ -13,9 +13,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildFirstRunRuntimeConfig } from "@elizaos/ui/first-run/first-run-config";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { buildFirstRunRuntimeConfig } from "../../../ui/src/first-run/first-run-config";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   getFirstRunProviderForLiveProvider,

@@ -1,6 +1,7 @@
 /** Character action helpers — CRUD and draft management. */
 
-import type { CharacterData, ElizaClient } from "../api/client";
+import type { ElizaClient } from "../api/client";
+import type { CharacterData } from "../api/client-types-config";
 import { tokenizeNameOccurrences } from "../utils/name-tokens";
 
 type MessageExampleGroup = {

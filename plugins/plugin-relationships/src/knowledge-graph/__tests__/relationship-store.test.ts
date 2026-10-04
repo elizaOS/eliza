@@ -5,12 +5,12 @@
  * real. No production helper is replaced with a mock of itself.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import {
-  type RelationshipSource,
-  type RelationshipState,
-  type RelationshipStatus,
-} from "@elizaos/core/knowledge-graph/relationship-types";
+import type {
+  LifeOpsGraphRelationshipSource as RelationshipSource,
+  LifeOpsGraphRelationshipState as RelationshipState,
+  LifeOpsGraphRelationshipStatus as RelationshipStatus,
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RelationshipStore } from "../relationship-store.ts";
 

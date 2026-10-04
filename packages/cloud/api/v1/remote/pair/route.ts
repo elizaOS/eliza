@@ -28,7 +28,7 @@ import {
   isRemoteControllerPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import { Hono } from "hono";
 
 const PAIRING_CODE_TTL_SECONDS = 5 * 60;

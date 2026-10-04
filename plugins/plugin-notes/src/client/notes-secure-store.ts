@@ -173,21 +173,24 @@ export class SecureNotesStore {
           "Plaintext Notes changed during migration. Both copies retained for recovery.",
         );
     }
-    let dailyClean: string | null = null;
+    // The daily record is the host's: only its `notes` were migrated. Other
+    // fields (receipts, dates) may change after an interrupted migration, so
+    // compare and clear `notes` alone.
+    let archivedDailyNotes: unknown[] | null = null;
     if (saved.archive.daily !== null) {
       const daily = JSON.parse(saved.archive.daily);
       if (!daily || !Array.isArray(daily.notes))
         throw Error("Invalid legacy Notes archive");
-      dailyClean = JSON.stringify({ ...daily, notes: [] });
+      archivedDailyNotes = daily.notes;
     }
     const currentDaily = legacy.getItem(config.daily);
-    if (
-      currentDaily !== null &&
-      currentDaily !== saved.archive.daily &&
-      currentDaily !== dailyClean
-    ) {
+    if (currentDaily !== null && currentDaily !== saved.archive.daily) {
       const daily = JSON.parse(currentDaily);
-      if (!daily || !Array.isArray(daily.notes) || daily.notes.length)
+      if (
+        !daily ||
+        !Array.isArray(daily.notes) ||
+        (daily.notes.length && !equal(daily.notes, archivedDailyNotes))
+      )
         throw Error(
           "Legacy Notes changed during migration. Both copies retained for recovery.",
         );
@@ -196,12 +199,16 @@ export class SecureNotesStore {
     for (const [key, expected] of sources)
       if (legacy.getItem(key) === expected && expected !== null)
         legacy.removeItem(key);
-    if (
-      saved.archive.daily !== null &&
-      dailyClean !== null &&
-      legacy.getItem(config.daily) === saved.archive.daily
-    )
-      legacy.setItem(config.daily, dailyClean);
+    const dailyNow = legacy.getItem(config.daily);
+    if (archivedDailyNotes !== null && dailyNow !== null) {
+      const daily = JSON.parse(dailyNow);
+      if (
+        Array.isArray(daily?.notes) &&
+        daily.notes.length &&
+        equal(daily.notes, archivedDailyNotes)
+      )
+        legacy.setItem(config.daily, JSON.stringify({ ...daily, notes: [] }));
+    }
     if (sources.some(([key]) => legacy.getItem(key) !== null))
       throw Error(
         "Plaintext Notes cleanup did not complete. Reopen to retry cleanup.",

@@ -5,7 +5,7 @@
  * meeting-URL paste/validation and join flow.
  */
 
-import type { MeetingSession } from "@elizaos/core/meetings";
+import type { MeetingSession } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,

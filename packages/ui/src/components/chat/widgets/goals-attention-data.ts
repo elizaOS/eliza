@@ -18,8 +18,9 @@
  * GoalStatus / GoalReviewState in plugins/plugin-goals/src/types.ts. We only
  * read the fields a glanceable surface needs.
  */
-import { client } from "../../../api";
+
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { client } from "../../../api/client";
 import { fetchWithCsrf } from "../../../api/csrf-client";
 /** How often a home surface refreshes goals - matches GoalsView's 20s poll. */
 export const GOALS_REFRESH_INTERVAL_MS = 20000;

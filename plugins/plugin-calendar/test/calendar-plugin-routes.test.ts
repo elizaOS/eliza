@@ -4,7 +4,7 @@
  */
 import type http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LegacyRouteHandler } from "@elizaos/core/api/http-plugin";
+import type { LegacyRouteHandler } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { normalizeCalendarDateTimeInTimeZone } from "../src/internal/calendar-normalize.js";
 import { calendarPlugin } from "../src/plugin.js";

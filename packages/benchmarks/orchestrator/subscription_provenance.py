@@ -126,12 +126,12 @@ def build_lifecycle_gateway_content_contract(
 ) -> dict[str, object]:
     """Build the reviewed model-input contract without retaining run content."""
 
-    from benchmarks.orchestrator_lifecycle.contract import LIFECYCLE_SYSTEM_HINT
-    from benchmarks.orchestrator_lifecycle.dataset import (
+    from benchmarks.suites.orchestrator_lifecycle.contract import LIFECYCLE_SYSTEM_HINT
+    from benchmarks.suites.orchestrator_lifecycle.dataset import (
         LifecycleDataset,
         scenario_corpus_sha256,
     )
-    from benchmarks.orchestrator_lifecycle.types import BehaviorTag
+    from benchmarks.suites.orchestrator_lifecycle.types import BehaviorTag
     from benchmarks.publication_contracts import (
         ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
         ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
@@ -236,7 +236,7 @@ def gateway_content_contract_sha256(contract: Mapping[str, object]) -> str:
 def lifecycle_tasks_gateway_schema_sha256() -> str:
     """Derive the gateway TASKS hash from the canonical scored tool contract."""
 
-    from benchmarks.orchestrator_lifecycle.contract import LIFECYCLE_TASKS_TOOLS
+    from benchmarks.suites.orchestrator_lifecycle.contract import LIFECYCLE_TASKS_TOOLS
 
     source = LIFECYCLE_TASKS_TOOLS[0]
     function = source.get("function")

@@ -10,7 +10,7 @@ import {
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { calendarAction } from "./actions/calendar.js";
 import { calendarSourcesAction } from "./actions/calendar-sources.js";
 import { conflictDetectAction } from "./actions/conflict-detect.js";

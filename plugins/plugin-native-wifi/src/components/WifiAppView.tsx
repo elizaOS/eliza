@@ -10,14 +10,15 @@
  */
 
 import { System } from "@elizaos/capacitor-system";
-import type {
-  ConnectResult,
-  WiFiNetwork,
-  WifiStateResult,
+import {
+  type ConnectResult,
+  WiFi,
+  type WiFiNetwork,
+  type WifiStateResult,
 } from "@elizaos/plugin-native-wifi/bridge";
-import { WiFi } from "@elizaos/plugin-native-wifi/bridge";
-import { Badge, Button, Input } from "@elizaos/ui";
-import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
+
+import { Badge, Button, Input, type OverlayAppContext } from "@elizaos/ui";
+
 import {
   CheckCircle2,
   ChevronLeft,

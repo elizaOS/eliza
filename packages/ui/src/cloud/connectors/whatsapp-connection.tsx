@@ -1,3 +1,7 @@
+"use client";
+
+import { ApiError, api, apiErrorMessage } from "../lib/api-client";
+
 /**
  * WhatsApp Business cloud connector (token-credential + Meta webhook).
  *
@@ -5,8 +9,6 @@
  * client so the steward Bearer token is injected on native targets. The webhook
  * setup callout `tone="blue"` is fixed to neutral `tone="muted"` per brand rules.
  */
-
-"use client";
 
 import { ExternalLink, Loader2, MessageSquare, Phone } from "lucide-react";
 import { useState } from "react";
@@ -26,7 +28,7 @@ import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { TextLink } from "../../components/ui/text-link";
-import { ApiError, api } from "../lib/api-client";
+
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
 
@@ -37,18 +39,6 @@ interface WhatsAppStatus {
   webhookUrl?: string;
   verifyToken?: string;
   error?: string;
-}
-
-function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body;
-    if (body && typeof body === "object" && "error" in body) {
-      const apiError = (body as { error?: unknown }).error;
-      if (typeof apiError === "string" && apiError) return apiError;
-    }
-    return error.message || fallback;
-  }
-  return fallback;
 }
 
 export function WhatsAppConnection() {

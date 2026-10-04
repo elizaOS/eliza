@@ -2,8 +2,9 @@
  * Conversational calendar writes fail closed when approval or authoritative
  * source context is unavailable; provider CRUD is never a fallback.
  */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -55,6 +56,7 @@ function runtime(service: Record<string, unknown>): IAgentRuntime {
       debug: vi.fn(),
     },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }

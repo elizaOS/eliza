@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import * as fs from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import * as path from 'node:path';
-import { resolveAliasedEnvValue } from '@elizaos/core/config/boot-config-store';
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from '@elizaos/host/protocol';
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 
 function syncDirectory(value: string) {

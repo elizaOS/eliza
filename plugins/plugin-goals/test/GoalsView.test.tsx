@@ -34,7 +34,8 @@ import {
 // `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
 // `client.sendChatMessage()` (set-a-goal affordance).
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,

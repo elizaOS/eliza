@@ -9,11 +9,11 @@ import {
   isObjectRecord,
   satisfiesRoleGate,
 } from "@elizaos/core";
+import { readViewInteractionClientId } from "@elizaos/core/protocol";
 import {
   createSelfApiRequestHeaders,
   resolveSelfApiBaseUrl,
-} from "@elizaos/core/runtime-env";
-import { readViewInteractionClientId } from "@elizaos/core/views/view-interact-protocol";
+} from "@elizaos/host/protocol";
 import { listViews } from "../api/views-registry.ts";
 
 export const viewsAction: Action = {

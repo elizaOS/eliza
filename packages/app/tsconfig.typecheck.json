@@ -5,7 +5,6 @@
     "customConditions": ["eliza-source"],
     "paths": {
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
-      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/app": ["./src/index.ts"],
@@ -26,10 +25,11 @@
       "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
-      "@elizaos/core/*": ["../core/src/*"]
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "include": [
+    "src/renderer",
     "src/first-run-boot-patches.ts",
     "src/native-transcript-bridge.ts",
     "src/env-prefix.js",
@@ -49,7 +49,6 @@
     "src/desktop-fn-hold-policy.ts",
     "src/public-web-boot-config.ts",
     "src/renderer-entry.ts",
-    "src/deep-link-handler.ts",
     "src/ios-cloud-onboarding-smoke.ts",
     "src/sw-registration.ts",
     "src/packaged-shell-storage-test-bridge.ts",

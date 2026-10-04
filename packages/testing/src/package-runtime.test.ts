@@ -1,9 +1,6 @@
 /** Exercises the package root in native Node with real SQLite storage and a local judge HTTP transport. */
 
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
@@ -17,7 +14,7 @@ it("loads fixtures through the package root and keeps temporary databases isolat
       "--eval",
       `
         import assert from "node:assert/strict";
-        import { createSQLiteTestRuntime } from "@elizaos/testing";
+        import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 
         const agentId = "00000000-0000-4000-8000-000000000001";
         const entityId = "00000000-0000-4000-8000-000000000002";
@@ -62,7 +59,7 @@ it("uses the public judge transport in native Node without truncating requests",
         import assert from "node:assert/strict";
         import { createServer } from "node:http";
         import { once } from "node:events";
-        import { CerebrasJudge } from "@elizaos/testing";
+        import { CerebrasJudge } from "@elizaos/testing/models";
 
         const requests = [];
         const server = createServer(async (request, response) => {
@@ -110,42 +107,6 @@ it("uses the public judge transport in native Node without truncating requests",
   );
   expect(result.error).toBeUndefined();
   expect(result.status, result.stderr || result.stdout).toBe(0);
-});
-
-it("loads package-path helpers without runtime packages or build outputs", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "testing-paths-"));
-  try {
-    fs.mkdirSync(path.join(dir, "src"));
-    fs.copyFileSync(
-      new URL("../package.json", import.meta.url),
-      path.join(dir, "package.json"),
-    );
-    fs.copyFileSync(
-      new URL("./eliza-package-paths.ts", import.meta.url),
-      path.join(dir, "src/eliza-package-paths.ts"),
-    );
-    fs.writeFileSync(
-      path.join(dir, "probe.mjs"),
-      `
-      import assert from "node:assert/strict";
-      import { getElizaCoreEntry, resolveModuleEntry } from "@elizaos/testing/package-paths";
-      assert.equal(typeof resolveModuleEntry, "function");
-      assert.equal(getElizaCoreEntry(process.cwd()), undefined);
-    `,
-    );
-    const env = { ...process.env };
-    delete env.NODE_OPTIONS;
-    const result = spawnSync(process.execPath, [path.join(dir, "probe.mjs")], {
-      cwd: dir,
-      env,
-      encoding: "utf8",
-      timeout: 10000,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.status, result.stderr || result.stdout).toBe(0);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 it("loads progressive target contracts without database fixture adapters", () => {

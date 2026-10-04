@@ -2,9 +2,8 @@
  * Provides the self-contained layout, state, and agent-aware controls used by
  * the statically packaged Notes renderer.
  */
+import { Button, type ButtonProps, useAgentElement } from "@elizaos/ui";
 
-import { Button, type ButtonProps } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { CSSProperties } from "react";
 import type { StickyColor } from "../types.js";
 

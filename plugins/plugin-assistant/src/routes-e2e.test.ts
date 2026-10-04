@@ -2,7 +2,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { AgentRuntime } from "@elizaos/core";
-import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import { afterEach, expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { createAssistantPlugin } from "./index.ts";

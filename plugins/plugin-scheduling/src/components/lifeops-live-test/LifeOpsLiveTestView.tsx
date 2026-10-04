@@ -19,18 +19,23 @@
  * navigations. It imports only the browser client (`@elizaos/ui`) — no
  * spatial-unsafe modules leak into the view bundle.
  */
-
 import {
   client,
-  type PluginInfo,
-  type ScheduledTaskView,
-} from "@elizaos/ui/api";
-import {
   dispatchFocusConnector,
   dispatchNavigateViewEvent,
-} from "@elizaos/ui/events";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+  type PluginInfo,
+  type ScheduledTaskView,
+} from "@elizaos/ui";
+
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import {
   type ChecklistRow,
   type LifeOpsLiveTestSnapshot,

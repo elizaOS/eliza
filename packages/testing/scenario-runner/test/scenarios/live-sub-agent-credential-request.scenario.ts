@@ -26,7 +26,7 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import { getHttpRuntime } from "@elizaos/host/protocol";
 import { type ScenarioContext, scenario } from "@elizaos/testing";
 import type { AcpActionService } from "../../../../../plugins/plugin-agent-orchestrator/src/actions/common";
 import type { SessionInfo } from "../../../../../plugins/plugin-agent-orchestrator/src/services/types";
@@ -569,11 +569,9 @@ async function runLiveCodexCredentialRoundtrip(
       },
       createIsolatedAccountStoragePolicy(home),
     );
-    const { getDefaultAccountPool } = await import(
-      "../../../../app/src/services/account-pool"
-    );
+    const { getDefaultAccountPool } = await import("@elizaos/auth/accounts");
     const { getCodingAgentSelectorBridge } = await import(
-      "../../../../app/src/services/coding-account-bridge"
+      "@elizaos/auth/accounts"
     );
     getDefaultAccountPool();
     const bridge = getCodingAgentSelectorBridge();

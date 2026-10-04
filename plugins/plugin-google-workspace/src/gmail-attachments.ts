@@ -1,7 +1,7 @@
 /** Attachment inventory and bounded decoding; filenames are metadata, never filesystem paths. */
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { type GmailMimePartLike, walkGmailMimeParts } from "./gmail-mime-parts.js";
 import type { GoogleGmailAttachment, GoogleGmailAttachmentContent } from "./types.js";
 

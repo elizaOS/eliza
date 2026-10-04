@@ -4,17 +4,19 @@
  * given, otherwise the most recent session that has a transcript.
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type UUID,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/core/meetings";
-import { transcriptPlainText } from "@elizaos/core/transcripts";
-import { type MeetingService } from "../service.js";
+import {
+  MEETING_PLATFORM_LABELS,
+  transcriptPlainText,
+} from "@elizaos/core/protocol";
+import type { MeetingService } from "../service.js";
 import { readTranscriptRow } from "../transcripts/meeting-transcript-writer.js";
 import {
   MEETING_URL_PARAMETER,

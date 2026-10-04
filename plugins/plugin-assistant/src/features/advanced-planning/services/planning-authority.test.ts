@@ -1,7 +1,7 @@
 /** Exercises plan authority against the runtime's real SQLite role store. */
 
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { PlanningService } from "./planning-service.ts";
 

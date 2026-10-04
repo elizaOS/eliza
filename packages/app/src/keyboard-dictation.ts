@@ -15,17 +15,15 @@
  * the in-app overlay AND as an `error` handoff record the keyboard renders —
  * never a silent no-op.
  */
-
-import {
-  getLiveActivityPlugin,
-  type LiveActivityPluginLike,
-} from "@elizaos/ui/bridge";
-import { logger } from "@elizaos/ui/logger";
 import {
   createVoiceCapture,
+  getLiveActivityPlugin,
+  type LiveActivityPluginLike,
+  logger,
   type VoiceCaptureFactoryOptions,
   type VoiceCaptureHandle,
-} from "@elizaos/ui/voice";
+} from "@elizaos/ui";
+
 import {
   getKeyboardDictationBridge,
   type KeyboardDictationBridge,

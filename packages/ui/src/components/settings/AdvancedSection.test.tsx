@@ -26,7 +26,26 @@ const { appValue, clientMock } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../state", () => {
+vi.mock("../../state/useApp", () => {
+  Object.assign(appValue, {
+    t: (key: string) => key,
+    exportBusy: false,
+    exportPassword: "",
+    exportIncludeLogs: false,
+    exportError: null,
+    exportSuccess: null,
+    importBusy: false,
+    importPassword: "",
+    importFile: null,
+    importError: null,
+    importSuccess: null,
+    handleAgentExport: vi.fn(),
+    handleAgentImport: vi.fn(),
+    setState: vi.fn(),
+  });
+  return { useApp: () => appValue };
+});
+vi.mock("../../state/app-store", () => {
   Object.assign(appValue, {
     t: (key: string) => key,
     exportBusy: false,
@@ -44,7 +63,6 @@ vi.mock("../../state", () => {
     setState: vi.fn(),
   });
   return {
-    useApp: () => appValue,
     useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
       sel(appValue),
     useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
@@ -52,9 +70,7 @@ vi.mock("../../state", () => {
   };
 });
 
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 import { AdvancedSection } from "./AdvancedSection";
 

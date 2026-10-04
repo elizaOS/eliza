@@ -1,8 +1,6 @@
 /** Durable begin/stage/finish/abort repository for one restore-v3 candidate. */
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
-import { parseAgentBackupManifestV3 } from "@elizaos/core/contracts/agent-backup-manifest-v3";
 import {
   AgentBackupRestoreV3ComponentReceiptSchema,
   type AgentBackupRestoreV3IsolatedCandidateStaging,
@@ -12,10 +10,12 @@ import {
   AgentBackupRestoreV3StageRecordReceiptSchema,
   type AgentBackupRestoreV3StagingSession,
   canonicalizeAgentBackupRestoreV3SourceAuthority,
+  parseAgentBackupManifestV3,
   parseAgentBackupRestoreV3AuthorityFence,
   parseAgentBackupRestoreV3SourceAuthority,
   parseAgentBackupRestoreV3StagingSession,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";

@@ -1,3 +1,4 @@
+import { isJsonObject } from "./canonical.js";
 /**
  * One-shot Claude Agent SDK completion adapter. Every call creates and closes
  * a fresh SDK query; temporary MCP handlers only capture proposed tool calls.
@@ -816,25 +817,6 @@ function jsonObjectFromToolArguments(
     );
   }
   return args;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return false;
-  return Object.values(value).every(isJsonValue);
-}
-
-function isJsonValue(value: unknown): boolean {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    (typeof value === "number" && Number.isFinite(value))
-  ) {
-    return true;
-  }
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return isJsonObject(value);
 }
 
 function parseUsage(value: unknown): CompletionUsage {

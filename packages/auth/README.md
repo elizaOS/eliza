@@ -9,6 +9,7 @@ credential storage. Keep credentials in the trusted host; never log them.
 | --- | --- |
 | `@elizaos/auth` | Browser-safe login client, types, chain metadata and signature verification |
 | `@elizaos/auth/auth` | Account storage, provider login and serialized credential refresh |
+| `@elizaos/auth/accounts` | Node-only linked-account selection, usage accounting and credential bridges |
 | `@elizaos/auth/providers` | Provider credential verification and usage adapters |
 | `@elizaos/auth/vault` | Encrypted credential vault |
 | `@elizaos/auth/kms` | Key management adapters |

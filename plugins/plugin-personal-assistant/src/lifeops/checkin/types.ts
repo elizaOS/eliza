@@ -48,6 +48,7 @@ export interface HabitSummary {
 }
 
 export type CheckinBriefingSectionKey =
+  | "x"
   | "x_dms"
   | "x_timeline"
   | "x_mentions"
@@ -86,6 +87,8 @@ export interface CheckinBriefingSection {
   readonly title: string;
   readonly summary: string;
   readonly items: readonly CheckinBriefingItem[];
+  /** Some selected accounts were checked; error diagnostics still describe the others. */
+  readonly coverage?: "partial";
   readonly error: string | null;
 }
 

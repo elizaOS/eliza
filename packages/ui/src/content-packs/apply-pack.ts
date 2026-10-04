@@ -8,7 +8,7 @@
 import type {
   ContentPackColorScheme,
   ResolvedContentPack,
-} from "@elizaos/core/contracts/content-pack";
+} from "@elizaos/contracts";
 import { applyThemeToDocument } from "../themes/apply-theme";
 /** Minimal state setters needed to apply a content pack. */
 export interface ContentPackApplyDeps {

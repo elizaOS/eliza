@@ -135,6 +135,8 @@ describe.skipIf(!postgresUrl)("setup Checkout resume with PostgreSQL and Stripe 
       "0428_billing_identity_anchors",
       "0429_billing_identity_backfill",
       "0430_billing_identity_references",
+      "0511_organization_plan_change_quotes",
+      "0512_organization_upgrade_dispatch",
       "0431_app_billing_deletion_dispositions",
       "0432_app_billing_deletion_disposition_guards",
       "0435_app_billing_resume_payment_progress",

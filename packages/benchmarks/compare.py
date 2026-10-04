@@ -18,7 +18,7 @@ The endpoint identifier is either:
 
 * an OpenAI-compatible base URL (e.g. ``http://localhost:8000/v1``), or
 * one of the named providers in
-  :data:`benchmarks.standard._base.PROVIDER_BASE_URLS`
+  :data:`benchmarks.suites.standard._base.PROVIDER_BASE_URLS`
   (e.g. ``openai``, ``groq``, ``cerebras``, ``elizacloud``).
 
 The harness derives a stable ``model_id`` for each endpoint from the
@@ -68,7 +68,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .lib.results_store import ResultsStore, default_db_path
-from .standard._base import (
+from .suites.standard._base import (
     BenchmarkResult,
     MockClient,
     OpenAICompatibleClient,
@@ -90,7 +90,7 @@ log = logging.getLogger("benchmarks.compare")
 class SuiteBenchmark:
     """A single benchmark slot in a suite.
 
-    ``benchmark_id`` is the Python module key under ``benchmarks.standard.*``
+    ``benchmark_id`` is the Python module key under ``benchmarks.suites.standard.*``
     (e.g. ``"mmlu"``, ``"humaneval"``). ``noise_threshold`` is the absolute
     score delta below which we treat candidate-vs-baseline as a tie.
     """
@@ -232,7 +232,7 @@ BenchmarkRunCallable = Callable[[RunRequest], BenchmarkResult]
 """Callable that produces a :class:`BenchmarkResult` for a :class:`RunRequest`.
 
 The production implementation (:func:`build_default_runner`) loads each
-adapter via ``benchmarks.standard.<id>``. Tests inject a fake that
+adapter via ``benchmarks.suites.standard.<id>``. Tests inject a fake that
 returns canned :class:`BenchmarkResult` instances.
 """
 
@@ -262,7 +262,7 @@ def _build_standard_runner(benchmark_id: str, *, mock: bool) -> object:
             f"unknown standard benchmark {benchmark_id!r} — supported: "
             + ", ".join(sorted(_STANDARD_RUNNER_CLASSES))
         )
-    module = importlib.import_module(f"benchmarks.standard.{mod_name}")
+    module = importlib.import_module(f"benchmarks.suites.standard.{mod_name}")
     cls = getattr(module, cls_name)
     if benchmark_id == "mt_bench":
         smoke = getattr(module, "SMOKE_QUESTIONS")
@@ -287,7 +287,7 @@ def _build_real_judge_for_mt_bench() -> OpenAICompatibleClient:
             "MT-Bench needs MTBENCH_JUDGE_ENDPOINT set when running through "
             "`benchmarks.compare` — pass a strong-model OpenAI-compatible URL."
         )
-    from .standard._base import HTTPOpenAICompatibleClient
+    from .suites.standard._base import HTTPOpenAICompatibleClient
 
     return HTTPOpenAICompatibleClient(
         endpoint=judge_endpoint,
@@ -303,22 +303,22 @@ def _mock_responses_for(benchmark_id: str) -> tuple[str, ...]:
     """
 
     if benchmark_id == "mmlu":
-        from .standard.mmlu import SMOKE_FIXTURES, _LETTER_OPTIONS
+        from .suites.standard.mmlu import SMOKE_FIXTURES, _LETTER_OPTIONS
 
         return tuple(
             _LETTER_OPTIONS[int(item["answer_index"])]  # type: ignore[arg-type]
             for item in SMOKE_FIXTURES
         )
     if benchmark_id == "gsm8k":
-        from .standard.gsm8k import SMOKE_FIXTURES
+        from .suites.standard.gsm8k import SMOKE_FIXTURES
 
         return tuple(str(item["answer"]) for item in SMOKE_FIXTURES)
     if benchmark_id == "humaneval":
-        from .standard.humaneval import SMOKE_FIXTURES
+        from .suites.standard.humaneval import SMOKE_FIXTURES
 
         return tuple(str(item["canonical_solution"]) for item in SMOKE_FIXTURES)
     if benchmark_id == "mt_bench":
-        from .standard.mt_bench import SMOKE_QUESTIONS
+        from .suites.standard.mt_bench import SMOKE_QUESTIONS
 
         return tuple("Mock answer." for _ in range(len(SMOKE_QUESTIONS) * 2))
     raise ValueError(f"no mock responses configured for {benchmark_id!r}")

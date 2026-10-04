@@ -353,11 +353,11 @@ def test_builds_browser_and_computer_use_cells(tmp_path: Path) -> None:
         no_docker=True,
     )
 
-    assert mind2web.command[:3] == [sys.executable, "-m", "benchmarks.mind2web"]
+    assert mind2web.command[:3] == [sys.executable, "-m", "benchmarks.suites.mind2web"]
     assert "--sample" in mind2web.command
     assert "--mock" in mind2web.command
     assert mind2web.env_overrides["ELIZA_BENCH_SKIP_CORE_PLUGINS"] == "true"
-    assert visual.command[:3] == [sys.executable, "-m", "benchmarks.visualwebbench"]
+    assert visual.command[:3] == [sys.executable, "-m", "benchmarks.suites.visualwebbench"]
     assert "--use-sample-tasks" in visual.command
     assert "--mock" in visual.command
     assert webshop.command[:3] == [sys.executable, "-m", "elizaos_webshop"]
@@ -488,7 +488,7 @@ def test_builds_nl2repo_cell_with_optional_agent_command_template(
     assert cell.command[:3] == [
         sys.executable,
         "-m",
-        "benchmarks.nl2repo.adapter_matrix",
+        "benchmarks.suites.nl2repo.adapter_matrix",
     ]
     assert "--task-agent" in cell.command
     assert "opencode" in cell.command
@@ -552,7 +552,7 @@ def test_standard_humaneval_cell_uses_builtin_agent_command_by_default(
     assert cell.command[:3] == [
         sys.executable,
         "-m",
-        "benchmarks.standard.code_agent_humaneval",
+        "benchmarks.suites.standard.code_agent_humaneval",
     ]
     assert "--trajectory-dir" in cell.command
     template = cell.command[cell.command.index("--agent-command-template") + 1]
@@ -578,7 +578,7 @@ def test_mint_cell_runs_coding_slice_through_matrix_wrapper(tmp_path: Path) -> N
     assert cell.command[:3] == [
         sys.executable,
         "-m",
-        "benchmarks.mint.code_agent_matrix",
+        "benchmarks.suites.mint.code_agent_matrix",
     ]
     assert "--task-agent" in cell.command
     assert "opencode" in cell.command
@@ -624,7 +624,7 @@ def test_agentbench_cell_runs_matrix_wrapper(tmp_path: Path) -> None:
     assert cell.command[:3] == [
         sys.executable,
         "-m",
-        "benchmarks.agentbench.code_agent_matrix",
+        "benchmarks.suites.agentbench.code_agent_matrix",
     ]
     assert "--task-agent" in cell.command
     assert "opencode" in cell.command
@@ -3638,7 +3638,7 @@ def test_summarizes_existing_run_artifacts(tmp_path: Path) -> None:
             {
                 "benchmark": "swe_bench",
                 "adapter": "elizaos",
-                "command": ["python", "-m", "benchmarks.swe_bench"],
+                "command": ["python", "-m", "benchmarks.suites.swe_bench"],
                 "output_dir": str(output_dir),
             }
         ),
@@ -3671,7 +3671,7 @@ def test_summarize_preserves_previous_live_mode_for_required_stats_gate(
                 {
                     "benchmark": "webshop",
                     "adapter": adapter,
-                    "command": ["python", "-m", "benchmarks.webshop"],
+                    "command": ["python", "-m", "benchmarks.suites.webshop"],
                     "output_dir": str(output_dir),
                 }
             ),
@@ -5165,5 +5165,5 @@ def test_agentbench_matrix_module_is_importable():
     import importlib.util
 
     assert (
-        importlib.util.find_spec("benchmarks.agentbench.code_agent_matrix") is not None
+        importlib.util.find_spec("benchmarks.suites.agentbench.code_agent_matrix") is not None
     )

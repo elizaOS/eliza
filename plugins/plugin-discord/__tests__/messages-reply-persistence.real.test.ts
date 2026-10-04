@@ -1,12 +1,12 @@
 /** Verifies canonical Discord reply persistence with real AgentRuntime and PGlite, including insertion races and ownership failures. */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDiscordMessageMemoryOnce } from "../messages.ts";
 import {
 	createTestRuntime,
 	type TestRuntimeResult,
-} from "../test/helpers/pglite-runtime.ts";
+} from "@elizaos/testing/runtime";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDiscordMessageMemoryOnce } from "../messages.ts";
 
 let fixture: TestRuntimeResult;
 let roomId: UUID;

@@ -64,7 +64,11 @@ export async function restoreConversationsFromDb(
     if (!convId || conversations.has(convId)) continue;
     if (deletedConversationIds.has(convId)) continue;
 
-    conversations.set(convId, await conversationMetaFromRoom(rt, room, convId));
+    const conv = await conversationMetaFromRoom(rt, room, convId);
+    // A delete or another restore can land while the room is read back.
+    if (deletedConversationIds.has(convId) || conversations.has(convId))
+      continue;
+    conversations.set(convId, conv);
     restored++;
   }
 
@@ -123,6 +127,11 @@ export async function restoreConversationFromDb(
     return undefined;
   }
   const conv = await conversationMetaFromRoom(rt, room, convId);
+  // Re-check after the reads: a DELETE tombstones the id meanwhile, and a
+  // concurrent restore of the same id must share one registered object.
+  if (target.deletedConversationIds.has(convId)) return undefined;
+  const registered = target.conversations.get(convId);
+  if (registered) return registered;
   target.conversations.set(convId, conv);
   return conv;
 }

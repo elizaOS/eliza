@@ -7,7 +7,8 @@
  * uses the shared plugin-route matcher for lazy-load and public-route gates.
  */
 
-import { type AgentRuntime, getHttpRuntime, type Route } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import { getHttpRuntime, type Route } from "@elizaos/host/protocol";
 
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 

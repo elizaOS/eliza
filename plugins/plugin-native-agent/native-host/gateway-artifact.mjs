@@ -24,6 +24,9 @@ export function verifyGatewayArtifact({
   productFiles,
   upstreamFiles,
   dnsDependencies,
+  productOutputDirectory = gatewayDirectory,
+  verifyMobileDns,
+  extraGeneratedFiles = [],
 }) {
   const gateway = path.resolve(gatewayDirectory);
   const expectedCommit = sourceCommit;
@@ -40,30 +43,33 @@ export function verifyGatewayArtifact({
     );
   const hashes = provenance.gatewayHashes;
   const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-  for (const [key, relative] of [
-    ["mobileDnsSource", "mobile-dns.ts"],
-    ["mobileDnsBudgetSource", "mobile-dns-decode-budget.ts"],
-  ]) {
-    if (
-      hashes?.[key] !==
-      hash(
-        fs.readFileSync(
-          path.join(sourceDirectory, "packages/agent/src/runtime", relative),
-        ),
+  if (verifyMobileDns) verifyMobileDns(path.join(gateway, "mobile-dns.mjs"));
+  else {
+    for (const [key, relative] of [
+      ["mobileDnsSource", "mobile-dns.ts"],
+      ["mobileDnsBudgetSource", "mobile-dns-decode-budget.ts"],
+    ]) {
+      if (
+        hashes?.[key] !==
+        hash(
+          fs.readFileSync(
+            path.join(sourceDirectory, "packages/agent/src/runtime", relative),
+          ),
+        )
       )
-    )
-      throw new GatewayArtifactError(
-        "Android DNS source does not match the pinned upstream source",
-      );
-  }
-  for (const relative of dnsDependencies) {
-    if (
-      hashes?.[`dns:${relative}`] !==
-      hash(fs.readFileSync(path.join(sourceDirectory, relative)))
-    )
-      throw new GatewayArtifactError(
-        `Android DNS dependency mismatch: ${relative}`,
-      );
+        throw new GatewayArtifactError(
+          "Android DNS source does not match the pinned upstream source",
+        );
+    }
+    for (const relative of dnsDependencies) {
+      if (
+        hashes?.[`dns:${relative}`] !==
+        hash(fs.readFileSync(path.join(sourceDirectory, relative)))
+      )
+        throw new GatewayArtifactError(
+          `Android DNS dependency mismatch: ${relative}`,
+        );
+    }
   }
   for (const relative of upstreamFiles) {
     const expected = hash(
@@ -83,7 +89,7 @@ export function verifyGatewayArtifact({
     const current = hash(fs.readFileSync(path.join(productDirectory, name)));
     if (
       hashes?.[name] !== current ||
-      hash(fs.readFileSync(path.join(gateway, name))) !== current
+      hash(fs.readFileSync(path.join(productOutputDirectory, name))) !== current
     ) {
       throw new GatewayArtifactError(
         `Stale Android gateway: ${name}; restage the gateway before packaging`,
@@ -95,6 +101,7 @@ export function verifyGatewayArtifact({
     "task-runtime.mjs.json",
     "mobile-dns.mjs",
     "bootstrap.mjs",
+    ...extraGeneratedFiles,
   ]) {
     if (
       !hashes?.[name] ||
@@ -118,25 +125,24 @@ export function stageGatewayArtifact({
   buildTaskRuntime,
   environment,
   bunExecutable = "bun",
+  productOutputDirectory = gatewayDirectory,
+  buildMobileDns,
+  gatewayEntrypoint = "./local-agent-gateway.mjs",
+  extraGeneratedFiles = [],
+  stageAdditionalFiles,
 }) {
   const source = path.resolve(sourceDirectory);
   const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
   const env = environment;
-  const dnsSource = fs.readFileSync(
-    path.join(source, "packages/agent/src/runtime/mobile-dns.ts"),
-    "utf8",
-  );
-  const budgetSource = fs.readFileSync(
-    path.join(source, "packages/agent/src/runtime/mobile-dns-decode-budget.ts"),
-    "utf8",
-  );
   const gateway = path.resolve(gatewayDirectory);
   fs.mkdirSync(gateway, { recursive: true });
   const hashes = {};
   for (const name of productFiles) {
     const bytes = fs.readFileSync(path.join(productDirectory, name));
-    fs.mkdirSync(path.dirname(path.join(gateway, name)), { recursive: true });
-    fs.writeFileSync(path.join(gateway, name), bytes);
+    fs.mkdirSync(path.dirname(path.join(productOutputDirectory, name)), {
+      recursive: true,
+    });
+    fs.writeFileSync(path.join(productOutputDirectory, name), bytes);
     hashes[name] = hash(bytes);
   }
   for (const relative of upstreamFiles) {
@@ -149,29 +155,46 @@ export function stageGatewayArtifact({
   buildTaskRuntime(path.join(gateway, "task-runtime.mjs"));
   for (const name of ["task-runtime.mjs", "task-runtime.mjs.json"])
     hashes[name] = hash(fs.readFileSync(path.join(gateway, name)));
-  hashes.mobileDnsSource = hash(dnsSource);
-  hashes.mobileDnsBudgetSource = hash(budgetSource);
-  for (const relative of dnsDependencies)
-    hashes[`dns:${relative}`] = hash(
-      fs.readFileSync(path.join(source, relative)),
-    );
-  // Bundle the reviewed entrypoint and its narrow exported dependencies unchanged.
-  execFileSync(
-    bunExecutable,
-    [
-      "build",
+  if (buildMobileDns) buildMobileDns(path.join(gateway, "mobile-dns.mjs"));
+  else {
+    const dnsSource = fs.readFileSync(
       path.join(source, "packages/agent/src/runtime/mobile-dns.ts"),
-      "--target=bun",
-      "--outfile",
-      path.join(gateway, "mobile-dns.mjs"),
-    ],
-    { cwd: source, env, stdio: "inherit" },
-  );
+    );
+    const budgetSource = fs.readFileSync(
+      path.join(
+        source,
+        "packages/agent/src/runtime/mobile-dns-decode-budget.ts",
+      ),
+    );
+    hashes.mobileDnsSource = hash(dnsSource);
+    hashes.mobileDnsBudgetSource = hash(budgetSource);
+    for (const relative of dnsDependencies)
+      hashes[`dns:${relative}`] = hash(
+        fs.readFileSync(path.join(source, relative)),
+      );
+    // Bundle the reviewed entrypoint and its narrow exported dependencies unchanged.
+    execFileSync(
+      bunExecutable,
+      [
+        "build",
+        path.join(source, "packages/agent/src/runtime/mobile-dns.ts"),
+        "--target=bun",
+        "--outfile",
+        path.join(gateway, "mobile-dns.mjs"),
+      ],
+      { cwd: source, env, stdio: "inherit" },
+    );
+  }
   fs.writeFileSync(
     path.join(gateway, "bootstrap.mjs"),
-    'import { configureMobileDnsIfNeeded } from "./mobile-dns.mjs";\nconfigureMobileDnsIfNeeded();\nprocess.argv[1] = new URL("./local-agent-gateway.mjs", import.meta.url).pathname;\nawait import("./local-agent-gateway.mjs");\n',
+    `import { configureMobileDnsIfNeeded } from "./mobile-dns.mjs";\nconfigureMobileDnsIfNeeded();\nprocess.argv[1] = new URL(${JSON.stringify(gatewayEntrypoint)}, import.meta.url).pathname;\nawait import(${JSON.stringify(gatewayEntrypoint)});\n`,
   );
-  for (const name of ["mobile-dns.mjs", "bootstrap.mjs"])
+  stageAdditionalFiles?.(gateway);
+  for (const name of [
+    "mobile-dns.mjs",
+    "bootstrap.mjs",
+    ...extraGeneratedFiles,
+  ])
     hashes[name] = hash(fs.readFileSync(path.join(gateway, name)));
   return hashes;
 }

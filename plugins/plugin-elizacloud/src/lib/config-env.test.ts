@@ -1,6 +1,6 @@
 /**
  * The cloud plugin's config.env writer is the process-wide canonical writer
- * (re-exported by `@elizaos/agent/api/config-env`). It must enforce the core
+ * shared by agent and cloud writers. It must enforce the core
  * spawn-env denylist and owner-only state-dir hardening, and serialise
  * concurrent writes so no update is lost.
  */

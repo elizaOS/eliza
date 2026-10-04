@@ -7,12 +7,12 @@
  * the right context instead of a blank slate.
  */
 
-import { isElizaCloudLinkedInConfig } from "@elizaos/core/contracts/cloud-topology";
 import {
+  isElizaCloudLinkedInConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/host/protocol";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import { asRecord } from "./config-readers";

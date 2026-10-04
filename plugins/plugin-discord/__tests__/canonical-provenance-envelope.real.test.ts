@@ -28,7 +28,7 @@ import {
 import {
 	createTestRuntimeWithModelProvider,
 	type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import type { Message } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,7 +1,7 @@
 /** Strict same-machine network trust classification. Hosts supply their authorization policy. */
 import type http from "node:http";
 import { BlockList, isIP } from "node:net";
-import { isLoopbackBindHost } from "../runtime-env.js";
+import { isLoopbackBindHost } from "./bind-host.js";
 export interface LocalRequestTrustPolicy {
 	localAuthRequired: boolean;
 	cloudProvisioned: boolean;

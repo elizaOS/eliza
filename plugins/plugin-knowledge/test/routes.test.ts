@@ -1,5 +1,5 @@
 /** Route-handler tests for the documents REST surface, driving handleDocumentsRoutes against a mocked document service and fetch impl. */
-import type { AccessContext, UUID } from "@elizaos/core";
+import { type AccessContext, ElizaError, type UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentRouteContext } from "../src/routes.js";
 import {
@@ -635,7 +635,7 @@ describe("document routes", () => {
 
   it.each(
     (["single", "bulk"] as const).flatMap((uploadKind) =>
-      (["note.mdx", "Notes.Mdx"] as const).map(
+      (["note.mdx", "Notes.Mdx", "notes.md", "README.MD"] as const).map(
         (filename) => [uploadKind, filename] as const,
       ),
     ),
@@ -695,6 +695,40 @@ describe("document routes", () => {
       );
     },
   );
+
+  it("answers a document scope conflict with 409 on upload and URL import", async () => {
+    // Re-adding existing content under a different visibility.
+    const conflict = new ElizaError(
+      "A document with this content already exists with different visibility",
+      { code: "DOCUMENT_SCOPE_CONFLICT" },
+    );
+    addDocument.mockRejectedValueOnce(conflict);
+    const upload = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      body: { content: "shared notes", filename: "notes.txt" },
+    });
+    await expect(handleDocumentsRoutes(upload.ctx)).resolves.toBe(true);
+    expect(upload.res.statusCode).toBe(409);
+    expect(upload.res.body).toEqual({ error: conflict.message });
+
+    addDocument.mockRejectedValueOnce(conflict);
+    __setDocumentFetchImplForTests(
+      async () =>
+        new Response("shared notes", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+    );
+    const imported = buildCtx({
+      method: "POST",
+      pathname: "/api/documents/url",
+      body: { url: "http://93.184.216.34/notes.txt" },
+    });
+    await expect(handleDocumentsRoutes(imported.ctx)).resolves.toBe(true);
+    expect(imported.res.statusCode).toBe(409);
+    expect(imported.res.body).toEqual({ error: conflict.message });
+  });
 
   it("rejects image uploads when the image description model fails", async () => {
     const useModel = vi.fn(async () => {

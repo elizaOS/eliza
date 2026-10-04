@@ -25,13 +25,13 @@
  * structural fields on the frozen `ScheduledTask` schema.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   MEETING_PLATFORM_LABELS,
   type ParsedMeetingUrl,
   parseMeetingUrl,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
 import {
   createAnchorRegistry,
   getAnchorRegistry,

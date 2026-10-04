@@ -34,7 +34,7 @@ vi.mock("../instances/lib/data/credits", () => ({
   useCreditsBalance: () => creditsState,
 }));
 
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 import { DashboardHomePage } from "./DashboardHomePage";
 
 function renderHome(): void {

@@ -36,10 +36,9 @@ function isModuleResolutionError(err: unknown): boolean {
  */
 export function isModuleNotFoundError(
   err: unknown,
-  specifier?: string,
+  specifier: string,
 ): boolean {
   if (!isModuleResolutionError(err)) return false;
-  if (!specifier) return true; // no specifier context: preserve legacy behavior
 
   const message = (err as { message?: unknown }).message;
   if (typeof message !== "string") return false;
