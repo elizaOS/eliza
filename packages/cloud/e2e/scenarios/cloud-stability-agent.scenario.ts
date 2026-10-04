@@ -24,7 +24,7 @@ import type { ScenarioContext } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
 
 const request =
-  "Remind me at 9 AM UTC on January 2, 2099 to review the synthetic Cloud inbox.";
+  "Preview a reminder for 9 AM UTC on January 2, 2099 to review the synthetic Cloud inbox. Do not save it until I confirm.";
 const dueAt = "2099-01-02T09:00:00.000Z";
 const tickAt = "2099-01-02T09:01:00.000Z";
 const reminderArgs = {
