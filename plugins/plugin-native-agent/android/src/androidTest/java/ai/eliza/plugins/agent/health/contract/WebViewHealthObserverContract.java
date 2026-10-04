@@ -52,7 +52,7 @@ public final class WebViewHealthObserverContract {
  }
  private static void rejected(Future<JSONObject> result)throws Exception{
   try{result.get(3,TimeUnit.SECONDS);throw new AssertionError("Stale or invalid observation accepted");}
-  catch(ExecutionException error){check(error.getCause() instanceof IOException||error.getCause() instanceof TimeoutException,"Unexpected observation failure: "+error.getCause());}
+  catch(ExecutionException error){Throwable cause=error;while(cause instanceof ExecutionException&&cause.getCause()!=null)cause=cause.getCause();check(cause instanceof IOException||cause instanceof TimeoutException,"Unexpected observation failure: "+cause);}
  }
  public static void runLifecycle(Context context)throws Exception {
   Activity[] owner=new Activity[1];DeferredView[] views=new DeferredView[2];
