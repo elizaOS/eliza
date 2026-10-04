@@ -190,6 +190,16 @@ consent and current-owner fences; importing it starts no collection. Run the
 native-host tests for real SQLite/HTTP evidence, including stop during an
 unanswered request. These modules do not authorize enrolling real participants.
 
+`native-host/research-configuration.mjs` owns private research configuration
+initialization and offline key rotation. Hosts supply retention, capacity,
+operator identity and the existing measurement-policy store factory. Rotation
+uses the canonical database lease and retains previous/next recovery files before
+changing encrypted SQLite records; it refuses to overwrite prior recovery files.
+The helper never enrolls participants or returns plaintext operator credentials.
+After validating the new key against retained data and backups, the operator
+must retire the private recovery files explicitly. Until then they retain old
+key material and block another rotation; rotation alone does not remove it.
+
 External product APK tests can compose `scripts/lib/isolated-android-test.mjs`.
 Supply explicit package/test identities, ABI, fixture AVD name, Android user, APK
 paths and a report directory. The host must own the disposable AVD and any
