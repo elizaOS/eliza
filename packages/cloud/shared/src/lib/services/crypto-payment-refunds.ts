@@ -40,6 +40,8 @@ export type CryptoRefundErrorCode =
   | "CRYPTO_REFUND_PAYMENT_NOT_CONFIRMED"
   | "CRYPTO_REFUND_RECIPIENT_MISMATCH"
   | "CRYPTO_REFUND_X402_PAYER_UNBOUND"
+  | "CRYPTO_REFUND_INVALID_KEY"
+  | "CRYPTO_REFUND_KEY_AMOUNT_MISMATCH"
   | "CRYPTO_REFUND_INVALID_AMOUNT"
   | "CRYPTO_REFUND_EXCEEDS_PAYMENT";
 
@@ -121,7 +123,7 @@ export class CryptoPaymentRefundsService {
   /** Refunds part or all of a crypto or x402 payment as Cloud credits. */
   async refundAsCloudCredits(input: RefundCryptoPaymentInput): Promise<CryptoPaymentRefund> {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.refundKey)) {
-      throw new CryptoRefundError("CRYPTO_REFUND_INVALID_AMOUNT", "Refund key is invalid");
+      throw new CryptoRefundError("CRYPTO_REFUND_INVALID_KEY", "Refund key is invalid");
     }
     const amount = decimalOrNull(input.amountUsd);
     if (!amount || !amount.gt(0) || amount.decimalPlaces() > 6) {
@@ -192,7 +194,7 @@ export class CryptoPaymentRefundsService {
       if (prior?.replayId) {
         if (!new Decimal(prior.replayAmount ?? "0").eq(amount)) {
           throw new CryptoRefundError(
-            "CRYPTO_REFUND_INVALID_AMOUNT",
+            "CRYPTO_REFUND_KEY_AMOUNT_MISMATCH",
             "Refund key was already used for a different amount",
             { paymentId: input.paymentId },
           );

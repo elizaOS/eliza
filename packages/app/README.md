@@ -146,3 +146,10 @@ captures it when constructing the secure store; an unset or empty value uses
 `ai.elizaos.app.secure-store`. An explicit factory socket path takes precedence.
 The embedding app must start the corresponding app-UID-only Keystore broker;
 this option changes client routing, not broker permissions or availability.
+
+## External Android consumers
+
+Shared local speech sources and reproducible runtime/model tooling are documented
+in [local speech](scripts/local-speech/README.md). The source-export resolver in
+`scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
+for independent Bun hosts; consumers retain their source pin, credentials and policy.
