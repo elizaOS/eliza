@@ -179,6 +179,12 @@ export interface AgentHostBridge {
     req: HttpIncomingMessage,
     res: HttpServerResponse,
   ): Promise<boolean>;
+  /** Host-owned pairing/session lifecycle, before the agent fallback auth routes. */
+  handleAuthRoutes?(
+    req: HttpIncomingMessage,
+    res: HttpServerResponse,
+    runtime: AgentRuntime | null,
+  ): Promise<boolean>;
   /**
    * One-shot desktop session bootstrap. The host owns browser-session
    * persistence, while the agent owns the packaged HTTP listener, so this

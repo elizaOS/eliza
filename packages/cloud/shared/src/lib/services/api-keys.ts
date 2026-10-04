@@ -873,6 +873,58 @@ export class ApiKeysService {
     return persistedResult;
   }
 
+  /** Exact-secret self-revocation for browser-issued CLI and standard keys.
+   * The primary hash lookup is also the proof for a response-loss retry. */
+  async revokePresentedStandardCredential(
+    secret: string,
+    audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
+  ): Promise<MobileApiKeySelfRevocationResult | null> {
+    if (!/^eliza_[0-9a-f]{64}$/.test(secret)) return null;
+    const hash = crypto.createHash("sha256").update(secret).digest("hex");
+    const existing = await apiKeysRepository.findByHashConsistent(hash);
+    if (!existing || existing.source_app_id) return null;
+    // Fence inference before mutation, and on every retry after response loss.
+    await revokeInferenceApiKey(existing.organization_id, existing.id);
+    const resultFor = (
+      row: ApiKey | undefined,
+      revokedNow: boolean,
+    ): MobileApiKeySelfRevocationResult | null =>
+      row && !row.is_active && row.deleted_at && !row.source_app_id
+        ? {
+            receipt: {
+              credentialId: row.id,
+              revokedAt: new Date(row.deleted_at).toISOString(),
+              status: "revoked",
+            },
+            userId: row.user_id,
+            organizationId: row.organization_id,
+            revokedNow,
+          }
+        : null;
+    let result = resultFor(existing, false);
+    if (!result) {
+      const row = await withMutationAudit(
+        (tx) =>
+          apiKeysRepository.tombstoneExactStandardCredential(existing.id, hash, new Date(), tx),
+        audit
+          ? async (tx, row) => {
+              const value = resultFor(row, true);
+              if (value) await audit(tx, value);
+            }
+          : undefined,
+      );
+      result =
+        resultFor(row, true) ??
+        resultFor(await apiKeysRepository.findByHashConsistent(hash), false);
+    }
+    if (!result)
+      throw new ElizaError("Credential revocation could not be confirmed", {
+        code: "API_KEY_REVOCATION_UNCONFIRMED",
+      });
+    await this.invalidateCache(hash);
+    return result;
+  }
+
   /** Revokes only the exact active mobile row proven at the request boundary. */
   async revokeExactMobileCredential(
     credential: Pick<ApiKey, "id" | "key_hash" | "source_app_id">,

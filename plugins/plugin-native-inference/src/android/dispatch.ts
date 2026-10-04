@@ -684,7 +684,10 @@ export async function dispatchBufferedRequest(
   }
   const method = normalizeMethod(payload.method);
   const headers = normalizeHeaderRecord(payload.headers);
-  const denied = androidRequestAuthorization(headers);
+  // The full kernel validates revocable sessions; the legacy dispatcher accepts only the static token.
+  const denied = coreRoutes?.fullApiKernel
+    ? null
+    : androidRequestAuthorization(headers);
   if (denied) return denied;
   const { pathname, query } = splitPathAndQuery(rawPath);
   const wake = await directAndroidWakeRoute(
@@ -697,12 +700,9 @@ export async function dispatchBufferedRequest(
   if (wake) return wake;
   const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
   if (direct) return direct;
-  const notif = await directAndroidNotificationRoute(
-    runtime,
-    method,
-    pathname,
-    query,
-  );
+  const notif = coreRoutes?.fullApiKernel
+    ? null
+    : await directAndroidNotificationRoute(runtime, method, pathname, query);
   if (notif) return notif;
   const result = await dispatchRoute({
     runtime,
@@ -748,7 +748,10 @@ export async function dispatchStreamingRequest(
   }
   const method = normalizeMethod(payload.method);
   const headers = normalizeHeaderRecord(payload.headers);
-  const denied = androidRequestAuthorization(headers);
+  // The full kernel validates revocable sessions; the legacy dispatcher accepts only the static token.
+  const denied = coreRoutes?.fullApiKernel
+    ? null
+    : androidRequestAuthorization(headers);
   if (denied) {
     sink.emitResponse({
       status: denied.status,

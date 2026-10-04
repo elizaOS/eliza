@@ -22,10 +22,12 @@ import {
   getDirectActionRoutingRules,
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
+  runResponseHandlerEvaluators,
   stringToUuid,
 } from "@elizaos/core";
 import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
@@ -741,6 +743,199 @@ describe(DIRECT_ROUTE_EVALUATOR_NAME, () => {
       ...overrides,
     };
   }
+
+  it.each([{ candidateActions: [] }, { candidateActions: undefined }])(
+    "seeds an unresolved tool-required reminder plan: %j",
+    async ({ candidateActions }) => {
+      const runtime = testRuntime.runtime;
+      __resetDirectActionRoutingRulesForTests(runtime);
+      runtime.actions = [ownerReminderAction()];
+      registerDirectActionRoutingRule(
+        runtime,
+        createOwnerReminderDirectRoutingRule(),
+      );
+      const intents = [
+        "Create an in-app reminder in two minutes",
+        "Read my next Calendar event",
+      ];
+      const context = makeContext(
+        {
+          processMessage: "RESPOND",
+          thought: "",
+          plan: {
+            contexts: ["general", "calendar"],
+            requiresTool: true,
+            candidateActions,
+            intents,
+            reply: "On it.",
+          },
+        },
+        {
+          userText:
+            "Remind me in two minutes to check the cobalt case, once, in-app only. Also read my next Calendar event.",
+        },
+      );
+      const evaluator = getEvaluator();
+      expect(await evaluator.shouldRun(context)).toBe(true);
+      const result = await runResponseHandlerEvaluators({
+        ...context,
+        evaluators: [evaluator],
+      });
+      expect(result.errors).toEqual([]);
+      expect(context.messageHandler.plan.candidateActions).toEqual([
+        "OWNER_REMINDERS",
+      ]);
+      expect(context.messageHandler.plan.contexts).toEqual([
+        "general",
+        "calendar",
+        "tasks",
+        "productivity",
+      ]);
+      expect(context.messageHandler.plan.intents).toEqual(intents);
+      expect(context.messageHandler.plan.reply).toBeUndefined();
+      expect(context.messageHandler.plan.deterministicToolCall).toBeUndefined();
+    },
+  );
+
+  it("does not replace a named unrelated tool surface", async () => {
+    const runtime = testRuntime.runtime;
+    __resetDirectActionRoutingRulesForTests(runtime);
+    runtime.actions = [ownerReminderAction()];
+    registerDirectActionRoutingRule(
+      runtime,
+      createOwnerReminderDirectRoutingRule(),
+    );
+    const context = makeContext(
+      {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["calendar"],
+          requiresTool: true,
+          candidateActions: ["CALENDAR_READ"],
+          intents: ["Read my next event"],
+          reply: "On it.",
+        },
+      },
+      { userText: "Remind me in two minutes to check the cobalt case." },
+    );
+    const before = structuredClone(context.messageHandler);
+    const evaluator = getEvaluator();
+    expect(await evaluator.shouldRun(context)).toBe(false);
+    await runResponseHandlerEvaluators({ ...context, evaluators: [evaluator] });
+    expect(context.messageHandler).toEqual(before);
+  });
+
+  it.each([
+    'Explain "remind me in two minutes to check the cobalt case".',
+    "Do not remind me in two minutes to check the cobalt case.",
+    "Remind me in two minutes to check the cobalt case; actually cancel that request.",
+    'Yesterday I said "remind me in two minutes to check the cobalt case".',
+    "Remind me what my next Calendar event is.",
+    "Remind Pat in two minutes to check the cobalt case.",
+  ])("does not seed a non-command reminder reference: %s", async (userText) => {
+    const runtime = testRuntime.runtime;
+    __resetDirectActionRoutingRulesForTests(runtime);
+    runtime.actions = [ownerReminderAction()];
+    registerDirectActionRoutingRule(
+      runtime,
+      createOwnerReminderDirectRoutingRule(),
+    );
+    const context = makeContext(
+      {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["general"],
+          requiresTool: true,
+          candidateActions: [],
+        },
+      },
+      { userText },
+    );
+    expect(await getEvaluator().shouldRun(context)).toBe(false);
+  });
+
+  it.each(["STOP", "IGNORE"] as const)(
+    "does not seed a %s turn",
+    async (processMessage) => {
+      const runtime = testRuntime.runtime;
+      __resetDirectActionRoutingRulesForTests(runtime);
+      runtime.actions = [ownerReminderAction()];
+      registerDirectActionRoutingRule(
+        runtime,
+        createOwnerReminderDirectRoutingRule(),
+      );
+      const context = makeContext(
+        {
+          processMessage,
+          thought: "",
+          plan: {
+            contexts: ["general"],
+            requiresTool: true,
+            candidateActions: [],
+          },
+        },
+        { userText: "Remind me in two minutes to check the cobalt case." },
+      );
+      expect(await getEvaluator().shouldRun(context)).toBe(false);
+    },
+  );
+
+  it.each([
+    "missing action",
+    "wrong tags",
+    "role denied",
+    "connector denied",
+    "validation denied",
+    "validation throws",
+  ])("does not seed unresolved work when %s", async (failure) => {
+    const runtime = testRuntime.runtime;
+    __resetDirectActionRoutingRulesForTests(runtime);
+    const action = ownerReminderAction(
+      failure === "wrong tags"
+        ? { tags: ["domain:reminders"] }
+        : failure === "role denied"
+          ? { roleGate: { minRole: "OWNER" } }
+          : failure === "connector denied"
+            ? {
+                connectorAccountPolicy: {
+                  provider: "qa-unavailable-connector",
+                  required: true,
+                },
+              }
+            : failure === "validation denied"
+              ? { validate: async () => false }
+              : failure === "validation throws"
+                ? {
+                    validate: async () => {
+                      throw new Error("QA unavailable validation");
+                    },
+                  }
+                : {},
+    );
+    runtime.actions = failure === "missing action" ? [] : [action];
+    registerDirectActionRoutingRule(
+      runtime,
+      createOwnerReminderDirectRoutingRule(),
+    );
+    const context = makeContext(
+      {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["general"],
+          requiresTool: true,
+          candidateActions: [],
+        },
+      },
+      { userText: "Remind me in two minutes to check the cobalt case." },
+    );
+    const evaluator = getEvaluator();
+    expect(await evaluator.shouldRun(context)).toBe(true);
+    expect(await evaluator.evaluate(context)).toBeUndefined();
+    expect(context.messageHandler.plan.candidateActions).toEqual([]);
+  });
 
   it("replaces a Stage-1 TRIGGER_CREATE candidate only after owner gates pass", async () => {
     const runtime = testRuntime.runtime;

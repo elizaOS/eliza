@@ -29,6 +29,13 @@ consumes each target once, and requires a fresh readback before reporting a
 verified outcome. It does not interpret bill policy or manufacture a success
 from a click receipt. Ordinary fills cannot be used as a protected OTP path.
 
+For unknown operations, an optional trusted `reconcile` callback interprets a
+fresh snapshot against durable host provenance. The actuator creates a new native
+binding with an empty action-target allowlist, checks task identity and revision
+at every await boundary, and never caches the readback as an action observation.
+Only an explicit later Resume can establish a fresh ordinary binding. A snapshot
+is evidence to interpret, not proof that an effect succeeded.
+
 Native profiles are preferred before hosted browsers. Signed remote device grants
 bind browser commands to one exact profile; older agent grants do not grant browser
 access. A dispatched command is never replayed against a different session.

@@ -7656,7 +7656,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       let query = this.db
         .select()
         .from(entityTable)
-        .where(conditions.length > 0 ? and(...conditions) : undefined);
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        // Limit/offset pages need a total order: without one Postgres returns
+        // rows in physical order, which an UPDATE rewrites, so a caller paging
+        // across a concurrent write (plugin-form session restore) skips one
+        // entity and serves another twice. The key truncates to milliseconds
+        // because reads return `createdAt` as a millisecond Date and
+        // updateEntity writes it back, which would otherwise move a row with
+        // PostgreSQL's microsecond `now()` earlier in the order mid-scan.
+        .orderBy(
+          asc(sql`date_trunc('milliseconds', ${entityTable.createdAt})`),
+          asc(entityTable.id)
+        );
 
       if (params.limit !== undefined && !params.entityIds?.length) {
         query = query.limit(params.limit) as typeof query;

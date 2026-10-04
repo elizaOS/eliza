@@ -24,7 +24,7 @@ import type { ScenarioContext } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
 
 const request =
-  "Remind me at 9 AM UTC on January 2, 2099 to review the synthetic Cloud inbox.";
+  "Preview a reminder for 9 AM UTC on January 2, 2099 to review the synthetic Cloud inbox. Do not save it until I confirm.";
 const dueAt = "2099-01-02T09:00:00.000Z";
 const tickAt = "2099-01-02T09:01:00.000Z";
 const reminderArgs = {
@@ -45,6 +45,7 @@ const reminderArgs = {
 };
 const plannerToolNames = [
   `${ownerRemindersAction.name}_CREATE`,
+  "OWNER_GOALS",
   "DISCOVER_ACTIONS",
   ...CORE_PLANNER_TERMINALS.map((tool) => tool.name),
 ];
@@ -370,7 +371,7 @@ const definition = scenario({
             shouldRespond: "RESPOND",
             contexts: ["tasks"],
             intents: ["create reminder"],
-            replyText: "I’ll schedule that reminder.",
+            replyText: "I’ll preview that reminder for you to confirm.",
             replyEffectStatus: "pending",
             candidateActionNames: ["OWNER_REMINDERS"],
             facts: [],
@@ -395,12 +396,28 @@ const definition = scenario({
             {
               id: "call-cloud-owner-reminder",
               name: "OWNER_REMINDERS_CREATE",
-              arguments: reminderArgs,
+              arguments: {
+                ...reminderArgs,
+                createPlan: {
+                  mode: "create",
+                  multiStep: false,
+                  requestKind: "reminder",
+                  nativeProjection: "in_app_only",
+                  title: reminderArgs.title,
+                  cadenceKind: "once",
+                  dueDate: "2099-01-02",
+                  dueInDays: null,
+                  dueWeekday: null,
+                  dueInMinutes: null,
+                  timeOfDay: "09:00",
+                  timeZone: "UTC",
+                },
+              },
             },
           ],
           finishReason: "tool-calls",
-          thought: "Create the requested owner reminder.",
-          messageToUser: "I scheduled the reminder.",
+          thought: "Preview the requested owner reminder without saving it.",
+          messageToUser: "I prepared the reminder preview.",
           completed: true,
         },
         cardinality: 1,
