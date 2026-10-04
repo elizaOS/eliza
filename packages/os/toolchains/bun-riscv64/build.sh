@@ -191,6 +191,7 @@ export BUN_RANLIB=/usr/local/bin/llvm-ranlib
 export BUN_LD=/usr/local/bin/ld.lld
 export BUN_STRIP=/usr/local/bin/llvm-strip
 export BUN_SYSROOT=/sysroot
+export LINUX_MUSL_SYSROOT=/sysroot
 export BUN_DISABLE_TINYCC=1
 
 BUN_BUILD_DIR="$SRC_ROOT/bun/build/release"
