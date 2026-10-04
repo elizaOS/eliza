@@ -1,6 +1,7 @@
 """Coding-agent cell execution, artifact ingestion, and redacted process logs."""
 
 from __future__ import annotations
+
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
 from .analyze_trajectory import summarize as summarize_trajectory
 
 DEFAULT_MODEL = "gemma-4-31b"
@@ -187,7 +189,7 @@ def classify_failure(
     stderr: str,
 ) -> tuple[str, list[str]]:
     notes: list[str] = []
-    combined = "\n".join([stdout, stderr])
+    combined = f"{stdout}\n{stderr}"
     score = score_from_payload(result_payload)
     if exit_code == 0 and score is not None and score >= 1.0:
         return "pass", notes
@@ -528,7 +530,7 @@ def _complete_outcome_metrics(
 
 
 def collect_token_metrics(trajectory_dir: Path) -> dict[str, int | float | None]:
-    summary, records = summarize_trajectory(trajectory_dir)
+    summary, _records = summarize_trajectory(trajectory_dir)
     cached_percent: float | None = None
     if summary.prompt_tokens:
         cached_percent = (summary.cached_tokens / summary.prompt_tokens) * 100.0
@@ -823,8 +825,7 @@ def run_cell(
             cwd=cell.cwd,
             env=env,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -836,11 +837,17 @@ def run_cell(
         stderr = completed.stderr
     except subprocess.TimeoutExpired as exc:
         exit_code = 124
-        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
-        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        stdout = (
+            exc.stdout.decode("utf-8", errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else exc.stdout or ""
+        )
         stderr = (
-            stderr + f"\nCommand timed out after {timeout_seconds}s\n"
-        ).strip() + "\n"
+            exc.stderr.decode("utf-8", errors="replace")
+            if isinstance(exc.stderr, bytes)
+            else exc.stderr or ""
+        )
+        stderr += f"\nCommand timed out after {timeout_seconds}s\n"
     except OSError as exc:
         exit_code = 127
         stdout = ""
@@ -848,11 +855,11 @@ def run_cell(
 
     duration = time.time() - started
     stdout_path.write_text(
-        truncate_log_text(redact_text(stdout, env)),
+        redact_text(stdout, env),
         encoding="utf-8",
     )
     stderr_path.write_text(
-        truncate_log_text(redact_text(stderr, env)),
+        redact_text(stderr, env),
         encoding="utf-8",
     )
     _redact_artifact_tree(cell_root, env)
