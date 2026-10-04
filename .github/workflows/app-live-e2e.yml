@@ -872,7 +872,7 @@ jobs:
 
   native-staging-credentials:
     name: native credential lifecycle (protected staging fixture)
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_staging_credentials }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging' && inputs.run_native_staging_credentials }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: staging
     timeout-minutes: 45

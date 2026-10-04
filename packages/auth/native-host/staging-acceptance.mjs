@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
-import { PgliteVaultImpl } from "../src/vault/pglite-vault.ts";
 import { createNativeCloudAuth } from "./cloud-enrollment.mjs";
 
 const api = "https://api-staging.eliza.app";
@@ -25,12 +24,14 @@ const requireValue = (condition) => {
 
 // Explicit protected workflow identity: this fixture cannot run on forks,
 // production, ordinary PR jobs, or an arbitrary credentialed developer shell.
-export function requireProtectedStaging(env) {
+function requireProtectedStaging(env, sourceSha) {
   requireValue(
     env.GITHUB_ACTIONS === "true" &&
       env.GITHUB_REPOSITORY === "elizaOS/eliza" &&
       env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
       env.GITHUB_REF === "refs/heads/staging" &&
+      /^[0-9a-f]{40}$/.test(sourceSha) &&
+      env.GITHUB_SHA === sourceSha &&
       env.ELIZA_NATIVE_STAGING_ACCEPTANCE === "1" &&
       env.ELIZAOS_CLOUD_BASE_URL === api,
   );
@@ -45,6 +46,7 @@ async function main() {
   let created;
   let stateDir;
   let vault;
+  let Vault;
   let auth;
   const masterKey = randomBytes(32);
   const receipt = {
@@ -79,7 +81,7 @@ async function main() {
     return { status: response.status, value };
   };
   const openVault = () =>
-    new PgliteVaultImpl({
+    new Vault({
       dataDir: join(stateDir, "vault"),
       auditPath: join(stateDir, "audit.jsonl"),
       masterKey: {
@@ -113,7 +115,7 @@ async function main() {
       clearActive: () => storage().remove("active"),
     });
   try {
-    const key = requireProtectedStaging(process.env);
+    const key = requireProtectedStaging(process.env, receipt.sourceSha);
     checks.protectedAdmission = true;
     step = "served-health";
     const health = await request("/api/health");
@@ -121,6 +123,9 @@ async function main() {
       health.status === 200 && /^[0-9a-f]{40}$/.test(health.value.commit),
     );
     receipt.servedSha = health.value.commit;
+    requireValue(receipt.servedSha === receipt.sourceSha);
+    step = "runner-vault";
+    ({ PgliteVaultImpl: Vault } = await import("../src/vault/pglite-vault.ts"));
     step = "owned-account";
     const sourceAccount = await request("/api/v1/user", undefined, key);
     requireValue(

@@ -95,7 +95,7 @@
     "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
     "test:credentials": "node ../scripts/run-vitest.ts run",
     "test:login": "bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack",
-    "test:native-host": "node --test native-host/*.test.mjs && bun test --isolate native-host/staging-acceptance.test.ts",
+    "test:native-host": "node --test native-host/*.test.mjs native-host/staging-acceptance.process-test.mjs",
     "test:cloud-services": "node --test native-host/cloud-services/*.test.mjs"
   },
   "dependencies": {
