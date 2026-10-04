@@ -56,8 +56,13 @@ jobs:
       - name: Install native compilation prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev zstd
-      - run: bun run verify
+          sudo apt-get install -y --no-install-recommends gcc g++ libc6-dev libssl-dev default-jdk-headless zstd e2fsprogs binutils python3-cryptography
+      - name: Verify installers and release scripts
+        # OTA publisher tests run once in the dedicated ota-publisher job.
+        run: |
+          bun run verify:installer-native
+          bun run verify:portable
+          bun run test:release
       - name: Validate Android compatibility wrappers
         run: android/installer/tests/run-tests.sh
       - name: Validate the checked-in release plan

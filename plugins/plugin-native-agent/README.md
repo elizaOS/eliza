@@ -63,7 +63,6 @@ returned inventory plus assets. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
 
-
 `NativeStorageDiagnostic` runs a disposable SQLite write/close/reopen/integrity
 probe in a dedicated no-backup namespace on API 26+. Hosts supply the namespace,
 absolute elapsed-time deadline, database-byte budget and cleanup entry limit.
@@ -71,3 +70,21 @@ A private no-follow file lock fences orphan cleanup; unknown entries, links and
 foreign ownership reject before deletion. It never opens application databases
 or declares an update healthy. Android tests cover readback, orphan cleanup,
 expired/invalid policy and unsafe files while preserving an external sentinel.
+
+`ReconciliationScheduler` persists local package-readback jobs without network,
+charging or idle constraints. Hosts supply distinct job IDs and the declared
+service. `ReconciliationJobService` owns bounded workers and cancellation/late
+completion fencing through `JobRunRegistry`; hosts bind the readback operation.
+Neither component initiates an installation. The consumer must qualify actual
+Android job dispatch and reboot persistence alongside its install/recovery tests.
+
+`NativeHealthService`, `NativeHealthEvidence` and updater `NativeHealthClient`
+share native observation IPC on API 29+: signature/sender-UID checks,
+nonce/version/deadline binding, bounded worker admission and installed-identity
+rechecks. Hosts declare the signature-protected service, supply component
+identities, positive request/UI budgets and runtime/storage/UI observation ports.
+The client enforces its absolute deadline independently of the service. Schema 5
+supports standalone/launcher distributions and fixed runtime/UI observation states;
+reports never mark a journal healthy or authorize recovery. The Android contract
+checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
+IPC, process death and observation providers in their packaged applications.
