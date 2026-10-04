@@ -6,17 +6,8 @@
  */
 
 import {
-  extractIdentityLinkCode,
-  identityLinkReply,
-} from "@elizaos/cloud-services-common/identity-link-code";
-import {
-  personalSharedFailureReply,
-  personalSharedNoResponseFailure,
-  readPersonalSharedFailureMetadata,
-} from "@elizaos/cloud-services-common/personal-shared-failure";
-import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
-import {
   attestTelegramBotIdentity,
+  executeTelegramDelivery,
   parseTelegramWebhook,
   resolveTelegramVoiceNote,
   sendTelegramReply,
@@ -25,31 +16,39 @@ import {
   TelegramApiResponseError,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
-  TelegramIdentityAttestationError,
-  telegramReplyWithMedia,
-  verifyTelegramWebhook,
-} from "@elizaos/cloud-services-common/telegram-connector";
-import {
-  executeTelegramDelivery,
   type TelegramDeliveryLedger,
   type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
-} from "@elizaos/cloud-services-common/telegram-delivery";
+  TelegramIdentityAttestationError,
+  telegramReplyWithMedia,
+  verifyTelegramWebhook,
+} from "@elizaos/cloud-services-common/telegram";
+import {
+  executeResponseAttempts,
+  extractIdentityLinkCode,
+  identityLinkReply,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/transport";
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import { appendServerTiming } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { sha256Hex } from "@elizaos/cloud-shared/lib/oidc/crypto";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { runWithRequestContext } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import { setRuntimeR2Bucket } from "@elizaos/cloud-shared/lib/storage/r2-runtime-binding";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,
   PERSONAL_TELEGRAM_DELIVERY_EPOCH,
   PERSONAL_TELEGRAM_DELIVERY_PATH,
 } from "@/api-app/personal-telegram-delivery";
-import { runWithDbCacheAsync } from "@/db/client";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
-import { appendServerTiming } from "@/lib/observability/http-telemetry";
-import { sha256Hex } from "@/lib/oidc/crypto";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { runWithRequestContext } from "@/lib/runtime/request-context";
-import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_ATTEMPTS = 3;
 const VOICE_MAX_ATTEMPTS = 2;

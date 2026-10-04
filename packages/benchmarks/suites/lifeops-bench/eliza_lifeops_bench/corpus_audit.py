@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .lifeworld.world import LifeWorld
-from .runner import _execute_action, _normalize_action
+from .lifeworld.executor import _execute_action, _normalize_action
 from .scenarios import CORE_SCENARIOS
 from .types import Action, Persona, Scenario, ScenarioMode
 

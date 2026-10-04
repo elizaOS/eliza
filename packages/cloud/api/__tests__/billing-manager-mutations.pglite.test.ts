@@ -2,16 +2,19 @@
 import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
+import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
+import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities";
+import { users } from "@elizaos/cloud-shared/db/schemas/users";
+import { createPlaywrightTestSessionToken } from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
+import type {
+  AppEnv,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { relations } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { Hono } from "hono";
 import type Stripe from "stripe";
-import { organizations } from "@/db/schemas/organizations";
-import { userIdentities } from "@/db/schemas/user-identities";
-import { users } from "@/db/schemas/users";
-import { createPlaywrightTestSessionToken } from "@/lib/auth/playwright-test-session";
-import type { AppEnv, AuthedUser } from "@/types/cloud-worker-env";
 
 const pg = new PGlite();
 const usersRelations = relations(users, ({ one }) => ({
@@ -23,7 +26,7 @@ const usersRelations = relations(users, ({ one }) => ({
 const database = drizzle(pg, {
   schema: { organizations, users, userIdentities, usersRelations },
 });
-mock.module("@/db/helpers", () => ({
+mock.module("@elizaos/cloud-shared/db/helpers", () => ({
   db: database,
   dbRead: database,
   dbWrite: database,
@@ -46,12 +49,15 @@ const env = {
   NEXT_PUBLIC_APP_URL: "https://cloud.eliza.app",
   STRIPE_CURRENCY: "usd",
 };
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
-    next(),
-  RateLimitPresets: { STRICT: {} },
-}));
-mock.module("@/lib/services/auto-top-up", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+      next(),
+    RateLimitPresets: { STRICT: {} },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/auto-top-up", () => ({
   autoTopUpService: {
     executeAutoTopUpForOrganization: async () => {
       effects.push("topup");
@@ -59,44 +65,53 @@ mock.module("@/lib/services/auto-top-up", () => ({
     },
   },
 }));
-mock.module("@/lib/services/stripe-customer-authority", () => ({
-  stripeCustomerAuthorityService: {
-    ensure: async () => {
-      effects.push("customer");
-      return "cus_test";
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-customer-authority",
+  () => ({
+    stripeCustomerAuthorityService: {
+      ensure: async () => {
+        effects.push("customer");
+        return "cus_test";
+      },
     },
-  },
-}));
-mock.module("@/lib/services/stripe-checkout-orders", () => ({
-  stripeCheckoutOrdersService: {
-    create: async () => {
-      effects.push("order");
-      return {
-        id: "order_test",
-        status: "created",
-        stripe_customer_id: "cus_test",
-      };
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-checkout-orders",
+  () => ({
+    stripeCheckoutOrdersService: {
+      create: async () => {
+        effects.push("order");
+        return {
+          id: "order_test",
+          status: "created",
+          stripe_customer_id: "cus_test",
+        };
+      },
+      markProviderStarted: async () => {
+        effects.push("provider-started");
+      },
+      bindSession: async () => {
+        effects.push("bind-session");
+      },
     },
-    markProviderStarted: async () => {
-      effects.push("provider-started");
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/subscription-customer-portal",
+  () => ({
+    // The portal adapter re-runs the route's billing-manager revalidation before its provider effect.
+    createSubscriptionPortalSession: async (
+      input: { organizationId: string },
+      reauthorize: () => Promise<void>,
+    ) => {
+      await reauthorize();
+      effects.push(`portal:${input.organizationId}`);
+      return { url: "https://billing.stripe.com/p/session/test" };
     },
-    bindSession: async () => {
-      effects.push("bind-session");
-    },
-  },
-}));
-mock.module("@/lib/services/subscription-customer-portal", () => ({
-  // The portal adapter re-runs the route's billing-manager revalidation before its provider effect.
-  createSubscriptionPortalSession: async (
-    input: { organizationId: string },
-    reauthorize: () => Promise<void>,
-  ) => {
-    await reauthorize();
-    effects.push(`portal:${input.organizationId}`);
-    return { url: "https://billing.stripe.com/p/session/test" };
-  },
-}));
-mock.module("@/lib/stripe", () => ({
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
   isStripeConfigured: () => true,
   requireStripe: () => ({
     prices: {

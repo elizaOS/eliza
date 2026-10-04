@@ -19,22 +19,23 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findModuleSpecifiers } from "../../scripts/lib/rewrite-module-specifiers.ts";
 
 export const agentPackageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 
-// `from "…"` (import/export/re-export), dynamic `import("…")`, and
-// side-effect `import "…"` — only relative specifiers are captured.
-const RELATIVE_SPECIFIER_RE =
-  /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'](\.\.?\/[^"']*)["']/g;
-
 function* walkSourceFiles(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name === "node_modules" || entry.name === "dist") continue;
+      if (
+        ["node_modules", "dist", "__tests__", "__fixtures__"].includes(
+          entry.name,
+        )
+      )
+        continue;
       yield* walkSourceFiles(full);
       continue;
     }
@@ -46,19 +47,6 @@ function* walkSourceFiles(dir) {
   }
 }
 
-// Blank out comment content (newline-preserving, so reported line numbers stay
-// accurate) — prose like `callers that import from "../../../../src/api/server"`
-// must not read as a violation. The `[^:]` guard keeps "://" in string URLs
-// from being treated as a line comment.
-function stripComments(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(
-      /(^|[^:])\/\/[^\n]*/gm,
-      (m, pre) => pre + " ".repeat(m.length - pre.length),
-    );
-}
-
 /**
  * Scan every non-declaration .ts/.tsx under `packageRoot`/src and return each
  * relative import whose resolved path escapes `packageRoot`.
@@ -67,14 +55,19 @@ export function findCrossPackageImports(packageRoot = agentPackageRoot) {
   const srcDir = path.join(packageRoot, "src");
   const violations = [];
   for (const file of walkSourceFiles(srcDir)) {
-    const text = stripComments(readFileSync(file, "utf8"));
+    const text = readFileSync(file, "utf8");
     const fileDir = path.dirname(file);
-    for (const match of text.matchAll(RELATIVE_SPECIFIER_RE)) {
-      const specifier = match[1];
+    for (const match of findModuleSpecifiers(text, file)) {
+      const specifier = match.value;
+      if (!specifier.startsWith("./") && !specifier.startsWith("../")) continue;
       const resolved = path.resolve(fileDir, specifier);
       const relToPackage = path.relative(packageRoot, resolved);
-      if (relToPackage.startsWith("..")) {
-        const line = text.slice(0, match.index).split("\n").length;
+      if (
+        relToPackage === ".." ||
+        relToPackage.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relToPackage)
+      ) {
+        const line = text.slice(0, match.start).split("\n").length;
         violations.push({
           file: path.relative(packageRoot, file),
           line,

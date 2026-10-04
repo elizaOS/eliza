@@ -12,12 +12,12 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
-import { logger } from "@/lib/utils/logger";
-import { isValidUUID } from "@/lib/utils/validation";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { isValidUUID } from "@elizaos/cloud-shared/lib/utils/validation";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

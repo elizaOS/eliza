@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from scripts.lib.eliza_record import (
+from eliza_training.lib.eliza_record import (
     ACTION_REPLY,
     ACTION_RESPOND,
     ElizaRecord,

@@ -177,6 +177,7 @@ export async function debitAffiliatePayout(params: {
       metadata: { ...params.metadata, payout_kind: "affiliate" },
       requireSufficientBalance: true,
       dedupeBySourceId: true,
+      countAsRedeemed: true,
       transaction: tx,
     });
     if (!debit.success) {

@@ -22,28 +22,19 @@ import {
 import { fetchReleaseImages } from "./release-manifest";
 import type {
   ElizaOsImage,
-  InstallerStep,
   InstallerStepId,
   RemovableDrive,
   UsbInstallerBackend,
   WritePlan,
   WriteRequest,
 } from "./types";
+import { createPlatformWritePlan } from "./write-plan";
 import {
-  assertDriveMatchesExpected,
   assertWritePlanAllowed,
   assertWriteTargetUnchanged,
 } from "./write-safety";
 
 const execFileAsync = promisify(execFile);
-
-const STEP_LABELS: Record<InstallerStepId, string> = {
-  "resolve-image": "Resolve image",
-  checksum: "Validate checksum",
-  write: "Write image",
-  verify: "Finalize media",
-  complete: "Complete",
-};
 
 // Strict regexes used to gate paths before they hit any subprocess.
 // imagePath must be an absolute file under a known macOS prefix; rawDisk must
@@ -130,15 +121,6 @@ async function getDiskUtilInfo(
 async function fileSize(filePath: string): Promise<number> {
   const stat = await fs.stat(filePath);
   return stat.size;
-}
-
-function pendingSteps(): InstallerStep[] {
-  return (Object.keys(STEP_LABELS) as InstallerStepId[]).map((id) => ({
-    id,
-    label: STEP_LABELS[id],
-    status: "pending",
-    detail: "Waiting to start.",
-  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -254,54 +236,7 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
   }
 
   async createWritePlan(request: WriteRequest): Promise<WritePlan> {
-    const [drives, images] = await Promise.all([
-      this.listRemovableDrives(),
-      this.listImages(),
-    ]);
-
-    const drive = drives.find((d) => d.id === request.driveId);
-    if (!drive) throw new Error(`Unknown drive id: ${request.driveId}`);
-    assertDriveMatchesExpected(request, drive);
-
-    const image = images.find((img) => img.id === request.imageId);
-    if (!image) throw new Error(`Unknown image id: ${request.imageId}`);
-
-    if (!request.acknowledgeDataLoss) {
-      throw new Error(
-        "Data-loss acknowledgement is required before preparing media.",
-      );
-    }
-
-    const blockedReason =
-      drive.safety !== "safe-removable"
-        ? "the target is not marked safe-removable."
-        : drive.sizeBytes < image.minUsbSizeBytes
-          ? `the target is ${Math.round(drive.sizeBytes / 1024 ** 3)} GiB but ${Math.round(image.minUsbSizeBytes / 1024 ** 3)} GiB is required.`
-          : null;
-
-    const steps: InstallerStep[] = blockedReason
-      ? (Object.keys(STEP_LABELS) as InstallerStepId[]).map((id) => ({
-          id,
-          label: STEP_LABELS[id],
-          status: "blocked",
-          detail: `Blocked: ${blockedReason}`,
-        }))
-      : request.dryRun
-        ? (Object.keys(STEP_LABELS) as InstallerStepId[]).map((id) => ({
-            id,
-            label: STEP_LABELS[id],
-            status: "complete",
-            detail: "Dry-run complete; no bytes were written.",
-          }))
-        : pendingSteps();
-
-    return {
-      request,
-      drive,
-      image,
-      steps,
-      privilegedWriteImplemented: true,
-    };
+    return createPlatformWritePlan(this, request);
   }
 
   async executeWritePlan(

@@ -404,7 +404,7 @@ test("Android embedding is opt-in and restricted to the provisioned native host 
   const output = embedded.files[manifest];
   assert.equal(
     (output.match(/android:knownActivityEmbeddingCerts=/g) ?? []).length,
-    2,
+    4,
   );
   assert.equal(
     (
@@ -412,7 +412,7 @@ test("Android embedding is opt-in and restricted to the provisioned native host 
         new RegExp(`android:knownActivityEmbeddingCerts="${certificate}"`, "g"),
       ) ?? []
     ).length,
-    2,
+    4,
   );
   assert.equal(
     output.replaceAll(
@@ -438,4 +438,49 @@ test("Android embedding is opt-in and restricted to the provisioned native host 
     generateComponentOverlay(linux),
     /explicit Android-only/,
   );
+});
+
+test("optional protection embeds a complete reviewed inventory without broadening ordinary builds", async () => {
+  const input = request();
+  for (const name of [
+    "protection.mjs",
+    "policy.mjs",
+    "warning.html",
+    "warning.mjs",
+    "warning.css",
+    "licenses.html",
+  ])
+    input.assets[name] = Buffer.from("reviewed product resource");
+  const manifest = JSON.parse(input.assets["manifest.json"]);
+  manifest.permissions.push("declarativeNetRequest");
+  manifest.web_accessible_resources = [
+    { resources: ["warning.html"], matches: ["<all_urls>"] },
+  ];
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  const overlay = await generateComponentOverlay(input);
+  assert.equal(
+    Object.keys(overlay.report.resources).length,
+    assetNames.length + 6,
+  );
+  assert.match(
+    overlay.files[
+      "components/android_autofill/browser/form_data_android_bridge_impl.cc"
+    ],
+    /main_frame_origin\(\)\.Serialize\(\)/,
+  );
+  assert.ok(
+    overlay.files["chrome/browser/resources/eliza_browser/warning.html"],
+  );
+  const omitted = { ...input, assets: { ...input.assets } };
+  delete omitted.assets["policy.mjs"];
+  await assert.rejects(generateComponentOverlay(omitted), /inventory/);
+  manifest.permissions.push("debugger");
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  await assert.rejects(generateComponentOverlay(input), /capabilities/);
+  manifest.permissions.pop();
+  manifest.web_accessible_resources[0].resources.push("policy.mjs");
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  await assert.rejects(generateComponentOverlay(input), /capabilities/);
+  const ordinary = await generateComponentOverlay(request());
+  assert.equal(ordinary.report.resources["protection.mjs"], undefined);
 });

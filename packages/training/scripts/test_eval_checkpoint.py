@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import eval_checkpoint as evaluator
+import eliza_training.eval_checkpoint as evaluator
 
 
 def test_main_runs_native_benchmark_and_writes_aggregate_result(

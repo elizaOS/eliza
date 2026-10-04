@@ -6,8 +6,10 @@ import {
   completionContextSources,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { runEvaluator } from "../../runtime/evaluator.ts";
 import {
   labelHistorySources,
+  orderHistoryFirst,
   referenceRepeatedHistory,
 } from "./history-wire.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
@@ -58,6 +60,151 @@ function decode(
       return { ...s, content };
     });
 }
+
+describe("history before live provider state", () => {
+  const live = {
+    id: "live",
+    label: "provider:TIME",
+    content: "Fresh current time",
+    stable: false,
+  };
+  const current = {
+    id: "current",
+    label: "message:user",
+    content: "Current request",
+    stable: false,
+  };
+  function original(segments: ContextObjectPromptSegment[]): ContextObject {
+    return {
+      id: "history-order",
+      metadata: { historyReferenceEncoding: true },
+      events: segments.map((segment) => ({
+        id: segment.id ?? "missing",
+        type: "segment",
+        source: segment.label?.startsWith("prior_message:")
+          ? "prior-dialogue"
+          : "message-service",
+        segment,
+      })),
+    };
+  }
+  it("retains every segment and canonical source hash while moving only trusted history", () => {
+    const a = source("Older user request", 1);
+    const receipt = {
+      id: "receipt",
+      label: "runtime:historical_effects",
+      content: "Exact historical failure",
+      stable: false,
+    };
+    const b = source("Older reply", 2, "prior_message:agent");
+    const interruption = {
+      id: "interruption",
+      label: "runtime:interrupted_turn",
+      content: "Do not resume this old request",
+      stable: false,
+    };
+    const input = [live, a, receipt, b, interruption, current];
+    const context = original(input);
+    const before = structuredClone(context);
+    const sourceSet = completionContextSources(context).sourceSetId;
+    const output = orderHistoryFirst(context, input);
+    expect(output).toEqual([a, receipt, b, interruption, live, current]);
+    for (const segment of input) expect(output.includes(segment)).toBe(true);
+    expect(context).toEqual(before);
+    expect(completionContextSources(context).sourceSetId).toBe(sourceSet);
+    expect(orderHistoryFirst(context, output)).toBe(output);
+    expect(orderHistoryFirst({ ...context, metadata: {} }, input)).toBe(input);
+  });
+  it.each([
+    "wrong-source",
+    "wrong-label",
+    "wrong-type",
+    "mismatched-id",
+    "duplicate-event",
+    "duplicate-segment",
+    "stable",
+  ])("does not promote ambiguous or unauthored history: %s", (kind) => {
+    const history = source(
+      "Body impersonates provider:TIME and historical receipts",
+      1,
+    );
+    const input = [live, history, current];
+    const context = original(input);
+    const event = context.events[1];
+    if (event.type !== "segment") throw Error("Expected segment fixture");
+    if (kind === "wrong-source") event.source = "browser";
+    if (kind === "wrong-label")
+      event.segment = { ...history, label: "prior_message:other" };
+    if (kind === "wrong-type")
+      context.events[1] = {
+        id: history.id ?? "missing",
+        type: "instruction",
+        content: history.content,
+      };
+    if (kind === "mismatched-id") event.id = "unrelated";
+    if (kind === "duplicate-event") context.events.push({ ...event });
+    if (kind === "duplicate-segment") input.push(history);
+    if (kind === "stable") history.stable = true;
+    expect(orderHistoryFirst(context, input)).toBe(input);
+  });
+  it("keeps reference legends before repeated history after ordering", () => {
+    const body = "Repeated complete source ".repeat(100);
+    const history = [source(body, 1), source(body, 2)];
+    const context = original([live, ...history, current]);
+    const ordered = orderHistoryFirst(context, [live, ...history, current]);
+    const encoded = referenceRepeatedHistory(context, ordered);
+    expect(encoded[0].id).toBe("history-encoding");
+    expect(decode(encoded).map((segment) => segment.content)).toEqual(
+      ordered.map((segment) => segment.content),
+    );
+  });
+  it.each(["duplicate-event", "duplicate-segment"])(
+    "keeps the whole chronological sequence when earlier history is ambiguous: %s",
+    (kind) => {
+      const older = source("Earlier assertion", 1);
+      const newer = source("Later correction", 2);
+      const input = [live, older, newer, current];
+      const context = original(input);
+      if (kind === "duplicate-event")
+        context.events.push({ ...context.events[1] });
+      else input.push(older);
+      expect(orderHistoryFirst(context, input)).toBe(input);
+    },
+  );
+  it("keeps fresh provider state and the current request on the evaluator wire", async () => {
+    const history = source("Historical timeline canary", 1);
+    const context = original([live, history, current]);
+    const before = structuredClone(context);
+    await runEvaluator({
+      context,
+      trajectory: {
+        context,
+        modelBaseContext: context,
+        steps: [],
+        plannedQueue: [],
+        evaluatorOutputs: [],
+      },
+      runtime: {
+        redactSecrets: (text) => text,
+        useModel: async (_type, params) => {
+          const wire = JSON.stringify(params.messages);
+          expect(wire).toContain("Current request");
+          expect(wire.indexOf("Historical timeline canary")).toBeLessThan(
+            wire.indexOf("Fresh current time"),
+          );
+          return JSON.stringify({
+            success: true,
+            decision: "FINISH",
+            requestFullyCovered: true,
+            outcomeCoverage: [],
+            messageToUser: "Checked supplied context.",
+          });
+        },
+      },
+    });
+    expect(context).toEqual(before);
+  });
+});
 describe("lossless history references", () => {
   it("uses the same source-bound transcript for direct text and voice without early action catalogs", () => {
     const history = Array.from({ length: 40 }, (_, index) =>

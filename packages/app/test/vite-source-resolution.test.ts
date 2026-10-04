@@ -284,7 +284,7 @@ describe("workspace package resolution", () => {
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/cloud-shared/types/redemption-contract",
+            "@elizaos/cloud-sdk/redemption-contract",
             path.resolve(
               appRoot,
               "../ui/src/cloud/monetization/earnings/CreatorEarningsStatement.tsx",

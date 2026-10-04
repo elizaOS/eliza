@@ -8,6 +8,5 @@ export type {
   FlashStep,
   FlashStepId,
   FlashStepStatus,
-} from "./backend";
-export { AdbFlasherBackend } from "./backend";
+} from "./backend/types";
 export { FlasherApp } from "./components/FlasherApp";

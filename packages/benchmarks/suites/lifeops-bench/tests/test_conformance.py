@@ -33,7 +33,8 @@ from eliza_lifeops_bench.lifeworld.entities import (
     Reminder,
     ReminderList,
 )
-from eliza_lifeops_bench.runner import LifeOpsBenchRunner, supported_actions
+from eliza_lifeops_bench.lifeworld.executor import supported_actions
+from eliza_lifeops_bench.runner import LifeOpsBenchRunner
 from eliza_lifeops_bench.scenarios import ALL_SCENARIOS
 from eliza_lifeops_bench.types import (
     Action,
@@ -561,9 +562,9 @@ def test_wrong_agent_garbage_text_scores_zero(scenario: Scenario) -> None:
     score = _run_scenario_sync(
         scenario, lambda s: WrongAgent(scenario=s, mode="garbage_text")
     )
-    assert score == pytest.approx(
-        0.0, abs=1e-6
-    ), f"garbage_text WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
+    assert score == pytest.approx(0.0, abs=1e-6), (
+        f"garbage_text WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
+    )
 
 
 @pytest.mark.parametrize(
@@ -576,9 +577,9 @@ def test_wrong_agent_wrong_action_scores_zero(scenario: Scenario) -> None:
     score = _run_scenario_sync(
         scenario, lambda s: WrongAgent(scenario=s, mode="wrong_action")
     )
-    assert score == pytest.approx(
-        0.0, abs=1e-6
-    ), f"wrong_action WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
+    assert score == pytest.approx(0.0, abs=1e-6), (
+        f"wrong_action WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
+    )
 
 
 def test_conformance_coverage_table(capsys: pytest.CaptureFixture[str]) -> None:

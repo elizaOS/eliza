@@ -3,12 +3,14 @@ import re
 from copy import deepcopy
 from typing import Dict, List, Tuple
 
-from suites.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
+from benchmarks.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
+
 try:
     from rank_bm25 import BM25Plus
 except ImportError:  # pragma: no cover - lightweight fallback for CI smoke
+
     class BM25Plus:  # type: ignore[no-redef]
         def __init__(self, tokenized_corpus):
             self.tokenized_corpus = [set(tokens) for tokens in tokenized_corpus]
@@ -16,6 +18,7 @@ except ImportError:  # pragma: no cover - lightweight fallback for CI smoke
         def get_scores(self, tokenized_query):
             query = set(tokenized_query)
             return [float(len(query & doc)) for doc in self.tokenized_corpus]
+
 
 # https://lilianweng.github.io/posts/2023-06-23-agent/#component-two-memory
 MAX_CORE_MEMORY_SIZE = 7
@@ -124,7 +127,9 @@ class MemoryAPI_kv(MemoryAPI):
             }
 
         if not self._is_valid_key_format(key):
-            return {"error": "Key must be in snake_case format and cannot contain spaces."}
+            return {
+                "error": "Key must be in snake_case format and cannot contain spaces."
+            }
         if key in self.core_memory:
             return {"error": "Key name must be unique."}
 
@@ -248,7 +253,9 @@ class MemoryAPI_kv(MemoryAPI):
             }
 
         if not self._is_valid_key_format(key):
-            return {"error": "Key must be in snake_case format and cannot contain spaces."}
+            return {
+                "error": "Key must be in snake_case format and cannot contain spaces."
+            }
         if key in self.archival_memory:
             return {"error": "Key name must be unique."}
 

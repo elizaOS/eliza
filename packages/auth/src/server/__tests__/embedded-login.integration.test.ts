@@ -87,7 +87,7 @@ test("embedded login preserves authenticated identity across restart", async () 
     });
     expect(response.status).toBe(200);
     const { token } = await response.json();
-    const { verifyToken } = await import("../auth/src/jwt");
+    const { verifyToken } = await import("../auth/jwt");
     const before = await verifyToken(token);
     const unauthenticatedDashboard = await fetch(
       `${origin}/dashboard/test-agent`,
@@ -111,9 +111,10 @@ test("embedded login preserves authenticated identity across restart", async () 
     await server.stop();
     server = undefined;
     server = await startEmbeddedLogin({ port: 0 });
-    const { getDb } = await import("../db/src/client");
-    const { users } = await import("../db/src/schema-auth");
+    const { getDb } = await import("../db/client");
+    const { users } = await import("../db/schema-auth");
     const { eq } = await import("drizzle-orm");
+    if (!before.userId) throw new Error("Login token lacks user identity");
     const persisted = await getDb()
       .select({ id: users.id })
       .from(users)

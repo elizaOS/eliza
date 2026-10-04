@@ -486,3 +486,25 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(block).toContain("--artifact-json");
   });
 });
+
+describe("deployed renderer compute consent", () => {
+  test("keeps renderer selection separate from explicit staging compute approval", () => {
+    for (const source of [workflow, releaseWorkflow]) {
+      expect(source).toContain(
+        "      approve_staging_billable_dedicated_confirmation:\n" +
+          "        description: Explicitly approve the staging fixture Dedicated compute quote during the browser proof\n" +
+          "        required: false\n        default: false\n        type: boolean",
+      );
+    }
+    expect(workflow).toContain(
+      "approve_staging_billable_dedicated_confirmation: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && inputs.approve_staging_billable_dedicated_confirmation == true }}",
+    );
+    const browserJob = jobBlock(releaseWorkflow, "deployed-renderer-staging");
+    expect(browserJob).toContain(
+      "ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: ${{ inputs.approve_staging_billable_dedicated_confirmation == true && '1' || '0' }}",
+    );
+    expect(browserJob).not.toContain(
+      'ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1"',
+    );
+  });
+});

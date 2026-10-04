@@ -1076,12 +1076,29 @@ export class TaskService extends Service {
 	 * WHY separate from timer: serverless has no long-lived process; host drives execution explicitly.
 	 */
 	async runDueTasks(): Promise<void> {
-		const allTasks = await this.runtime.getTasks({
-			tags: ["queue"],
-			agentIds: [this.runtime.agentId],
-		});
-		if (allTasks.length) {
-			await this.runTick(allTasks);
+		while (this.activeTick) {
+			await this.activeTick;
+		}
+		const run = (async () => {
+			const allTasks = await this.runtime.getTasks({
+				tags: ["queue"],
+				agentIds: [this.runtime.agentId],
+			});
+			if (allTasks.length) {
+				await this.runTick(allTasks);
+			}
+		})();
+		const tick = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.activeTick = tick;
+		try {
+			await run;
+		} finally {
+			if (this.activeTick === tick) {
+				this.activeTick = null;
+			}
 		}
 	}
 

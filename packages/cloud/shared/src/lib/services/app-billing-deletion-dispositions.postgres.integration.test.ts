@@ -1,8 +1,8 @@
 /** Exercises canonical deletion decisions, scope fences and concurrent administrator authority against real PostgreSQL migrations. Subscription preservation uses the real billing runtime and Stripe SDK with controlled HTTP. */
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { applyBillingFixtureMigrations, BILLING_CATALOG_FIXTURE_MIGRATIONS } from "../../testing";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
 
@@ -84,32 +84,13 @@ describe.skipIf(!postgresUrl)("canonical billing deletion decisions with Postgre
       CREATE TABLE apps(id uuid PRIMARY KEY,name text NOT NULL DEFAULT 'Independent app',app_url text NOT NULL DEFAULT 'https://app.example',allowed_origins jsonb NOT NULL DEFAULT '["https://app.example"]',organization_id uuid NOT NULL REFERENCES organizations(id),is_active boolean NOT NULL DEFAULT true,is_approved boolean NOT NULL DEFAULT true,review_status text NOT NULL DEFAULT 'approved');
       CREATE TABLE credit_transactions(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),CONSTRAINT credit_transactions_id_org_idx UNIQUE(id,organization_id));
     `);
-    for (const tag of [
+    await applyBillingFixtureMigrations(db, [
       "0373_subscription_authority",
       "0397_subscription_checkout_contract",
       "0383_subscription_cancellation_result",
       "0384_subscription_cancellation_undo",
       "0438_app_billing_applied_revision",
-      "0374_subscription_funding_transaction_uniqueness",
-      "0379_subscription_account_authority",
-      "0400_app_billing_catalog",
-      "0401_app_billing_scope_records",
-      "0402_app_billing_registration_constraints",
-      "0403_subscription_app_scope_columns",
-      "0404_subscription_app_scope_constraints",
-      "0405_subscription_app_scope_guards",
-      "0406_subscription_app_source_guards",
-      "0407_app_delegations",
-      "0408_app_billing_command_intents",
-      "0409_app_billing_command_guards",
-      "0410_app_billing_update_quotes",
-      "0411_app_billing_merchant_identity",
-      "0413_app_billing_notification_endpoints",
-      "0508_app_notification_secret_envelope_v2",
-      "0414_app_subscription_outbox_delivery",
-      "0415_app_billing_webhook_recovery",
-      "0416_app_billing_checkout_expiry",
-      "0417_app_billing_membership_authority",
+      ...BILLING_CATALOG_FIXTURE_MIGRATIONS,
       "0420_app_billing_import_commands",
       "0421_app_billing_import_guards",
       "0422_app_billing_import_allowance",
@@ -124,14 +105,7 @@ describe.skipIf(!postgresUrl)("canonical billing deletion decisions with Postgre
       "0431_app_billing_deletion_dispositions",
       "0432_app_billing_deletion_disposition_guards",
       "0439_app_billing_completed_checkout",
-    ]) {
-      const migration = await readFile(
-        new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
-        "utf8",
-      );
-      for (const statement of migration.split("--> statement-breakpoint"))
-        if (statement.trim()) await db.query(statement.replaceAll('"public".', ""));
-    }
+    ]);
     await db.query(
       "INSERT INTO organizations(id,stripe_customer_id) VALUES($1,'cus_infrastructure')",
       [org],

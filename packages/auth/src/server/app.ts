@@ -7,38 +7,38 @@
 import { logger } from "@elizaos/core";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { authorizationSignature } from "./api/src/middleware/authorization-signature";
-import { correlationId } from "./api/src/middleware/correlation";
-import { workersGlobalRateLimit } from "./api/src/middleware/global-rate-limit";
-import { idempotencyMiddleware } from "./api/src/middleware/idempotency";
-import { requestExpiry } from "./api/src/middleware/request-expiry";
-import { requestLogger } from "./api/src/middleware/request-logger";
-import { securityHeaders } from "./api/src/middleware/security-headers";
-import { tenantCors } from "./api/src/middleware/tenant-cors";
-import { agentRoutes, createAgentBatch } from "./api/src/routes/agents";
-import { approvalRoutes } from "./api/src/routes/approvals";
-import { authRoutes } from "./api/src/routes/auth";
-import { dashboardRoutes } from "./api/src/routes/dashboard";
-import { identityDiscoveryRoutes } from "./api/src/routes/discovery";
-import { globalWalletRoutes } from "./api/src/routes/global-wallet";
-import { kmsRoutes } from "./api/src/routes/kms";
-import { platformRoutes } from "./api/src/routes/platform";
-import { tenantConfigRoutes } from "./api/src/routes/tenant-config";
-import { tenantRoutes } from "./api/src/routes/tenants";
-import { userRoutes, userSessionAuth } from "./api/src/routes/user";
-import { vaultRoutes } from "./api/src/routes/vault";
+import { authorizationSignature } from "./api/middleware/authorization-signature";
+import { correlationId } from "./api/middleware/correlation";
+import { workersGlobalRateLimit } from "./api/middleware/global-rate-limit";
+import { idempotencyMiddleware } from "./api/middleware/idempotency";
+import { requestExpiry } from "./api/middleware/request-expiry";
+import { requestLogger } from "./api/middleware/request-logger";
+import { securityHeaders } from "./api/middleware/security-headers";
+import { tenantCors } from "./api/middleware/tenant-cors";
+import { agentRoutes, createAgentBatch } from "./api/routes/agents";
+import { approvalRoutes } from "./api/routes/approvals";
+import { authRoutes } from "./api/routes/auth";
+import { dashboardRoutes } from "./api/routes/dashboard";
+import { identityDiscoveryRoutes } from "./api/routes/discovery";
+import { globalWalletRoutes } from "./api/routes/global-wallet";
+import { kmsRoutes } from "./api/routes/kms";
+import { platformRoutes } from "./api/routes/platform";
+import { tenantConfigRoutes } from "./api/routes/tenant-config";
+import { tenantRoutes } from "./api/routes/tenants";
+import { userRoutes, userSessionAuth } from "./api/routes/user";
+import { vaultRoutes } from "./api/routes/vault";
 import {
   type AppVariables,
   dashboardAuthMiddleware,
   tenantAuth,
-} from "./api/src/services/context";
+} from "./api/services/context";
 import {
   platformAuthMiddleware,
   SmsDeliveryError,
   SmsVerificationError,
-} from "./auth/src/index";
-import { redactedThrownDiagnostics } from "./shared/src/index";
-import { runtimeEnvironmentValue } from "./shared/src/runtime-env";
+} from "./auth/index";
+import { redactedThrownDiagnostics } from "./shared/index";
+import { runtimeEnvironmentValue } from "./shared/runtime-env";
 
 /** Creates a router without starting a process, mutating a database or installing timers. */
 export function createLoginApp(): Hono<{ Variables: AppVariables }> {

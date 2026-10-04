@@ -28,7 +28,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.eval import eliza1_eval_suite as suite
+from eliza_training.eval import eliza1_eval_suite as suite
 
 
 def _make_standin_bundle(root: Path) -> Path:
@@ -311,7 +311,7 @@ def test_gate_verdict_is_publish_blocking_for_standin(tmp_path: Path, monkeypatc
 def test_aggregate_is_consumable_by_gate_engine(tmp_path: Path, monkeypatch) -> None:
     bundle = _make_standin_bundle(tmp_path)
     agg = _run(bundle, monkeypatch)
-    from benchmarks.eliza1_gates import apply_gates
+    from eliza_training.release.gates import apply_gates
 
     rep = apply_gates(agg, "2b", mode="full")
     assert rep.tier == "2b"

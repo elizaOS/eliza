@@ -9,17 +9,14 @@
  * `process.env` (TOS restriction).
  */
 import crypto from "node:crypto";
+import type { AnthropicFlow, CodexFlow } from "@elizaos/auth/auth";
 import {
   createRuntimeAccountStoragePolicy,
-  updateAccountMetadata,
-} from "@elizaos/auth/auth/account-storage";
-import type { AnthropicFlow } from "@elizaos/auth/auth/anthropic";
-import type { CodexFlow } from "@elizaos/auth/auth/openai-codex";
-import {
   isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
-} from "@elizaos/auth/auth/types";
+  updateAccountMetadata,
+} from "@elizaos/auth/auth";
 import {
   type ElizaConfig,
   type LinkedAccountConfig,

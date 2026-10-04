@@ -17,8 +17,20 @@ import {
 } from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
 import { readStewardAccessCookieFromHeader } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
+import {
+  cloneRequestWithScheduledCronMetadata,
+  makeCronHandler,
+} from "@elizaos/cloud-shared/lib/cron/cloudflare-cron";
 import { getCookieValueFromHeader } from "@elizaos/cloud-shared/lib/http/cookie-header";
 import { nativeApplicationSelectionSurfaceError } from "@elizaos/cloud-shared/lib/http/native-application-selection";
+import {
+  ELIZA_TRACE_ID_HEADER,
+  resolveElizaTraceId,
+  setHttpTelemetryHeaders,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { shouldDecorateHttpTelemetryStatus } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   canonicalCloudPathForLegacyDashboard,
   canonicalElizaServiceHostname,
@@ -26,18 +38,6 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
-import {
-  cloneRequestWithScheduledCronMetadata,
-  makeCronHandler,
-} from "@/lib/cron/cloudflare-cron";
-import {
-  ELIZA_TRACE_ID_HEADER,
-  resolveElizaTraceId,
-  setHttpTelemetryHeaders,
-} from "@/lib/observability/http-telemetry";
-import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
 import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
