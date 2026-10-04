@@ -1,3 +1,5 @@
+import { compareMemoryIds } from "../database.ts";
+
 // Implementation of BM25 and Porter2 stemming
 // https://github.com/eilvelia/porter2.js
 // https://www.npmjs.com/package/fast-bm25
@@ -2018,7 +2020,7 @@ export function rankMessageSearch<T extends SearchableMessage>(
 		const ta = typeof a.item.createdAt === "number" ? a.item.createdAt : 0;
 		const tb = typeof b.item.createdAt === "number" ? b.item.createdAt : 0;
 		if (tb !== ta) return tb - ta;
-		return String(a.item.id).localeCompare(String(b.item.id));
+		return compareMemoryIds(String(a.item.id ?? ""), String(b.item.id ?? ""));
 	});
 	return hits;
 }

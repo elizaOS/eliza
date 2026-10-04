@@ -16,15 +16,16 @@ const SOURCE_PATHS = [
   "plugins/plugin-google-workspace/src",
   "packages/ui/src/voice",
   "packages/ui/src/components/interactive-task",
+  "packages/os/browser/src",
 ];
 
 /** Bundle the shared task runtime from immutable Git source; no overlays.
  * @param {string} output
- * @param {{sourceRoot:string, sourceCommit:string, browserSource?:string}} options
+ * @param {{sourceRoot:string, sourceCommit:string, browserSource?:string, commandSource?:string}} options
  */
 export function buildTaskRuntime(
   output,
-  { sourceRoot, sourceCommit, browserSource },
+  { sourceRoot, sourceCommit, browserSource, commandSource },
 ) {
   const spec = { schemaVersion: 2, sourceCommit };
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-task-build-"));
@@ -117,6 +118,30 @@ export function buildTaskRuntime(
       fs.writeFileSync(
         path.join(browserSource, "provenance.json"),
         `${JSON.stringify({ ...spec, files }, null, 2)}\n`,
+      );
+    }
+    if (commandSource) {
+      const commandDirectory = path.resolve(commandSource);
+      const commandOutput = path.join(commandDirectory, "command-handler.mjs");
+      fs.mkdirSync(commandDirectory, { recursive: true });
+      execFileSync(
+        "bun",
+        [
+          "build",
+          "packages/os/browser/src/command-handler.mjs",
+          "--target=node",
+          "--outfile",
+          commandOutput,
+        ],
+        { cwd: temporary, stdio: "pipe" },
+      );
+      fs.writeFileSync(
+        path.join(commandDirectory, "provenance.json"),
+        JSON.stringify(
+          { ...spec, bundleSha256: hash(fs.readFileSync(commandOutput)) },
+          null,
+          2,
+        ) + "\n",
       );
     }
     return provenance;
