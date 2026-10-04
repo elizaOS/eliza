@@ -48,6 +48,7 @@ export * from "./config/branding.js";
 export * from "./config/cloud-only.js";
 export * from "./config/config-catalog.js";
 export * from "./config/distribution-profile.js";
+export * from "./config/first-run-connectors.js";
 export * from "./config/plugin-auto-enable-engine.js";
 export {
   buildPluginConfigUiSpec,
