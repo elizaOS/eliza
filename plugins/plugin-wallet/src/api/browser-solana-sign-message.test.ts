@@ -101,6 +101,30 @@ describe("POST /api/wallet/browser-solana-sign-message status contract", () => {
     }
   });
 
+  it("rejects malformed messageBase64 instead of signing other bytes", async () => {
+    // Buffer.from skips invalid base64 characters: "!!!" decodes to nothing.
+    for (const messageBase64 of ["!!!", "aGVsbG8!", "aGVs bG8="]) {
+      const res = await postSignMessage({ messageBase64 });
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toMatchObject({
+        error: "messageBase64 must be valid base64.",
+      });
+    }
+    const unpadded = await postSignMessage({ messageBase64: "aGVsbG8" });
+    expect(unpadded.statusCode).toBe(200);
+  });
+
+  it("rejects malformed transactionBase64 as a client error, not 503", async () => {
+    const { ctx, res } = buildCtx("/api/wallet/browser-solana-transaction", {
+      transactionBase64: "!!!",
+    });
+    await expect(handleWalletRoutes(ctx)).resolves.toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({
+      error: "transactionBase64 must be valid base64.",
+    });
+  });
+
   it("keeps a missing signer key on the 503 unavailable contract", async () => {
     const res = await postSignMessage({ message: "hello" }, null);
     expect(res.statusCode).toBe(503);
