@@ -10,11 +10,11 @@ from benchmarks.orchestrator.code_agent_execution import (
     collect_outcome_metrics,
     collect_token_metrics,
 )
-from benchmarks.standard.code_agent_humaneval import (
+from benchmarks.suites.standard.code_agent_humaneval import (
     agent_command_template,
     run_agent_humaneval,
 )
-from benchmarks.standard.humaneval import SMOKE_FIXTURES
+from benchmarks.suites.standard.humaneval import SMOKE_FIXTURES
 
 
 def test_agent_command_template_uses_builtin_by_default(monkeypatch) -> None:
@@ -107,7 +107,7 @@ def test_code_agent_humaneval_expanded_mock_count(tmp_path: Path) -> None:
         "m = importlib.util.module_from_spec(spec);"
         "sys.modules['benchmarks'] = m; spec.loader.exec_module(m);"
         "sys.argv = ['code_agent_humaneval'] + sys.argv[1:];"
-        "runpy.run_module('benchmarks.standard.code_agent_humaneval',"
+        "runpy.run_module('benchmarks.suites.standard.code_agent_humaneval',"
         "run_name='__main__')"
     )
     completed = subprocess.run(

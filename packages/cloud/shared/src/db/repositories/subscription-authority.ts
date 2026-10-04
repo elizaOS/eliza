@@ -18,6 +18,10 @@ import {
 } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
+import {
+  lockOrganizationUpgradeSettlement,
+  type OrganizationUpgradeSettlementIdentity,
+} from "./organization-upgrade-paid-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import {
   type ReconciliationIdentity,
@@ -555,6 +559,39 @@ export class SubscriptionAuthorityRepository {
     );
   }
 
+  /** Only a verified paid original invoice and applied provider target can publish an organization upgrade. */
+  async advancePaidOrganizationUpgradeInTransaction(
+    tx: DbTransaction,
+    input: OrganizationUpgradeSettlementIdentity & {
+      rawInvoice: unknown;
+      rawSubscription: unknown;
+    },
+  ) {
+    const verified = await lockOrganizationUpgradeSettlement(tx, input);
+    const mutation = await this.advanceWithProvenance(
+      tx,
+      {
+        organizationId: input.organizationId,
+        subscriptionId: verified.source.id,
+        expectedRevision: verified.source.lifecycle_revision,
+        source: "reconciliation",
+        observation: "authoritative_provider_retrieval",
+        values: {
+          ...verified.target.values,
+          last_provider_event_id: null,
+          last_provider_event_created_at: null,
+        },
+      },
+      {
+        kind: "paid_upgrade",
+        commandId: verified.command.id,
+        leaseToken: input.leaseToken,
+        executionGeneration: input.executionGeneration,
+      },
+    );
+    return { ...verified, ...mutation };
+  }
+
   /** Publishes one lease-owned reconciliation revision with no fabricated webhook provenance. */
   async advanceReconciliationInTransaction(
     tx: DbTransaction,
@@ -581,7 +618,12 @@ export class SubscriptionAuthorityRepository {
     input: AdvanceSubscriptionInput,
     provenance:
       | { kind: "provider_event" }
-      | { kind: "command"; commandId: string; leaseToken: string; executionGeneration: number }
+      | {
+          kind: "command" | "paid_upgrade";
+          commandId: string;
+          leaseToken: string;
+          executionGeneration: number;
+        }
       | { kind: "reconciliation"; identity: ReconciliationIdentity },
   ): Promise<SubscriptionMutationResult> {
     const [organization] = await tx
@@ -608,7 +650,7 @@ export class SubscriptionAuthorityRepository {
     requireActivationAllowed(organization, input.values);
     if (provenance.kind === "reconciliation")
       await requireLiveReconciliationLease(tx, provenance.identity);
-    if (provenance.kind === "command") {
+    if (provenance.kind === "command" || provenance.kind === "paid_upgrade") {
       const [command] = await tx
         .select()
         .from(billingSubscriptionCommands)
@@ -622,7 +664,9 @@ export class SubscriptionAuthorityRepository {
       const commandNow = await readPostLockDatabaseNow(tx);
       if (
         !command ||
-        (command.kind !== "cancel" && command.kind !== "resume") ||
+        (provenance.kind === "paid_upgrade"
+          ? command.kind !== "upgrade" || command.organization_upgrade_dispatch_state !== "started"
+          : command.kind !== "cancel" && command.kind !== "resume") ||
         command.status !== "OUTCOME_UNKNOWN" ||
         command.subscription_id !== input.subscriptionId ||
         command.expected_subscription_revision !== input.expectedRevision ||

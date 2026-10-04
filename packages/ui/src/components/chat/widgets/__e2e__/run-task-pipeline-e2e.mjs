@@ -38,7 +38,7 @@ function assert(cond, msg) {
 const stubAppState = {
   name: "stub-app-state",
   setup(build) {
-    build.onResolve({ filter: /^\.\.\/\.\.\/\.\.\/state$/ }, (args) => ({
+    build.onResolve({ filter: /^\.\.\/\.\.\/\.\.\/state(?:\/app-store)?$/ }, (args) => ({
       path: args.path,
       namespace: "app-state-stub",
     }));

@@ -165,7 +165,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _bfcl_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
-        args = [python, "-m", "benchmarks.bfcl", "run", "--output", str(output_dir)]
+        args = [python, "-m", "benchmarks.suites.bfcl", "run", "--output", str(output_dir)]
         provider_name = (model.provider or "").strip().lower()
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         # Route LLM-backed providers through the eliza TS bridge so the
@@ -219,7 +219,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _realm_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
-        args = [python, "-m", "benchmarks.realm.cli", "--output", str(output_dir)]
+        args = [python, "-m", "benchmarks.suites.realm.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
         data_path = extra.get("data_path")
@@ -726,7 +726,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _swe_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
-        args = [python, "-m", "benchmarks.swe_bench.cli", "--output", str(output_dir)]
+        args = [python, "-m", "benchmarks.suites.swe_bench.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--harness", agent])
@@ -760,7 +760,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.swe_bench.cli",
+            "benchmarks.suites.swe_bench.cli",
             "--orchestrated",
             "--output",
             str(output_dir),
@@ -844,7 +844,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.orchestrator_lifecycle.cli",
+            "benchmarks.suites.orchestrator_lifecycle.cli",
             "--output",
             str(output_dir),
         ]
@@ -900,7 +900,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mind2web_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
-        args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
+        args = [python, "-m", "benchmarks.suites.mind2web", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
         # Route LLM-backed providers through the eliza TS bridge so the actual
@@ -993,7 +993,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.visualwebbench",
+            "benchmarks.suites.visualwebbench",
             "--output",
             str(output_dir),
         ]
@@ -1671,7 +1671,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.abliteration-robustness.cli",
+            "benchmarks.suites.abliteration-robustness.cli",
             "--provider",
             provider,
             "--out",
@@ -1739,7 +1739,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.action-calling.cli",
+            "benchmarks.suites.action-calling.cli",
             "--provider",
             provider,
             "--out",
@@ -1789,7 +1789,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         model: ModelSpec,
         extra: Mapping[str, JSONValue],
     ) -> list[str]:
-        """Shared CLI arg builder for ``benchmarks.standard.<name>`` runners.
+        """Shared CLI arg builder for ``benchmarks.suites.standard.<name>`` runners.
 
         Forwards ``--model-endpoint`` / ``--provider`` / ``--model`` /
         ``--api-key-env`` / ``--mock`` / ``--limit`` from ``ModelSpec`` +
@@ -1825,7 +1825,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
         args = _standard_bench_base_args(
-            "benchmarks.standard.mmlu", output_dir, model, extra
+            "benchmarks.suites.standard.mmlu", output_dir, model, extra
         )
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
@@ -1839,7 +1839,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
         args = _standard_bench_base_args(
-            "benchmarks.standard.humaneval", output_dir, model, extra
+            "benchmarks.suites.standard.humaneval", output_dir, model, extra
         )
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
@@ -1860,7 +1860,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
         args = _standard_bench_base_args(
-            "benchmarks.standard.gsm8k", output_dir, model, extra
+            "benchmarks.suites.standard.gsm8k", output_dir, model, extra
         )
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
@@ -1874,7 +1874,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
         args = _standard_bench_base_args(
-            "benchmarks.standard.mt_bench", output_dir, model, extra
+            "benchmarks.suites.standard.mt_bench", output_dir, model, extra
         )
         judge_endpoint = extra.get("judge_endpoint")
         if isinstance(judge_endpoint, str) and judge_endpoint.strip():
@@ -1925,7 +1925,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """
 
         args = _standard_bench_base_args(
-            "benchmarks.standard.trajectory_replay", output_dir, model, extra
+            "benchmarks.suites.standard.trajectory_replay", output_dir, model, extra
         )
         traj_set = extra.get("traj_set")
         if not isinstance(traj_set, str) or not traj_set.strip():

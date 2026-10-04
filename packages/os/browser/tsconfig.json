@@ -19,6 +19,7 @@
     "scripts/native-host.mjs",
     "scripts/native-host.test.mjs",
     "protection/policy.mjs",
+    "protection/domain-lookalike.mjs",
     "protection/reputation.mjs",
     "protection/build.mjs",
     "protection/extension.mjs"

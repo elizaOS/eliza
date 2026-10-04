@@ -9,5 +9,9 @@
     "moduleResolution": "NodeNext",
     "types": ["node"]
   },
-  "include": ["build-consumer-task-runtime.mjs", "lib/committed-source.mjs"]
+  "include": [
+    "build-consumer-task-runtime.mjs",
+    "lib/committed-source.mjs",
+    "lib/immutable-workspace-source.mjs"
+  ]
 }

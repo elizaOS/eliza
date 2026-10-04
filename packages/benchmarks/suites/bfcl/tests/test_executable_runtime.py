@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from benchmarks.bfcl.evaluators import ExecutionEvaluator
-from benchmarks.bfcl.executable_runtime import (
+from benchmarks.suites.bfcl.evaluators import ExecutionEvaluator
+from benchmarks.suites.bfcl.executable_runtime import (
     ExecutableRuntime,
     RuntimeNetworkRequired,
     decode_python_calls,

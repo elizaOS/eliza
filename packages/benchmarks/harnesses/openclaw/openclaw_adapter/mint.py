@@ -15,14 +15,13 @@ returned dict matches the MINT runner's expected per-turn shape: ``text``,
 
 from __future__ import annotations
 
-from benchmarks.mint import (
+from benchmarks.suites.mint import (
     history_to_openai_messages as _history_to_openai_messages,
     last_user_text as _last_user_text,
     normalize_tool_calls as _normalize_tool_calls,
     DEFAULT_SYSTEM_PROMPT as _DEFAULT_SYSTEM_PROMPT,
 )
 
-import json
 import logging
 import time
 from typing import Any, Awaitable, Callable

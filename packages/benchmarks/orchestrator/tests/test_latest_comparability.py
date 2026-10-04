@@ -92,7 +92,7 @@ def test_latest_comparability_allows_different_scores_for_aligned_rows(
     _write_json(latest / "woobench__hermes.json", _row("woobench", "hermes", 0.5))
     _write_json(latest / "woobench__openclaw.json", _row("woobench", "openclaw", 1.0))
 
-    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+    report = validate_latest_comparability(tmp_path)
 
     assert report.ok
     assert report.checked_benchmarks == 1
@@ -104,7 +104,7 @@ def test_latest_comparability_flags_missing_required_rows(tmp_path: Path) -> Non
     _write_json(latest / "bfcl__eliza.json", _row("bfcl", "eliza", 1.0))
     _write_json(latest / "bfcl__hermes.json", _row("bfcl", "hermes", 1.0))
 
-    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+    report = validate_latest_comparability(tmp_path)
 
     assert not report.ok
     assert report.findings[0].reason == "missing_required_latest_rows"
@@ -123,7 +123,7 @@ def test_latest_comparability_flags_mixed_recorded_cohorts(
     _write_json(latest / "mt_bench__hermes.json", hermes)
     _write_json(latest / "mt_bench__openclaw.json", openclaw)
 
-    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+    report = validate_latest_comparability(tmp_path)
 
     reasons = {finding.reason for finding in report.findings}
     assert reasons == {"mixed_comparison_signatures"}
@@ -142,7 +142,7 @@ def test_latest_comparability_flags_config_drift_hidden_by_recorded_cohort(
     _write_json(latest / "mt_bench__hermes.json", hermes)
     _write_json(latest / "mt_bench__openclaw.json", openclaw)
 
-    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+    report = validate_latest_comparability(tmp_path)
 
     reasons = {finding.reason for finding in report.findings}
     assert reasons == {"mixed_comparison_signatures"}
@@ -193,7 +193,7 @@ def test_latest_comparability_allows_score_spread_for_every_benchmark(
         _row("hermes_terminalbench_2", "openclaw", 1.0),
     )
 
-    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+    report = validate_latest_comparability(tmp_path)
 
     assert report.ok
 
@@ -205,12 +205,12 @@ def test_latest_comparability_ignores_unsupported_harnesses(tmp_path: Path) -> N
         latest / "vision_language__eliza.json", _row("vision_language", "eliza", 0.0)
     )
 
-    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+    report = validate_latest_comparability(tmp_path)
 
     assert report.ok
 
 
-def test_latest_comparability_does_not_use_tolerance_for_large_scores(
+def test_latest_comparability_accepts_different_outcome_scores(
     tmp_path: Path,
 ) -> None:
     latest = result_store_root(tmp_path) / "latest"
@@ -226,7 +226,7 @@ def test_latest_comparability_does_not_use_tolerance_for_large_scores(
         _row("vending_bench", "openclaw", 1_000.0),
     )
 
-    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+    report = validate_latest_comparability(tmp_path)
 
     assert report.ok
 
@@ -249,7 +249,6 @@ def test_latest_comparability_filters_excluded_benchmarks(tmp_path: Path) -> Non
 
     report = validate_latest_comparability(
         tmp_path,
-        tolerance=0.08,
         exclude_benchmarks={"terminal_bench"},
     )
 
@@ -275,7 +274,6 @@ def test_latest_comparability_filtered_scope_requires_selected_benchmark(
 
     report = validate_latest_comparability(
         tmp_path,
-        tolerance=0.08,
         exclude_benchmarks={"terminal_bench"},
     )
 
@@ -299,7 +297,6 @@ def test_latest_comparability_include_filter_requires_matching_benchmark(
 
     report = validate_latest_comparability(
         tmp_path,
-        tolerance=0.08,
         include_benchmarks={"terminal_bench"},
     )
 
@@ -380,7 +377,6 @@ def test_latest_comparability_cli_accepts_latest_dir_and_filters(
 
     code = cli._cmd_validate_latest_comparability(
         argparse.Namespace(
-            tolerance=0.08,
             latest_dir=str(latest),
             include_benchmarks="swe_bench",
             exclude_benchmarks="",

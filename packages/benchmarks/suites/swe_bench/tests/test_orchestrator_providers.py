@@ -10,19 +10,19 @@ from types import SimpleNamespace
 import pytest
 
 
-from benchmarks.swe_bench.orchestrator.types import (
+from benchmarks.suites.swe_bench.orchestrator.types import (
     OrchestratedTask,
     OrchestratedTaskMetadata,
     ProviderTaskExecutionContext,
     TaskStatus,
     TaskUserStatus,
 )
-from benchmarks.swe_bench.orchestrator.providers import (
+from benchmarks.suites.swe_bench.orchestrator.providers import (
     ElizaCodeProvider,
     SWEAgentProvider,
     SWEBenchTraceHook,
 )
-from benchmarks.swe_bench.repo_manager import RepositoryManager
+from benchmarks.suites.swe_bench.repo_manager import RepositoryManager
 
 
 class _RuntimeStub:

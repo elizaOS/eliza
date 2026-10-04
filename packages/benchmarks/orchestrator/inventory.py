@@ -52,12 +52,8 @@ class BenchmarkInventoryReport:
         )
 
 
-def _workspace_root_from_repo(repo_root: Path) -> Path:
-    return repo_root
-
-
 def build_inventory_report(repo_root: Path) -> BenchmarkInventoryReport:
-    workspace_root = _workspace_root_from_repo(repo_root.resolve())
+    workspace_root = repo_root.resolve()
     discovery = discover_adapters(workspace_root)
     registry_entries = get_benchmark_registry(workspace_root)
     registry_by_id = {entry.id: entry for entry in registry_entries}
@@ -97,7 +93,9 @@ def build_inventory_report(repo_root: Path) -> BenchmarkInventoryReport:
         )
 
     adapter_ids = set(discovery.adapters)
-    covered_dirs = {adapter.directory for adapter in discovery.adapters.values()}
+    covered_dirs = {adapter.directory for adapter in discovery.adapters.values()} | {
+        entry.directory for entry in DIRECT_CAMPAIGN_ENTRIES
+    }
     registry_missing_adapters = tuple(
         sorted(entry.id for entry in registry_entries if entry.id not in adapter_ids)
     )

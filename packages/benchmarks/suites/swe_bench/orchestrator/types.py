@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from benchmarks.swe_bench.types import SWEBenchVariant
+from benchmarks.suites.swe_bench.types import SWEBenchVariant
 
 
 class ProviderType(str, Enum):

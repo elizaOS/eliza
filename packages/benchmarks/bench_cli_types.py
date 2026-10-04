@@ -50,6 +50,13 @@ def expect_float(value: JSONValue, *, ctx: str) -> float:
     return number
 
 
+def expect_count(value: JSONValue, *, ctx: str) -> int:
+    number = expect_float(value, ctx=ctx)
+    if number < 0 or not number.is_integer():
+        raise ValueError(f"{ctx}: expected non-negative integer count")
+    return int(number)
+
+
 def expect_bool(value: JSONValue, *, ctx: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{ctx}: expected boolean, got {type(value).__name__}")
@@ -101,7 +108,9 @@ class ScoreExtraction:
     metrics: dict[str, JSONValue]
 
     def __post_init__(self) -> None:
-        expect_float(self.score, ctx="primary score")
+        score = expect_float(self.score, ctx="primary score")
+        if self.unit == "ratio" and not 0 <= score <= 1:
+            raise ValueError("Primary ratio score must be between zero and one")
 
 
 CommandBuilder = Callable[

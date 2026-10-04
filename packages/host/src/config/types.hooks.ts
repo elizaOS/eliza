@@ -73,15 +73,6 @@ export type HooksGmailConfig = {
   thinking?: "off" | "minimal" | "low" | "medium" | "high";
 };
 
-export type InternalHookHandlerConfig = {
-  /** Event key to listen for (e.g., 'command:new', 'session:start') */
-  event: string;
-  /** Path to handler module (absolute or relative to cwd) */
-  module: string;
-  /** Export name from module (default: 'default') */
-  export?: string;
-};
-
 export type HookConfig = {
   enabled?: boolean;
   env?: Record<string, string>;
@@ -101,8 +92,6 @@ export type HookInstallRecord = {
 export type InternalHooksConfig = {
   /** Enable hooks system */
   enabled?: boolean;
-  /** Legacy: List of internal hook handlers to register (still supported) */
-  handlers?: InternalHookHandlerConfig[];
   /** Per-hook configuration overrides */
   entries?: Record<string, HookConfig>;
   /** Load configuration */

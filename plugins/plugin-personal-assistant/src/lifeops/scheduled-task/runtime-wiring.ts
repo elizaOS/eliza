@@ -16,7 +16,6 @@ import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
-  resolveOwnerEntityId,
 } from "@elizaos/agent";
 import {
   ElizaError,
@@ -27,6 +26,7 @@ import {
   logger,
   MESSAGE_SOURCE_OWNER_CHAT,
   requireConfirmedSendHandlerDelivery,
+  resolveOwnerEntityId,
   SEND_HANDLER_NOT_FOUND,
   ServiceType,
   type UUID,

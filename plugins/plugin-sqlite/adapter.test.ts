@@ -1306,6 +1306,12 @@ it("keeps another agent's worlds out of listing, updates, and metadata swaps", a
   expect((await adapter.getAllWorlds()).map((world) => world.id)).toEqual([
     ownedId,
   ]);
+  expect(await adapter.getWorldsByIds([foreignId])).toEqual([]);
+  await adapter.deleteWorlds([foreignId]);
+  expect(await storage.get("worlds", foreignId)).toMatchObject({
+    agentId: otherAgentId,
+    name: "secret",
+  });
   await adapter.updateWorlds([{ id: foreignId, agentId, name: "rewritten" }]);
   await adapter.upsertWorlds([{ id: foreignId, agentId, name: "upserted" }]);
   expect(

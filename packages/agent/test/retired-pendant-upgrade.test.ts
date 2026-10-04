@@ -75,6 +75,21 @@ it("upgrades the host without dropping retired transcripts or tenant-scoped refe
       migrator.migrate("eliza", withoutRetired, { allowDataLoss: false }),
     ).rejects.toThrow("Destructive migration blocked");
     expect(await readRows()).toEqual(before);
+    await expect(
+      database.query(`
+      INSERT INTO app_lifeops.pendant_session_insight_refs
+      (id, session_id, owner_id, agent_id, created_at, updated_at)
+      VALUES ('cross-owner', 'session', 'unknown-owner', 'agent', 'now', 'now')
+    `),
+    ).rejects.toMatchObject({ code: "23503" });
+    await expect(
+      database.query(`
+      INSERT INTO app_lifeops.pendant_session_segments
+      (id, session_id, owner_id, agent_id, ordinal, status, text, started_at, created_at, updated_at)
+      VALUES ('duplicate', 'session', 'owner-a', 'agent', 0, 'complete', 'duplicate', 'now', 'now', 'now')
+    `),
+    ).rejects.toMatchObject({ code: "23505" });
+    expect(await readRows()).toEqual(before);
   } finally {
     await database.close();
     await rm(directory, { recursive: true, force: true });

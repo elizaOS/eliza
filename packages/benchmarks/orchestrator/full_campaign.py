@@ -696,6 +696,20 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
 
 DIRECT_CAMPAIGN_ENTRIES: tuple[DirectCampaignEntry, ...] = (
     DirectCampaignEntry(
+        "content_context",
+        "content-context",
+        CampaignDisposition.INFRASTRUCTURE,
+        ("bun", "run", "test:content-context"),
+        "Corpus and target-conformance infrastructure; the offline lane does not establish production performance evidence.",
+    ),
+    DirectCampaignEntry(
+        "planner_optimization",
+        "planner-optimization",
+        CampaignDisposition.MANUAL,
+        None,
+        "Candidate-only GEPA optimization requires an explicit manifest, trusted evaluator/reflection adapter and prepared Python environment; unit tests do not establish live model improvement.",
+    ),
+    DirectCampaignEntry(
         "agentbench_matrix",
         "../orchestrator",
         CampaignDisposition.MANUAL,

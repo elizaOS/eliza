@@ -449,12 +449,13 @@ test("repeat choice POST restores the stored outcome without another workflow ef
       return { kind: "human-sign-in" };
     },
   }));
+  const observedAt = Date.now();
   f.stores.store.transition(
     f.task.id,
     {
       owner: f.runtime.owner,
       expectedRevision: f.task.revision,
-      now: Date.now(),
+      now: observedAt,
     },
     {
       type: "observe",
@@ -464,7 +465,7 @@ test("repeat choice POST restores the stored outcome without another workflow ef
         origin: "https://example.test",
         version: 1,
         inputRevision: 0,
-        observedAt: Date.now(),
+        observedAt,
       },
     },
   );
