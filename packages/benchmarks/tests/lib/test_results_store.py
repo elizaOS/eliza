@@ -498,7 +498,7 @@ def test_record_run_rejects_empty_required_fields(
 def test_record_run_defaults_to_now(
     store: ResultsStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from . import results_store as module
+    from benchmarks.lib import results_store as module
 
     monkeypatch.setattr(module.time, "time", lambda: 1234.567)
     store.record_run(

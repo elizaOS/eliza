@@ -24,7 +24,7 @@ public final class WebViewHealthObserver {
  private boolean resumed;
  private long generation;
  private Object pending;
- public void resume(Activity activity,WebView view){requireMain();if(activity==null||view==null)throw new IllegalArgumentException("Activity and renderer required");renderer=new WeakReference<>(view);if(current.get()!=activity)pending=null;current=new WeakReference<>(activity);resumed=true;generation++;}
+ public void resume(Activity activity,WebView view){requireMain();if(activity==null||view==null)throw new IllegalArgumentException("Activity and renderer required");if(current.get()!=activity||renderer.get()!=view)pending=null;renderer=new WeakReference<>(view);current=new WeakReference<>(activity);resumed=true;generation++;}
  public void pause(Activity activity){requireMain();if(current.get()==activity){resumed=false;generation++;}}
  public void destroy(Activity activity){requireMain();if(current.get()==activity){current.clear();renderer.clear();resumed=false;generation++;pending=null;}}
  public JSONObject read(long deadline)throws Exception {
