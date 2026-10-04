@@ -3,10 +3,10 @@
  * re-exported shared helpers.
  */
 
-export { getLogPrefix } from "@elizaos/core";
 export {
   createSerialise,
   errorMessage,
+  getLogPrefix,
   isRedirectResponse,
   isSafeExecutableValue,
   isTimeoutError,

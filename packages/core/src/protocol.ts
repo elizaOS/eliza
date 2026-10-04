@@ -543,6 +543,7 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/format-error.js";
 export * from "./utils/html-raw-text";
 export * from "./utils/inflection-term-keys";
+export { getLogPrefix } from "./utils/log-prefix.js";
 export {
 	assertModelOutputComplete,
 	isModelOutputLimitFinishReason,
@@ -561,7 +562,10 @@ export * from "./utils/model-retry";
 export { tokenizeNameOccurrences } from "./utils/name-tokens.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/path-component.js";
-export type { OpenPermissionSettingsDeps } from "./utils/permission-deep-links.js";
+export {
+	type OpenPermissionSettingsDeps,
+	openPermissionSettings,
+} from "./utils/permission-deep-links.js";
 export {
 	hasReasoningResidue,
 	stripReasoningPrefixes,
@@ -583,7 +587,7 @@ export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
 export * from "./utils/type-guards.ts";
 export * from "./utils/unicode.js";
 export * from "./utils/union-find.ts";
-export { uuidFromString } from "./utils/uuid.js";
+export { uuidFromString, validateUuid } from "./utils/uuid.js";
 export * from "./utils/well-formed";
 export * from "./validation/keywords";
 export * from "./validation/secrets";
