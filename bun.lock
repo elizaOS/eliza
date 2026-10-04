@@ -976,6 +976,7 @@
       "name": "@elizaos/provisioning-worker",
       "version": "1.0.0",
       "dependencies": {
+        "@elizaos/auth": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
       },
