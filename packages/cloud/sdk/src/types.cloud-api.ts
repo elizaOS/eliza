@@ -31,6 +31,36 @@ export interface OrganizationSubscriptionCancellationRequest {
 export type OrganizationSubscriptionCancellationResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionCancellationDto>;
 
+/** A next-invoice estimate, not a price lock or authorization token. */
+export interface OrganizationSubscriptionRenewalReviewDto {
+  kind: "renewal_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  interval: "month";
+  intervalCount: 1;
+  baseAmountCents: number;
+  renewalAt: string;
+  nextPeriodEnd: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  startingBalanceCents: number;
+  amountDueCents: number;
+  observedAt: string;
+  expiresAt: string;
+  termsDigest: string;
+}
+export type OrganizationSubscriptionRenewalReviewResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionRenewalReviewDto>;
+export interface OrganizationSubscriptionReviewedUndoRequest
+  extends OrganizationSubscriptionCancellationRequest {
+  expectedRenewalTermsDigest: string;
+}
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;
