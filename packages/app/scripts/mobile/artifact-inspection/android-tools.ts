@@ -1,9 +1,40 @@
 /** Invokes Android artifact inspection tools and decodes their manifest evidence. */
 
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
+
+const executeFile = promisify(execFile);
+
+/** Async inspection preserves caller cancellation and optional command deadlines. */
+export async function dumpAndroidArtifactBadgingAsync(
+  aapt,
+  artifact,
+  options = {},
+) {
+  return (
+    await executeFile(aapt, ["dump", "badging", artifact], {
+      ...options,
+      encoding: "utf8",
+    })
+  ).stdout;
+}
+
+export async function dumpAndroidArtifactManifestAsync(
+  aapt,
+  artifact,
+  options = {},
+) {
+  return (
+    await executeFile(
+      aapt,
+      ["dump", "xmltree", artifact, "AndroidManifest.xml"],
+      { ...options, encoding: "utf8" },
+    )
+  ).stdout;
+}
 
 export function resolveAndroidBuildTool(
   sdkRoot,

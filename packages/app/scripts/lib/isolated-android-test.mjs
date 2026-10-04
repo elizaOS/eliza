@@ -1,15 +1,19 @@
 /** Explicit consumer APK acceptance. Never replaces an existing installation. */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const executeFile = promisify(execFile);
+
 import {
   androidInstrumentationEvidenceFromAapt,
-  dumpAndroidArtifactBadging,
-  dumpAndroidArtifactManifest,
+  dumpAndroidArtifactBadgingAsync,
+  dumpAndroidArtifactManifestAsync,
 } from "../mobile/artifact-inspection/android-tools.ts";
-import { acquireDeviceLease } from "./device-lease.ts";
+import { acquireDeviceLease, deviceLeaseStateDir } from "./device-lease.ts";
 import { requireInstrumentationSuccess } from "./instrumentation-result.mjs";
 
 const sha256 = (file) =>
@@ -27,11 +31,16 @@ export async function runIsolatedAndroidTest({
   testClass,
   expectedTests = 1,
   requiredAbi,
+  expectedAvdName,
+  androidUser,
+  signal,
+  commandTimeoutMs,
+  cleanupTimeoutMs,
   variants,
   directory,
   evidence,
   runnerArgs = [],
-  instrumentationTimeoutMs = 120000,
+  instrumentationTimeoutMs,
   prepareVariant,
   collectVariant,
 }) {
@@ -45,10 +54,21 @@ export async function runIsolatedAndroidTest({
   );
   assert.ok(Number.isSafeInteger(expectedTests) && expectedTests > 0);
   assert.ok(
-    Number.isSafeInteger(instrumentationTimeoutMs) &&
-      instrumentationTimeoutMs >= 120000 &&
-      instrumentationTimeoutMs <= 600000,
+    Number.isSafeInteger(androidUser) && androidUser >= 0,
+    "Explicit Android user required",
   );
+  assert.match(expectedAvdName ?? "", /^[A-Za-z0-9_.-]+$/);
+  for (const deadline of [
+    commandTimeoutMs,
+    instrumentationTimeoutMs,
+    cleanupTimeoutMs,
+  ])
+    assert.ok(
+      deadline === undefined ||
+        (Number.isSafeInteger(deadline) && deadline > 0),
+      "A caller deadline must be positive milliseconds",
+    );
+  signal?.throwIfAborted();
   assert.ok(Array.isArray(variants) && variants.length > 0);
   assert.ok(
     path.isAbsolute(directory),
@@ -86,7 +106,9 @@ export async function runIsolatedAndroidTest({
   }
   const names = new Set();
   // Validate every artifact before the first install, including instrumentation's target.
-  const records = variants.map((variant) => {
+  const records = [];
+  for (const variant of variants) {
+    signal?.throwIfAborted();
     assert.match(variant.name ?? "", /^[a-z0-9-]+$/);
     assert.ok(!names.has(variant.name));
     names.add(variant.name);
@@ -96,7 +118,10 @@ export async function runIsolatedAndroidTest({
     ]) {
       assert.ok(path.isAbsolute(apk));
       const actual = /package: name='([^']+)'/.exec(
-        dumpAndroidArtifactBadging(aapt, apk),
+        await dumpAndroidArtifactBadgingAsync(aapt, apk, {
+          signal,
+          timeout: commandTimeoutMs,
+        }),
       )?.[1];
       assert.equal(
         actual,
@@ -106,79 +131,115 @@ export async function runIsolatedAndroidTest({
     }
     assert.deepEqual(
       androidInstrumentationEvidenceFromAapt(
-        dumpAndroidArtifactManifest(aapt, variant.testApk),
+        await dumpAndroidArtifactManifestAsync(aapt, variant.testApk, {
+          signal,
+          timeout: commandTimeoutMs,
+        }),
       ),
       [{ name: runner, targetPackage: packageName }],
       "Instrumentation target or runner mismatch",
     );
-    return {
+    records.push({
       variant: variant.name,
       appSha256: sha256(variant.apk),
       testSha256: sha256(variant.testApk),
-    };
-  });
-  const run = (...args) =>
-    execFileSync(adb, ["-s", serial, ...args], {
-      env,
-      encoding: "utf8",
-      timeout:
-        args[0] === "shell" && args[1] === "am" && args[2] === "instrument"
-          ? instrumentationTimeoutMs
-          : 120000,
-      maxBuffer: 4 * 1024 ** 2,
     });
-  const home = () =>
-    run(
-      "shell",
-      "cmd",
-      "package",
-      "resolve-activity",
-      "--brief",
-      "-a",
-      "android.intent.action.MAIN",
-      "-c",
-      "android.intent.category.HOME",
+  }
+  // Cleanup runs independently of an aborted operation signal and has its own caller deadline.
+  let cleaning = false;
+  const run = async (...args) =>
+    (
+      await executeFile(adb, ["-s", serial, ...args], {
+        env,
+        encoding: "utf8",
+        signal: cleaning ? undefined : signal,
+        timeout: cleaning
+          ? cleanupTimeoutMs
+          : args[0] === "shell" && args[1] === "am" && args[2] === "instrument"
+            ? instrumentationTimeoutMs
+            : commandTimeoutMs,
+        maxBuffer: 4 * 1024 ** 2,
+      })
+    ).stdout;
+  const home = async () =>
+    (
+      await run(
+        "shell",
+        "cmd",
+        "package",
+        "resolve-activity",
+        "--brief",
+        "-a",
+        "android.intent.action.MAIN",
+        "-c",
+        "android.intent.category.HOME",
+      )
     ).trim();
-  const installed = () =>
-    run("shell", "pm", "list", "packages", "-u", "--user", "all")
-      .split(/\r?\n/)
-      .some((line) =>
-        [packageName, testPackage].some((name) => line === `package:${name}`),
-      );
-  const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0 });
-  const report = { serial, packageName, testPackage, evidence, variants: [] };
+  const packages = async () =>
+    (await run("shell", "pm", "list", "packages", "-u", "--user", "all")).split(
+      /\r?\n/,
+    );
+  const installed = async () =>
+    (await packages()).some((line) =>
+      [packageName, testPackage].some((name) => line === `package:${name}`),
+    );
+  // The canonical lease still reclaims dead PIDs. It must not expire under a live caller's work.
+  const lease = await acquireDeviceLease(`android:${serial}`, {
+    waitMs: 0,
+    ttlMs: Number.MAX_SAFE_INTEGER,
+    stateDir: deviceLeaseStateDir(env),
+  });
+  const report = {
+    serial,
+    packageName,
+    testPackage,
+    expectedAvdName,
+    requiredAbi,
+    androidUser,
+    evidence,
+    variants: [],
+  };
   let admitted = false,
     previousHome,
     failure;
   const owned = new Set();
   try {
     assert.equal(
-      run("shell", "getprop", "ro.kernel.qemu").trim(),
+      (await run("shell", "getprop", "ro.kernel.qemu")).trim(),
       "1",
       "Disposable emulator required",
     );
     assert.equal(
-      run("shell", "getprop", "ro.product.cpu.abi").trim(),
+      (await run("shell", "getprop", "ro.product.cpu.abi")).trim(),
       requiredAbi,
+      expectedAvdName,
+      signal,
+      commandTimeoutMs,
+      cleanupTimeoutMs,
       "Emulator ABI mismatch",
     );
-    report.selinux = run("shell", "getenforce").trim();
+    assert.equal(
+      (await run("emu", "avd", "name")).split(/\r?\n/)[0],
+      expectedAvdName,
+      "Selected emulator is not the caller-owned fixture AVD",
+    );
+    report.selinux = (await run("shell", "getenforce")).trim();
     assert.equal(
       report.selinux,
       "Enforcing",
       "App-domain acceptance requires SELinux enforcing",
     );
     assert.ok(
-      !installed(),
+      !(await installed()),
       "App or retained package data already exists; refusing replacement",
     );
-    previousHome = home();
+    previousHome = await home();
     fs.mkdirSync(directory, { recursive: true });
     admitted = true;
     for (const [index, variant] of variants.entries()) {
       const record = records[index];
       report.variants.push(record);
-      assert.ok(!installed(), "Installation appeared after preflight");
+      assert.ok(!(await installed()), "Installation appeared after preflight");
       assert.equal(
         sha256(variant.apk),
         record.appSha256,
@@ -190,9 +251,15 @@ export async function runIsolatedAndroidTest({
         "Test APK changed after preflight",
       );
       owned.add(packageName);
-      run("install", variant.apk);
+      await run("install", "--user", String(androidUser), variant.apk);
       owned.add(testPackage);
-      run("install", "-t", variant.testApk);
+      await run(
+        "install",
+        "--user",
+        String(androidUser),
+        "-t",
+        variant.testApk,
+      );
       const context = {
         variant: variant.name,
         packageName,
@@ -200,12 +267,18 @@ export async function runIsolatedAndroidTest({
         env,
         serial,
         directory,
+        androidUser,
+        signal,
       };
+      signal?.throwIfAborted();
       await prepareVariant?.(context);
-      const output = run(
+      signal?.throwIfAborted();
+      const output = await run(
         "shell",
         "am",
         "instrument",
+        "--user",
+        String(androidUser),
         "-w",
         "-r",
         "-e",
@@ -224,12 +297,13 @@ export async function runIsolatedAndroidTest({
         "Unexpected test count",
       );
       await collectVariant?.(context);
+      signal?.throwIfAborted();
       record.passed = true;
-      run("uninstall", testPackage);
-      run("uninstall", packageName);
-      assert.ok(!installed(), "Variant package cleanup failed");
+      await run("uninstall", testPackage);
+      await run("uninstall", packageName);
+      assert.ok(!(await installed()), "Variant package cleanup failed");
       owned.clear();
-      assert.equal(home(), previousHome, "Default HOME changed");
+      assert.equal(await home(), previousHome, "Default HOME changed");
     }
     report.verifiedAt = new Date().toISOString();
   } catch (error) {
@@ -237,6 +311,7 @@ export async function runIsolatedAndroidTest({
     report.failure = error.message;
   } finally {
     try {
+      cleaning = true;
       if (admitted) {
         // Only identities absent from all users at admission are owned by this run.
         report.cleanupErrors = [];
@@ -244,27 +319,33 @@ export async function runIsolatedAndroidTest({
           owned.has(name),
         )) {
           try {
-            const remaining = run(
-              "shell",
-              "pm",
-              "list",
-              "packages",
-              "-u",
-              "--user",
-              "all",
-            )
-              .split(/\r?\n/)
-              .includes(`package:${name}`);
-            if (remaining) run("uninstall", name);
+            const remaining = (await packages()).includes(`package:${name}`);
+            if (remaining) {
+              try {
+                await run(
+                  "shell",
+                  "am",
+                  "force-stop",
+                  "--user",
+                  String(androidUser),
+                  name,
+                );
+              } catch (error) {
+                report.cleanupErrors.push(
+                  `Could not stop ${name}: ${error.code ?? error.status ?? "command failed"}`,
+                );
+              }
+              await run("uninstall", name);
+            }
           } catch (error) {
             report.cleanupErrors.push(
-              `Could not clean ${name}: ${error.code ?? "command failed"}`,
+              `Could not clean ${name}: ${error.code ?? error.status ?? "command failed"}`,
             );
           }
         }
         try {
-          report.cleaned = !installed();
-          report.homeUnchanged = home() === previousHome;
+          report.cleaned = !(await installed());
+          report.homeUnchanged = (await home()) === previousHome;
         } catch {
           report.cleaned = false;
           report.homeUnchanged = false;

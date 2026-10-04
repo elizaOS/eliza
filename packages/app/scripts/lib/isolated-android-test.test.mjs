@@ -25,6 +25,7 @@ function fixture(t, mode = "") {
     `#!/usr/bin/env node
 const fs=require('node:fs');const args=process.argv.slice(4);const file=${JSON.stringify(state)};const state=JSON.parse(fs.readFileSync(file));const mode=${JSON.stringify(mode)};
 fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n');
+if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
 if(args.includes('ro.kernel.qemu'))console.log('1');
 if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
 if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enforcing');
@@ -34,6 +35,8 @@ if(args.includes('resolve-activity'))console.log(state.home);
 if(args[0]==='install'){const id=args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages.push(id);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);}
 if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('instrument')){
+ if(mode==='hanging'){fs.writeFileSync(${JSON.stringify(path.join(root, "instrumentation-started"))},'started');setInterval(()=>{},1000);return;}
+
  if(mode==='home-change'){state.home='other/.Home';fs.writeFileSync(file,JSON.stringify(state));}
  console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 1');
  if(mode!=='partial')console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 0');
@@ -64,6 +67,12 @@ else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="andr
       packageName: "org.example.consumer",
       testClass: "org.example.consumer.Probe",
       requiredAbi: "x86_64",
+      expectedAvdName: "owned-test-fixture",
+      androidUser: 0,
+      env: {
+        ...process.env,
+        ELIZA_DEVICE_LEASE_DIR: path.join(root, "leases"),
+      },
       directory: path.join(root, "results"),
       variants: ["standalone", "launcher"].map((name) => ({
         name,
@@ -181,4 +190,55 @@ test("artifact changes between variants are rejected before the next installatio
   );
   assert.equal(f.commands().filter((c) => c[0] === "install").length, 2);
   assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+});
+
+test("caller cancellation stops a running command and cleans only owned packages", async (t) => {
+  const f = fixture(t, "hanging"),
+    controller = new AbortController();
+  const running = runIsolatedAndroidTest({
+    ...f.options,
+    signal: controller.signal,
+  });
+  const assertion = assert.rejects(
+    running,
+    (error) => error.name === "AbortError",
+  );
+  const started = path.join(f.root, "instrumentation-started");
+  while (!fs.existsSync(started))
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  controller.abort();
+  await assertion;
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+  assert.ok(f.commands().some((c) => c.includes("force-stop")));
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleaned, true);
+  assert.equal(report.homeUnchanged, true);
+});
+
+test("caller-selected instrumentation deadlines are not subject to a shared duration policy", async (t) => {
+  const f = fixture(t, "hanging");
+  await assert.rejects(
+    runIsolatedAndroidTest({ ...f.options, instrumentationTimeoutMs: 200 }),
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+  const second = fixture(t);
+  const result = await runIsolatedAndroidTest({
+    ...second.options,
+    instrumentationTimeoutMs: 900000,
+  });
+  assert.equal(result.cleaned, true);
+});
+
+test("the fixture AVD identity is required before installation", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      expectedAvdName: "somebody-elses-avd",
+    }),
+    /fixture AVD/,
+  );
+  assert.ok(!f.commands().some((c) => ["install", "uninstall"].includes(c[0])));
 });
