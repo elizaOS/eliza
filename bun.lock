@@ -1537,6 +1537,7 @@
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.9",
         "@elizaos/contracts": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "ai": "^6.0.23",
       },
       "devDependencies": {
