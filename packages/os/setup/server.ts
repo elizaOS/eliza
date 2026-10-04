@@ -1,5 +1,3 @@
-// Configures the AOSP setup flasher build and tests.
-
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { Server } from "bun";
 import { AdbFlasherBackend } from "./src/backend/adb-backend";

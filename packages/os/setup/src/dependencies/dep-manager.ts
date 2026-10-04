@@ -1,4 +1,3 @@
-// Resolves host dependencies required by the AOSP setup flasher.
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";

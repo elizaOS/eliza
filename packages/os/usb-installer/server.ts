@@ -1,4 +1,3 @@
-// Configures the USB installer build, server, and tests.
 import { randomUUID } from "node:crypto";
 import { createPlatformBackend } from "./src/backend/platform-backend";
 import type {
