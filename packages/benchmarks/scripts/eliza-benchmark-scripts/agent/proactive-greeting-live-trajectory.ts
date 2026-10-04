@@ -9,20 +9,19 @@
  * wallet brief (its live state is fetched from the running local API in prod).
  *
  * Run: OPENAI_API_KEY=$CEREBRAS_API_KEY OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
- *      bun packages/agent/scripts/proactive-greeting-live-trajectory.ts
+ *      bun packages/benchmarks/scripts/eliza-benchmark-scripts/agent/proactive-greeting-live-trajectory.ts
  */
 
+import { renderLiveStateForScope } from "@elizaos/agent/providers/page-scoped-live-state";
+import {
+  buildProactiveJudgePrompt,
+  parseProactiveJudgeDecisionOutput,
+} from "@elizaos/agent/services/proactive-interaction-decider";
 import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
   type IAgentRuntime,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
-
-import { renderLiveStateForScope } from "../src/providers/page-scoped-live-state.ts";
-import {
-  buildProactiveJudgePrompt,
-  parseProactiveJudgeDecisionOutput,
-} from "../src/services/proactive-interaction-decider.ts";
 
 const BASE_URL =
   process.env.OPENAI_BASE_URL ||
@@ -209,4 +208,4 @@ async function main() {
   console.log("done");
 }
 
-void main();
+if (import.meta.main) void main();

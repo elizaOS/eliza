@@ -8,6 +8,7 @@
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
  */
 import fs from "node:fs";
+import { rpcJsonRequest } from "@elizaos/plugin-wallet/read";
 import {
   decodeSolanaBase58,
   decodeSolanaPrivateKey,
@@ -38,8 +39,8 @@ import {
 } from "@elizaos/core";
 
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { computeValueUsd } from "@elizaos/plugin-wallet/read";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
-import { computeValueUsd } from "./wallet-dex-prices.ts";
 
 type StewardAgentPayload = {
   walletAddress?: string;
@@ -95,7 +96,7 @@ export {
   fetchDexPrices,
   fetchDexScreenerPrices,
   WRAPPED_NATIVE,
-} from "./wallet-dex-prices.ts";
+} from "@elizaos/plugin-wallet/read";
 
 export {
   type AnkrTokenAsset,
@@ -1025,15 +1026,6 @@ function buildSolanaTokenBalance(
   };
 }
 
-function rpcJsonRequest(body: string): RequestInit {
-  return {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    body,
-  };
-}
-
 function describeRpcEndpoint(url: string): string {
   try {
     return new URL(url).host;
@@ -1183,6 +1175,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
         await fetch(
           rpcUrl,
           rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
             JSON.stringify({
               jsonrpc: "2.0",
               id: 1,
@@ -1199,6 +1192,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
         await fetch(
           rpcUrl,
           rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
             JSON.stringify({
               jsonrpc: "2.0",
               id: 2,

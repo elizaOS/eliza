@@ -4,7 +4,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 
 type Json = Record<string, unknown>;
 type Variant = "baseline" | "candidate";

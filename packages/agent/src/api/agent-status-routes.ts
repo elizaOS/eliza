@@ -11,9 +11,8 @@ import {
   type ReadJsonBodyOptions,
   type TradePermissionMode,
 } from "@elizaos/core";
-
+import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/transactions";
 import type { ElizaConfig } from "../config/config.ts";
-import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
 import type { WalletCapabilityStatus } from "./wallet-capability.ts";
 
 // ---------------------------------------------------------------------------

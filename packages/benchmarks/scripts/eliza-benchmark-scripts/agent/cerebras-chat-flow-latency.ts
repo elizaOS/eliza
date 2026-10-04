@@ -13,6 +13,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { shutdownRuntime } from "@elizaos/agent";
+import { generateChatResponse } from "@elizaos/agent/api/chat-routes";
 import {
   type AgentRuntime,
   buildInferenceTimingDevPayload,
@@ -35,8 +37,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
-import { generateChatResponse } from "../src/api/chat-routes.ts";
-import { shutdownRuntime } from "../src/runtime/eliza.ts";
 import {
   applyCacheExperiment,
   type CacheExperimentMode,
@@ -163,9 +163,9 @@ const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
 // `eliza-source` graph. plugin-sql is added explicitly because its package name
 // is assembled dynamically by the real PGLite test-runtime factory.
 const CEREBRAS_LIVE_SOURCE_PATHS = [
-  "packages/agent/scripts/cerebras-chat-flow-latency.ts",
-  "packages/agent/scripts/cerebras-chat-flow-experiment.ts",
-  "packages/agent/scripts/cerebras-cache-wire-replay.ts",
+  "packages/benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-chat-flow-latency.ts",
+  "packages/benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-chat-flow-experiment.ts",
+  "packages/benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-cache-wire-replay.ts",
   "packages/agent/src",
   "packages/cloud/routing/src",
   "packages/core/src",
@@ -424,7 +424,7 @@ function isAttestedIgnoredSource(path: string): boolean {
 }
 
 export function sourceRevisionEvidence(
-  repoRoot = fileURLToPath(new URL("../../..", import.meta.url)),
+  repoRoot = fileURLToPath(new URL("../../../../..", import.meta.url)),
   attestedSourcePaths: readonly string[] = CEREBRAS_LIVE_SOURCE_PATHS,
 ): { head: string; treeClean: true } {
   const head = execFileSync("git", ["-C", repoRoot, "rev-parse", "HEAD"], {
@@ -821,10 +821,10 @@ async function main(): Promise<void> {
         "Native embeddings require explicit MODELS_DIR and LOCAL_EMBEDDING_MODEL",
       );
     const { resolveFusedEmbeddingBundleRoot } = await import(
-      "../../../plugins/plugin-local-inference/src/runtime/fused-embedding-bundle.ts"
+      "../../../../../plugins/plugin-local-inference/src/runtime/fused-embedding-bundle.ts"
     );
     const { resolveFusedLibraryPath } = await import(
-      "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts"
+      "../../../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts"
     );
     const { ensureLocalInferenceHandler } = await import(
       "@elizaos/plugin-local-inference/runtime"
@@ -914,9 +914,7 @@ async function main(): Promise<void> {
   // real native calls below explicitly select the canonical native provider.
   if (nativeEmbedding)
     process.env.OPENAI_EMBEDDING_DIMENSIONS = String(embedding.dimensions);
-  const { default: openaiPlugin } = await import(
-    "../../../plugins/plugin-openai/index.ts"
-  );
+  const { default: openaiPlugin } = await import("@elizaos/plugin-openai");
   process.stderr.write("[cerebras-benchmark] initializing runtime\n");
   const previousPgliteDir = process.env.PGLITE_DATA_DIR;
   const { runtime, pgliteDir } = await createTestRuntime({

@@ -1,4 +1,4 @@
-/** Builds the single Node provider entry and its public declarations. */
+/** Builds the model-provider and direct-media entries with shared declarations. */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build } from "tsup";
@@ -7,7 +7,7 @@ export async function buildOpenAI(options: { watch?: boolean } = {}): Promise<vo
   const root = fileURLToPath(new URL(".", import.meta.url));
   const manifest = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
   await build({
-    entry: { index: `${root}index.ts` },
+    entry: { index: `${root}index.ts`, "direct-media": `${root}direct-media.ts` },
     outDir: `${root}dist`,
     tsconfig: `${root}tsconfig.build.json`,
     platform: "node",
@@ -23,7 +23,14 @@ export async function buildOpenAI(options: { watch?: boolean } = {}): Promise<vo
     clean: true,
     sourcemap: false,
     watch: options.watch
-      ? [`${root}index.ts`, `${root}models`, `${root}utils`, `${root}providers`, `${root}types`]
+      ? [
+          `${root}index.ts`,
+          `${root}direct-media.ts`,
+          `${root}models`,
+          `${root}utils`,
+          `${root}providers`,
+          `${root}types`,
+        ]
       : false,
   });
 }
