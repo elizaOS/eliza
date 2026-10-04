@@ -210,3 +210,9 @@ paths. Hosts retain provider/plugin configuration, account storage identity and
 all supervisor/readiness policy. Agent authority is not copied to the gateway.
 Port selection is only a hint; children must bind strictly. The portable native
 host suite checks environment isolation with a real child process.
+`NativeRuntimeSession` composes the existing process supervisor with named process
+bindings, redacted log draining, readiness and once-only response epoch fencing.
+Hosts provide commands, environment, log policy, readiness probes and active-host
+identity. It selects no provider, routes or credentials and never retries requests.
+Its portable contract covers replacement during a request and paired startup
+failure; Android service, real runtime and device qualification remain host tests.
