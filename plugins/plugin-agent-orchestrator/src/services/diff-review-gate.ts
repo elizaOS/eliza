@@ -307,12 +307,16 @@ function forbiddenReason(
  * removal) is not something this PR is introducing, and flagging it would make
  * the gate block on pre-existing debt it can't fix.
  */
-function addedLines(diff: string): string[] {
-  const out: string[] = [];
+function addedLines(diff: string): { file: string; line: string }[] {
+  const out: { file: string; line: string }[] = [];
+  let file = "";
   for (const line of diff.split("\n")) {
     // `+++ b/file` header lines start with `+++`; skip those, keep real adds.
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      out.push(line.slice(1));
+    if (line.startsWith("+++")) {
+      const target = line.slice(3).trim();
+      file = target.startsWith("b/") ? target.slice(2) : target;
+    } else if (line.startsWith("+")) {
+      out.push({ file, line: line.slice(1) });
     }
   }
   return out;
@@ -402,8 +406,8 @@ export function reviewDiff(
 
   // 3) Secrets in ADDED lines — HARD.
   const seenSecretLines = new Set<string>();
-  for (const line of addedLines(diff)) {
-    if (matchesSecret(line)) {
+  for (const { file, line } of addedLines(diff)) {
+    if (matchesSecret(line, file)) {
       // Never echo the secret itself into the finding; report a redacted
       // fingerprint (leading chars) so the reviewer can locate it without the
       // gate re-leaking the credential into the events stream / PR body.
@@ -467,8 +471,9 @@ function compileExtraForbidden(patterns?: string[]): RegExp[] {
   return out;
 }
 
-function matchesSecret(line: string): boolean {
+function matchesSecret(line: string, file: string): boolean {
   if (hasSensitiveLiteralAssignment(line)) return true;
+  if (/\.ya?ml$/i.test(file) && hasSensitiveYamlScalar(line)) return true;
   for (const pattern of SECRET_PATTERNS) {
     pattern.lastIndex = 0;
     if (pattern.test(line)) return true;
@@ -513,7 +518,59 @@ function hasSensitiveLiteralAssignment(line: string): boolean {
   const dotenvKey =
     /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*=(?![=>])\s*\S+/;
   const dotenvMatch = dotenvKey.exec(line);
-  return dotenvMatch ? isSensitiveAssignmentKey(dotenvMatch[1]) : false;
+  if (dotenvMatch && isSensitiveAssignmentKey(dotenvMatch[1])) return true;
+
+  // Dockerfile ENV/ARG defaults bake the literal into image layers, including
+  // multi-pair `ENV A=1 B=2` and legacy `ENV NAME value`. `$VAR` forwards a
+  // build argument or environment value rather than introducing one.
+  const dockerInstruction = /^\s*(?:ENV|ARG)\s+(.+)$/.exec(line);
+  if (!dockerInstruction) return false;
+  const pairs = /(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=(?!\$)\S/g;
+  for (const match of dockerInstruction[1].matchAll(pairs)) {
+    if (namesCredentialValue(match[1])) return true;
+  }
+  const legacyEnv = /^\s*ENV\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?!\$)\S/.exec(line);
+  return legacyEnv ? namesCredentialValue(legacyEnv[1]) : false;
+}
+
+/**
+ * Names whose value is the credential itself. Infrastructure files also name
+ * references to credentials (`secretName`, `secretKeyRef`, `key`,
+ * `existingSecret`, `passwordFile`, `tokenUrl`); those carry no secret and
+ * must not block a write.
+ */
+function namesCredentialValue(key: string): boolean {
+  return /(?:password|passwd|passphrase|token|apikey|secretkey|secretaccesskey|privatekey|(?<!existing)secret|mnemonic|seedphrase)$/.test(
+    key.toLowerCase().replace(/[_.-]/g, ""),
+  );
+}
+
+/**
+ * YAML carries credentials as unquoted plain scalars (`password: hunter2`)
+ * and as compose/Kubernetes env list items (`- NAME=value`); quoted values are
+ * already classified above. Deploy-time references such as `${{ secrets.X }}`,
+ * `${VAR}` and `$VAR`, block scalars, anchors, aliases, tags and YAML nulls or
+ * booleans are not literal material. Only applied to `.yml`/`.yaml` files,
+ * where `name: value` is data rather than a source type annotation.
+ */
+function hasSensitiveYamlScalar(line: string): boolean {
+  const scalar =
+    /^\s*(?:-\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*:\s+(\S.*?)\s*$/.exec(line);
+  if (
+    scalar &&
+    namesCredentialValue(scalar[1]) &&
+    isLiteralYamlScalar(scalar[2])
+  )
+    return true;
+  const envItem = /^\s*-\s+([A-Za-z_][A-Za-z0-9_-]*)=(\S+)/.exec(line);
+  return envItem
+    ? namesCredentialValue(envItem[1]) && isLiteralYamlScalar(envItem[2])
+    : false;
+}
+
+function isLiteralYamlScalar(value: string): boolean {
+  if (/^[|>&*!{[$~#]/.test(value)) return false;
+  return !/^(?:null|true|false|yes|no|on|off)$/i.test(value);
 }
 
 /**

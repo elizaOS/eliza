@@ -366,6 +366,61 @@ describe("reviewDiff — case-insensitive secret matching (parity with core)", (
   });
 });
 
+describe("reviewDiff — unquoted infrastructure credentials", () => {
+  const value = ["hunter2", "prod", "value"].join("-");
+  const review = (file: string, line: string) =>
+    reviewDiff({ diff: addedFileDiff(file, [line]), changedFiles: [file] });
+
+  it.each([
+    ["Dockerfile", `ENV DB_PASSWORD=${value}`],
+    ["Dockerfile", `ARG GITHUB_TOKEN=${value}`],
+    ["Dockerfile", `ENV DB_PASSWORD ${value}`],
+    ["Dockerfile", `ENV LOG_LEVEL=info API_KEY=${value}`],
+    ["deploy/values.yaml", `password: ${value}`],
+    ["deploy/values.yaml", `  api_key: ${value}`],
+    ["docker-compose.yml", `      - POSTGRES_PASSWORD=${value}`],
+    ["config/app.yml", `  jwt_secret: ${value} # rotate monthly`],
+  ])("blocks %s line %s and keeps the value out of findings", (file, line) => {
+    const result = review(file, line);
+    expect(result.passed).toBe(false);
+    expect(result.blocking).toEqual([
+      expect.objectContaining({ check: "secret", severity: "block" }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain(value);
+  });
+
+  it.each([
+    ["Dockerfile", "ENV DB_PASSWORD=$DB_PASSWORD"],
+    ["Dockerfile", "ARG GITHUB_TOKEN"],
+    ["Dockerfile", "ENV PASSWORD_FILE=/run/secrets/db"],
+    ["Dockerfile", "ENV MAX_TOKENS=8192 PATH=/usr/local/bin:$PATH"],
+    [
+      ".github/workflows/ci.yml",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub Actions expression under test
+      "          password: ${{ secrets.DB_PASSWORD }}",
+    ],
+    [
+      "docker-compose.yml",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal compose interpolation under test
+      "      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}",
+    ],
+    ["k8s/deployment.yaml", "              key: password"],
+    ["k8s/deployment.yaml", "          secretName: db-credentials"],
+    ["chart/values.yaml", "  existingSecret: db-credentials"],
+    ["chart/values.yaml", "  tokenUrl: https://auth.example.test/token"],
+    ["chart/values.yaml", "  passwordFile: /run/secrets/db"],
+    ["chart/values.yaml", "  password: null"],
+    ["chart/values.yaml", "  secret: |"],
+    ["chart/values.yaml", "automountServiceAccountToken: false"],
+    ["chart/values.yaml", "max_tokens: 4096"],
+    ["src/client.ts", "  password: options.password,"],
+  ])("allows %s line %s", (file, line) => {
+    const result = review(file, line);
+    expect(result.passed).toBe(true);
+    expect(result.blocking).toEqual([]);
+  });
+});
+
 describe("reviewDiff — truncated diff fails closed", () => {
   it("blocks when the captured diff was truncated (partial secret scan)", () => {
     const diff = addedFileDiff("src/big.ts", ["export const x = 1;"]);
