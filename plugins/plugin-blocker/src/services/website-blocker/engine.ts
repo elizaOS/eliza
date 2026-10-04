@@ -253,11 +253,15 @@ export function buildSelfControlBlockPolicy(
   for (const website of normalizedRequestedWebsites) {
     blockedWebsites.add(website);
 
-    if (shouldAddWwwVariant(website)) {
-      blockedWebsites.add(`www.${website}`);
+    // A registrable domain and its `www.` host are the same site to the user:
+    // block both whichever one was named, and apply the site's policy group.
+    const registrable = registrableWebsiteBase(website);
+    if (registrable) {
+      blockedWebsites.add(registrable);
+      blockedWebsites.add(`www.${registrable}`);
     }
 
-    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(website);
+    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(registrable ?? website);
     if (policyGroup) {
       for (const blockedHost of policyGroup.blockedHosts) {
         blockedWebsites.add(blockedHost);
@@ -1007,9 +1011,45 @@ export function normalizeWebsiteTargets(
   return [...deduped];
 }
 
-function shouldAddWwwVariant(target: string): boolean {
+/**
+ * Second-level labels that country-code TLDs commonly register under
+ * (`bbc.co.uk`, `abc.net.au`, `asahi.co.jp`, `globo.com.br`). A three-label
+ * host shaped `<name>.<label>.<cc>` is a registrable domain, not a subdomain.
+ */
+const COUNTRY_CODE_SECOND_LEVEL_LABELS = new Set([
+  "ac",
+  "co",
+  "com",
+  "edu",
+  "gob",
+  "gov",
+  "go",
+  "ne",
+  "net",
+  "or",
+  "org",
+]);
+
+function isRegistrableWebsite(target: string): boolean {
   const labels = target.split(".");
-  return labels.length === 2 && labels[0] !== "www";
+  if (labels.length === 2) return true;
+  return (
+    labels.length === 3 &&
+    labels[2].length === 2 &&
+    COUNTRY_CODE_SECOND_LEVEL_LABELS.has(labels[1])
+  );
+}
+
+/**
+ * The registrable domain a requested host names, when it is that domain or
+ * its `www.` host; `null` for any other subdomain.
+ */
+function registrableWebsiteBase(target: string): string | null {
+  if (target.startsWith("www.")) {
+    const bare = target.slice("www.".length);
+    return isRegistrableWebsite(bare) ? bare : null;
+  }
+  return isRegistrableWebsite(target) ? target : null;
 }
 
 export function formatWebsiteList(websites: readonly string[]): string {
