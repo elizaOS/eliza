@@ -1549,6 +1549,7 @@ async function collectBriefingSections(args: {
       xError = error instanceof Error ? error.message : String(error);
     }
   }
+  if (xStatus?.probeError) xError = xStatus.probeError;
   if (xStatus?.reason === "needs_reauth")
     xError = "The configured X connection needs reauthorization.";
   const readableX = xStatus?.connected;

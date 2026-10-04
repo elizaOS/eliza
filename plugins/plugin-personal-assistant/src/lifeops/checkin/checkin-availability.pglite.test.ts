@@ -821,9 +821,16 @@ describe("automatic morning configured source selection", () => {
             expect(feeds).not.toHaveBeenCalled();
           }
           if (mode === "probe-failure") {
-            await expect(service.getXConnectorStatus()).rejects.toThrow(
-              "X status probe failed",
+            await expect(service.getXConnectorStatus()).resolves.toMatchObject({
+              connected: false,
+              probeError: "X status probe failed",
+            });
+            const { createXConnectorContribution } = await import(
+              "../connectors/x.js"
             );
+            await expect(
+              createXConnectorContribution(fixture.runtime).verify(),
+            ).resolves.toBe(false);
           }
           if (mode === "dm-only") {
             expect(xSections.map((section) => section.key)).toEqual(["x_dms"]);
