@@ -457,6 +457,8 @@ test("invalid case budgets fail before optimizer or worker startup", async () =>
     0.5,
     Number.NaN,
     Number.POSITIVE_INFINITY,
+    2_147_483_648,
+    Number.MAX_SAFE_INTEGER,
   ]) {
     const onEngineStarted = vi.fn();
     await expect(

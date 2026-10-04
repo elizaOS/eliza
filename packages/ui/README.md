@@ -29,3 +29,28 @@ responses; the durable runtime remains authoritative. Hosts that pass
 an in-flight or expired choice cannot be used, and hide options once the choice
 is no longer pending. `splitSpeechSegments`
 shares lossless caption/playback chunks without importing the voice runtime.
+
+The browser-safe `api/task-lifecycle` leaf projects authoritative task status and
+reconciles start/pause/resume/cancel requests without optimistically reporting
+success. Hosts provide transport, localized failure messages and view updates.
+The durable runtime remains authoritative; this projection grants no task authority.
+
+The `voice/pcm-wave` leaf shares mono PCM16 WAV encoding for single buffers or
+cumulative chunks without importing capture, desktop bridge or provider code.
+Hosts own recording lifecycle, sample-rate selection and playback/transcription.
+Nonfinite samples encode as silence; finite samples are clipped and rounded.
+
+`BrowserDocumentStore` stores opaque text with IndexedDB transaction receipts.
+Its compare-and-swap operation detects stale writes and retains reset tombstones;
+`edit` serializes asynchronous, side-effect-free callbacks with Web Locks and never
+replays them. Cancellation prevents a late callback from committing. Hosts own
+storage namespaces, schema validation, legacy migration and recovery presentation.
+This API does not maintain a localStorage mirror. Run
+`bun run --cwd packages/ui test:browser-document-store` for real cross-tab,
+cancellation and recovery checks in Chromium, Firefox and WebKit.
+
+`voice/microphone-capture` shares cumulative sample previews and speech-pause
+observation without owning microphone tracks, transcription or message submission.
+Hosts supply timing/energy policy and the URL of `voice/microphone-samples.worklet.mjs`
+(or a compatible mono worklet). Previews are single-flight and are not replayed;
+unsupported capture returns no observer so the host can retain final-recording UX.

@@ -3410,6 +3410,20 @@
       "when": 1796083200134,
       "tag": "0516_organization_upgrade_paid_finalization",
       "breakpoints": true
+    },
+    {
+      "idx": 487,
+      "version": "7",
+      "when": 1796083200135,
+      "tag": "0517_organization_upgrade_historical_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 488,
+      "version": "7",
+      "when": 1796083200136,
+      "tag": "0518_organization_upgrade_historical_settlement",
+      "breakpoints": true
     }
   ]
 }

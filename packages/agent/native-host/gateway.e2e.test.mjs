@@ -1,14 +1,217 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { EventEmitter, once } from "node:events";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { prepareRuntimeAccountState } from "./account-state.mjs";
 import { createLocalAgentGateway } from "./gateway.mjs";
+import {
+  preparePrivateRuntimeFiles,
+  readPrivateRuntimeEnvironment,
+  runtimeEnvironment,
+  startPrivateRuntimeProcess,
+  writePrivateRuntimeJson,
+} from "./private-runtime-launch.mjs";
 import { createRuntimeSupervisor } from "./runtime-supervisor.mjs";
+
+test("private launch persists token, preserves user config and isolates actual child environment", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-launch-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const environmentFile = join(root, "runtime.env");
+  await writeFile(
+    environmentFile,
+    '# private\nexport PROVIDER_KEY="synthetic-key"\nLITERAL=$(touch never)\nAUTH=wrong\n',
+  );
+  const settings = await readPrivateRuntimeEnvironment(environmentFile);
+  const configPath = join(root, "config.json");
+  const launchConfigPath = join(root, "launch.json");
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath,
+    launchConfigPath,
+    initialConfig: { provider: "old", userPreference: true },
+    selectConfig: (existing) => ({ ...existing, provider: "selected" }),
+  };
+  const first = await preparePrivateRuntimeFiles(options);
+  const second = await preparePrivateRuntimeFiles({
+    ...options,
+    initialConfig: { discarded: true },
+  });
+  assert.equal(first.token, second.token);
+  assert.equal(first.token.length, 64);
+  assert.deepEqual(
+    JSON.parse(await readFile(configPath)),
+    options.initialConfig,
+  );
+  assert.equal(
+    JSON.parse(await readFile(launchConfigPath)).provider,
+    "selected",
+  );
+  for (const file of [options.tokenPath, configPath, launchConfigPath])
+    assert.equal((await stat(file)).mode & 0o777, 0o600);
+  const output = join(root, "observed.json");
+  const signals = new EventEmitter();
+  const running = await startPrivateRuntimeProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      "require('node:fs').writeFileSync(process.argv[1], JSON.stringify(process.env))",
+      output,
+    ],
+    cwd: root,
+    stdio: "ignore",
+    signalSource: signals,
+    env: runtimeEnvironment({
+      inherited: { HOME: root, UNGRANTED: "hidden" },
+      allow: ["HOME"],
+      settings,
+      owned: { AUTH: first.token },
+      remove: ["PROVIDER_KEY"],
+    }),
+    recordLaunch: (binding) =>
+      writePrivateRuntimeJson(join(root, "binding.json"), binding),
+  });
+  assert.deepEqual(await running.completion, {
+    code: 0,
+    signal: null,
+    error: null,
+  });
+  const observed = JSON.parse(await readFile(output));
+  assert.equal(observed.AUTH, first.token);
+  assert.equal(observed.LITERAL, "$(touch never)");
+  assert.equal(observed.UNGRANTED, undefined);
+  assert.equal(observed.PROVIDER_KEY, undefined);
+  assert.equal(observed.HOME, root);
+  assert.equal(
+    JSON.parse(await readFile(join(root, "binding.json"))).pid,
+    running.child.pid,
+  );
+  assert.equal(signals.listenerCount("SIGTERM"), 0);
+  assert.equal(signals.listenerCount("SIGINT"), 0);
+});
+
+test("private launch rejects malformed settings, links and empty authority without spawning", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-files-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "runtime.env");
+  assert.deepEqual(
+    await readPrivateRuntimeEnvironment(file, { optional: true }),
+    {},
+  );
+  await assert.rejects(readPrivateRuntimeEnvironment(file), { code: "ENOENT" });
+  await writeFile(file, "SECRET=value\nnot an assignment\n");
+  await assert.rejects(readPrivateRuntimeEnvironment(file), {
+    code: "INVALID_PRIVATE_ENVIRONMENT",
+  });
+  await writeFile(join(root, "target"), "untouched");
+  const tokenPath = join(root, "token");
+  await symlink(join(root, "target"), tokenPath);
+  const options = {
+    tokenPath,
+    configPath: join(root, "config"),
+    launchConfigPath: join(root, "launch"),
+    initialConfig: {},
+    selectConfig: (x) => x,
+  };
+  await assert.rejects(preparePrivateRuntimeFiles(options));
+  assert.equal(await readFile(join(root, "target"), "utf8"), "untouched");
+  await rm(tokenPath);
+  await writeFile(tokenPath, "  ");
+  await assert.rejects(preparePrivateRuntimeFiles(options), {
+    code: "INVALID_RUNTIME_TOKEN",
+  });
+});
+
+test("failed launch receipt reaps its actual child and removes signal handlers", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "failed-launch-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let pid;
+  const signals = new EventEmitter();
+  await assert.rejects(
+    startPrivateRuntimeProcess({
+      command: process.execPath,
+      args: ["-e", "setInterval(()=>{},1000)"],
+      cwd: root,
+      env: {},
+      stdio: "ignore",
+      signalSource: signals,
+      stopTimeoutMs: 100,
+      recordLaunch: async (binding) => {
+        pid = binding.pid;
+        await writePrivateRuntimeJson(join(root, "absent", "binding"), binding);
+      },
+    }),
+    { code: "ENOENT" },
+  );
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  assert.equal(signals.listenerCount("SIGTERM"), 0);
+  assert.equal(signals.listenerCount("SIGINT"), 0);
+});
+
+test("missing executable rejects without an unhandled child error or signal leak", async () => {
+  const signals = new EventEmitter();
+  await assert.rejects(
+    startPrivateRuntimeProcess({
+      command: "/nonexistent-private-launch-executable",
+      args: [],
+      env: {},
+      stdio: "ignore",
+      signalSource: signals,
+    }),
+    { code: "RUNTIME_PROCESS_FAILED" },
+  );
+  assert.equal(signals.listenerCount("SIGTERM"), 0);
+  assert.equal(signals.listenerCount("SIGINT"), 0);
+});
+
+test("signal during receipt cancels admission and kills a child that ignores TERM", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "signal-launch-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const ready = join(root, "ready");
+  const signals = new EventEmitter();
+  let pid;
+  await assert.rejects(
+    startPrivateRuntimeProcess({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(process.argv[1],'ready');setInterval(()=>{},1000)",
+        ready,
+      ],
+      env: {},
+      stdio: "ignore",
+      signalSource: signals,
+      stopTimeoutMs: 50,
+      recordLaunch: async (binding) => {
+        pid = binding.pid;
+        const deadline = Date.now() + 5000;
+        for (;;) {
+          try {
+            await readFile(ready);
+            break;
+          } catch (error) {
+            if (error.code !== "ENOENT" || Date.now() >= deadline) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        }
+        signals.emit("SIGTERM");
+      },
+    }),
+    { code: "RUNTIME_LAUNCH_CANCELLED" },
+  );
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  assert.equal(signals.listenerCount("SIGTERM"), 0);
+});
 
 const id = "11111111-1111-4111-8111-111111111111";
 const policy = {

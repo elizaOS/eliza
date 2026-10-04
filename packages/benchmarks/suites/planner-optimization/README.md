@@ -39,8 +39,8 @@ module. Producer, engine and adapter sources are rechecked before publication;
 this is not an attestation of arbitrary callable identity or third-party packages.
 Train/validation/test scenario families must be disjoint; upstream
 keeps held-out cases outside reflection and scores baseline/candidate afterward.
-The producer API accepts a positive integer `caseTimeoutMs` for cold worker
-startup and execution (default 30,000 ms), retained in evidence and optimizer
+The producer API accepts an integer `caseTimeoutMs` from 1 through 2,147,483,647 ms
+for cold worker startup and execution (default 30,000 ms), retained in evidence and optimizer
 configuration identity. Its `timeoutMs` controls the overall run (default
 300,000 ms). Budgets cover optimization calls; held-out calls are additional and recorded.
 The CLI writes the canonical `artifact.json` and full `evidence.json` under

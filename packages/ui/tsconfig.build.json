@@ -39,5 +39,12 @@
     "src/**/*.spec.ts",
     "src/**/*.spec.tsx"
   ],
-  "include": ["src/index.ts", "src/styles.ts", "src/**/*.d.ts"]
+  "include": [
+    "src/index.ts",
+    "src/styles.ts",
+    "src/api/task-lifecycle.ts",
+    "src/voice/pcm-wave.ts",
+    "src/voice/microphone-capture.ts",
+    "src/**/*.d.ts"
+  ]
 }

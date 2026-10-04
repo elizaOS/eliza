@@ -878,6 +878,11 @@ export {
   resolveAppShellMode,
 } from "./platform/app-shell-mode.js";
 export {
+  BrowserDocumentConflict,
+  type BrowserDocumentSnapshot,
+  BrowserDocumentStore,
+} from "./platform/browser-document-store.js";
+export {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
 } from "./platform/browser-launch.js";
