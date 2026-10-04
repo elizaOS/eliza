@@ -5,6 +5,7 @@
  * assistant DTOs; the actual Gmail API access lives in the google plugin.
  */
 import crypto from "node:crypto";
+import { gmailBriefSourceId } from "@elizaos/plugin-google-workspace/gmail-message-id";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -204,10 +205,7 @@ function requireGmailReplyThreading(message: LifeOpsGmailMessageSummary): {
   };
 }
 
-/** Canonical source id emitted by GoogleGmailAdapter into BRIEF's MessageRef. */
-export function gmailBriefSourceId(externalMessageId: string): string {
-  return `gmail:${externalMessageIdFromInput(externalMessageId)}`;
-}
+export { gmailBriefSourceId } from "@elizaos/plugin-google-workspace/gmail-message-id";
 
 function isDestructiveGmailOperation(operation: string): boolean {
   return (
@@ -1261,7 +1259,11 @@ export class GmailDomain {
     if (executionMode === "execute" && operation === "mark_read") {
       for (const message of affectedMessages) {
         await this.attributeBriefMessageOutcome({
-          messageId: gmailBriefSourceId(message.externalId),
+          messageId: gmailBriefSourceId({
+            agentId: this.ctx.agentId(),
+            accountId: accountIdForGrant(grant),
+            externalId: message.externalId,
+          }),
           eventType: "opened",
           domainEventId: `gmail_mark_read:${grant.id}:${message.externalId}`,
           weight: 0.25,
@@ -1512,7 +1514,11 @@ export class GmailDomain {
       references: threading.references,
     });
     await this.attributeBriefMessageOutcome({
-      messageId: gmailBriefSourceId(read.message.externalId),
+      messageId: gmailBriefSourceId({
+        agentId: this.ctx.agentId(),
+        accountId: accountIdForGrant(grant),
+        externalId: read.message.externalId,
+      }),
       eventType: "replied",
       domainEventId: `gmail_reply:${grant.id}:${sent.messageId}`,
       weight: 1,
