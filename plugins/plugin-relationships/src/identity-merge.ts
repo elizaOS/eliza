@@ -12,7 +12,7 @@
  */
 
 import {
-  type Entity,
+  type KnowledgeGraphEntity as Entity,
   type EntityIdentity,
   normalizeEntityConnectorAccountId,
 } from "@elizaos/contracts";

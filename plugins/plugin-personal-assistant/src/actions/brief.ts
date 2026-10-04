@@ -17,6 +17,13 @@
  * Owner-only — `hasLifeOpsAccess` (which delegates to `hasOwnerAccess`).
  */
 
+import type {
+  LifeOpsDefinitionRecord,
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+  LifeOpsTaskDefinition,
+} from "@elizaos/contracts";
 import { calendarDateKey, resolveCalendarTimeZone } from "@elizaos/contracts";
 import type {
   Action,
@@ -41,13 +48,6 @@ import {
   resolveCalendarWindow,
   resolveNextCalendarEventWindow,
 } from "@elizaos/plugin-calendar";
-import type {
-  LifeOpsDefinitionRecord,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-  LifeOpsTaskDefinition,
-} from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,

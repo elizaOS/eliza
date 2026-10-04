@@ -280,6 +280,7 @@ export {
   resolveElizaRuntimeEnv,
   resolvePlatform,
   resolveRuntimePorts,
+  resolveSelfApiBaseUrl,
   resolveSelfApiCredential,
   resolveServerOnlyPort,
   resolveSingleProcessPort,
