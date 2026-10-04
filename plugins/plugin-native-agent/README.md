@@ -48,3 +48,9 @@ must authorize its route and provide its private token and response-size limit.
 It deliberately contains no product route catalog. The instrumented contract
 also covers this client with real fixed-length, chunked, close-delimited,
 oversized, truncated and delayed responses.
+
+`AndroidRuntimeDirectories` supplies the Android durability adapter for runtime
+bundle publication and secures an app-owned parent directory to mode 0700.
+It rejects symlinks and foreign ownership, and verifies inode identity after
+chmod. Hosts retain directory layout and startup policy. Its Android instrumented
+test exercises real permissions and fsync, including invalid targets.
