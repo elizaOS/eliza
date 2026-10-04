@@ -80,3 +80,11 @@ an explicitly provisioned product, Android package, and cohort namespace. Preser
 the namespace across upgrades to retain cohort assignments. Admission requires
 authenticated policy and qualified device observations; it does not authenticate
 metadata or grant installation authority.
+
+`createPublicReleaseVerifier` provides bounded anonymous fixed-origin GitHub
+readback with immutable release, tag commit and candidate/recovery asset binding.
+It requires host descriptor validation and a client identity. Its file entrypoint
+rejects symlinks, nonregular files, oversized input and ambiguous descriptor JSON.
+`createArtifactVerifier` owns private APK snapshots, signature/manifest checks and
+runtime inventory verification. Hosts supply toolchain/source ports and the
+manifest distribution key; verification never signs, publishes or installs.
