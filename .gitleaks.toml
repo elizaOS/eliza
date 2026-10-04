@@ -373,3 +373,12 @@ regexTarget = "line"
 regexes = [
   '''^\s*process\.env\.STRIPE_SECRET_KEY\s*=\s*"sk_test_renewalreview";\s*$''',
 ]
+
+# This exact nonfunctional fixture remains in the draft PR commit range.
+# The current test uses a visibly synthetic value; do not exempt other keys.
+[[allowlists]]
+description = "Historical mocked organization upgrade preview fixture"
+condition = "AND"
+paths = ['''^packages/cloud/shared/src/lib/services/organization-upgrade-preview\.pglite\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^sk_test_upgradepreview$''']

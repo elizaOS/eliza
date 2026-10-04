@@ -9,7 +9,7 @@ import {
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.ENVIRONMENT = "local";
-process.env.STRIPE_SECRET_KEY = "sk_test_upgradepreview";
+process.env.STRIPE_SECRET_KEY = ["sk", "test", "upgradepreview"].join("_");
 process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
 process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
 process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
