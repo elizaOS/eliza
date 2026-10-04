@@ -274,7 +274,9 @@ instrumentation, removes its packages after each variant and checks unchanged HO
 There are no default command/instrumentation deadlines: callers may supply
 `commandTimeoutMs`, `instrumentationTimeoutMs`, `cleanupTimeoutMs` and an
 AbortSignal. ADB/AAPT work is cancellable; cleanup ignores the aborted operation
-signal, force-stops owned targets and uses its separate caller deadline. Callbacks
+signal, force-stops owned targets and uses its separate caller deadline. If either
+stop fails, it retains both packages and reports `cleanupDeferred`; recover the
+owned fixture explicitly before another run. Callbacks
 receive the signal and must cooperate with cancellation before returning. The
 lease follows the caller environment and remains held for a live process, rather
 than expiring during long instrumentation. Product callbacks own controlled

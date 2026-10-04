@@ -40,6 +40,7 @@ if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;
 if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(state.home);
 if(args[0]==='install'){const id=args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages.push(id);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);}
+if(args.includes('force-stop')&&((mode==='stop-failure-test'&&args.at(-1).endsWith('.test'))||(mode==='stop-failure-app'&&!args.at(-1).endsWith('.test'))))process.exit(1);
 if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('instrument')){
  if(mode==='hanging'){fs.writeFileSync(${JSON.stringify(path.join(root, "instrumentation-started"))},'started');setInterval(()=>{},1000);return;}
@@ -441,3 +442,37 @@ test("calendar caller rejects a leased fixture before creating users", async (t)
     lease.release();
   }
 });
+
+for (const mode of ["stop-failure-test", "stop-failure-app"])
+  test(`${mode} preserves both packages when termination is uncertain`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        prepareVariant: () => {
+          throw new Error("Fixture setup interrupted");
+        },
+      }),
+      /Fixture setup interrupted/,
+    );
+    const report = JSON.parse(
+      fs.readFileSync(path.join(f.options.directory, "verification.json")),
+    );
+    assert.equal(report.cleaned, false);
+    assert.equal(report.cleanupDeferred, true);
+    assert.ok(
+      report.cleanupErrors.some((error) => error.startsWith("Could not stop")),
+    );
+    assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages.sort(), [
+      "org.example.consumer",
+      "org.example.consumer.test",
+    ]);
+    assert.equal(
+      f.commands().filter((command) => command.includes("force-stop")).length,
+      2,
+    );
+    assert.equal(
+      f.commands().some((command) => command[0] === "uninstall"),
+      false,
+    );
+  });
