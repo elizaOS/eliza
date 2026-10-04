@@ -199,3 +199,19 @@ The helper never enrolls participants or returns plaintext operator credentials.
 After validating the new key against retained data and backups, the operator
 must retire the private recovery files explicitly. Until then they retain old
 key material and block another rotation; rotation alone does not remove it.
+
+External product APK tests can compose `scripts/lib/isolated-android-test.mjs`.
+Supply explicit package/test identities, ABI, fixture AVD name, Android user, APK
+paths and a report directory. The host must own the disposable AVD and any
+secondary-user/provider fixtures; an emulator property alone is not ownership.
+It validates both APK identities and the instrumentation target before installing,
+leases the emulator, refuses existing package data across users, requires complete
+instrumentation, removes its packages after each variant and checks unchanged HOME.
+There are no default command/instrumentation deadlines: callers may supply
+`commandTimeoutMs`, `instrumentationTimeoutMs`, `cleanupTimeoutMs` and an
+AbortSignal. ADB/AAPT work is cancellable; cleanup ignores the aborted operation
+signal, force-stops owned targets and uses its separate caller deadline. Callbacks
+receive the signal and must cooperate with cancellation before returning. The
+lease follows the caller environment and remains held for a live process, rather
+than expiring during long instrumentation. Product callbacks own controlled
+fixture provisioning; this runner does not authorize live integrations. Use `testOutputPath` for reports produced inside this checkout.

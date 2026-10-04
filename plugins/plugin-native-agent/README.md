@@ -70,3 +70,14 @@ service. `ReconciliationJobService` owns bounded workers and cancellation/late
 completion fencing through `JobRunRegistry`; hosts bind the readback operation.
 Neither component initiates an installation. The consumer must qualify actual
 Android job dispatch and reboot persistence alongside its install/recovery tests.
+
+`NativeHealthService`, `NativeHealthEvidence` and updater `NativeHealthClient`
+share native observation IPC on API 29+: signature/sender-UID checks,
+nonce/version/deadline binding, bounded worker admission and installed-identity
+rechecks. Hosts declare the signature-protected service, supply component
+identities, positive request/UI budgets and runtime/storage/UI observation ports.
+The client enforces its absolute deadline independently of the service. Schema 5
+supports standalone/launcher distributions and fixed runtime/UI observation states;
+reports never mark a journal healthy or authorize recovery. The Android contract
+checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
+IPC, process death and observation providers in their packaged applications.

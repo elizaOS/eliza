@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before } from "node:test";
+import { startResearchCapture } from "./research-capture-host.mjs";
 import { createResearchServer } from "./research-server.mjs";
 import { openResearchStore, validateTraceEvent } from "./research-store.mjs";
 import { createTraceTransport } from "./trace-transport.mjs";
@@ -305,9 +306,6 @@ test("research store requires explicit measurement policy before opening storage
 test("configured host captures to the real collector and stops on withdrawal", {
   timeout: 5000,
 }, async (t) => {
-  const { startResearchCapture: startPilotCapture } = await import(
-    "./research-capture-host.mjs"
-  );
   const { store, dir } = setup(t),
     token = randomBytes(32).toString("hex");
   const server = createPilotServer({
@@ -345,7 +343,7 @@ test("configured host captures to the real collector and stops on withdrawal", {
   let uploaded, withdrawn;
   const didUpload = new Promise((r) => (uploaded = r)),
     didWithdraw = new Promise((r) => (withdrawn = r));
-  const worker = startPilotCapture({
+  const worker = startResearchCapture({
     gateway,
     intervalMs: 10,
     config: {
@@ -363,6 +361,7 @@ test("configured host captures to the real collector and stops on withdrawal", {
       if (s.state === "withdrawn") withdrawn();
     },
   });
+  t.after(() => worker.stop());
   try {
     await didUpload;
     assert.equal(store.traces(admin).total, 1);
@@ -383,9 +382,6 @@ test("stopping pilot capture aborts an unanswered collector request and releases
 }, async (t) => {
   const http = await import("node:http");
   const { existsSync } = await import("node:fs");
-  const { startResearchCapture: startPilotCapture } = await import(
-    "./research-capture-host.mjs"
-  );
   const dir = mkdtempSync(join(tmpdir(), "pilot-stop-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   let entered;
@@ -399,7 +395,7 @@ test("stopping pilot capture aborts an unanswered collector request and releases
     server.close();
   });
   const queuePath = join(dir, "queue.sqlite");
-  const capture = startPilotCapture({
+  const capture = startResearchCapture({
     gateway: {
       collectPilotEvidence: () =>
         assert.fail("collector has not authorized capture"),
@@ -411,6 +407,7 @@ test("stopping pilot capture aborts an unanswered collector request and releases
       encryptionKey: randomBytes(32).toString("base64"),
     },
   });
+  t.after(() => capture.stop());
   await requestStarted;
   assert.equal(existsSync(queuePath + ".lock"), true);
   await capture.stop();
@@ -449,7 +446,6 @@ test("configured capture drains a full queue and resumes complete real task hist
   timeout: 10000,
 }, async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
-  const { startResearchCapture } = await import("./research-capture-host.mjs");
   const { store, dir } = setup(t);
   const db = new DatabaseSync(join(dir, "journal.sqlite"));
   db.exec("PRAGMA synchronous=FULL");
