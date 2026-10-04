@@ -27,6 +27,10 @@ const calls = {
   paymentCancel: [] as unknown[],
   gatewayShutdown: [] as unknown[],
   claimAffiliate: [] as unknown[],
+  tunnelDebit: [] as unknown[],
+  tunnelKey: [] as unknown[],
+  discordPost: [] as unknown[],
+  telegramPost: [] as unknown[],
 };
 
 mock.module("@elizaos/cloud-shared/lib/auth/service-key-hono-worker", () => ({
@@ -237,6 +241,69 @@ mock.module(
     },
   }),
 );
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding: async () => ({ user: USER }),
+}));
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
+  creditsService: {
+    deductCredits: async (input: unknown) => {
+      calls.tunnelDebit.push(input);
+      return { success: true, newBalance: 9 };
+    },
+    refundCredits: async () => {},
+  },
+}));
+mock.module("@elizaos/cloud-shared/lib/services/headscale-client", () => ({
+  HeadscaleClient: class {
+    async createPreAuthKey(input: unknown) {
+      calls.tunnelKey.push(input);
+      return { key: "preauth-key", expiration: "2026-10-04T01:00:00.000Z" };
+    }
+  },
+}));
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  requireGenerativeRouteCaller: async () => ({
+    user: USER,
+    credential: null,
+    appScopeId: null,
+  }),
+  getGenerativeOperationContext: () => ({}),
+  asGenerativeCacheApiError: () => null,
+}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard",
+  () => ({
+    deferredCredentialAdmissionGuard: () => ({
+      credentialForAdmission: () => null,
+      [Symbol.asyncDispose]: async () => {},
+    }),
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/generative-operation", () => ({
+  isGenerativeOperationAdmissionError: () => false,
+}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/discord-automation/app-automation",
+  () => ({
+    discordAppAutomationService: {
+      postAnnouncement: async (...input: unknown[]) => {
+        calls.discordPost.push(input);
+        return { success: true, messageId: "message-1", channelId: "c-1" };
+      },
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/telegram-automation/app-automation",
+  () => ({
+    telegramAppAutomationService: {
+      postAnnouncement: async (...input: unknown[]) => {
+        calls.telegramPost.push(input);
+        return { success: true, messageId: 1, chatId: "chat-1" };
+      },
+    },
+  }),
+);
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
@@ -271,6 +338,15 @@ const { default: gatewayShutdownRoute } = await import(
 );
 const { default: claimAffiliateRoute } = await import(
   "../my-agents/claim-affiliate-characters/route"
+);
+const { default: tunnelAuthKeyRoute } = await import(
+  "../v1/apis/tunnels/tailscale/auth-key/route"
+);
+const { default: discordPostRoute } = await import(
+  "../v1/apps/[id]/discord-automation/post/route"
+);
+const { default: telegramPostRoute } = await import(
+  "../v1/apps/[id]/telegram-automation/post/route"
 );
 
 afterAll(() => mock.restore());
@@ -375,6 +451,31 @@ const mutationCases: MutationCase[] = [
     expectedStatus: 200,
     ledger: calls.claimAffiliate,
   },
+  {
+    label: "paid tunnel auth-key mint",
+    route: mounted(tunnelAuthKeyRoute, "/v1/apis/tunnels/tailscale/auth-key"),
+    path: "/v1/apis/tunnels/tailscale/auth-key",
+    expectedStatus: 200,
+    ledger: calls.tunnelKey,
+    env: {
+      HEADSCALE_API_URL: "https://headscale.test",
+      HEADSCALE_API_KEY: "headscale-test-key",
+    },
+  },
+  {
+    label: "public Discord announcement",
+    route: mounted(discordPostRoute, "/v1/apps/:id/discord-automation/post"),
+    path: "/v1/apps/app-1/discord-automation/post",
+    expectedStatus: 200,
+    ledger: calls.discordPost,
+  },
+  {
+    label: "public Telegram announcement",
+    route: mounted(telegramPostRoute, "/v1/apps/:id/telegram-automation/post"),
+    path: "/v1/apps/app-1/telegram-automation/post",
+    expectedStatus: 200,
+    ledger: calls.telegramPost,
+  },
 ];
 
 async function post(testCase: MutationCase, body?: string): Promise<Response> {
@@ -446,4 +547,13 @@ test("whitespace-only and explicit empty-object bodies retain the optional-body 
   expect((await post(payment, "  \n\t")).status).toBe(200);
   expect((await post(payment, "{}")).status).toBe(200);
   expect(payment.ledger).toHaveLength(2);
+});
+
+test("paid tunnel auth-key mint does not debit credits for a malformed body", async () => {
+  const tunnel = mutationCases[11];
+  const response = await post(tunnel, '{"expirySeconds":');
+
+  expect(response.status).toBe(400);
+  expect(calls.tunnelDebit).toHaveLength(0);
+  expect(calls.tunnelKey).toHaveLength(0);
 });

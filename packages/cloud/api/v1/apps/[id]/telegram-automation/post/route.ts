@@ -17,6 +17,7 @@ import {
   isGenerativeOperationAdmissionError,
 } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import { telegramAppAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation/app-automation";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
 import {
@@ -45,8 +46,13 @@ async function __hono_POST(
 
   let body: z.infer<typeof postSchema>;
   try {
-    const rawBody = await request.json().catch(() => ({}));
-    body = postSchema.parse(rawBody);
+    // Without text the service posts a generated announcement, so a
+    // malformed body must be rejected rather than read as "no text".
+    const decodedBody = await decodeOptionalRequestJson(request);
+    if (!decodedBody.ok) {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    body = postSchema.parse(decodedBody.value);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return Response.json(
