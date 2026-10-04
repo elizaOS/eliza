@@ -11,17 +11,15 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveAppBranding } from "@elizaos/core/config/app-config";
 import {
+  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
+  resolveAppBranding,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-} from "@elizaos/core/runtime-env";
-import {
-  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   syncElizaEnvAliases,
-} from "@elizaos/core/utils/env";
+} from "@elizaos/host/protocol";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";

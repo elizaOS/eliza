@@ -5,11 +5,11 @@
  */
 
 import { createHash } from "node:crypto";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarSummary,
-  type LifeOpsIcsCalendarSource,
-} from "@elizaos/core/contracts/calendar";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+  LifeOpsIcsCalendarSource,
+} from "@elizaos/contracts";
 import type { IcsCalendarSourceRecord } from "../service/CalendarRepository.js";
 import type { IcsParsedEvent } from "./types.js";
 

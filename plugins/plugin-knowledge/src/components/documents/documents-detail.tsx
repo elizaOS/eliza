@@ -5,10 +5,10 @@
  * documents-detail.helpers; this file owns the fetch/edit/save lifecycle.
  */
 
-import {
-  type Transcript,
-  type TranscriptCaptureSharingState,
-} from "@elizaos/core/transcripts";
+import type {
+  Transcript,
+  TranscriptCaptureSharingState,
+} from "@elizaos/core/protocol";
 import {
   client,
   type DocumentDetail,

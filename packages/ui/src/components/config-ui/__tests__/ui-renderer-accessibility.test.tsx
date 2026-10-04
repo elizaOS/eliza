@@ -1,7 +1,7 @@
 /** Verifies that generated icon-only controls expose accessible names. */
 // @vitest-environment jsdom
 
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
+import type { UiSpec } from "@elizaos/host/protocol";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { __setAppValueForTests } from "../../../state/app-store";

@@ -19,12 +19,12 @@
  * canonical `/api/setup/telegram-account/*` paths without the plugin-name prefix.
  */
 
-import { type IAgentRuntime, type SetupState } from "@elizaos/core";
-import {
-  type Route,
-  type RouteRequest,
-  type RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+import type { IAgentRuntime, SetupState } from "@elizaos/core";
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/host/protocol";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,

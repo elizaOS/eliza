@@ -16,7 +16,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { resolveAliasedEnvValue } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 /**
  * Eliza-1 tier ids — kept in lockstep with `@elizaos/plugin-native-inference/model-catalog/catalog` catalog. We
  * re-declare locally so this module doesn't have to import the shared

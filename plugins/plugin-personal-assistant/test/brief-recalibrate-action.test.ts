@@ -13,6 +13,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
   hasRoleAccess: mocks.hasOwnerAccess,
 }));
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -20,7 +21,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { EventType, runWithTrajectoryContext } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,

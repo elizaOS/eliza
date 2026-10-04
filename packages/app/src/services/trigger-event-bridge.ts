@@ -37,10 +37,10 @@ import {
   EventType,
   type IAgentRuntime,
   isPassiveConnectorSource,
-  lifeOpsPassiveConnectorsEnabled,
   type Task,
   type UUID,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 /** TTL for caching trigger task list to avoid repeated DB queries on high-frequency events. */

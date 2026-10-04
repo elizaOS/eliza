@@ -27,7 +27,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-local-inference": "workspace:*"
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/host": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

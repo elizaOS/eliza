@@ -44,7 +44,7 @@ import {
   type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { v4 as uuidv4 } from "uuid";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { buildProviderCachePlan } from "../runtime/provider-cache-plan";

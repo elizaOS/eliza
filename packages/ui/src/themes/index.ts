@@ -17,6 +17,6 @@ export {
   type ThemeFonts,
   type ThemeValidationError,
   validateThemeDefinition,
-} from "@elizaos/core/contracts/theme";
+} from "@elizaos/contracts";
 export * from "./apply-theme.js";
 export { ELIZA_DEFAULT_THEME } from "./presets.js";

@@ -9,10 +9,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildRemoteAgentPairingUri,
-  createCharacter,
   parseRemoteAgentPairingUri,
   REMOTE_AGENT_ENDPOINTS,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { createCharacter } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";

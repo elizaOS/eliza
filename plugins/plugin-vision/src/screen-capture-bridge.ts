@@ -6,11 +6,11 @@
  * posts PNG frames back to resolve matching promises.
  */
 
+import type {
+  ScreenCaptureImageFormat,
+  ScreenCaptureRequestContract,
+} from "@elizaos/contracts";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  type ScreenCaptureImageFormat,
-  type ScreenCaptureRequestContract,
-} from "@elizaos/core/contracts/screen-capture";
 
 /** Service type used to resolve the bridge off the runtime. */
 export const SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE =

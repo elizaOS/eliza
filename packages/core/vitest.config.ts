@@ -1,8 +1,9 @@
 /** Configures the deterministic Vitest harness for @elizaos/core test suites. */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { repoRoot } from "../../packages/scripts/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
+import { repoRoot } from "../../packages/scripts/vitest/repo-root.ts";
+import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases.ts";
 
 const pluginSqlRoot = path.join(
 	getElizaWorkspaceRoot(repoRoot),
@@ -13,6 +14,7 @@ const pluginSqlRoot = path.join(
 
 export default defineConfig({
 	resolve: {
+		conditions: ["eliza-source"],
 		alias: [
 			{
 				find: /^@elizaos\/testing$/,
@@ -70,6 +72,7 @@ export default defineConfig({
 				find: /^@elizaos\/plugin-sql\/(.+)$/,
 				replacement: path.join(pluginSqlRoot, "$1"),
 			},
+			...buildWorkspaceSourceAliases(),
 		],
 	},
 	test: {

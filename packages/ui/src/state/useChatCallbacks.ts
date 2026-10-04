@@ -5,7 +5,7 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/types/message-source";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/protocol";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   ChatTurnStatus,

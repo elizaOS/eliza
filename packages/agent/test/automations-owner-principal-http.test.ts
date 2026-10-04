@@ -8,7 +8,7 @@ import {
   resolveOwnerEntityIdOrDefault,
   type State,
 } from "@elizaos/core";
-import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { workflowRoutePlugin } from "../../../plugins/plugin-workflow/src/plugin-routes.ts";

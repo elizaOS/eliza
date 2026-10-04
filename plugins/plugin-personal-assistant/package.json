@@ -77,8 +77,10 @@
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/macosreminders": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-calendar": "workspace:*",
@@ -91,8 +93,10 @@
     "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-native-phone": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-reminders": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/plugin-vision": "workspace:*",
     "@elizaos/plugin-x": "workspace:*",
@@ -102,9 +106,7 @@
     "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",
     "zod": "^4.6.5",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/plugin-relationships": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",

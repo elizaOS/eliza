@@ -3,7 +3,7 @@
 import type {
   RuntimeManagementRequest,
   RuntimeManagementResult,
-} from "@elizaos/core/contracts/runtime-management";
+} from "@elizaos/contracts";
 import { client } from "../api";
 import {
   createDefaultRemoteControlCloudClient,

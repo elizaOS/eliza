@@ -8,11 +8,11 @@
 import {
   codingProviderSubscriptionAuthMode,
   isCodingSubscriptionProvider,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
+} from "@elizaos/contracts";
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import {
   type FormEvent,
   useCallback,

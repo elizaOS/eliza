@@ -8,7 +8,7 @@ import {
 import type {
   CalendarReadBinding,
   LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../../../plugin-calendar/src/actions/calendar-handler.ts";
 import { CalendarService } from "../../../plugin-calendar/src/service/CalendarService.ts";

@@ -6,13 +6,13 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   createMessageMemory,
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -52,9 +52,9 @@ import {
   PARENTING_CURRENT_LOCATION_ATTRIBUTE,
   type ParentingSubjectLocationSource,
 } from "./subject-location.js";
-import {
-  type ParentingRiskSignal,
-  type ParentingSafetyAssessment,
+import type {
+  ParentingRiskSignal,
+  ParentingSafetyAssessment,
 } from "./types.js";
 
 type RiskOverrides = Partial<

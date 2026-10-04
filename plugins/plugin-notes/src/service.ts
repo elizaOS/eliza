@@ -7,8 +7,8 @@ import { reconstructNoteContent } from "./types.js";
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { CalendarNoteSourceReference } from "@elizaos/core/contracts/calendar";
 import { NotesStore } from "./store.js";
 import type {
   NotesSnapshot,

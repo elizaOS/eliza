@@ -9,7 +9,7 @@ import {
   System,
   type SystemStatus,
 } from "@elizaos/capacitor-system";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import type { SmsMessageSummary } from "@elizaos/plugin-native-messages/bridge";
 import { Messages } from "@elizaos/plugin-native-messages/bridge";
 

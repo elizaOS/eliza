@@ -45,7 +45,8 @@
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.9",
-    "ai": "^6.0.23"
+    "ai": "^6.0.23",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

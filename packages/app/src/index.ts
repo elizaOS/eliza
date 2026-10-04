@@ -27,6 +27,7 @@ export {
   validateRemoteApiBase,
 } from "@elizaos/agent";
 export {
+  _resetBuildVariantForTests,
   type AccountAuthKind,
   type AccountConfig,
   type AppEntry,
@@ -34,19 +35,38 @@ export {
   accountConfigSchema,
   appEntrySchema,
   appLaunchSchema,
+  BUILD_VARIANTS,
   type ConfigField,
   type ConnectorEntry,
+  CreateIntegrationSpanOptions,
   clearRegistryCacheForTests,
   configFieldSchema,
   connectorEntrySchema,
+  createIntegrationTelemetrySpan,
+  DEFAULT_BUILD_VARIANT,
+  defaultIntegrationSeverityPolicy,
   type ElizaCuratedAppDefinition,
   getApps,
+  getBuildVariant,
   getConnectors,
+  getDirectDownloadUrl,
   getEntry,
   getEntryByNpmName,
   getPlugins,
   getRegisteredCuratedApps,
+  IntegrationBoundary,
+  IntegrationLogger,
+  IntegrationObservabilityEvent,
+  IntegrationOutcome,
+  IntegrationSeverity,
+  IntegrationSeverityPolicy,
+  IntegrationSpanFailureArgs,
+  IntegrationSpanMeta,
+  IntegrationSpanSuccessArgs,
+  IntegrationTelemetrySpan,
   indexEntries,
+  isDirectBuild,
+  isStoreBuild,
   type LoadedRegistry,
   loadRegistry,
   mergeWithRuntime,
@@ -68,7 +88,17 @@ export {
   resourcesSchema,
   type SecondarySurface,
 } from "@elizaos/core";
-
+export type {
+  AllPermissionsState,
+  BuildVariant,
+  PermissionCheckResult,
+  PermissionManagerConfig,
+  PermissionState,
+  PermissionStatus,
+  Platform,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@elizaos/core/protocol";
 export {
   type AndroidUserAgentMarker,
   type AospVariantConfig,
@@ -79,31 +109,10 @@ export {
   type AppWebConfig,
   DEFAULT_APP_CONFIG,
   resolveAppBranding,
-} from "@elizaos/core/config/app-config";
-export type {
-  AllPermissionsState,
-  PermissionCheckResult,
-  PermissionManagerConfig,
-  PermissionState,
-  PermissionStatus,
-  Platform,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/core/contracts/permissions";
-export * from "@elizaos/core/integration-observability";
-export {
-  _resetBuildVariantForTests,
-  BUILD_VARIANTS,
-  type BuildVariant,
-  DEFAULT_BUILD_VARIANT,
-  getBuildVariant,
-  getDirectDownloadUrl,
-  isDirectBuild,
-  isStoreBuild,
-} from "@elizaos/core/platform/build-variant";
+} from "@elizaos/host/protocol";
 export * from "@elizaos/plugin-github/github-credentials";
 export * from "./api/auth.ts";
-export * from "./api/automation-node-contributors";
+
 export * from "./api/compat-route-shared";
 export * from "./api/credential-tunnel-routes";
 export * from "./api/ios-local-agent-transport";

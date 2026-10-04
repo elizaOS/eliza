@@ -12,7 +12,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePrompt } from "../text/template-rendering.js";
 /**
  * Schema descriptor for a single action parameter — matches the shape used

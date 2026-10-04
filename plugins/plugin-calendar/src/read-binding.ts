@@ -7,7 +7,7 @@ import {
 import {
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 
 type RequestedRead = Pick<
   CalendarReadBinding,

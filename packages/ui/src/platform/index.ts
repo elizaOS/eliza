@@ -2,7 +2,7 @@
 export {
   isAospElizaUserAgent,
   userAgentHasElizaOSMarker,
-} from "@elizaos/core/platform/aosp-user-agent";
+} from "@elizaos/core/protocol";
 export * from "./android-runtime";
 export {
   ASSISTANT_LAUNCH_PARAM_KEYS,

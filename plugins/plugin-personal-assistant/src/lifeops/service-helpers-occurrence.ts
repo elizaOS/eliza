@@ -10,7 +10,7 @@ import type {
   LifeOpsOverviewSection,
   LifeOpsOverviewSummary,
   LifeOpsTaskDefinition,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   DEFINITION_PERFORMANCE_LAST7_DAYS,
   DEFINITION_PERFORMANCE_LAST30_DAYS,

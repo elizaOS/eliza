@@ -4,10 +4,9 @@
  * plugin-health; this module only constructs the owner-facing wrapper and
  * re-exports the shared parameters and similes for `owner-surfaces.ts`.
  */
-import {
-  recentConversationTexts,
-  resolveCalendarTimeZone,
-} from "@elizaos/core";
+
+import { resolveCalendarTimeZone } from "@elizaos/contracts";
+import { recentConversationTexts } from "@elizaos/core";
 import {
   createHealthActionRunner,
   createOwnerHealthAction,

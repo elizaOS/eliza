@@ -4,21 +4,20 @@
  */
 
 import type {
-  FirstRunConnectorConfig as ConnectorConfig,
-  FirstRunOptions,
-  SubscriptionStatusResponse,
-} from "@elizaos/core/contracts/first-run-options";
-import type {
   AllPermissionsState,
   PermissionId,
   PermissionState,
-} from "@elizaos/core/contracts/permissions";
-import { isTruthyEnvValue } from "@elizaos/core/env-utils";
+} from "@elizaos/core/protocol";
+import { isTruthyEnvValue, resolveEnvAlias } from "@elizaos/core/protocol";
+import type {
+  FirstRunConnectorConfig as ConnectorConfig,
+  FirstRunOptions,
+  SubscriptionStatusResponse,
+} from "@elizaos/host/protocol";
 import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core/settings-debug";
-import { resolveEnvAlias } from "@elizaos/core/utils/env-alias";
+} from "@elizaos/host/protocol";
 import {
   invokeDesktopBridgeRequest,
   invokeDesktopBridgeRequestWithTimeout,

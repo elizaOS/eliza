@@ -5,7 +5,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
   createCoreProgressiveContentExternalMutantExecutors,
   type ProgressiveContentExternalMutantExecutor,

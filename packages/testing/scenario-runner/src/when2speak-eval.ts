@@ -16,7 +16,7 @@ import {
   type State,
   stringToUuid,
 } from "@elizaos/core";
-import { getDefaultStylePreset } from "@elizaos/core/character-presets";
+import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import {
   classifyMessageAddress,
   messageChallengesPriorAgentReply,

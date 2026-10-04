@@ -18,7 +18,7 @@
  * hidden with no layout breakage.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import {
   ArrowDown,
   ArrowUp,

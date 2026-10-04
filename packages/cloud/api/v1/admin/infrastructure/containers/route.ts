@@ -14,7 +14,7 @@ import { containersRepository } from "@elizaos/cloud-shared/db/repositories/cont
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();

@@ -14,7 +14,6 @@
       "@/api-queue/*": ["./src/queue/*"],
       "@/api/*": ["./*"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
-      "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../../plugins/plugin-elizacloud/src/index.ts"
       ],
@@ -25,7 +24,8 @@
         "../../../plugins/plugin-scheduling/src/index.ts"
       ],
       "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
-      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"]
+      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
+      "@elizaos/core/protocol": ["../../../packages/core/src/protocol"]
     }
   },
   "include": [

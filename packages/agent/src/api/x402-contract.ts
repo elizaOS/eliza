@@ -7,7 +7,7 @@ import type {
   LegacyRouteHandler,
   PaymentEnabledRoute,
   Route,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 export interface X402PluginModule {
   __mobileStub?: boolean;
   createPaymentAwareHandler(route: PaymentEnabledRoute): LegacyRouteHandler;

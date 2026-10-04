@@ -18,10 +18,10 @@ import {
   AgentEventService,
   ChannelType,
   createCharacter,
-  installHttpPluginLifecycle,
   isMessageMetadata,
   validateUuid,
 } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 import {
   createSchedulingRecordStores,
   type DispatchResult,

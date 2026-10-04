@@ -5,11 +5,11 @@
  * proxies are wrapped before crossing an await boundary to avoid their then trap.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { getElizaApiBase } from "@elizaos/core/utils/eliza-globals";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
+import { getElizaApiBase } from "@elizaos/host/protocol";
 import {
   installElizaBridge,
   registerElizaBridgeCapability,

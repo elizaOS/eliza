@@ -4,13 +4,13 @@
 
 import type http from "node:http";
 import {
-  type AgentRuntime,
   PostRegistryRegisterRequestSchema,
   PostRegistrySyncRequestSchema,
   PostRegistryUpdateUriRequestSchema,
-  type ReadJsonBodyOptions,
   type TradePermissionMode,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
 import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/transactions";
 import type { ElizaConfig } from "../config/config.ts";
 import type { WalletCapabilityStatus } from "./wallet-capability.ts";

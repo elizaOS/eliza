@@ -31,7 +31,7 @@ import type {
 import {
   FIRST_SENTENCE_SNIP_VERSION,
   firstSentenceSnip,
-} from "@elizaos/core/voice/first-sentence-snip";
+} from "@elizaos/plugin-local-inference/protocol";
 import { Hono } from "hono";
 import { z } from "zod";
 import {

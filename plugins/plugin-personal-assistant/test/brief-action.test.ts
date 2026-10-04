@@ -24,7 +24,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { getConnectorAccountManager, ModelType } from "@elizaos/core";
-import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
+import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,

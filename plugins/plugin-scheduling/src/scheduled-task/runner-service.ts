@@ -29,7 +29,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
-import { resolvePlatform } from "@elizaos/core/runtime-env";
+import { resolvePlatform } from "@elizaos/host/protocol";
 import { createDrizzleCarveOutDatabase } from "@elizaos/plugin-sql";
 import {
   createCodingAgentScheduleDispatcher,

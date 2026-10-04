@@ -12,7 +12,7 @@ import {
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type VoiceConfig } from "../../api";

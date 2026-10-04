@@ -7,6 +7,8 @@
  * via `fireAction`. Controls share the config-input styling from
  * config-control-primitives.helpers.
  */
+
+import { resolveDynamic } from "@elizaos/host/protocol";
 import { ChevronDown, X } from "lucide-react";
 import React, {
   useCallback,
@@ -22,7 +24,6 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
-import { resolveDynamic } from "../../config/config-catalog";
 import {
   CONFIG_SELECT_FLOATING_LAYER_NAME,
   CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,

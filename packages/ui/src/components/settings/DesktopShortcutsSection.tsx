@@ -9,7 +9,7 @@
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { AlertTriangle, Keyboard, RotateCcw } from "lucide-react";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";

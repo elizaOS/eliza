@@ -4,10 +4,7 @@
  * offset handling across DST boundaries and dependency-free browser behavior.
  */
 
-import {
-  parseIsoMs,
-  roundConfidence,
-} from "@elizaos/core/lifeops-normalize/time-util";
+import { parseIsoMs, roundConfidence } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 
 describe("parseIsoMs", () => {

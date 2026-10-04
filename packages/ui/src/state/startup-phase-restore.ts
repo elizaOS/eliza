@@ -7,11 +7,8 @@
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/core/contracts/cloud-pair";
-import {
-  getElizaApiBase,
-  getElizaApiToken,
-} from "@elizaos/core/utils/eliza-globals";
+} from "@elizaos/contracts";
+import { getElizaApiBase, getElizaApiToken } from "@elizaos/host/protocol";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,

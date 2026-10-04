@@ -1,6 +1,6 @@
 /** Unit tests for `transcriptKnowledgePayload` shaping transcripts into knowledge items. Deterministic. */
 
-import type { Transcript } from "@elizaos/core/transcripts";
+import type { Transcript } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
 import {
 	TRANSCRIPT_DOCUMENT_TAG,

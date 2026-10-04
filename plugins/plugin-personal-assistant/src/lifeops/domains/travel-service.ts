@@ -5,10 +5,10 @@
  * owner approval upstream in the action/route layer.
  */
 
-import {
-  type CreateLifeOpsCalendarEventRequest,
-  type LifeOpsCalendarEvent,
-} from "@elizaos/core/contracts/calendar";
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarEvent,
+} from "@elizaos/contracts";
 import {
   createOrder,
   createPayment,

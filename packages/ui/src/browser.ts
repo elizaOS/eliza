@@ -5,11 +5,10 @@
  * that require Node APIs or server-only runtime state.
  */
 
-export { shouldUseCloudOnlyBranding } from "@elizaos/core/config/cloud-only";
 export {
-  buildPluginConfigUiSpec,
-  buildPluginListUiSpec,
-} from "@elizaos/core/config/plugin-ui-spec";
+  parsePositiveFloat,
+  parsePositiveInteger,
+} from "@elizaos/core/protocol";
 export type {
   ActionConfirm,
   ActionOnError,
@@ -19,10 +18,10 @@ export type {
   AuthVisibility,
   BuiltinValidator,
   CondExpr,
+  ConfigUiPatchOp as PatchOp,
   DynamicProp,
   NotVisibility,
   OrVisibility,
-  PatchOp,
   PathVisibility,
   RepeatConfig,
   UIStreamConfig,
@@ -36,17 +35,16 @@ export type {
   UiSpecValidationConfig,
   UiSpecVisibilityCondition,
   VisibilityOperator,
-} from "@elizaos/core/config/ui-spec";
+} from "@elizaos/host/protocol";
 export {
+  buildPluginConfigUiSpec,
+  buildPluginListUiSpec,
   RESTART_EXIT_CODE,
   type RestartHandler,
   requestRestart,
   setRestartHandler,
-} from "@elizaos/core/restart";
-export {
-  parsePositiveFloat,
-  parsePositiveInteger,
-} from "@elizaos/core/utils/number-parsing";
+  shouldUseCloudOnlyBranding,
+} from "@elizaos/host/protocol";
 // Keep the full app shell on the explicit `@elizaos/ui/App` entry. Exporting it
 // from this broad browser facade creates a second bundled shell copy for plugin
 // host imports, which can fold lazy route modules back into the entry chunk.

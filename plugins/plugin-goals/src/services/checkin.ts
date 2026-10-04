@@ -29,11 +29,11 @@
  */
 
 import crypto from "node:crypto";
+import type {
+  LifeOpsGoalDefinition,
+  LifeOpsGoalReviewState,
+} from "@elizaos/contracts";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  type LifeOpsGoalDefinition,
-  type LifeOpsGoalReviewState,
-} from "@elizaos/core/contracts/personal-assistant";
 import {
   getScheduledTaskRunner,
   OWNER_LOCAL_TZ,

@@ -8,12 +8,12 @@ import {
   isRuntimeManagementOperation,
   type RuntimeManagementRequest,
   type RuntimeManagementResult,
-} from "@elizaos/core/contracts/runtime-management";
+} from "@elizaos/contracts";
 import {
+  MESSAGE_SOURCE_CLIENT_CHAT,
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
-} from "@elizaos/core/events";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/types/message-source";
+} from "@elizaos/core/protocol";
 import {
   type AgentStatus,
   type CodingAgentSession,

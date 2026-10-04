@@ -20,6 +20,7 @@
  *              FollowUp service (was SCHEDULE_FOLLOW_UP).
  */
 
+import { resolveCalendarTimeZone } from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -42,7 +43,6 @@ import {
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   logger,
   requireConfirmation,
-  resolveCalendarTimeZone,
   stringToUuid,
   toWellFormedUnicode,
 } from "@elizaos/core";

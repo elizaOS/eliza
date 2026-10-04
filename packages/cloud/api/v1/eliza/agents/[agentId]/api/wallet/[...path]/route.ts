@@ -29,7 +29,7 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletEntry,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";

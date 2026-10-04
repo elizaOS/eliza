@@ -14,16 +14,6 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { NlmsEchoCanceller } from "@elizaos/core/voice/aec";
-import {
-	type OwnerObservation,
-	resolveOwnerCandidate,
-} from "@elizaos/core/voice/owner-inference";
-import {
-	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
-	buildVoiceTurnSignal,
-} from "@elizaos/core/voice/respond-gate";
-import { scoreEndOfTurnHeuristic } from "@elizaos/core/voice-eot";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
 import { OnlineSpeakerClusterer } from "./acoustic-speaker-attribution";
 import type {
@@ -40,6 +30,15 @@ import {
 } from "./ffi-bindings";
 import type { KokoroTtsBackend } from "./kokoro/kokoro-backend";
 import { resolveKokoroEngineConfig } from "./kokoro/kokoro-engine-discovery";
+import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
+import {
+	type OwnerObservation,
+	resolveOwnerCandidate,
+} from "./owner-inference.js";
+import {
+	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
+	buildVoiceTurnSignal,
+} from "./respond-gate.js";
 import {
 	type DiarizerOutput,
 	PYANNOTE_WINDOW_SECONDS,
@@ -58,6 +57,7 @@ import {
 	ffiSupportsStreamingAsr,
 	resampleLinear,
 } from "./transcriber";
+import { scoreEndOfTurnHeuristic } from "./voice-eot.js";
 import type { VoiceScenario } from "./voice-scenario";
 import type {
 	VoiceDiarizationObservation,

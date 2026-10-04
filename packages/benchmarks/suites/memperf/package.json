@@ -16,6 +16,7 @@
     "@elizaos/core": "workspace:*"
   },
   "dependencies": {
-    "@elizaos/plugin-local-inference": "workspace:*"
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   }
 }

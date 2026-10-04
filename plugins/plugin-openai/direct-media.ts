@@ -1,14 +1,6 @@
 /** Stateless own-key media adapters. The host supplies configuration and cancellation. */
-import {
- type ImageConfig, type VideoConfig, type VisionConfig,
- type ImageGenerationOptions, type ImageGenerationProvider,
- type MediaImageGenerationResult as ImageGenerationResult,
- type VideoGenerationOptions, type VideoGenerationProvider, type VideoGenerationResult,
- type VisionAnalysisOptions, type VisionAnalysisProvider, type VisionAnalysisResult,
- type MediaProviderResult, fetchMediaProviderResponse as fetchWithTimeout,
- withMediaProviderErrorBoundary as withProviderErrorBoundary,
- resolveVisionImageInput, isMediaProviderResult,
-} from "@elizaos/core";
+import { type ImageConfig, type VideoConfig, type VisionConfig } from "@elizaos/contracts";
+import {type ImageGenerationOptions, type ImageGenerationProvider, type MediaImageGenerationResult as ImageGenerationResult, type VideoGenerationOptions, type VideoGenerationProvider, type VideoGenerationResult, type VisionAnalysisOptions, type VisionAnalysisProvider, type VisionAnalysisResult, type MediaProviderResult, fetchMediaProviderResponse as fetchWithTimeout, withMediaProviderErrorBoundary as withProviderErrorBoundary, resolveVisionImageInput, isMediaProviderResult} from "@elizaos/host/protocol";
 export class OpenAIImageProvider implements ImageGenerationProvider {
   name = "openai";
   private apiKey: string;

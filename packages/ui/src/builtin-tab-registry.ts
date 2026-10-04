@@ -11,7 +11,7 @@ import type {
 import {
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
-} from "@elizaos/core/views/surface-manifest";
+} from "@elizaos/core/protocol";
 import {
   BUILTIN_ROUTE_IDS,
   type BuiltinRouteSurfaceDeclaration,

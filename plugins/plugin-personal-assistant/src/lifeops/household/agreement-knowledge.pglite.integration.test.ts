@@ -14,6 +14,7 @@ import path from "node:path";
 import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import { AuthStore } from "@elizaos/app/services/auth-store";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Plugin } from "@elizaos/core";
 import {
   type AgentRuntime,
@@ -29,8 +30,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
-import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 import {
   createDocumentsPlugin,
   DocumentService,

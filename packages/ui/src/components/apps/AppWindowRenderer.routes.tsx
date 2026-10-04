@@ -1,5 +1,5 @@
 /** Desktop app windows share the declared internal-tool, page and catalog routes. */
-import { formatError } from "@elizaos/core/utils/format-error";
+import { formatError } from "@elizaos/core/protocol";
 import {
   type ComponentType,
   type JSX,

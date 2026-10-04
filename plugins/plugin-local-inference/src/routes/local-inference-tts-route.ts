@@ -12,8 +12,12 @@
  */
 
 import type http from "node:http";
-import { type AgentRuntime, ModelType } from "@elizaos/core";
-import { ttsDebug, ttsDebugTextPreview } from "@elizaos/core/utils/tts-debug";
+import {
+	type AgentRuntime,
+	ModelType,
+	ttsDebug,
+	ttsDebugTextPreview,
+} from "@elizaos/core";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,

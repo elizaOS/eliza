@@ -55,17 +55,17 @@ import {
 } from "@elizaos/app/api/ios-local-agent-transport";
 import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
-import { getStylePresets } from "@elizaos/core/character-presets";
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
+} from "@elizaos/contracts";
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/core/contracts/cloud-pair";
-import type {
-  AppBlockerSettingsCardProps,
-  WebsiteBlockerSettingsCardProps,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import { getStylePresets } from "@elizaos/host/protocol";
 import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";

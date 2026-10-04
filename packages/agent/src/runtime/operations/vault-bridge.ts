@@ -14,11 +14,11 @@ import {
   VaultDecryptionError,
   writeSensitiveValueVerified,
 } from "@elizaos/auth/vault";
+import { ElizaError } from "@elizaos/core";
 import {
-  ElizaError,
   FIRST_RUN_PROVIDER_CATALOG,
   getFirstRunProviderSignalEnvKeys,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {

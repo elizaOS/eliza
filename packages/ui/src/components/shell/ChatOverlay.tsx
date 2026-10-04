@@ -3,9 +3,11 @@
  * available across views.
  */
 
-import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/core/chat-upload-limits";
-import { transcriptPlainText } from "@elizaos/core/transcripts";
-import { validateUuid } from "@elizaos/core/utils/uuid";
+import { validateUuid } from "@elizaos/core";
+import {
+  MAX_CHAT_MEDIA_RAW_BYTES,
+  transcriptPlainText,
+} from "@elizaos/core/protocol";
 import {
   AudioLines,
   FileText,

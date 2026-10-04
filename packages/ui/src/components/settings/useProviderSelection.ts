@@ -7,11 +7,11 @@
  * panel to Local so first paint matches the provider actually serving.
  */
 
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import {
   normalizeSubscriptionProviderSelectionId,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
-import { asRecord } from "@elizaos/core/type-guards";
+} from "@elizaos/host/protocol";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";

@@ -30,8 +30,9 @@
  * WebView) and on a Node desktop runtime (no Capacitor — falls through
  * to "all four available").
  */
-import { type IAgentRuntime } from "@elizaos/core";
-import { type TaskExecutionProfile } from "@elizaos/core/contracts/scheduled-task-execution";
+
+import type { TaskExecutionProfile } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 
 interface CapacitorPluginsLike {
   BackgroundRunner?: unknown;

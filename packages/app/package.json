@@ -330,7 +330,9 @@
     "util": "^0.12.5",
     "ws": "^8.21.3",
     "zod": "^4.6.5",
-    "tar": "7.5.22"
+    "tar": "7.5.22",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
@@ -450,11 +452,6 @@
       "bun": "./src/account-pool.ts",
       "import": "./dist/account-pool.js",
       "default": "./dist/account-pool.js"
-    },
-    "./api/automation-node-contributors": {
-      "types": "./dist/api/automation-node-contributors.d.ts",
-      "import": "./dist/api/automation-node-contributors.js",
-      "default": "./dist/api/automation-node-contributors.js"
     },
     "./api/auth": {
       "types": "./dist/api/auth.d.ts",

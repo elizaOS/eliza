@@ -5,7 +5,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { imessageDataRoutes } from "./data-routes.ts";
 

@@ -3,10 +3,7 @@
  * snapshots, or overlapping suffix/prefix fragments.
  */
 
-export {
-  DELTA_STREAM_PROTOCOL,
-  type DeltaStreamProtocol,
-} from "@elizaos/core/api/agent-api-types";
+export { DELTA_STREAM_PROTOCOL, type DeltaStreamProtocol } from "@elizaos/core";
 
 /**
  * Remove an NFC-space overlap while preserving raw input beyond the sequence

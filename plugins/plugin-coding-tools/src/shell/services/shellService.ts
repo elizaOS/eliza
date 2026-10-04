@@ -13,7 +13,7 @@ import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   isCloudExecutionMode,
   shouldUseSandboxExecution,
-} from "@elizaos/core/config/runtime-mode";
+} from "@elizaos/host/protocol";
 import spawn from "cross-spawn";
 import { redactShellText, redactShellValue } from "../redaction";
 import type {

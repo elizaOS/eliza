@@ -4,7 +4,7 @@
  * model gateway, credential bridge, and adapter-specific overrides.
  */
 
-import { isHostExecutionToolchainEnvKey } from "@elizaos/core/host-execution-env";
+import { isHostExecutionToolchainEnvKey } from "@elizaos/host";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,

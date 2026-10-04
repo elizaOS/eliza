@@ -14,10 +14,10 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../plugin-agent-orchestrator/dist/ui/index.d.ts"
-      ]
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

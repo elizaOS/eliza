@@ -19,7 +19,7 @@ import { isIP } from "node:net";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { logger } from "@elizaos/core";
-import { canonicalJsonString } from "@elizaos/core/canonical-json";
+import { canonicalJsonString } from "@elizaos/core/protocol";
 import type {
   SyntheticControlSession,
   SyntheticManifest,

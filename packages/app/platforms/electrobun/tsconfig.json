@@ -58,7 +58,7 @@
 			"@elizaos/capacitor-*": [
 				"../../../../plugins/plugin-native-*/src/index.ts"
 			],
-			"@elizaos/core/*": ["../../../core/src/*"]
+			"@elizaos/core/protocol": ["../../../core/src/protocol"]
 		}
 	},
 	"include": ["src/**/*.ts", "../../scripts/electrobun/**/*.ts"],

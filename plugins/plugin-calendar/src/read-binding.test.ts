@@ -7,7 +7,7 @@ import {
   runResponseHandlerEvaluators,
   stringToUuid,
 } from "@elizaos/core";
-import type { CalendarReadBinding } from "@elizaos/core/contracts/calendar";
+import type { CalendarReadBinding } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   calendarActionPromotionOptions,

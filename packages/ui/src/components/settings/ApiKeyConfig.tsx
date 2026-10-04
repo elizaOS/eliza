@@ -5,7 +5,9 @@
  * ConfigRenderer, and gates saving behind OWNER role. Server-side validation
  * warnings/errors flow in as props and surface inline.
  */
-import { API_KEY_PREFIX_HINTS } from "@elizaos/core/config/api-key-prefix-hints";
+
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
+import { API_KEY_PREFIX_HINTS } from "@elizaos/host/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type PluginParamDef } from "../../api";
@@ -14,7 +16,6 @@ import {
   defaultRegistry,
   useConfigValidation,
 } from "../../components/config-ui/config-renderer.helpers";
-import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useAppSelector } from "../../state";
 import type { ConfigUiHint } from "../../types";

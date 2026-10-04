@@ -9,14 +9,14 @@
  * source of truth shared with the headful self-test, #8785); it is re-exported
  * here so existing `./e2e-harness` importers keep working unchanged.
  */
-export { normalizeWerText, wordErrorRate } from "@elizaos/core/voice-wer";
+export { normalizeWerText, wordErrorRate } from "./voice-wer.js";
 
-import { normalizeWerText, wordErrorRate } from "@elizaos/core/voice-wer";
 import {
 	computeDiarizationErrorRate,
 	type DiarizationSegment,
 } from "./diarization-error-rate";
 import { percentile, round1, round4 } from "./metric-math";
+import { normalizeWerText, wordErrorRate } from "./voice-wer.js";
 export type VoiceE2eHarnessErrorCode =
 	| "missing-artifact"
 	| "missing-measurement"

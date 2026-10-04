@@ -104,7 +104,7 @@
       "@elizaos/plugin-native-phone/ui": [
         "../../plugins/plugin-native-phone/src/ui.ts"
       ],
-      "@elizaos/core/*": ["../core/src/*"]
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   }
 }

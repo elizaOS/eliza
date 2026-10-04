@@ -34,10 +34,7 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import {
-  calendarDateKey,
-  resolveCalendarTimeZone,
-} from "@elizaos/core/lifeops-normalize/calendar-time-zone";
+import { calendarDateKey, resolveCalendarTimeZone } from "@elizaos/contracts";
 import type { MessageRef, TriageOptions } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService, rankScored } from "@elizaos/plugin-assistant";
 import {
@@ -50,7 +47,7 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsTaskDefinition,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,

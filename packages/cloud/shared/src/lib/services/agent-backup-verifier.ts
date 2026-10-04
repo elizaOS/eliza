@@ -54,8 +54,8 @@ import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CANONICAL_JSON,
   CANONICAL_JSON_UNBOUNDED,
-  stableJsonString,
-} from "@elizaos/core/canonical-json";
+  canonicalJsonString,
+} from "@elizaos/core/protocol";
 import { and, desc, eq, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
@@ -377,8 +377,8 @@ function sha256Bytes(bytes: Buffer | string): string {
  * stamping that row as unverifiable. Canonical bytes are unchanged for every
  * manifest that hashed before.
  */
-function sha256Json(value: unknown): string {
-  return sha256Bytes(stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON));
+function sha256Json(value: object): string {
+  return sha256Bytes(canonicalJsonString(value, AGENT_BACKUP_CANONICAL_JSON));
 }
 
 function verifyFileEntry(label: string, entry: AgentBackupFileEntry, mismatches: string[]): void {

@@ -18,7 +18,6 @@
         "../app/src/services/task-host-capabilities.ts"
       ],
       "@elizaos/plugin-pdf": ["../../plugins/plugin-pdf/index.ts"],
-      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-native-phone/*": [
         "../../plugins/plugin-native-phone/src/*"
       ],
@@ -63,7 +62,8 @@
       "@elizaos/plugin-openai": ["../../plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-native-messages/bridge": [
         "../../plugins/plugin-native-messages/src/bridge.ts"
-      ]
+      ],
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "include": ["src", "test", "scripts/**/*.test.ts"]

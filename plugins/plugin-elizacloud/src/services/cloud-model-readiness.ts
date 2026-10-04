@@ -9,10 +9,7 @@
  * and model id. A missing, empty, or unreachable catalog is `unknown`, which
  * callers must treat as retryable rather than as a permanent model removal.
  */
-import {
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL, DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/host/protocol";
 
 export const CLOUD_MODEL_NOT_AVAILABLE = "MODEL_NOT_AVAILABLE" as const;
 

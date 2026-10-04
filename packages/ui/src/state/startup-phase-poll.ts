@@ -6,11 +6,11 @@
  * or an appropriate error/auth event.
  */
 
-import { getStylePresets } from "@elizaos/core/character-presets";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
+} from "@elizaos/core/protocol";
+import { getStylePresets } from "@elizaos/host/protocol";
 import { client, type FirstRunOptions } from "../api";
 import {
   getAndroidLocalAgentBootStateForUrl,

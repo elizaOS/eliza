@@ -13,30 +13,34 @@ import {
   ElizaError,
   EventType,
   formatError,
-  getHttpRuntime,
-  getStylePresets,
   type IAgentRuntime,
-  isMobilePlatform,
   logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
   normalizeCharacterLanguage,
   parseClampedInteger,
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
-  type Route,
-  readAliasedEnv,
-  readRequestBody,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
   resolveOwnerEntityIdOrDefault,
-  resolveServerOnlyPort,
   ServiceType,
+} from "@elizaos/core";
+import {
+  readJsonBody as parseJsonBody,
+  readRequestBody,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/core";
+} from "@elizaos/host";
+import {
+  getHttpRuntime,
+  getStylePresets,
+  isMobilePlatform,
+  type ReadJsonBodyOptions,
+  type Route,
+  readAliasedEnv,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
+  resolveServerOnlyPort,
+} from "@elizaos/host/protocol";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import {

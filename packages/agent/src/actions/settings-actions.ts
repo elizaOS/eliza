@@ -7,19 +7,21 @@ import {
   type Action,
   type ActionResult,
   findWorldsForOwner,
-  getFirstRunProviderOption,
   getSalt,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
   ModelType,
-  normalizeFirstRunProviderId,
   type Setting,
   saltWorldSettings,
   toWellFormedUnicode,
   unsaltWorldSettings,
   type WorldSettings,
 } from "@elizaos/core";
+import {
+  getFirstRunProviderOption,
+  normalizeFirstRunProviderId,
+} from "@elizaos/host/protocol";
 
 import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import {

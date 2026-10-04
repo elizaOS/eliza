@@ -13,7 +13,7 @@ import type {
   TranscriptSegment,
   TranscriptSource,
   TranscriptSummary,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import { ElizaClient } from "./client-base";
 /** Body the recording pipeline POSTs to create a transcript record. The
  *  world/room/entity ids are optional — the server derives them from the agent

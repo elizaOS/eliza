@@ -9,7 +9,7 @@ import { appEarningsService } from "@elizaos/cloud-shared/lib/services/app-earni
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 
 const DEFAULT_DAYS = 30;

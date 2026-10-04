@@ -22,10 +22,7 @@
  *   - no published, activation-eligible tier fits → skip, no marker.
  */
 
-import type {
-  CatalogModel,
-  ModelHubSnapshot,
-} from "@elizaos/core/contracts/local-inference";
+import type { CatalogModel, ModelHubSnapshot } from "@elizaos/contracts";
 import { client } from "../api";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { selectRecommendedModelForSlot } from "../services/local-inference/recommendation";

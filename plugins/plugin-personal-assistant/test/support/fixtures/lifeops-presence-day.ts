@@ -7,7 +7,7 @@ import {
   type LifeOpsActivitySignalState,
   type LifeOpsHealthSignal,
   type LifeOpsHealthSignalSource,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 
 /**
  * Presence-day fixture for the lifeops-presence mockoon environment.

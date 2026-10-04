@@ -3,8 +3,9 @@
  * missing-required, partially configured, fully configured, and the no-schema
  * empty case. Uses the default registry so real field renderers mount.
  */
+
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
-import type { JsonSchemaObject } from "../../config/config-catalog";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import type { ConfigUiHint } from "../../types";
 import { ConfigRenderer } from "./config-renderer";

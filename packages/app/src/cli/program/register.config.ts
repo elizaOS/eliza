@@ -9,7 +9,7 @@
  * Helpers flatten the nested config and infer group names.
  */
 
-import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
+import { getLogPrefix } from "@elizaos/core";
 import type { Command } from "commander";
 import { theme } from "../../terminal/theme.js";
 

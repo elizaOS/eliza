@@ -3,8 +3,10 @@
  * share ingest, workbench, trajectories, database.
  */
 
-import type { DatabaseProviderType } from "@elizaos/core/contracts/config";
-import type { PostInboxMessageRequest } from "@elizaos/core/contracts/inbox-routes";
+import type {
+  DatabaseProviderType,
+  PostInboxMessageRequest,
+} from "@elizaos/contracts";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import type {

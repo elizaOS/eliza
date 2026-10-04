@@ -3,11 +3,9 @@
  * bounded revocation cleanup. Every mutating path locks the host before its
  * sessions and commands so relay operations cannot outlive revocation.
  */
+
+import { canonicalizeRemoteControlValue, type RemoteConnectionMode } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import {
-  canonicalizeRemoteControlValue,
-  type RemoteConnectionMode,
-} from "@elizaos/core/contracts/remote-control";
 import { and, asc, desc, eq, inArray, isNotNull, lte, or, type SQL } from "drizzle-orm";
 import { type Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
