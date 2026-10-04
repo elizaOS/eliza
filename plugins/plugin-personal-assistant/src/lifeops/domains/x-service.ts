@@ -263,6 +263,11 @@ export class XDomain {
       grant,
       accountId,
     });
+    // A broken registered probe is a failure, not missing configuration.
+    // Preserve legitimate absence while letting callers retain diagnostics.
+    if (runtimeStatus.status === "unavailable" && runtimeStatus.error) {
+      throw runtimeStatus.error;
+    }
     const runtimeConnected =
       runtimeStatus.status === "handled" && runtimeStatus.value.connected;
     const availableLocalCapabilities =

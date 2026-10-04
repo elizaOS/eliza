@@ -99,6 +99,9 @@ export const billingSubscriptionCommands = pgTable(
     lease_token: uuid("lease_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     cancellation_dispatch_state: text("cancellation_dispatch_state").$type<"ready" | "started">(),
+    organization_upgrade_dispatch_state: text("organization_upgrade_dispatch_state").$type<
+      "ready" | "started"
+    >(),
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_response_digest: text("provider_response_digest"),
     error_code: text("error_code"),
@@ -186,6 +189,10 @@ export const billingSubscriptionCommands = pgTable(
       ],
       name: "billing_subscription_commands_result_revision_tenant_fk",
     }).onDelete("restrict"),
+    organization_upgrade_dispatch_check: check(
+      "billing_commands_org_upgrade_dispatch_check",
+      sql`${table.organization_upgrade_dispatch_state} IS NULL OR (${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.kind} = 'upgrade' AND ${table.organization_upgrade_dispatch_state} IN ('ready','started'))`,
+    ),
     cancellation_dispatch_check: check(
       "billing_subscription_commands_cancellation_dispatch_check",
       sql`${table.cancellation_dispatch_state} IS NULL OR (${table.kind} IN ('cancel','resume') AND ${table.cancellation_dispatch_state} IN ('ready','started'))`,
