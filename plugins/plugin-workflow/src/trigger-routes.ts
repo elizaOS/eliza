@@ -19,6 +19,23 @@ import {
 } from '@elizaos/core';
 import type { RouteHelpers, RouteRequestContext } from '@elizaos/host/protocol';
 import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './lib/trigger-ownership';
+
+const PAST_ONCE_SCHEDULE_ERROR = 'Once trigger requires a future scheduledAtIso';
+
+/**
+ * A past one-time schedule clamps to an update interval of 0, which the task
+ * service treats as an invalid repeat task: it never fires and never expires.
+ * The chat action already rejects it; the HTTP routes must not report success.
+ */
+function isPastOnceSchedule(draft: {
+  triggerType?: string;
+  scheduledAtIso?: string;
+  enabled?: boolean;
+}): boolean {
+  if (draft.triggerType !== 'once' || draft.enabled === false) return false;
+  const scheduledAt = draft.scheduledAtIso ? Date.parse(draft.scheduledAtIso) : Number.NaN;
+  return Number.isFinite(scheduledAt) && scheduledAt <= Date.now();
+}
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {
   updatedAt?: number;
@@ -362,6 +379,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, normalized.error ?? 'Invalid trigger request', 400);
       return true;
     }
+    if (isPastOnceSchedule(normalized.draft)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
+      return true;
+    }
     const existingTasks = await listOwnedTriggerTasks(runtime);
     const activeCount = existingTasks.filter((task) => {
       const trigger = readTriggerConfig(task);
@@ -646,6 +667,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     });
     if (!normalized.draft) {
       error(res, normalized.error ?? 'Invalid update', 400);
+      return true;
+    }
+    if (isPastOnceSchedule(normalized.draft)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
       return true;
     }
     const nextTrigger = buildTriggerConfig({
