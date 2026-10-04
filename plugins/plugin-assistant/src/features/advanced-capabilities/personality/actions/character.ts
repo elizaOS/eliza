@@ -1475,6 +1475,7 @@ async function handlePreferenceReset(
 ): Promise<ActionResult> {
   const existingPrefs = await runtime.getMemories({
     entityId: message.entityId,
+    authorEntityIds: [message.entityId],
     roomId: runtime.agentId,
     tableName: USER_PREFS_TABLE,
     count: MAX_PREFS_PER_USER + 5,
@@ -1545,6 +1546,7 @@ async function handleUserPreference(
 
     const existingPrefs = await runtime.getMemories({
       entityId: message.entityId,
+      authorEntityIds: [message.entityId],
       roomId: runtime.agentId,
       tableName: USER_PREFS_TABLE,
       count: MAX_PREFS_PER_USER + 1,

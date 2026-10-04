@@ -158,6 +158,23 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("DISCORD_APPLICATION_ID")).toBeNull();
 	});
 
+	it("updates and clears a boot-loaded secret through a non-secret write", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "non-secret-write-over-secret-test",
+				secrets: { SOLANA_RPC_URL: "https://old-rpc.example" },
+			} as Character,
+		});
+
+		runtime.setSetting("SOLANA_RPC_URL", "https://new-rpc.example", false);
+		expect(runtime.getSetting("SOLANA_RPC_URL")).toBe(
+			"https://new-rpc.example",
+		);
+
+		runtime.setSetting("SOLANA_RPC_URL", null, false);
+		expect(runtime.getSetting("SOLANA_RPC_URL")).toBeNull();
+	});
+
 	it("replaces and revokes a boot-copied nested secret", () => {
 		const runtime = new AgentRuntime({
 			character: {

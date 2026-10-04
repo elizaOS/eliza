@@ -14,6 +14,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { redactOAuthIntentForPublic } from "@/lib/services/oauth-intents";
 import { getOAuthIntentsService } from "@/lib/services/oauth-intents-default";
+import { decodeOptionalRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,8 +34,11 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Missing oauth intent id" }, 400);
     }
 
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsed = CancelSchema.safeParse(rawBody ?? {});
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = CancelSchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

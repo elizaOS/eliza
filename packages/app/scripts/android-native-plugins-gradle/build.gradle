@@ -66,6 +66,8 @@ subprojects { subproject ->
         def directory = subproject.projectDir.parentFile.name
         def descriptor = descriptors[directory]
         if (descriptor == null) throw new GradleException("Missing native bridge contract: ${directory}")
+        // These libraries require a consumer identity/secure-store adapter, not a default bridge.
+        if (descriptor.kind == "host-configured-library") return
         def generated = new File(subproject.layout.buildDirectory.get().asFile, 'generated/native-bridge-tests')
         def prepare = subproject.tasks.register('prepareNativeBridgeTests') {
             inputs.dir(fixtures)
