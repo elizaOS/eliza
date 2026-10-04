@@ -49,19 +49,13 @@ public class RuntimeBundleStore {
     List<Entry> entries = parse(manifest, format);
     String identity = digest(manifest);
     Path requested = root.toAbsolutePath().normalize();
-    // privateDirectory briefly clears permission bits while restricting the
-    // root, so a same-path preparer must not open the lock file meanwhile.
-    // Requested-path monitors are always taken before real-path ones, and a
-    // real path is its own requested path, so the nesting cannot deadlock.
-    synchronized (ROOT_LOCKS.computeIfAbsent(requested, key -> new Object())) {
-      privateDirectory(requested);
-      // Validate the leaf without following links before collapsing parent aliases.
-      Path real = requested.toRealPath();
-      // A FileChannel lock belongs to the whole JVM: a second thread preparing
-      // the same root would get OverlappingFileLockException instead of waiting.
-      synchronized (ROOT_LOCKS.computeIfAbsent(real, key -> new Object())) {
-        return prepareLocked(real, entries, identity, source, nativeLibraries, durability, faults);
-      }
+    // Resolve parent aliases before creating or restricting the root. Its leaf
+    // remains un-followed and is validated under the same physical-root monitor.
+    Path parent = requested.getParent();
+    Path real = parent == null ? requested : parent.toRealPath().resolve(requested.getFileName());
+    synchronized (ROOT_LOCKS.computeIfAbsent(real, key -> new Object())) {
+      privateDirectory(real);
+      return prepareLocked(real, entries, identity, source, nativeLibraries, durability, faults);
     }
   }
 
@@ -151,8 +145,8 @@ public class RuntimeBundleStore {
   }
   private static void privateDirectory(Path directory) throws IOException {
     if (!Files.exists(directory, NOFOLLOW)) {
-      // Cold-start preparers race to create the root before any lock can be
-      // keyed on its real path; the loser re-checks the winner's directory.
+      // Another process can create the root before opening its file lock.
+      // Re-check the actual leaf after a creation collision.
       try { Files.createDirectory(directory); } catch (FileAlreadyExistsException created) { }
     }
     if (!Files.isDirectory(directory, NOFOLLOW)) throw new IOException("Runtime directory is not a real directory");

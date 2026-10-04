@@ -111,6 +111,11 @@ public final class RuntimeBundleStoreTest {
     Path links = Files.createDirectory(suite.resolve("links")); libraries(links);
     Files.createSymbolicLink(links.resolve("versions"), hostile.resolve("versions"));
     rejects(() -> prepare(links, next));
+    Path coldLeaf = Files.createDirectory(suite.resolve("cold-leaf-link")); libraries(coldLeaf);
+    Path missingRoot = suite.resolve("uncreated-runtime-root");
+    Files.createSymbolicLink(coldLeaf.resolve("versions"), missingRoot);
+    rejects(() -> prepare(coldLeaf, next));
+    check(Files.isSymbolicLink(coldLeaf.resolve("versions")) && !Files.exists(missingRoot, LinkOption.NOFOLLOW_LINKS), "Cold preparation must not follow or replace a dangling root leaf");
     Path natives = Files.createDirectory(suite.resolve("natives")); libraries(natives);
     Files.writeString(natives.resolve("native/libeliza_bun.so"), "wrong native binary");
     rejects(() -> prepare(natives, next));
@@ -139,21 +144,25 @@ public final class RuntimeBundleStoreTest {
       } finally { resume.countDown(); pool.shutdownNow(); }
     }
 
-    // Cold start: concurrent first preparers race to create the root itself,
-    // before any lock can be keyed on its real path.
+    // Cold roots reached through canonical and parent-alias paths must share
+    // one preparation owner before any directory or permission mutation.
     for (int round = 0; round < 40; round++) {
       Path cold = Files.createDirectory(suite.resolve("cold-" + round)); libraries(cold);
+      Path alias = Files.createSymbolicLink(suite.resolve("cold-link-" + round), cold);
       java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(4);
       java.util.concurrent.ExecutorService racers = java.util.concurrent.Executors.newFixedThreadPool(4);
       try {
         List<java.util.concurrent.Future<Path>> results = new ArrayList<>();
-        for (int i = 0; i < 4; i++) results.add(racers.submit(() -> {
-          start.await(10, java.util.concurrent.TimeUnit.SECONDS);
-          return prepare(cold, next);
-        }));
-        Path expected = results.get(0).get(60, java.util.concurrent.TimeUnit.SECONDS);
+        for (int i = 0; i < 4; i++) {
+          Path requested = i % 2 == 0 ? cold : alias;
+          results.add(racers.submit(() -> {
+            start.await();
+            return prepare(requested, next);
+          }));
+        }
+        Path expected = results.get(0).get();
         for (java.util.concurrent.Future<Path> result : results)
-          check(result.get(60, java.util.concurrent.TimeUnit.SECONDS).equals(expected), "Cold-start preparers must share one bundle");
+          check(result.get().equals(expected), "Cold-start preparers must share one physical bundle");
       } finally { racers.shutdownNow(); }
     }
     System.out.println("RuntimeBundleStore: " + assertions + " assertions passed, including 6 real process-death boundaries");
