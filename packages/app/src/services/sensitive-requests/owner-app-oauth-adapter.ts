@@ -76,9 +76,6 @@ function isOAuthTarget(
   target: SensitiveRequest["target"],
 ): target is SensitiveRequestOAuthTarget {
   if (!target || (target as { kind?: unknown }).kind !== "oauth") return false;
-  // The tight target carries a string `authorizationUrl` and `provider`.
-  // The legacy permissive `SensitiveRequestOauthTarget` shape may not — we
-  // narrow defensively rather than trust the union member alone.
   const t = target as Record<string, unknown>;
   return (
     typeof t.authorizationUrl === "string" &&

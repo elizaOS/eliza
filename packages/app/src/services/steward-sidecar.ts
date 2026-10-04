@@ -18,12 +18,6 @@
  *   const client = sidecar.getClient();
  *   await sidecar.stop();
  */
-// Node builtins are imported statically: this file only runs in the bun
-// process (StewardSidecar manages a child Steward API process), never in
-// the renderer. Other steward modules (api/wallet, services/steward-*)
-// already use static node:* imports - keeping this file dynamic just
-// triggered the Vite "dynamically imported but also statically imported"
-// warning without preventing browser-bundling.
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";

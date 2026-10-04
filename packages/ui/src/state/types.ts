@@ -920,4 +920,15 @@ export interface AppActions {
   // Translations
   t: (key: string, values?: Record<string, unknown>) => string;
 }
-export type AppContextValue = AppState & AppActions;
+export type AppContextValue = Omit<
+  AppState,
+  | "autonomousEvents"
+  | "autonomousLatestEventId"
+  | "autonomousRunHealthByRunId"
+  | "chatInput"
+  | "chatPendingImages"
+  | "chatSending"
+  | "conversationMessages"
+  | "ptySessions"
+> &
+  AppActions;

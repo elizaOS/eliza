@@ -295,7 +295,7 @@ const documentsView = {
   label: "Knowledge",
   available: true,
   pluginName: "@elizaos/plugin-knowledge",
-  path: "/documents",
+  path: "/character/documents",
   bundleUrl: "/api/views/documents/bundle.js",
   viewType: "gui" as const,
 };
@@ -1282,28 +1282,24 @@ describe("App navigate-view event wiring", () => {
         .paddingTop,
     ).not.toBe("0px");
   });
-  it.each(["/documents", "/knowledge"])(
-    "keeps the legacy Knowledge route %s on the canonical plugin surface",
-    async (path) => {
-      registerAppShellPage({
-        id: "documents",
-        pluginId: "@elizaos/plugin-knowledge",
-        label: "Knowledge",
-        path: "/documents",
-        pathPatterns: ["/character/documents"],
-        surface: { header: "fullscreen" },
-        tabAffinity: "documents",
-        Component: () => <div data-testid="documents-view" />,
-      });
-      appState.tab = "documents";
-      window.history.replaceState(null, "", path);
-      const { findByTestId, queryByTestId } = render(<App />);
-      expect(
-        await findByTestId("documents-view", undefined, { timeout: 5000 }),
-      ).toBeTruthy();
-      expect(queryByTestId("dynamic-view-loader")).toBeNull();
-    },
-  );
+  it("renders the canonical Knowledge plugin surface", async () => {
+    registerAppShellPage({
+      id: "documents",
+      pluginId: "@elizaos/plugin-knowledge",
+      label: "Knowledge",
+      path: "/character/documents",
+      surface: { header: "fullscreen" },
+      tabAffinity: "documents",
+      Component: () => <div data-testid="documents-view" />,
+    });
+    appState.tab = "documents";
+    window.history.replaceState(null, "", "/character/documents");
+    const { findByTestId, queryByTestId } = render(<App />);
+    expect(
+      await findByTestId("documents-view", undefined, { timeout: 5000 }),
+    ).toBeTruthy();
+    expect(queryByTestId("dynamic-view-loader")).toBeNull();
+  });
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
     mockAvailableViews.push(walletMarketView);
     registerAppShellPage({

@@ -20,8 +20,6 @@ export type BuiltinRouteSurfaceDeclaration =
 interface CanonicalBuiltinRouteDescriptor {
   readonly path: string;
   readonly layout: PageLayoutManifest;
-  /** Retired browser paths that redirect to this canonical route. */
-  readonly legacyPaths?: readonly string[];
   readonly surface?: BuiltinRouteSurfaceDeclaration;
   /** Dynamic children composed by this builtin's host-owned renderer. */
   readonly dynamicChildren?: readonly BuiltinDynamicViewDescriptor[];
@@ -135,7 +133,6 @@ const AMBIENT_IMMERSIVE_LAYOUT: PageLayoutManifest = Object.freeze({
 export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   chat: {
     path: "/chat",
-    legacyPaths: ["/home"],
     layout: AMBIENT_IMMERSIVE_LAYOUT,
     surface: IMMERSIVE_WALLPAPER_SURFACE,
   },
@@ -175,7 +172,6 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   documents: {
     path: "/character/documents",
     layout: WORKSPACE_LAYOUT,
-    legacyPaths: ["/documents", "/knowledge"],
   },
   files: { path: "/apps/files", layout: SHELL_CONTENT_LAYOUT },
   plugins: { path: "/apps/plugins", layout: WORKSPACE_LAYOUT },
@@ -185,7 +181,6 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   relationships: {
     path: "/apps/relationships",
     layout: WORKSPACE_LAYOUT,
-    legacyPaths: ["/rolodex"],
   },
   experience: { path: "/character/experience", layout: FRAMED_PAGE_LAYOUT },
   "character-skills": {

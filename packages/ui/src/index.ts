@@ -868,7 +868,6 @@ export {
   resolveBuiltinRouteDescriptor,
   resolveDefaultLandingTab,
   resolveInitialTabForPath,
-  resolveLegacyBuiltinRoute,
   shouldUseHashNavigation,
   TAB_PATHS,
   type Tab,

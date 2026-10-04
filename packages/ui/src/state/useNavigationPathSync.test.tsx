@@ -17,7 +17,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 describe("useNavigationPathSync — app-shell registry reactivity", () => {
-  it("reconciles developer app navigation and canonicalizes Home inside /dev", () => {
+  it("reconciles developer app navigation inside /dev", () => {
     registerAppShellPage({
       id: "notes",
       pluginId: "test-notes",
@@ -25,7 +25,7 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
       path: "/notes",
       loader: async () => ({ default: () => null }),
     });
-    window.history.replaceState(null, "", "/dev#/home");
+    window.history.replaceState(null, "", "/dev#/chat");
     const setTabRaw = vi.fn();
     renderHook(() => useNavigationPathSync({ tab: "views" as Tab, setTabRaw }));
     expect(window.location.pathname).toBe("/dev");
@@ -36,35 +36,6 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
     expect(setTabRaw).toHaveBeenLastCalledWith("notes");
-  });
-  it("replaces /home with the canonical chat-backed Home canvas", () => {
-    window.history.replaceState(null, "", "/home");
-    const setTabRaw = vi.fn();
-    renderHook(() => useNavigationPathSync({ tab: "views" as Tab, setTabRaw }));
-    expect(window.location.pathname).toBe("/chat");
-    expect(setTabRaw).toHaveBeenCalledWith("chat");
-  });
-  it.each(["/documents", "/knowledge"])(
-    "replaces the retired Knowledge path %s with the canonical registry route",
-    (legacyPath) => {
-      window.history.replaceState(null, "", `${legacyPath}?source=bookmark`);
-      const setTabRaw = vi.fn();
-      renderHook(() =>
-        useNavigationPathSync({ tab: "views" as Tab, setTabRaw }),
-      );
-      expect(window.location.pathname).toBe("/character/documents");
-      expect(window.location.search).toBe("?source=bookmark");
-      expect(setTabRaw).toHaveBeenCalledWith("documents");
-    },
-  );
-  it("canonicalizes a retired Knowledge hash route in app-window navigation", () => {
-    window.history.replaceState(null, "", "/index.html?appWindow=1#/knowledge");
-    const setTabRaw = vi.fn();
-    renderHook(() => useNavigationPathSync({ tab: "views" as Tab, setTabRaw }));
-    expect(window.location.pathname).toBe("/index.html");
-    expect(window.location.search).toBe("?appWindow=1");
-    expect(window.location.hash).toBe("#/character/documents");
-    expect(setTabRaw).toHaveBeenCalledWith("documents");
   });
   it("reconciles the active tab when a deep-linked app-shell page registers late", () => {
     window.history.replaceState(null, "", "/apps/custom-panel");

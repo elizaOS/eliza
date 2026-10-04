@@ -137,7 +137,6 @@ import {
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
   resolveCloudHostedAgentUrl,
-  resolveLegacyBuiltinRoute,
   routedShellMainClass,
   ShellControllerProvider,
   ShellOverlays,
@@ -1190,10 +1189,7 @@ function findRemoteViewForRoute(
   appSlug: string | null,
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
-  if (
-    SHELL_RESERVED_PATHS.has(normalizedPath) ||
-    resolveLegacyBuiltinRoute(normalizedPath)
-  ) {
+  if (SHELL_RESERVED_PATHS.has(normalizedPath)) {
     return undefined;
   }
   // Exact plugin paths own their route even when they share a reserved tab

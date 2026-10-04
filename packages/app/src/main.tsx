@@ -1689,34 +1689,12 @@ function setupPlatformStyles(): void {
     document.body.classList.add("native");
   }
 
-  // Installed PWA on the WEB platform (iOS home-screen app, chrome-less Android
-  // PWA): tag the body so base.css/styles.css apply the mobile touch-viewport
-  // lockdown + #14319 large-viewport geometry. This is the SECONDARY path: the
-  // CSS-first `@media (display-mode: standalone) and (pointer: coarse)` rules
-  // are the source of truth (they land even when this class does not), but the
-  // class is kept for back-compat (legacy iOS Safari signalling only via
-  // navigator.standalone) and parity with the @elizaos/ui setupPlatformStyles.
-  // Scoped to `platform === "web"`: the native build already locks via `native`
-  // and desktop (electrobun) must keep its window scroll/trackpad behavior.
+  // Web PWAs share touch-viewport styles; native and desktop shells own theirs.
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
   }
 
-  // JS-MEASURED BOTTOM RECLAIM — THE LOAD-BEARING INSTALL POINT ON THE REAL
-  // PWA BOOT PATH (#15103/#15136/#15178). This local `setupPlatformStyles` is
-  // the function `main()` actually calls on the installed standalone PWA (the
-  // `@elizaos/ui` init.ts `setupPlatformStyles` is NOT on this entry graph — it
-  // is only reachable from unit tests). If the installer is not called HERE it
-  // never runs on device: the layout viewport collapses to the small box
-  // (`documentElement.clientHeight` = 873 while `screen.height` = 932) so every
-  // pure-CSS reclaim (`100lvh - 100dvh`) resolves to 0 and is a device no-op,
-  // leaving the black home-indicator strip. #15178's WIP (f903c59) dropped this
-  // block and the restore landed only in the orphaned ui copy, reproducing the
-  // regression (device chip read `rc?` = var never set). The platform gate lives
-  // INSIDE `shouldInstallStandaloneBottomReclaim` (standalone + iOS only), so
-  // this is a hard 0 no-op everywhere else and a future refactor of this entry
-  // cannot silently orphan the installer without turning the app-entry lockdown
-  // contract test RED. See standalone-bottom-reclaim.ts + standalone-pwa-lockdown.test.ts.
+  // Install the iOS standalone viewport correction on the actual app entry.
   if (
     shouldInstallStandaloneBottomReclaim({
       standalonePwa: isStandalonePwa(),
