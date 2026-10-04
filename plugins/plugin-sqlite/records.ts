@@ -3247,10 +3247,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return tasks;
   }
 
+  private taskIsVisibleToOwner(task: Task): boolean {
+    // Tasks created without an agentId belong to this database. A stored
+    // agentId for someone else matches the SQL `agent_id = this.agentId`
+    // predicate and must not be readable or writable here.
+    return task.agentId === undefined || task.agentId === this.agentId;
+  }
+
   async getTasksByName(name: string): Promise<Task[]> {
     return this.storage.getWhere<Task>(
       COLLECTIONS.TASKS,
-      (t) => t.name === name,
+      (t) => t.name === name && this.taskIsVisibleToOwner(t),
     );
   }
 
@@ -3268,7 +3275,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const tasks: Task[] = [];
     for (const id of taskIds) {
       const task = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
-      if (task) tasks.push(task);
+      if (task && this.taskIsVisibleToOwner(task)) tasks.push(task);
     }
     return tasks;
   }
@@ -3277,7 +3284,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const operation = async () => {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
       if (
-        !existing?.tags?.includes("queue") ||
+        !existing ||
+        !this.taskIsVisibleToOwner(existing) ||
+        !existing.tags?.includes("queue") ||
         (existing.metadata?.status != null &&
           existing.metadata.status !== "pending")
       ) {
@@ -3304,7 +3313,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<boolean> {
     const operation = async () => {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
-      if (!existing) return false;
+      if (!existing || !this.taskIsVisibleToOwner(existing)) return false;
       const metadata: Record<string, unknown> = {
         ...(existing.metadata ?? {}),
         ...(patch.set ?? {}),
@@ -3330,13 +3339,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<void> {
     for (const { id, task } of updates) {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
-      if (!existing) continue;
+      if (!existing || !this.taskIsVisibleToOwner(existing)) continue;
       await this.storage.set(COLLECTIONS.TASKS, id, { ...existing, ...task });
     }
   }
 
   async deleteTasks(taskIds: UUID[]): Promise<void> {
     for (const id of taskIds) {
+      const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
+      if (!existing || !this.taskIsVisibleToOwner(existing)) continue;
       await this.storage.delete(COLLECTIONS.TASKS, id);
     }
   }
