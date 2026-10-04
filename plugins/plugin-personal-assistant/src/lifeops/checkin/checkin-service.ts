@@ -781,6 +781,7 @@ async function collectOverdueTodos(
          FROM app_lifeops.life_task_occurrences occ
          LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
+          AND def.kind = 'task'
           AND occ.state IN ('pending', 'visible')
           AND occ.due_at IS NOT NULL
           AND occ.due_at < ${sqlQuote(nowIso)}
