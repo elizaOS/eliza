@@ -42,3 +42,10 @@ Run `bun run test:bill-host` for discovery, revocation, exact-money parsing,
 selection, SQLite durability and submission-uncertainty checks. These tests use
 synthetic connectors and real task/SQLite persistence where applicable; they do
 not prove live account or biller acceptance.
+
+`createBillTaskRoutes` composes bill discovery/selection, review choices and latest
+outcomes into the app task gateway extension. It receives the existing task
+runtime, SQLite stores, workflow policy and four required presentation strings
+from the host. Authorization is rechecked after asynchronous work; source
+selection and duplicate choice delivery retain their durable task bindings.
+Product helper descriptions, support/study routes and UI copy stay with hosts.
