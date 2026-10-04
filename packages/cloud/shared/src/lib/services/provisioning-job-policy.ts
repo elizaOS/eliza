@@ -9,6 +9,7 @@ import {
   type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../../db/schemas/agent-sandboxes";
 import { billingCancelCommands } from "../../db/schemas/billing-cancel-commands";
 import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
@@ -661,5 +662,5 @@ export async function rearmRecoverableAgentComputeStopIntentOnce(p: {
 
 /** Copy validated typed commands/results into the repository JSON record shape. */
 export function jobRecord<T extends object>(value: T): Record<string, unknown> {
-  return { ...value };
+  return { ...value } as Record<string, unknown>;
 }
