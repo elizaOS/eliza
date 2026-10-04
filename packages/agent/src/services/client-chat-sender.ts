@@ -18,9 +18,11 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_OWNER_CHAT,
   type Memory,
+  type SendHandlerOutcome,
   stringToUuid,
   type TargetInfo,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import { ensureOwnerConversation } from "../api/conversation-routes.ts";
 import { compareConversationsByRecency } from "../api/conversation-sort.ts";
@@ -142,7 +144,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
       _rt: IAgentRuntime,
       target: TargetInfo,
       content: Content,
-    ): Promise<Memory> => {
+    ): Promise<Memory | SendHandlerOutcome> => {
       const conv = resolveConversation(
         state,
         target.roomId as UUID | undefined,
@@ -157,25 +159,45 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         );
       }
 
-      const messageId = crypto.randomUUID() as UUID;
+      const responseMemoryId = target.responseMemoryId;
+      const processorResponse = responseMemoryId !== undefined;
+      if (
+        processorResponse &&
+        (source !== MESSAGE_SOURCE_CLIENT_CHAT ||
+          target.roomId !== conv.roomId ||
+          content.simple !== true ||
+          !validateUuid(responseMemoryId) ||
+          content.responseId !== responseMemoryId)
+      ) {
+        throw new ElizaError("Invalid processor-owned dashboard response", {
+          code: "CLIENT_CHAT_RESPONSE_OWNERSHIP_INVALID",
+        });
+      }
+      const messageId = responseMemoryId ?? (crypto.randomUUID() as UUID);
       const failure =
         content.systemNotice === "model-unavailable" ||
         content.systemNotice === "model-and-runtime-error"
           ? { failureKind: "no_provider" as const }
           : {};
 
-      const agentMessage = createMessageMemory({
-        id: messageId,
-        entityId: runtime.agentId,
-        roomId: conv.roomId,
-        content: {
-          ...content,
-          ...failure,
-          text: content.text ?? "",
-          source: MESSAGE_SOURCE_CLIENT_CHAT,
-        },
-      });
-      await runtime.createMemory(agentMessage, "messages");
+      let agentMessage: Memory | undefined;
+      if (!processorResponse) {
+        agentMessage = createMessageMemory({
+          id: messageId,
+          entityId: runtime.agentId,
+          roomId: conv.roomId,
+          content: {
+            ...content,
+            ...failure,
+            text: content.text ?? "",
+            source: MESSAGE_SOURCE_CLIENT_CHAT,
+          },
+        });
+        await runtime.createMemory(agentMessage, "messages");
+      }
+      // The simple message processor publishes its exact canonical row and
+      // propagates persistence failure. A second writer would change its
+      // metadata/createdAt and race that immutable publication boundary.
 
       conv.updatedAt = new Date().toISOString();
 
@@ -191,6 +213,22 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
       });
+      if (!agentMessage) {
+        return {
+          kind: "delivered",
+          receipt: {
+            providerMessageIds: [messageId],
+            evidenceKind: "local-effect",
+            acceptedAt: Date.now(),
+            persistence: {
+              status: "not_attempted",
+              reason:
+                "Canonical response persistence is owned by the message processor.",
+            },
+          },
+          memories: [],
+        };
+      }
       return agentMessage;
     };
 }
@@ -316,7 +354,7 @@ function installDashboardFallbackSend(
     rt: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ) => Promise<Memory>,
+  ) => Promise<Memory | SendHandlerOutcome>,
 ): void {
   if (typeof runtime.sendMessageToTarget !== "function") return;
   const tagged = runtime as RuntimeWithFallbackMarker;
