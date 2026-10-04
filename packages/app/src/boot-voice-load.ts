@@ -11,19 +11,20 @@
  * mounting the app — callers skip the voice wiring and boot on.
  */
 
-export type VoiceModule = typeof import("@elizaos/ui/voice");
+import { cachedDynamicImport } from "./app-module-cache";
 
-let voiceModuleLoad: Promise<VoiceModule | null> | null = null;
+export type VoiceModule = typeof import("@elizaos/ui/voice");
 
 export function startVoiceModuleLoad(
   importer: () => Promise<VoiceModule> = () => import("@elizaos/ui/voice"),
 ): Promise<VoiceModule | null> {
-  voiceModuleLoad ??= importer().catch((error: unknown) => {
-    // error-policy:J4 designed degrade — the app mounts without the voice
-    // harnesses / fused-wake bridge rather than white-screening on a chunk
-    // load failure; the warn is the observable signal.
-    console.warn("[boot] @elizaos/ui/voice chunk unavailable", error);
-    return null;
-  });
-  return voiceModuleLoad;
+  return cachedDynamicImport("@elizaos/ui/voice", importer).catch(
+    (error: unknown) => {
+      // error-policy:J4 designed degrade — the app mounts without the voice
+      // harnesses / fused-wake bridge rather than white-screening on a chunk
+      // load failure; the warn is the observable signal.
+      console.warn("[boot] @elizaos/ui/voice chunk unavailable", error);
+      return null;
+    },
+  );
 }

@@ -106,7 +106,8 @@
 		"native:verify:reference": "make -C native/verify reference-test",
 		"native:verify:vulkan": "make -C native/verify vulkan && cd native/verify && ./vulkan_verify",
 		"native:verify:metal": "make -C native/verify metal && cd native/verify && ./metal_verify",
-		"native:clean": "make -C native/verify clean"
+		"native:clean": "make -C native/verify clean",
+		"bench:streaming": "bun scripts/streaming-pipeline-bench.ts"
 	},
 	"dependencies": {
 		"@elizaos/cloud-routing": "workspace:*",
@@ -120,6 +121,7 @@
 		"phonemizer": "^1.2.1",
 		"ws": "^8.21.3",
 		"yaml": "^2.8.2",
+		"@elizaos/auth": "workspace:*",
 		"zod": "^4.4.3",
 		"@elizaos/contracts": "workspace:*"
 	},
@@ -133,9 +135,8 @@
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^5.0.2",
-		"yaml": "^2.8.2",
-		"@elizaos/plugin-elizacloud": "workspace:*",
-		"@elizaos/testing": "workspace:*"
+		"@elizaos/testing": "workspace:*",
+		"@elizaos/plugin-sqlite": "workspace:*"
 	},
 	"publishConfig": {
 		"access": "public"

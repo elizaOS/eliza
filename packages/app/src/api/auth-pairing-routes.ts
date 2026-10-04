@@ -187,7 +187,7 @@ export function ensureAuthPairingCodeForRemoteAccess(): {
 }
 async function requestHasActiveSession(
   req: http.IncomingMessage,
-  store: import("../services/auth-store").AuthRepository,
+  store: import("../services/auth-repository").AuthRepository,
 ): Promise<boolean> {
   const cookieSessionId = parseSessionCookie(req);
   if (cookieSessionId) {
@@ -238,7 +238,7 @@ type PairingAccess = "owner" | "guest";
  * minted by the pairing flow.
  */
 async function ensurePairedDeviceIdentityId(
-  store: import("../services/auth-store").AuthRepository,
+  store: import("../services/auth-repository").AuthRepository,
   access: PairingAccess,
 ): Promise<string> {
   if (access === "guest") {

@@ -20,13 +20,13 @@ const cleanupHelperScript = path.join(
   "rm-path-recursive.ts",
 );
 const homepageScript = path.join(
-  scriptDir,
-  "check-homepage-public-readiness.ts",
+  repoRoot,
+  "packages/cloud/scripts/check-homepage-public-readiness.ts",
 );
 const installScript = path.join(scriptDir, "install-android-sms-gateway.ts");
 const cloudOnboardingScript = path.join(
-  scriptDir,
-  "verify-cloud-sms-onboarding-flow.ts",
+  repoRoot,
+  "packages/cloud/scripts/verify-cloud-sms-onboarding-flow.ts",
 );
 const routingContractTests = [
   path.join(

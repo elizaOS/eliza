@@ -1,118 +1,5 @@
-/**
- * Node/runtime barrel for `@elizaos/app` (the `.` export): re-exports the
- * dashboard HTTP API plus auth/response helpers, the Eliza runtime loader and
- * runtime-mode/desktop surfaces, the curated registry, security/vault/steward
- * services, first-run config, and diagnostics. Frontend surfaces live in
- * `@elizaos/ui`; pure contracts/utilities live in `@elizaos/core`. Star
- * re-exports are used except where a name collides with `@elizaos/ui`
- * (`ConfigField`/`getPlugins`, re-exported explicitly).
- */
-
-// Runtime-mode resolution moved into @elizaos/agent (api/runtime-mode/) so the
-// bare agent server enforces the same route-visibility gate as this wrapper.
-// Re-exported by name to keep this barrel's public surface stable without
-// star-leaking the whole agent package.
-export {
-  getRuntimeMode,
-  getRuntimeModeSnapshot,
-  isLocalRemoteHost,
-  isLocalRuntime,
-  type RemoteApiBaseValidation,
-  type RemoteApiBaseValidationErr,
-  type RemoteApiBaseValidationOk,
-  RUNTIME_MODES,
-  type RuntimeMode,
-  type RuntimeModeSnapshot,
-  resolveRuntimeMode,
-  validateRemoteApiBase,
-} from "@elizaos/agent";
-export {
-  _resetBuildVariantForTests,
-  type AccountAuthKind,
-  type AccountConfig,
-  type AppEntry,
-  type AppLaunch,
-  accountConfigSchema,
-  appEntrySchema,
-  appLaunchSchema,
-  BUILD_VARIANTS,
-  type ConfigField,
-  type ConnectorEntry,
-  type CreateIntegrationSpanOptions,
-  clearRegistryCacheForTests,
-  configFieldSchema,
-  connectorEntrySchema,
-  createIntegrationTelemetrySpan,
-  DEFAULT_BUILD_VARIANT,
-  defaultIntegrationSeverityPolicy,
-  type ElizaCuratedAppDefinition,
-  getApps,
-  getBuildVariant,
-  getConnectors,
-  getDirectDownloadUrl,
-  getEntry,
-  getEntryByNpmName,
-  getPlugins,
-  getRegisteredCuratedApps,
-  type IntegrationBoundary,
-  type IntegrationLogger,
-  type IntegrationObservabilityEvent,
-  type IntegrationOutcome,
-  type IntegrationSeverity,
-  type IntegrationSeverityPolicy,
-  type IntegrationSpanFailureArgs,
-  type IntegrationSpanMeta,
-  type IntegrationSpanSuccessArgs,
-  type IntegrationTelemetrySpan,
-  indexEntries,
-  isDirectBuild,
-  isStoreBuild,
-  type LoadedRegistry,
-  loadRegistry,
-  mergeWithRuntime,
-  normalizeConnectorAuth,
-  type PluginEntry,
-  pluginEntrySchema,
-  type RegistryEntry,
-  type RegistryKind,
-  type RegistryRuntimeOverlay,
-  type RegistryValidationError,
-  type RegistryView,
-  type RenderHints,
-  type Resources,
-  registerCuratedApp,
-  registerRegistryEntry,
-  registryEntrySchema,
-  registryRuntimeOverlaySchema,
-  renderSchema,
-  resourcesSchema,
-  type SecondarySurface,
-} from "@elizaos/core";
-export type {
-  AllPermissionsState,
-  BuildVariant,
-  PermissionCheckResult,
-  PermissionManagerConfig,
-  PermissionState,
-  PermissionStatus,
-  Platform,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/core/protocol";
-export {
-  type AndroidUserAgentMarker,
-  type AospVariantConfig,
-  type AppAndroidConfig,
-  type AppConfig,
-  type AppDesktopConfig,
-  type AppPackagingConfig,
-  type AppWebConfig,
-  DEFAULT_APP_CONFIG,
-  resolveAppBranding,
-} from "@elizaos/host/protocol";
-export * from "@elizaos/plugin-github/github-credentials";
+/** Node host API. UI and platform composition use the browser and desktop-shell entries. */
 export * from "./api/auth.ts";
-
 export * from "./api/compat-route-shared";
 export * from "./api/credential-tunnel-routes";
 export * from "./api/ios-local-agent-transport";
@@ -122,29 +9,17 @@ export * from "./api/secrets-manager-routes";
 export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
-export * from "./api/setup-contract";
 export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
 export * from "./platform/ios-runtime-backends";
-export {
-  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
-  IOS_FULL_BUN_SMOKE_RESULT_KEY,
-  runIosFullBunSmokeIfRequested,
-} from "./platform/ios-runtime-bridge";
 export * from "./runtime/android-avf-microdroid-bridge";
-export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
-export * from "./runtime/channel-plugin-map";
-export * from "./runtime/desktop";
 export * from "./runtime/eliza";
-export * from "./runtime/mobile-safe-runtime";
 export * from "./runtime/server-only-process";
 export * from "./security/agent-vault-id";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
-export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
 export * from "./security/wallet-os-store-actions";
-export * from "./services/account-pool";
-export * from "./services/account-pool-consumer-metering";
+export type * from "./services/auth-repository";
 export * from "./services/auth-store";
 export * from "./services/credential-tunnel-service";
 export * from "./services/steward-credentials";
@@ -156,7 +31,5 @@ export * from "./services/steward-sidecar/helpers";
 // dist/services/steward-sidecar/index.json fallback (the Docker production
 // smoke regression observed on PR #7528 / #7530).
 export * from "./services/steward-sidecar.ts";
-export * from "./services/task-host-capabilities";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
-export * from "./ui-compat";

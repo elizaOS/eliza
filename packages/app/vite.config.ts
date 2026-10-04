@@ -54,11 +54,8 @@ import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
 import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
-import {
-  generateNodeBuiltinStub,
-  nativeModuleStubPlugin,
-} from "./vite/native-module-stub-plugin.ts";
 import { rendererBuildManifestPlugin } from "./vite/renderer-build-manifest-plugin.ts";
+import { rendererPlatformAdaptersPlugin } from "./vite/renderer-platform-adapters.ts";
 import { swBuildRevPlugin } from "./vite/sw-build-rev-plugin.ts";
 import { VENDOR_OPTIMIZED_WALLET_TEST } from "./vite/wallet-chunk-matcher.ts";
 import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
@@ -226,9 +223,8 @@ const capacitorCoreEntry = path.join(
 );
 const patheEntry = _require.resolve("pathe");
 // The feross `buffer` package exposes a callable Buffer function required by
-// the crypto/wallet graph at module initialization. The native-module stub's
-// empty Buffer class is not callable, and `buffer` is not a direct app
-// dependency, so the alias targets the highest version available in Bun's store.
+// the crypto/wallet graph at module initialization. Resolve the installed
+// browser implementation from Bun's store.
 const bufferEntry: string | undefined = (() => {
   try {
     const bunDir = path.join(elizaRoot, "node_modules/.bun");
@@ -700,7 +696,6 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   }
   return (
     text.includes("../app/src/browser.ts") ||
-    text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
     text.includes(
       "../../plugins/plugin-browser/src/actions/browser-autofill-login.ts",
@@ -1487,8 +1482,8 @@ function resolveManualChunk(id: string): string | undefined {
   // Vite extracts CSS independently; these groups only own executable modules.
   if (/\.css(?:\?|$)/.test(normalizedId)) return undefined;
   // Build-generated leaf shims shared by the eager entry graph AND the pinned
-  // vendor-crypto graph: Vite's dynamic-import preload helper, the node-builtin
-  // browser stubs, and the buffer ESM shim. All are self-contained (no
+  // vendor-crypto graph: Vite's dynamic-import preload helper, platform
+  // adapters, and the buffer ESM shim. All are self-contained (no
   // imports), so they can never form a cross-chunk cycle. Without an explicit
   // assignment, Rollup FOLDS them into `vendor-crypto` (a pinned module's
   // unassigned dependencies join the manual chunk), and any eager module that
@@ -1498,9 +1493,9 @@ function resolveManualChunk(id: string): string | undefined {
   // guard in scripts/verify-chunk-safety.ts fails the build on that regression.
   if (
     normalizedId.includes("vite/preload-helper") ||
-    normalizedId.includes("native-stub:") ||
+    normalizedId.includes("renderer-platform:") ||
     normalizedId.includes(BUFFER_ESM_SHIM_ID) ||
-    normalizedId.includes("/src/shims/use-sync-external-store")
+    normalizedId.includes("/node_modules/use-sync-external-store/")
   ) {
     return "runtime-shims";
   }
@@ -1771,36 +1766,6 @@ function desktopCorsPlugin(): Plugin {
     },
   };
 }
-/**
- * Patch the final bundle output to fix AsyncLocalStorage stubs.
- *
- * Some packages import `{ AsyncLocalStorage } from "node:async_hooks"` at the
- * top level. Vite's dep optimizer and Rollup inline the virtual-module stub
- * as `(()=>({}))`, making AsyncLocalStorage `undefined` and causing
- * `new undefined` → "xte is not a constructor" at runtime in mobile webviews.
- *
- * This plugin replaces the empty-object stub with a proper class in the
- * final rendered chunks.
- */
-function asyncLocalStoragePatchPlugin(): Plugin {
-  return {
-    name: "async-local-storage-patch",
-    enforce: "post",
-    renderChunk(code) {
-      // Match: var{AsyncLocalStorage:<id>}=(()=>({}))
-      const re =
-        /var\s*\{\s*AsyncLocalStorage\s*:\s*(\w+)\s*\}\s*=\s*\(\s*\(\s*\)\s*=>\s*\(\s*\{\s*\}\s*\)\s*\)/g;
-      if (!re.test(code)) return null;
-      re.lastIndex = 0;
-      const patched = code.replace(re, (_match, id) => {
-        // Use block-body arrow + named class — concise arrow with inline
-        // anonymous class fails in older WebViews (Chrome 124 and below).
-        return `var{AsyncLocalStorage:${id}}=(()=>{function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()`;
-      });
-      return { code: patched, map: null };
-    },
-  };
-}
 function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
   return (
     normalizedFile.includes("/packages/app/.vite/") ||
@@ -1970,7 +1935,7 @@ const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
       const pkgDir = path.dirname(_require.resolve(`${pkg}/package.json`));
       resolved[nodeId] = path.join(pkgDir, entry);
     } catch {
-      // Missing optional polyfills fall through to a generated node stub.
+      // Missing polyfills reach the renderer boundary and fail explicitly.
     }
   }
   return resolved;
@@ -2208,11 +2173,11 @@ export default defineConfig(({ command, mode }) => ({
     swBuildRevPlugin(),
     appDevWsBasePlugin(),
     rejectRuntimeInRendererPlugin(),
-    nativeModuleStubPlugin({
+    rendererPlatformAdaptersPlugin({
       isCapacitorMobileBuild: IS_CAPACITOR_MOBILE_BUILD,
-      requireModule: _require,
+      testAuth:
+        loadEnv(mode, here, "VITE_").VITE_PLAYWRIGHT_TEST_AUTH === "true",
     }),
-    asyncLocalStoragePatchPlugin(),
     // @opentelemetry/api is imported by `ai@6+` but is not hoisted to the
     // workspace root under Bun canary's content-addressable store layout.
     // resolve.alias covers it when otelApiEntry is found at config time, but
@@ -2341,10 +2306,6 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: SOLANA_WALLET_CSS_RESOLVED,
       },
       {
-        find: /^picocolors$/,
-        replacement: path.resolve(here, "src/shims/picocolors.ts"),
-      },
-      {
         find: /^extend$/,
         replacement: path.resolve(here, "src/shims/extend.ts"),
       },
@@ -2369,13 +2330,12 @@ export const INVALID_TRACER_PROVIDER = {};
       },
       {
         find: /^use-sync-external-store\/shim$/,
-        replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
+        replacement: _require.resolve("use-sync-external-store/shim"),
       },
       {
         find: /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
-        replacement: path.resolve(
-          here,
-          "src/shims/use-sync-external-store-with-selector.ts",
+        replacement: _require.resolve(
+          "use-sync-external-store/shim/with-selector",
         ),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
@@ -2620,15 +2580,9 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
       },
-      // plugin-personal-assistant no longer ships a renderer view (the
-      // legacy /lifeops dashboard was killed in the lifeops decomposition);
-      // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
-      // src/ui.ts is the browser-safe facade — it imports the side-effectful
-      // HTTP client and re-exports the surviving settings-card components,
-      // without dragging discord/health/phone/native deps into the
-      // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
+      // Resolve the browser entry from its source in clean workspace builds.
       {
-        find: /^@elizaos\/plugin-personal-assistant$/,
+        find: /^@elizaos\/plugin-personal-assistant\/ui$/,
         replacement: path.resolve(
           elizaRoot,
           "plugins/plugin-personal-assistant/src/ui.ts",
@@ -2717,25 +2671,12 @@ export const INVALID_TRACER_PROVIDER = {};
           "packages/app/package.json",
         );
         const appCorePkgDir = path.dirname(appCorePkgPath);
-        const appCoreBrowserEntry = path.resolve(
-          appCorePkgDir,
-          "src/browser.ts",
-        );
         const appCorePkg = JSON.parse(fs.readFileSync(appCorePkgPath, "utf8"));
         const generatedAliases = [];
         for (const [key, value] of Object.entries(appCorePkg.exports || {})) {
           const exportTarget = resolvePackageExportTarget(value);
           if (!exportTarget) continue;
-          if (key === ".") {
-            // Keep the renderer on a browser-safe entry. The package root
-            // barrel re-exports server modules that pull Node-only code like
-            // sharp into the Vite client graph.
-            generatedAliases.push({
-              find: new RegExp(`^${escapeRegExp("@elizaos/app")}$`),
-              replacement: appCoreBrowserEntry,
-            });
-            continue;
-          }
+          if (key === ".") continue;
           if (!key.startsWith("./")) continue;
           const sourceTarget = resolveLocalPackageSourceExportTarget(
             appCorePkgDir,
@@ -2767,8 +2708,7 @@ export const INVALID_TRACER_PROVIDER = {};
               "api/ios-local-agent-transport.ts",
             ),
           },
-          // #18056: thin desktop shell — avoids app/browser.ts star-export
-          // of @elizaos/ui/browser on the packages/app main entry.
+          // Desktop shell resolves through its own renderer entry.
           {
             find: /^@elizaos\/app\/desktop-shell$/,
             replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
@@ -2878,15 +2818,12 @@ export const INVALID_TRACER_PROVIDER = {};
           resolveId(source) {
             const polyfill = optimizerNodePolyfills[source];
             if (polyfill) return polyfill;
-            if (source.startsWith("node:")) return `\0node-stub:${source}`;
+            if (source.startsWith("node:")) {
+              this.error(
+                `Unsupported Node import in renderer dependency: ${source}`,
+              );
+            }
             return null;
-          },
-          load(id) {
-            if (!id.startsWith("\0node-stub:")) return null;
-            return generateNodeBuiltinStub(
-              id.slice("\0node-stub:".length),
-              _require,
-            );
           },
         },
         // es-toolkit@1.47 `./compat/*` is CJS-only, and its CJS implementation
@@ -2904,18 +2841,11 @@ export const INVALID_TRACER_PROVIDER = {};
       // Contains native-only pty-state-capture / pty-console imports; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
       "pty-console",
-      // chalk + drizzle-orm: Node-only deps that never run in the
-      // renderer. Excluded from dep-optimisation so the
-      // nativeModuleStubPlugin can replace them at resolve-time with
-      // browser-safe Proxy stubs (otherwise rolldown emits a bare
-      // `import "chalk"` that the browser can't resolve).
-      "chalk",
+      // Host dependencies must not enter browser dependency optimization.
       "drizzle-orm",
       "drizzle-orm/pg-core",
       "drizzle-orm/pglite",
       "drizzle-orm/neon-http",
-      // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
-      // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
       // Browser automation is server-only and pulls in proxy-agent/httpUtil.
       "puppeteer-core",
@@ -3014,32 +2944,7 @@ export const INVALID_TRACER_PROVIDER = {};
         }
         warn(warning);
       },
-      // Native-only deps that must not be resolved during the browser build.
-      // Node built-ins (node:fs, fs, path, etc.) are NOT externalized here —
-      // they are intercepted by nativeModuleStubPlugin which replaces them
-      // with browser fallback Proxy modules. Externalizing them causes Rollup to emit
-      // bare `import "node:fs"` in output chunks, which the browser rejects
-      // with a CSP violation.
-      external: (id) => {
-        if (
-          [
-            "pty-state-capture",
-            "pty-console",
-            "electron",
-            "node-llama-cpp",
-            "pty-manager",
-            // chalk + drizzle-orm intentionally NOT externalised here:
-            // marking them external leaves a bare ESM specifier in the
-            // output bundle (e.g. `import "chalk"`), which the browser
-            // can't resolve. They are stubbed at resolve-time by
-            // nativeModuleStubPlugin instead.
-          ].includes(id)
-        )
-          return true;
-        if (/^@node-llama-cpp\//.test(id)) return true;
-        if (/^@napi-rs\/keyring/.test(id)) return true;
-        return false;
-      },
+      // The renderer boundary owns host-dependency rejection for both bundlers.
       input: {
         main: path.resolve(here, "index.html"),
       },

@@ -10,23 +10,11 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { resolvePackageEntry } from "@elizaos/agent/runtime/plugin-types";
-import {
-  type AgentRuntime,
-  getApps,
-  loadRegistry,
-  logger,
-} from "@elizaos/core";
+import { type AgentRuntime, getApps, loadRegistry, logger } from "@elizaos/core";
+import { drainAppRoutePluginLoaders } from "@elizaos/host";
 import { formatErrorWithStack } from "@elizaos/core/protocol";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
-import {
-  isOptionalAppRoutePluginUnavailableError,
-  OptionalAppRoutePluginUnavailableError,
-} from "@elizaos/host/protocol";
-import {
-  type AppRoutePluginRegistryEntry,
-  drainAppRoutePluginLoaders,
-  listAppRoutePluginLoaders,
-} from "../app-route-plugin-registry.js";
+import { type AppRoutePluginRegistryEntry, isOptionalAppRoutePluginUnavailableError, listAppRoutePluginLoaders, OptionalAppRoutePluginUnavailableError } from "@elizaos/host/protocol";
 
 const _require = createRequire(import.meta.url);
 // ---------------------------------------------------------------------------

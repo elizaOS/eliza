@@ -18,11 +18,11 @@ import {
   logger,
   type TargetSource,
 } from "@elizaos/core";
-import { formatErrorWithStack } from "@elizaos/core/protocol";
 import { isMobilePlatform } from "@elizaos/host/protocol";
+import { formatErrorWithStack } from "@elizaos/core/protocol";
+import { restoreRemoteBrowserController } from "@elizaos/plugin-browser/remote-controller";
 import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql";
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";
-import { restoreRemoteBrowserController } from "../../services/remote-browser-controller";
 import { registerCoreSensitiveRequestAdapters } from "../../services/sensitive-requests/index.js";
 import { isRuntimeAutonomyEnabled } from "../autonomy-policy.js";
 import { registerSubAgentCredentialBridge } from "../sub-agent-credential-bridge-wiring.js";
@@ -159,9 +159,7 @@ async function ensureTriggerEventBridge(
     resources.triggerEventBridge.stop();
     resources.triggerEventBridge = null;
   }
-  const { startTriggerEventBridge } = await import(
-    "../../services/trigger-event-bridge.js"
-  );
+  const { startTriggerEventBridge } = await import("@elizaos/agent");
   resources.triggerEventBridge = startTriggerEventBridge(runtime);
   logger.debug("[eliza] trigger event bridge armed");
 }

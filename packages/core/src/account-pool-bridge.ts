@@ -2,16 +2,16 @@
  * `globalThis` `Symbol.for` account-selection bridges — the single source of
  * truth for their symbols and contracts.
  *
- * The account pool and credential store live in `@elizaos/app`; the
+ * The account pool and credential store live in `@elizaos/auth/accounts`; the
  * plugins that must select a credentialed account
  * (`@elizaos/plugin-anthropic`, `@elizaos/plugin-agent-orchestrator`) depend only on `@elizaos/core` and cannot
  * import app. `runtime.getService(...)` is not viable either — these
  * consumers run at spawn/token-resolve time without a runtime handle. So
- * app publishes a narrow contract on a `globalThis` symbol and the
+ * the authentication owner publishes a narrow contract on a `globalThis` symbol and the
  * plugins read it back.
  *
  * This module defines each bridge's symbol, contract interface, and typed
- * get/set accessors ONCE. The producer (app) and every plugin consumer
+ * get/set accessors ONCE. The producer (auth) and every plugin consumer
  * import from here so there is exactly one symbol string and one interface per
  * bridge. Provider ids cross the `globalThis` boundary as plain strings (they
  * round-trip through session metadata as strings), so the contracts type them

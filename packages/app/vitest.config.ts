@@ -141,12 +141,9 @@ export default defineConfig({
     include: [
       "src/types/**/*.test.{ts,tsx,mjs}",
       "src/native/**/*.test.{ts,tsx,mjs}",
-      "src/public-web-entry.test.tsx",
-      "src/public-web-boot-config.test.ts",
-      "src/web-entry-policy.test.ts",
+      "src/*.test.{ts,tsx,mjs}",
       "src/__tests__/**/*.test.{ts,tsx,mjs}",
       "src/shims/**/*.test.{ts,tsx,mjs}",
-      "src/renderer-build-manifest-plugin.test.ts",
       "test/vite-source-resolution.test.ts",
       "test/android-browser/**/*.test.{ts,tsx,mjs}",
       "test/hmr/**/*.test.{ts,tsx,mjs}",

@@ -34,7 +34,7 @@ import type {
   AppendAuditEventInput,
   AuthRepository,
   AuthSessionRow,
-} from "../../services/auth-store";
+} from "../../services/auth-repository";
 import { appendAuditEvent } from "./audit.js";
 import {
   closeIdentitySockets,

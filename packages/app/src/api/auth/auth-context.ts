@@ -24,7 +24,7 @@ import type {
   AuthIdentityRow,
   AuthRepository,
   AuthSessionRow,
-} from "../../services/auth-store";
+} from "../../services/auth-repository";
 import {
   findActiveSession,
   parseSessionCookie,

@@ -60,8 +60,6 @@ import {
   registeredHostExternalSpecifiers,
   resolveRegisteredHostExternalImporter,
 } from "../../app-shell-registry";
-import { registerDetailExtension } from "../../apps/detail-extension-registry.js";
-import { registerOverlayApp } from "../../apps/overlay-app-registry.js";
 import {
   type EvictReason,
   emitModuleCacheTelemetry,
@@ -71,16 +69,11 @@ import { APP_PAUSE_EVENT } from "../../events";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { SpatialSurface } from "../../spatial/index.ts";
 import {
-  useAppSelector,
-  useAppSelectorShallow,
-} from "../../state/app-store.ts";
-import {
   HEAP_PRESSURE_EVENT,
   isUnderMemoryPressure,
   planModuleCacheEvictions,
 } from "../../state/bounded-view-lru";
 import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
-import { useApp } from "../../state/useApp.ts";
 import {
   getActiveSurfaceRealmScope,
   SurfaceRealmDeniedError,
@@ -88,25 +81,7 @@ import {
   subscribeActiveSurfaceRealmScope,
 } from "../../surface-realm-broker";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
-import {
-  formatDetailTimestamp,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-} from "../apps/extensions/surface.helpers.ts";
-import {
-  SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
-  SurfaceSection,
-} from "../apps/extensions/surface.tsx";
-import { PagePanel } from "../composites/page-panel/index.ts";
-import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
-import { Input } from "../ui/input.tsx";
-import { Spinner } from "../ui/spinner.tsx";
-import { StatusBadge } from "../ui/status-badge.tsx";
 import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import {
   navigateToViews,
@@ -373,32 +348,6 @@ const CORE_VIEW_COMPAT = Object.freeze({
 async function importCoreViewCompat(): Promise<Record<string, unknown>> {
   return CORE_VIEW_COMPAT;
 }
-const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
-  client,
-  resolveAppBranding,
-  Button,
-  Input,
-  Spinner,
-  PagePanel,
-  registerDetailExtension,
-  registerOverlayApp,
-  useApp,
-  useAppSelector,
-  useAppSelectorShallow,
-  StatusBadge,
-  SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
-  SurfaceSection,
-  formatDetailTimestamp,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-};
-async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
-  return APP_CORE_VIEW_COMPAT;
-}
 async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
   return import("../index.ts");
 }
@@ -510,9 +459,6 @@ type ScopedHostExternalImporter = (
   scope?: SurfaceRealmScope | null,
 ) => Promise<Record<string, unknown>>;
 const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
-  "@elizaos/app": importAppCoreViewCompat,
-  "@elizaos/app/browser": importAppCoreViewCompat,
-  "@elizaos/app/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
   "@elizaos/core/protocol": () => import("@elizaos/core/protocol"),
   "@elizaos/contracts": () => import("@elizaos/contracts"),

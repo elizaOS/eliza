@@ -844,6 +844,11 @@ export {
   type VirtualFilesystemSnapshot,
 } from "./services/virtual-filesystem.ts";
 export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
+export {
+  startTriggerEventBridge,
+  type TriggerEventBridgeHandle,
+  type TriggerEventBridgeOptions,
+} from "./triggers/event-bridge.ts";
 export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";

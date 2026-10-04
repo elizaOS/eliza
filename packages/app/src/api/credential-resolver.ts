@@ -1,3 +1,4 @@
+import { getDefaultAccountPool } from "@elizaos/auth/accounts";
 /**
  * Server-side credential resolver — scans local credential stores
  * and hydrates credentials into the canonical server config + secret state.
@@ -27,13 +28,7 @@ import {
   resolveStateDir,
   SECRET_KEY_ALIASES,
 } from "@elizaos/core";
-import {
-  getDirectAccountProviderForFirstRunProvider,
-  getFirstRunProviderOption,
-  getStoredSubscriptionProviderForRequest,
-  normalizeFirstRunProviderId,
-} from "@elizaos/host/protocol";
-import { getDefaultAccountPool } from "../account-pool.js";
+import { getDirectAccountProviderForFirstRunProvider, getFirstRunProviderOption, getStoredSubscriptionProviderForRequest, normalizeFirstRunProviderId } from "@elizaos/host/protocol";
 
 // ── Credential source registry ───────────────────────────────────────
 interface CredentialSource {

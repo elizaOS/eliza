@@ -14,9 +14,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/app/services/task-host-capabilities": [
-        "../app/src/services/task-host-capabilities.ts"
-      ],
       "@elizaos/plugin-pdf": ["../../plugins/plugin-pdf/index.ts"],
       "@elizaos/plugin-native-phone/*": [
         "../../plugins/plugin-native-phone/src/*"

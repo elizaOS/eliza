@@ -1,17 +1,12 @@
 /** Verifies real cryptographic authorization denies legacy grants and binds browser effects to one profile. */
 import { generateKeyPairSync } from "node:crypto";
-import type {
-  RemoteCommandBody,
-  RemoteControllerGrant,
-  RemoteControllerPublicIdentity,
-  RemoteTargetPublicIdentity,
-} from "@elizaos/contracts";
-import { describe, expect, it } from "vitest";
+import type { RemoteCommandBody, RemoteControllerGrant, RemoteControllerPublicIdentity, RemoteTargetPublicIdentity } from "@elizaos/contracts";
 import {
   digestRemotePayload,
   signRemoteCommand,
   verifyRemoteCommandAuthenticity,
-} from "../../../packages/app/src/security/remote-control-crypto";
+} from "@elizaos/plugin-browser/remote-control/crypto";
+import { describe, expect, it } from "vitest";
 
 function fixture() {
   const controller = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
