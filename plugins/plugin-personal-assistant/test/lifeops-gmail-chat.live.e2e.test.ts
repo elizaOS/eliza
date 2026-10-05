@@ -8,9 +8,9 @@ import os from "node:os";
 import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
 import {
-  resolveOAuthDir,
   type AgentRuntime,
   getConnectorAccountManager,
+  resolveOAuthDir,
 } from "@elizaos/core";
 
 import {

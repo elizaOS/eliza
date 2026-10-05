@@ -12,7 +12,7 @@ import {
   loadElizaConfig,
   resolveDefaultAgentWorkspaceDir,
 } from "@elizaos/agent";
-import { resolveUserPath, formatError, logger } from "@elizaos/core";
+import { formatError, logger, resolveUserPath } from "@elizaos/core";
 
 import {
   createPgliteInitError,
