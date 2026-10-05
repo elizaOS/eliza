@@ -1609,12 +1609,55 @@ export class RemindersDomain {
           : [args.attempt];
       let latestUnrelated: ReminderReviewResponseEvidence | null = null;
       for (const response of ownerResponses) {
-        if (
-          response.foregroundHandling === "pending" &&
-          response.roomId &&
-          this.ctx.runtime.roomHandlerQueue.pendingFor(response.roomId) > 0
-        ) {
-          return { ...noResponse, reason: "foreground_request_pending" };
+        let foregroundHandling = response.foregroundHandling;
+        if (foregroundHandling === "pending" && response.roomId) {
+          if (
+            this.ctx.runtime.roomHandlerQueue.pendingFor(response.roomId) > 0
+          ) {
+            return { ...noResponse, reason: "foreground_request_pending" };
+          }
+          // The snapshot may precede outcome persistence and queue release.
+          // Refresh only this exact host-owned request before classifying it.
+          try {
+            const fresh = response.memoryId
+              ? await this.ctx.runtime.getMemoryById(response.memoryId)
+              : null;
+            const priorMarker = readDurableConversationChatMarker(
+              response.memoryId
+                ? memoriesById.get(response.memoryId)?.content.chatIdempotency
+                : undefined,
+            );
+            const freshMarker = readDurableConversationChatMarker(
+              fresh?.content.chatIdempotency,
+            );
+            if (
+              !fresh ||
+              fresh.id !== response.memoryId ||
+              fresh.agentId !== agentId ||
+              fresh.entityId !== ownerEntityId ||
+              fresh.roomId !== response.roomId ||
+              !freshMarker ||
+              !priorMarker ||
+              freshMarker.scope !== priorMarker.scope ||
+              freshMarker.clientMessageId !== priorMarker.clientMessageId ||
+              freshMarker.fingerprint !== priorMarker.fingerprint
+            ) {
+              return {
+                ...noResponse,
+                reason: "foreground_request_refresh_unknown",
+              };
+            }
+            foregroundHandling = foregroundRequestHandling(
+              fresh,
+              agentId,
+              ownerEntityId,
+            );
+          } catch {
+            return {
+              ...noResponse,
+              reason: "foreground_request_refresh_unknown",
+            };
+          }
         }
         const source = response.inReplyTo
           ? memoriesById.get(response.inReplyTo as Memory["id"])
@@ -1624,7 +1667,7 @@ export class RemindersDomain {
             ? source.content.metadata
             : null;
         const skipReason =
-          response.foregroundHandling === "single_create"
+          foregroundHandling === "single_create"
             ? "foreground_single_create_owned"
             : response.metadata &&
                 Object.hasOwn(response.metadata, "reminderChoiceId")
@@ -4211,7 +4254,8 @@ export class RemindersDomain {
       if (
         responseReview.classifierSource === "none" &&
         (responseReview.reason === "no_semantic_verdict" ||
-          responseReview.reason === "foreground_request_pending")
+          responseReview.reason === "foreground_request_pending" ||
+          responseReview.reason === "foreground_request_refresh_unknown")
       ) {
         // Preserve unknown evidence before due-review transitions or closure.
         return null;

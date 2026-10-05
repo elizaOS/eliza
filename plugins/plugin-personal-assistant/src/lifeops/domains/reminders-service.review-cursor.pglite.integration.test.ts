@@ -885,6 +885,9 @@ it.each([
   "foreign",
   "malformed",
   "failed_receipt",
+  "stale_pending",
+  "missing_refresh",
+  "failed_refresh",
 ])(
   "current creation through the raw host summary preserves %s ownership",
   async (kind) => {
@@ -960,6 +963,23 @@ it.each([
         },
       },
     });
+    if (["stale_pending", "missing_refresh", "failed_refresh"].includes(kind)) {
+      const readSnapshot = fixture.runtime.getMemoriesByRoomIds.bind(
+        fixture.runtime,
+      );
+      vi.spyOn(fixture.runtime, "getMemoriesByRoomIds").mockImplementation(
+        async (args) =>
+          (await readSnapshot(args)).map((memory) =>
+            memory.id === f.message.id ? f.message : memory,
+          ),
+      );
+      if (kind === "missing_refresh")
+        vi.spyOn(fixture.runtime, "getMemoryById").mockResolvedValue(null);
+      if (kind === "failed_refresh")
+        vi.spyOn(fixture.runtime, "getMemoryById").mockRejectedValue(
+          Error("Read unavailable"),
+        );
+    }
     const judge = vi
       .spyOn(
         service.remindersDomain,
@@ -977,8 +997,17 @@ it.each([
       attempt: f.attempt,
       now: f.now,
     });
+    if (["missing_refresh", "failed_refresh"].includes(kind)) {
+      expect(review).toMatchObject({
+        decision: "no_response",
+        classifierSource: "none",
+        reason: "foreground_request_refresh_unknown",
+      });
+      expect(judge).not.toHaveBeenCalled();
+      return;
+    }
     expect(review.decision).toBe("unrelated");
-    if (kind === "single") {
+    if (kind === "single" || kind === "stale_pending") {
       expect(review.reason).toBe("foreground_single_create_owned");
       expect(judge).not.toHaveBeenCalled();
     } else expect(judge).toHaveBeenCalled();
