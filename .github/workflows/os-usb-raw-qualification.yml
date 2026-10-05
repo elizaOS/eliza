@@ -37,8 +37,7 @@ jobs:
         working-directory: .
       - name: Install VM tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils genisoimage
+          bash scripts/install-ci-ubuntu-packages.sh qemu-system-x86 qemu-utils genisoimage
       - name: Resolve output and bundle the actual signed-image pipeline
         env:
           SECTOR_BYTES: ${{ matrix.sector-size }}
