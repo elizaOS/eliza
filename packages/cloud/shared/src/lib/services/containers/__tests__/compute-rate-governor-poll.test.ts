@@ -12,10 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import {
-  PollActionError,
-  pollAction,
-} from "../compute-rate-governor";
+import { PollActionError, pollAction } from "../compute-rate-governor";
 
 function makeClock() {
   let now = 0;
