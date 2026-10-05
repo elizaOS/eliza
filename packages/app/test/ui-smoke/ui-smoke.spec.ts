@@ -12,7 +12,7 @@ import {
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 
@@ -42,9 +42,14 @@ test("chat, apps, and settings routes render through the real shell", async ({
   // Bare /apps is a retired My Apps deep link (#17031): it lands on the
   // consolidated Projects surface with its Apps segment pre-selected; the
   // launcher grid lives at /views.
-  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible({
-    timeout: 30_000,
-  });
+  const projectsTabs = page.getByRole("tablist", { name: "Projects sections" });
+  await expect(projectsTabs).toBeVisible({ timeout: 30_000 });
+  await expect(
+    projectsTabs.getByRole("tab", { name: "Apps", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("button", { name: "Create new app", exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("No apps installed yet")).toBeVisible();
 
   await openAppPath(page, "/settings");
