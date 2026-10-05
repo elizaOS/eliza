@@ -240,7 +240,10 @@ export * from "./services/message.ts";
 export * from "./services/optimized-prompt.ts";
 export { parseOptimizedPromptTargetBinding } from "./services/optimized-prompt-provenance.ts";
 export * from "./services/pending-prompts/index.ts";
-export { RelationshipsService } from "./services/relationships.ts";
+export {
+  RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND,
+  RelationshipsService,
+} from "./services/relationships.ts";
 export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
 export { serializeTrajectoryExport } from "./services/trajectory-export.ts";

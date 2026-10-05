@@ -5,6 +5,9 @@
 @import "@fontsource/poppins/700.css";
 @import "@fontsource/poppins/800.css";
 @import "tailwindcss";
+/* Compile the cloud and app utilities together. A separately emitted cloud
+   sheet can put its base .hidden after the app responsive display variants. */
+@import "../cloud-ui/index.css";
 
 /* Tailwind v4 defaults bare `border` utilities to currentColor, which paints
    near-white text-colored frames on dark surfaces. Restore the themed default

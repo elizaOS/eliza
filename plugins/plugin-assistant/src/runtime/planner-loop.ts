@@ -4247,6 +4247,100 @@ async function dispatchPlannerModelCall(params: {
         };
       });
     }
+    // Unsupported descriptors stay untouched for the provider's existing
+    // rejection. Inspect only copied containers; never evaluate their getters.
+    const ownDataDescriptors = (value: unknown) => {
+      if (value === null || typeof value !== "object") return undefined;
+      try {
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null)
+          return undefined;
+        if (Object.getOwnPropertySymbols(value).length > 0) return undefined;
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        if (Object.values(descriptors).some((entry) => !("value" in entry)))
+          return undefined;
+        return { prototype, descriptors };
+      } catch {
+        // Optional representation change cannot conceal inspection failure.
+        return undefined;
+      }
+    };
+    // Keep identical parameter policy complete on its first offered tool.
+    // References are request-local and name that actual tool and parameter;
+    // all validation and nested descriptions remain on every schema.
+    const describedParameters = new Map<
+      string,
+      { tool: string; parameter: string }
+    >();
+    modelParams.tools = modelParams.tools?.map((tool) => {
+      const toolData = ownDataDescriptors(tool);
+      const toolName = toolData?.descriptors.name?.value;
+      const parametersData = ownDataDescriptors(
+        toolData?.descriptors.parameters?.value,
+      );
+      const propertiesData = ownDataDescriptors(
+        parametersData?.descriptors.properties?.value,
+      );
+      if (
+        !toolData ||
+        typeof toolName !== "string" ||
+        !parametersData ||
+        !propertiesData
+      )
+        return tool;
+      let sharedDescriptors = propertiesData.descriptors;
+      for (const [parameter, entry] of Object.entries(
+        propertiesData.descriptors,
+      )) {
+        if (!entry.enumerable) continue;
+        const schemaData = ownDataDescriptors(entry.value);
+        const description = schemaData?.descriptors.description?.value;
+        if (
+          !schemaData?.descriptors.description?.enumerable ||
+          typeof description !== "string"
+        )
+          continue;
+        const first = describedParameters.get(description);
+        if (!first) {
+          describedParameters.set(description, { tool: toolName, parameter });
+          continue;
+        }
+        if (first.tool === toolName) continue;
+        const reference = `Use the identical full description of parameter ${JSON.stringify(first.parameter)} on tool ${first.tool}.`;
+        if (reference.length >= description.length) continue;
+        if (sharedDescriptors === propertiesData.descriptors)
+          sharedDescriptors = { ...propertiesData.descriptors };
+        sharedDescriptors[parameter] = {
+          ...entry,
+          value: Object.defineProperties(Object.create(schemaData.prototype), {
+            ...schemaData.descriptors,
+            description: {
+              ...schemaData.descriptors.description,
+              value: reference,
+            },
+          }),
+        };
+      }
+      if (sharedDescriptors === propertiesData.descriptors) return tool;
+      const properties = Object.defineProperties(
+        Object.create(propertiesData.prototype),
+        sharedDescriptors,
+      );
+      const parameters = Object.defineProperties(
+        Object.create(parametersData.prototype),
+        {
+          ...parametersData.descriptors,
+          properties: {
+            ...parametersData.descriptors.properties,
+            value: properties,
+          },
+        },
+      );
+      return Object.defineProperties(Object.create(toolData.prototype), {
+        ...toolData.descriptors,
+        parameters: { ...toolData.descriptors.parameters, value: parameters },
+      });
+    });
     // Force a native tool call. With actions exposed directly as tools,
     // every viable planner outcome —
     // invoking an action, calling REPLY for a final message, or terminating

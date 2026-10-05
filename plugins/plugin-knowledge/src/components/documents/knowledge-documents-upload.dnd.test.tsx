@@ -32,6 +32,9 @@ const bindingMock = vi.hoisted(() => ({
   value: null as null | { onQuery(value: string): void },
 }));
 const clientMock = vi.hoisted(() => ({
+  getBaseUrl: () => "http://localhost",
+  getAuthorityRevision: () => 0,
+  onAuthorityChange: () => () => {},
   listDocuments: vi.fn(),
   uploadDocumentsBulk: vi.fn(),
   searchDocuments: vi.fn(),

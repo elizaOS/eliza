@@ -310,13 +310,24 @@ async function handleReadResource(
     throw new Error("MCP service not available");
   }
   const mcpProvider = mcpService.getProviderData();
+  // The MCP provider publishes only a compact `mcpServers` line; the selection
+  // template renders `mcpProvider.text` and the retry feedback reads
+  // `values.mcp`, so both come from the service, as tool selection does.
+  const resourceState: State = {
+    ...composedState,
+    values: {
+      ...composedState.values,
+      mcp: composedState.values.mcp ?? mcpProvider.data.mcp,
+      mcpProvider,
+    },
+  };
   try {
     await sendInitialResponse(callback);
     const parsedSelection =
       getDirectResourceSelection(options) ??
       (await (async () => {
         const resourceSelectionPrompt = createResourceSelectionPrompt(
-          composedState,
+          resourceState,
           message.content.text ?? ""
         );
         const resourceSelection = (await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -324,7 +335,7 @@ async function handleReadResource(
         })) as string;
         return withModelRetry<ResourceSelection>({
           runtime,
-          state: composedState,
+          state: resourceState,
           message,
           callback,
           input: resourceSelection,

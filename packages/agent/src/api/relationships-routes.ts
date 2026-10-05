@@ -11,13 +11,14 @@
  */
 
 import { PostRelationshipLinkRequestSchema } from "@elizaos/contracts";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, type UUID } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/host/protocol";
 
-import type {
-  RelationshipsGraphQuery,
-  RelationshipsGraphService,
-  RelationshipsMergeProposalEvidence,
+import {
+  RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphService,
+  type RelationshipsMergeProposalEvidence,
 } from "@elizaos/plugin-assistant";
 import { decodePathComponent } from "./server-helpers.ts";
 
@@ -243,10 +244,23 @@ export async function handleRelationshipsRoutes(
         error(res, "Invalid merge candidate id.", 400);
         return true;
       }
-      if (action === "accept") {
-        await relationshipsGraph.acceptMerge(candidateId as UUID);
-      } else {
-        await relationshipsGraph.rejectMerge(candidateId as UUID);
+      try {
+        if (action === "accept") {
+          await relationshipsGraph.acceptMerge(candidateId as UUID);
+        } else {
+          await relationshipsGraph.rejectMerge(candidateId as UUID);
+        }
+      } catch (cause) {
+        // error-policy:J1 an unknown candidate id is the caller's 404, not a
+        // server failure; every other failure propagates.
+        if (
+          cause instanceof ElizaError &&
+          cause.code === RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND
+        ) {
+          error(res, "Merge candidate not found.", 404);
+          return true;
+        }
+        throw cause;
       }
       json(res, { data: { id: candidateId, status: action } }, 200);
       return true;
@@ -274,6 +288,10 @@ export async function handleRelationshipsRoutes(
           parsedLink.error.issues[0]?.message ?? "targetEntityId is required.",
           400,
         );
+        return true;
+      }
+      if (parsedLink.data.targetEntityId === sourceEntityId) {
+        error(res, "A person cannot be linked to themselves.", 400);
         return true;
       }
       const evidence = asEvidenceRecord(parsedLink.data.evidence);

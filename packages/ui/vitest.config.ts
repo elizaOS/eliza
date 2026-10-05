@@ -296,6 +296,7 @@ export default defineConfig({
       "test/api/recorded-transcription-controller.test.mjs",
       "test/api/speech-playback-controllers.test.mjs",
       "test/api/text-control-editing.test.mjs",
+      "test/api/json-storage.test.mjs",
       "dist/**",
       "**/node_modules/**",
       "**/*.live.test.{ts,tsx}",

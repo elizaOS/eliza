@@ -275,6 +275,40 @@ describe("durable SQLite agent adapter", () => {
     });
   });
 
+  it("finds a component by entity and type when world and source are omitted", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const componentId = id();
+    await adapter.createAgents([{ id: agentId, name: "Form agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Forms", agentId }]);
+    await adapter.createComponents([
+      {
+        id: componentId,
+        entityId,
+        agentId,
+        roomId,
+        worldId,
+        sourceEntityId: agentId,
+        type: "form_session",
+        createdAt: 1,
+        data: { status: "active" },
+      },
+    ]);
+
+    const [omitted, sameWorld, otherWorld, otherSource] =
+      await adapter.getComponentsByNaturalKeys([
+        { entityId, type: "form_session" },
+        { entityId, type: "form_session", worldId },
+        { entityId, type: "form_session", worldId: id() },
+        { entityId, type: "form_session", sourceEntityId: id() },
+      ]);
+    expect(omitted?.id).toBe(componentId);
+    expect(sameWorld?.id).toBe(componentId);
+    expect(otherWorld).toBeNull();
+    expect(otherSource).toBeNull();
+  });
+
   it("reopens runtime records, full content and semantic search without an in-memory singleton", async () => {
     const adapter = await open();
     const worldId = id();
@@ -347,6 +381,101 @@ describe("durable SQLite agent adapter", () => {
     ).toContain(record.id);
   });
 
+  it("deletes an entity's components, memberships, memories, relationships and logs with it", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const otherEntityId = id();
+    const owned = id();
+    const sourced = id();
+    const unrelated = id();
+    await adapter.createAgents([{ id: agentId, name: "Contacts agent" }]);
+    await adapter.createEntities([
+      { id: entityId, agentId, names: ["Pat"] },
+      { id: otherEntityId, agentId, names: ["Sam"] },
+    ]);
+    await adapter.createWorlds([{ id: worldId, name: "Contacts", agentId }]);
+    await adapter.createRooms([
+      { id: roomId, agentId, worldId, type: ChannelType.DM, source: "test" },
+    ]);
+    await adapter.createRoomParticipants([entityId, otherEntityId], roomId);
+    const component = (
+      componentId: UUID,
+      owner: UUID,
+      sourceEntityId: UUID,
+    ) => ({
+      id: componentId,
+      entityId: owner,
+      agentId,
+      roomId,
+      worldId,
+      sourceEntityId,
+      type: "contact_info",
+      createdAt: 1,
+      data: {},
+    });
+    await adapter.createComponents([
+      component(owned, entityId, agentId),
+      component(sourced, otherEntityId, entityId),
+      component(unrelated, otherEntityId, agentId),
+    ]);
+
+    const deletedMemory = { ...memory("from the deleted contact") };
+    const keptMemory = {
+      ...memory("from the other contact"),
+      entityId: otherEntityId,
+    };
+    await adapter.ensureEmbeddingDimension(3);
+    await adapter.createMemories([
+      { memory: deletedMemory, tableName: "messages" },
+      { memory: keptMemory, tableName: "messages" },
+    ]);
+    await adapter.createRelationships([
+      { sourceEntityId: agentId, targetEntityId: entityId, tags: ["friend"] },
+      {
+        sourceEntityId: entityId,
+        targetEntityId: otherEntityId,
+        tags: ["peer"],
+      },
+      {
+        sourceEntityId: agentId,
+        targetEntityId: otherEntityId,
+        tags: ["kept"],
+      },
+    ]);
+    await adapter.createLogs([
+      { body: {}, entityId, roomId, type: "contact-log" },
+      { body: {}, entityId: otherEntityId, roomId, type: "contact-log" },
+    ]);
+
+    await adapter.deleteEntities([entityId]);
+
+    expect(await adapter.getEntitiesByIds([entityId])).toEqual([]);
+    expect(
+      (await adapter.getComponentsByIds([owned, sourced, unrelated])).map(
+        (row) => row.id,
+      ),
+    ).toEqual([unrelated]);
+    expect(await adapter.getRoomsForParticipants([entityId])).toEqual([]);
+    expect(await adapter.getRoomsForParticipants([otherEntityId])).toEqual([
+      roomId,
+    ]);
+    expect(
+      (await adapter.getMemoriesByIds([deletedMemory.id, keptMemory.id])).map(
+        (row) => row.id,
+      ),
+    ).toEqual([keptMemory.id]);
+    expect(
+      (
+        await adapter.getRelationships({ entityIds: [agentId, otherEntityId] })
+      ).flatMap((row) => row.tags),
+    ).toEqual(["kept"]);
+    expect(
+      (await adapter.getLogs({ type: "contact-log" })).map(
+        (row) => row.entityId,
+      ),
+    ).toEqual([otherEntityId]);
+  });
+
   it("rolls back domain records and runtime semantic state in one native transaction", async () => {
     const adapter = await open();
     await adapter.ensureEmbeddingDimension(3);
@@ -410,6 +539,57 @@ describe("durable SQLite agent adapter", () => {
         })
       ).map((m) => m.id),
     ).toEqual([original.id]);
+  });
+
+  it("deletes a room's components and logs with it", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const otherRoomId = id();
+    await adapter.createAgents([{ id: agentId, name: "Conversation agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Chats", agentId }]);
+    await adapter.createRooms([
+      { id: roomId, agentId, worldId, type: ChannelType.DM, source: "test" },
+      {
+        id: otherRoomId,
+        agentId,
+        worldId,
+        type: ChannelType.DM,
+        source: "test",
+      },
+    ]);
+    const component = (componentId: UUID, room: UUID) => ({
+      id: componentId,
+      entityId,
+      agentId,
+      roomId: room,
+      worldId,
+      sourceEntityId: agentId,
+      type: "room_state",
+      createdAt: 1,
+      data: {},
+    });
+    const deleted = id();
+    const kept = id();
+    await adapter.createComponents([
+      component(deleted, roomId),
+      component(kept, otherRoomId),
+    ]);
+    await adapter.createLogs([
+      { body: {}, entityId, roomId, type: "conversation-log" },
+      { body: {}, entityId, roomId: otherRoomId, type: "conversation-log" },
+    ]);
+
+    await adapter.deleteRooms([roomId]);
+
+    expect(
+      (await adapter.getComponentsByIds([deleted, kept])).map((row) => row.id),
+    ).toEqual([kept]);
+    expect(
+      (await adapter.getLogs({ type: "conversation-log" })).map(
+        (row) => row.roomId,
+      ),
+    ).toEqual([otherRoomId]);
   });
 
   it("keeps outside reads behind an awaiting transaction and supports nested rollback", async () => {

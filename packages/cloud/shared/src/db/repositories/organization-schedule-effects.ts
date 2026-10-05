@@ -1,7 +1,8 @@
 /** Original-command leases and ordered schedule effects. Provider I/O stays outside transactions. */
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
 import { organizationDowngradeIntentDigest } from "../../lib/services/organization-downgrade-intent";
 import { organizationDowngradeReviewSchema } from "../../lib/services/organization-downgrade-review";
 import { organizationPlanChangeProviderBindingSchema } from "../../lib/services/organization-plan-change-provider-binding";
@@ -16,13 +17,20 @@ import {
   projectAuthenticatedScheduleEvent,
   projectOriginalScheduleResponse,
 } from "../../lib/services/organization-schedule-effect-origin";
+import { proveOrganizationScheduleRelease } from "../../lib/services/organization-schedule-release-proof";
+import { proveReviewedOrganizationScheduleConfiguration } from "../../lib/services/organization-schedule-reviewed-configuration";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
+import {
+  billingSubscriptions,
+  organizationSubscriptionAuthorities,
+} from "../schemas/billing-subscriptions";
+import { organizationEntitlements } from "../schemas/organization-entitlements";
 import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
 import { organizationScheduleEffects as effects } from "../schemas/organization-schedule-effects";
 import { organizations } from "../schemas/organizations";
-import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations";
+import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations.ts";
 import { lockOrganizationPlanChangeSource } from "./organization-plan-change";
 import { readOriginalScheduleQuoteTerms } from "./organization-schedule-quote-terms";
 import {
@@ -245,6 +253,7 @@ export async function claimOrganizationSchedule(
     }
     const current = await rows(tx, input);
     const active =
+      current.find((x) => x.kind === "schedule_release") ??
       current.find((x) => x.kind === "schedule_configure") ??
       current.find((x) => x.kind === "schedule_create");
     if (!active) reject("original_effect_missing");
@@ -415,7 +424,7 @@ async function recordReceipt(
       receipt.providerIdempotencyKey !== effect.provider_idempotency_key ||
       observedAt < effect.started_at ||
       observedAt > now ||
-      (effect.request_payload.kind === "schedule_configure" &&
+      (effect.request_payload.kind !== "schedule_create" &&
         receipt.scheduleId !== effect.request_payload.scheduleId)
     )
       reject("receipt_scope_changed");
@@ -476,5 +485,511 @@ export async function finishOrganizationScheduleAttempt(input: Identity, claim: 
       })
       .where(eq(commands.id, c.id));
     return true;
+  });
+}
+
+/** Private original review and retained terms for a manager-owned dispatch attempt.
+ * Provider I/O happens after commit, followed by the existing irreversible marker fence.
+ */
+async function readOrganizationScheduleExecutionSource(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+  purpose: "dispatch" | "configuration",
+) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, true);
+    const captured = await currentSource(tx, input, locked);
+    const existing = await rows(tx, input);
+    const effect = existing.find((row) => row.id === effectId);
+    const now = await readPostLockDatabaseNow(tx);
+    assertLease(input, locked, claim, now);
+    if (
+      !effect ||
+      (purpose === "dispatch"
+        ? effect.state !== "ready"
+        : effect.state !== "observed" ||
+          effect.kind !== "schedule_create" ||
+          !effect.receipt ||
+          !effect.started_at) ||
+      locked.quote.expires_at <= now ||
+      !locked.retained
+    )
+      reject("effect_not_dispatchable");
+    scope(
+      locked,
+      effect,
+      existing.find((row) => row.id === effect.predecessor_id),
+    );
+    return {
+      ...captured,
+      review: locked.quote.review,
+      providerBinding: locked.binding,
+      retainedTerms: locked.retained.snapshot,
+      quoteId: locked.quote.id,
+      effect,
+      predecessor: existing.find((row) => row.id === effect.predecessor_id) ?? null,
+      checkedAt: now,
+    };
+  });
+}
+
+export function readOrganizationScheduleDispatchSource(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+) {
+  return readOrganizationScheduleExecutionSource(input, claim, effectId, "dispatch");
+}
+export function readOrganizationScheduleConfigurationSource(
+  input: Identity,
+  claim: Claim,
+  createEffectId: string,
+) {
+  return readOrganizationScheduleExecutionSource(input, claim, createEffectId, "configuration");
+}
+
+/** Original intent authorizes cleanup even after review expiry or manager revocation.
+ * Only a proven original create with no started configuration is eligible.
+ */
+async function lockCompensation(tx: DbTransaction, input: Identity, claim: Claim) {
+  const locked = await lockOriginal(tx, input, false),
+    existing = await rows(tx, input);
+  const now = await readPostLockDatabaseNow(tx);
+  assertLease(input, locked, claim, now);
+  const create = existing.find((row) => row.kind === "schedule_create");
+  if (
+    !locked.retained ||
+    !create ||
+    create.state !== "observed" ||
+    !create.receipt ||
+    !create.started_at ||
+    create.receipt_digest !== settlementDigest(create.receipt) ||
+    existing.some((row) => row.kind === "schedule_configure" && row.state !== "ready")
+  )
+    reject("original_unconfigured_create_required");
+  scope(locked, create, undefined);
+  const release = existing.find((row) => row.kind === "schedule_release") ?? null;
+  if (release) scope(locked, release, create);
+  return { locked, create, release, now };
+}
+export function readOrganizationScheduleCompensationSource(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const result = await lockCompensation(tx, input, claim);
+    return {
+      create: result.create,
+      release: result.release,
+      retainedTerms: result.locked.retained!.snapshot,
+      providerBinding: result.locked.binding,
+      checkedAt: result.now,
+    };
+  });
+}
+export function prepareOrganizationScheduleCompensation(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const { create, release, now } = await lockCompensation(tx, input, claim);
+    if (release) return release;
+    const request: OrganizationScheduleEffectRequest = {
+      kind: "schedule_release",
+      scheduleId: create.receipt!.scheduleId,
+      params: { preserve_cancel_date: true },
+    };
+    const [inserted] = await tx
+      .insert(effects)
+      .values({
+        organization_id: input.organizationId,
+        command_id: input.commandId,
+        predecessor_id: create.id,
+        kind: request.kind,
+        provider_idempotency_key: `organization-schedule:${input.commandId}:schedule_release`,
+        customer_id: create.customer_id,
+        subscription_id: create.subscription_id,
+        livemode: create.livemode,
+        request_payload: request,
+        request_digest: scheduleEffectRequestDigest(request),
+        created_at: now,
+      })
+      .returning();
+    if (!inserted) reject("compensation_insert_failed");
+    return inserted;
+  });
+}
+/** Caller has just reobserved original create/defaults and retained subscription/customer terms. */
+export function markOrganizationScheduleCompensationDispatch(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+) {
+  return writeTransaction(async (tx) => {
+    const { release, now } = await lockCompensation(tx, input, claim);
+    if (!release || release.id !== effectId || release.state !== "ready")
+      reject("compensation_not_dispatchable");
+    const [started] = await tx
+      .update(effects)
+      .set({
+        state: "started",
+        started_at: now,
+        started_generation: claim.generation,
+        started_lease_token: claim.leaseToken,
+      })
+      .where(eq(effects.id, release.id))
+      .returning();
+    if (!started) reject("compensation_dispatch_failed");
+    return started;
+  });
+}
+/** Publish a proven original cleanup outcome without changing paid authority. */
+export async function finalizeOrganizationScheduleCompensation(
+  input: Identity,
+  claim: Claim,
+  observation: {
+    createEvidence: { kind: "response" | "event"; raw: unknown };
+    releaseEvidence: { kind: "response" | "event"; raw: unknown };
+    rawCurrentSchedule: unknown;
+    rawSubscription: unknown;
+    rawCustomer: unknown;
+  },
+) {
+  return writeTransaction(async (tx) => {
+    // Preserve organization -> association -> command -> source lock order.
+    // Fencing prevents new paid work; it cannot strand proven original cleanup.
+    const [org] = await tx
+      .select({ id: organizations.id, stripe_customer_id: organizations.stripe_customer_id })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .for("update");
+    if (!org) reject("organization_authority_unavailable");
+    const [association] = await tx
+      .select()
+      .from(organizationSubscriptionAuthorities)
+      .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
+      .for("update");
+    const original = await lockOriginal(tx, input, false);
+    if (
+      original.command.status === "FAILED" &&
+      original.command.organization_schedule_failure_evidence !== null
+    )
+      return { command: original.command, replayed: true };
+    const { locked, create, release } = await lockCompensation(tx, input, claim);
+    if (
+      !release ||
+      release.state !== "observed" ||
+      !release.receipt ||
+      !release.started_at ||
+      release.receipt_digest !== settlementDigest(release.receipt)
+    )
+      reject("original_release_receipt_required");
+    if (
+      !association ||
+      association.state !== "current" ||
+      association.subscription_id !== locked.quote.subscription_id
+    )
+      reject("current_source_authority_changed");
+    const [source] = await tx
+      .select()
+      .from(billingSubscriptions)
+      .where(
+        and(
+          eq(billingSubscriptions.id, locked.quote.subscription_id),
+          eq(billingSubscriptions.organization_id, input.organizationId),
+          isNull(billingSubscriptions.billing_scope_id),
+        ),
+      )
+      .for("update");
+    const [projection] = await tx
+      .select()
+      .from(organizationEntitlements)
+      .where(
+        and(
+          eq(organizationEntitlements.organization_id, input.organizationId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      )
+      .for("update");
+    if (
+      !source ||
+      source.lifecycle_revision !== locked.quote.subscription_revision ||
+      !projection ||
+      projection.source_subscription_id !== source.id ||
+      projection.source_subscription_revision !== source.lifecycle_revision ||
+      settlementDigest({ source, organizationCustomerId: org.stripe_customer_id }) !==
+        locked.quote.source_digest
+    )
+      reject("original_source_or_projection_changed");
+    const now = await readPostLockDatabaseNow(tx);
+    assertLease(input, locked, claim, now);
+    const requestFor = (effect: typeof create) => {
+      if (!effect.started_at) reject("original_dispatch_provenance_missing");
+      return {
+        request: effect.request_payload,
+        providerIdempotencyKey: effect.provider_idempotency_key,
+        customerId: effect.customer_id,
+        subscriptionId: effect.subscription_id,
+        livemode: effect.livemode,
+        startedAt: effect.started_at,
+      };
+    };
+    // All original request/receipt/terms authority comes from locked immutable rows.
+    // Inputs are authenticated server reads, never a renderer-provided proof digest.
+    const verified = proveOrganizationScheduleRelease({
+      originalCreate: {
+        originalReceipt: create.receipt!,
+        originalRequest: requestFor(create),
+        evidence: observation.createEvidence,
+        observedAt: now,
+      },
+      originalRelease: {
+        originalReceipt: release.receipt,
+        originalRequest: requestFor(release),
+        evidence: observation.releaseEvidence,
+        observedAt: now,
+      },
+      rawCurrentSchedule: observation.rawCurrentSchedule,
+      rawSubscription: observation.rawSubscription,
+      rawCustomer: observation.rawCustomer,
+      originalTerms: locked.retained!.snapshot,
+    });
+    if (verified.retainedTermsDigest !== locked.retained!.snapshot_digest)
+      reject("original_retained_terms_changed");
+    const proof = {
+      kind: "original_unconfigured_schedule_released" as const,
+      ...verified,
+      quoteId: locked.quote.id,
+      sourceDigest: locked.quote.source_digest,
+      createEffectId: create.id,
+      releaseEffectId: release.id,
+      createReceiptDigest: create.receipt_digest!,
+      releaseReceiptDigest: release.receipt_digest!,
+      observedAt: now.toISOString(),
+    };
+    const [failed] = await tx
+      .update(commands)
+      .set({
+        status: "FAILED",
+        error_code: "ORIGINAL_SCHEDULE_CREATE_COMPENSATED",
+        organization_schedule_failure_evidence: proof,
+        provider_response_digest: settlementDigest(proof),
+        lease_token: null,
+        lease_expires_at: null,
+        state_revision: locked.command.state_revision + 1,
+        completed_at: sql`clock_timestamp()`,
+        updated_at: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(commands.id, input.commandId),
+          eq(commands.organization_id, input.organizationId),
+          eq(commands.status, "OUTCOME_UNKNOWN"),
+          eq(commands.execution_generation, claim.generation),
+          eq(commands.lease_token, claim.leaseToken),
+          gt(commands.lease_expires_at, sql`clock_timestamp()`),
+        ),
+      )
+      .returning();
+    if (!failed) reject("original_lease_lost_before_commit");
+    return { command: failed, replayed: false };
+  });
+}
+
+export type OrganizationScheduleConfiguredObservation = {
+  createEvidence: { kind: "response" | "event"; raw: unknown };
+  configurationEvidence: { kind: "response" | "event"; raw: unknown };
+  rawCurrentSchedule: unknown;
+  rawSubscription: unknown;
+  rawCustomer: unknown;
+};
+export type OrganizationScheduleConfiguredIdentity = Identity & {
+  leaseToken: string;
+  executionGeneration: number;
+};
+/** Original read-only settlement authority; no new provider effects or manager grant. */
+export async function lockOrganizationScheduleConfiguredAuthority(
+  tx: DbTransaction,
+  input: OrganizationScheduleConfiguredIdentity & OrganizationScheduleConfiguredObservation,
+) {
+  const [org] = await tx
+    .select({
+      id: organizations.id,
+      customer: organizations.stripe_customer_id,
+      active: organizations.is_active,
+      lifecycle: organizations.account_lifecycle_state,
+      fenced: organizations.paid_work_fenced_at,
+      deletion: organizations.account_deletion_request_id,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, input.organizationId))
+    .for("update");
+  if (
+    !org ||
+    !org.active ||
+    org.lifecycle !== "active" ||
+    org.fenced !== null ||
+    org.deletion !== null
+  )
+    reject("organization_authority_unavailable");
+  const [association] = await tx
+    .select()
+    .from(organizationSubscriptionAuthorities)
+    .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
+    .for("update");
+  const locked = await lockOriginal(tx, input, false);
+  if (
+    !locked.retained ||
+    !association ||
+    association.state !== "current" ||
+    association.subscription_id !== locked.quote.subscription_id
+  )
+    reject("current_source_authority_changed");
+  const existing = await rows(tx, input);
+  const create = existing.find((e) => e.kind === "schedule_create");
+  const configured = existing.find((e) => e.kind === "schedule_configure");
+  if (
+    !create ||
+    !configured ||
+    create.state !== "observed" ||
+    configured.state !== "observed" ||
+    !create.started_at ||
+    !configured.started_at ||
+    !create.receipt ||
+    !configured.receipt ||
+    create.receipt_digest !== settlementDigest(create.receipt) ||
+    configured.receipt_digest !== settlementDigest(configured.receipt) ||
+    configured.predecessor_id !== create.id ||
+    existing.some((e) => e.kind === "schedule_release")
+  )
+    reject("original_configuration_receipts_required");
+  scope(locked, create, undefined);
+  scope(locked, configured, create);
+  const [source] = await tx
+    .select()
+    .from(billingSubscriptions)
+    .where(
+      and(
+        eq(billingSubscriptions.id, locked.quote.subscription_id),
+        eq(billingSubscriptions.organization_id, input.organizationId),
+        isNull(billingSubscriptions.billing_scope_id),
+      ),
+    )
+    .for("update");
+  const [projection] = await tx
+    .select()
+    .from(organizationEntitlements)
+    .where(
+      and(
+        eq(organizationEntitlements.organization_id, input.organizationId),
+        isNull(organizationEntitlements.billing_scope_id),
+      ),
+    )
+    .for("update");
+  if (
+    !source ||
+    source.lifecycle_revision !== locked.quote.subscription_revision ||
+    !projection ||
+    projection.source_subscription_id !== source.id ||
+    projection.source_subscription_revision !== source.lifecycle_revision ||
+    settlementDigest({ source, organizationCustomerId: org.customer }) !==
+      locked.quote.source_digest
+  )
+    reject("original_source_or_projection_changed");
+  const now = await readPostLockDatabaseNow(tx);
+  assertLease(
+    input,
+    locked,
+    {
+      commandId: input.commandId,
+      leaseToken: input.leaseToken,
+      generation: input.executionGeneration,
+    },
+    now,
+  );
+  const requestFor = (effect: typeof create) => ({
+    request: effect.request_payload,
+    providerIdempotencyKey: effect.provider_idempotency_key,
+    customerId: effect.customer_id,
+    subscriptionId: effect.subscription_id,
+    livemode: effect.livemode,
+    startedAt: effect.started_at!,
+  });
+  const verified = proveReviewedOrganizationScheduleConfiguration({
+    source,
+    review: locked.quote.review,
+    providerBinding: locked.binding,
+    originalTerms: locked.retained.snapshot,
+    originalCreate: {
+      originalReceipt: create.receipt,
+      originalRequest: requestFor(create),
+      evidence: input.createEvidence,
+      observedAt: now,
+    },
+    originalConfiguration: {
+      originalReceipt: configured.receipt,
+      originalRequest: requestFor(configured),
+      evidence: input.configurationEvidence,
+      observedAt: now,
+    },
+    rawCurrentSchedule: input.rawCurrentSchedule,
+    rawSubscription: input.rawSubscription,
+    rawCustomer: input.rawCustomer,
+  });
+  if (
+    verified.retainedTermsDigest !== locked.retained.snapshot_digest ||
+    verified.reviewDigest !== locked.quote.review_digest
+  )
+    reject("original_review_or_terms_changed");
+  const proof = {
+    kind: "original_schedule_configured" as const,
+    ...verified,
+    quoteId: locked.quote.id,
+    sourceDigest: locked.quote.source_digest,
+    createEffectId: create.id,
+    configurationEffectId: configured.id,
+    createReceiptDigest: create.receipt_digest!,
+    configurationReceiptDigest: configured.receipt_digest!,
+    observedAt: now.toISOString(),
+  };
+  // The full snapshot has just been authenticated and compared with the original
+  // configuration. Retain unknown wire fields; SDK transport metadata is not state.
+  const { lastResponse: _transport, ...wireSnapshot } = z
+    .record(z.string(), z.unknown())
+    .parse(input.rawCurrentSchedule);
+  const configuredSnapshot = structuredClone(wireSnapshot);
+  if (settlementDigest(configuredSnapshot) !== proof.snapshotDigest)
+    reject("configured_snapshot_changed");
+  return { source, projection, command: locked.command, proof, configuredSnapshot };
+}
+
+/** Read-only original command context. A terminal result can replay without current provider reads. */
+export async function readOrganizationSchedulePublicationSource(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, false);
+    if (
+      locked.command.status === "APPLIED" &&
+      locked.command.organization_schedule_configuration_evidence !== null
+    )
+      return { kind: "terminal" as const, command: locked.command };
+    const existing = await rows(tx, input);
+    const create = existing.find((e) => e.kind === "schedule_create"),
+      configuration = existing.find((e) => e.kind === "schedule_configure");
+    if (
+      !create ||
+      create.state !== "observed" ||
+      !create.receipt ||
+      !create.started_at ||
+      !configuration ||
+      configuration.state === "ready" ||
+      !configuration.started_at ||
+      configuration.predecessor_id !== create.id ||
+      existing.some((e) => e.kind === "schedule_release")
+    )
+      reject("original_configuration_attempt_required");
+    scope(locked, create, undefined);
+    scope(locked, configuration, create);
+    assertLease(input, locked, claim, await readPostLockDatabaseNow(tx));
+    return {
+      kind: "observe" as const,
+      create,
+      configuration,
+      apiVersion: locked.binding.apiVersion,
+    };
   });
 }

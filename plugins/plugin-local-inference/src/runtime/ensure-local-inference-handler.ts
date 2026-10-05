@@ -1116,11 +1116,6 @@ function extractTranscriptionAudio(
 			"[local-inference] TRANSCRIPTION requires PCM/WAV bytes or { pcm, sampleRateHz }",
 		);
 	}
-	if ("audioUrl" in params && typeof params.audioUrl === "string") {
-		throw new Error(
-			"[local-inference] TRANSCRIPTION audioUrl is not fetched by the local voice runtime; pass mono PCM16 WAV bytes or { pcm, sampleRateHz }",
-		);
-	}
 	if ("pcm" in params && params.pcm instanceof Float32Array) {
 		const sampleRate =
 			("sampleRateHz" in params ? params.sampleRateHz : undefined) ??
@@ -1137,6 +1132,13 @@ function extractTranscriptionAudio(
 		(params.audio instanceof Uint8Array || params.audio instanceof ArrayBuffer)
 	) {
 		return decodeMonoPcm16Wav(toUint8Array(params.audio));
+	}
+	// Checked after in-process audio: core TranscriptionParams requires an
+	// audioUrl, so callers that hold the bytes pass `audioUrl: ""` beside them.
+	if ("audioUrl" in params && typeof params.audioUrl === "string") {
+		throw new Error(
+			"[local-inference] TRANSCRIPTION audioUrl is not fetched by the local voice runtime; pass mono PCM16 WAV bytes or { pcm, sampleRateHz }",
+		);
 	}
 	throw new Error(
 		"[local-inference] TRANSCRIPTION requires mono PCM16 WAV bytes or { pcm, sampleRateHz } for the local voice runtime",

@@ -681,6 +681,38 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteEntities(entityIds: UUID[]): Promise<void> {
+    if (entityIds.length === 0) return;
+    const set = new Set(entityIds);
+    // Cascade as plugin-sql does: its deleteEntity removes components the
+    // entity owns or sourced, and the entity FKs on participants, memories,
+    // relationships and logs are ON DELETE CASCADE.
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (m) => set.has(m.entityId as UUID),
+    );
+    await this.deleteMemories(
+      memories
+        .map((memory) => memory.id)
+        .filter((id): id is UUID => id !== undefined),
+    );
+    await this.storage.deleteWhere<StoredRelationship>(
+      COLLECTIONS.RELATIONSHIPS,
+      (r) =>
+        set.has(r.sourceEntityId as UUID) || set.has(r.targetEntityId as UUID),
+    );
+    await this.storage.deleteWhere<Log>(COLLECTIONS.LOGS, (l) =>
+      set.has(l.entityId as UUID),
+    );
+    await this.storage.deleteWhere<Component>(
+      COLLECTIONS.COMPONENTS,
+      (c) =>
+        set.has(c.entityId as UUID) ||
+        (c.sourceEntityId !== undefined && set.has(c.sourceEntityId as UUID)),
+    );
+    await this.storage.deleteWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (p) => set.has(p.entityId as UUID),
+    );
     for (const id of entityIds) {
       await this.storage.delete(COLLECTIONS.ENTITIES, id);
     }
@@ -955,8 +987,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === key.entityId &&
           c.type === key.type &&
-          c.worldId === (key.worldId ?? null) &&
-          c.sourceEntityId === (key.sourceEntityId ?? null),
+          // An omitted worldId/sourceEntityId matches any value, as in
+          // plugin-sql's getComponent and getComponentsForEntities below.
+          (key.worldId === undefined || c.worldId === key.worldId) &&
+          (key.sourceEntityId === undefined ||
+            c.sourceEntityId === key.sourceEntityId),
       );
       result.push(matches[0] ?? null);
     }
@@ -2956,10 +2991,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     for (const id of roomIds) {
       await this.storage.delete(COLLECTIONS.ROOMS, id);
     }
-    // Cascade: drop participants and memories belonging to these rooms.
+    // Cascade as plugin-sql's room FKs do (participants, memories,
+    // components and logs are ON DELETE CASCADE on room_id).
     await this.storage.deleteWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => set.has(p.roomId as UUID),
+    );
+    await this.storage.deleteWhere<Component>(COLLECTIONS.COMPONENTS, (c) =>
+      set.has(c.roomId as UUID),
+    );
+    await this.storage.deleteWhere<Log>(COLLECTIONS.LOGS, (l) =>
+      set.has(l.roomId as UUID),
     );
     await this.deleteMemories(memoryIds);
   }
