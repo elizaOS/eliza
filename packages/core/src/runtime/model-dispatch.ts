@@ -991,6 +991,16 @@ export class RuntimeModelDispatch {
 			? (params as { signal?: AbortSignal }).signal
 			: undefined;
 		const contextSignal = getStreamingContext()?.abortSignal;
+		// Cancellation contract: the provider transport observes cancellation
+		// from either owner. Compose the two distinct signals once at the
+		// dispatch boundary; preserve identity when only one exists or both
+		// references are the same. The composed signal never aborts either
+		// owner's controller and retains the first abort reason; an abort
+		// surfaces as cancellation, never as provider fallback.
+		const dispatchSignal =
+			explicitSignal && contextSignal && explicitSignal !== contextSignal
+				? AbortSignal.any([explicitSignal, contextSignal])
+				: (explicitSignal ?? contextSignal);
 		const throwIfAborted = () => {
 			explicitSignal?.throwIfAborted();
 			contextSignal?.throwIfAborted();
@@ -1216,7 +1226,7 @@ export class RuntimeModelDispatch {
 				const paramsChunk = paramsAsStreaming?.onStreamChunk;
 				const ctxChunk = streamingCtx?.onStreamChunk;
 				const msgId = streamingCtx?.messageId;
-				const abortSignal = explicitSignal ?? contextSignal;
+				const abortSignal = dispatchSignal;
 				const explicitStream = paramsAsStreaming?.stream;
 				const resolvedProviderName = resolvedModel?.provider;
 				// stream: false = force no stream, otherwise stream if any callback exists.
@@ -1397,11 +1407,17 @@ export class RuntimeModelDispatch {
 					} else {
 						delete paramsAsStreaming.onStreamChunk;
 					}
-					// Plumb the streaming-context abort signal into model params so the
+					// Plumb the dispatch abort signal into model params so the
 					// underlying handler can wire it into its transport (e.g. local
-					// llama's `stopOnAbortSignal`, fetch's `signal`). Only inject when
-					// the caller didn't already pass one explicitly.
-					if (paramsAsStreaming.signal === undefined && abortSignal) {
+					// llama's `stopOnAbortSignal`, fetch's `signal`). modelParams is
+					// a handler-owned clone, so replacing an explicit signal with
+					// the composed dispatch signal never mutates the caller's
+					// request object nor aborts either owner's controller.
+					if (
+						abortSignal &&
+						(paramsAsStreaming.signal === undefined ||
+							paramsAsStreaming.signal === explicitSignal)
+					) {
 						paramsAsStreaming.signal = abortSignal;
 					}
 				}
@@ -2178,9 +2194,7 @@ export class RuntimeModelDispatch {
 						embeddingProviderOutput,
 						resultRef.current,
 						resolvedModel.provider,
-						explicitSignal && contextSignal
-							? AbortSignal.any([explicitSignal, contextSignal])
-							: (explicitSignal ?? contextSignal),
+						abortSignal,
 					);
 				}
 				return resultRef.current as R;
