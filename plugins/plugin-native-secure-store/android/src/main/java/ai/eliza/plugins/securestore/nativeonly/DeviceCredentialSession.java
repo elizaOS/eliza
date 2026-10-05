@@ -113,6 +113,8 @@ public final class DeviceCredentialSession implements AutoCloseable {
     state.putInt(stateKey, nextCode);
   }
 
+  public boolean challengePending() { mainThread(); return access.pending(); }
+
   public boolean authenticated() {
     mainThread();
     boolean allowed = access.authenticated();
