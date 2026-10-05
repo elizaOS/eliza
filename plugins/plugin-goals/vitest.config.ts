@@ -24,11 +24,15 @@ export default defineConfig({
     alias: [
       {
         find: /^@elizaos\/agent\/services\/knowledge-graph$/,
-        replacement: sourceOf("../../packages/agent/src/services/knowledge-graph/index.ts"),
+        replacement: sourceOf(
+          "../../packages/agent/src/services/knowledge-graph/index.ts",
+        ),
       },
       {
         find: /^@elizaos\/plugin-finances\/db\/finances-repository$/,
-        replacement: sourceOf("../plugin-finances/src/db/finances-repository.ts"),
+        replacement: sourceOf(
+          "../plugin-finances/src/db/finances-repository.ts",
+        ),
       },
       {
         find: /^@elizaos\/plugin-relationships$/,
