@@ -195,6 +195,12 @@ The store serializes ownership/epoch checks, sequencing and idempotency with
 writes; it never advances tasks or authorizes effects. Keep product measurement
 schemas and summaries in the host. Existing compatible tables are preserved.
 
+Trusted native hosts can use `native-host/private-runtime-launch.mjs`'s
+`readPrivateRuntimeJson` for bounded, read-only POSIX configuration reads. Hosts
+supply the byte budget and own parent-directory trust and schema validation.
+The reader rejects symlink leaves, non-regular files, unexpected ownership and
+group/other permissions; it never creates files or changes their permissions.
+
 Hosts whose runtime writes its own persistent configuration should use
 `preparePrivateRuntimeProfile` and continue passing their original config path
 to that runtime. It returns the saved token and parsed configuration without

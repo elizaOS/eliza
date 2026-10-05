@@ -11,6 +11,8 @@ export class RuntimeLaunchError extends Error {
   }
 }
 
+export { readPrivateRuntimeJson } from "./private-runtime-json.mjs";
+
 /** Literal private settings only: never expand variables or execute shell text. */
 export async function readPrivateRuntimeEnvironment(
   file,
