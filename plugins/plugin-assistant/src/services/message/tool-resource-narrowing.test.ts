@@ -5,6 +5,7 @@ import {
   ownerRemindersAction,
 } from "../../../../plugin-personal-assistant/src/actions/owner-surfaces";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task";
+import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action";
 import { preferredOperationNames } from "../../runtime/action-retrieval";
 import { retrieveContextualPlannerActions } from "./action-surface";
 
@@ -98,6 +99,41 @@ it("loads only reminder creation for the actual scheduled-reminder intent", () =
   expect(result.actions.map((action) => action.name)).toEqual([
     "OWNER_REMINDERS_CREATE",
   ]);
+});
+
+it("keeps household operations out of the captured standalone reminder request", () => {
+  const household = createHouseholdOperationsAction({
+    authorize: async () => true,
+  });
+  const result = retrieveContextualPlannerActions({
+    actions: [...actions, household],
+    query: "Remind me here to stretch my shoulders in two minutes.",
+    intents: [
+      "create a reminder to stretch shoulders in two minutes in this room",
+    ],
+    contexts: ["general", "tasks", "productivity"],
+  });
+  expect(result.actions.map((action) => action.name)).toEqual([
+    "OWNER_REMINDERS_CREATE",
+  ]);
+});
+
+it("retains explicit household discovery and task-context admission", () => {
+  const household = createHouseholdOperationsAction({
+    authorize: async () => true,
+  });
+  expect(household.contexts).toContain("tasks");
+  for (const query of [
+    "HOUSEHOLD_OPERATIONS",
+    "record household maintenance observations",
+  ]) {
+    const result = retrieveContextualPlannerActions({
+      actions: [...actions, household],
+      query,
+      contexts: ["tasks"],
+    });
+    expect(result.actions).toContain(household);
+  }
 });
 
 it("loads reminder creation for the captured one-shot set intent", () => {
