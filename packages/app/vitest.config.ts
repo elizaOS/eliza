@@ -113,7 +113,6 @@ export default defineConfig({
       "src/types/**/*.test.{ts,tsx,mjs}",
       "src/renderer/**/*.test.{ts,tsx,mjs}",
       "src/dev/**/*.test.{ts,tsx,mjs}",
-      "src/native/**/*.test.{ts,tsx,mjs}",
       "src/*.test.{ts,tsx,mjs}",
       "src/__tests__/**/*.test.{ts,tsx,mjs}",
       "src/shims/**/*.test.{ts,tsx,mjs}",

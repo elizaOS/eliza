@@ -1,24 +1,4 @@
-/** Verifies App wallpaper-grant invariant — manifest gates the wallpaper (#13452) through the package's configured test harness. */
 // @vitest-environment jsdom
-
-/**
- * Manifest-driven wallpaper-grant invariant for the real <App/> shell (#13452).
- *
- * The App.screen-background-fuzz suite proves navigation never leaks a
- * background and that the shell-owned SHARED tabs cannot bleed into opaque
- * routes. THIS suite proves the new manifest contract that closes the issue's
- * remaining scope: the resolved surface manifest is the ONLY thing that admits
- * the wallpaper, gated on the `wallpaper` capability grant. A registered plugin
- * view that DECLARES `background: "shared"` but was not granted `wallpaper`
- * NEVER paints the wallpaper — regardless of what global background state a rogue
- * view mutates — while its twin WITH the grant does. Asserted against the real
- * <App/> and its real `resolveActiveScreenBackgroundPolicy` → AppBackground
- * pipeline, not a mock of the resolver.
- *
- * Kept in a dedicated file (not appended to the fuzz suite) because the fuzz
- * file's 34-tab × multi-seed shader walk already sits at the single-worker heap
- * ceiling; this suite mounts <App/> only a handful of times so it stays light.
- */
 
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
@@ -533,18 +513,6 @@ describe("App wallpaper-grant invariant — manifest gates the wallpaper (#13452
     }
   }, 60_000);
 
-  it("a view WITH the wallpaper grant paints the wallpaper (the gate is a real switch, not always-closed)", async () => {
-    const { container, rerender } = render(<App />);
-
-    await navigate(rerender, VIEWS_TAB, "/granted-wallpaper");
-    // Exactly one background layer, and it is the wallpaper — proving the grant
-    // admits the shared background where the ungranted twin was forced opaque.
-    expect(
-      readBackgroundLayer(container).kind,
-      "granted-wallpaper view paints the wallpaper",
-    ).toBe("shader");
-  }, 60_000);
-
   it("the ungranted and granted twins differ ONLY by the grant — same declared shared background, opposite rendered result", async () => {
     const { container, rerender } = render(<App />);
 
@@ -555,7 +523,7 @@ describe("App wallpaper-grant invariant — manifest gates the wallpaper (#13452
     // Granted twin → wallpaper. Same `background: "shared"` declaration; the
     // single differentiator is `capabilities: ["wallpaper"]`.
     await navigate(rerender, VIEWS_TAB, "/granted-wallpaper");
-    expect(readBackgroundLayer(container).kind).not.toBe("opaque");
+    expect(readBackgroundLayer(container).kind).toBe("shader");
 
     // Back to the ungranted twin → opaque again (no carry-over from the granted
     // route's wallpaper).
