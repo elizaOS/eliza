@@ -306,6 +306,16 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(details.invoice.amount_paid).toBe(f.invoice.amount_paid);
     expect(details.invoice.lines.data[0]!.id).toBe(f.invoice.lines.data[0]!.id);
     expect(details.digest).toMatch(/^[a-f0-9]{64}$/);
+    const settlement = metadataBeforeReplay.renewalSettlementDetails as {
+      invoiceDetailsDigest: string;
+      payment: { amount_received: number };
+      charge: { amount_captured: number };
+      balanceHistory: unknown;
+    };
+    expect(settlement.invoiceDetailsDigest).toBe(details.digest);
+    expect(settlement.payment.amount_received).toBe(f.invoice.amount_paid);
+    expect(settlement.charge.amount_captured).toBe(f.invoice.amount_paid);
+    expect(settlement.balanceHistory).toBeNull();
     await service.recoverMissedSubscriptionEvents();
     const replayMetadata = (
       await database.query<{ metadata: Record<string, unknown> }>(
