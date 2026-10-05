@@ -1808,8 +1808,16 @@ async function hasRecentAssistantMemory(
         createdAt >= sinceMs - 2000
       );
     });
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — this read guards a live chat
+    // write; returning false here would persist a duplicate row and re-send a
+    // prior turn exactly when storage is unhealthy and retries are likely.
+    // Fail closed so the route boundary surfaces a retryable error instead.
+    throw new ElizaError("Failed to read recent assistant memory for dedupe", {
+      code: "ASSISTANT_DEDUPE_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
 export async function hasRecentVisibleAssistantMemorySince(
@@ -1914,8 +1922,15 @@ export async function getRecentVisibleAssistantMemorySince(
     return persistedAssistantTurn?.id && text
       ? { id: persistedAssistantTurn.id as UUID, text }
       : null;
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — null means "no prior reply",
+    // so swallowing a storage failure here would regenerate and re-send a
+    // prior turn's answer on rapid-fire retries. Fail closed instead.
+    throw new ElizaError("Failed to read recent visible assistant memory", {
+      code: "ASSISTANT_MEMORY_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
 export async function persistAssistantConversationMemory(
