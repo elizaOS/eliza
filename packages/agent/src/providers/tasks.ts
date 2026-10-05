@@ -13,10 +13,7 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
-import {
-  readTaskCompleted,
-  toWorkbenchTask,
-} from "../api/workbench-helpers.ts";
+import { readTaskCompleted, toWorkbenchTask } from "@elizaos/host/protocol";
 import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.ts";
 
 function formatTaskForContext(task: Task): string {

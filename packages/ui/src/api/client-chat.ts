@@ -22,6 +22,8 @@ import type {
   RequestCodingAgentContainerResponse,
   SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerResponse,
+  WorkbenchTask,
+  WorkbenchTodo,
 } from "@elizaos/contracts";
 import type {
   AccountConnectRequest,
@@ -73,8 +75,6 @@ import type {
 import type {
   WorkbenchLoadedVfsPlugin,
   WorkbenchOverview,
-  WorkbenchTask,
-  WorkbenchTodo,
   WorkbenchVfsCompileResult,
   WorkbenchVfsDiffEntry,
   WorkbenchVfsEntry,
@@ -82,6 +82,7 @@ import type {
   WorkbenchVfsQuota,
   WorkbenchVfsSnapshot,
 } from "./client-types-config";
+
 import type {
   ConnectionTestResult,
   ConversationMetadata,

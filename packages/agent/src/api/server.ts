@@ -45,6 +45,7 @@ import {
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
+  toWorkbenchTodo,
 } from "@elizaos/host/protocol";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
@@ -385,7 +386,7 @@ import {
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.ts";
-import { toWorkbenchTodo } from "./workbench-helpers.ts";
+
 import {
   DEFAULT_REPLAY_LIMIT,
   parseEventCursor,

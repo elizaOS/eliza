@@ -177,7 +177,6 @@ export * from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/wallet-evm-balance.ts";
 export * from "./api/wallet-rpc.ts";
-export * from "./api/workbench-helpers.ts";
 export * from "./api/workbench-vfs-routes.ts";
 export * from "./api/zip-utils.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
