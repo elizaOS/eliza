@@ -310,6 +310,16 @@ export interface WalletRouteDependencies {
   };
   isCloudWalletEnabled: () => boolean;
   persistConfigEnv: (key: string, value: string) => Promise<void>;
+  /**
+   * Durably stores a local wallet private key wherever `saveConfig` will not
+   * (OS-store mode strips keys from disk config). Rejects when no durable
+   * store can hold it.
+   */
+  persistWalletPrivateKey: (
+    config: ElizaConfig,
+    key: "EVM_PRIVATE_KEY" | "SOLANA_PRIVATE_KEY",
+    value: string,
+  ) => Promise<void>;
   createIntegrationTelemetrySpan: (
     args: CreateIntegrationTelemetrySpanArgs,
   ) => IntegrationTelemetrySpan;
@@ -516,6 +526,12 @@ const LOCAL_WALLET_SOURCE_ENV_KEYS: Record<WalletChain, string> = {
   evm: "WALLET_SOURCE_EVM",
   solana: "WALLET_SOURCE_SOLANA",
 };
+const WALLET_KEY_ENV_NAMES = [
+  "EVM_PRIVATE_KEY",
+  "SOLANA_PRIVATE_KEY",
+  "SOLANA_PUBLIC_KEY",
+  "WALLET_PUBLIC_KEY",
+] as const;
 type BrowserSolanaCluster = "mainnet" | "devnet" | "testnet";
 interface BrowserEvmTransactionRequest {
   broadcast: boolean;
@@ -1033,13 +1049,30 @@ export async function handleWalletRoutes(
     )
       ? "Steward vault is configured. Consider importing keys directly into the vault instead of storing plaintext keys locally."
       : undefined;
+    const envBeforeImport = Object.fromEntries(
+      WALLET_KEY_ENV_NAMES.map((name) => [name, process.env[name]]),
+    );
     const result = deps.importWallet(chain, body.privateKey);
     if (!result.success) {
       error(res, result.error ?? "Import failed", 422);
       return true;
     }
-    if (!config.env) config.env = {};
     const envKey = chain === "evm" ? "EVM_PRIVATE_KEY" : "SOLANA_PRIVATE_KEY";
+    try {
+      await deps.persistWalletPrivateKey(
+        config,
+        envKey,
+        process.env[envKey] ?? "",
+      );
+    } catch (err) {
+      for (const [name, value] of Object.entries(envBeforeImport)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      error(res, `Failed to store imported wallet key: ${String(err)}`, 500);
+      return true;
+    }
+    if (!config.env) config.env = {};
     (config.env as Record<string, string>)[envKey] = process.env[envKey] ?? "";
     persistPrimarySelection(config, chain, "local");
     let configSaveWarning: string | undefined;
@@ -1231,14 +1264,41 @@ export async function handleWalletRoutes(
       return true;
     }
     // ── Legacy local key generation (fallback) ────────────────────────
+    const evmWallet =
+      targetChain === "both" || targetChain === "evm"
+        ? deps.generateWalletForChain("evm")
+        : null;
+    const solanaWallet =
+      targetChain === "both" || targetChain === "solana"
+        ? deps.generateWalletForChain("solana")
+        : null;
+    try {
+      if (evmWallet) {
+        await deps.persistWalletPrivateKey(
+          config,
+          "EVM_PRIVATE_KEY",
+          evmWallet.privateKey,
+        );
+      }
+      if (solanaWallet) {
+        await deps.persistWalletPrivateKey(
+          config,
+          "SOLANA_PRIVATE_KEY",
+          solanaWallet.privateKey,
+        );
+      }
+    } catch (err) {
+      error(res, `Failed to store generated wallet key: ${String(err)}`, 500);
+      return true;
+    }
     if (!config.env) config.env = {};
     const generated: Array<{
       chain: WalletChain;
       address: string;
     }> = [];
     const generatedChains: WalletChain[] = [];
-    if (targetChain === "both" || targetChain === "evm") {
-      const result = deps.generateWalletForChain("evm");
+    if (evmWallet) {
+      const result = evmWallet;
       process.env.EVM_PRIVATE_KEY = result.privateKey;
       (config.env as Record<string, string>).EVM_PRIVATE_KEY =
         result.privateKey;
@@ -1247,8 +1307,8 @@ export async function handleWalletRoutes(
       generated.push({ chain: "evm", address: result.address });
       logger.info(`[eliza-api] Generated EVM wallet: ${result.address}`);
     }
-    if (targetChain === "both" || targetChain === "solana") {
-      const result = deps.generateWalletForChain("solana");
+    if (solanaWallet) {
+      const result = solanaWallet;
       setSolanaWalletEnv(result.privateKey);
       (config.env as Record<string, string>).SOLANA_PRIVATE_KEY =
         result.privateKey;

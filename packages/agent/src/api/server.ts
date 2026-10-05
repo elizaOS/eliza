@@ -54,7 +54,11 @@ import {
   resolveTradePermissionMode,
 } from "@elizaos/plugin-wallet/transactions";
 import { WebSocket, WebSocketServer } from "ws";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import {
+  isWalletOsStoreEnabledInConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "../config/config.ts";
 import {
   createDevCloudConfigAuthorityView,
   materializeDevCloudConfigAuthorityView,
@@ -71,6 +75,7 @@ import { pickRandomNames } from "../runtime/first-run-names.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
+  hasDurableHostVault,
 } from "../runtime/host-bridge.ts";
 import {
   resolvePreferredProviderId,
@@ -2635,6 +2640,20 @@ async function handleRequestForViewClient(
           }),
           isCloudWalletEnabled,
           persistConfigEnv,
+          persistWalletPrivateKey: async (config, key, value) => {
+            // saveElizaConfig strips wallet keys from disk in OS-store mode;
+            // boot hydration then reads them back from the host vault.
+            if (!isWalletOsStoreEnabledInConfig(config)) return;
+            if (!hasDurableHostVault()) {
+              throw new ElizaError(
+                `${key} cannot be stored: ELIZA_WALLET_OS_STORE keeps wallet keys out of config and this host has no durable vault`,
+                { code: "WALLET_KEY_STORE_UNAVAILABLE", context: { key } },
+              );
+            }
+            await getAgentHostBridge()
+              .sharedVault()
+              .set(key, value, { sensitive: true, caller: "wallet-routes" });
+          },
           createIntegrationTelemetrySpan: (args) =>
             createIntegrationTelemetrySpan({
               boundary: "wallet",

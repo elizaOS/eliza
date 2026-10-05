@@ -444,7 +444,7 @@ function stripIncludeDirectives(value: unknown): unknown {
   return result;
 }
 
-function isWalletOsStoreEnabledInConfig(config: ElizaConfig): boolean {
+export function isWalletOsStoreEnabledInConfig(config: ElizaConfig): boolean {
   const envConfig = config.env;
   if (!envConfig || typeof envConfig !== "object" || Array.isArray(envConfig)) {
     return false;
