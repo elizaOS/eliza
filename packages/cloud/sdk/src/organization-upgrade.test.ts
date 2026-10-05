@@ -135,3 +135,69 @@ test("confirmation and status retain the original command over authenticated HTT
     await server.stop(true);
   }
 });
+
+test("payment continuation uses a fresh authenticated POST and preserves authorization failures", async () => {
+  const seen: {
+    path: string;
+    method: string;
+    auth: string | null;
+    body: string;
+  }[] = [];
+  let denied = false;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      seen.push({
+        path: new URL(request.url).pathname,
+        method: request.method,
+        auth: request.headers.get("authorization"),
+        body: await request.text(),
+      });
+      return denied
+        ? Response.json(
+            { error: "Current manager required", code: "access_denied" },
+            { status: 403 },
+          )
+        : Response.json(
+            {
+              success: true,
+              data: {
+                command: { status: "OUTCOME_UNKNOWN" },
+                continuation: {
+                  kind: "hosted_invoice",
+                  hostedInvoiceUrl: "https://invoice.stripe.com/i/test_private",
+                },
+              },
+            },
+            { headers: { "cache-control": "no-store" } },
+          );
+    },
+  });
+  try {
+    const client = new ElizaCloudClient({
+      baseUrl: `http://127.0.0.1:${server.port}`,
+      bearerToken: "synthetic-session",
+    });
+    const response =
+      await client.continueOrganizationSubscriptionUpgradePayment(
+        "original/command",
+      );
+    expect(response.data.continuation?.kind).toBe("hosted_invoice");
+    expect(seen).toEqual([
+      {
+        path: "/api/v1/subscriptions/upgrade/original%2Fcommand/payment",
+        method: "POST",
+        auth: "Bearer synthetic-session",
+        body: "",
+      },
+    ]);
+    denied = true;
+    await expect(
+      client.continueOrganizationSubscriptionUpgradePayment("original/command"),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(seen).toHaveLength(2);
+  } finally {
+    await server.stop(true);
+  }
+});

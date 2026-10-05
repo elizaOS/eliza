@@ -83,3 +83,8 @@ idempotency key, then `readOrganizationSubscriptionUpgrade` for durable status.
 Repeated confirmation reconciles the original effect; status reads never dispatch.
 An unknown outcome is pending, not permission to create another payment or quote.
 These methods require a current organization billing-manager session.
+
+`continueOrganizationSubscriptionUpgradePayment(commandId)` retrieves a fresh
+original-invoice continuation or reconciled command status. Treat its URL as
+private ephemeral payment UI data; never persist or log it. Call again after the
+provider UI returns and use the durable command result to determine completion.

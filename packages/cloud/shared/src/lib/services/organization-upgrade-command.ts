@@ -15,7 +15,9 @@ import { logger } from "../utils/logger";
 import { dispatchOrganizationUpgrade } from "./organization-upgrade-dispatch";
 import { reconcileOriginalOrganizationUpgrade } from "./organization-upgrade-recovery";
 
-function project(command: BillingSubscriptionCommand): OrganizationSubscriptionUpgradeCommandDto {
+export function projectOrganizationSubscriptionUpgradeCommand(
+  command: BillingSubscriptionCommand,
+): OrganizationSubscriptionUpgradeCommandDto {
   if (
     !command.subscription_id ||
     command.expected_subscription_revision === null ||
@@ -54,7 +56,7 @@ export async function readOrganizationSubscriptionUpgrade(
 ) {
   const command = await readOrganizationUpgradeCommand(input);
   await verifySession();
-  return project(command);
+  return projectOrganizationSubscriptionUpgradeCommand(command);
 }
 export async function confirmOrganizationSubscriptionUpgrade(
   input: ConfirmOrganizationUpgradeInput,

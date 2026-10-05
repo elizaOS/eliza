@@ -21,6 +21,23 @@ const read = mock(async (_input: unknown, verify: () => Promise<void>) => {
   if (domainError) throw domainError;
   return { commandId, status: "APPLIED" };
 });
+const resume = mock(async (_input: unknown, verify: () => Promise<void>) => {
+  await verify();
+  if (domainError) throw domainError;
+  return {
+    command: { commandId, status: "OUTCOME_UNKNOWN" },
+    continuation: {
+      kind: "hosted_invoice",
+      hostedInvoiceUrl: "https://invoice.stripe.com/i/test_private",
+    },
+  };
+});
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-upgrade-payment",
+  () => ({
+    continueOrganizationSubscriptionUpgradePayment: resume,
+  }),
+);
 mock.module("@elizaos/cloud-shared/auth", () => ({
   requireCurrentBillingManagerSession: auth,
 }));
@@ -47,6 +64,10 @@ const status = new Hono().route(
   "/:commandId",
   (await import("../[commandId]/route")).default,
 );
+const payment = new Hono().route(
+  "/:commandId/payment",
+  (await import("../[commandId]/payment/route")).default,
+);
 const post = (body: unknown) =>
   confirm.request("/", {
     method: "POST",
@@ -58,6 +79,7 @@ beforeEach(() => {
   auth.mockResolvedValue(identity);
   submit.mockClear();
   read.mockClear();
+  resume.mockClear();
   domainError = null;
 });
 test("confirmation binds the original quote to authenticated identity and no-store", async () => {
@@ -129,3 +151,38 @@ for (const [code, expected] of [
     expect(response.status).toBe(expected);
     expect(await response.text()).not.toContain("private provider payload");
   });
+
+test("payment continuation binds current identity and is never cacheable", async () => {
+  const response = await payment.request(`/${commandId}/payment`, {
+    method: "POST",
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(resume.mock.calls[0]?.[0]).toEqual({
+    commandId,
+    organizationId: identity.organization_id,
+    actorId: identity.id,
+  });
+  expect(submit).not.toHaveBeenCalled();
+  expect(
+    (await payment.request("/bad/payment", { method: "POST" })).status,
+  ).toBe(400);
+});
+test("payment continuation revalidates the session and sanitizes unavailable provider state", async () => {
+  auth
+    .mockResolvedValueOnce(identity)
+    .mockResolvedValueOnce({ ...identity, id: commandId });
+  expect(
+    (await payment.request(`/${commandId}/payment`, { method: "POST" })).status,
+  ).toBe(403);
+  domainError = Object.assign(
+    new Error("https://invoice.stripe.com/i/private_provider_error"),
+    { code: "SUBSCRIPTION_UPGRADE_PAYMENT_UNAVAILABLE" },
+  );
+  const response = await payment.request(`/${commandId}/payment`, {
+    method: "POST",
+  });
+  expect(response.status).toBe(503);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(await response.text()).not.toContain("private_provider_error");
+});

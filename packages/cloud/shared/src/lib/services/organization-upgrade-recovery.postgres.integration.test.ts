@@ -21,6 +21,7 @@ let originalKey = "";
 let voidIntent: unknown = null;
 let historicalTargetEvent: unknown = null;
 let afterTargetSearch = async () => {};
+let afterSubscriptionRead = async () => {};
 
 process.env.ENVIRONMENT = "local";
 process.env.STRIPE_SECRET_KEY = ["sk", "test", "upgradepreview"].join("_");
@@ -160,7 +161,10 @@ mock.module("../stripe", () => ({
       },
     },
     subscriptions: {
-      retrieve: async () => (dispatched ? objects.rawSubscription : fixtureData.provider),
+      retrieve: async () => {
+        if (dispatched) await afterSubscriptionRead();
+        return dispatched ? objects.rawSubscription : fixtureData.provider;
+      },
       update: mutation,
     },
     invoices: {
@@ -220,6 +224,7 @@ async function seed(period?: { start: Date; end: Date }) {
   voidIntent = null;
   renewal = null;
   afterTargetSearch = async () => {};
+  afterSubscriptionRead = async () => {};
   dispatched = false;
   pending = false;
   writeFailure = false;
@@ -333,6 +338,192 @@ async function state(commandId: string) {
         },
       };
     }
+    async function paymentCandidate() {
+      const f = await publicCandidate();
+      pending = true;
+      const { confirmOrganizationSubscriptionUpgrade } = await import(
+        "./organization-upgrade-command"
+      );
+      const command = await confirmOrganizationSubscriptionUpgrade(f.confirm, async () => {});
+      expect(command.status).toBe("OUTCOME_UNKNOWN");
+      const paidObjects = structuredClone(objects);
+      Object.assign(objects.rawInvoice, {
+        status: "open",
+        paid: false,
+        amount_paid: 0,
+        amount_remaining: 3500,
+        charge: null,
+        hosted_invoice_url: "https://invoice.stripe.com/i/acct_fixture/test_original?s=private",
+        status_transitions: { ...objects.rawInvoice.status_transitions, paid_at: null },
+      });
+      objects.rawSubscription = structuredClone({
+        ...fixtureData.provider,
+        collection_method: "charge_automatically",
+      });
+      Object.assign(objects.rawSubscription, {
+        pending_update: {
+          billing_cycle_anchor: null,
+          expires_at: f.quote.review.prorationDate + 3600,
+          subscription_items: [
+            { id: fixtureData.source.stripe_subscription_item_id, price: "price_pro", quantity: 1 },
+          ],
+          trial_end: null,
+          trial_from_plan: false,
+        },
+      });
+      voidIntent = {
+        object: "payment_intent",
+        id: objects.rawInvoice.payment_intent,
+        invoice: objects.rawInvoice.id,
+        customer: objects.rawInvoice.customer,
+        livemode: false,
+        currency: "usd",
+        status: "requires_action",
+        amount: 3500,
+        amount_received: 0,
+        amount_capturable: 0,
+        capture_method: "automatic",
+        canceled_at: null,
+        on_behalf_of: null,
+        transfer_data: null,
+        application_fee_amount: null,
+        client_secret: "pi_synthetic_secret_private",
+      };
+      return { ...f, paidObjects };
+    }
+    test("original payment continuation never redispatches and return reconciles once", async () => {
+      const f = await paymentCandidate();
+      const { continueOrganizationSubscriptionUpgradePayment: resume } = await import(
+        "./organization-upgrade-payment"
+      );
+      const result = await resume(f.identity, async () => {});
+      expect(result.command.status).toBe("OUTCOME_UNKNOWN");
+      expect(result.continuation?.kind).toBe("hosted_invoice");
+      expect(result.continuation?.paymentState).toBe("requires_action");
+      expect(Object.keys(result.continuation!).sort()).toEqual([
+        "amountDueCents",
+        "currency",
+        "expiresAt",
+        "hostedInvoiceUrl",
+        "kind",
+        "paymentState",
+      ]);
+      expect(JSON.stringify(result)).not.toContain("pi_synthetic_secret_private");
+      expect(mutation).toHaveBeenCalledTimes(1);
+      objects = f.paidObjects;
+      pending = false;
+      const complete = await resume(f.identity, async () => {});
+      expect(complete.command.status).toBe("APPLIED");
+      expect(complete.continuation).toBeNull();
+      expect(await resume(f.identity, async () => {})).toEqual(complete);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    }, 20000);
+    test("billing-manager revocation during provider reads prevents link release", async () => {
+      const f = await paymentCandidate();
+      const { continueOrganizationSubscriptionUpgradePayment: resume } = await import(
+        "./organization-upgrade-payment"
+      );
+      afterSubscriptionRead = async () => {
+        await db.query("UPDATE users SET role='member' WHERE id=$1", [f.identity.actorId]);
+      };
+      await expect(resume(f.identity, async () => {})).rejects.toMatchObject({
+        code: "SUBSCRIPTION_PLAN_CHANGE_FORBIDDEN",
+      });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    test("session revocation after observations prevents private continuation response", async () => {
+      const f = await paymentCandidate();
+      const { continueOrganizationSubscriptionUpgradePayment: resume } = await import(
+        "./organization-upgrade-payment"
+      );
+      let checks = 0;
+      const revoked = new Error("Session revoked");
+      await expect(
+        resume(f.identity, async () => {
+          if (++checks > 1) throw revoked;
+        }),
+      ).rejects.toBe(revoked);
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    test("concurrent paid finalization returns durable completion instead of a stale link", async () => {
+      const f = await paymentCandidate();
+      const { continueOrganizationSubscriptionUpgradePayment: resume } = await import(
+        "./organization-upgrade-payment"
+      );
+      const { reconcileOriginalOrganizationUpgrade: recover } = await import(
+        "./organization-upgrade-recovery"
+      );
+      afterSubscriptionRead = async () => {
+        afterSubscriptionRead = async () => {};
+        objects = f.paidObjects;
+        pending = false;
+        await recover(f.identity);
+      };
+      const result = await resume(f.identity, async () => {});
+      expect(result.command.status).toBe("APPLIED");
+      expect(result.continuation).toBeNull();
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    test("pending expiry during provider reads withholds the payment link", async () => {
+      const f = await paymentCandidate();
+      const { continueOrganizationSubscriptionUpgradePayment: resume } = await import(
+        "./organization-upgrade-payment"
+      );
+      afterSubscriptionRead = async () => {
+        Object.assign(objects.rawSubscription, {
+          pending_update: {
+            billing_cycle_anchor: null,
+            expires_at: Math.floor(Date.now() / 1000),
+            subscription_items: [
+              {
+                id: fixtureData.source.stripe_subscription_item_id,
+                price: "price_pro",
+                quantity: 1,
+              },
+            ],
+            trial_end: null,
+            trial_from_plan: false,
+          },
+        });
+      };
+      await expect(resume(f.identity, async () => {})).rejects.toMatchObject({
+        code: "SUBSCRIPTION_UPGRADE_PAYMENT_UNAVAILABLE",
+      });
+      expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    test("provider exceptions cannot expose the private payment URL", async () => {
+      const f = await paymentCandidate();
+      const { continueOrganizationSubscriptionUpgradePayment: resume } = await import(
+        "./organization-upgrade-payment"
+      );
+      afterSubscriptionRead = async () => {
+        throw new Error("https://invoice.stripe.com/i/private_secret");
+      };
+      let failure: unknown;
+      try {
+        await resume(f.identity, async () => {});
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({ code: "SUBSCRIPTION_UPGRADE_PAYMENT_UNAVAILABLE" });
+      expect(String(failure)).not.toContain("private_secret");
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
+    test("foreign tenant cannot initiate payment continuation provider reads", async () => {
+      const f = await paymentCandidate();
+      const { continueOrganizationSubscriptionUpgradePayment: resume } = await import(
+        "./organization-upgrade-payment"
+      );
+      const read = mock(async () => {});
+      afterSubscriptionRead = read;
+      await expect(
+        resume({ ...f.identity, organizationId: randomUUID() }, async () => {}),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_PLAN_CHANGE_FORBIDDEN" });
+      expect(read).not.toHaveBeenCalled();
+      expect(mutation).toHaveBeenCalledTimes(1);
+    });
     test("public confirmation applies once and status exposes only durable public fields", async () => {
       const f = await publicCandidate();
       const {
