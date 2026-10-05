@@ -1,15 +1,8 @@
-/**
- * General-purpose helper functions extracted from server.ts.
- *
- * Utility functions for plugin services, UUID validation, state persistence,
- * config, and package root resolution. Blocked-object-key sanitization lives
- * in `blocked-object-keys.ts` and is re-exported here for existing callers.
- */
+/** Host service access, state persistence, configuration and media helpers. */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import type { ConversationMetadata } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   CHAT_UPLOAD_MIME_TYPES,
@@ -53,15 +46,11 @@ import {
 } from "../services/plugin-manager-types.ts";
 import { writeFileAtomically } from "../utils/atomic-file.ts";
 import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
-import type { ChatAttachmentWithData } from "./server-types.ts";
+import type {
+  ChatAttachmentWithData,
+  ConversationMeta,
+} from "./server-types.ts";
 
-export {
-  BLOCKED_OBJECT_GRAPH_UNBOUNDED,
-  cloneWithoutBlockedObjectKeys,
-  hasBlockedObjectKeyDeep,
-  MAX_BLOCKED_OBJECT_DEPTH,
-  MAX_BLOCKED_OBJECT_NODES,
-} from "./blocked-object-keys.ts";
 // ---------------------------------------------------------------------------
 // Service accessors
 // ---------------------------------------------------------------------------
@@ -181,17 +170,6 @@ export function initializeOGCodeInState(): void {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-// AgentStartupDiagnostics is canonical in @elizaos/core.
-export type { AgentStartupDiagnostics } from "@elizaos/core";
-/** Metadata for a web-chat conversation. */
-export interface ConversationMeta {
-  id: string;
-  title: string;
-  roomId: UUID;
-  metadata?: ConversationMetadata;
-  createdAt: string;
-  updatedAt: string;
-}
 // ---------------------------------------------------------------------------
 // First-run & config helpers
 // ---------------------------------------------------------------------------
@@ -379,7 +357,6 @@ function base64DecodesToZeroBytes(data: string): boolean {
 }
 
 // Re-exported for chat-routes and for parity tests against the client side.
-export { CHAT_UPLOAD_MIME_TYPES };
 
 const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set<string>(CHAT_UPLOAD_MIME_TYPES);
 export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =

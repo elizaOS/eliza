@@ -1472,11 +1472,6 @@ export function normalizeOpenAiCompatibleProviderConfig(
   );
   return true;
 }
-/** Redact username segments from filesystem paths to avoid leaking user info in logs. */
-function _redactUserSegments(filepath: string): string {
-  // Replace /Users/<name>/ or /home/<name>/ with /Users/<redacted>/ etc.
-  return filepath.replace(/\/(Users|home)\/[^/]+\//g, "/$1/<redacted>/");
-}
 type RuntimeAdapterWithClose = {
   close?: () => Promise<void> | void;
 };
@@ -2727,7 +2722,6 @@ export function isRecoverablePgliteInitError(err: unknown): boolean {
   if (!haystack) return false;
   const hasAbort = haystack.includes("aborted(). build with -sassertions");
   const hasPglite = haystack.includes("pglite");
-  const _hasSqlite = haystack.includes("sqlite");
   const hasMigrationsSchema =
     haystack.includes("create schema if not exists migrations") ||
     haystack.includes("failed query: create schema if not exists migrations");

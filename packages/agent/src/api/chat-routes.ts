@@ -101,6 +101,10 @@ import {
 } from "../services/chat-idempotency-service.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+} from "./blocked-object-keys.ts";
+import {
   maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
 } from "./chat-augmentation.ts";
@@ -129,14 +133,13 @@ import {
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
 import {
-  cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
-  hasBlockedObjectKeyDeep,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   validateChatImages,
 } from "./server-helpers.ts";
+
 import {
   isAuthorized,
   isServerTokenAuthorized,

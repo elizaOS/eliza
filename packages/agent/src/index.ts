@@ -43,8 +43,10 @@ export * from "./api/agent-lifecycle-routes.ts";
 export * from "./api/agent-model.ts";
 export * from "./api/agent-transfer-routes.ts";
 export * from "./api/approval-routes.ts";
+export { issueArtifactShareViewerToken } from "./api/artifact-share-role-resolver.ts";
 export * from "./api/auth-routes.ts";
 export * from "./api/backup-v2-stream-response.ts";
+export * from "./api/blocked-object-keys.ts";
 export * from "./api/bug-report-routes.ts";
 export * from "./api/character-routes.ts";
 export {
@@ -118,14 +120,23 @@ export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
 } from "./api/runtime-plugin-routes.ts";
-export { startApiServer } from "./api/server.ts";
 export {
-  cloneWithoutBlockedObjectKeys,
+  type ApiHostAdmission,
+  type ApiRequestMiddleware,
+  type ApiServerConfigurator,
+  type RuntimeRestartOptions,
+  startApiServer,
+  type WebSocketAuthorizer,
+} from "./api/server.ts";
+export {
   type DeletedConversationsStateFile,
   decodePathComponent,
+  findOwnPackageRoot,
   getAgentEventSvc,
+  getErrorMessage,
   hasPersistedFirstRunState,
   initializeOGCodeInState,
+  isUuidLike,
   persistConversationRoomTitle,
   persistDeletedConversationIdsToState,
   readDeletedConversationIdsFromState,
@@ -133,7 +144,6 @@ export {
   requireCoreManager,
   requirePluginManager,
 } from "./api/server-helpers.ts";
-
 export {
   ensureApiTokenForBindHost,
   extractAuthToken,
@@ -169,10 +179,13 @@ export type {
   ConnectorRouteHandler,
   ConversationMeta,
   PluginEntry,
+  ServerState,
+  ShareIngestItem,
 } from "./api/server-types.ts";
 export { injectApiBaseIntoHtml } from "./api/static-file-server.ts";
 export * from "./api/subscription-routes.ts";
 export * from "./api/terminal-run-limits.ts";
+export { isWaifuChatAuthorized } from "./api/waifu-chat-role-resolver.ts";
 export * from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/wallet-evm-balance.ts";
