@@ -1829,6 +1829,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
               id: parentId,
               tableName: "messages",
               agentId: publicationAgentId,
+              unique: params.parent.unique ?? true,
               createdAt: params.parent.createdAt ?? now,
             }
           : {
@@ -2307,14 +2308,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<UUID[]> {
     return this.withMemoryMutationLock(async () => {
       const ids: UUID[] = [];
-      for (const { memory, tableName, unique = false } of memories) {
+      for (const { memory, tableName, unique } of memories) {
         const id = (memory.id ?? randomUUID()) as UUID;
         const stored: StoredMemory = {
           ...persistableMemory(memory),
           id,
           tableName,
           agentId: memory.agentId ?? this.agentId,
-          unique: unique || memory.unique,
+          // plugin-sql precedence: explicit flag, then the memory's own, then
+          // the column default `true` that `unique: true` reads select on.
+          unique: unique ?? memory.unique ?? true,
           createdAt: memory.createdAt ?? Date.now(),
           metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
         };
@@ -3441,8 +3444,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (params.agentIds.length === 0) return [];
     const agentSet = new Set(params.agentIds);
     let tasks = await this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => {
-      const taskAgentId = (t as Task & { agentId?: UUID }).agentId;
-      if (taskAgentId === undefined || !agentSet.has(taskAgentId)) return false;
+      // Rows stored without an agentId belong to this database, as in
+      // taskIsVisibleToOwner.
+      if (!agentSet.has(t.agentId ?? this.agentId)) return false;
       if (params.roomId && t.roomId !== params.roomId) return false;
       if (params.worldId && t.worldId !== params.worldId) return false;
       if (params.entityId && t.entityId !== params.entityId) return false;
@@ -3480,6 +3484,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       await this.storage.set(COLLECTIONS.TASKS, id, {
         ...task,
         id,
+        // plugin-sql stamps the adapter's agent on every task; callers such as
+        // CREATE_TRIGGER and approvals omit it and read back by agentIds.
+        agentId: task.agentId ?? this.agentId,
         createdAt: storedTaskCreatedAt(task),
       });
       ids.push(id);

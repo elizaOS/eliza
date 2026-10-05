@@ -15,7 +15,6 @@ import {
   listTriggerTasks,
   type PluginModuleShape,
   readTriggerConfig,
-  resolveOAuthDir,
 } from "@elizaos/agent";
 import {
   AgentRuntime,
@@ -25,6 +24,7 @@ import {
   logger,
   type Memory,
   type Plugin,
+  resolveOAuthDir,
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";

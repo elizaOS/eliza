@@ -9,9 +9,8 @@
 import type http from "node:http";
 import type { TradePermissionMode } from "@elizaos/contracts";
 import { type AgentAutomationMode, logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
+import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/host/protocol";
 import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/transactions";
-import type { ElizaConfig } from "../config/config.ts";
 // AgentAutomationMode is canonical in @elizaos/core (imported above).
 export interface PermissionsExtraRouteContext {
   req: http.IncomingMessage;

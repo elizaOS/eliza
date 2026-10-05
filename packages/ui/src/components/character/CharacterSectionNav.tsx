@@ -1,4 +1,4 @@
-import { FramedPageNavigation } from "../../layouts/framed-page/framed-page";
+import { FramedPageNavigation } from "../../layouts/framed-page";
 import {
   navigateToSectionPath,
   normalizeSectionPath,

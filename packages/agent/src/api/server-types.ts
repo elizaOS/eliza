@@ -4,8 +4,7 @@
  * and mutate (runtime, config, agent lifecycle state, conversations, WebSocket
  * broadcast hooks, connector and pairing sessions) — plus the `PluginEntry` DTO
  * the dashboard renders, conversation/share/attachment shapes, and the
- * connector route-handler signature. Type-only; also re-exports shared
- * conversation and stream-event types for API consumers.
+ * connector route-handler signature.
  */
 import type http from "node:http";
 import type {
@@ -24,9 +23,8 @@ import type {
   StreamEventEnvelope,
   UUID,
 } from "@elizaos/core";
-
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
-import type { ElizaConfig } from "../config/config.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
@@ -40,22 +38,6 @@ export interface StoppablePairingSession {
 export interface TelegramAccountAuthSessionLike {
   stop: () => void | Promise<void>;
 }
-
-export type {
-  ConversationAutomationType,
-  ConversationMetadata,
-  ConversationScope,
-} from "@elizaos/contracts";
-export type {
-  AgentAutomationMode,
-  AgentLogEntry as LogEntry,
-  AgentStartupDiagnostics,
-  AgentStreamEventType as StreamEventType,
-  ChatImageAttachment,
-  PluginParamDef,
-  SkillEntry,
-  StreamEventEnvelope,
-} from "@elizaos/core";
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
@@ -84,8 +66,6 @@ export type ConnectorRouteHandler = (
   pathname: string,
   method: string,
 ) => Promise<boolean>;
-
-export type { TradePermissionMode } from "@elizaos/contracts";
 
 export interface PluginEntry {
   id: string;

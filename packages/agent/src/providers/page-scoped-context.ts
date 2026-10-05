@@ -10,19 +10,21 @@
  * provider-boundary failures degrade gracefully and are routed to reportError so
  * they still surface through the RECENT_ERRORS provider.
  */
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  UUID,
+
+import type { ConversationScope } from "@elizaos/contracts";
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  stringToUuid,
+  toWellFormedUnicode,
+  type UUID,
 } from "@elizaos/core";
-import { stringToUuid, toWellFormedUnicode } from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.ts";
-import type { ConversationScope } from "../api/server-types.ts";
 import {
   formatRelativeTimestampPrefix,
   formatSpeakerLabel,

@@ -1,6 +1,6 @@
 import type { TaskChoiceWidget } from "@elizaos/core/protocol";
 import { validateTaskChoiceWidget } from "@elizaos/core/protocol";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export interface TaskChoiceMessages {
   choose: string;
@@ -47,7 +47,7 @@ export function TaskChoice({
   const locked = useRef(false),
     generation = useRef(0),
     active = useRef(widget.callbackData);
-  useEffect(() => {
+  useLayoutEffect(() => {
     locked.current = false;
     active.current = widget.callbackData;
     setFailed(false);

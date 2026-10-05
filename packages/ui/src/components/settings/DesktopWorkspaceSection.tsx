@@ -21,7 +21,7 @@ import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
+import { ContentLayout } from "../../layouts/content-layout";
 import { useAppSelector } from "../../state/app-store";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { copyTextToClipboard } from "../../utils/clipboard";

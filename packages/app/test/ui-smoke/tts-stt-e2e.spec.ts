@@ -61,6 +61,8 @@ import {
   seedAppStorage,
 } from "./helpers";
 
+import { seedStewardSession } from "./helpers/test-auth";
+
 function makeSilentWav(): Buffer {
   const sampleRate = 8_000;
   const sampleCount = 800;
@@ -422,6 +424,8 @@ async function forceBrowserSpeechRecognition(page: Page): Promise<void> {
 test.beforeEach(async ({ page }) => {
   installPageDiagnosticsGuard(page);
   await seedAppStorage(page);
+  // Exercise signed-in capture rather than the Cloud login gate.
+  await seedStewardSession(page);
   await installDefaultAppRoutes(page);
 });
 

@@ -8,18 +8,22 @@
 import fs from "node:fs";
 import http from "node:http";
 import {
+  type AgentAutomationMode,
   type AgentRuntime,
+  type AgentStartupDiagnostics,
   createIntegrationTelemetrySpan,
   ElizaError,
   EventType,
   formatError,
   type IAgentRuntime,
+  type AgentLogEntry as LogEntry,
   logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
   normalizeCharacterLanguage,
   parseClampedInteger,
   resolveOwnerEntityIdOrDefault,
+  resolveStateDir,
   ServiceType,
 } from "@elizaos/core";
 import {
@@ -31,6 +35,7 @@ import {
   writeJsonResponse,
 } from "@elizaos/host";
 import {
+  type ElizaConfig,
   getHttpRuntime,
   getStylePresets,
   isMobilePlatform,
@@ -49,18 +54,14 @@ import {
   resolveTradePermissionMode,
 } from "@elizaos/plugin-wallet/transactions";
 import { WebSocket, WebSocketServer } from "ws";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   createDevCloudConfigAuthorityView,
   materializeDevCloudConfigAuthorityView,
   mergeDevCloudConfigAuthorityMutation,
 } from "../config/dev-cloud-env-authority.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
-import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
+import { resolveModelsCacheDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
 import {
   type AgentEventServiceLike,
@@ -178,8 +179,11 @@ import {
   createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
 } from "./event-hub.ts";
-import type { ApiStatusComposer } from "./health-routes.ts";
-import { responseReadinessFields } from "./health-routes.ts";
+import {
+  type ApiStatusComposer,
+  responseReadinessFields,
+} from "./health-routes.ts";
+
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
@@ -210,7 +214,6 @@ import {
   discoverPluginsFromManifest,
   getReleaseBundledPluginIds,
   isBlockedEnvKey,
-  type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
 import {
   getPluginInventory,
@@ -358,12 +361,8 @@ import {
 } from "./server-lazy-routes.ts";
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
-import type {
-  AgentAutomationMode,
-  AgentStartupDiagnostics,
-  LogEntry,
-  ServerState,
-} from "./server-types.ts";
+import type { PluginEntry, ServerState } from "./server-types.ts";
+
 import {
   injectApiBaseIntoHtml,
   isAuthProtectedRoute,
@@ -697,11 +696,6 @@ function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
   return coreWalletApiPromise;
 }
 
-export {
-  isClientVisibleNoResponse,
-  isNoResponsePlaceholder,
-  stripAssistantStageDirections,
-} from "./chat-text-helpers.ts";
 // Re-export for downstream consumers (e.g. @elizaos/app)
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
@@ -798,14 +792,9 @@ export {
   streamResponseBodyWithByteLimit,
 } from "./server-helpers-fetch.ts";
 export type {
-  AgentStartupDiagnostics,
   ConversationMeta,
-  LogEntry,
   ServerState,
   ShareIngestItem,
-  SkillEntry,
-  StreamEventEnvelope,
-  StreamEventType,
 } from "./server-types.ts";
 
 /**

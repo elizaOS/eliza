@@ -2,7 +2,7 @@
 import {
   registerEvmWalletPanel,
   registerSolanaWalletPanel,
-} from "../internal/walletPanelRegistry.js";
+} from "../walletPanelRegistry.js";
 
 // Register lazy panels once for login forms imported from either UI barrel.
 registerEvmWalletPanel({

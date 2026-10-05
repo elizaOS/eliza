@@ -25,6 +25,7 @@ import {
 } from "@elizaos/core";
 import {
   type DeploymentTargetConfig,
+  type ElizaConfig,
   getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
@@ -37,7 +38,6 @@ import {
   type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
 } from "@elizaos/host/protocol";
-import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
   captureDevCloudEnvAuthority,

@@ -14,6 +14,7 @@ import {
   type AgentRuntime,
   CHAT_UPLOAD_MIME_TYPES,
   type ChannelType,
+  type ChatImageAttachment,
   type Content,
   ContentType,
   createMessageMemory,
@@ -26,20 +27,20 @@ import {
   MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
+  resolveStateDir,
   toWellFormedUnicode,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
 import { sendJsonError } from "@elizaos/host";
 import {
+  type ElizaConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
 } from "@elizaos/host/protocol";
-import type { ElizaConfig } from "../config/config.ts";
-import { resolveStateDir } from "../config/paths.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -52,10 +53,7 @@ import {
 } from "../services/plugin-manager-types.ts";
 import { writeFileAtomically } from "../utils/atomic-file.ts";
 import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
-import type {
-  ChatAttachmentWithData,
-  ChatImageAttachment,
-} from "./server-types.ts";
+import type { ChatAttachmentWithData } from "./server-types.ts";
 
 export {
   BLOCKED_OBJECT_GRAPH_UNBOUNDED,

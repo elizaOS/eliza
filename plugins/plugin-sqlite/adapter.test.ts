@@ -176,6 +176,39 @@ describe("durable SQLite agent adapter", () => {
     expect(remaining.map((row) => row.id)).toEqual([unrelatedId]);
   });
 
+  it("stores memories without a uniqueness flag as unique, like plugin-sql", async () => {
+    const adapter = await open();
+    const plain = (text: string) => ({ ...memory(text), embedding: undefined });
+    const created = plain("created");
+    const duplicate = plain("duplicate");
+    const published = plain("published");
+    await adapter.createMemories([
+      { memory: created, tableName: "messages" },
+      { memory: duplicate, tableName: "messages", unique: false },
+    ]);
+    await adapter.publishMessageContentSegments({
+      mode: "create",
+      parent: published,
+      segments: [],
+    });
+
+    const unique = await adapter.getMemories({
+      roomId,
+      unique: true,
+      tableName: "messages",
+    });
+    expect(unique.map((row) => row.id).sort()).toEqual(
+      [created.id, published.id].sort(),
+    );
+    expect(
+      await adapter.countMemories({
+        roomIds: [roomId],
+        unique: true,
+        tableName: "messages",
+      }),
+    ).toBe(2);
+  });
+
   it("pages tasks by creation time when the later id sorts first", async () => {
     const adapter = await open();
     const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
@@ -1542,6 +1575,22 @@ it("keeps another agent's tasks out of name lookup, id lookup, and writes", asyn
   expect(named.map((task) => task.id).sort()).toEqual(
     [ownedId, unscopedId].sort(),
   );
+  // A row written before create stamped the agent is still this database's.
+  const legacyId = id();
+  await storage.set("tasks", legacyId, {
+    id: legacyId,
+    name: "Legacy",
+    tags: ["queue"],
+    metadata: {},
+  });
+  const queued = await adapter.getTasks({
+    agentIds: [agentId],
+    tags: ["queue"],
+  });
+  expect(queued.map((task) => task.id).sort()).toEqual(
+    [ownedId, unscopedId, legacyId].sort(),
+  );
+  expect(await storage.get("tasks", unscopedId)).toMatchObject({ agentId });
   expect(await adapter.getTasksByIds([foreignId, ownedId])).toEqual([
     expect.objectContaining({ id: ownedId }),
   ]);
