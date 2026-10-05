@@ -456,3 +456,148 @@ test("review receipts cannot be rewritten, deleted, transplanted or attached to 
     ),
   ).rejects.toThrow();
 });
+
+/** A provider observation that only moves the subscription's lifecycle revision forward. */
+async function advanceSubscription(organizationId: string, subscriptionId: string) {
+  const { subscriptionAuthorityRepository } = await import(
+    "../../db/repositories/subscription-authority"
+  );
+  const { subscriptionEntitlementsRepository } = await import(
+    "../../db/repositories/subscription-entitlements"
+  );
+  const current = await subscriptionAuthorityRepository.findById(organizationId, subscriptionId);
+  if (!current) throw new Error("Missing fixture subscription");
+  const {
+    id: _id,
+    organization_id: _organization,
+    lifecycle_revision: revision,
+    created_at: _created,
+    updated_at: _updated,
+    ...values
+  } = current;
+  const advanced = await subscriptionAuthorityRepository.advance({
+    organizationId,
+    subscriptionId,
+    expectedRevision: revision,
+    source: "webhook",
+    observation: "authoritative_provider_retrieval",
+    values: { ...values, provider_object_digest: randomUUID().replaceAll("-", "").repeat(2) },
+  });
+  const projection = await client
+    .getPgliteClientForTests()
+    .query<{ projection_revision: number }>(
+      "SELECT projection_revision FROM organization_entitlements WHERE organization_id=$1 AND billing_scope_id IS NULL",
+      [organizationId],
+    );
+  await subscriptionEntitlementsRepository.rebuild({
+    organizationId,
+    sourceSubscriptionId: subscriptionId,
+    sourceSubscriptionRevision: advanced.subscription.lifecycle_revision,
+    expectedProjectionRevision: Number(projection.rows[0]?.projection_revision ?? 0),
+  });
+  return advanced.subscription.lifecycle_revision;
+}
+
+test("a cancellation prepared before the subscription moved on is superseded, not left blocking", async () => {
+  update.mockClear();
+  updateImpl = async () => {
+    throw new Error("A stale prepared command must never dispatch");
+  };
+  const f = await seedCancellationTestAccount();
+  const stale = await repo.prepareCancellation(f.input);
+  const revision = await advanceSubscription(f.input.organizationId, f.input.subscriptionId);
+
+  // Replaying the same intent settles it without a provider call.
+  const replay = await cancellation.submitOrganizationSubscriptionCancellation(f.input, session);
+  expect(replay).toMatchObject({ commandId: stale.id, status: "SUPERSEDED" });
+  expect(update).not.toHaveBeenCalled();
+
+  // A new intent against the current revision is admitted.
+  const next = await repo.prepareCancellation({
+    ...f.input,
+    idempotencyKey: randomUUID(),
+    expectedSubscriptionRevision: revision,
+  });
+  expect(next.status).toBe("PREPARED");
+});
+
+test("a new intent supersedes a stale prepared cancellation that was never replayed", async () => {
+  update.mockClear();
+  const f = await seedCancellationTestAccount();
+  const stale = await repo.prepareCancellation(f.input);
+  const revision = await advanceSubscription(f.input.organizationId, f.input.subscriptionId);
+
+  const next = await repo.prepareCancellation({
+    ...f.input,
+    idempotencyKey: randomUUID(),
+    expectedSubscriptionRevision: revision,
+  });
+  expect(next.status).toBe("PREPARED");
+  const settled = await client
+    .getPgliteClientForTests()
+    .query(
+      "SELECT status,error_code,provider_started_at FROM billing_subscription_commands WHERE id=$1",
+      [stale.id],
+    );
+  expect(settled.rows).toEqual([
+    {
+      status: "SUPERSEDED",
+      error_code: "SUBSCRIPTION_CHANGED_BEFORE_DISPATCH",
+      provider_started_at: null,
+    },
+  ]);
+  expect(update).not.toHaveBeenCalled();
+});
+
+test("recovery supersedes an expired reviewed undo whose subscription moved on", async () => {
+  const f = await reviewedFixture();
+  update.mockClear();
+  const command = await repo.prepareCancellation(
+    { ...f.input, idempotencyKey: randomUUID() },
+    "resume",
+  );
+  const expired = {
+    ...f.review,
+    observedAt: new Date(Date.now() - 120000).toISOString(),
+    expiresAt: new Date(Date.now() - 60000).toISOString(),
+  };
+  await client
+    .getPgliteClientForTests()
+    .query(
+      "INSERT INTO billing_subscription_renewal_reviews(command_id,organization_id,payload,expires_at) VALUES($1,$2,$3::jsonb,$4)",
+      [command.id, f.input.organizationId, JSON.stringify(expired), expired.expiresAt],
+    );
+  await advanceSubscription(f.input.organizationId, f.input.subscriptionId);
+
+  await cancellation.recoverOrganizationSubscriptionCancellations(100);
+  expect(
+    (await repo.readCancellation({ ...f.input, commandId: command.id }, "resume")).status,
+  ).toBe("SUPERSEDED");
+  expect(update).not.toHaveBeenCalled();
+});
+
+test("a claimed cancellation with unknown outcome remains blocking after the source advances", async () => {
+  update.mockClear();
+  const f = await seedCancellationTestAccount();
+  const command = await repo.prepareCancellation(f.input);
+  const claim = await repo.claimCancellation({ ...f.input, commandId: command.id });
+  if (!claim) throw new Error("Missing fixture claim");
+  await repo.releaseCancellation(f.input, claim);
+  const revision = await advanceSubscription(f.input.organizationId, f.input.subscriptionId);
+  await expect(repo.claimCancellation({ ...f.input, commandId: command.id })).rejects.toMatchObject(
+    {
+      context: { reason: "source_changed_or_unsupported" },
+    },
+  );
+  await expect(
+    repo.prepareCancellation({
+      ...f.input,
+      idempotencyKey: randomUUID(),
+      expectedSubscriptionRevision: revision,
+    }),
+  ).rejects.toMatchObject({ context: { reason: "contradictory_command_pending" } });
+  expect((await repo.readCancellation({ ...f.input, commandId: command.id })).status).toBe(
+    "OUTCOME_UNKNOWN",
+  );
+  expect(update).not.toHaveBeenCalled();
+});
