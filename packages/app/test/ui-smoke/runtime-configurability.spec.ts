@@ -9,6 +9,7 @@ import {
   installRenderTelemetryGuard,
   seedAppStorage,
 } from "./helpers";
+import { injectFullCapabilityHost } from "./onboarding-to-home.shared";
 
 // "Local, Cloud, etc. all work out of the box and are successfully
 // configurable." Runtime/provider setup now lives in the chat transcript:
@@ -52,18 +53,6 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
       return;
     }
     await fulfillJson(route, 200, { complete: false, cloudProvisioned: false });
-  });
-}
-
-// Pretend to be a host that owns its hardware AND injects a loopback backend —
-// the shape every desktop / device shell presents to the renderer.
-async function injectFullCapabilityHost(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
-      window.location.origin;
-    (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
-      { apiBase: window.location.origin };
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }
 

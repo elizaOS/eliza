@@ -17,6 +17,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
+import { injectFullCapabilityHost } from "./onboarding-to-home.shared";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
 // first-run chat transcript rarely gets render-telemetry coverage. That surface
@@ -66,23 +67,6 @@ async function captureFirstRunRestoreEvidence(
   await testInfo.attach("first-run restore prompt video", {
     path: artifact.path,
     contentType: artifact.contentType,
-  });
-}
-
-// A full-capability host (real API base + Electrobun window marker) so the local
-// finish path would be reachable; the in-chat conductor seeds the same two
-// runtime choices (Cloud / On this device) regardless ("Bring your own keys" is
-// a provider sub-choice, not a runtime location — removed as a chip in #11509).
-async function injectFullCapabilityHost(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    // Production onboarding is cloud-only by default. This smoke explicitly
-    // exercises the retained developer-only local/remote chooser.
-    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
-    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
-      window.location.origin;
-    (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
-      { apiBase: window.location.origin };
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }
 

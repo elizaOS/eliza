@@ -40,6 +40,7 @@ import {
   selectLiveProviderAsync,
 } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import {
   attachSafeChildOutputObserver,
   formatSafeLiveStackDiagnostic,
@@ -985,7 +986,10 @@ async function ensureUiDistReady(): Promise<void> {
   const RENDERER_BUILD_TIMEOUT_MS = 1_080_000;
   const exited = await waitForChildExit(child, RENDERER_BUILD_TIMEOUT_MS);
   if (!exited) {
-    child.kill("SIGKILL");
+    // Bun's build script launches shells and compilers. Stop its owned tree
+    // before the launcher exits and reparents those descendants.
+    signalSpawnedProcessTree(child, "SIGKILL");
+    await waitForChildExit(child, 5_000);
     reportSafeProcessTimeout("renderer-build");
     throw new Error("App renderer build timed out; raw output suppressed.");
   }
@@ -1138,7 +1142,8 @@ async function ensureLiveStackOptionalViewPluginsReady(): Promise<void> {
     const BUILD_TIMEOUT_MS = 300_000;
     const exited = await waitForChildExit(child, BUILD_TIMEOUT_MS);
     if (!exited) {
-      child.kill("SIGKILL");
+      signalSpawnedProcessTree(child, "SIGKILL");
+      await waitForChildExit(child, 5_000);
       reportSafeProcessTimeout("optional-plugin-build");
       throw new Error(
         "Optional live-stack plugin build timed out; raw output suppressed.",

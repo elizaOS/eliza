@@ -652,7 +652,7 @@ test("automations overview empty state encourages creating tasks and workflows",
 
   await expect(page.getByTestId("automations-shell")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Automations" }),
+    page.getByRole("button", { name: "New automation" }),
   ).toBeVisible();
   const filterMenu = page.getByRole("button", {
     name: "Filter automations, All selected",
