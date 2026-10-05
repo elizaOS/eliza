@@ -55,7 +55,7 @@ public abstract class EmbeddedRuntimeService extends Service {
     EmbeddedRuntimeService service=current.get(type);
     EmbeddedRuntimeGroup.Endpoint endpoint=service==null||service.group==null?null:service.group.gateway();
     if(endpoint==null)throw new IOException(unavailable);
-    return service.supervisor.request(()->current.get(type)==service,()->request.execute(endpoint.port,endpoint.token),unavailable,cancelled);
+    return service.supervisor.request(()->current.get(type)==service && service.group.gateway()==endpoint,()->request.execute(endpoint.port,endpoint.token),unavailable,cancelled);
   }
   protected static void prepareRestartFor(Class<? extends EmbeddedRuntimeService> type) {
     EmbeddedRuntimeService service=current.get(type);
