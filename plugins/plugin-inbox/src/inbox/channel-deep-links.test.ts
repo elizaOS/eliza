@@ -99,7 +99,14 @@ describe("buildDeepLink — Slack", () => {
         worldMeta: { teamId: "T1" },
         messageId: "p1700000000000100",
       }),
-    ).toBe("https://app.slack.com/client/T1/C1/thread/C1-1700000000000100");
+    ).toBe("https://app.slack.com/client/T1/C1/thread/C1-1700000000.000100");
+    expect(
+      buildDeepLink("slack", {
+        roomMeta: { channelId: "C1" },
+        worldMeta: { teamId: "T1" },
+        messageId: "1700000000.000100",
+      }),
+    ).toBe("https://app.slack.com/client/T1/C1/thread/C1-1700000000.000100");
   });
 
   it("returns null without both team and channel", () => {
