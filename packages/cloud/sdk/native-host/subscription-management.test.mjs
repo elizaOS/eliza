@@ -81,7 +81,6 @@ test("management rejects stale, inconsistent and malformed server controls", () 
       (v.data.v2.subscription.value.currentPeriodEnd = new Date(
         now - 1,
       ).toISOString()),
-    (v) => (v.data.v2.subscription.value.pendingPlanKey = "pro_monthly"),
     (v) => (v.data.v2.subscription.value.state = "past_due"),
   ]) {
     const value = snapshot();
@@ -114,4 +113,17 @@ test("pending plan is read-only presentation and cannot invent cancellation elig
     assert.throws(() => project(value), /unavailable/);
   }
   assert.equal(project(snapshot()).subscription.pendingPlanKey, null);
+});
+
+test("server-proven pending plan can offer cancellation without changing the current plan", () => {
+  const value = snapshot();
+  value.data.v2.subscription.value.pendingPlanKey = "pro_monthly";
+  const result = projectSubscriptionManagement(
+    value,
+    ["plus_monthly", "pro_monthly"],
+    now,
+  );
+  assert.equal(result.subscription.planKey, "plus_monthly");
+  assert.equal(result.subscription.pendingPlanKey, "pro_monthly");
+  assert.equal(result.control.eligible, true);
 });
