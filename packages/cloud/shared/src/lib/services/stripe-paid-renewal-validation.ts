@@ -9,10 +9,8 @@ import {
   observeScheduledTargetSubscription,
 } from "./organization-schedule-target-observation";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
-import {
-  validateCancellationCustomer,
-  validatePeriodEndCancellationObservation,
-} from "./stripe-period-end-cancellation";
+import { validateCancellationCustomer } from "./stripe-period-end-cancellation";
+import { observeOrdinaryRenewalLiveSubscription } from "./stripe-renewal-live-observation";
 import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
@@ -279,7 +277,7 @@ export function validatePaidRenewal(
       );
   const start = new Date(line.period.start * 1000),
     end = new Date(line.period.end * 1000);
-  const historicalTarget = target !== undefined && end <= input.databaseNow;
+  const historicalPeriod = !input.initialPayment && !input.replayPeriod && end <= input.databaseNow;
   // A renewal paid after failed attempts settles dunning: the stored period is
   // still the one that came due, so adjacency below is unchanged.
   const dunning = source.status !== "active";
@@ -298,7 +296,7 @@ export function validatePaidRenewal(
       (start.getTime() !== target.phase.start.getTime() ||
         end.getTime() !== target.phase.end.getTime())) ||
     start > input.databaseNow ||
-    (!historicalTarget && end <= input.databaseNow) ||
+    (!historicalPeriod && end <= input.databaseNow) ||
     (input.replayPeriod || input.initialPayment
       ? start.getTime() !== source.current_period_start.getTime() ||
         end.getTime() !== source.current_period_end.getTime()
@@ -327,34 +325,32 @@ export function validatePaidRenewal(
         retainedCanceledAt: source.canceled_at,
       }
     : null;
-  const historicalObservation =
-    historicalTarget && targetInput
+  const ordinaryObservation = targetInput
+    ? null
+    : observeOrdinaryRenewalLiveSubscription({
+        source,
+        raw: input.subscription,
+        observedAt: input.databaseNow,
+        paidStart: start,
+        paidEnd: end,
+        historical: historicalPeriod,
+        binding,
+        amountCents: plan.amountCents,
+      });
+  const historicalObservation = historicalPeriod
+    ? targetInput
       ? observeScheduledTargetLiveSubscription(targetInput, subResult.data.status)
-      : null;
+      : ordinaryObservation
+    : null;
   const targetObservation = targetInput
     ? (historicalObservation ?? observeScheduledTargetSubscription(targetInput))
     : null;
-  const observed =
-    targetObservation ??
-    validatePeriodEndCancellationObservation({
-      source: {
-        ...source,
-        status: "active",
-        dunning_started_at: null,
-        grace_expires_at: null,
-        current_period_start: start,
-        current_period_end: end,
-      },
-      organizationCustomerId: input.organizationCustomerId,
-      environment: input.environment,
-      raw: input.subscription,
-      observedAt: input.databaseNow,
-      requireScheduled: false,
-      allowRetainedCanceledAt: source.canceled_at,
-    });
-  const subscriptionItemId = historicalObservation
-    ? line.subscription_item
-    : (targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id);
+  const observed = targetObservation ?? ordinaryObservation;
+  if (!observed) renewalUnavailable("live_observation_missing");
+  const subscriptionItemId =
+    historicalObservation && target
+      ? line.subscription_item
+      : (targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id);
   if (
     historicalObservation
       ? subResult.data.latest_invoice === invoice.id ||
