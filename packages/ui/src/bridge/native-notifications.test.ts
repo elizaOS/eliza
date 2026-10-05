@@ -137,6 +137,43 @@ describe("one native managed reminder presentation", () => {
       expect(native.push.presentReminderNotification).not.toHaveBeenCalled();
     },
   );
+  it("keeps muted legacy choices silent and retains the caller fallback", async () => {
+    native.push.getReminderDataCapabilities.mockResolvedValue({
+      reminderDataNotifications: true,
+      reminderPresentation: false,
+      reminderChannelSelection: true,
+    });
+    native.push.resolveReminderChannel.mockResolvedValue({
+      channelId: "eliza_updates",
+      blocked: true,
+    });
+    expect(await showNativeNotification(request)).toBe("none");
+    expect(native.push.resolveReminderChannel).toHaveBeenCalledWith({
+      priority: "high",
+      ownerType: "occurrence",
+    });
+    expect(native.push.presentReminderNotification).not.toHaveBeenCalled();
+    expect(native.local.schedule).not.toHaveBeenCalled();
+    expect(native.local.createChannel).not.toHaveBeenCalled();
+  });
+  it.each([
+    { channelId: "other", blocked: false },
+    { channelId: "eliza_updates" },
+  ])("rejects invalid native evidence %j", async (result) => {
+    native.push.getReminderDataCapabilities.mockResolvedValue({
+      reminderDataNotifications: true,
+      reminderPresentation: false,
+      reminderChannelSelection: true,
+    });
+    native.push.resolveReminderChannel.mockResolvedValue(result);
+    expect(await showNativeNotification(request)).toBe("none");
+    expect(native.push.resolveReminderChannel).toHaveBeenCalledWith({
+      priority: "high",
+      ownerType: "occurrence",
+    });
+    expect(native.push.presentReminderNotification).not.toHaveBeenCalled();
+    expect(native.local.schedule).not.toHaveBeenCalled();
+  });
   it("keeps the legacy quiet occurrence selector fallback", async () => {
     native.push.getReminderDataCapabilities.mockResolvedValue({
       reminderDataNotifications: true,
