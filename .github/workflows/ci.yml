@@ -188,6 +188,10 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Install Playwright Chromium for client browser contracts
+        if: needs.changes.outputs.client == 'true'
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+
       - name: Client tests
         if: needs.changes.outputs.client == 'true'
         run: bun run test:client
