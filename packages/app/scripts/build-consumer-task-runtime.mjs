@@ -39,9 +39,9 @@ export function buildTaskRuntime(
       [
         "errors",
         "messaging/interactive-task",
-        "messaging/interactions/sessions",
-        "messaging/interactions/profiles",
-        "messaging/interactions/profile-catalog",
+        "messaging/interaction-sessions",
+        "messaging/interaction-profiles",
+        "messaging/interaction-profile-catalog",
         "messaging/task-widgets",
       ]
         .map((name) => `export * from './packages/core/src/${name}.ts';`)
