@@ -128,8 +128,8 @@ import {
 } from "../../utils/image-attachment";
 import { isInteractiveGestureTarget } from "../../utils/interactive-gesture-target";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
+import { MessageSearchPanel } from "../chat/MessageSearchPanel";
 import { findChoiceRegions } from "../chat/message-choice-parser";
-import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { AgentProvisioningWidget } from "../chat/widgets/agent-provisioning";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import {

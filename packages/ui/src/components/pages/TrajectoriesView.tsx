@@ -34,7 +34,7 @@ import {
   FramedPage,
   FramedPageBody,
   FramedPageHeader,
-} from "../../layouts/framed-page/framed-page";
+} from "../../layouts/framed-page";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -707,9 +707,6 @@ function TrajectoriesViewForAuthority({
             />
           ) : null}
           <FramedPageHeader
-            title={t("trajectoriesview.Title", {
-              defaultValue: "Trajectories",
-            })}
             actions={contentHeader}
             className="min-w-0 flex-1 text-[color:var(--settings-foreground)]"
           />

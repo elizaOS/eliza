@@ -13,7 +13,7 @@
 import { Link } from "react-router-dom";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
-import { useCreditsBalance } from "../instances/lib/data/credits";
+import { useCreditsBalance } from "../instances/lib/credits";
 import { formatUsd } from "../lib/format-usd";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
