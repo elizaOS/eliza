@@ -1829,6 +1829,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
               id: parentId,
               tableName: "messages",
               agentId: publicationAgentId,
+              unique: params.parent.unique ?? true,
               createdAt: params.parent.createdAt ?? now,
             }
           : {
@@ -2307,14 +2308,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<UUID[]> {
     return this.withMemoryMutationLock(async () => {
       const ids: UUID[] = [];
-      for (const { memory, tableName, unique = false } of memories) {
+      for (const { memory, tableName, unique } of memories) {
         const id = (memory.id ?? randomUUID()) as UUID;
         const stored: StoredMemory = {
           ...persistableMemory(memory),
           id,
           tableName,
           agentId: memory.agentId ?? this.agentId,
-          unique: unique || memory.unique,
+          // plugin-sql precedence: explicit flag, then the memory's own, then
+          // the column default `true` that `unique: true` reads select on.
+          unique: unique ?? memory.unique ?? true,
           createdAt: memory.createdAt ?? Date.now(),
           metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
         };
