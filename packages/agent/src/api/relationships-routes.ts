@@ -292,7 +292,10 @@ export async function handleRelationshipsRoutes(
       }
       // UUIDs compare case-insensitively (UUID_REGEX is /i and the schema
       // preserves case), so normalize before the self-link check.
-      if (parsedLink.data.targetEntityId.toLowerCase() === sourceEntityId.toLowerCase()) {
+      if (
+        parsedLink.data.targetEntityId.toLowerCase() ===
+        sourceEntityId.toLowerCase()
+      ) {
         error(res, "A person cannot be linked to themselves.", 400);
         return true;
       }
