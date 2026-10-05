@@ -4,16 +4,17 @@
  * realpath workdir matching, and bound-project workdir resolution.
  */
 
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { logger, projectWorldId, stringToUuid, type UUID } from "@elizaos/core";
-import {
-  getProjectById,
-  setActiveProject,
-  upsertProject,
-  writeWorkspaceFolderConfig,
-} from "@elizaos/host";
+import { getProjectById, setActiveProject, upsertProject } from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assertProjectIdRegistered,
@@ -278,7 +279,14 @@ describe("project-binding", () => {
     // bound-workdir lock silently no-ops for every legacy install.
     const legacyDir = mkdtempSync(join(os.tmpdir(), "legacy-workdir-"));
     try {
-      writeWorkspaceFolderConfig({ path: legacyDir, bookmark: null }, env);
+      writeFileSync(
+        join(env.ELIZA_STATE_DIR, "workspace-folder.json"),
+        JSON.stringify({
+          path: legacyDir,
+          bookmark: null,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
 
       const bound = resolveTaskProjectId({ workdir: legacyDir }, env);
       expect(bound).toBeTruthy();
