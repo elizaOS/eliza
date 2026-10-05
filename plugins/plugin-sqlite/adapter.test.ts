@@ -275,6 +275,40 @@ describe("durable SQLite agent adapter", () => {
     });
   });
 
+  it("finds a component by entity and type when world and source are omitted", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const componentId = id();
+    await adapter.createAgents([{ id: agentId, name: "Form agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Forms", agentId }]);
+    await adapter.createComponents([
+      {
+        id: componentId,
+        entityId,
+        agentId,
+        roomId,
+        worldId,
+        sourceEntityId: agentId,
+        type: "form_session",
+        createdAt: 1,
+        data: { status: "active" },
+      },
+    ]);
+
+    const [omitted, sameWorld, otherWorld, otherSource] =
+      await adapter.getComponentsByNaturalKeys([
+        { entityId, type: "form_session" },
+        { entityId, type: "form_session", worldId },
+        { entityId, type: "form_session", worldId: id() },
+        { entityId, type: "form_session", sourceEntityId: id() },
+      ]);
+    expect(omitted?.id).toBe(componentId);
+    expect(sameWorld?.id).toBe(componentId);
+    expect(otherWorld).toBeNull();
+    expect(otherSource).toBeNull();
+  });
+
   it("reopens runtime records, full content and semantic search without an in-memory singleton", async () => {
     const adapter = await open();
     const worldId = id();

@@ -10,6 +10,7 @@ import type { State } from "../types/state";
 import {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
+	readTaskExtractionRequestIntents,
 } from "./task-extraction-context";
 
 function fixture() {
@@ -375,5 +376,114 @@ it("invalidates changed provider notice before rendering and keeps all originals
 		provider.text,
 	);
 	provider.discoveryText = "Forged permission";
+	expect(readTaskExtractionContext(f.state, f.message)).toBeUndefined();
+});
+
+it("exposes current intent evidence only under all unchanged binding hashes", () => {
+	const f = fixture();
+	const event = {
+		id: "handler",
+		type: "message_handler",
+		source: "message-service",
+		metadata: {
+			processMessage: "RESPOND",
+			plan: { intents: ["Create a reminder"] },
+		},
+	};
+	f.original.events = [...f.original.events, event];
+	f.projected.events = [...f.projected.events, event];
+	bindTaskExtractionContext(f.state, f.message, f.original, f.projected);
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toEqual([
+		"Create a reminder",
+	]);
+	expect(
+		readTaskExtractionRequestIntents(
+			{ ...f.state, data: { ...f.state.data } },
+			f.message,
+		),
+	).toBeUndefined();
+	expect(
+		readTaskExtractionRequestIntents(f.state, {
+			...f.message,
+			entityId: "other",
+		}),
+	).toBeUndefined();
+	f.state.values.selectedActionConversation = "changed";
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
+	f.state.values.selectedActionConversation = "first";
+	event.metadata.plan.intents.push("Also snooze an older reminder");
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
+});
+it("full context without current Stage-1 evidence grants no intent authority", () => {
+	const f = fixture();
+	bindTaskExtractionContext(f.state, f.message, f.original, f.original);
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
+});
+
+it.each(["none", "full"])(
+	"binds current intent metadata with %s historical sources without granting an extraction view",
+	(mode) => {
+		const f = fixture();
+		if (mode === "none")
+			f.original.events = f.original.events.filter(
+				(event) => event.source !== "prior-dialogue",
+			);
+		const event = {
+			id: "handler",
+			type: "message_handler",
+			source: "message-service",
+			metadata: {
+				processMessage: "RESPOND",
+				plan: { intents: ["Create a reminder"] },
+			},
+		};
+		f.original.events = [...f.original.events, event];
+		bindTaskExtractionContext(f.state, f.message, f.original, f.original);
+		expect(readTaskExtractionRequestIntents(f.state, f.message)).toEqual([
+			"Create a reminder",
+		]);
+		expect(readTaskExtractionContext(f.state, f.message)).toBeUndefined();
+		expect(
+			readTaskExtractionRequestIntents(
+				{ ...f.state, data: { ...f.state.data } },
+				f.message,
+			),
+		).toBeUndefined();
+		expect(
+			readTaskExtractionRequestIntents(f.state, {
+				...f.message,
+				id: "nested-request",
+			}),
+		).toBeUndefined();
+		expect(
+			readTaskExtractionRequestIntents(f.state, {
+				...f.message,
+				entityId: "foreign",
+			}),
+		).toBeUndefined();
+		event.metadata.processMessage = "IGNORE";
+		bindTaskExtractionContext(f.state, f.message, f.original, f.original);
+		expect(
+			readTaskExtractionRequestIntents(f.state, f.message),
+		).toBeUndefined();
+		expect(readTaskExtractionContext(f.state, f.message)).toBeUndefined();
+	},
+);
+it("retains malformed current intent and altered full-source fallback", () => {
+	const f = fixture();
+	const event = {
+		id: "handler",
+		type: "message_handler",
+		source: "message-service",
+		metadata: { processMessage: "RESPOND", plan: { intents: [""] } },
+	};
+	f.original.events = [...f.original.events, event];
+	bindTaskExtractionContext(f.state, f.message, f.original, f.original);
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
+	bindTaskExtractionContext(f.state, f.message, f.original, {
+		...f.original,
+		staticPrefix: undefined,
+	});
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
 	expect(readTaskExtractionContext(f.state, f.message)).toBeUndefined();
 });

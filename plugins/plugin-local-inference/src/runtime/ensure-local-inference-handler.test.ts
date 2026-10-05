@@ -888,6 +888,25 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("transcribes in-process audio sent beside the required empty audioUrl", async () => {
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TRANSCRIPTION,
+		);
+
+		await expect(
+			handler(runtime, {
+				audioUrl: "",
+				audio: new Uint8Array([82, 73, 70, 70]),
+				mimeType: "audio/wav",
+			}),
+		).resolves.toBe("transcribed");
+		expect(engineState.transcribePcm).toHaveBeenCalledTimes(1);
+	});
+
 	it("fails fast when the fused voice bundle is unavailable (no whisper fallback)", async () => {
 		// The fused libelizainference ASR runtime is the sole on-device
 		// transcriber. A startup failure must propagate (AGENTS.md §3) — there is

@@ -686,6 +686,17 @@ export function countSharedConversationWindows(
   return windowCount;
 }
 
+/** Error code for a merge candidate id this agent does not have. */
+export const RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND =
+  "RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND";
+
+function mergeCandidateNotFound(candidateId: UUID): ElizaError {
+  return new ElizaError(`Merge candidate ${candidateId} was not found.`, {
+    code: RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND,
+    context: { candidateId },
+  });
+}
+
 export class RelationshipsService extends Service {
   static serviceType = "relationships" as const;
 
@@ -2669,11 +2680,7 @@ export class RelationshipsService extends Service {
 			 LIMIT 1`,
     );
     const row = result.rows[0];
-    if (!row) {
-      throw new Error(
-        `[RelationshipsService] merge candidate ${candidateId} not found`,
-      );
-    }
+    if (!row) throw mergeCandidateNotFound(candidateId);
     const candidate = parseMergeCandidateRow(row);
     if (candidate.status !== "pending") {
       logger.info(
@@ -2840,12 +2847,14 @@ export class RelationshipsService extends Service {
   }
 
   async rejectMerge(candidateId: UUID): Promise<void> {
-    await this.execSql(
+    const result = await this.execSql(
       `UPDATE entity_merge_candidates
 			 SET status = 'rejected', resolved_at = now()
 			 WHERE id = ${sqlQuote(candidateId)}
-				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
+				AND agent_id = ${sqlQuote(this.runtime.agentId)}
+			 RETURNING id`,
     );
+    if (result.rows.length === 0) throw mergeCandidateNotFound(candidateId);
     logger.info(`[RelationshipsService] Rejected merge ${candidateId}`);
     this.graphServiceInstance = null;
   }

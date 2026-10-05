@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import {
+  assertOriginalCreatedScheduleCurrent,
   projectAuthenticatedScheduleEvent,
   projectOriginalScheduleResponse,
+  recoverOriginalCreatedSchedule,
 } from "./organization-schedule-effect-origin";
 
 function fixture() {
@@ -222,4 +224,124 @@ test("configure attribution binds the original create schedule and exact update 
   originalRequest.request.scheduleId = "sub_sched_owned";
   raw.created = 104;
   expect(project).toThrow();
+});
+
+function recovered(f = fixture(), originalReceipt = response()) {
+  return recoverOriginalCreatedSchedule({
+    ...f,
+    originalReceipt,
+    evidence: { kind: "event", raw: f.event },
+  });
+}
+test("created event recovers original response snapshot without transport data", () => {
+  expect(recovered()).toEqual(fixture().schedule);
+  expect(recovered(fixture(), event())).toEqual(fixture().schedule);
+});
+test("recovery requires full original body and request identity", () => {
+  for (const change of [
+    { default_settings: { default_payment_method: "pm_changed" } },
+    { phases: [{ start_date: 50, end_date: 201, items: [] }] },
+    { metadata: { changed: "value" } },
+    { id: "sub_sched_foreign" },
+  ]) {
+    const f = fixture();
+    Object.assign(f.schedule, change);
+    expect(() => recovered(f)).toThrow();
+  }
+  const f = fixture();
+  f.event.request.id = "req_other";
+  expect(() => recovered(f)).toThrow();
+});
+test("event recovery cannot replace original event identity or invent response authority", () => {
+  const f = fixture();
+  f.event.id = "evt_another";
+  expect(() => recovered(f, event())).toThrow();
+  const g = fixture();
+  expect(() =>
+    recoverOriginalCreatedSchedule({
+      ...g,
+      originalReceipt: event(),
+      evidence: {
+        kind: "response",
+        raw: Object.defineProperty(g.schedule, "lastResponse", { value: g.transport }),
+      },
+    }),
+  ).toThrow();
+});
+test("exact response recovery requires original transport and strips it from snapshot", () => {
+  const f = fixture();
+  const raw = Object.defineProperty(f.schedule, "lastResponse", { value: f.transport });
+  expect(
+    recoverOriginalCreatedSchedule({
+      ...f,
+      originalReceipt: response(),
+      evidence: { kind: "response", raw },
+    }),
+  ).toEqual(fixture().schedule);
+  expect(() =>
+    recoverOriginalCreatedSchedule({
+      ...fixture(),
+      originalReceipt: response(),
+      evidence: { kind: "response", raw: fixture().schedule },
+    }),
+  ).toThrow();
+});
+test("recovery rejects a clock before the durable observation", () => {
+  const f = fixture();
+  f.observedAt = new Date(109000);
+  expect(() => recovered(f)).toThrow();
+});
+
+test("recovery validates stored receipt kind, scope, chronology and digest", () => {
+  for (const change of [
+    { scheduleId: "sub_sched_other" },
+    { customerId: "cus_other" },
+    { subscriptionId: "sub_other" },
+    { livemode: true },
+    { providerIdempotencyKey: "another-key" },
+    { providerRequestId: "req_other" },
+    { evidenceDigest: "a".repeat(64) },
+    { observedAt: new Date(100000).toISOString() },
+    { eventId: "evt_invalidresponse" },
+  ])
+    expect(() => recovered(fixture(), { ...response(), ...change })).toThrow();
+});
+test("event recovery rejects a changed historical event envelope", () => {
+  const original = event();
+  const f = fixture();
+  f.event.created = 103;
+  expect(() => recovered(f, original)).toThrow();
+});
+
+test("fresh retrieve can establish continuity only with original creation evidence", () => {
+  const f = fixture();
+  expect(
+    assertOriginalCreatedScheduleCurrent({
+      ...f,
+      originalReceipt: response(),
+      evidence: { kind: "event", raw: f.event },
+      rawCurrentSchedule: fixture().schedule,
+    }),
+  ).toEqual(fixture().schedule);
+});
+test("current schedule changes and phase transitions reject configuration continuity", () => {
+  for (const change of [
+    { phases: [{ start_date: 50, end_date: 300, items: [] }] },
+    { default_settings: { default_payment_method: "pm_changed" } },
+    { end_behavior: "cancel" },
+    { current_phase: { start_date: 200, end_date: 300 } },
+    { status: "released" },
+    { subscription: "sub_foreign" },
+    { id: "sub_sched_other" },
+  ]) {
+    const f = fixture();
+    expect(() =>
+      assertOriginalCreatedScheduleCurrent({
+        ...f,
+        originalReceipt: response(),
+        evidence: { kind: "event", raw: f.event },
+        rawCurrentSchedule: { ...fixture().schedule, ...change },
+      }),
+    ).toThrow();
+  }
 });

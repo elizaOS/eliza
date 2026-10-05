@@ -259,6 +259,7 @@ test("keyboard-only: Tab reaches the composer, Enter sends and reveals the conve
   await expect(
     page.getByTestId("thread-line").filter({ hasText: prompt }).first(),
   ).toBeVisible({ timeout: 15_000 });
+  await expect(overlay).toHaveAttribute("data-open", "true");
 
   await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
     "data-detent",

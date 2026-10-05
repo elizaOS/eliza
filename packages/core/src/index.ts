@@ -11,6 +11,7 @@ export * from "./actions";
 export {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
+	readTaskExtractionRequestIntents,
 } from "./actions/task-extraction-context";
 export {
 	actionToTool,

@@ -405,3 +405,26 @@ it("keeps null unknown rather than a destination guess and retains timed extract
   expect(taskCreatePlanGuidance(true)).toContain("use null for mode=create");
   expect(taskCreatePlanGuidance(false)).toContain("Otherwise omit it.");
 });
+
+it("guides current app/conversation delivery without changing unknown or permission authority", () => {
+  const guidance = taskCreatePlanGuidance(true);
+  expect(guidance).toContain("delivery in the current app or conversation");
+  expect(guidance).toContain(
+    "explicitly requests Apple Reminders, including alongside app delivery",
+  );
+  expect(guidance).toContain(
+    "still permits this app's native OS notifications",
+  );
+  expect(guidance).toContain("excludes Apple Reminders projection");
+  expect(guidance).toContain("not a permission grant");
+  expect(guidance).toContain(
+    "never from quoted reminder content or an unresolved historical reference",
+  );
+  expect(
+    parseNativeTaskCreatePlan({ ...plan, nativeProjection: null }),
+  ).toBeNull();
+  expect(
+    parseNativeTaskCreatePlan({ ...plan, nativeProjection: "apple_reminders" })
+      ?.nativeProjection,
+  ).toBe("apple_reminders");
+});

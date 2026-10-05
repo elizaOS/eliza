@@ -126,6 +126,39 @@ export const billingSubscriptionCommands = pgTable(
       livePeriodEnd: string;
       observedAt: string;
     }>(),
+    organization_schedule_configuration_evidence: jsonb(
+      "organization_schedule_configuration_evidence",
+    ).$type<{
+      kind: "original_schedule_configured";
+      effectiveAt: number;
+      targetPlanKey: "plus_monthly" | "pro_monthly";
+      scheduleId: string;
+      requestDigest: string;
+      snapshotDigest: string;
+      retainedTermsDigest: string;
+      reviewDigest: string;
+      providerBindingDigest: string;
+      quoteId: string;
+      sourceDigest: string;
+      createEffectId: string;
+      configurationEffectId: string;
+      createReceiptDigest: string;
+      configurationReceiptDigest: string;
+      observedAt: string;
+    }>(),
+    organization_schedule_failure_evidence: jsonb("organization_schedule_failure_evidence").$type<{
+      kind: "original_unconfigured_schedule_released";
+      scheduleId: string;
+      quoteId: string;
+      createEffectId: string;
+      releaseEffectId: string;
+      createReceiptDigest: string;
+      releaseReceiptDigest: string;
+      snapshotDigest: string;
+      retainedTermsDigest: string;
+      sourceDigest: string;
+      observedAt: string;
+    }>(),
     error_code: text("error_code"),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     result_subscription_id: uuid("result_subscription_id"),
@@ -211,6 +244,52 @@ export const billingSubscriptionCommands = pgTable(
       ],
       name: "billing_subscription_commands_result_revision_tenant_fk",
     }).onDelete("restrict"),
+    organization_schedule_configuration_evidence_shape: check(
+      "organization_schedule_configuration_evidence_shape",
+      sql`${table.organization_schedule_configuration_evidence} IS NULL OR (
+ ${table.kind}='downgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform' AND ${table.status}='APPLIED'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence})='object'
+ AND ${table.organization_schedule_configuration_evidence}->>'kind'='original_schedule_configured'
+ AND ${table.organization_schedule_configuration_evidence}->>'targetPlanKey' IN ('plus_monthly','pro_monthly')
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'effectiveAt')='number'
+ AND ${table.organization_schedule_configuration_evidence}->>'effectiveAt' ~ '^[0-9]+$'
+ AND ${table.organization_schedule_configuration_evidence}->>'scheduleId' ~ '^sub_sched_[A-Za-z0-9]+$'
+ AND ${table.organization_schedule_configuration_evidence} ?& ARRAY['kind','effectiveAt','targetPlanKey','scheduleId','requestDigest','snapshotDigest','retainedTermsDigest','reviewDigest','providerBindingDigest','quoteId','sourceDigest','createEffectId','configurationEffectId','createReceiptDigest','configurationReceiptDigest','observedAt']
+ AND ${table.organization_schedule_configuration_evidence}-ARRAY['kind','effectiveAt','targetPlanKey','scheduleId','requestDigest','snapshotDigest','retainedTermsDigest','reviewDigest','providerBindingDigest','quoteId','sourceDigest','createEffectId','configurationEffectId','createReceiptDigest','configurationReceiptDigest','observedAt']='{}'::jsonb
+ AND ${table.organization_schedule_configuration_evidence}->>'requestDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'snapshotDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'retainedTermsDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'reviewDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'providerBindingDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'quoteId')='string'
+ AND ${table.organization_schedule_configuration_evidence}->>'sourceDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'createEffectId')='string'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'configurationEffectId')='string'
+ AND ${table.organization_schedule_configuration_evidence}->>'createReceiptDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'configurationReceiptDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'observedAt')='string'
+) IS TRUE`,
+    ),
+    organization_schedule_failure_evidence_shape: check(
+      "organization_schedule_failure_evidence_shape",
+      sql` ${table.organization_schedule_failure_evidence} IS NULL OR (
+  ${table.kind}='downgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform'
+  AND ${table.status}='FAILED' AND ${table.error_code}='ORIGINAL_SCHEDULE_CREATE_COMPENSATED'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence})='object'
+  AND ${table.organization_schedule_failure_evidence}->>'kind'='original_unconfigured_schedule_released'
+  AND ${table.organization_schedule_failure_evidence}->>'scheduleId' ~ '^sub_sched_[A-Za-z0-9]+$'
+  AND ${table.organization_schedule_failure_evidence}->>'createReceiptDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'releaseReceiptDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'snapshotDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'retainedTermsDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'sourceDigest' ~ '^[a-f0-9]{64}$'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'quoteId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'createEffectId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'releaseEffectId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'observedAt')='string'
+  AND ${table.organization_schedule_failure_evidence}-ARRAY['kind','scheduleId','createReceiptDigest','releaseReceiptDigest','snapshotDigest','retainedTermsDigest','sourceDigest','quoteId','createEffectId','releaseEffectId','observedAt']='{}'::jsonb
+ ) IS TRUE`,
+    ),
     organization_upgrade_failure_evidence_shape: check(
       "organization_upgrade_failure_evidence_shape",
       sql`
@@ -247,7 +326,7 @@ export const billingSubscriptionCommands = pgTable(
     ),
     cancellation_result_check: check(
       "billing_subscription_commands_cancellation_result_check",
-      sql`${table.app_id} IS NOT NULL OR ((${table.kind} IN ('cancel','resume','upgrade') AND ${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id} = ${table.subscription_id} AND ${table.result_subscription_revision} IS NOT NULL AND ${table.result_subscription_revision} > 0) OR ((${table.kind} NOT IN ('cancel','resume','upgrade') OR ${table.status} <> 'APPLIED') AND ${table.result_subscription_revision} IS NULL))`,
+      sql`(${table.app_id} IS NOT NULL OR ((${table.kind} IN ('cancel','resume','upgrade') AND ${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id} = ${table.subscription_id} AND ${table.result_subscription_revision} IS NOT NULL AND ${table.result_subscription_revision} > 0) OR ((${table.kind} NOT IN ('cancel','resume','upgrade') OR ${table.status} <> 'APPLIED') AND ${table.result_subscription_revision} IS NULL))) OR (${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.kind}='downgrade' AND ${table.status}='APPLIED' AND ${table.organization_schedule_configuration_evidence} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id}=${table.subscription_id} AND ${table.result_subscription_revision}=${table.expected_subscription_revision}+1) IS TRUE`,
     ),
     id_organization_unique: uniqueIndex("billing_subscription_commands_id_org_idx").on(
       table.id,
@@ -314,7 +393,7 @@ export const billingSubscriptionCommands = pgTable(
     ),
     status_shape_check: check(
       "billing_subscription_commands_status_shape_check",
-      sql`(${table.status} = 'PREPARED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'OUTCOME_UNKNOWN' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUCCEEDED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'APPLIED' AND (${table.billing_scope_id} IS NOT NULL OR ${table.kind} IN ('checkout','cancel','resume','upgrade')) AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND (${table.result_subscription_id} IS NOT NULL OR ${table.kind} = 'import') AND ${table.applied_at} IS NOT NULL) OR (${table.status} = 'FAILED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUPERSEDED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL)`,
+      sql`(${table.status} = 'PREPARED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'OUTCOME_UNKNOWN' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUCCEEDED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'APPLIED' AND (${table.billing_scope_id} IS NOT NULL OR ${table.kind} IN ('checkout','cancel','resume','upgrade') OR (${table.kind}='downgrade' AND ${table.organization_schedule_configuration_evidence} IS NOT NULL)) AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND (${table.result_subscription_id} IS NOT NULL OR ${table.kind} = 'import') AND ${table.applied_at} IS NOT NULL) OR (${table.status} = 'FAILED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUPERSEDED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL)`,
     ),
   }),
 );

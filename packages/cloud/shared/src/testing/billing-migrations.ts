@@ -49,6 +49,8 @@ export async function installBillingCommandEvidenceTestColumns(
   for (const tag of [
     "0518_organization_upgrade_historical_settlement",
     "0519_organization_upgrade_void_result",
+    "0524_organization_schedule_compensation_result",
+    "0525_organization_schedule_configured_result",
   ]) {
     const migration = await readFile(
       new URL(`../db/migrations/${tag}.sql`, import.meta.url),
