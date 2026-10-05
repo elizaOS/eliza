@@ -1,5 +1,9 @@
 /** Deployment must discover the same scheduling migrations exercised by local fixtures. */
 import { expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { loadCanonicalMigrations } from "../../../scripts/admin/canonical-migration-ledger";
 
 test("canonical deployment ledger includes ordered downgrade quote, effect and retained-term migrations", async () => {
@@ -34,4 +38,37 @@ test("canonical deployment ledger includes ordered downgrade quote, effect and r
       sql.includes("CREATE TABLE organization_schedule_quote_terms"),
     ),
   ).toBeTrue();
+});
+
+test("isolated Cloud working directories cannot replace the canonical migration ledger", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "cloud-ledger-cwd-"));
+  try {
+    const expected = (await loadCanonicalMigrations()).map((m) => m.hash).join("\n");
+    const moduleUrl = new URL(
+      "../../../scripts/admin/canonical-migration-ledger.ts",
+      import.meta.url,
+    ).href;
+    const run = () =>
+      spawnSync(
+        process.execPath,
+        [
+          "--config=/dev/null",
+          "-e",
+          `import { loadCanonicalMigrations } from ${JSON.stringify(moduleUrl)}; console.log((await loadCanonicalMigrations()).map(m => m.hash).join("\\n"));`,
+        ],
+        { cwd, encoding: "utf8" },
+      );
+    for (const shadow of [false, true]) {
+      if (shadow) {
+        const directory = path.join(cwd, "packages/cloud/shared/src/db/migrations/meta");
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(path.join(directory, "_journal.json"), JSON.stringify({ entries: [] }));
+      }
+      const result = run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe(expected);
+    }
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });
