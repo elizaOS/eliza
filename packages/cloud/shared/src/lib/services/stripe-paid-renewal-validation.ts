@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
+import type { proveOriginalConfiguredTarget } from "./organization-schedule-target-authority";
+import { observeScheduledTargetSubscription } from "./organization-schedule-target-observation";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   validateCancellationCustomer,
@@ -131,6 +133,8 @@ export interface PaidRenewalObjects {
   customer: unknown;
   paymentIntent: unknown;
   charge: unknown;
+  /** Fresh authenticated schedule for an originally configured pending target. */
+  scheduledSchedule?: unknown;
 }
 export function validatePaidRenewal(
   input: PaidRenewalObjects & {
@@ -140,6 +144,7 @@ export function validatePaidRenewal(
     databaseNow: Date;
     replayPeriod?: boolean;
     initialPayment?: boolean;
+    scheduledTarget?: ReturnType<typeof proveOriginalConfiguredTarget>;
   },
 ) {
   const invoiceResult = (
@@ -179,12 +184,30 @@ export function validatePaidRenewal(
     !Number.isFinite(input.databaseNow.getTime())
   )
     renewalUnavailable("invalid_source_period_or_clock");
-  const plan = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version);
-  const binding = resolveSubscriptionProviderBinding(
-    input.environment,
-    source.plan_key,
+  const target = input.scheduledTarget;
+  if (
+    target &&
+    (input.initialPayment ||
+      input.replayPeriod ||
+      target.originalSubscriptionRevision !== source.lifecycle_revision ||
+      target.targetPlanKey !== source.pending_plan_key)
+  )
+    renewalUnavailable("scheduled_target_source_changed");
+  const plan = resolveSubscriptionPlanDefinition(
+    target?.targetPlanKey ?? source.plan_key,
     source.catalog_version,
   );
+  const binding = target
+    ? {
+        priceId: target.binding.targetPriceId,
+        productId: target.binding.targetProductId,
+        expectedLivemode: target.binding.livemode,
+      }
+    : resolveSubscriptionProviderBinding(
+        input.environment,
+        source.plan_key,
+        source.catalog_version,
+      );
   const start = new Date(line.period.start * 1000),
     end = new Date(line.period.end * 1000);
   // A renewal paid after failed attempts settles dunning: the stored period is
@@ -196,11 +219,14 @@ export function validatePaidRenewal(
     (!dunning && (source.dunning_started_at !== null || source.grace_expires_at !== null)) ||
     source.cancel_at_period_end ||
     source.ended_at !== null ||
-    source.pending_plan_key !== null ||
+    (!target && source.pending_plan_key !== null) ||
     source.catalog_version !== "v1" ||
     !Number.isFinite(start.getTime()) ||
     !Number.isFinite(end.getTime()) ||
     start >= end ||
+    (target &&
+      (start.getTime() !== target.phase.start.getTime() ||
+        end.getTime() !== target.phase.end.getTime())) ||
     start > input.databaseNow ||
     end <= input.databaseNow ||
     (input.replayPeriod || input.initialPayment
@@ -211,36 +237,53 @@ export function validatePaidRenewal(
       (source.canceled_at === null ? null : source.canceled_at.getTime() / 1000)
   )
     renewalUnavailable("unsupported_source_or_period");
-  validateCancellationCustomer({
-    raw: input.customer,
-    source,
-    organizationCustomerId: input.organizationCustomerId,
-    environment: input.environment,
-  });
+  if (!target)
+    validateCancellationCustomer({
+      raw: input.customer,
+      source,
+      organizationCustomerId: input.organizationCustomerId,
+      environment: input.environment,
+    });
   // This is structural validation of the new period; the old→new adjacency above remains authoritative.
-  const observed = validatePeriodEndCancellationObservation({
-    source: {
-      ...source,
-      status: "active",
-      dunning_started_at: null,
-      grace_expires_at: null,
-      current_period_start: start,
-      current_period_end: end,
-    },
-    organizationCustomerId: input.organizationCustomerId,
-    environment: input.environment,
-    raw: input.subscription,
-    observedAt: input.databaseNow,
-    requireScheduled: false,
-    allowRetainedCanceledAt: source.canceled_at,
-  });
+  const targetObservation = target
+    ? observeScheduledTargetSubscription({
+        source,
+        authority: target,
+        organizationCustomerId: input.organizationCustomerId,
+        rawSubscription: input.subscription,
+        rawCustomer: input.customer,
+        invoiceId: invoice.id,
+        observedAt: input.databaseNow,
+        retainedCanceledAt: source.canceled_at,
+      })
+    : null;
+  const observed =
+    targetObservation ??
+    validatePeriodEndCancellationObservation({
+      source: {
+        ...source,
+        status: "active",
+        dunning_started_at: null,
+        grace_expires_at: null,
+        current_period_start: start,
+        current_period_end: end,
+      },
+      organizationCustomerId: input.organizationCustomerId,
+      environment: input.environment,
+      raw: input.subscription,
+      observedAt: input.databaseNow,
+      requireScheduled: false,
+      allowRetainedCanceledAt: source.canceled_at,
+    });
+  const subscriptionItemId =
+    targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id;
   if (
     invoice.subscription !== source.stripe_subscription_id ||
     invoice.customer !== source.stripe_customer_id ||
     invoice.livemode !== binding.expectedLivemode ||
     subResult.data.latest_invoice !== invoice.id ||
     line.subscription !== source.stripe_subscription_id ||
-    line.subscription_item !== source.stripe_subscription_item_id ||
+    line.subscription_item !== subscriptionItemId ||
     line.price.id !== binding.priceId ||
     line.price.product !== binding.productId ||
     [
@@ -268,6 +311,9 @@ export function validatePaidRenewal(
     renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
   return {
     invoiceId: invoice.id,
+    planKey: plan.key,
+    subscriptionItemId,
+    scheduledTarget: target !== undefined,
     start,
     end,
     amount: plan.allowance.amountUsd,
@@ -282,8 +328,8 @@ export function validatePaidRenewal(
           invoice.id,
           source.stripe_customer_id,
           source.stripe_subscription_id,
-          source.stripe_subscription_item_id,
-          source.plan_key,
+          subscriptionItemId,
+          plan.key,
           source.catalog_version,
           line.id,
           line.period.start,

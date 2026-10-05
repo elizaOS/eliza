@@ -84,7 +84,7 @@ Command orchestration, public confirmation, renewal settlement and live provider
 product adoption. Cleanup proof currently requires the original billing period and does
 not claim renewal-crossing recovery.
 
-The canonical migration journal includes 0520–0525 in order. Scheduling deployment
+The canonical migration journal includes 0520–0526 in order. Scheduling deployment
 must use the journal-driven migration runner; loading SQL directly in a test fixture
 alone does not establish deployment discovery. The scheduling ledger regression
 exercises the same canonical migration loader used by that runner.
@@ -93,5 +93,11 @@ exercises the same canonical migration loader used by that runner.
 Renewal and missed-event recovery retain the original checkout account binding after a
 paid organization upgrade. The current price/product come from the applied upgrade's
 immutable quote and complete subsequent source revision history, not rotated environment
-prices. Unsupported or missing lineage remains unavailable. Scheduled target settlement
-and its later paid binding still require the dedicated downgrade renewal path.
+prices. Unsupported or missing lineage remains unavailable. The scheduled renewal path
+proves the retained original schedule and active target phase before atomically publishing
+the paid lower plan and allowance. Later renewals retain its reviewed price through the
+paid target revision and original grant. Distinct deliveries of an already-funded invoice
+acknowledge immutable payment records without changing current source, entitlement or
+spendable balances. This path currently supports full-price captured payments; retained
+adjustments, delayed/dunning settlement, released schedules and public orchestration remain
+required before product adoption.

@@ -486,6 +486,9 @@ jobs:
             packages/cloud/shared/src/lib/services/organization-schedule-event-search.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-configuration-proof.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-reviewed-configuration.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-target-phase.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-target-authority.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-target-observation.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-publication.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-release-proof.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-dispatch.test.ts \

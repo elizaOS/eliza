@@ -8,6 +8,7 @@ import { subscriptionBillingOperationsRepository as operations } from "../../db/
 import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
 import {
   finalizePaidRenewal,
+  finalizeRecordedPaidRenewal,
   PAID_RENEWAL_DISPOSITION,
 } from "../../db/repositories/subscription-renewal-finalization";
 import { billingSubscriptions } from "../../db/schemas/billing-subscriptions";
@@ -159,6 +160,21 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     renewalUnavailable("receipt_lease_unavailable");
   try {
     const projection = await subscriptionEntitlementsRepository.find(source.organization_id);
+    // A distinct delivery of an already-funded invoice needs no current price, schedule or payment reads.
+    // The transaction validates the original invoice, paid revision, grant and this delivery's live lease.
+    if (
+      await finalizeRecordedPaidRenewal({
+        ...lease,
+        subscriptionId: source.id,
+        invoiceId: event.data.object.id,
+        invoice: fetchedInvoice,
+        expectedSubscriptionRevision: source.lifecycle_revision,
+        expectedProjectionRevision: projection?.projection_revision ?? null,
+        providerEventId: event.id,
+        eventCreatedAt: created,
+      })
+    )
+      return;
     const objects = await retrievePaidRenewalObjects(source, event.data.object.id, requireStripe());
     await finalizePaidRenewal({
       ...lease,
