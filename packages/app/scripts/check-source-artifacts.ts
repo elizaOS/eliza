@@ -12,7 +12,6 @@ const allowed = new Set([
   "packages/app/vite-env.d.ts",
   "packages/app/platforms/electrobun/src/types/web-speech.d.ts",
   "packages/app/src/env-prefix.d.ts",
-  "packages/app/src/types/side-effect-app-modules.d.ts",
   "packages/app/test/utils/get-free-port.d.ts",
 ]);
 const files = execFileSync(

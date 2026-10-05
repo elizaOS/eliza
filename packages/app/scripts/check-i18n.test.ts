@@ -16,10 +16,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 const { runI18nCheck } = await import(
-  new URL("../check-i18n.ts", import.meta.url).href
+  new URL("./check-i18n.ts", import.meta.url).href
 );
 
-const REAL_REPO_ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
+const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
 interface CheckResult {
   ok: boolean;

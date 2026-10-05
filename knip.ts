@@ -222,7 +222,6 @@ const config = {
         "scripts/playwright-ui-live-stack.ts",
         "scripts/release-check.ts",
         "scripts/run-release-check.ts",
-        "scripts/testing/start-eliza-live.ts",
         "scripts/visual-qa-report.ts",
         "scripts/voice-attribution-smoke.ts",
         "scripts/mobile/android/qualify-consumer-host.mjs",

@@ -12,7 +12,7 @@
 import type { ChildProcess } from "node:child_process";
 import { resolveDesktopUiPort } from "@elizaos/host/protocol";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme.js";
+import { theme } from "../terminal.js";
 
 async function isPortListening(
   port: number,

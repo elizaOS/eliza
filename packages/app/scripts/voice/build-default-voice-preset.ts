@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Build `cache/voice-preset-default.bin` — the precomputed default-voice
  * speaker preset (embedding + seed-phrase PCM) that ships *inside* an
@@ -40,7 +40,7 @@
  * missing/flag-shaped values fail before any output path is created.
  *
  * Run with `bun` (it resolves the `.ts` imports):
- *   bun packages/app/scripts/voice-preset/build-default-voice-preset.ts --placeholder
+ *   bun packages/app/scripts/voice/build-default-voice-preset.ts --placeholder
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -283,7 +283,7 @@ async function main() {
     process.exit(2);
   }
 
-  let embedding;
+  let embedding: Float32Array;
   let phrases = [];
 
   if (args.placeholder) {

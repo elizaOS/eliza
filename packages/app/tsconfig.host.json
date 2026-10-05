@@ -54,7 +54,6 @@
     "src/browser.ts",
     "src/styles",
     "src/boot-profile.ts",
-    "src/first-run",
     "src/api",
     "src/index.ts",
     "src/entry-cloud-api-key.ts",

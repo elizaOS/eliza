@@ -8,7 +8,7 @@ import {
   checkHostConfig,
   checkPort,
   runAllChecks,
-} from "./checks";
+} from "./doctor";
 
 const directories: string[] = [];
 afterEach(() => {

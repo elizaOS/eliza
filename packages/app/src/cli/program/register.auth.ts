@@ -24,8 +24,8 @@ import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { isLoopbackBindHost } from "@elizaos/core/protocol";
 import { readAliasedEnv, resolveApiBindHost } from "@elizaos/host/protocol";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
+import { theme } from "../terminal.js";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
 const RESET_PROOF_FILENAME = "RESET_PROOF.txt";

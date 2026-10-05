@@ -21,11 +21,10 @@ import {
   buildStaticAssetManifest,
   validateStaticAssetManifest,
   writeStaticAssetManifest,
-} from "../lib/static-asset-manifest.ts";
+} from "./lib/static-asset-manifest.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..",
   "..",
   "..",
   "..",
