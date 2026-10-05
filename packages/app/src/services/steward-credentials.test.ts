@@ -145,7 +145,7 @@ function legacyFixture() {
         ? { ok: false, reason: "not_found" }
         : { ok: true, value };
     },
-    set: vi.fn(async (_vault, kind, value) => {
+    set: vi.fn<PlatformSecureStore["set"]>(async (_vault, kind, value) => {
       secrets.set(kind, value);
       return { ok: true };
     }),
