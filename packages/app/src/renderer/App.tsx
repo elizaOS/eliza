@@ -1368,10 +1368,10 @@ function ViewUnavailableFallback({
   viewId: string;
   pageLayout?: PageLayoutManifest;
 }): ReactNode {
-  const { refresh } = useAvailableViews();
+  const { refresh, error } = useAvailableViews();
   return (
     <AppWorkspaceContent pageLayout={pageLayout}>
-      <ViewUnavailableState viewId={viewId} onRetry={refresh} />
+      <ViewUnavailableState viewId={viewId} onRetry={refresh} error={error} />
     </AppWorkspaceContent>
   );
 }
