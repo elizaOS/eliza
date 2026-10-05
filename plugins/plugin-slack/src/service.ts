@@ -3243,6 +3243,10 @@ export class SlackService extends Service implements ISlackService {
     const historyMessages = threadTs
       ? await this.readThreadReplies(channelId, threadTs, undefined, accountId)
       : await this.readHistory(channelId, undefined, accountId);
+    // Stored history (`slackMessageToMemory`) attributes this account's own
+    // bot posts to the agent; apply the same rule here so the same message
+    // does not surface as a separate participant through cached context.
+    const botUserId = this.getBotUserIdForAccount(accountId);
     const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
     for (const message of historyMessages.slice().reverse()) {
       const text = String(message.text ?? "");
@@ -3250,12 +3254,18 @@ export class SlackService extends Service implements ISlackService {
         continue;
       }
       const userId = message.user ?? message.botId;
+      const fromAgent =
+        userId !== undefined && botUserId !== null && userId === botUserId;
       const user =
         typeof message.user === "string"
           ? await this.getUser(message.user, accountId)
           : null;
       recentMessages.push({
-        entityId: userId ? (userId as UUID) : undefined,
+        entityId: fromAgent
+          ? this.runtime.agentId
+          : userId
+            ? (userId as UUID)
+            : undefined,
         name: user ? getSlackUserDisplayName(user) : userId,
         text,
         timestamp: Number(message.ts) * 1000 || undefined,
