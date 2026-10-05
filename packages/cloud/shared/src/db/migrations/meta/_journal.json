@@ -3431,6 +3431,34 @@
       "when": 1796083200137,
       "tag": "0519_organization_upgrade_void_result",
       "breakpoints": true
+    },
+    {
+      "idx": 490,
+      "version": "7",
+      "when": 1796083200138,
+      "tag": "0520_organization_downgrade_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 491,
+      "version": "7",
+      "when": 1796083200139,
+      "tag": "0521_organization_schedule_effects",
+      "breakpoints": true
+    },
+    {
+      "idx": 492,
+      "version": "7",
+      "when": 1796083200140,
+      "tag": "0522_organization_schedule_quote_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 493,
+      "version": "7",
+      "when": 1796083200141,
+      "tag": "0523_organization_schedule_compensation",
+      "breakpoints": true
     }
   ]
 }

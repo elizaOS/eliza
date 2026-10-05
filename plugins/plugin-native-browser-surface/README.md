@@ -124,3 +124,5 @@ browser split. The same permission check runs on host resume. A closed-window
 event carries `permission-revoked`; task and microphone state remain host-owned.
 Android may kill the process when permission changes, so this recovery does not
 establish process-death persistence. The permission watcher is removed on destroy.
+
+`SubmittedNavigation` from `./submitted-navigation` owns submitted-address history, stale-check fencing and revision-bound explicit one-time overrides. Hosts validate/resolve addresses and supply a verdict check. Failed checks stay unavailable. Hosts retain warning/confirmation UI, sandbox configuration and all navigation authorization. This controller cannot observe internal iframe navigation or certify loaded content.

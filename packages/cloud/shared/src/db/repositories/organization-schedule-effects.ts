@@ -245,6 +245,7 @@ export async function claimOrganizationSchedule(
     }
     const current = await rows(tx, input);
     const active =
+      current.find((x) => x.kind === "schedule_release") ??
       current.find((x) => x.kind === "schedule_configure") ??
       current.find((x) => x.kind === "schedule_create");
     if (!active) reject("original_effect_missing");
@@ -415,7 +416,7 @@ async function recordReceipt(
       receipt.providerIdempotencyKey !== effect.provider_idempotency_key ||
       observedAt < effect.started_at ||
       observedAt > now ||
-      (effect.request_payload.kind === "schedule_configure" &&
+      (effect.request_payload.kind !== "schedule_create" &&
         receipt.scheduleId !== effect.request_payload.scheduleId)
     )
       reject("receipt_scope_changed");
@@ -476,5 +477,156 @@ export async function finishOrganizationScheduleAttempt(input: Identity, claim: 
       })
       .where(eq(commands.id, c.id));
     return true;
+  });
+}
+
+/** Private original review and retained terms for a manager-owned dispatch attempt.
+ * Provider I/O happens after commit, followed by the existing irreversible marker fence.
+ */
+async function readOrganizationScheduleExecutionSource(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+  purpose: "dispatch" | "configuration",
+) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, true);
+    const captured = await currentSource(tx, input, locked);
+    const existing = await rows(tx, input);
+    const effect = existing.find((row) => row.id === effectId);
+    const now = await readPostLockDatabaseNow(tx);
+    assertLease(input, locked, claim, now);
+    if (
+      !effect ||
+      (purpose === "dispatch"
+        ? effect.state !== "ready"
+        : effect.state !== "observed" ||
+          effect.kind !== "schedule_create" ||
+          !effect.receipt ||
+          !effect.started_at) ||
+      locked.quote.expires_at <= now ||
+      !locked.retained
+    )
+      reject("effect_not_dispatchable");
+    scope(
+      locked,
+      effect,
+      existing.find((row) => row.id === effect.predecessor_id),
+    );
+    return {
+      ...captured,
+      review: locked.quote.review,
+      providerBinding: locked.binding,
+      retainedTerms: locked.retained.snapshot,
+      quoteId: locked.quote.id,
+      effect,
+      predecessor: existing.find((row) => row.id === effect.predecessor_id) ?? null,
+      checkedAt: now,
+    };
+  });
+}
+
+export function readOrganizationScheduleDispatchSource(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+) {
+  return readOrganizationScheduleExecutionSource(input, claim, effectId, "dispatch");
+}
+export function readOrganizationScheduleConfigurationSource(
+  input: Identity,
+  claim: Claim,
+  createEffectId: string,
+) {
+  return readOrganizationScheduleExecutionSource(input, claim, createEffectId, "configuration");
+}
+
+/** Original intent authorizes cleanup even after review expiry or manager revocation.
+ * Only a proven original create with no started configuration is eligible.
+ */
+async function lockCompensation(tx: DbTransaction, input: Identity, claim: Claim) {
+  const locked = await lockOriginal(tx, input, false),
+    existing = await rows(tx, input);
+  const now = await readPostLockDatabaseNow(tx);
+  assertLease(input, locked, claim, now);
+  const create = existing.find((row) => row.kind === "schedule_create");
+  if (
+    !locked.retained ||
+    !create ||
+    create.state !== "observed" ||
+    !create.receipt ||
+    !create.started_at ||
+    create.receipt_digest !== settlementDigest(create.receipt) ||
+    existing.some((row) => row.kind === "schedule_configure" && row.state !== "ready")
+  )
+    reject("original_unconfigured_create_required");
+  scope(locked, create, undefined);
+  const release = existing.find((row) => row.kind === "schedule_release") ?? null;
+  if (release) scope(locked, release, create);
+  return { locked, create, release, now };
+}
+export function readOrganizationScheduleCompensationSource(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const result = await lockCompensation(tx, input, claim);
+    return {
+      create: result.create,
+      release: result.release,
+      retainedTerms: result.locked.retained!.snapshot,
+      providerBinding: result.locked.binding,
+      checkedAt: result.now,
+    };
+  });
+}
+export function prepareOrganizationScheduleCompensation(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const { create, release, now } = await lockCompensation(tx, input, claim);
+    if (release) return release;
+    const request: OrganizationScheduleEffectRequest = {
+      kind: "schedule_release",
+      scheduleId: create.receipt!.scheduleId,
+      params: { preserve_cancel_date: true },
+    };
+    const [inserted] = await tx
+      .insert(effects)
+      .values({
+        organization_id: input.organizationId,
+        command_id: input.commandId,
+        predecessor_id: create.id,
+        kind: request.kind,
+        provider_idempotency_key: `organization-schedule:${input.commandId}:schedule_release`,
+        customer_id: create.customer_id,
+        subscription_id: create.subscription_id,
+        livemode: create.livemode,
+        request_payload: request,
+        request_digest: scheduleEffectRequestDigest(request),
+        created_at: now,
+      })
+      .returning();
+    if (!inserted) reject("compensation_insert_failed");
+    return inserted;
+  });
+}
+/** Caller has just reobserved original create/defaults and retained subscription/customer terms. */
+export function markOrganizationScheduleCompensationDispatch(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+) {
+  return writeTransaction(async (tx) => {
+    const { release, now } = await lockCompensation(tx, input, claim);
+    if (!release || release.id !== effectId || release.state !== "ready")
+      reject("compensation_not_dispatchable");
+    const [started] = await tx
+      .update(effects)
+      .set({
+        state: "started",
+        started_at: now,
+        started_generation: claim.generation,
+        started_lease_token: claim.leaseToken,
+      })
+      .where(eq(effects.id, release.id))
+      .returning();
+    if (!started) reject("compensation_dispatch_failed");
+    return started;
   });
 }
