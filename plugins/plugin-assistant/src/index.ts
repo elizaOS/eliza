@@ -82,11 +82,13 @@ export {
 export { notifyAction } from "./actions/notify.ts";
 export * from "./entities.js";
 export { generateMediaAction } from "./features/advanced-capabilities/actions/generateMedia.ts";
-export * from "./features/advanced-capabilities/actions/index.ts";
+export { messageAction } from "./features/advanced-capabilities/actions/message.ts";
+export { postAction } from "./features/advanced-capabilities/actions/post.ts";
 export {
   roleAction,
   updateRoleAction,
 } from "./features/advanced-capabilities/actions/role.ts";
+export { roomOpAction } from "./features/advanced-capabilities/actions/room.ts";
 export { reflectionItems } from "./features/advanced-capabilities/evaluators/reflection-items.ts";
 export {
   getTaskCompletionCacheKey,
@@ -107,7 +109,12 @@ export {
   advancedProviders,
   advancedServices,
 } from "./features/advanced-capabilities/index.ts";
-export * from "./features/advanced-capabilities/providers/index.ts";
+export { advancedContactsProvider } from "./features/advanced-capabilities/providers/contacts.ts";
+export { factsProvider } from "./features/advanced-capabilities/providers/facts.ts";
+export { followUpsProvider } from "./features/advanced-capabilities/providers/followUps.ts";
+export { relationshipsProvider } from "./features/advanced-capabilities/providers/relationships.ts";
+export { roleProvider } from "./features/advanced-capabilities/providers/roles.ts";
+export { settingsProvider } from "./features/advanced-capabilities/providers/settings.ts";
 export * from "./features/advanced-memory/index.ts";
 export { createAdvancedPlanningPlugin } from "./features/advanced-planning/index.ts";
 export {
