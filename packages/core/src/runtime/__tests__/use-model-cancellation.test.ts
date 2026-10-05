@@ -80,6 +80,56 @@ function timeoutError(message: string, ms: number): Promise<never> {
 }
 
 describe("AgentRuntime.useModel cancellation", () => {
+	it.each(["turn", "caller"] as const)(
+		"preserves the first %s abort reason when provider cleanup aborts the other owner",
+		async (firstOwner) => {
+			const runtime = makeRuntime();
+			const caller = new AbortController();
+			const turn = new AbortController();
+			const first = firstOwner === "turn" ? turn : caller;
+			const second = firstOwner === "turn" ? caller : turn;
+			const firstReason = new Error(`${firstOwner} cancelled first`);
+			const cleanupReason = new Error("provider cleanup cancelled second");
+			const started = Promise.withResolvers<void>();
+			let observedSignal: AbortSignal | undefined;
+			const primary = vi.fn(
+				async (_rt: unknown, params: Record<string, unknown>) => {
+					const signal = params.signal as AbortSignal;
+					observedSignal = signal;
+					return new Promise<string>((_resolve, reject) => {
+						signal.addEventListener(
+							"abort",
+							() => {
+								second.abort(cleanupReason);
+								reject(signal.reason);
+							},
+							{ once: true },
+						);
+						started.resolve();
+					});
+				},
+			);
+			const backup = vi.fn(async () => "must not fall back");
+			runtime.registerModel(ModelType.TEXT_LARGE, primary, "primary", 100);
+			runtime.registerModel(ModelType.TEXT_LARGE, backup, "backup", 10);
+			const callerParams = { prompt: "hello", signal: caller.signal };
+			const pending = runWithStreamingContext(
+				{ messageId: `first-${firstOwner}`, abortSignal: turn.signal },
+				() => runtime.useModel(ModelType.TEXT_LARGE, callerParams),
+			);
+			const rejection = expect(pending).rejects.toBe(firstReason);
+			await started.promise;
+			first.abort(firstReason);
+			await rejection;
+			expect(observedSignal?.reason).toBe(firstReason);
+			expect(first.signal.reason).toBe(firstReason);
+			expect(second.signal.reason).toBe(cleanupReason);
+			expect(callerParams.signal).toBe(caller.signal);
+			expect(primary).toHaveBeenCalledTimes(1);
+			expect(backup).not.toHaveBeenCalled();
+		},
+	);
+
 	it("cancels the provider transport when the turn aborts and an explicit signal is present", async () => {
 		const endpoint = await startHangingEndpoint();
 		try {
