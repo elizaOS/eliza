@@ -31,3 +31,7 @@ atomic asynchronous document port. Hosts own initial legacy capture, opaque
 revision receipts, backup/reset and storage protection; the client never writes a
 synchronous mirror or claims that browser storage is encrypted. A stale writer
 fails instead of merging or replacing another view's saved Notes.
+
+The encrypted adapter delegates commits to this same document engine. Its opaque
+revision binds the complete encrypted envelope, including migration archives.
+Authorization and cancellation are rechecked after edit preparation and before CAS.

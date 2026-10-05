@@ -469,3 +469,57 @@ test("async document commit rechecks authorization after in-memory preparation",
   assert.deepEqual(await port.read(), before);
   assert.equal(store.needsRecovery, true);
 });
+
+test("cancellation at the final authority check cannot dispatch a document write", async () => {
+  const port = documents(null, JSON.stringify([note])),
+    store = await DocumentNotesStore.open(port),
+    before = store.raw,
+    target = await store.target(note.id),
+    controller = new AbortController();
+  let writes = 0;
+  const compareExchange = port.compareExchange;
+  port.compareExchange = async (...args) => {
+    writes++;
+    return compareExchange(...args);
+  };
+  await assert.rejects(
+    store.execute(
+      {
+        type: "notes_update",
+        target,
+        fields: { title: "Edited", body: "New" },
+      },
+      "cancelled",
+      controller.signal,
+      () => {
+        if (store.raw !== before) controller.abort();
+      },
+    ),
+  );
+  assert.equal(writes, 0);
+  assert.equal((await port.read()).raw, before);
+  assert.equal(store.needsRecovery, true);
+});
+
+test("encrypted document revision includes archived source bytes", async () => {
+  let saved = null;
+  const vault = {
+    read: async () => structuredClone(saved),
+    compareExchange: async (_key, expected, value) => {
+      if (JSON.stringify(saved) !== JSON.stringify(expected))
+        return { status: "conflict" };
+      saved = structuredClone(value);
+      return { status: "saved" };
+    },
+  };
+  const store = await SecureNotesStore.open(config, vault, memory(), [note]);
+  const raw = store.raw;
+  saved.archive.v1 = "changed archive";
+  await assert.rejects(store.assertCurrent(), NotesDocumentConflict);
+  assert.equal(store.needsRecovery, true);
+  assert.equal(saved.currentRaw, raw);
+  assert.throws(
+    () => store.replace([{ ...note, body: "Stale edit" }]),
+    NotesDocumentConflict,
+  );
+});
