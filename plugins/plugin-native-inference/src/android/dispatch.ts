@@ -29,6 +29,7 @@ import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 /** In-process route dispatcher (from `@elizaos/agent`). */
 export type AndroidDispatchRoute = (args: {
+  signal?: AbortSignal;
   runtime: IAgentRuntime;
   method: string;
   path: string;
@@ -675,7 +676,9 @@ export async function dispatchBufferedRequest(
   dispatchRoute: AndroidDispatchRoute,
   payload: AndroidRequestPayload,
   coreRoutes?: AndroidCoreRouteDeps,
+  signal?: AbortSignal,
 ): Promise<AndroidBufferedResponse> {
+  signal?.throwIfAborted();
   const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
   if (!rawPath || !isSafeLocalPath(rawPath)) {
     throw new Error(
@@ -704,7 +707,9 @@ export async function dispatchBufferedRequest(
     ? null
     : await directAndroidNotificationRoute(runtime, method, pathname, query);
   if (notif) return notif;
+  signal?.throwIfAborted();
   const result = await dispatchRoute({
+    signal,
     runtime,
     method,
     path: pathname,
@@ -714,6 +719,7 @@ export async function dispatchBufferedRequest(
     inProcess: true,
     isAuthorized: () => true,
   });
+  signal?.throwIfAborted();
   if (!result) return notFound(method, pathname);
   const { bytes, headers: responseHeaders } = resultBodyBytes(result);
   return {

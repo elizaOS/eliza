@@ -34,6 +34,7 @@ async function request(
     headers: {},
     method,
     path: "/api/browser-device/profile",
+    signal: new AbortController().signal,
     inProcess: true,
   };
   return handler(context);

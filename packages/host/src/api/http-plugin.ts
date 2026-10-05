@@ -64,6 +64,8 @@ export interface RouteResponse {
  * {@link RouteHandlerResult}.
  */
 export interface RouteHandlerContext {
+  /** Aborted when the calling transport disconnects or cancels the request. */
+  signal: AbortSignal;
   body: unknown;
   /** Raw UTF-8 body when the transport preserved it (webhook signature verification). */
   rawBody?: string;

@@ -194,6 +194,7 @@ async function invokeRoute(
     method: routeValue.type,
     path: routeValue.path,
     runtime,
+    signal: new AbortController().signal,
     inProcess: false,
     isTrustedLocal: true,
   } satisfies RouteHandlerContext;
