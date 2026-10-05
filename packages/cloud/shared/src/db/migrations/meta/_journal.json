@@ -3515,6 +3515,13 @@
       "when": 1796083200149,
       "tag": "0531_subscription_invoice_observations",
       "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1796083200150,
+      "tag": "0532_subscription_invoice_capture_observations",
+      "breakpoints": true
     }
   ]
 }

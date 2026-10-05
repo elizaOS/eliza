@@ -2,6 +2,7 @@
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+import { observeRetainedCollectingInvoiceCapture } from "../../lib/services/retained-collecting-invoice-capture";
 import { observeRetainedInvoiceBalance } from "../../lib/services/retained-invoice-balance-observation";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import { bindSubscriptionInvoiceEventEvidence } from "../../lib/services/subscription-invoice-event-evidence";
@@ -134,14 +135,19 @@ async function load(tx: DbTransaction, input: z.infer<typeof request>) {
  * may make the original invoice terminal. Caller handles provider failures with existing retry ownership. */
 export async function observeAndRecordOriginalInvoice(
   value: z.infer<typeof request>,
-  stripe: Parameters<typeof observeRetainedInvoiceBalance>[1],
+  stripe: Parameters<typeof observeRetainedCollectingInvoiceCapture>[1],
 ) {
   const parsed = request.safeParse(value);
   if (!parsed.success) unavailable();
   const input = parsed.data;
   const before = await writeTransaction((tx) => load(tx, input));
   if (before.existing) return { observation: before.existing, replayed: true };
-  const evidence = await observeRetainedInvoiceBalance(before.evidence, stripe);
+  const initial = before.evidence.event.data.object;
+  // Select from immutable original facts. Never promote a deferred original using later payment pointers.
+  const evidence =
+    initial.starting_balance > 0 && initial.amount_due > 0
+      ? await observeRetainedCollectingInvoiceCapture(before.evidence, stripe)
+      : await observeRetainedInvoiceBalance(before.evidence, stripe);
   return writeTransaction(async (tx) => {
     const after = await load(tx, input);
     if (after.existing) return { observation: after.existing, replayed: true };
