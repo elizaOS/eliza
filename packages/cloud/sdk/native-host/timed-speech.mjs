@@ -166,7 +166,9 @@ export function createSpeechStreamSessions({
   assertOwner,
   now = () => performance.now(),
   lifetimeMs = 600000,
-  maxSessions = 32,
+  // Keep replay identities for a sustained conversation, independently of the
+  // two live provider streams. Completed sessions retain only terminal metadata.
+  maxSessions = 256,
   maxActive = 2,
 }) {
   const sessions = new Map(),
@@ -175,10 +177,14 @@ export function createSpeechStreamSessions({
     if (state !== "failed" || !["cancelled", "expired"].includes(session.state))
       session.state = state;
     session.last = null;
+    const response = session.response,
+      iterator = session.iterator;
+    session.response = undefined;
+    session.iterator = undefined;
     session.controller.abort();
-    if (session.response?.body && !session.response.body.locked)
-      void session.response.body.cancel().catch(() => {});
-    void session.iterator?.return?.().catch(() => {});
+    if (response?.body && !response.body.locked)
+      void response.body.cancel().catch(() => {});
+    void iterator?.return?.().catch(() => {});
   }
   function sweep() {
     for (const [id, session] of sessions)
@@ -299,6 +305,8 @@ export function createSpeechStreamSessions({
             if (result.value.type === "done") {
               session.state = "done";
               await session.iterator.return();
+              session.iterator = undefined;
+              session.response = undefined;
             }
             return session.last;
           } catch (error) {
