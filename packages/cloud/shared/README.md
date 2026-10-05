@@ -99,5 +99,12 @@ the paid lower plan and allowance. Later renewals retain its reviewed price thro
 paid target revision and original grant. Distinct deliveries of an already-funded invoice
 acknowledge immutable payment records without changing current source, entitlement or
 spendable balances. This path currently supports full-price captured payments; retained
-adjustments, delayed/dunning settlement, released schedules and public orchestration remain
+adjustments, delayed settlement, released schedules and public orchestration remain
 required before product adoption.
+
+Failed owned target invoices now use the existing dunning lifecycle through webhook and
+missed-event recovery. Publication rechecks original configured lineage, target schedule,
+subscription, customer and failed invoice under the organization lock. Dunning preserves
+the previous paid plan/period and pending target without granting allowance; subsequent
+captured payment proves the contiguous dunning history before settling the lower plan.
+The original grace window cannot be reset by a later revision.

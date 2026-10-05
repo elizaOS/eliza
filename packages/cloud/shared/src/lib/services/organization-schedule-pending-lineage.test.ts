@@ -56,6 +56,12 @@ test("supports complete subsequent past_due and unpaid revisions without resetti
 });
 const mutations: Array<[string, (f: ReturnType<typeof fixture>) => void]> = [
   [
+    "early dunning start",
+    (f) => {
+      f.revisions[1]!.dunning_started_at = new Date(100000);
+    },
+  ],
+  [
     "missing configured revision",
     (f) => {
       f.revisions.shift();
@@ -146,6 +152,16 @@ const mutations: Array<[string, (f: ReturnType<typeof fixture>) => void]> = [
     },
   ],
 ];
+test("a later dunning revision cannot extend the retained grace window", () => {
+  const f = fixture();
+  f.source = {
+    ...f.source,
+    lifecycle_revision: 4,
+    grace_expires_at: new Date(f.source.grace_expires_at!.getTime() + 1000),
+  };
+  f.revisions.push({ ...f.source, subscription_id: f.source.id, revision: 4 });
+  expect(() => read(f.source, f.revisions, 2)).toThrow();
+});
 for (const [name, mutate] of mutations)
   test(`rejects ${name}`, () => {
     const f = fixture();

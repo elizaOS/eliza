@@ -82,7 +82,7 @@ export function readConfiguredPendingSource<T extends Source>(
         !Number.isFinite(start) ||
         !Number.isFinite(end) ||
         end <= start ||
-        start > configured.current_period_end.getTime() ||
+        start !== configured.current_period_end.getTime() ||
         (dunningStart !== undefined && start !== dunningStart) ||
         (graceEnd !== undefined && end !== graceEnd)
       )

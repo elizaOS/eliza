@@ -127,6 +127,11 @@ export async function reconcileStripeDunningLifecycle(
   if (message.eventId !== event.id || message.eventType !== event.type)
     reject("queue_identity_mismatch");
   if (
+    (event.type === "invoice.payment_failed" && event.data.object.object !== "invoice") ||
+    (event.type === "customer.subscription.updated" && event.data.object.object !== "subscription")
+  )
+    reject("queue_object_type_mismatch");
+  if (
     event.type === "customer.subscription.updated" &&
     event.data.object.id !== stripeSubscriptionId
   )
