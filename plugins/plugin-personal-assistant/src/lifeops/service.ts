@@ -1652,8 +1652,14 @@ export class LifeOpsService extends LifeOpsServiceBase {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now?: Date,
+    options?: { expectedDefinitionUpdatedAt: string },
   ): Promise<LifeOpsOccurrenceView> {
-    return this.definitionsDomain.snoozeOccurrence(occurrenceId, request, now);
+    return this.definitionsDomain.snoozeOccurrence(
+      occurrenceId,
+      request,
+      now,
+      options,
+    );
   }
 
   readonly goalsDomain = new GoalsDomain(this, {
