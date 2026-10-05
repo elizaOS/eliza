@@ -327,6 +327,7 @@
     }
   },
   "devDependencies": {
+    "@electric-sql/pglite-socket": "0.1.6",
     "@types/bun": "1.4.2",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.23.1",

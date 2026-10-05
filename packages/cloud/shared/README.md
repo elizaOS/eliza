@@ -108,6 +108,21 @@ matching invoice application and exact starting/ending balance arithmetic. Rever
 credit notes, deferred debit balances and ambiguous applications remain unavailable.
 Initial Checkout retains its separate positive-payment contract.
 
+The internal credit-note observer reads complete Acacia note/line pages twice and
+rechecks the retained merchant and invoice. It retains normalized financial fields
+and an observation digest, excluding private text and document URLs. Changed,
+foreign, incomplete or unsupported records fail explicitly. This read-only helper
+does not establish an atomic provider snapshot, reconcile refunds/balance entries,
+authorize allowance or relax the existing settlement guards; entitlement policy
+and transactional publication remain required before integration.
+
+The linked disposition observer additionally checks original capture, complete
+refund history, canonical refunds and merchant debits, and note-bound customer
+credit postings. Complete note observations bracket two linked-evidence reads.
+It rejects unverified/out-of-band or changed allocations; a historical customer
+credit posting is not the current available balance. This remains read-only and
+does not choose recurring-allowance policy or publish entitlement changes.
+
 Failed owned target invoices now use the existing dunning lifecycle through webhook and
 missed-event recovery. Publication rechecks original configured lineage, target schedule,
 subscription, customer and failed invoice under the organization lock. Dunning preserves
@@ -199,3 +214,9 @@ Account management resolves pending-plan cancellation eligibility from the same
 immutable schedule proof as command admission in its primary read transaction.
 The scheduled target alone grants no control; actor/state gates and submission
 revalidation remain authoritative.
+
+New organization renewal grants retain a versioned original invoice/line/payment
+identity and settlement digests in the existing grant metadata, atomically with
+publication. Replay validates and preserves that first record; legacy grants are
+not backfilled from current provider objects. An unknown legacy merchant remains
+null. This identity record is not complete adjustment evidence or refund policy.

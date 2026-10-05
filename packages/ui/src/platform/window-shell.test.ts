@@ -1,13 +1,12 @@
-/** Exercises shell-mode parsing, classification, and detached-target resolution. */
 import { describe, expect, it } from "vitest";
-import { resolveAppShellMode } from "../../../ui/src/platform/app-shell-mode";
+import { resolveAppShellMode } from "./app-shell-mode";
 import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
   isStandaloneWindowShell,
   parseWindowShellRoute,
   resolveDetachedShellTarget,
-} from "../../../ui/src/platform/window-shell";
+} from "./window-shell";
 
 describe("window-shell route classification", () => {
   it("resolves supported app shell modes and falls back to full", () => {

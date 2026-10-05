@@ -1,8 +1,6 @@
 /** Canonical validation patterns for secrets accepted by core and plugins. */
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // VALIDATION PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Validation pattern definition
@@ -248,9 +246,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 	},
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // VALIDATION RESULT TYPE
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Result of a secret validation
@@ -268,9 +264,7 @@ export interface SecretValidationResult {
 	validatedAt: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // VALIDATION FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Validate a secret key/value pair.

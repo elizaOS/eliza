@@ -50,6 +50,11 @@
  */
 
 import { createHash } from "node:crypto";
+import type {
+  AgentBackupFileEntry,
+  AgentBackupFileSet,
+  AgentBackupManifest,
+} from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CANONICAL_JSON,
@@ -64,9 +69,6 @@ import {
 import { dbRead, dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
-  type AgentBackupFileEntry,
-  type AgentBackupFileSet,
-  type AgentBackupManifest,
   type AgentBackupPlainStateData,
   type AgentBackupStateData,
   type AgentBackupStoredStateData,
@@ -402,11 +404,7 @@ function verifyFileSet(label: string, fileSet: AgentBackupFileSet, mismatches: s
   }
 }
 
-/**
- * Newer agent images emit a `pglite-dump` database component the cloud-side
- * manifest type predates; validate it structurally so those backups still get
- * real hash coverage instead of a type-shaped blind spot.
- */
+/** Validate the stored dump shape before recomputing its hashes. */
 interface PgliteDumpLike {
   kind: string;
   compression: string;
@@ -464,7 +462,7 @@ export function verifyManifestIntegrity(manifest: AgentBackupManifest): string[]
       mismatches.push("database: component sha256 does not match its postgres dump");
     }
   }
-  const pgliteDump = asPgliteDump((database as JsonRecord).pgliteDump);
+  const pgliteDump = asPgliteDump(database.pgliteDump);
   if (pgliteDump) {
     verifyFileEntry("database.pgliteDump", pgliteDump.file, mismatches);
     const expected = sha256Json({

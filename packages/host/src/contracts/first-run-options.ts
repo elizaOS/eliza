@@ -1245,10 +1245,21 @@ export function migrateLegacyRuntimeConfig<T extends Record<string, unknown>>(
     delete root.linkedAccounts;
   }
 
-  const serviceRouting =
-    normalizeServiceRoutingConfig(root.serviceRouting) ??
-    resolveLegacyServiceRoutingInConfig(root);
-  if (serviceRouting) {
+  const explicitRouting = asConfigRecord(root.serviceRouting);
+  const cloud = asConfigRecord(root.cloud);
+  const localOnly =
+    !explicitRouting &&
+    deploymentTarget.runtime === "local" &&
+    (cloud?.inferenceMode === "local" ||
+      asConfigRecord(cloud?.services)?.inference === false);
+  const serviceRouting = explicitRouting
+    ? (normalizeServiceRoutingConfig(explicitRouting) ?? {})
+    : resolveLegacyServiceRoutingInConfig(root);
+  if (localOnly) {
+    root.cloud = { ...cloud, enabled: false };
+    if (serviceRouting) delete serviceRouting.llmText;
+    root.serviceRouting = serviceRouting ?? {};
+  } else if (serviceRouting) {
     root.serviceRouting = serviceRouting;
   } else {
     delete root.serviceRouting;
@@ -1333,6 +1344,16 @@ export function resolveServiceRoutingInConfig(
   }
 
   return Object.keys(next).length > 0 ? next : null;
+}
+
+export function isLocalOnlyInferenceInConfig(
+  config: Record<string, unknown> | null | undefined,
+): boolean {
+  return (
+    asConfigRecord(config?.cloud)?.enabled === false &&
+    resolveDeploymentTargetInConfig(config).runtime === "local" &&
+    !resolveServiceRoutingInConfig(config)?.llmText
+  );
 }
 
 function deriveFirstRunConnectionFromRuntimeConfig(

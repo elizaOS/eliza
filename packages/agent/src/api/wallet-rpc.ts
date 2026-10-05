@@ -186,13 +186,6 @@ const WALLET_RPC_CONFIG_KEYS = [
   "SOLANA_RPC_URL",
 ] as const satisfies readonly WalletRpcCredentialKey[];
 
-function _resolveWalletNetwork(): "mainnet" | "testnet" {
-  const explicit = process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase();
-  if (explicit === "testnet") return "testnet";
-  if (explicit === "mainnet") return "mainnet";
-  return process.env.BSC_TESTNET_RPC_URL?.trim() ? "testnet" : "mainnet";
-}
-
 export function resolveWalletNetworkMode(
   config?: WalletCapableConfig | null,
   fallback?: string | null,

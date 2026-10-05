@@ -1,3 +1,5 @@
+import "./artifact-share-role-resolver.ts";
+import "./waifu-chat-role-resolver.ts";
 /**
  * REST API server for the Eliza Control UI.
  *
@@ -21,7 +23,6 @@ import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
   normalizeCharacterLanguage,
-  parseClampedInteger,
   resolveOwnerEntityIdOrDefault,
   resolveStateDir,
   ServiceType,
@@ -45,20 +46,16 @@ import {
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
+  toWorkbenchTodo,
 } from "@elizaos/host/protocol";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
-import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
 } from "@elizaos/plugin-wallet/transactions";
 import { WebSocket, WebSocketServer } from "ws";
-import {
-  isWalletOsStoreEnabledInConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   createDevCloudConfigAuthorityView,
   materializeDevCloudConfigAuthorityView,
@@ -67,15 +64,11 @@ import {
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { resolveModelsCacheDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
-import {
-  type AgentEventServiceLike,
-  getAgentEventService,
-} from "../runtime/agent-event-service.ts";
+import { getAgentEventService } from "../runtime/agent-event-service.ts";
 import { pickRandomNames } from "../runtime/first-run-names.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
-  hasDurableHostVault,
 } from "../runtime/host-bridge.ts";
 import {
   resolvePreferredProviderId,
@@ -125,8 +118,6 @@ import { registerClientChatSendHandler } from "../services/client-chat-sender.ts
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import type { ConnectorSetupServiceInstance } from "../services/connector-setup-service.ts";
 import {
-  type CoreManagerLike,
-  isCoreManagerLike,
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
@@ -136,7 +127,6 @@ import {
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -155,7 +145,6 @@ import {
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
-import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import type { AwarenessRegistryLike } from "./agent-status-routes.ts";
 import {
@@ -163,6 +152,10 @@ import {
   writeAgentBackupJsonResponse,
 } from "./backup-json-response.ts";
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
+import {
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+} from "./blocked-object-keys.ts";
 import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { replaceConfigInPlace } from "./config-state.ts";
@@ -174,11 +167,7 @@ import {
   handleDeviceActionRoutes,
   requiresDeviceIdentity,
 } from "./device-action-routes.ts";
-import {
-  type captureEarlyLogs,
-  flushEarlyLogs,
-  listenForUiLogs,
-} from "./early-logs.ts";
+import { flushEarlyLogs, listenForUiLogs } from "./early-logs.ts";
 import {
   createApiEventHub,
   createEventSocketBackpressureGuard,
@@ -188,7 +177,6 @@ import {
   type ApiStatusComposer,
   responseReadinessFields,
 } from "./health-routes.ts";
-
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
@@ -208,10 +196,6 @@ import {
   providerCachePath,
 } from "./model-provider-helpers.ts";
 import { resolveOptionalPluginImportFailure } from "./optional-plugin-fallback.ts";
-import {
-  buildPluginDiagnosticEntry,
-  resolveWalletDiagnosticStatus,
-} from "./plugin-diagnostic.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
@@ -250,14 +234,13 @@ import {
   maybeRouteAutonomyEventToConversation,
 } from "./server-autonomy-helpers.ts";
 import {
-  cloneWithoutBlockedObjectKeys,
   decodePathComponent,
-  hasBlockedObjectKeyDeep,
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
   readDeletedConversationIdsFromState,
 } from "./server-helpers.ts";
+
 import {
   applyCors,
   clearPairing,
@@ -338,12 +321,12 @@ import {
   handleDiagnosticsRoutes,
   handleFirstRunRoutes,
   handleHealthRoutes,
+  handleHostSettingsRoutes,
   handleInboxAndCloudRelayRouteGroup,
   handleInteractionsRoutes,
   handleLifeOpsRuntimePluginRoute,
   handleMemoryRoutes,
   handleMiscRoutes,
-  handleMobileOptionalRoutes,
   handleModelConfigRoutes,
   handleModelsRoutes,
   handlePermissionRoutes,
@@ -366,13 +349,9 @@ import {
 } from "./server-lazy-routes.ts";
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
-import type { PluginEntry, ServerState } from "./server-types.ts";
+import type { ServerState } from "./server-types.ts";
 
-import {
-  injectApiBaseIntoHtml,
-  isAuthProtectedRoute,
-  serveStaticUi,
-} from "./static-file-server.ts";
+import { isAuthProtectedRoute, serveStaticUi } from "./static-file-server.ts";
 import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 import {
   bindViewRequestHost,
@@ -382,6 +361,7 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
+import { persistWalletPrivateKeys } from "./wallet-key-store.ts";
 import {
   applyWalletRpcConfigUpdate,
   getInventoryProviderOptions,
@@ -389,7 +369,7 @@ import {
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.ts";
-import { toWorkbenchTodo } from "./workbench-helpers.ts";
+
 import {
   DEFAULT_REPLAY_LIMIT,
   parseEventCursor,
@@ -700,83 +680,6 @@ function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
   coreWalletApiPromise ??= import("./wallet.ts");
   return coreWalletApiPromise;
 }
-
-// Re-export for downstream consumers (e.g. @elizaos/app)
-export {
-  AGENT_EVENT_ALLOWED_STREAMS,
-  CONFIG_WRITE_ALLOWED_TOP_KEYS,
-  discoverInstalledPlugins,
-  discoverPluginsFromManifest,
-  findPrimaryEnvKey,
-  readBundledPluginPackageMetadata,
-} from "./plugin-discovery-helpers.ts";
-export {
-  cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
-  findOwnPackageRoot,
-  getErrorMessage,
-  isUuidLike,
-  persistConversationRoomTitle,
-} from "./server-helpers.ts";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-function getAgentEventSvc(
-  runtime: AgentRuntime | null,
-): AgentEventServiceLike | null {
-  return getAgentEventService(runtime);
-}
-function _requirePluginManager(
-  runtime: AgentRuntime | null,
-): PluginManagerLike {
-  const service = runtime?.getService("plugin_manager");
-  if (!isPluginManagerLike(service)) {
-    throw new Error("Plugin manager service not found");
-  }
-  return wrapPluginManagerWithLocalFallback(service);
-}
-/**
- * The runtime plugin manager's registry client only fetches from GitHub and
- * scans a `plugins/` dir for `elizaos.plugin.json`. Workspace-vendored plugins
- * (under `packages/plugin-*`) are invisible to it. Wrap `installPlugin` so that
- * when it returns "not found in the registry" we retry using our own
- * registry-client (which discovers workspace packages and node_modules symlinks).
- */
-function wrapPluginManagerWithLocalFallback(
-  pm: PluginManagerLike,
-): PluginManagerLike {
-  const originalInstall = pm.installPlugin.bind(pm);
-  const wrapped: PluginManagerLike = Object.create(pm);
-  wrapped.installPlugin = async (pluginName, onProgress) => {
-    const result = await originalInstall(pluginName, onProgress);
-    if (
-      result.success ||
-      !result.error?.includes("not found in the registry")
-    ) {
-      return result;
-    }
-    // Upstream registry missed it — check Eliza's own local discovery.
-    const { getPluginInfo } = await import("../services/registry-client.ts");
-    const localInfo = await getPluginInfo(pluginName);
-    if (!localInfo?.localPath) {
-      return result;
-    }
-    // The plugin is a workspace package — just return success pointing at it.
-    // The runtime already resolves it via NODE_PATH / bun workspace links so
-    // there is nothing to download; the caller only needs to enable it in
-    // config and restart.
-    return {
-      success: true,
-      pluginName: localInfo.name,
-      version:
-        localInfo.npm.v2Version ?? localInfo.npm.v1Version ?? "workspace",
-      installPath: localInfo.localPath,
-      requiresRestart: true,
-    };
-  };
-  return wrapped;
-}
 function getPluginManagerForState(state: ServerState): PluginManagerLike {
   const service = state.runtime?.getService("plugin_manager");
   if (isPluginManagerLike(service)) {
@@ -784,23 +687,6 @@ function getPluginManagerForState(state: ServerState): PluginManagerLike {
   }
   return createConfigPluginManager(() => state.config);
 }
-function _requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
-  const service = runtime?.getService("core_manager");
-  if (!isCoreManagerLike(service)) {
-    throw new Error("Core manager service not found");
-  }
-  return service;
-}
-
-export {
-  fetchWithTimeoutGuard,
-  streamResponseBodyWithByteLimit,
-} from "./server-helpers-fetch.ts";
-export type {
-  ConversationMeta,
-  ServerState,
-  ShareIngestItem,
-} from "./server-types.ts";
 
 /**
  * Read and parse a JSON request body with size limits and error handling.
@@ -816,10 +702,6 @@ async function readJsonBody<T = Record<string, unknown>>(
     ...options,
   });
 }
-const readBody = (req: http.IncomingMessage): Promise<string> =>
-  readRequestBody(req, { maxBytes: MAX_BODY_BYTES }).then(
-    (value) => value ?? "",
-  );
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -893,25 +775,6 @@ async function handleBuiltinOptionalRoutes(
       evmAddress: addresses.evmAddress ?? undefined,
       vaultHealth: "degraded",
     });
-    return true;
-  }
-  // Pure-fabrication "capability unavailable" stubs are declared once in the
-  // absent-plugin route stub registry (see absent-plugin-route-stubs.ts /
-  // arch-audit #12089 item 12). Anything that reads live runtime state, such as
-  // wallet addresses, is handled above and is intentionally NOT in the registry,
-  // because those responses are not fabrications.
-  const absentPluginStub = resolveAbsentPluginRouteStub(method, pathname);
-  if (absentPluginStub) {
-    // POST stubs still drain the request body so the socket is not left with a
-    // pending payload (matches the pre-registry behavior for activity-signals).
-    if (method === "POST") {
-      await readBody(req).catch(() => undefined);
-    }
-    json(
-      res,
-      absentPluginStub.buildBody(req),
-      absentPluginStub.statusCode ?? 200,
-    );
     return true;
   }
   if (pathname === "/api/browser-workspace" && method === "GET") {
@@ -1042,65 +905,7 @@ async function handleBuiltinOptionalRoutes(
   }
   return false;
 }
-
-// ---------------------------------------------------------------------------
-export type { ChatAttachmentWithData } from "./server-types.ts";
-export { injectApiBaseIntoHtml };
-
-function _parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
-  return parseClampedInteger(rawLimit, {
-    min: 1,
-    max: 50,
-    fallback,
-  });
-}
-function sanitizeFavoriteAppList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const apps: string[] = [];
-  for (const item of value) {
-    if (typeof item !== "string") continue;
-    const trimmed = item.trim();
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    apps.push(trimmed);
-  }
-  return apps;
-}
-function _readFavoriteAppsFromConfig(config: ElizaConfig): string[] {
-  const ui = (config.ui ?? {}) as Record<string, unknown>;
-  return sanitizeFavoriteAppList(ui.favoriteApps);
-}
-function _writeFavoriteAppsToConfig(
-  config: ElizaConfig,
-  apps: string[],
-): string[] {
-  const sanitized = sanitizeFavoriteAppList(apps);
-  const ui = (config.ui ?? {}) as Record<string, unknown>;
-  ui.favoriteApps = sanitized;
-  config.ui = ui as ElizaConfig["ui"];
-  saveElizaConfig(config);
-  return sanitized;
-}
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
-
-// Compatibility exports point at the single wallet-owned trade policy.
-export {
-  AGENT_AUTO_MAX_DAILY_TRADES,
-  agentAutoDailyTrades,
-  assertQuoteFresh,
-  canUseLocalTradeExecution,
-  getAgentAutoTradeDate,
-  QUOTE_MAX_AGE_MS,
-  recordAgentAutoTrade,
-  resolveTradePermissionMode,
-  type TradePermissionMode,
-} from "@elizaos/plugin-wallet/transactions";
-export { isSafeResetStateDir } from "./server-helpers-config.ts";
-export {
-  resolveMcpServersRejection,
-  resolveMcpTerminalAuthorizationRejection,
-} from "./server-helpers-mcp.ts";
 
 // ---------------------------------------------------------------------------
 // Automation & agent permission helpers
@@ -1144,29 +949,6 @@ function persistAgentAutomationMode(
     mode,
   };
 }
-/**
- * Build the EVM wallet diagnostic card from the plugin-owned static descriptor
- * (identity, config keys, tags, prerequisite labels) merged with the
- * host-resolved runtime status. No plugin-specific literals live in the host.
- */
-function _buildPluginEvmDiagnosticEntry(
-  state: Pick<ServerState, "config" | "runtime">,
-): PluginEntry {
-  return buildPluginDiagnosticEntry(
-    walletDiagnosticDescriptor,
-    resolveWalletDiagnosticStatus(walletDiagnosticDescriptor, state),
-  );
-}
-
-export {
-  type PluginConfigMutationRejection,
-  resolvePluginConfigMutationRejections,
-  resolvePluginConfigReply,
-} from "./server-helpers-plugin.ts";
-export {
-  resolveWalletExportRejection,
-  type WalletExportRejection,
-} from "./server-helpers-wallet.ts";
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -1191,27 +973,6 @@ interface RequestContext {
     activeRuntime: AgentRuntime,
   ) => void | Promise<void>;
 }
-
-// Importing the artifact share-viewer scheme self-registers its resolver with
-// the trunk boundary-role registry (#14781) — same pattern as WaifuChat above.
-export { issueArtifactShareViewerToken } from "./artifact-share-role-resolver.ts";
-export {
-  ensureApiTokenForBindHost,
-  extractAuthToken,
-  isAllowedHost,
-  isAuthorized,
-  normalizeWsClientId,
-  resolveCorsOrigin,
-  resolveTerminalRunClientId,
-  resolveTerminalRunRejection,
-  resolveWebSocketUpgradeRejection,
-  type TerminalRunRejection,
-  type WebSocketUpgradeRejection,
-} from "./server-helpers-auth.ts";
-// Back-compat re-export: the WaifuChat scheme now lives in its own resolver
-// module. Importing it here also self-registers the resolver with the trunk
-// boundary-role registry (#12087 item 12).
-export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 
 /**
  * Lazy per-process runtime operation manager. Constructed on first
@@ -1249,11 +1010,6 @@ function getOrCreateRuntimeOperationManager(
   });
   return cachedRuntimeOperationManager;
 }
-
-export {
-  handleSwarmSynthesis,
-  routeAutonomyTextToUser,
-} from "./server-helpers-swarm.ts";
 
 // One process-wide governance gate shared across runtime (re)registrations, so a
 // restart doesn't reset the proactive-comment cooldowns/caps (#8792).
@@ -2025,12 +1781,6 @@ async function handleRequestForViewClient(
   ) {
     return;
   }
-  // Computer-use is a desktop/cloud-only plugin; on mobile it is not in the
-  // agent bundle, so importing it here would REJECT (`Cannot find module
-  // '@elizaos/plugin-computeruse'`) and surface as a 500 on every renderer poll
-  // of /api/computer-use/approvals. Skip the import path on mobile and let the
-  // request fall through to handleMobileOptionalRoutes, which serves the inert
-  // {mode:"off",…} approval snapshot.
   if (!isMobilePlatform() && pathname.startsWith("/api/computer-use/")) {
     const { handleComputerUseRoutes } = await getOptionalPluginApi<{
       handleComputerUseRoutes: (
@@ -2135,40 +1885,49 @@ async function handleRequestForViewClient(
     pathname === "/api/wallet/keys"
       ? (await getCoreWalletApi()).getWalletAddresses
       : null;
-  if (
-    await handleFirstRunRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      state,
-      json,
-      error,
-      readJsonBody,
-      isCloudProvisionedContainer,
-      hasPersistedFirstRunState,
-      ensureWalletKeysInEnvAndConfig,
-      getWalletAddresses: firstRunGetWalletAddresses
-        ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
-        : () => ({
-            evmAddress: null,
-            solanaAddress: null,
-          }),
-      pickRandomNames,
-      getStylePresets,
-      getProviderOptions,
-      getCloudProviderOptions,
-      getModelOptions,
-      getInventoryProviderOptions,
-      resolveConfiguredCharacterLanguage,
-      normalizeCharacterLanguage,
-      readUiLanguageHeader,
-      applyFirstRunVoicePreset,
-      saveElizaConfig,
-    })
-  ) {
-    return;
+  const releaseFirstRunWalletKeys =
+    (method === "GET" && pathname === "/api/wallet/keys") ||
+    (method === "POST" && pathname === "/api/first-run")
+      ? await acquireWalletKeyMutation()
+      : undefined;
+  try {
+    if (
+      await handleFirstRunRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        isCloudProvisionedContainer,
+        hasPersistedFirstRunState,
+        ensureWalletKeysInEnvAndConfig,
+        getWalletAddresses: firstRunGetWalletAddresses
+          ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
+          : () => ({
+              evmAddress: null,
+              solanaAddress: null,
+            }),
+        pickRandomNames,
+        getStylePresets,
+        getProviderOptions,
+        getCloudProviderOptions,
+        getModelOptions,
+        getInventoryProviderOptions,
+        resolveConfiguredCharacterLanguage,
+        normalizeCharacterLanguage,
+        readUiLanguageHeader,
+        applyFirstRunVoicePreset,
+        saveElizaConfig,
+      })
+    ) {
+      return;
+    }
+  } finally {
+    releaseFirstRunWalletKeys?.();
   }
   // POST /api/first-run is now handled by first-run-routes.ts above.
   if (
@@ -2658,57 +2417,8 @@ async function handleRequestForViewClient(
             }),
             isCloudWalletEnabled,
             persistConfigEnv,
-            persistWalletPrivateKeys: async (config, keys) => {
-              // saveElizaConfig strips wallet keys from disk in OS-store mode;
-              // boot hydration then reads them back from the host vault.
-              if (!isWalletOsStoreEnabledInConfig(config)) return;
-              const entries = Object.entries(keys);
-              if (!hasDurableHostVault()) {
-                throw new ElizaError(
-                  `${entries.map(([key]) => key).join(", ")} cannot be stored: ELIZA_WALLET_OS_STORE keeps wallet keys out of config and this host has no durable vault`,
-                  { code: "WALLET_KEY_STORE_UNAVAILABLE" },
-                );
-              }
-              const empty = entries.find(([, value]) => !value?.trim());
-              if (empty) {
-                throw new ElizaError(`${empty[0]} is empty`, {
-                  code: "WALLET_KEY_EMPTY",
-                });
-              }
-              const vault = getAgentHostBridge().sharedVault();
-              const options = { sensitive: true, caller: "wallet-routes" };
-              const previous: Array<[string, string | null]> = [];
-              for (const [key] of entries) {
-                previous.push([
-                  key,
-                  (await vault.has(key))
-                    ? await vault.reveal(key, "wallet-routes")
-                    : null,
-                ]);
-              }
-              try {
-                for (const [key, value] of entries) {
-                  await vault.set(key, value as string, options);
-                }
-              } catch (err) {
-                const rollbackFailures: unknown[] = [];
-                for (const [key, value] of previous) {
-                  try {
-                    if (value === null) await vault.remove(key);
-                    else await vault.set(key, value, options);
-                  } catch (rollbackError) {
-                    rollbackFailures.push(rollbackError);
-                  }
-                }
-                if (rollbackFailures.length > 0) {
-                  throw new AggregateError(
-                    [err, ...rollbackFailures],
-                    "Wallet key store failed and prior vault keys could not be restored",
-                  );
-                }
-                throw err;
-              }
-            },
+            persistWalletPrivateKeys: (config, keys) =>
+              persistWalletPrivateKeys(config, keys, "wallet-routes"),
             createIntegrationTelemetrySpan: (args) =>
               createIntegrationTelemetrySpan({
                 boundary: "wallet",
@@ -3022,23 +2732,10 @@ async function handleRequestForViewClient(
   if (await handleDatabaseRouteGroup({ req, res, pathname, state })) {
     return;
   }
-  // Coding Agent API routes (/api/coding-agents/*, /api/workspace/*,
-  // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
-  // plugin via the runtime route registry. Most of those paths genuinely need
-  // the runtime, so a pre-runtime 503 is correct. The GET capability probes
-  // below are the exception: they have graceful builtin probe handlers
-  // (handleBuiltinOptionalRoutes → { available: false } / "unavailable"). The
-  // dashboard polls /preflight the instant agentStatus flips to "running", which
-  // can race ahead of state.runtime being assigned during a restart; serve those
-  // from the builtin probe handler instead of a 503 the browser logs as a red console error.
-  const isCodingAgentBuiltinProbe =
-    pathname === "/api/coding-agents/preflight" ||
-    pathname === "/api/coding-agents/coordinator/status";
   if (
     !state.runtime &&
     method === "GET" &&
-    pathname.startsWith("/api/coding-agents") &&
-    !isCodingAgentBuiltinProbe
+    pathname.startsWith("/api/coding-agents")
   ) {
     error(res, "Coding agent runtime unavailable", 503);
     return;
@@ -3307,7 +3004,7 @@ async function handleRequestForViewClient(
     const handled = await handler(req, res, pathname, method);
     if (handled) return;
   }
-  if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
+  if (await handleHostSettingsRoutes(req, res, pathname, method)) {
     return;
   }
   // The context inspector owns a stricter boundary than the general trajectory
@@ -3425,15 +3122,6 @@ async function handleRequestForViewClient(
   // ── Fallback ────────────────────────────────────────────────────────────
   error(res, "Not found", 404);
 }
-
-// ---------------------------------------------------------------------------
-// Early log capture — re-exported from the standalone module so existing
-// callers that `import { captureEarlyLogs } from "../../../../src/api/server"` keep
-// working.  The implementation lives in `./early-logs.ts` to avoid pulling
-// the entire server dependency graph into lightweight consumers (e.g. the
-// headless `startEliza()` path).
-// ---------------------------------------------------------------------------
-export type { captureEarlyLogs };
 // ---------------------------------------------------------------------------
 // Server start
 // ---------------------------------------------------------------------------
@@ -3631,13 +3319,30 @@ export async function startApiServer(opts?: {
     walletAutoProvisionRaw === "true" ||
     walletAutoProvisionRaw === "on" ||
     walletAutoProvisionRaw === "yes";
-  if (walletAutoProvisionEnabled && ensureWalletKeysInEnvAndConfig(config)) {
+  if (walletAutoProvisionEnabled) {
+    const releaseWalletKeys = await acquireWalletKeyMutation();
+    const walletEnvBefore = Object.fromEntries(
+      [
+        "EVM_PRIVATE_KEY",
+        "SOLANA_PRIVATE_KEY",
+        "SOLANA_PUBLIC_KEY",
+        "WALLET_PUBLIC_KEY",
+      ].map((name) => [name, process.env[name]]),
+    );
     try {
-      saveElizaConfig(config);
+      if (await ensureWalletKeysInEnvAndConfig(config)) {
+        saveElizaConfig(config);
+      }
     } catch (err) {
-      logger.warn(
+      for (const [name, value] of Object.entries(walletEnvBefore)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      logger.error(
         `[eliza-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
       );
+    } finally {
+      releaseWalletKeys();
     }
   }
   const blockOnStewardWalletCache =
@@ -3673,8 +3378,6 @@ export async function startApiServer(opts?: {
   logger.debug(
     `[eliza-api] Plugins discovered (${Date.now() - apiStartTime}ms)`,
   );
-  const _workspaceDir =
-    config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   const state = createServerState({
     config,
     runtime: opts?.runtime,
@@ -4057,7 +3760,7 @@ export async function startApiServer(opts?: {
         })
         .catch((error) => runtime.reportError("api.connectorBroadcast", error));
     }
-    const svc = getAgentEventSvc(runtime);
+    const svc = getAgentEventService(runtime);
     if (!svc) {
       if (runtime) {
         logger.warn(

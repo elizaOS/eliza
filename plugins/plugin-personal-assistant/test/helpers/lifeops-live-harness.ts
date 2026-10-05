@@ -648,14 +648,6 @@ export async function startLifeOpsLiveRuntime(options?: {
         cloud: {
           ...baseCloud,
           enabled: false,
-          inferenceMode: "local",
-          services: {
-            inference: false,
-            tts: false,
-            media: false,
-            embeddings: false,
-            rpc: false,
-          },
         },
       },
       null,

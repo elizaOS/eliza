@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { waitForAndroidWebView } from "./android-webview-readiness.mjs";
 import { acquireDeviceLease, deviceLeaseStateDir } from "./device-lease.ts";
 import { runIsolatedAndroidTest } from "./isolated-android-test.mjs";
 import { withIsolatedAndroidUser } from "./isolated-android-user.mjs";
@@ -16,6 +17,7 @@ const executeFile = promisify(execFile);
 export async function runIsolatedAndroidUserTest({
   homePackage,
   userName,
+  requireWebView = false,
   ...options
 }) {
   assert.equal(options.androidUser, undefined, "The lifecycle owns the user");
@@ -96,6 +98,17 @@ export async function runIsolatedAndroidUserTest({
       run: async ({ user }) => {
         report.androidUser = user;
         try {
+          if (requireWebView) {
+            await waitForAndroidWebView({
+              execute,
+              user,
+              signal,
+              record: (observation) => {
+                report.webViewAdmission = observation;
+                persist();
+              },
+            });
+          }
           report.result = await runIsolatedAndroidTest({
             ...options,
             androidUser: user,

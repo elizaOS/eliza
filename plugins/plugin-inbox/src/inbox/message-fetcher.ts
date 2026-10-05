@@ -55,7 +55,7 @@ export interface GmailInboxSource {
 export interface XDmInboxSource {
   getXConnectorStatus(): Promise<LifeOpsXConnectorStatus>;
   syncXDms(opts?: { limit?: number }): Promise<{ synced: number }>;
-  getXDms(opts?: { limit?: number }): Promise<LifeOpsXDm[]>;
+  getXDms(opts?: { limit?: number; inbound?: boolean }): Promise<LifeOpsXDm[]>;
 }
 
 /** Messages from one connector-backed source plus that source's health. */
@@ -290,6 +290,69 @@ function sourceNotWiredStatus(
   };
 }
 
+/**
+ * Newest-first pages of `limit * 3` raw memories. The caller's limit counts
+ * inbox candidates, so the agent's own replies and blank texts must not fill
+ * the window: a single capped read can come back empty while older user
+ * messages exist. Pages continue until that many candidates are in hand or
+ * history ends. A repeated page (a store that ignores offset) stops the scan,
+ * as does reaching rows older than the caller's `sinceMs` window: the store
+ * returns rows newest-first, so no later page can produce a candidate. No page
+ * count caps the scan: every non-final page advances the offset until history
+ * ends, so silently returning fewer candidates than requested cannot happen.
+ */
+async function loadInboxCandidateMemories(
+  runtime: IAgentRuntime,
+  sourceRoomIds: UUID[],
+  limit: number,
+  accept: (memory: Memory) => boolean,
+  sinceMs: number,
+): Promise<Memory[]> {
+  const pageSize = limit * 3;
+  const filtered: Memory[] = [];
+  const seenMemoryIds = new Set<string>();
+  let previousPageFingerprint: string | null = null;
+  let offset = 0;
+  while (filtered.length < limit) {
+    const page = await runtime.getMemoriesByRoomIds({
+      roomIds: sourceRoomIds,
+      tableName: "messages",
+      limit: pageSize,
+      offset,
+    });
+    if (page.length === 0) break;
+    // A store that ignores offset returns the same rows for every page,
+    // including rows without an id that the seen-id guard cannot deduplicate.
+    const fingerprint = page.map(pageRowFingerprint).join("\n");
+    if (fingerprint === previousPageFingerprint) break;
+    previousPageFingerprint = fingerprint;
+    let fresh = 0;
+    let oldest = Number.POSITIVE_INFINITY;
+    for (const memory of page) {
+      const createdAt = Number(memory.createdAt);
+      if (Number.isFinite(createdAt) && createdAt < oldest) {
+        oldest = createdAt;
+      }
+      const memoryId = typeof memory.id === "string" ? memory.id : "";
+      if (memoryId.length > 0 && seenMemoryIds.has(memoryId)) continue;
+      if (memoryId.length > 0) seenMemoryIds.add(memoryId);
+      fresh += 1;
+      if (accept(memory)) filtered.push(memory);
+    }
+    if (fresh === 0 || page.length < pageSize) break;
+    if (sinceMs > 0 && oldest < sinceMs) break;
+    offset += page.length;
+  }
+  return filtered;
+}
+
+function pageRowFingerprint(memory: Memory): string {
+  if (typeof memory.id === "string" && memory.id.length > 0) {
+    return `id:${memory.id}`;
+  }
+  return `row:${String(memory.createdAt)}|${String(memory.roomId)}|${extractText(memory)}`;
+}
+
 export async function fetchChatMessages(
   runtime: IAgentRuntime,
   opts: {
@@ -329,23 +392,24 @@ export async function fetchChatMessages(
   if (sourceRooms.length === 0) return [];
 
   const sourceRoomIds = sourceRooms.map((r) => r.id) as UUID[];
-  const memories = await runtime.getMemoriesByRoomIds({
-    roomIds: sourceRoomIds,
-    tableName: "messages",
-    limit: limit * 3, // over-fetch for filtering
-  });
-
-  const filtered = memories.filter((m) => {
-    if (m.entityId === runtime.agentId) return false;
-    const src = extractMemorySource(m);
-    if (!sourceMatchesFilter(src, sourceTags)) return false;
-    const createdAt = parseRequiredTimestamp(
-      m.createdAt,
-      "chat memory createdAt",
-    );
-    if (sinceMs > 0 && createdAt < sinceMs) return false;
-    return true;
-  });
+  const filtered = await loadInboxCandidateMemories(
+    runtime,
+    sourceRoomIds,
+    limit,
+    (memory) => {
+      if (memory.entityId === runtime.agentId) return false;
+      const src = extractMemorySource(memory);
+      if (!sourceMatchesFilter(src, sourceTags)) return false;
+      const createdAt = parseRequiredTimestamp(
+        memory.createdAt,
+        "chat memory createdAt",
+      );
+      if (sinceMs > 0 && createdAt < sinceMs) return false;
+      // Blank texts are not inbox rows and must not consume a result slot.
+      return extractText(memory).length > 0;
+    },
+    sinceMs,
+  );
 
   filtered.sort(
     (a, b) =>
@@ -652,9 +716,13 @@ export async function fetchXDmMessages(
   const limit = opts.limit;
   let dms: LifeOpsXDm[];
   try {
-    const page = limit === undefined ? undefined : { limit };
-    await source.syncXDms(page);
-    dms = await source.getXDms(page);
+    // Sync the complete available mixed-direction history before applying the
+    // inbound-only result limit; owner replies must not hide candidates.
+    await source.syncXDms();
+    dms = await source.getXDms({
+      ...(limit === undefined ? {} : { limit }),
+      inbound: true,
+    });
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] x_dm sync/read failed: ${errorMessage(error)}`,
@@ -905,7 +973,11 @@ function metadataForRoom(room: Room | undefined): Record<string, unknown> {
     channelId: room.channelId ?? metadata.channelId,
     roomId: room.id,
     roomName: room.name,
-    serverId: room.serverId,
+    // Same precedence for the server id: Slack stamps it only as room metadata
+    // (`serverId: teamId` in ensureRoomExists) while Discord persists the
+    // Room.serverId column — an unset column must not clobber the metadata
+    // copy, or the inbox Slack deep link loses its workspace id.
+    serverId: room.serverId ?? metadata.serverId,
   };
 }
 

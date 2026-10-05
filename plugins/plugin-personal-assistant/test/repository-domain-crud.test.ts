@@ -837,6 +837,47 @@ describe("LifeOpsRepository domain CRUD", () => {
     expect(ownerOnly.every((view) => view.subjectType === "owner")).toBe(true);
   });
 
+  it("filters X DM direction before the limit", async () => {
+    const dm = (externalDmId: string, isInbound: boolean, receivedAt: string) =>
+      repository.upsertXDm({
+        id: crypto.randomUUID(),
+        agentId: runtime.agentId,
+        externalDmId,
+        conversationId: "x-conversation-1",
+        senderHandle: isInbound ? "sender" : "owner",
+        senderId: isInbound ? "sender-id" : "owner-id",
+        isInbound,
+        text: externalDmId,
+        receivedAt,
+        readAt: null,
+        repliedAt: null,
+        metadata: { source: "x" },
+        syncedAt: NOW,
+        updatedAt: NOW,
+      } as never);
+    await dm("inbound-old", true, "2026-07-11T07:00:00.000Z");
+    await dm("inbound-new", true, "2026-07-11T07:10:00.000Z");
+    // The owner's replies are newer than every inbound DM.
+    for (let index = 0; index < 3; index += 1) {
+      await dm(`outbound-${index}`, false, `2026-07-11T07:2${index}:00.000Z`);
+    }
+
+    const inbound = await repository.listXDms(runtime.agentId, {
+      inbound: true,
+      limit: 2,
+    });
+    expect(inbound.map((row) => row.externalDmId)).toEqual([
+      "inbound-new",
+      "inbound-old",
+    ]);
+    expect(
+      await repository.listXDms(runtime.agentId, { limit: 2 }),
+    ).toHaveLength(2);
+    expect(
+      (await repository.listXDms(runtime.agentId, { inbound: false })).length,
+    ).toBe(3);
+  });
+
   it("round-trips connector sync, schedule, and work-thread records", async () => {
     const calendarEvent = {
       id: crypto.randomUUID(),

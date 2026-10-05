@@ -768,10 +768,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (!packageName) {
     const { loadAospVariantConfig, resolveAppConfigPath } = await import(
       pathToFileURL(
-        path.join(
-          repoRoot,
-          "packages/app/scripts/aosp/lib/load-variant-config.ts",
-        ),
+        path.join(repoRoot, "packages/app/scripts/aosp/load-variant-config.ts"),
       ).href
     );
     const cfgPath = resolveAppConfigPath({

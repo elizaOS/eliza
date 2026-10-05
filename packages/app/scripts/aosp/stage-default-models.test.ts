@@ -38,9 +38,7 @@ describe("stage-default-models", () => {
 // All AOSP callers share the current monorepo layout and explicit override contract.
 describe("AOSP config location", () => {
   it("resolves the canonical app and an explicit alternate host", async () => {
-    const { resolveAppConfigPath } = await import(
-      "./lib/load-variant-config.ts"
-    );
+    const { resolveAppConfigPath } = await import("./load-variant-config.ts");
     expect(resolveAppConfigPath({ repoRoot: "/repo" })).toBe(
       path.join("/repo", "packages", "app", "app.config.ts"),
     );

@@ -247,6 +247,7 @@ export async function publishPaidRenewalInTransaction(
       source,
       invoiceId: input.invoiceId,
       requestDigest: verified.grantDigest,
+      invoiceAuthority: verified.invoiceAuthority,
       databaseNow: now,
     });
     return { replayed: true, subscriptionRevision: existing.subscription_revision };
@@ -325,6 +326,7 @@ export async function publishPaidRenewalInTransaction(
     source: advanced.subscription,
     invoiceId: input.invoiceId,
     requestDigest: verified.grantDigest,
+    invoiceAuthority: verified.invoiceAuthority,
     databaseNow: now,
   });
   await subscriptionEntitlementsRepository.rebuildInTransaction(tx, {

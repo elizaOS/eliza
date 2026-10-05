@@ -554,6 +554,7 @@ export {
 	CANONICAL_SECRET_KEYS,
 	type CanonicalSecretKey,
 	CHANNEL_OPTIONAL_SECRETS,
+	CHANNEL_SECRETS,
 	getAliasesForKey,
 	getAllSecretsForChannel,
 	getProviderForApiKey,
@@ -561,6 +562,7 @@ export {
 	isCanonicalSecretKey,
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
+	MODEL_PROVIDER_SECRETS,
 	SECRET_KEY_ALIASES,
 } from "./validation/secret-catalog";
 export * from "./validation/secrets";

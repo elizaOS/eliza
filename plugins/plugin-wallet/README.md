@@ -10,6 +10,12 @@ Keys remain behind WalletBackend. The root entry is server-only; import browser
 components through the UI subpath. Configure the intended chain RPCs and signer before
 submitting transactions.
 
+x402 client budgets reserve payment amounts while requests are in flight. Declines
+and failures before any transfer release the hold; errors after a fee or principal
+transfer is attempted retain it because the payment outcome may be unknown. This
+tracker is per-client and in memory, so restart clears it; it is not a durable
+transaction ledger or a substitute for on-chain spend policies.
+
 `@elizaos/plugin-wallet/read` exposes read-only EVM balances, NFTs and DEX prices
 without registering routes or loading signing services. Hosts supply resolved RPC
 endpoints and provider credentials; the root barrel exports the same readers.

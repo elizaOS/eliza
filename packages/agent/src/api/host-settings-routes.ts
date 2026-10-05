@@ -1,15 +1,4 @@
-/**
- * Optional-route fallbacks: minimal, safe-default handlers for endpoints whose
- * real implementations live in plugins/features that may not be loaded in every
- * deployment (mobile bundles, cloud-agent containers, lightweight runtimes).
- * Every handler degrades to an inert snapshot (empty list / `unavailable` /
- * `off`) rather than a 404, so the dashboard SPA can render without exploding
- * when computer-use, the apps catalog, or coding-agent tooling are absent.
- * Covers runtime-mode reporting, computer-use approvals (+ SSE stream) and
- * approval-mode, stream visual settings (in-process snapshot), catalog/apps,
- * drop status, coding-agent preflight/coordinator, and lifeops
- * activity-signals.
- */
+/** Host-owned runtime mode and transient stream settings. */
 import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/host";
 import {
@@ -18,13 +7,13 @@ import {
 } from "@elizaos/host/protocol";
 
 import { loadEffectiveElizaConfig } from "../config/config.ts";
-import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
+
 /**
  * Visual/voice settings persisted by GET/POST /api/stream/settings. The
  * dashboard hydrates these at startup (client.getStreamSettings()); the
  * server keeps an in-process snapshot per boot.
  */
-export type StreamVisualSettings = {
+type StreamVisualSettings = {
   theme?: string;
   avatarIndex?: number;
   voice?: {
@@ -33,11 +22,6 @@ export type StreamVisualSettings = {
     provider?: string;
   };
 };
-const EMPTY_MOBILE_APPROVAL_SNAPSHOT = {
-  mode: "off",
-  pendingCount: 0,
-  pendingApprovals: [],
-} as const;
 const STREAM_SETTINGS_MAX_JSON_BYTES = 4096;
 let streamSettings: StreamVisualSettings = {};
 function validateStreamSettings(raw: unknown):
@@ -149,33 +133,7 @@ function parseJsonPayload(raw: unknown): unknown {
   if (raw.trim().length === 0) return {};
   return JSON.parse(raw);
 }
-function sendEmptyComputerUseApprovalStream(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-): void {
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-  });
-  res.write(
-    `data: ${JSON.stringify({
-      type: "snapshot",
-      snapshot: EMPTY_MOBILE_APPROVAL_SNAPSHOT,
-    })}\n\n`,
-  );
-  const heartbeat = setInterval(() => {
-    res.write(": keepalive\n\n");
-  }, 30000);
-  heartbeat.unref?.();
-  const cleanup = () => {
-    clearInterval(heartbeat);
-    res.end();
-  };
-  req.once("close", cleanup);
-  req.once("aborted", cleanup);
-}
-export async function handleMobileOptionalRoutes(
+export async function handleHostSettingsRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
@@ -183,40 +141,6 @@ export async function handleMobileOptionalRoutes(
 ): Promise<boolean> {
   if (method === "GET" && pathname === "/api/runtime/mode") {
     sendJson(res, getRuntimeModeFallbackSnapshot());
-    return true;
-  }
-  if (method === "GET" && pathname === "/api/computer-use/approvals") {
-    sendJson(res, EMPTY_MOBILE_APPROVAL_SNAPSHOT);
-    return true;
-  }
-  if (method === "GET" && pathname === "/api/computer-use/approvals/stream") {
-    sendEmptyComputerUseApprovalStream(req, res);
-    return true;
-  }
-  if (method === "POST" && pathname === "/api/computer-use/approval-mode") {
-    try {
-      const body = parseJsonPayload(await readRequestBody(req)) as
-        | {
-            mode?: unknown;
-          }
-        | undefined;
-      if (body?.mode !== undefined && body.mode !== "off") {
-        sendJsonError(
-          res,
-          "Mobile fallback only supports approval mode off",
-          400,
-        );
-        return true;
-      }
-    } catch (err) {
-      sendJsonError(
-        res,
-        err instanceof Error ? err.message : "Invalid approval mode payload",
-        400,
-      );
-      return true;
-    }
-    sendJson(res, { mode: EMPTY_MOBILE_APPROVAL_SNAPSHOT.mode });
     return true;
   }
   if (method === "GET" && pathname === "/api/stream/settings") {
@@ -245,42 +169,6 @@ export async function handleMobileOptionalRoutes(
         400,
       );
     }
-    return true;
-  }
-  if (method === "GET" && pathname === "/api/catalog/apps") {
-    sendJson(res, []);
-    return true;
-  }
-  if (method === "GET" && pathname === "/api/drop/status") {
-    // Off-state only. This mobile fallback reports zero/empty mint constants
-    // rather than fabricating an on-chain supply cap or shiny price.
-    sendJson(res, {
-      dropEnabled: false,
-      publicMintOpen: false,
-      whitelistMintOpen: false,
-      mintedOut: false,
-      currentSupply: 0,
-      maxSupply: 0,
-      shinyPrice: "0",
-      userHasMinted: false,
-    });
-    return true;
-  }
-  // coding-agents preflight/coordinator + lifeops activity-signals stubs are
-  // declared once in the absent-plugin route stub registry (shared with the
-  // host's handleBuiltinOptionalRoutes) so the two handlers cannot drift
-  // (arch-audit #12089 item 12 / #12662). Previously these were hand-mirrored
-  // here and had already diverged from server.ts (the lifeops POST `reason`).
-  const absentPluginStub = resolveAbsentPluginRouteStub(method, pathname);
-  if (absentPluginStub) {
-    if (method === "POST") {
-      await readRequestBody(req).catch(() => undefined);
-    }
-    sendJson(
-      res,
-      absentPluginStub.buildBody(req),
-      absentPluginStub.statusCode ?? 200,
-    );
     return true;
   }
   return false;

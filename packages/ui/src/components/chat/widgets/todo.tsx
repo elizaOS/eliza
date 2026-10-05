@@ -18,12 +18,12 @@
  * Exports `TODO_PLUGIN_WIDGETS`, the widget-registry entry the host consumes.
  */
 
-import type { TranslateFn } from "@elizaos/contracts";
+import type { TranslateFn, WorkbenchTodo } from "@elizaos/contracts";
 import { Circle, ListTodo, Target } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { client } from "../../../api/client";
-import type { WorkbenchTodo } from "../../../api/client-types-config";
+
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useRole } from "../../../hooks/useRole";

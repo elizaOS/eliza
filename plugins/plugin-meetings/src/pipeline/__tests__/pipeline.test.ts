@@ -389,6 +389,78 @@ describe("createMeetingTranscriptionPipeline", () => {
     });
   });
 
+  it("does not read a lowercase word after I'm or This is as a name", async () => {
+    for (const text of [
+      "Sorry, I'm late.",
+      "I'm back.",
+      "This is great.",
+      "I'm here.",
+      "I'm fine, thanks.",
+      "I'm OK.",
+    ]) {
+      const backend = new ScriptedBackend();
+      backend.enqueue({ text }, { text });
+      const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+
+      pipeline.pushSpeakerAudio("track-1", seconds(2));
+      await tick(2000);
+      pipeline.pushSpeakerAudio("track-1", seconds(2));
+      await tick(2000);
+
+      const [segment] = await pipeline.finalize();
+      expect(segment?.text).toBe(text);
+      expect(segment?.speakerLabel).toBe("Speaker 1");
+      expect(segment?.speakerNameAttribution).toBeUndefined();
+    }
+  });
+
+  it("keeps a roster-only name reviewable when the speaker says I'm late", async () => {
+    const backend = new ScriptedBackend();
+    backend.enqueue({ text: "Sorry, I'm late." }, { text: "Sorry, I'm late." });
+    const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+    pipeline.setSpeakerName("track-1", "Taylor Owner");
+
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+
+    const [segment] = await pipeline.finalize();
+    expect(segment?.speakerNameAttribution).toMatchObject({
+      resolution: "needs_confirmation",
+      candidateNames: [
+        expect.objectContaining({
+          name: "Taylor Owner",
+          sources: ["platform_roster"],
+        }),
+      ],
+    });
+  });
+
+  it("takes only the capitalized name words after I'm or This is", async () => {
+    for (const [text, name] of [
+      ["Sorry, I'm late, this is Mina.", "Mina"],
+      ["This is Mina speaking.", "Mina"],
+      ["Hi, I'm Mina Chen.", "Mina Chen"],
+    ]) {
+      const backend = new ScriptedBackend();
+      backend.enqueue({ text }, { text });
+      const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+
+      pipeline.pushSpeakerAudio("track-1", seconds(2));
+      await tick(2000);
+      pipeline.pushSpeakerAudio("track-1", seconds(2));
+      await tick(2000);
+
+      const [segment] = await pipeline.finalize();
+      expect(segment?.speakerNameAttribution).toMatchObject({
+        resolution: "confirmed",
+        displayName: name,
+      });
+      expect(segment?.speakerLabel).toBe(name);
+    }
+  });
+
   it("withholds same-first-name calendar candidates", async () => {
     const backend = new ScriptedBackend();
     backend.enqueue(
