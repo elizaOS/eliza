@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { AnthropicMcpCompatibility } from "./providers/anthropic";
-import { GoogleMcpCompatibility } from "./providers/google";
-import { OpenAIMcpCompatibility } from "./providers/openai";
+import { AnthropicMcpCompatibility } from "./anthropic";
+import { GoogleMcpCompatibility } from "./google";
+import { OpenAIMcpCompatibility } from "./openai";
 
 test("Google preserves unrendered constraints and the original model-facing description", () => {
   const policy = new GoogleMcpCompatibility({ provider: "google", modelId: "gemini" });

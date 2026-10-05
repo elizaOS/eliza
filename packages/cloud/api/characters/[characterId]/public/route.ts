@@ -14,7 +14,7 @@
 import { Hono } from "hono";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@elizaos/cloud-shared/auth";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { isValidUUID } from "@elizaos/cloud-shared/lib/utils/validation";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";

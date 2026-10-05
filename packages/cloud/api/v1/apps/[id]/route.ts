@@ -15,7 +15,7 @@ import { isSafeRegistrationUrl } from "@elizaos/cloud-shared/lib/security/outbou
 import { appCleanupService } from "@elizaos/cloud-shared/lib/services/app-cleanup";
 import { buildReviewCandidate } from "@elizaos/cloud-shared/lib/services/app-review";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {

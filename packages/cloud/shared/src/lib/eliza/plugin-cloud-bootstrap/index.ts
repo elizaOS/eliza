@@ -26,7 +26,7 @@ import { CloudMediaGenerationService } from "./services/cloud-media-generation-s
 export { CloudBootstrapMessageService } from "./services/cloud-bootstrap-message-service";
 export * from "./templates";
 export * from "./types";
-export * from "./utils";
+export { getActionResultsFromCache, refreshStateAfterAction } from "./utils/state";
 
 /**
  * Installs CloudBootstrapMessageService after runtime.initialize() completes.

@@ -15,10 +15,10 @@ import { sweepSubscriptionNotices } from "@elizaos/cloud-shared/lib/services/sub
 import { recoverMissedSubscriptionEvents } from "@elizaos/cloud-shared/lib/services/subscription-reconciliation";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { processStripeEvent } from "@/api-queue/stripe-event";
-import type { StripeEventMessage } from "@/api-queue/types";
 
 const STRIPE_QUEUE_KEY = "stripe-events";
 

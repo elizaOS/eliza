@@ -12,7 +12,7 @@ import type { NewUserCharacter } from "@elizaos/cloud-shared/db/repositories";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { isCategoryId } from "@elizaos/cloud-shared/lib/constants/character-categories";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { discordService } from "@elizaos/cloud-shared/lib/services/discord";
 import type { ElizaCharacter } from "@elizaos/cloud-shared/lib/types";
 import type {

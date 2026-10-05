@@ -23,8 +23,8 @@ import {
 import {
   solanaRpcConfig,
   solanaRpcHandler,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/solana-rpc";
-import { isValidSolanaAddress } from "@elizaos/cloud-shared/lib/services/proxy/services/solana-validation";
+} from "@elizaos/cloud-shared/lib/services/proxy/solana-rpc";
+import { isValidSolanaAddress } from "@elizaos/cloud-shared/lib/services/proxy/solana-validation";
 import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 async function __hono_OPTIONS() {

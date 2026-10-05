@@ -35,13 +35,6 @@ import {
   failureResponse,
   ValidationError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import {
-  CRON_INVOCATION_ID_HEADER,
-  CRON_SCHEDULE_HEADER,
-  CRON_SCHEDULED_TIME_HEADER,
-  getScheduledCronInvocationMetadata,
-  scheduledCronInvocationId,
-} from "@elizaos/cloud-shared/lib/cron/cloudflare-cron";
 import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
 import { enqueueAgentUnfundedStopForRun } from "@elizaos/cloud-shared/lib/services/agent-unfunded-stop";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -51,6 +44,13 @@ import type {
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
+import {
+  CRON_INVOCATION_ID_HEADER,
+  CRON_SCHEDULE_HEADER,
+  CRON_SCHEDULED_TIME_HEADER,
+  getScheduledCronInvocationMetadata,
+  scheduledCronInvocationId,
+} from "@/api-app/cron";
 
 const REBILL_GUARD_MINUTES = 55;
 const AGENT_BILLING_PATH = "/api/cron/agent-billing";

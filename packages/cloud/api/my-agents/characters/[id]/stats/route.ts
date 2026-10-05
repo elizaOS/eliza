@@ -7,7 +7,7 @@ import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { dbRead } from "@elizaos/cloud-shared/db/client";
 import { elizaRoomCharactersTable } from "@elizaos/cloud-shared/db/schemas/eliza-room-characters";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { memoryTable } from "@elizaos/plugin-sql";
 import { and, eq, inArray, sql } from "drizzle-orm";

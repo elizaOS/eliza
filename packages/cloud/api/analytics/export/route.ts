@@ -9,7 +9,6 @@
  */
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
-import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   createBinaryDownloadResponse,
   createDownloadResponse,
@@ -22,7 +21,8 @@ import {
   generateCSV,
   generateExcel,
   generateJSON,
-} from "@elizaos/cloud-shared/lib/export/analytics";
+} from "@elizaos/cloud-shared/lib/analytics/export";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
