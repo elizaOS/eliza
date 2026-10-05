@@ -1,3 +1,4 @@
+import { vastFetch } from "./api";
 /**
  * Manifest-driven Vast.ai Serverless endpoint + workergroup provisioning.
  *
@@ -17,8 +18,6 @@ import {
   readVastManifest,
   type VastServeManifest,
 } from "./manifest";
-
-const VAST_API = "https://console.vast.ai";
 
 export interface EndpointJobPayload {
   endpoint_name: string;
@@ -111,27 +110,6 @@ export function buildWorkergroupPayload(
   const launchArgs = process.env.VAST_LAUNCH_ARGS?.trim();
   if (launchArgs) payload.launch_args = launchArgs;
   return payload;
-}
-
-async function vastFetch<T>(
-  apiKey: string,
-  method: "GET" | "POST" | "PUT" | "DELETE",
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  const res = await fetch(`${VAST_API}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`Vast ${method} ${path} -> ${res.status}: ${text}`);
-  }
-  return text.length > 0 ? (JSON.parse(text) as T) : ({} as T);
 }
 
 async function createEndpointJob(

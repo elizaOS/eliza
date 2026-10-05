@@ -219,7 +219,7 @@ storage = "sqlite"
 # Queues. The webhook route LPUSHes a JSON
 # envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
 # which drains a bounded batch via the queue helper in
-# `packages/cloud/shared/src/lib/queue/redis-queue.ts`. Failed messages are retried with
+# `packages/cloud/shared/src/lib/redis-queue.ts`. Failed messages are retried with
 # attempts++ and demoted to a `:dlq` list after `maxAttempts`.
 # -----------------------------------------------------------------------------
 

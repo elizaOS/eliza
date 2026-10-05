@@ -5,7 +5,10 @@
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { advertisingService } from "@elizaos/cloud-shared/lib/services/advertising";
+import {
+  advertisingService,
+  serializeCampaignTargeting,
+} from "@elizaos/cloud-shared/lib/services/advertising";
 import {
   AdPlatformSchema,
   CampaignStatusSchema,
@@ -16,25 +19,6 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
-
-type CampaignRecord = NonNullable<
-  Awaited<ReturnType<typeof advertisingService.getCampaign>>
->;
-
-function serializeTargeting(targeting: CampaignRecord["targeting"]) {
-  return {
-    locations: targeting.locations,
-    ageMin: targeting.age_min,
-    ageMax: targeting.age_max,
-    genders: targeting.genders,
-    interests: targeting.interests,
-    behaviors: targeting.behaviors,
-    customAudiences: targeting.custom_audiences,
-    excludedAudiences: targeting.excluded_audiences,
-    placements: targeting.placements,
-    languages: targeting.languages,
-  };
-}
 
 app.get("/", async (c) => {
   try {
@@ -98,7 +82,7 @@ app.get("/", async (c) => {
         startDate: c.start_date?.toISOString(),
         endDate: c.end_date?.toISOString(),
         dayparting: c.metadata.dayparting ?? null,
-        targeting: serializeTargeting(c.targeting),
+        targeting: serializeCampaignTargeting(c.targeting),
         totalSpend: c.total_spend,
         totalImpressions: c.total_impressions,
         totalClicks: c.total_clicks,
@@ -166,7 +150,7 @@ app.post("/", async (c) => {
         optimizationGoal: campaign.metadata.optimization_goal,
         creditsAllocated: campaign.credits_allocated,
         dayparting: campaign.metadata.dayparting ?? null,
-        targeting: serializeTargeting(campaign.targeting),
+        targeting: serializeCampaignTargeting(campaign.targeting),
         createdAt: campaign.created_at.toISOString(),
       },
       201,

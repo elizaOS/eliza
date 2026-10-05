@@ -768,10 +768,8 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/host": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
-        "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
-        "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/voice": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@fal-ai/server-proxy": "^1.2.1",
@@ -791,6 +789,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
+        "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@types/pg": "^8.23.1",
@@ -966,6 +965,7 @@
       "name": "@elizaos/gateway-webhook",
       "version": "1.0.0",
       "dependencies": {
+        "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@upstash/redis": "^1.37.0",

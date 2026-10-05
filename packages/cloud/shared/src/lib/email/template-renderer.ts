@@ -2,7 +2,8 @@
  * Email template rendering utilities.
  */
 
-import { getEmailMessages, interpolateMessage } from "../messages";
+import { EMAIL_TEMPLATES } from "./email-templates.generated";
+import { getEmailMessages, interpolateMessage } from "./messages";
 import type {
   AgentRetentionDeletionNoticeEmailData,
   AutoTopUpDisabledEmailData,
@@ -12,11 +13,10 @@ import type {
   LowCreditsEmailData,
   PurchaseConfirmationEmailData,
   WelcomeEmailData,
-} from "../types";
-import { EMAIL_TEMPLATES } from "./email-templates.generated";
+} from "./types";
 
 /**
- * Loads an email template file from disk.
+ * Loads a bundled email template.
  *
  * @param filename - Template filename.
  * @returns Template content as string.
@@ -24,7 +24,7 @@ import { EMAIL_TEMPLATES } from "./email-templates.generated";
 function loadTemplate(filename: string): string {
   // Templates are bundled as strings (email-templates.generated.ts) — the
   // Workers runtime has no filesystem and no import.meta.url, so reading them
-  // from disk threw. Regenerate via scripts/generate-email-templates.ts.
+  // from disk threw. Regenerate via packages/cloud/scripts/shared/generate-email-templates.ts.
   const template = EMAIL_TEMPLATES[filename];
   if (template === undefined) {
     throw new Error(`Unknown email template: ${filename}`);

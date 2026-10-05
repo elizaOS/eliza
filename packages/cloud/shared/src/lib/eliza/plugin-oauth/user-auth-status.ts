@@ -10,9 +10,9 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import { usersRepository } from "../../../../db/repositories/users";
-import { oauthService } from "../../../services/oauth";
-import { capitalize, formatConnectionIdentifier } from "../utils";
+import { usersRepository } from "../../../db/repositories/users";
+import { oauthService } from "../../services/oauth/index";
+import { capitalize, formatConnectionIdentifier } from "./utils";
 
 export const userAuthStatusProvider: Provider = {
   name: "USER_AUTH_STATUS",

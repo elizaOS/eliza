@@ -1,7 +1,7 @@
 /** Stateful loopback mock for Steward platform-user lifecycle operations. */
 
 import { Hono } from "hono";
-import { startFetchServer } from "../fetch-server";
+import { startFetchServer } from "./fetch-server";
 
 export type StewardMockUserState = "active" | "deactivated" | "deleted";
 

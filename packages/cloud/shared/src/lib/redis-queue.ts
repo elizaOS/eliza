@@ -17,8 +17,8 @@
  */
 
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { cache } from "../cache/client";
-import { logger } from "../utils/logger";
+import { cache } from "./cache/client";
+import { logger } from "./utils/logger";
 
 interface Envelope<T> {
   body: T;

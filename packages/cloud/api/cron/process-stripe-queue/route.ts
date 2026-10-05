@@ -3,10 +3,7 @@
 import { requireCronSecret } from "@elizaos/cloud-shared/auth";
 import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import {
-  drain,
-  queueLength,
-} from "@elizaos/cloud-shared/lib/queue/redis-queue";
+import { drain, queueLength } from "@elizaos/cloud-shared/lib/redis-queue";
 import { recoverOrganizationSchedules } from "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance";
 import { recoverOrganizationUpgrades } from "@elizaos/cloud-shared/lib/services/organization-upgrade-maintenance";
 import { recoverRenewalAdjustmentObservations } from "@elizaos/cloud-shared/lib/services/renewal-adjustment-maintenance";
