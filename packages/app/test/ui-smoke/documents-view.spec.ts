@@ -11,7 +11,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
-import { assertSharedViewHeaderContract } from "./helpers/view-header";
+import { assertHeaderlessViewChrome } from "./helpers/view-header";
 
 /**
  * Visual + smoke coverage for the builtin standalone Knowledge surface at
@@ -168,15 +168,14 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
 
       await openAppPath(page, "/character/documents");
 
-      // Knowledge owns a standalone route and header outside the Character
-      // editor. Anchor both so an unrelated character shell cannot satisfy the
-      // visual probe.
+      // Bind the probe to the populated Knowledge library, not ambient chrome.
       const viewRoot = page.getByTestId("documents-view");
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
-      await assertSharedViewHeaderContract(page, {
-        requireTapTarget: vp.name === "mobile",
+      await expect(
+        viewRoot.getByText("q3-strategy.pdf", { exact: true }).first(),
+      ).toBeVisible();
+      await assertHeaderlessViewChrome(page, {
         within: '[data-testid="documents-view"]',
-        title: "Knowledge",
       });
       await expect
         .poll(

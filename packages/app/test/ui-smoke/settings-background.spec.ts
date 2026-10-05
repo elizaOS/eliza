@@ -583,6 +583,16 @@ test.describe("settings shares the unified app background (#9143)", () => {
           hasApiKey: true,
         }),
       );
+      // Connected Cloud voice also reads account credit state. Supply that
+      // dependency so media-decoder failures are the only expected error.
+      await page.route("**/api/cloud/credits", (route) =>
+        fulfillJson(route, {
+          balance: 100,
+          low: false,
+          critical: false,
+          authRejected: false,
+        }),
+      );
       let previewRequests = 0;
       await page.route(
         "https://storage.googleapis.com/eleven-public-prod/**",

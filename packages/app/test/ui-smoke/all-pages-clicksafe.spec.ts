@@ -15,10 +15,7 @@ import {
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
-import {
-  assertSharedViewHeaderContract,
-  clickViewHeaderBack,
-} from "./helpers/view-header";
+import { assertHeaderlessViewChrome } from "./helpers/view-header";
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -31,23 +28,9 @@ type RouteProbe = {
   readyChecks: readonly ReadyCheck[];
   mode?: "any" | "all";
   timeoutMs?: number;
-  /**
-   * When set, the route is a `normal` view that MUST render the shared
-   * ViewHeader (#13586) — the probe asserts the icon-only-back contract via
-   * `assertSharedViewHeaderContract`. Chat / launcher-catalog / onboarding
-   * surfaces render no shared header (they own their chrome), so they leave
-   * this unset and are not asserted — matching `assertSharedViewHeader`'s
-   * no-op-for-exempt-views semantics.
-   */
-  requireViewHeader?: boolean;
-  /**
-   * Scope for the ViewHeader assertion: the routed view's shell selector
-   * (`viewHeaderWithin`) or the header's own title text (`viewHeaderTitle`).
-   * Without one, the helper could bind to an AMBIENT header floating under
-   * the routed view and mask a view that lost its own header (#14152).
-   */
-  viewHeaderWithin?: string;
-  viewHeaderTitle?: string;
+  /** Route readiness and controls stay visible without duplicate view chrome. */
+  headerless?: boolean;
+  viewWithin?: string;
 };
 
 type ViewportProbe = {
@@ -173,18 +156,28 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // Retired My Apps deep link (#17031): lands on the consolidated Projects
     // surface with the Apps segment pre-selected. The launcher grid remains
     // available at `/views`.
-    readyChecks: [{ text: "No apps installed yet" }],
+    readyChecks: [
+      { text: "No apps installed yet" },
+      { selector: '[aria-label="Create new app"]' },
+      {
+        selector:
+          '[role="tablist"][aria-label="Projects sections"] [role="tab"][aria-selected="true"]:has-text("Apps")',
+      },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderTitle: "Projects",
+    headerless: true,
   },
   {
     name: "automations",
     path: "/automations",
-    readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
-    viewHeaderTitle: "Automations",
+    readyChecks: [
+      { selector: '[data-testid="automations-shell"]' },
+      { selector: 'button[aria-label="New automation"]' },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
+    headerless: true,
   },
   {
     name: "browser",
@@ -211,9 +204,8 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "wallet",
     path: "/wallet",
     readyChecks: [{ selector: '[data-testid="wallet-shell"]' }],
-    viewHeaderTitle: "Wallet",
     timeoutMs: 60_000,
-    requireViewHeader: true,
+    headerless: true,
   },
   {
     name: "stream",
@@ -291,35 +283,35 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/character/documents",
     readyChecks: [{ selector: '[data-testid="documents-view"]' }],
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderWithin: '[data-testid="documents-view"]',
-    viewHeaderTitle: "Knowledge",
+    headerless: true,
+    viewWithin: '[data-testid="documents-view"]',
   },
   {
-    // Character Skills and Experience are headerless bodies under the shared
-    // Character section nav; the section header is the canonical route chrome.
+    // Each Character deep link must select its own section in the shared nav.
     name: "character skills deep link",
     path: "/character/skills",
     readyChecks: [
-      { selector: '[data-testid="section-nav-character"]' },
-      { text: "Character" },
+      {
+        selector:
+          '[data-testid="section-nav-character"] button[aria-current="page"]:has-text("Skills")',
+      },
     ],
     mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderTitle: "Character",
+    headerless: true,
   },
   {
     name: "character experience deep link",
     path: "/character/experience",
     readyChecks: [
-      { selector: '[data-testid="section-nav-character"]' },
-      { text: "Character" },
+      {
+        selector:
+          '[data-testid="section-nav-character"] button[aria-current="page"]:has-text("Experience")',
+      },
     ],
     mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderTitle: "Character",
+    headerless: true,
   },
   {
     // installDesktopPermissionsBridge injects __ELIZA_ELECTROBUN_RPC__, so
@@ -850,16 +842,8 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.timeoutMs,
   );
   await expectMainShell(page, route);
-  // A normal view must uphold the shared ViewHeader icon-only-back contract
-  // (#13586). On the mobile viewport, also enforce the ≥44px tap target.
-  if (route.requireViewHeader) {
-    const viewport = page.viewportSize();
-    const isMobileViewport = Boolean(viewport && viewport.width <= 500);
-    await assertSharedViewHeaderContract(page, {
-      requireTapTarget: isMobileViewport,
-      within: route.viewHeaderWithin,
-      title: route.viewHeaderTitle,
-    });
+  if (route.headerless) {
+    await assertHeaderlessViewChrome(page, { within: route.viewWithin });
   }
 }
 
@@ -1062,16 +1046,21 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   await clickSafeAllowlist(page, issues);
 });
 
-test("shared ViewHeader back control navigates away without crashing (#13586)", async ({
+test("browser history returns from Wallet to the launcher without crashing", async ({
   page,
 }) => {
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
-
-  // Wallet is a canonical shared-header view. Settings owns split-pane chrome
-  // and its sidebar back control, so it is intentionally outside this contract.
+  const launcher = coreRouteProbe("views catalog deep link");
+  await probeRoute(page, launcher);
   await probeRoute(page, coreRouteProbe("wallet"));
-  await assertSharedViewHeaderContract(page, { title: "Wallet" });
-  await clickViewHeaderBack(page, { title: "Wallet" });
-  await expectNoPageIssues(issues, "wallet view-header back");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/views$/);
+  await assertReadyChecks(
+    page,
+    launcher.name,
+    launcher.readyChecks,
+    launcher.mode ?? "any",
+  );
+  await expectNoPageIssues(issues, "wallet browser back");
 });
