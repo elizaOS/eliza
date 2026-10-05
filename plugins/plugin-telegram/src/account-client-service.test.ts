@@ -334,6 +334,30 @@ describe("personal service account-bound history", () => {
     ]);
     await service.stop();
   });
+  it("matches the trimmed query it validated", async () => {
+    const { runtime, service } = await harness();
+    await service.refreshAccount("me:personal");
+    const result = await service.searchConnectorMessages(
+      { runtime, accountId: "me:personal", target },
+      { target, query: "  owner  ", limit: 1 },
+    );
+    expect(result.map((row) => row.content.text)).toEqual([
+      "final-page owner fact",
+    ]);
+    await service.stop();
+  });
+  it("rejects a whitespace-only query before any search", async () => {
+    const { runtime, service, clients } = await harness();
+    await service.refreshAccount("me:personal");
+    await expect(
+      service.searchConnectorMessages(
+        { runtime, accountId: "me:personal", target },
+        { target, query: "   " },
+      ),
+    ).rejects.toMatchObject({ code: "TELEGRAM_HISTORY_QUERY_INVALID" });
+    expect(clients[0].invoke).not.toHaveBeenCalled();
+    await service.stop();
+  });
   it("does not turn an unsupported room-only scope into an account-wide search", async () => {
     const { runtime, service, clients } = await harness();
     await service.refreshAccount("me:personal");

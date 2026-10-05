@@ -563,7 +563,7 @@ export class TelegramAccountService extends Service {
       throw new ElizaError("Provide a Telegram message search query.", {
         code: "TELEGRAM_HISTORY_QUERY_INVALID",
       });
-    const query = params.query.toLocaleLowerCase();
+    const query = params.query.trim().toLocaleLowerCase();
     if (
       params.limit !== undefined &&
       (!Number.isSafeInteger(params.limit) || params.limit < 1)
